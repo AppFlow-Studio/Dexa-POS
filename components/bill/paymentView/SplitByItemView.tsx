@@ -37,7 +37,7 @@ import {
 function getItemDiscountedValues(
   splitItem: CartItem,
   originalItem: CartItem | undefined,
-  isCash: boolean = false
+  isCash: boolean = false,
 ): { subtotal: number; discountAmount: number } {
   const splitQuantity = splitItem.quantity;
   const originalQuantity = originalItem?.quantity ?? splitItem.quantity;
@@ -93,7 +93,7 @@ function getItemDiscountedValues(
 function calculateSplitTax(
   items: CartItem[],
   taxRatesMap: Record<string, number>,
-  masterItems: CartItem[] // Original order items to look up original quantities
+  masterItems: CartItem[], // Original order items to look up original quantities
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0;
   let tax = 0;
@@ -106,7 +106,7 @@ function calculateSplitTax(
     const { subtotal: itemSubtotal, discountAmount } = getItemDiscountedValues(
       item,
       originalItem,
-      false
+      false,
     );
     subtotal += itemSubtotal;
 
@@ -135,7 +135,7 @@ function calculateSplitTax(
 function calculateSplitCashTax(
   items: CartItem[],
   taxRatesMap: Record<string, number>,
-  masterItems: CartItem[] // Original order items to look up original quantities
+  masterItems: CartItem[], // Original order items to look up original quantities
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0;
   let tax = 0;
@@ -148,7 +148,7 @@ function calculateSplitCashTax(
     const { subtotal: itemSubtotal } = getItemDiscountedValues(
       item,
       originalItem,
-      true
+      true,
     );
     subtotal += itemSubtotal;
 
@@ -213,13 +213,13 @@ const SplitByItemView = () => {
 
   const activeOrder = useMemo(
     () => (activeOrderId ? ordersById[activeOrderId] : null),
-    [ordersById, activeOrderId]
+    [ordersById, activeOrderId],
   );
 
   // Filter out voided items - they should not be included in splits
   const masterItems = useMemo(
     () => (activeOrder?.items || []).filter((item) => !item.is_voided),
-    [activeOrder?.items]
+    [activeOrder?.items],
   );
   // console.log('[activeOrder | SplitByItemView] activeOrder', activeOrder);
 
@@ -256,7 +256,7 @@ const SplitByItemView = () => {
     ? calculateSplitTax(
         activeSplit.items,
         taxRatesMap,
-        masterItems // Pass master items to look up original quantities/discounts
+        masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
 
@@ -266,20 +266,20 @@ const SplitByItemView = () => {
     ? calculateSplitCashTax(
         activeSplit.items,
         taxRatesMap,
-        masterItems // Pass master items to look up original quantities/discounts
+        masterItems, // Pass master items to look up original quantities/discounts
       )
     : { subtotal: 0, tax: 0, total: 0 };
 
   // Calculate savings when paying cash vs card
   const cashSavings = Math.max(
     0,
-    activeSplitTotals.total - activeSplitCashTotals.total
+    activeSplitTotals.total - activeSplitCashTotals.total,
   );
 
   // Calculate global remaining items to control button state
   const globalRemainingItems = itemData.reduce(
     (acc, item) => acc + item.qtyRemaining,
-    0
+    0,
   );
   const isAllAssigned = globalRemainingItems === 0;
 

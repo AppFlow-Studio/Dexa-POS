@@ -2,6 +2,7 @@ import { CartItem, OrderProfile } from "@/lib/types";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   ArrowLeft,
   Check,
@@ -240,7 +241,7 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
       details.push(
         <Text key="size" className="text-blue-400 text-xs ml-6 mt-1">
           Size: {item.customizations.size.name}
-        </Text>
+        </Text>,
       );
     }
 
@@ -256,7 +257,7 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
             <Text className="text-purple-400 text-xs">
               • {mod.categoryName}: {optionNames}
             </Text>
-          </View>
+          </View>,
         );
       });
     }
@@ -270,7 +271,7 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
             className="text-green-400 text-xs ml-6 mt-1"
           >
             + {addon.name} (+${addon.price.toFixed(2)})
-          </Text>
+          </Text>,
         );
       });
     }
@@ -284,7 +285,7 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
           numberOfLines={2}
         >
           "{item.customizations.notes}"
-        </Text>
+        </Text>,
       );
     }
 
@@ -334,13 +335,15 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
                   order.order_number?.slice(-4) ||
                   "----"}
                 <Text className="text-amber-400"> C{courseNumber}</Text>
-
               </Text>
               {tableName && (
                 <Text className="text-sm text-gray-400">{tableName}</Text>
               )}
-              <Text className="text-white text-sm">{order.opened_at ? new Date(order.opened_at).toLocaleDateString('en-US') : ''}</Text>
-
+              <Text className="text-white text-sm">
+                {order.opened_at
+                  ? new Date(order.opened_at).toLocaleDateString("en-US")
+                  : ""}
+              </Text>
             </View>
             <View className="items-end">
               <View className="flex-row items-center">
@@ -503,14 +506,14 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
       // Stretch cards to fill available space
       const cardHeight = Math.max(
         availableHeight / cards.length,
-        MIN_CARD_HEIGHT
+        MIN_CARD_HEIGHT,
       );
       return { height: cardHeight };
     } else {
       // Fixed height when 4+ cards, allow scrolling
       const cardHeight = Math.max(
         availableHeight / MAX_VISIBLE_ROWS,
-        MIN_CARD_HEIGHT
+        MIN_CARD_HEIGHT,
       );
       return { height: cardHeight };
     }
@@ -522,19 +525,19 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
       onStartCooking={() =>
         onStartCooking(
           card.order.id,
-          card.items.map((i) => i.id)
+          card.items.map((i) => i.id),
         )
       }
       onMarkReady={() =>
         onMarkReady(
           card.order.id,
-          card.items.map((i) => i.id)
+          card.items.map((i) => i.id),
         )
       }
       onMarkServed={() =>
         onMarkServed(
           card.order.id,
-          card.items.map((i) => i.id)
+          card.items.map((i) => i.id),
         )
       }
     />
@@ -650,7 +653,7 @@ const KitchenDisplayScreen = () => {
       const table = tables.find((t) => t.id === serviceLocationId);
       return table?.name || null;
     },
-    [tables]
+    [tables],
   );
 
   // Transform orders to cards grouped by status
@@ -662,7 +665,13 @@ const KitchenDisplayScreen = () => {
     Object.values(ordersById).forEach((order: OrderProfile) => {
       // FILTER 1: Exclude orders with inactive statuses
       // These should NEVER appear in KDS regardless of item status
-      const inactiveStatuses = ["completed", "cancelled", "void", "voided", "refunded"];
+      const inactiveStatuses = [
+        "completed",
+        "cancelled",
+        "void",
+        "voided",
+        "refunded",
+      ];
       if (inactiveStatuses.includes(order.order_status)) {
         return; // Skip this order
       }
@@ -670,7 +679,7 @@ const KitchenDisplayScreen = () => {
       // FILTER 2: Exclude orders where all items are served
       // Kitchen work is complete for these orders
       const allItemsServed = order.items.every(
-        (item) => item.kitchen_status === "served"
+        (item) => item.kitchen_status === "served",
       );
       if (allItemsServed) {
         return; // Skip fully served orders
@@ -680,8 +689,8 @@ const KitchenDisplayScreen = () => {
         (item) =>
           !item.is_voided && // NEW: Exclude voided items
           (item.kitchen_status === "sent" ||
-          item.kitchen_status === "preparing" ||
-          item.kitchen_status === "ready")
+            item.kitchen_status === "preparing" ||
+            item.kitchen_status === "ready"),
       );
 
       if (relevantItems.length === 0) return;
@@ -702,7 +711,7 @@ const KitchenDisplayScreen = () => {
         const courseNum = parseInt(courseStr);
         const hasSent = courseItems.some((i) => i.kitchen_status === "sent");
         const hasPreparing = courseItems.some(
-          (i) => i.kitchen_status === "preparing"
+          (i) => i.kitchen_status === "preparing",
         );
         const allReady = courseItems.every((i) => i.kitchen_status === "ready");
 
@@ -745,15 +754,15 @@ const KitchenDisplayScreen = () => {
       counts: {
         pending: pending.reduce(
           (sum, c) => sum + c.items.reduce((s, i) => s + i.quantity, 0),
-          0
+          0,
         ),
         cooking: cooking.reduce(
           (sum, c) => sum + c.items.reduce((s, i) => s + i.quantity, 0),
-          0
+          0,
         ),
         ready: ready.reduce(
           (sum, c) => sum + c.items.reduce((s, i) => s + i.quantity, 0),
-          0
+          0,
         ),
       },
     };
@@ -763,26 +772,41 @@ const KitchenDisplayScreen = () => {
     (orderId: string, itemIds: string[]) => {
       markCourseItemsAsCooking(orderId, itemIds);
     },
-    [markCourseItemsAsCooking]
+    [markCourseItemsAsCooking],
   );
 
   const handleMarkReady = useCallback(
     (orderId: string, itemIds: string[]) => {
       markCourseItemsAsReady(orderId, itemIds);
     },
-    [markCourseItemsAsReady]
+    [markCourseItemsAsReady],
   );
 
   const handleMarkServed = useCallback(
     (orderId: string, itemIds: string[]) => {
       markCourseItemsAsServed(orderId, itemIds);
     },
-    [markCourseItemsAsServed]
+    [markCourseItemsAsServed],
   );
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 500);
+    try {
+      const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+      const { loadFloorPlanStatus } = useFloorPlanStore.getState();
+
+      // Refresh Floor Plan (for table names)
+      await loadFloorPlanStatus();
+
+      // Refresh Orders (Full sync with force=true)
+      if (locationId) {
+        await useOrderStore.getState().initializeOrders(locationId, true);
+      }
+    } catch (error) {
+      console.error("KDS Refresh Failed:", error);
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   return (

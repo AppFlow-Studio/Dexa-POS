@@ -6,9 +6,9 @@
  */
 
 import type {
-    BroadcastModifierData,
-    BroadcastOrderData,
-    BroadcastOrderItemData,
+  BroadcastModifierData,
+  BroadcastOrderData,
+  BroadcastOrderItemData,
 } from "@/hooks/realtime/useOrdersRealtime";
 import type { CartItem, OrderProfile } from "@/lib/types";
 
@@ -22,7 +22,7 @@ import type { CartItem, OrderProfile } from "@/lib/types";
  * @returns Grouped modifiers in CartItem format, or undefined if empty
  */
 function transformBroadcastModifiers(
-  modifiers: BroadcastModifierData[] | undefined
+  modifiers: BroadcastModifierData[] | undefined,
 ): CartItem["customizations"]["modifiers"] {
   if (!modifiers || modifiers.length === 0) return undefined;
 
@@ -69,7 +69,7 @@ function transformBroadcastModifiers(
  * @returns Array of CartItem objects for local store
  */
 export function transformBroadcastItems(
-  items: BroadcastOrderItemData[] | undefined
+  items: BroadcastOrderItemData[] | undefined,
 ): CartItem[] {
   if (!items || items.length === 0) return [];
 
@@ -99,8 +99,8 @@ export function transformBroadcastItems(
     cashTaxAmount: item.cash_tax_amount,
     taxRate: 0, // Not included in broadcast
 
-    baseCardPrice : item.base_card_price,
-    baseCashPrice : item.base_cash_price,
+    baseCardPrice: item.base_card_price,
+    baseCashPrice: item.base_cash_price,
 
     // Discount distribution
     discount_amount: item.discount_amount || 0,
@@ -108,7 +108,8 @@ export function transformBroadcastItems(
 
     // Status tracking
     item_status: item.item_status as CartItem["item_status"],
-    kitchen_status: (item.kitchen_status as CartItem["kitchen_status"]) || undefined,
+    kitchen_status:
+      (item.kitchen_status as CartItem["kitchen_status"]) || undefined,
     courseNumber: item.course_number || 1,
 
     // Item flags
@@ -138,7 +139,7 @@ export function transformBroadcastItems(
  * @returns Local paid_status string
  */
 export function mapPaymentStatus(
-  paymentStatus: string | null | undefined
+  paymentStatus: string | null | undefined,
 ): OrderProfile["paid_status"] {
   switch (paymentStatus) {
     case "paid":
@@ -159,7 +160,7 @@ export function mapPaymentStatus(
  * @returns Local order_type string
  */
 export function mapOrderType(
-  orderType: string | null | undefined
+  orderType: string | null | undefined,
 ): OrderProfile["order_type"] {
   switch (orderType) {
     case "dine_in":
@@ -185,7 +186,7 @@ export function mapOrderType(
  */
 export function transformBroadcastToOrder(
   backendOrder: BroadcastOrderData,
-  sourceStationName?: string | null
+  sourceStationName?: string | null,
 ): OrderProfile {
   // Use db_order_id directly as local ID (no prefix)
   const localId = backendOrder.id;
@@ -208,6 +209,8 @@ export function transformBroadcastToOrder(
     check_status: backendOrder.check_status || "Opened",
     paid_status: mapPaymentStatus(backendOrder.payment_status),
     service_location_id: backendOrder.table_number,
+    server_name:
+      backendOrder.server_name || backendOrder.assigned_server_id || undefined,
     customer_name: "",
 
     // Financial - use card pricing as default
@@ -299,7 +302,8 @@ export interface FetchedOrderData {
   is_offline?: boolean | null;
   // Nested relations from Supabase
   order_items?: FetchedOrderItem[];
-  stations?: { name: string } | null;
+  stations?: { station_name: string } | null;
+  created_by_staff?: { first_name: string; last_name: string } | null;
 }
 
 export interface FetchedOrderItem {
@@ -326,8 +330,8 @@ export interface FetchedOrderItem {
   category_name?: string | null;
   // Nested modifiers from Supabase
   order_item_modifiers?: FetchedOrderItemModifier[];
-  base_card_price : number;
-  base_cash_price : number;
+  base_card_price: number;
+  base_cash_price: number;
 }
 
 export interface FetchedOrderItemModifier {
@@ -346,7 +350,7 @@ export interface FetchedOrderItemModifier {
  * @returns Array of BroadcastModifierData for transformer
  */
 function normalizeFetchedModifiers(
-  modifiers: FetchedOrderItemModifier[] | undefined
+  modifiers: FetchedOrderItemModifier[] | undefined,
 ): BroadcastModifierData[] {
   if (!modifiers || modifiers.length === 0) return [];
 
@@ -367,7 +371,7 @@ function normalizeFetchedModifiers(
  * @returns Array of BroadcastOrderItemData for transformer
  */
 function normalizeFetchedItems(
-  items: FetchedOrderItem[] | undefined
+  items: FetchedOrderItem[] | undefined,
 ): BroadcastOrderItemData[] {
   if (!items || items.length === 0) return [];
 
@@ -395,8 +399,8 @@ function normalizeFetchedItems(
     category_name: item.category_name ?? null,
     // Normalize nested modifiers
     modifiers: normalizeFetchedModifiers(item.order_item_modifiers),
-    base_card_price : item.base_card_price,
-    base_cash_price : item.base_cash_price
+    base_card_price: item.base_card_price,
+    base_cash_price: item.base_cash_price,
   }));
 }
 
@@ -410,7 +414,7 @@ function normalizeFetchedItems(
  * @returns BroadcastOrderData that can be passed to existing transformers
  */
 export function normalizeFetchedOrder(
-  fetchedOrder: FetchedOrderData
+  fetchedOrder: FetchedOrderData,
 ): BroadcastOrderData {
   return {
     // Identifiers
@@ -484,9 +488,17 @@ export function normalizeFetchedOrder(
     is_offline: fetchedOrder.is_offline ?? false,
 
     // Normalize nested order_items
+    // Normalize nested order_items
     order_items: normalizeFetchedItems(fetchedOrder.order_items),
-    session_id : fetchedOrder.session_id,
-    station_name : fetchedOrder.station_name,
-    check_status : fetchedOrder.check_status
+    session_id: fetchedOrder.session_id ?? null,
+    station_name:
+      fetchedOrder.stations?.station_name ?? fetchedOrder.station_name ?? null,
+    check_status:
+      (fetchedOrder.check_status as "Opened" | "Closed" | null) ?? "Opened",
+    server_name: fetchedOrder.created_by_staff
+      ? `${fetchedOrder.created_by_staff.first_name || ""} ${
+          fetchedOrder.created_by_staff.last_name || ""
+        }`.trim()
+      : null,
   };
 }

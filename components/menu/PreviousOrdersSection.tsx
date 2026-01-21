@@ -58,7 +58,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
             key={tab.name}
             onPress={() => handlePress(tab.name)}
             className={`py-2 px-4 rounded-md flex-row items-center ${
-              isActive ? "bg-[#3a3a3a] shadow-sm" : ""
+              isActive ? "bg-[#3a3a3a]" : ""
             }`}
           >
             <Text
@@ -69,7 +69,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
               {tab.name}
             </Text>
             {tab.count !== undefined && tab.count > 0 && isActive && (
-              <View className="bg-blue-500 rounded-full w-5 h-5 items-center justify-center ml-2">
+              <View className="bg-blue-500 rounded-full w-8 h-8 items-center justify-center ml-2 mt-0.5">
                 <Text className="text-white font-bold text-xs">
                   {String(tab.count)}
                 </Text>
@@ -109,6 +109,13 @@ const PreviousOrdersSection = () => {
   const [isPaymentDetailOpen, setPaymentDetailOpen] = useState(false);
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [menuOrderId, setMenuOrderId] = useState<string | null>(null);
+
+  const [menuPosition, setMenuPosition] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   // PHASE 1.2: Check subscription status
   // useEffect(() => {
@@ -212,8 +219,14 @@ const PreviousOrdersSection = () => {
   };
 
   // Handle more button click - open actions menu
-  const handleMoreClick = (orderId: string) => {
+  const handleMoreClick = (
+    orderId: string,
+    position?: { x: number; y: number; width: number; height: number },
+  ) => {
     setMenuOrderId(orderId);
+    if (position) {
+      setMenuPosition(position);
+    }
     setMenuOpen(true);
   };
 
@@ -283,6 +296,7 @@ const PreviousOrdersSection = () => {
         onClose={() => setMenuOpen(false)}
         orderId={menuOrderId}
         onViewDetails={handleViewDetails}
+        position={menuPosition}
       />
 
       <OrderLineItemsModal

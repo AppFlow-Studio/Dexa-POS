@@ -24,8 +24,8 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { AlertTriangle } from "lucide-react-native";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { AlertTriangle, ChevronLeft } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -41,9 +41,12 @@ const UpdateTableScreen = () => {
   const isAutoSessionRunningRef = useRef(false); // Prevent re-entry during async operations
 
   const router = useRouter();
-  const { tableId } = useLocalSearchParams();
+  const { tableId, source } = useLocalSearchParams<{
+    tableId: string;
+    source?: string;
+  }>();
   const isModifierSidebarOpen = useModifierSidebarStore(
-    (state) => state.isOpen
+    (state) => state.isOpen,
   );
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
@@ -128,10 +131,10 @@ const UpdateTableScreen = () => {
   // REACTIVE: Subscribe directly to these values from the store
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const storeActiveOrderOutstandingTotal = useOrderStore(
-    (state) => state.activeOrderOutstandingTotal
+    (state) => state.activeOrderOutstandingTotal,
   );
   const storeActiveOrderTotal = useOrderStore(
-    (state) => state.activeOrderTotal
+    (state) => state.activeOrderTotal,
   );
   // console.log('[activeOrder] activeOrder Items', activeOrder?.items.length, activeOrder);
   // --- Derived helpers ---
@@ -201,7 +204,7 @@ const UpdateTableScreen = () => {
 
   useEffect(() => {
     if (tableStatus === "cleaning") {
-      router.push("/tables");
+      router.replace("/tables");
       return;
     }
   }, [tableStatus]);
@@ -336,7 +339,7 @@ const UpdateTableScreen = () => {
           const activeOrderDbId = activeOrder?.db_order_id;
           if (activeOrderDbId === updatedTable.session.order_id) {
             console.log(
-              "[AutoSession] Active order already matches session, skipping"
+              "[AutoSession] Active order already matches session, skipping",
             );
             return;
           }
@@ -349,7 +352,7 @@ const UpdateTableScreen = () => {
             if (activeOrderId !== directLookup.id) {
               console.log(
                 "[AutoSession] Found order by direct lookup:",
-                directLookup.id
+                directLookup.id,
               );
               setActiveOrder(directLookup.id);
             }
@@ -361,14 +364,14 @@ const UpdateTableScreen = () => {
           const foundOrder = currentOrders.find(
             (o) =>
               o.id === updatedTable.session!.order_id ||
-              o.db_order_id === updatedTable.session!.order_id
+              o.db_order_id === updatedTable.session!.order_id,
           );
 
           if (foundOrder) {
             if (activeOrderId !== foundOrder.id) {
               console.log(
                 "[AutoSession] Found existing order via fallback search:",
-                foundOrder.id
+                foundOrder.id,
               );
               setActiveOrder(foundOrder.id);
             }
@@ -380,14 +383,14 @@ const UpdateTableScreen = () => {
               updatedTableStatus === "available"
             ) {
               console.log(
-                "[AutoSession] Skipping fetch - table being cleared or navigating"
+                "[AutoSession] Skipping fetch - table being cleared or navigating",
               );
               return;
             }
 
             // Before fetching, check if order already exists in store by db_order_id
             const existingOrderByDbId = currentOrders.find(
-              (o) => o.db_order_id === updatedTable.session?.order_id
+              (o) => o.db_order_id === updatedTable.session?.order_id,
             );
 
             if (existingOrderByDbId) {
@@ -395,7 +398,7 @@ const UpdateTableScreen = () => {
               // Just set it active, don't fetch
               console.log(
                 "[AutoSession] Found order by db_id:",
-                existingOrderByDbId.id
+                existingOrderByDbId.id,
               );
               setActiveOrder(existingOrderByDbId.id);
               return;
@@ -404,14 +407,14 @@ const UpdateTableScreen = () => {
             // Phase 12.1: Order not found locally - fetch from database
             console.log(
               "[AutoSession] Syncing order from database:",
-              updatedTable.session.order_id
+              updatedTable.session.order_id,
             );
             showLoading("Restoring table session...");
 
             try {
               // Use the proper sync function that fetches items + payments
               const localOrderId = await syncOrderFromDatabase(
-                updatedTable.session.order_id
+                updatedTable.session.order_id,
               );
 
               hideLoading();
@@ -419,7 +422,7 @@ const UpdateTableScreen = () => {
               // Check again after async operation
               if (isNavigatingAwayRef.current) {
                 console.log(
-                  "[AutoSession] Skipping order restore - navigated away"
+                  "[AutoSession] Skipping order restore - navigated away",
                 );
                 return;
               }
@@ -427,30 +430,43 @@ const UpdateTableScreen = () => {
               if (localOrderId) {
                 console.log(
                   "[AutoSession] Order synced successfully:",
-                  localOrderId
+                  localOrderId,
                 );
                 setActiveOrder(localOrderId);
               }
             } catch (error) {
-              console.error("[AutoSession] Failed to sync single order, trying full init:", error);
+              console.error(
+                "[AutoSession] Failed to sync single order, trying full init:",
+                error,
+              );
 
               // Phase 12.1: FALLBACK - Try full initializeOrders as safety net
               try {
-                const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+                const locationId =
+                  useStoreSettingsStore.getState().selectedStore?.id;
                 if (locationId) {
                   await useOrderStore.getState().initializeOrders(locationId);
 
                   // After init, check if order is now available
-                  const refreshedOrder = useOrderStore.getState().ordersById[updatedTable.session.order_id];
+                  const refreshedOrder =
+                    useOrderStore.getState().ordersById[
+                      updatedTable.session.order_id
+                    ];
                   if (refreshedOrder) {
-                    console.log("[AutoSession] Order found after fallback init:", refreshedOrder.id);
+                    console.log(
+                      "[AutoSession] Order found after fallback init:",
+                      refreshedOrder.id,
+                    );
                     setActiveOrder(refreshedOrder.id);
                     hideLoading();
                     return;
                   }
                 }
               } catch (fallbackError) {
-                console.error("[AutoSession] Fallback init also failed:", fallbackError);
+                console.error(
+                  "[AutoSession] Fallback init also failed:",
+                  fallbackError,
+                );
               }
 
               hideLoading();
@@ -481,7 +497,7 @@ const UpdateTableScreen = () => {
 
           console.log(
             "[AutoSession] Auto-creating session for table",
-            currentTableId
+            currentTableId,
           );
           showLoading("Creating session...");
 
@@ -489,10 +505,10 @@ const UpdateTableScreen = () => {
             // For fallback cases (direct URL navigation), try to use existing local order's guest count
             // Use getState() for fresh data instead of stale orders array
             const currentOrders = Object.values(
-              useOrderStore.getState().ordersById
+              useOrderStore.getState().ordersById,
             );
             const existingLocalOrder = currentOrders.find(
-              (o) => o.service_location_id === currentTableId
+              (o) => o.service_location_id === currentTableId,
             );
             const partySize = existingLocalOrder?.guest_count || 1;
 
@@ -508,7 +524,7 @@ const UpdateTableScreen = () => {
               "[AutoSession] Created session:",
               sessionId,
               "Order:",
-              orderId
+              orderId,
             );
 
             // Only set active if we haven't navigated away
@@ -518,13 +534,20 @@ const UpdateTableScreen = () => {
 
               if (!orderExists) {
                 // Order created on backend but not in local store - sync it
-                console.log("[AutoSession] Order not in store, syncing:", orderId);
+                console.log(
+                  "[AutoSession] Order not in store, syncing:",
+                  orderId,
+                );
                 try {
                   await syncOrderFromDatabase(orderId);
                 } catch (syncError) {
-                  console.error("[AutoSession] Failed to sync new order:", syncError);
+                  console.error(
+                    "[AutoSession] Failed to sync new order:",
+                    syncError,
+                  );
                   // Fallback: Try full initializeOrders
-                  const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+                  const locationId =
+                    useStoreSettingsStore.getState().selectedStore?.id;
                   if (locationId) {
                     await useOrderStore.getState().initializeOrders(locationId);
                   }
@@ -568,15 +591,16 @@ const UpdateTableScreen = () => {
       assignOrderToTable(activeOrderId, currentTableId);
       await updateSessionStatus(table.session.id, "ordered");
       updateOrderStatus(activeOrderId, "preparing");
-      router.push("/tables");
+      router.replace("/tables");
     } else if (activeOrderId && currentTableId && !table?.session?.id) {
       // Fallback if no session exists - this might be an issue with data sync or flow
       // Ideally should create a session first or use an existing one.
       // Assuming session creation happens on seating.
       console.warn("Cannot assign order: Table has no session");
       // Try to assign anyway for Order behavior
+      // Try to assign anyway for Order behavior
       assignOrderToTable(activeOrderId, currentTableId);
-      router.push("/tables");
+      router.replace("/tables");
     }
   };
 
@@ -587,7 +611,7 @@ const UpdateTableScreen = () => {
       const preparingItems = order.items.filter(
         (i) =>
           (i.item_status || "preparing") !== "ready" &&
-          i.item_status !== "served"
+          i.item_status !== "served",
       );
       if (preparingItems.length > 0) {
         setNotReadyItems(
@@ -595,7 +619,7 @@ const UpdateTableScreen = () => {
             id: i.id,
             name: i.name,
             quantity: i.quantity,
-          }))
+          })),
         );
         setNotReadyConfirmOpen(true);
         return;
@@ -634,7 +658,7 @@ const UpdateTableScreen = () => {
         supabase,
         activeOrder.db_order_id,
         staffId,
-        "Adding more items" // Default reason
+        "Adding more items", // Default reason
       );
 
       if (!result.success) {
@@ -696,7 +720,7 @@ const UpdateTableScreen = () => {
   const itemCount = activeOrder?.items?.length ?? 0;
   const itemIds = useMemo(
     () => activeOrder?.items?.map((i) => i.id).join(",") ?? "",
-    [activeOrder?.items]
+    [activeOrder?.items],
   );
   const orderId = activeOrder?.id;
 
@@ -744,13 +768,24 @@ const UpdateTableScreen = () => {
       const state = coursing.getForOrder(orderId);
       const useCourse = state?.workingCourse ?? 1;
       newIds.forEach((id) => {
-        if (state?.itemCourseMap?.[id] === undefined) {
-          const item = activeOrder?.items?.find((i) => i.id === id);
+        const item = activeOrder?.items?.find((i) => i.id === id);
+        // Skip if item already has courseNumber from DB sync - don't overwrite it
+        if (item?.courseNumber !== undefined && item.courseNumber > 0) {
+          // Item already has course from backend - just update local map without changing course
+          coursing.setItemCourse(
+            orderId,
+            id,
+            item.courseNumber,
+            item?.db_order_item_id,
+            true, // Skip backend sync since course is already set there
+          );
+        } else if (state?.itemCourseMap?.[id] === undefined) {
+          // Truly new item without course - assign to working course
           coursing.setItemCourse(
             orderId,
             id,
             useCourse,
-            item?.db_order_item_id
+            item?.db_order_item_id,
           );
         }
       });
@@ -768,7 +803,7 @@ const UpdateTableScreen = () => {
         ?.map((i) => i.db_order_item_id)
         .filter(Boolean)
         .join(",") ?? "",
-    [activeOrder?.items]
+    [activeOrder?.items],
   );
 
   useEffect(() => {
@@ -815,7 +850,7 @@ const UpdateTableScreen = () => {
             item.id,
             course,
             item.db_order_item_id,
-            true
+            true,
           );
           syncedDbItemsRef.current.add(item.db_order_item_id);
           return;
@@ -827,7 +862,7 @@ const UpdateTableScreen = () => {
           item.id,
           course,
           item.db_order_item_id,
-          false
+          false,
         );
 
         // Mark as synced
@@ -840,7 +875,7 @@ const UpdateTableScreen = () => {
     if (!activeOrder) return;
     const nextCourse = coursing.finalizeCurrentCourse(
       activeOrder.id,
-      activeOrder.items.map((i) => i.id)
+      activeOrder.items.map((i) => i.id),
     );
     show({
       title: "Course Finalized",
@@ -853,7 +888,7 @@ const UpdateTableScreen = () => {
 
   const handleSendCourseToKitchen = async (
     course: number,
-    forceResend = false
+    forceResend = false,
   ) => {
     if (!activeOrder) return;
 
@@ -868,7 +903,7 @@ const UpdateTableScreen = () => {
 
     const state = coursing.getForOrder(activeOrder.id);
     const itemsInCourse = activeOrder.items.filter(
-      (i) => (state?.itemCourseMap?.[i.id] ?? 1) === course
+      (i) => (state?.itemCourseMap?.[i.id] ?? 1) === course,
     );
     if (itemsInCourse.length === 0) {
       show({
@@ -966,7 +1001,7 @@ const UpdateTableScreen = () => {
       const result = await OrderService.closeCheck(
         supabase,
         activeOrder.db_order_id,
-        activeEmployeeId
+        activeEmployeeId,
       );
 
       if (!result.success) {
@@ -1012,11 +1047,11 @@ const UpdateTableScreen = () => {
           const deductResult =
             await InventoryService.processOrderInventoryDeduction(
               supabase,
-              dbOrderId
+              dbOrderId,
             );
           if (!deductResult.success) {
             console.warn(
-              "[confirmVoid] Inventory deduction failed, proceeding with void"
+              "[confirmVoid] Inventory deduction failed, proceeding with void",
             );
           }
 
@@ -1104,7 +1139,7 @@ const UpdateTableScreen = () => {
     const preparingItems = activeOrder.items.filter(
       (item) =>
         (item.item_status || "preparing") !== "ready" &&
-        item.item_status !== "served"
+        item.item_status !== "served",
     );
 
     if (preparingItems.length > 0) {
@@ -1114,7 +1149,7 @@ const UpdateTableScreen = () => {
           id: i.id,
           name: i.name,
           quantity: i.quantity,
-        }))
+        })),
       );
       setClearNotReadyConfirmOpen(true);
       return;
@@ -1154,7 +1189,7 @@ const UpdateTableScreen = () => {
     if (!activeOrder || selectedCourseIdForTracker === null) return [];
     const courseMap = coursing.getForOrder(activeOrder.id)?.itemCourseMap;
     return activeOrder.items.filter(
-      (item) => (courseMap?.[item.id] ?? 1) === selectedCourseIdForTracker
+      (item) => (courseMap?.[item.id] ?? 1) === selectedCourseIdForTracker,
     );
   }, [
     activeOrder?.items,
@@ -1183,6 +1218,33 @@ const UpdateTableScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
+      <Stack.Screen
+        options={{
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => {
+                // FIXED: Navigation Loop
+                // Use replace() instead of back() to prevent traversing through
+                // multiple history states of the same table (caused by updates).
+                // This ensures we always Exit to the parent screen.
+                if (source) {
+                  router.replace(source as any);
+                } else {
+                  router.replace("/tables");
+                }
+              }}
+              className="flex-row items-center -ml-2 p-2"
+            >
+              <ChevronLeft color="#FFFFFF" size={26} />
+              <Text className="text-white text-lg font-medium ml-1">Back</Text>
+            </TouchableOpacity>
+          ),
+          headerStyle: { backgroundColor: "#212121" },
+          headerShadowVisible: false,
+          headerTitle: "",
+          headerTintColor: "#FFFFFF",
+        }}
+      />
       {isOvertime && (
         <View className="p-2 bg-yellow-500 items-center">
           <Text className="text-base font-bold text-yellow-900">
@@ -1237,7 +1299,7 @@ const UpdateTableScreen = () => {
             const workingCourse = coursingState?.workingCourse ?? 1;
             const isCurrentCourseSent = coursing.isCourseSent(
               activeOrder?.id || "",
-              workingCourse
+              workingCourse,
             );
 
             if (isCurrentCourseSent) {
@@ -1274,7 +1336,7 @@ const UpdateTableScreen = () => {
           onMarkAllReady={handleMarkAllReadyForCourse}
           isCourseSent={coursing.isCourseSent(
             activeOrder?.id || "",
-            selectedCourseIdForTracker
+            selectedCourseIdForTracker,
           )}
         />
       )}
@@ -1376,7 +1438,7 @@ const UpdateTableScreen = () => {
                 openPaymentSheet(
                   "Card",
                   currentTableId,
-                  "payment-method-selection"
+                  "payment-method-selection",
                 );
               }}
               className="flex-1 py-3 bg-amber-600 rounded-xl items-center"

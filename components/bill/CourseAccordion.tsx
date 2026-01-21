@@ -87,7 +87,7 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
     .onStart(() => {
       scale.value = withSequence(
         withSpring(0.95, { damping: 10, stiffness: 200 }),
-        withSpring(1)
+        withSpring(1),
       );
       runOnJS(onDoubleTap)(courseId);
     });
@@ -95,7 +95,7 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
   const singleTap = Gesture.Tap().onEnd(() => {
     scale.value = withSequence(
       withSpring(0.98, { damping: 15, stiffness: 300 }),
-      withSpring(1)
+      withSpring(1),
     );
     runOnJS(onToggle)(courseId);
   });
@@ -176,7 +176,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   const groupedItems = useMemo(() => {
     const groups: Record<number, CartItem[]> = {};
     activeOrder?.items?.forEach((item) => {
-      const course = itemCourseMap?.[item.id] ?? 1;
+      const course = item.courseNumber ?? itemCourseMap?.[item.id] ?? 1;
       if (!groups[course]) {
         groups[course] = [];
       }
@@ -251,13 +251,16 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       {/* Main Header */}
       <View className="flex-row items-center justify-between pb-3 border-b border-gray-700 mb-3">
         <Text className="text-xl font-bold text-white">
-          Order {activeOrder.display_number 
-            ? (activeOrder.display_number.startsWith('#') ? activeOrder.display_number : `#${activeOrder.display_number}`)
-            : activeOrder.order_number 
+          Order{" "}
+          {activeOrder.display_number
+            ? activeOrder.display_number.startsWith("#")
+              ? activeOrder.display_number
+              : `#${activeOrder.display_number}`
+            : activeOrder.order_number
               ? `#${activeOrder.order_number}`
-              : activeOrder.db_order_id 
+              : activeOrder.db_order_id
                 ? `#${activeOrder.db_order_id.substring(0, 8)}`
-                : `#${activeOrder.id?.split('_').pop()?.substring(0, 8)}`}
+                : `#${activeOrder.id?.split("_").pop()?.substring(0, 8)}`}
         </Text>
         <TouchableOpacity
           onPress={onPressStartNewCourse}

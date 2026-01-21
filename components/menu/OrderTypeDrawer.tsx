@@ -50,7 +50,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const { selectedTable, setSelectedTable, clearSelectedTable } =
     useDineInStore();
   const activeOrder = useOrderStore((state) =>
-    state.orders.find((order) => order.id === activeOrderId)
+    state.orders.find((order) => order.id === activeOrderId),
   );
 
   const { openSheet } = useCustomerSheetStore();
@@ -81,7 +81,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   // Get available tables for the selected floor
   const availableFloorTables = useMemo(() => {
     return floorTables.filter(
-      (table) => (table.session?.status || "available") === "available"
+      (table) => (table.session?.status || "available") === "available",
     );
   }, [floorTables]);
 
@@ -134,7 +134,11 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       onClose();
 
       // Navigate to the table screen
-      router.push(`/tables/${selectedTable.id}`);
+      // Navigate to the table screen with source info
+      router.push({
+        pathname: "/tables/[tableId]",
+        params: { tableId: selectedTable.id, source: "/menu" },
+      });
 
       show({
         title: "Order Transferred",
@@ -152,7 +156,11 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       onClose();
 
       // Navigate to the table screen
-      router.push(`/tables/${selectedTable.id}`);
+      // Navigate to the table screen with source info
+      router.push({
+        pathname: "/tables/[tableId]",
+        params: { tableId: selectedTable.id, source: "/menu" },
+      });
     }
   };
 

@@ -16,8 +16,6 @@ import {
   isValidUUID,
   mapLocalToBackend,
   resolveToBackendId,
-  findRelatedEntities,
-  registerRelationship,
 } from "@/lib/offlineIdRegistry";
 import {
   getFailedPayments,
@@ -34,7 +32,10 @@ import { OrderDiscountService } from "@/services/orderDiscountService";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { calculatePaidStatusFromPayments, useOrderStore } from "@/stores/useOrderStore";
+import {
+  calculatePaidStatusFromPayments,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
@@ -55,7 +56,7 @@ export function setOfflineSyncSupabaseClient(client: any): void {
  * Set a callback for when payment operations fail.
  */
 export function setOnPaymentFailed(
-  callback: (payment: OfflineOperation) => void
+  callback: (payment: OfflineOperation) => void,
 ): void {
   _onPaymentFailed = callback;
 }
@@ -91,7 +92,7 @@ export async function initializeOfflineSync(): Promise<void> {
       // When we come back online, reconcile orders with failed syncs
       if (isOnline) {
         console.log(
-          "[OfflineSync] Network restored, checking for orders with failed syncs..."
+          "[OfflineSync] Network restored, checking for orders with failed syncs...",
         );
 
         // Get fresh state after status update
@@ -100,19 +101,19 @@ export async function initializeOfflineSync(): Promise<void> {
 
         if (failedOrders.length > 0) {
           console.log(
-            `[OfflineSync] Found ${failedOrders.length} orders with failed syncs, retrying...`
+            `[OfflineSync] Found ${failedOrders.length} orders with failed syncs, retrying...`,
           );
 
           for (const order of failedOrders) {
             try {
               await currentStore.retryFailedSyncs(order.localId);
               console.log(
-                `[OfflineSync] Retried syncs for order ${order.localId}`
+                `[OfflineSync] Retried syncs for order ${order.localId}`,
               );
             } catch (err) {
               console.error(
                 `[OfflineSync] Failed to retry syncs for order ${order.localId}:`,
-                err
+                err,
               );
             }
           }
@@ -130,7 +131,11 @@ export async function initializeOfflineSync(): Promise<void> {
       store.setPendingSyncCount(count);
     },
     onOperationFailed: (op) => {
-      console.log("[OfflineSync] Operation failed permanently:", op.type, op.id);
+      console.log(
+        "[OfflineSync] Operation failed permanently:",
+        op.type,
+        op.id,
+      );
 
       // Special handling for failed payments
       if (
@@ -149,13 +154,13 @@ export async function initializeOfflineSync(): Promise<void> {
 
 /**
  * Resolve a local order ID to backend UUID.
- * 
+ *
  * Strategy:
  * 1. If it's already a valid UUID, return it (it's a backend ID)
  * 2. If it's a local ID (order_xxx, local_order_xxx), resolve it
  * 3. Check the ID registry first (for mapped IDs)
  * 4. Fall back to store lookup (order.db_order_id)
- * 
+ *
  * @returns Backend UUID string, or null if order hasn't been synced yet
  */
 function resolveOrderId(localOrderId: string): string | null {
@@ -168,7 +173,9 @@ function resolveOrderId(localOrderId: string): string | null {
   // Try registry first (contains mappings from previous syncs)
   const fromRegistry = resolveToBackendId(localOrderId);
   if (fromRegistry) {
-    console.log(`[resolveOrderId] Resolved ${localOrderId} from registry: ${fromRegistry}`);
+    console.log(
+      `[resolveOrderId] Resolved ${localOrderId} from registry: ${fromRegistry}`,
+    );
     return fromRegistry;
   }
 
@@ -176,12 +183,16 @@ function resolveOrderId(localOrderId: string): string | null {
   const store = useOrderStore.getState();
   const order = store.ordersById[localOrderId];
   if (order?.db_order_id) {
-    console.log(`[resolveOrderId] Resolved ${localOrderId} from store: ${order.db_order_id}`);
+    console.log(
+      `[resolveOrderId] Resolved ${localOrderId} from store: ${order.db_order_id}`,
+    );
     return order.db_order_id;
   }
 
   // Order hasn't been synced yet
-  console.log(`[resolveOrderId] Cannot resolve ${localOrderId} - order not synced yet`);
+  console.log(
+    `[resolveOrderId] Cannot resolve ${localOrderId} - order not synced yet`,
+  );
   return null;
 }
 
@@ -192,7 +203,7 @@ function resolveOrderId(localOrderId: string): string | null {
  */
 function resolveItemId(
   localOrderId: string,
-  localItemId: string
+  localItemId: string,
 ): string | null {
   // First check if it's already a valid UUID (backend ID)
   if (isValidUUID(localItemId)) {
@@ -229,13 +240,17 @@ function resolveSessionId(localSessionId: string): string | null {
   // It's a local ID - try registry first
   const fromRegistry = resolveToBackendId(localSessionId);
   if (fromRegistry) {
-    console.log(`[resolveSessionId] Resolved ${localSessionId} from registry: ${fromRegistry}`);
+    console.log(
+      `[resolveSessionId] Resolved ${localSessionId} from registry: ${fromRegistry}`,
+    );
     return fromRegistry;
   }
 
   // Fall back to FloorPlanStore lookup
   // TODO: Implement when FloorPlanStore has session lookup
-  console.log(`[resolveSessionId] Cannot resolve ${localSessionId} - session not synced yet`);
+  console.log(
+    `[resolveSessionId] Cannot resolve ${localSessionId} - session not synced yet`,
+  );
   return null;
 }
 
@@ -264,7 +279,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedItemId) {
           console.log(
-            "[OfflineSync] update_item_quantity: Item not synced yet, will retry"
+            "[OfflineSync] update_item_quantity: Item not synced yet, will retry",
           );
           return false;
         }
@@ -272,7 +287,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const { error } = await OrderService.updateOrderItemQuantity(
           _supabaseClient,
           resolvedItemId,
-          quantity
+          quantity,
         );
         return !error;
       }
@@ -288,7 +303,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedItemId) {
           console.log(
-            "[OfflineSync] update_item: Item not synced yet, will retry"
+            "[OfflineSync] update_item: Item not synced yet, will retry",
           );
           return false;
         }
@@ -310,7 +325,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedItemId) {
           console.log(
-            "[OfflineSync] replace_modifiers: Item not synced yet, will retry"
+            "[OfflineSync] replace_modifiers: Item not synced yet, will retry",
           );
           return false;
         }
@@ -318,7 +333,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const { error } = await OrderService.replaceOrderItemModifiers(
           _supabaseClient,
           resolvedItemId,
-          modifiers
+          modifiers,
         );
         return !error;
       }
@@ -327,35 +342,45 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const { localOrderId, discount } = op.params;
         const store = useOrderStore.getState();
         const order = store.ordersById[localOrderId];
-        const resolvedOrderId = order?.db_order_id || resolveOrderId(localOrderId);
+        const resolvedOrderId =
+          order?.db_order_id || resolveOrderId(localOrderId);
 
         if (!resolvedOrderId) {
-          console.log("[OfflineSync] apply_discount: Order not synced yet, will retry");
+          console.log(
+            "[OfflineSync] apply_discount: Order not synced yet, will retry",
+          );
           return false;
         }
 
         // Get staff ID - use from discount if available, otherwise get from employee store
-        const staffId = discount.applied_by_staff_profiles_id
-          ?? useEmployeeStore.getState().loggedInEmployee?.profileId
-          ?? null;
+        const staffId =
+          discount.applied_by_staff_profiles_id ??
+          useEmployeeStore.getState().loggedInEmployee?.profileId ??
+          null;
 
         if (!staffId) {
-          console.warn("[OfflineSync] apply_discount: No staff ID available, will retry");
+          console.warn(
+            "[OfflineSync] apply_discount: No staff ID available, will retry",
+          );
           return false;
         }
 
-        const result = await OrderDiscountService.applyDiscount(_supabaseClient, {
-          order_id: resolvedOrderId,
-          staff_id: staffId,
-          discount_id: discount.discount_id ?? null,
-          discount_name: discount.discount_name ?? "Discount",
-          discount_type: discount.discount_type,
-          discount_value: discount.discount_value,
-          source: discount.source ?? "preset",
-          reason: null,
-          applied_to_item_ids: discount.applied_to_item_ids ?? null,
-          approved_by_staff_id: discount.approved_by_staff_profiles_id ?? null,
-        });
+        const result = await OrderDiscountService.applyDiscount(
+          _supabaseClient,
+          {
+            order_id: resolvedOrderId,
+            staff_id: staffId,
+            discount_id: discount.discount_id ?? null,
+            discount_name: discount.discount_name ?? "Discount",
+            discount_type: discount.discount_type,
+            discount_value: discount.discount_value,
+            source: discount.source ?? "preset",
+            reason: null,
+            applied_to_item_ids: discount.applied_to_item_ids ?? null,
+            approved_by_staff_id:
+              discount.approved_by_staff_profiles_id ?? null,
+          },
+        );
 
         if (result.success && result.order_discount_id) {
           // Mark local discount as synced with backend order_discount_id
@@ -367,10 +392,16 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 ...state.ordersById,
                 [localOrderId]: {
                   ...existingOrder,
-                  applied_discounts: existingOrder.applied_discounts.map((d: any) =>
-                    d.local_id === discount.local_id
-                      ? { ...d, order_discount_id: result.order_discount_id, sync_status: "synced", sync_error: null }
-                      : d
+                  applied_discounts: existingOrder.applied_discounts.map(
+                    (d: any) =>
+                      d.local_id === discount.local_id
+                        ? {
+                            ...d,
+                            order_discount_id: result.order_discount_id,
+                            sync_status: "synced",
+                            sync_error: null,
+                          }
+                        : d,
                   ),
                 },
               },
@@ -378,11 +409,16 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           });
           return true;
         } else if (result.requires_approval) {
-          console.warn("[OfflineSync] apply_discount: Requires manager approval");
+          console.warn(
+            "[OfflineSync] apply_discount: Requires manager approval",
+          );
           // Don't retry - needs user intervention
           return true; // Mark as "handled" to prevent infinite retries
         } else {
-          console.error("[OfflineSync] apply_discount: RPC failed:", result.error);
+          console.error(
+            "[OfflineSync] apply_discount: RPC failed:",
+            result.error,
+          );
           return false;
         }
       }
@@ -391,37 +427,54 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const { localOrderId, order_discount_id, void_reason } = op.params;
         const store = useOrderStore.getState();
         const order = store.ordersById[localOrderId];
-        const resolvedOrderId = order?.db_order_id || resolveOrderId(localOrderId);
+        const resolvedOrderId =
+          order?.db_order_id || resolveOrderId(localOrderId);
 
         if (!resolvedOrderId) {
-          console.log("[OfflineSync] void_discount: Order not synced yet, will retry");
+          console.log(
+            "[OfflineSync] void_discount: Order not synced yet, will retry",
+          );
           return false;
         }
 
         if (!order_discount_id) {
-          console.log("[OfflineSync] void_discount: No order_discount_id, skipping");
+          console.log(
+            "[OfflineSync] void_discount: No order_discount_id, skipping",
+          );
           return true; // Nothing to void
         }
 
-        const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
+        const staffId =
+          useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
 
         if (!staffId) {
-          console.warn("[OfflineSync] void_discount: No staff ID available, will retry");
+          console.warn(
+            "[OfflineSync] void_discount: No staff ID available, will retry",
+          );
           return false;
         }
 
-        const result = await OrderDiscountService.voidDiscount(_supabaseClient, {
-          order_id: resolvedOrderId,
-          staff_id: staffId,
-          order_discount_id: order_discount_id,
-          void_reason: void_reason ?? null,
-        });
+        const result = await OrderDiscountService.voidDiscount(
+          _supabaseClient,
+          {
+            order_id: resolvedOrderId,
+            staff_id: staffId,
+            order_discount_id: order_discount_id,
+            void_reason: void_reason ?? null,
+          },
+        );
 
         if (result.success) {
-          console.log("[OfflineSync] void_discount: Successfully voided", order_discount_id);
+          console.log(
+            "[OfflineSync] void_discount: Successfully voided",
+            order_discount_id,
+          );
           return true;
         } else {
-          console.error("[OfflineSync] void_discount: RPC failed:", result.error);
+          console.error(
+            "[OfflineSync] void_discount: RPC failed:",
+            result.error,
+          );
           return false;
         }
       }
@@ -436,7 +489,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedItemId) {
           console.log(
-            "[OfflineSync] void_item: Item not synced yet, will retry"
+            "[OfflineSync] void_item: Item not synced yet, will retry",
           );
           return false;
         }
@@ -444,7 +497,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const { error } = await OrderService.voidOrderItem(
           _supabaseClient,
           resolvedItemId,
-          reason
+          reason,
         );
         return !error;
       }
@@ -458,7 +511,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId) {
           console.log(
-            "[OfflineSync] update_order_status: Order not synced yet, will retry"
+            "[OfflineSync] update_order_status: Order not synced yet, will retry",
           );
           return false;
         }
@@ -467,7 +520,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           _supabaseClient,
           resolvedOrderId,
           status,
-          reason
+          reason,
         );
         return !error;
       }
@@ -477,8 +530,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       // Handles: Full card, Full cash, Split, Per-item payments
       // ================================================================
       case "process_payment":
-      case "process_cash_payment":   // Legacy support
-      case "process_card_payment": { // Legacy support
+      case "process_cash_payment": // Legacy support
+      case "process_card_payment": {
+        // Legacy support
         const {
           params: paymentParams,
           localOrderId,
@@ -493,21 +547,31 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         // ============================================================
         // Old queued payments may use p_item_ids instead of p_item_allocations
         if (paymentParams?.p_item_ids && !paymentParams?.p_item_allocations) {
-          console.log(`[OfflineSync:payment] Migrating p_item_ids to p_item_allocations`);
+          console.log(
+            `[OfflineSync:payment] Migrating p_item_ids to p_item_allocations`,
+          );
           // Old format: p_item_ids was just an array of order_item_ids
           // New format: p_item_allocations is array of { order_item_id, quantity, amount? }
-          paymentParams.p_item_allocations = paymentParams.p_item_ids.map((id: string) => ({
-            order_item_id: id,
-            quantity: 1, // Default to 1 for old format
-          }));
+          paymentParams.p_item_allocations = paymentParams.p_item_ids.map(
+            (id: string) => ({
+              order_item_id: id,
+              quantity: 1, // Default to 1 for old format
+            }),
+          );
           delete paymentParams.p_item_ids;
         }
 
         console.log(`[OfflineSync:payment] ====== PROCESSING PAYMENT ======`);
         console.log(`[OfflineSync:payment] Type: ${op.type}`);
-        console.log(`[OfflineSync:payment] Local Order ID: ${localOrderId || 'N/A'}`);
-        console.log(`[OfflineSync:payment] Order ID in params: ${paymentParams?.p_order_id || 'N/A'}`);
-        console.log(`[OfflineSync:payment] Amount: ${paymentParams?.p_amount}, Method: ${paymentParams?.p_payment_method}`);
+        console.log(
+          `[OfflineSync:payment] Local Order ID: ${localOrderId || "N/A"}`,
+        );
+        console.log(
+          `[OfflineSync:payment] Order ID in params: ${paymentParams?.p_order_id || "N/A"}`,
+        );
+        console.log(
+          `[OfflineSync:payment] Amount: ${paymentParams?.p_amount}, Method: ${paymentParams?.p_payment_method}`,
+        );
 
         // Resolve order ID if needed
         if (localOrderId && isLocalId(paymentParams.p_order_id)) {
@@ -520,23 +584,38 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             // If there's no create_order pending AND order not in store,
             // this payment will never succeed - discard it
             const hasCreateOrderOp = hasPendingOrderCreation(localOrderId);
-            const orderInStore = useOrderStore.getState().ordersById[localOrderId];
+            const orderInStore =
+              useOrderStore.getState().ordersById[localOrderId];
 
             if (!hasCreateOrderOp && !orderInStore) {
-              console.log(`[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no create_order and not in store`);
-              console.log(`[OfflineSync:payment] Discarding orphaned payment operation`);
+              console.log(
+                `[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no create_order and not in store`,
+              );
+              console.log(
+                `[OfflineSync:payment] Discarding orphaned payment operation`,
+              );
               // Return true to remove this operation from queue (it will never succeed)
               return true;
             }
 
             // Also check if order exists in store but has no db_order_id and no pending create_order
-            if (orderInStore && !orderInStore.db_order_id && !hasCreateOrderOp) {
-              console.log(`[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no db_order_id and no create_order`);
-              console.log(`[OfflineSync:payment] Discarding orphaned payment operation`);
+            if (
+              orderInStore &&
+              !orderInStore.db_order_id &&
+              !hasCreateOrderOp
+            ) {
+              console.log(
+                `[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no db_order_id and no create_order`,
+              );
+              console.log(
+                `[OfflineSync:payment] Discarding orphaned payment operation`,
+              );
               return true;
             }
 
-            console.log(`[OfflineSync:payment] BLOCKED - Order ${localOrderId} not synced yet`);
+            console.log(
+              `[OfflineSync:payment] BLOCKED - Order ${localOrderId} not synced yet`,
+            );
             return false;
           }
           paymentParams.p_order_id = resolvedOrderId;
@@ -544,8 +623,15 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         }
 
         // Resolve item allocations (support per-item/split-by-item payments queued with local IDs)
-        if (paymentParams.p_item_allocations && Array.isArray(paymentParams.p_item_allocations)) {
-          const resolvedAllocations: { order_item_id: string; quantity: number; amount?: number }[] = [];
+        if (
+          paymentParams.p_item_allocations &&
+          Array.isArray(paymentParams.p_item_allocations)
+        ) {
+          const resolvedAllocations: {
+            order_item_id: string;
+            quantity: number;
+            amount?: number;
+          }[] = [];
           for (const alloc of paymentParams.p_item_allocations) {
             const rawId = alloc.order_item_id;
             // If already a UUID, keep it; otherwise resolve via registry/store
@@ -563,13 +649,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 });
               } else {
                 console.log(
-                  `[OfflineSync:payment] Item ${rawId} not synced yet, will retry`
+                  `[OfflineSync:payment] Item ${rawId} not synced yet, will retry`,
                 );
                 return false; // wait for item sync
               }
             } else {
               console.log(
-                `[OfflineSync:payment] No localOrderId to resolve item ${rawId}, will retry`
+                `[OfflineSync:payment] No localOrderId to resolve item ${rawId}, will retry`,
               );
               return false;
             }
@@ -592,20 +678,25 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         // Merge terminal response into params if exists
         const finalParams = {
           ...paymentParams,
-          ...(finalTerminalResponse && { p_terminal_response: finalTerminalResponse }),
+          ...(finalTerminalResponse && {
+            p_terminal_response: finalTerminalResponse,
+          }),
         };
 
-        console.log("[OfflineSync:payment] Calling process_payment_v5 with:", JSON.stringify({
-          orderId: finalParams.p_order_id,
-          method: finalParams.p_payment_method,
-          amount: finalParams.p_amount,
-          tip: finalParams.p_tip_amount || 0,
-          hasTerminalResponse: !!finalParams.p_terminal_response,
-        }));
+        console.log(
+          "[OfflineSync:payment] Calling process_payment_v6 with:",
+          JSON.stringify({
+            orderId: finalParams.p_order_id,
+            method: finalParams.p_payment_method,
+            amount: finalParams.p_amount,
+            tip: finalParams.p_tip_amount || 0,
+            hasTerminalResponse: !!finalParams.p_terminal_response,
+          }),
+        );
 
         const { data, error } = await OrderService.processPayment(
           _supabaseClient,
-          finalParams
+          finalParams,
         );
 
         if (error) {
@@ -614,7 +705,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         }
 
         console.log(`[OfflineSync:payment] SUCCESS!`);
-        console.log(`[OfflineSync:payment] Response:`, JSON.stringify(data, null, 2));
+        console.log(
+          `[OfflineSync:payment] Response:`,
+          JSON.stringify(data, null, 2),
+        );
 
         // Sync order state from backend response if available
         if (localOrderId && data) {
@@ -623,9 +717,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           const responseData = data as any;
 
           // Update local order with backend payment response data
-          if (responseData.order_amount_due !== undefined || responseData.order_amount_paid !== undefined) {
+          if (
+            responseData.order_amount_due !== undefined ||
+            responseData.order_amount_paid !== undefined
+          ) {
             store.updateOrderFromSync(localOrderId, {
-              total_amount: responseData.order_card_total || responseData.order_total,
+              total_amount:
+                responseData.order_card_total || responseData.order_total,
               total_tax: responseData.order_card_tax || responseData.order_tax,
             });
           }
@@ -634,17 +732,22 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           // Update order status to "preparing" if it was in draft/pending
           // This ensures payments from offline queue trigger proper workflow
           // ================================================================
-          if (order && (order.order_status === "draft" || order.order_status === "pending")) {
-            console.log(`[OfflineSync:payment] Updating order status: ${order.order_status} -> preparing`);
+          if (
+            order &&
+            (order.order_status === "draft" || order.order_status === "pending")
+          ) {
+            console.log(
+              `[OfflineSync:payment] Updating order status: ${order.order_status} -> preparing`,
+            );
 
             // Update order status and item statuses
-            const updatedItems = order.items.map(item => ({
+            const updatedItems = order.items.map((item) => ({
               ...item,
               kitchen_status: "sent" as const,
               item_status: "Preparing" as const,
             }));
 
-            useOrderStore.setState(state => {
+            useOrderStore.setState((state) => {
               const currentOrder = state.ordersById[localOrderId];
               if (!currentOrder) return state;
 
@@ -656,13 +759,16 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                     order_status: "preparing",
                     items: updatedItems,
                     // Set opened_at if not already set
-                    opened_at: currentOrder.opened_at || new Date().toISOString(),
+                    opened_at:
+                      currentOrder.opened_at || new Date().toISOString(),
                   },
                 },
               };
             });
 
-            console.log(`[OfflineSync:payment] Order status updated to "preparing", ${updatedItems.length} items marked as sent`);
+            console.log(
+              `[OfflineSync:payment] Order status updated to "preparing", ${updatedItems.length} items marked as sent`,
+            );
           }
 
           // Mark the specific payment as synced with backend payment_id and items covered
@@ -670,7 +776,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           if (order && responseData.payment_id) {
             useOrderStore.setState((state) => {
               const currentOrder = state.ordersById[localOrderId];
-              if (!currentOrder?.payments || currentOrder.payments.length === 0) {
+              if (
+                !currentOrder?.payments ||
+                currentOrder.payments.length === 0
+              ) {
                 return state;
               }
 
@@ -680,19 +789,26 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               const paymentIndex = payments.findIndex(
                 (p: any) =>
                   (localPaymentId && p.localId === localPaymentId) ||
-                  (paymentTimestamp && p.timestamp === paymentTimestamp)
+                  (paymentTimestamp && p.timestamp === paymentTimestamp),
               );
 
               // Fallback to last payment only if no match found (legacy operations)
-              const targetIdx = paymentIndex !== -1 ? paymentIndex : payments.length - 1;
+              const targetIdx =
+                paymentIndex !== -1 ? paymentIndex : payments.length - 1;
 
-              console.log(`[OfflineSync:payment] Updating payment at index ${targetIdx} (found by ${paymentIndex !== -1 ? 'ID match' : 'fallback'})`);
+              console.log(
+                `[OfflineSync:payment] Updating payment at index ${targetIdx} (found by ${paymentIndex !== -1 ? "ID match" : "fallback"})`,
+              );
 
               payments[targetIdx] = {
                 ...payments[targetIdx],
                 id: responseData.payment_id,
-                itemsCovered: responseData.items_covered || payments[targetIdx].itemsCovered || [],
-                timestamp: payments[targetIdx].timestamp || new Date().toISOString(),
+                itemsCovered:
+                  responseData.items_covered ||
+                  payments[targetIdx].itemsCovered ||
+                  [],
+                timestamp:
+                  payments[targetIdx].timestamp || new Date().toISOString(),
                 sync_status: "synced" as const,
                 sync_error: undefined,
               };
@@ -701,7 +817,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               // This prevents flicker caused by stale/racing backend values
               const localPaidStatus = calculatePaidStatusFromPayments(
                 payments,
-                currentOrder.total_amount || 0
+                currentOrder.total_amount || 0,
               );
               const isPaid = localPaidStatus === "Paid";
 
@@ -711,9 +827,14 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   [localOrderId]: {
                     ...currentOrder,
                     payments,
-                    amount_paid: responseData.order_amount_paid ?? currentOrder.amount_paid,
-                    amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
-                    cash_amount_due: responseData.order_cash_amount_due ?? currentOrder.cash_amount_due,
+                    amount_paid:
+                      responseData.order_amount_paid ??
+                      currentOrder.amount_paid,
+                    amount_due:
+                      responseData.order_amount_due ?? currentOrder.amount_due,
+                    cash_amount_due:
+                      responseData.order_cash_amount_due ??
+                      currentOrder.cash_amount_due,
                     paid_status: localPaidStatus,
                     check_status: currentOrder.check_status ?? "Opened",
                   },
@@ -723,8 +844,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           }
 
           // Also update payment amounts from backend
-          if (responseData.order_amount_paid !== undefined || responseData.order_amount_due !== undefined) {
-            useOrderStore.setState(state => {
+          if (
+            responseData.order_amount_paid !== undefined ||
+            responseData.order_amount_due !== undefined
+          ) {
+            useOrderStore.setState((state) => {
               const currentOrder = state.ordersById[localOrderId];
               if (!currentOrder) return state;
 
@@ -735,11 +859,12 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 const paymentIndex = payments.findIndex(
                   (p: any) =>
                     (localPaymentId && p.localId === localPaymentId) ||
-                    (paymentTimestamp && p.timestamp === paymentTimestamp)
+                    (paymentTimestamp && p.timestamp === paymentTimestamp),
                 );
 
                 // Fallback to last payment only if no match found (legacy operations)
-                const targetIdx = paymentIndex !== -1 ? paymentIndex : payments.length - 1;
+                const targetIdx =
+                  paymentIndex !== -1 ? paymentIndex : payments.length - 1;
 
                 payments[targetIdx] = {
                   ...payments[targetIdx],
@@ -751,7 +876,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               // Calculate paid_status from LOCAL payments, not backend
               const localPaidStatus = calculatePaidStatusFromPayments(
                 payments,
-                currentOrder.total_amount || 0
+                currentOrder.total_amount || 0,
               );
               const isPaid = localPaidStatus === "Paid";
 
@@ -761,8 +886,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   [localOrderId]: {
                     ...currentOrder,
                     payments,
-                    amount_paid: responseData.order_amount_paid ?? currentOrder.amount_paid,
-                    amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
+                    amount_paid:
+                      responseData.order_amount_paid ??
+                      currentOrder.amount_paid,
+                    amount_due:
+                      responseData.order_amount_due ?? currentOrder.amount_due,
                     paid_status: localPaidStatus,
                     check_status: currentOrder.check_status ?? "Opened",
                   },
@@ -773,7 +901,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
           // Trigger payment status sync from backend for fresh data
           // This ensures UI shows confirmed status after offline payment syncs
-          console.log(`[OfflineSync:payment] Triggering payment status sync for order ${localOrderId}`);
+          console.log(
+            `[OfflineSync:payment] Triggering payment status sync for order ${localOrderId}`,
+          );
           setTimeout(() => {
             useOrderStore.getState().syncPaymentStatus(localOrderId);
           }, 300);
@@ -791,16 +921,21 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         console.log(`[OfflineSync:create_order] ====== CREATING ORDER ======`);
         console.log(`[OfflineSync:create_order] Local ID: ${localOrderId}`);
-        console.log(`[OfflineSync:create_order] Params:`, JSON.stringify(createOrderParams, null, 2));
+        console.log(
+          `[OfflineSync:create_order] Params:`,
+          JSON.stringify(createOrderParams, null, 2),
+        );
 
         if (!selectedStore) {
-          console.error("[OfflineSync:create_order] FAILED - No store selected");
+          console.error(
+            "[OfflineSync:create_order] FAILED - No store selected",
+          );
           return false;
         }
 
         const { data, error } = await OrderService.createOrder(
           _supabaseClient,
-          createOrderParams
+          createOrderParams,
         );
 
         if (error) {
@@ -822,7 +957,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             // Update local order with backend-generated data (order_number, display_number, etc.)
             store.updateOrderFromSync(localOrderId, {
               order_number: orderData.order_number,
-              display_number: orderData.display_number || `#${orderData.order_number}`,
+              display_number:
+                orderData.display_number || `#${orderData.order_number}`,
               opened_at: orderData.created_at,
               // Sync totals if available
               total_amount: orderData.card_total || orderData.total_amount,
@@ -834,10 +970,17 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             });
 
             console.log(`[OfflineSync:create_order] SUCCESS!`);
-            console.log(`[OfflineSync:create_order] ${localOrderId} → ${backendId}`);
-            console.log(`[OfflineSync:create_order] Order number: ${orderData.order_number || orderData.display_number}`);
+            console.log(
+              `[OfflineSync:create_order] ${localOrderId} → ${backendId}`,
+            );
+            console.log(
+              `[OfflineSync:create_order] Order number: ${orderData.order_number || orderData.display_number}`,
+            );
           } else {
-            console.error("[OfflineSync:create_order] FAILED - No backend ID in response:", orderData);
+            console.error(
+              "[OfflineSync:create_order] FAILED - No backend ID in response:",
+              orderData,
+            );
             return false;
           }
         }
@@ -858,45 +1001,75 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         console.log(`[OfflineSync:add_item] ====== ADDING ITEM ======`);
         console.log(`[OfflineSync:add_item] Local Order ID: ${localOrderId}`);
         console.log(`[OfflineSync:add_item] Local Item ID: ${localItemId}`);
-        console.log(`[OfflineSync:add_item] Item: ${itemData?.name || addItemParams?.p_item_name || 'unknown'}`);
+        console.log(
+          `[OfflineSync:add_item] Item: ${itemData?.name || addItemParams?.p_item_name || "unknown"}`,
+        );
 
         // Check if order exists and get its db_order_id
         const order = store.ordersById[localOrderId];
         if (!order) {
-          console.error(`[OfflineSync:add_item] FAILED - Order ${localOrderId} not found in store`);
-          console.log(`[OfflineSync:add_item] Available orders:`, Object.keys(store.ordersById));
+          console.error(
+            `[OfflineSync:add_item] FAILED - Order ${localOrderId} not found in store`,
+          );
+          console.log(
+            `[OfflineSync:add_item] Available orders:`,
+            Object.keys(store.ordersById),
+          );
           return false;
         }
 
-        console.log(`[OfflineSync:add_item] Order in store: db_order_id=${order.db_order_id || 'NONE'}`);
+        console.log(
+          `[OfflineSync:add_item] Order in store: db_order_id=${order.db_order_id || "NONE"}`,
+        );
 
         // Resolve the order ID - check registry, then store
         let actualDbOrderId = dbOrderId || order.db_order_id;
         if (!actualDbOrderId) {
           actualDbOrderId = resolveOrderId(localOrderId);
-          console.log(`[OfflineSync:add_item] Resolved from registry: ${actualDbOrderId || 'NOT_FOUND'}`);
+          console.log(
+            `[OfflineSync:add_item] Resolved from registry: ${actualDbOrderId || "NOT_FOUND"}`,
+          );
         }
 
         if (!actualDbOrderId) {
-          console.log(`[OfflineSync:add_item] BLOCKED - Waiting for order sync`);
-          console.log(`[OfflineSync:add_item] Order ${localOrderId} has no db_order_id yet`);
+          console.log(
+            `[OfflineSync:add_item] BLOCKED - Waiting for order sync`,
+          );
+          console.log(
+            `[OfflineSync:add_item] Order ${localOrderId} has no db_order_id yet`,
+          );
           return false; // Will be retried after order sync
         }
 
-        console.log(`[OfflineSync:add_item] Using db_order_id: ${actualDbOrderId}`);
+        console.log(
+          `[OfflineSync:add_item] Using db_order_id: ${actualDbOrderId}`,
+        );
 
-        const isOpenItem = itemData?.is_open_item || addItemParams?.is_open_item;
+        const isOpenItem =
+          itemData?.is_open_item || addItemParams?.is_open_item;
 
         // Build params for open item vs regular item
         let params: AddOrderItemParams | AddOpenItemParams;
         if (isOpenItem) {
           params = {
             p_order_id: actualDbOrderId,
-            p_item_name: itemData?.open_item_name || itemData?.name || addItemParams?.p_item_name,
-            p_unit_price: itemData?.open_item_price ?? itemData?.unitPrice ?? addItemParams?.p_unit_price ?? 0,
+            p_item_name:
+              itemData?.open_item_name ||
+              itemData?.name ||
+              addItemParams?.p_item_name,
+            p_unit_price:
+              itemData?.open_item_price ??
+              itemData?.unitPrice ??
+              addItemParams?.p_unit_price ??
+              0,
             p_quantity: itemData?.quantity ?? addItemParams?.p_quantity ?? 1,
-            p_special_instructions: itemData?.customizations?.notes ?? addItemParams?.p_special_instructions,
-            p_is_tax_exempt: itemData?.is_tax_exempt ?? addItemParams?.p_is_tax_exempt ?? false,
+            p_special_instructions:
+              itemData?.customizations?.notes ??
+              addItemParams?.p_special_instructions,
+            p_is_tax_exempt:
+              itemData?.is_tax_exempt ??
+              addItemParams?.p_is_tax_exempt ??
+              false,
           } as AddOpenItemParams;
         } else {
           // Build the item params if we only have itemData (queued from initial failure)
@@ -915,21 +1088,24 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   modifier_name: opt.name,
                   price_modifier: opt.price,
                   quantity: 1,
-                }))
+                })),
             );
 
             params = {
               p_order_id: actualDbOrderId,
               p_menu_item_id: itemData.menuItemId || undefined,
-              p_location_exclusive_item_id: itemData.locationExclusiveItemId || undefined,
+              p_location_exclusive_item_id:
+                itemData.locationExclusiveItemId || undefined,
               p_quantity: itemData.quantity,
               p_item_name: itemData.name,
               p_category_name: itemData.category_name || "Uncategorized",
               // Use card price for p_unit_price and cash price for p_cash_unit_price
               // Fall back to originalPrice if specific prices not available
               p_unit_price: itemData.price ?? itemData.originalPrice ?? 0,
-              p_cash_unit_price: itemData.cashPrice ?? itemData.price ?? itemData.originalPrice,
-              p_selected_size_id: itemData.customizations?.size?.id || undefined,
+              p_cash_unit_price:
+                itemData.cashPrice ?? itemData.price ?? itemData.originalPrice,
+              p_selected_size_id:
+                itemData.customizations?.size?.id || undefined,
               p_selected_size_name:
                 itemData.customizations?.size?.name || undefined,
               p_size_price_modifier:
@@ -937,12 +1113,17 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               p_special_instructions:
                 itemData.customizations?.notes || undefined,
               // Set to undefined if empty array to avoid function signature mismatch
-              p_modifiers: modifiersArray && modifiersArray.length > 0 ? modifiersArray : undefined,
+              p_modifiers:
+                modifiersArray && modifiersArray.length > 0
+                  ? modifiersArray
+                  : undefined,
               p_course_number:
                 useCoursingStore.getState().getWorkingCourse(localOrderId) || 1,
             } as AddOrderItemParams;
           } else {
-            console.error("[OfflineSync] No item params available for add_item");
+            console.error(
+              "[OfflineSync] No item params available for add_item",
+            );
             return false;
           }
         }
@@ -952,18 +1133,20 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         if (isOpenItem) {
           ({ data, error } = await OrderService.addOpenItem(
             _supabaseClient,
-            params as AddOpenItemParams
+            params as AddOpenItemParams,
           ));
         } else {
           ({ data, error } = await OrderService.addOrderItem(
             _supabaseClient,
-            params as AddOrderItemParams
+            params as AddOrderItemParams,
           ));
         }
 
         if (error) {
           console.error(`[OfflineSync:add_item] FAILED - DB Error:`, error);
-          console.error(`[OfflineSync:add_item] Order: ${localOrderId}, Item: ${localItemId}`);
+          console.error(
+            `[OfflineSync:add_item] Order: ${localOrderId}, Item: ${localItemId}`,
+          );
           return false;
         }
 
@@ -975,23 +1158,35 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           await mapLocalToBackend(localItemId, data.order_item_id);
 
           console.log(`[OfflineSync:add_item] SUCCESS!`);
-          console.log(`[OfflineSync:add_item] ${localItemId} → ${data.order_item_id}`);
+          console.log(
+            `[OfflineSync:add_item] ${localItemId} → ${data.order_item_id}`,
+          );
 
           // Sync order totals from response if available
           const responseData = data as any;
-          if (responseData.order_card_total || responseData.order_cash_total || responseData.order_total) {
+          if (
+            responseData.order_card_total ||
+            responseData.order_cash_total ||
+            responseData.order_total
+          ) {
             store.updateOrderFromSync(localOrderId, {
-              total_amount: responseData.order_card_total || responseData.order_total,
+              total_amount:
+                responseData.order_card_total || responseData.order_total,
               total_tax: responseData.order_card_tax || responseData.order_tax,
-              subtotal: responseData.order_card_subtotal || responseData.order_subtotal,
+              subtotal:
+                responseData.order_card_subtotal || responseData.order_subtotal,
               cash_total: responseData.order_cash_total,
               cash_tax_amount: responseData.order_cash_tax,
               cash_subtotal: responseData.order_cash_subtotal,
             });
-            console.log(`[OfflineSync:add_item] Synced order totals: card=${responseData.order_card_total}, cash=${responseData.order_cash_total}`);
+            console.log(
+              `[OfflineSync:add_item] Synced order totals: card=${responseData.order_card_total}, cash=${responseData.order_cash_total}`,
+            );
           }
         } else {
-          console.log(`[OfflineSync:add_item] Completed but no order_item_id returned`);
+          console.log(
+            `[OfflineSync:add_item] Completed but no order_item_id returned`,
+          );
           console.log(`[OfflineSync:add_item] Response:`, data);
         }
 
@@ -1028,15 +1223,20 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       case "link_order_to_session": {
         const { orderId, sessionId } = op.params;
 
-        console.log("[OfflineSync:link_order_to_session] Linking order to session", {
-          orderId,
-          sessionId,
-        });
+        console.log(
+          "[OfflineSync:link_order_to_session] Linking order to session",
+          {
+            orderId,
+            sessionId,
+          },
+        );
 
         // Resolve IDs if they are local IDs
         const resolvedOrderId = resolveOrderId(orderId);
         if (!resolvedOrderId) {
-          console.log(`[OfflineSync:link_order_to_session] BLOCKED - Order ${orderId} not synced yet`);
+          console.log(
+            `[OfflineSync:link_order_to_session] BLOCKED - Order ${orderId} not synced yet`,
+          );
           return false;
         }
 
@@ -1046,17 +1246,26 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         try {
           // Call the RPC function to link bidirectionally
-          const { data, error } = await _supabaseClient.rpc("link_order_to_session", {
-            p_order_id: resolvedOrderId,
-            p_session_id: resolvedSessionId,
-          });
+          const { data, error } = await _supabaseClient.rpc(
+            "link_order_to_session",
+            {
+              p_order_id: resolvedOrderId,
+              p_session_id: resolvedSessionId,
+            },
+          );
 
           if (error) {
-            console.error("[OfflineSync:link_order_to_session] RPC error:", error);
+            console.error(
+              "[OfflineSync:link_order_to_session] RPC error:",
+              error,
+            );
             return false;
           }
 
-          console.log("[OfflineSync:link_order_to_session] Successfully linked:", data);
+          console.log(
+            "[OfflineSync:link_order_to_session] Successfully linked:",
+            data,
+          );
           return true;
         } catch (err) {
           console.error("[OfflineSync:link_order_to_session] Exception:", err);
@@ -1070,55 +1279,80 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       case "send_to_kitchen": {
         const { localOrderId, localItemIds } = op.params;
 
-        console.log(`[OfflineSync:send_to_kitchen] ====== SENDING TO KITCHEN ======`);
-        console.log(`[OfflineSync:send_to_kitchen] Local Order ID: ${localOrderId}`);
-        console.log(`[OfflineSync:send_to_kitchen] Items to send: ${localItemIds?.length || 0}`);
+        console.log(
+          `[OfflineSync:send_to_kitchen] ====== SENDING TO KITCHEN ======`,
+        );
+        console.log(
+          `[OfflineSync:send_to_kitchen] Local Order ID: ${localOrderId}`,
+        );
+        console.log(
+          `[OfflineSync:send_to_kitchen] Items to send: ${localItemIds?.length || 0}`,
+        );
 
         // Resolve order ID
         const resolvedOrderId = resolveOrderId(localOrderId);
         if (!resolvedOrderId) {
-          console.log(`[OfflineSync:send_to_kitchen] BLOCKED - Order ${localOrderId} not synced yet`);
+          console.log(
+            `[OfflineSync:send_to_kitchen] BLOCKED - Order ${localOrderId} not synced yet`,
+          );
           return false;
         }
 
-        console.log(`[OfflineSync:send_to_kitchen] Resolved order: ${resolvedOrderId}`);
+        console.log(
+          `[OfflineSync:send_to_kitchen] Resolved order: ${resolvedOrderId}`,
+        );
 
         try {
           // 1. Update order status to "preparing"
           const { error: statusError } = await OrderService.updateOrderStatus(
             _supabaseClient,
             resolvedOrderId,
-            "preparing"
+            "preparing",
           );
 
           if (statusError) {
-            console.error("[OfflineSync:send_to_kitchen] Failed to update order status:", statusError);
+            console.error(
+              "[OfflineSync:send_to_kitchen] Failed to update order status:",
+              statusError,
+            );
             return false;
           }
 
-          console.log(`[OfflineSync:send_to_kitchen] Order status updated to "preparing"`);
+          console.log(
+            `[OfflineSync:send_to_kitchen] Order status updated to "preparing"`,
+          );
 
           // 2. Resolve and update item statuses
           if (localItemIds && localItemIds.length > 0) {
             const resolvedItemIds = localItemIds
-              .map((localItemId: string) => resolveItemId(localOrderId, localItemId))
+              .map((localItemId: string) =>
+                resolveItemId(localOrderId, localItemId),
+              )
               .filter((id: string | null): id is string => !!id);
 
             if (resolvedItemIds.length > 0) {
-              const { error: itemError } = await OrderService.bulkUpdateOrderItemStatus(
-                _supabaseClient,
-                resolvedItemIds,
-                "sent"
-              );
+              const { error: itemError } =
+                await OrderService.bulkUpdateOrderItemStatus(
+                  _supabaseClient,
+                  resolvedItemIds,
+                  "sent",
+                );
 
               if (itemError) {
-                console.error("[OfflineSync:send_to_kitchen] Failed to update item statuses:", itemError);
+                console.error(
+                  "[OfflineSync:send_to_kitchen] Failed to update item statuses:",
+                  itemError,
+                );
                 // Non-fatal - order status already updated
               } else {
-                console.log(`[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items marked as "sent"`);
+                console.log(
+                  `[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items marked as "sent"`,
+                );
               }
             } else {
-              console.log(`[OfflineSync:send_to_kitchen] No items could be resolved (may not be synced yet)`);
+              console.log(
+                `[OfflineSync:send_to_kitchen] No items could be resolved (may not be synced yet)`,
+              );
             }
           }
 
@@ -1141,7 +1375,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         if (!resolvedOrderId) {
           console.log(
-            "[OfflineSync] fire_course: No dbOrderId, will retry later"
+            "[OfflineSync] fire_course: No dbOrderId, will retry later",
           );
           return false;
         }
@@ -1158,7 +1392,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           }
 
           console.log(
-            `[OfflineSync] Course ${courseNumber} fired for order ${resolvedOrderId}`
+            `[OfflineSync] Course ${courseNumber} fired for order ${resolvedOrderId}`,
           );
           return true;
         } catch (err) {
@@ -1178,7 +1412,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         if (!resolvedItemId) {
           // If item was never synced, we can just discard the operation
           console.log(
-            "[OfflineSync] remove_item: Item never synced, discarding"
+            "[OfflineSync] remove_item: Item never synced, discarding",
           );
           return true;
         }
@@ -1186,7 +1420,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const { error } = await OrderService.voidOrderItem(
           _supabaseClient,
           resolvedItemId,
-          "Removed"
+          "Removed",
         );
         return !error;
       }
@@ -1232,31 +1466,44 @@ export async function reconcileRelationships(): Promise<void> {
     // ================================================================
     const { ordersById } = useOrderStore.getState();
     const orphanedOrders = Object.values(ordersById).filter(
-      (order) => order.local_session_id && !order.session_id
+      (order) => order.local_session_id && !order.session_id,
     );
 
-    console.log(`[reconcile] Found ${orphanedOrders.length} orders missing session_id`);
+    console.log(
+      `[reconcile] Found ${orphanedOrders.length} orders missing session_id`,
+    );
 
     for (const order of orphanedOrders) {
       try {
         // Try to resolve the local session ID to a backend UUID
-        const backendSessionId = resolveSessionId(order.local_session_id);
+        const backendSessionId = order.local_session_id
+          ? resolveSessionId(order.local_session_id)
+          : undefined;
 
         if (backendSessionId) {
           console.log(
-            `[reconcile] ✓ Linking order ${order.id} to session ${backendSessionId}`
+            `[reconcile] ✓ Linking order ${order.id} to session ${backendSessionId}`,
           );
 
           // Call the RPC to set bidirectional link
-          const { data, error } = await _supabaseClient.rpc("link_order_to_session", {
-            p_order_id: order.db_order_id,
-            p_session_id: backendSessionId,
-          });
+          const { data, error } = await _supabaseClient.rpc(
+            "link_order_to_session",
+            {
+              p_order_id: order.db_order_id,
+              p_session_id: backendSessionId,
+            },
+          );
 
           if (error) {
-            console.error(`[reconcile] Failed to link order ${order.id}:`, error);
+            console.error(
+              `[reconcile] Failed to link order ${order.id}:`,
+              error,
+            );
           } else {
-            console.log(`[reconcile] Successfully linked order ${order.id}`, data);
+            console.log(
+              `[reconcile] Successfully linked order ${order.id}`,
+              data,
+            );
 
             // Update local state
             useOrderStore.setState((state) => ({
@@ -1271,7 +1518,7 @@ export async function reconcileRelationships(): Promise<void> {
           }
         } else {
           console.warn(
-            `[reconcile] ⚠ Session ${order.local_session_id} not synced yet, will retry later`
+            `[reconcile] ⚠ Session ${order.local_session_id} not synced yet, will retry later`,
           );
         }
       } catch (err) {
@@ -1302,7 +1549,7 @@ export async function queueFailedOperation(
   params: Record<string, any>,
   localOrderId: string,
   localItemId?: string,
-  contextSnapshot?: Record<string, any>
+  contextSnapshot?: Record<string, any>,
 ): Promise<string> {
   return queueOperation({
     type,
@@ -1323,7 +1570,7 @@ export async function queueDependentFailedOperation(
   localOrderId: string,
   dependsOnOperationId: string,
   localItemId?: string,
-  contextSnapshot?: Record<string, any>
+  contextSnapshot?: Record<string, any>,
 ): Promise<string> {
   return queueDependentOperation(
     {
@@ -1333,7 +1580,7 @@ export async function queueDependentFailedOperation(
       localItemId,
       contextSnapshot,
     },
-    dependsOnOperationId
+    dependsOnOperationId,
   );
 }
 
@@ -1344,7 +1591,7 @@ export async function queuePaymentOperation(
   type: "process_cash_payment" | "process_card_payment",
   paymentParams: Record<string, any>,
   localOrderId: string,
-  cardData?: { lastFour?: string; brand?: string; transactionRef?: string }
+  cardData?: { lastFour?: string; brand?: string; transactionRef?: string },
 ): Promise<string> {
   return queueOperation({
     type,

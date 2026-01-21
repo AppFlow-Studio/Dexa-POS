@@ -243,14 +243,14 @@ export class OrderService {
     params: ProcessPaymentV2Params,
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
     console.log(
-      `[OrderService:processPayment] ====== CALLING process_payment_v5 ======`,
+      `[OrderService:processPayment] ====== CALLING process_payment_v6 ======`,
     );
     console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
     console.log(
       `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`,
     );
 
-    const { data, error } = await client.rpc("process_payment_v5", params);
+    const { data, error } = await client.rpc("process_payment_v6", params);
 
     if (error) {
       console.error(`[OrderService:processPayment] FAILED:`, error);

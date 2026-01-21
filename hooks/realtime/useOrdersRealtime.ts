@@ -1,17 +1,16 @@
 // hooks/useOrdersRealtime.ts
 // Real-time updates for order management
 
-import { useCallback, useEffect, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { debounce } from 'lodash';
-import { useRealtimeChannel } from './useRealtimechannel';
-import { useSupabaseClient } from '@/hooks/useSupabaseClient';
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import type {
   OrderPayload,
-  PaymentPayload,
   RealtimeEventType,
   UseOrdersRealtimeOptions,
-} from '@/types/real-time';
+} from "@/types/real-time";
+import { useQueryClient } from "@tanstack/react-query";
+import { debounce } from "lodash";
+import { useCallback, useEffect, useMemo } from "react";
+import { useRealtimeChannel } from "./useRealtimechannel";
 
 // Modifier data in broadcast payload (Phase 2.5: Order Item Sync with Modifiers)
 export interface BroadcastModifierData {
@@ -46,8 +45,8 @@ export interface BroadcastOrderItemData {
   open_item_price: number | null;
   special_instructions: string | null;
   category_name: string | null;
-  base_card_price : number;
-  base_cash_price : number;
+  base_card_price: number;
+  base_cash_price: number;
   // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
   modifiers?: BroadcastModifierData[];
 }
@@ -66,17 +65,26 @@ export interface BroadcastOrderData {
   created_by_staff_id: string | null;
   created_by_user_id: string | null;
   assigned_server_id: string | null;
-  session_id: string | null;  // Bidirectional link to table sessions
+  session_id: string | null; // Bidirectional link to table sessions
+  server_name?: string | null; // Staff name who created the order
 
   // Station tracking (Phase 2: Remote Order Management)
   station_id: string | null;
-  station_name: string | null;  
+  station_name: string | null;
   // Order info
-  order_type: 'dine_in' | 'takeout' | 'delivery';
-  status: 'draft' | 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'refunded' | 'void';
+  order_type: "dine_in" | "takeout" | "delivery";
+  status:
+    | "draft"
+    | "pending"
+    | "preparing"
+    | "ready"
+    | "completed"
+    | "cancelled"
+    | "refunded"
+    | "void";
   table_number: string | null;
   seat_number: string | null;
-  
+
   // Legacy/Generic totals (backward compatibility)
   subtotal: number;
   tax_amount: number;
@@ -84,32 +92,32 @@ export interface BroadcastOrderData {
   discount_amount: number;
   service_charge: number;
   total_amount: number;
-  
+
   // Card pricing (default - what credit card customers pay)
   card_subtotal: number;
   card_tax_amount: number;
   card_total: number;
-  
+
   // Cash pricing (4% discount)
   cash_subtotal: number;
   cash_tax_amount: number;
   cash_total: number;
   cash_discount_applied: boolean;
   cash_discount_amount: number;
-  
+
   // Effective pricing (what's actually being charged based on payment method)
   effective_subtotal: number;
   effective_tax_amount: number;
   effective_total: number;
-  payment_pricing_mode: 'card' | 'cash' | null;
-  
+  payment_pricing_mode: "card" | "cash" | null;
+
   // Payment status
-  payment_status: 'pending' | 'partial' | 'paid' | 'refunded' | 'unpaid';
+  payment_status: "pending" | "partial" | "paid" | "refunded" | "unpaid";
   amount_paid: number;
-  amount_due: number;          // Card price remaining
-  cash_amount_due: number;     // Cash price remaining
-  check_status: 'Opened' | 'Closed' | null;
-  
+  amount_due: number; // Card price remaining
+  cash_amount_due: number; // Cash price remaining
+  check_status: "Opened" | "Closed" | null;
+
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -119,12 +127,12 @@ export interface BroadcastOrderData {
   completed_at: string | null;
   cancelled_at: string | null;
   voided_at: string | null;
-  
+
   // Void info
   voided_by: string | null;
   void_reason: string | null;
   cancellation_reason: string | null;
-  
+
   // Sync info
   sync_version: number;
   is_offline: boolean;
@@ -134,7 +142,7 @@ export interface BroadcastOrderData {
 }
 
 export interface OrderBroadcastPayload {
-  operation: 'INSERT' | 'UPDATE' | 'DELETE';
+  operation: "INSERT" | "UPDATE" | "DELETE";
   timestamp: string;
   data: {
     order: BroadcastOrderData;
@@ -143,12 +151,12 @@ export interface OrderBroadcastPayload {
 
 // Query keys for cache invalidation
 export const ordersQueryKeys = {
-  list: (locationId: string) => ['orders', locationId] as const,
-  detail: (orderId: string) => ['order', orderId] as const,
-  stats: (locationId: string) => ['order-stats', locationId] as const,
-  payments: (orderId: string) => ['order-payments', orderId] as const,
-  openOrders: (locationId: string) => ['open-orders', locationId] as const,
-  kitchenQueue: (locationId: string) => ['kitchen-queue', locationId] as const,
+  list: (locationId: string) => ["orders", locationId] as const,
+  detail: (orderId: string) => ["order", orderId] as const,
+  stats: (locationId: string) => ["order-stats", locationId] as const,
+  payments: (orderId: string) => ["order-payments", orderId] as const,
+  openOrders: (locationId: string) => ["open-orders", locationId] as const,
+  kitchenQueue: (locationId: string) => ["kitchen-queue", locationId] as const,
 } as const;
 
 /**
@@ -173,12 +181,8 @@ export function useOrdersRealtime({
   const supabase = useSupabaseClient(); // Call at component level (not inside callbacks)
 
   const events: RealtimeEventType[] = useMemo(
-    () => [
-      'INSERT',
-      'UPDATE',
-      'DELETE',
-    ],
-    []
+    () => ["INSERT", "UPDATE", "DELETE"],
+    [],
   );
 
   // ====================================================================
@@ -189,37 +193,49 @@ export function useOrdersRealtime({
   const debouncedInvalidateList = useMemo(
     () =>
       debounce((locationId: string) => {
-        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.list(locationId) });
-        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.openOrders(locationId) });
+        queryClient.invalidateQueries({
+          queryKey: ordersQueryKeys.list(locationId),
+        });
+        queryClient.invalidateQueries({
+          queryKey: ordersQueryKeys.openOrders(locationId),
+        });
       }, 300),
-    [queryClient]
+    [queryClient],
   );
 
   // Debounced 300ms: Kitchen queue
   const debouncedInvalidateKitchen = useMemo(
     () =>
       debounce((locationId: string) => {
-        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.kitchenQueue(locationId) });
+        queryClient.invalidateQueries({
+          queryKey: ordersQueryKeys.kitchenQueue(locationId),
+        });
       }, 300),
-    [queryClient]
+    [queryClient],
   );
 
   // Debounced 500ms: Stats (less time-sensitive)
   const debouncedInvalidateStats = useMemo(
     () =>
       debounce((locationId: string) => {
-        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.stats(locationId) });
+        queryClient.invalidateQueries({
+          queryKey: ordersQueryKeys.stats(locationId),
+        });
       }, 500),
-    [queryClient]
+    [queryClient],
   );
 
   // IMMEDIATE: Single order detail (critical for UI responsiveness)
   const invalidateOrderDetail = useCallback(
     (orderId: string) => {
-      queryClient.invalidateQueries({ queryKey: ordersQueryKeys.detail(orderId) });
-      queryClient.invalidateQueries({ queryKey: ordersQueryKeys.payments(orderId) });
+      queryClient.invalidateQueries({
+        queryKey: ordersQueryKeys.detail(orderId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: ordersQueryKeys.payments(orderId),
+      });
     },
-    [queryClient]
+    [queryClient],
   );
 
   // Cleanup debounced functions on unmount
@@ -229,7 +245,11 @@ export function useOrdersRealtime({
       debouncedInvalidateKitchen.cancel();
       debouncedInvalidateStats.cancel();
     };
-  }, [debouncedInvalidateList, debouncedInvalidateKitchen, debouncedInvalidateStats]);
+  }, [
+    debouncedInvalidateList,
+    debouncedInvalidateKitchen,
+    debouncedInvalidateStats,
+  ]);
 
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
@@ -241,7 +261,7 @@ export function useOrdersRealtime({
       });
 
       // Handle order events (all events on orders channel are order events)
-      if (event === 'INSERT' || event === 'UPDATE' || event === 'DELETE') {
+      if (event === "INSERT" || event === "UPDATE" || event === "DELETE") {
         // Backend sends OrderBroadcastPayload with full order data including items
         const broadcastPayload = payload as OrderBroadcastPayload;
         const order = broadcastPayload.data?.order;
@@ -256,17 +276,15 @@ export function useOrdersRealtime({
 
         // CONDITIONAL + DEBOUNCED: Kitchen queue
         if (
-          order?.status === 'pending' ||
-          order?.status === 'preparing' ||
-          order?.status === 'ready'
+          order?.status === "pending" ||
+          order?.status === "preparing" ||
+          order?.status === "ready"
         ) {
           debouncedInvalidateKitchen(locationId);
         }
 
         // CONDITIONAL + DEBOUNCED: Stats
-        if (
-          order?.status === 'completed'
-        ) {
+        if (order?.status === "completed") {
           debouncedInvalidateStats(locationId);
         }
 
@@ -277,12 +295,14 @@ export function useOrdersRealtime({
           try {
             onOrderChange(broadcastPayload as unknown as OrderPayload);
           } catch (error) {
-            console.error('[OrdersRealtime] Callback execution error:', error);
-            console.error('[OrdersRealtime] Failed payload:', broadcastPayload);
+            console.error("[OrdersRealtime] Callback execution error:", error);
+            console.error("[OrdersRealtime] Failed payload:", broadcastPayload);
           }
         } else {
-          console.warn('[OrdersRealtime] No onOrderChange callback registered! Order update will not reach store.');
-          console.warn('[OrdersRealtime] Order details:', {
+          console.warn(
+            "[OrdersRealtime] No onOrderChange callback registered! Order update will not reach store.",
+          );
+          console.warn("[OrdersRealtime] Order details:", {
             orderId: order?.id,
             orderNumber: order?.order_number,
             stationId: order?.station_id,
@@ -298,7 +318,7 @@ export function useOrdersRealtime({
       debouncedInvalidateKitchen,
       debouncedInvalidateStats,
       onOrderChange,
-    ]
+    ],
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({
@@ -313,8 +333,9 @@ export function useOrdersRealtime({
     connectionStatus: status,
     reconnect,
     disconnect,
-    isConnected: status.state === 'SUBSCRIBED',
-    isReconnecting: status.reconnectAttempts > 0 && status.state !== 'SUBSCRIBED',
+    isConnected: status.state === "SUBSCRIBED",
+    isReconnecting:
+      status.reconnectAttempts > 0 && status.state !== "SUBSCRIBED",
   };
 }
 
@@ -335,8 +356,8 @@ export function useKitchenRealtime({
   const supabase = useSupabaseClient(); // Call at component level
 
   const events: RealtimeEventType[] = useMemo(
-    () => ['ORDER_INSERT', 'ORDER_UPDATE'],
-    []
+    () => ["ORDER_INSERT", "ORDER_UPDATE"],
+    [],
   );
 
   const handleMessage = useCallback(
@@ -344,10 +365,10 @@ export function useKitchenRealtime({
       const orderPayload = payload as OrderPayload;
 
       // Only care about orders in kitchen-relevant statuses
-      const kitchenStatuses = ['pending', 'preparing', 'ready'];
+      const kitchenStatuses = ["pending", "preparing", "ready"];
       if (
         !kitchenStatuses.includes(orderPayload.order?.status) &&
-        !kitchenStatuses.includes(orderPayload.previous_status || '')
+        !kitchenStatuses.includes(orderPayload.previous_status || "")
       ) {
         return;
       }
@@ -361,7 +382,7 @@ export function useKitchenRealtime({
 
       onOrderStatusChange?.(orderPayload);
     },
-    [locationId, queryClient, onOrderStatusChange]
+    [locationId, queryClient, onOrderStatusChange],
   );
 
   // Subscribe to location kitchen channel
@@ -376,6 +397,6 @@ export function useKitchenRealtime({
   return {
     connectionStatus: status,
     reconnect,
-    isConnected: status.state === 'SUBSCRIBED',
+    isConnected: status.state === "SUBSCRIBED",
   };
 }

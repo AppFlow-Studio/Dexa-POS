@@ -35,7 +35,10 @@ interface OrdersTableProps {
   sortDirection: SortDirection;
   onSort: (column: SortColumn) => void;
   onRowClick: (orderId: string) => void;
-  onMoreClick: (orderId: string) => void;
+  onMoreClick: (
+    orderId: string,
+    position?: { x: number; y: number; width: number; height: number },
+  ) => void;
   refreshing?: boolean;
   onRefresh?: () => void;
 }
@@ -45,12 +48,19 @@ interface OrderRowProps {
   order: OrderProfile;
   isEven: boolean;
   onRowClick: (orderId: string) => void;
-  onMoreClick: (orderId: string) => void;
+  onMoreClick: (
+    orderId: string,
+    position?: { x: number; y: number; width: number; height: number },
+  ) => void;
   getTableName: (tableId: string | null | undefined) => string;
 }
 
 const OrderRow = memo<OrderRowProps>(
   ({ order, isEven, onRowClick, onMoreClick, getTableName }) => {
+    const buttonRef = React.useRef<React.ElementRef<
+      typeof TouchableOpacity
+    > | null>(null);
+
     // Memoize the time formatting to avoid recalculation on every render
     const timeDisplay = useMemo(() => {
       const timestamp = order.opened_at;
@@ -86,7 +96,11 @@ const OrderRow = memo<OrderRowProps>(
     const handleMorePress = useCallback(
       (e: any) => {
         e.stopPropagation();
-        onMoreClick(order.id);
+        buttonRef.current?.measureInWindow(
+          (x: number, y: number, width: number, height: number) => {
+            onMoreClick(order.id, { x, y, width, height });
+          },
+        );
       },
       [order.id, onMoreClick],
     );
@@ -114,10 +128,10 @@ const OrderRow = memo<OrderRowProps>(
           </Text>
         </View>
 
-        {/* ASSIGNEE Column - station/staff name only */}
+        {/* ASSIGNEE Column - staff name preferred, then station */}
         <View className="flex-[2] py-3 px-4">
           <Text className="text-sm font-medium text-white">
-            {order._sourceStationName || order.server_name || "Unknown"}
+            {order.server_name || order._sourceStationName || "Unknown"}
           </Text>
         </View>
 
@@ -164,6 +178,7 @@ const OrderRow = memo<OrderRowProps>(
         {/* ACTIONS Column */}
         <View className="w-[60px] py-3 px-4 items-center">
           <TouchableOpacity
+            ref={buttonRef}
             onPress={handleMorePress}
             className="p-2 rounded-full active:bg-gray-600"
           >
@@ -213,8 +228,8 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
           bVal = new Date(b.opened_at || 0).getTime();
           break;
         case "assignee":
-          aVal = (a._sourceStationName || "").toLowerCase();
-          bVal = (b._sourceStationName || "").toLowerCase();
+          aVal = (a.server_name || a._sourceStationName || "").toLowerCase();
+          bVal = (b.server_name || b._sourceStationName || "").toLowerCase();
           break;
         case "assignment":
           aVal = (a.order_type || "").toLowerCase();

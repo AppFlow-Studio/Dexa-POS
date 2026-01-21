@@ -46,8 +46,14 @@ const TablesScreen = () => {
     // manualReconnect,
   } = useFloorPlanStore();
   const { selectedStation } = useStoreSettingsStore();
-  const device_id = getDeviceId()
-  const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId, getOrder } = useOrderStore();
+  const device_id = getDeviceId();
+  const {
+    startNewOrder,
+    setActiveOrder,
+    ordersById,
+    getOrderByDbId,
+    getOrder,
+  } = useOrderStore();
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -109,10 +115,14 @@ const TablesScreen = () => {
             setActiveOrder(existingOrder.id);
           }
         }
-        router.push(`/tables/${table.id}`);
+        // Use replace to avoid stacking table screens
+        router.replace({
+          pathname: "/tables/[tableId]",
+          params: { tableId: table.id },
+        });
         break;
       case "cleaning":
-        router.push(`/tables/clean-table/${table.id}`);
+        router.replace(`/tables/clean-table/${table.id}`);
         break;
       default:
         break;
@@ -122,19 +132,19 @@ const TablesScreen = () => {
   // OPTIMIZED: Use Set for O(1) membership tests instead of .includes() O(n)
   const selectedTableIdsSet = useMemo(
     () => new Set(selectedTableIds),
-    [selectedTableIds]
+    [selectedTableIds],
   );
 
   // Analyze selected tables for merge actions
   const selectedTables = useMemo(
     () => tables.filter((t) => selectedTableIdsSet.has(t.id)), // O(1) per check
-    [tables, selectedTableIdsSet]
+    [tables, selectedTableIdsSet],
   );
   const availableSelectedTables = selectedTables.filter(
-    (t) => !t.session || t.session.status === "available"
+    (t) => !t.session || t.session.status === "available",
   );
   const inUseSelectedTables = selectedTables.filter(
-    (t) => t.session && t.session.status !== "available"
+    (t) => t.session && t.session.status !== "available",
   );
 
   // Determine which merge action is valid
@@ -169,7 +179,7 @@ const TablesScreen = () => {
         item.item_status !== "ready" &&
         item.item_status !== "served" &&
         item.item_status !== "Ready" &&
-        item.item_status !== "Served"
+        item.item_status !== "Served",
     );
     return !hasPendingItems;
   };
@@ -270,15 +280,15 @@ const TablesScreen = () => {
           tableIds: tableIdsToSeat,
           partySize: guestCount,
           createOrder: true,
-          selected_station : selectedStation?.id,
-          device_id : device_id
+          selected_station: selectedStation?.id,
+          device_id: device_id,
         });
 
       console.log(
         "[GuestCountSubmit] Created session:",
         sessionId,
         "Order:",
-        orderId
+        orderId,
       );
 
       // Fetch full order details from backend and create local order
@@ -291,7 +301,7 @@ const TablesScreen = () => {
           if (backendOrder && !error) {
             console.log(
               "[GuestCountSubmit] Fetched backend order:",
-              backendOrder.order_number
+              backendOrder.order_number,
             );
 
             // Create local OrderProfile with backend data
@@ -325,7 +335,7 @@ const TablesScreen = () => {
           } else {
             console.error(
               "[GuestCountSubmit] Failed to fetch backend order:",
-              error
+              error,
             );
             // Fallback: use orderId directly (might not work for lookups)
             setActiveOrder(orderId);
@@ -346,7 +356,10 @@ const TablesScreen = () => {
     setGuestModalOpen(false);
     clearSelection();
     setMergeMode(false);
-    router.push(`/tables/${primaryTableId}`);
+    router.replace({
+      pathname: "/tables/[tableId]",
+      params: { tableId: primaryTableId },
+    });
   };
 
   return (

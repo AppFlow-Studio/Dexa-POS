@@ -1,7 +1,7 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const CleanTableScreen = () => {
@@ -60,7 +60,7 @@ const CleanTableScreen = () => {
     if (sessionId) {
       try {
         await updateSessionStatus(sessionId, "available");
-        router.back();
+        router.replace("/tables");
       } catch (error) {
         console.error("Failed to clean table:", error);
       }
@@ -70,7 +70,7 @@ const CleanTableScreen = () => {
       // But if it's 'cleaning' it MUST have a session in the new model?
       // Actually, 'cleaning' is a session status. So sessionId must exist.
       console.warn("No session found for table to clean");
-      router.back();
+      router.replace("/tables");
     }
   };
 
@@ -84,7 +84,7 @@ const CleanTableScreen = () => {
 
   const totalCapacity = allTablesInGroup.reduce(
     (acc, t) => acc + (t.capacity || 0),
-    0
+    0,
   );
 
   return (
@@ -113,7 +113,7 @@ const CleanTableScreen = () => {
           {/* Action Buttons */}
           <View className="flex-row gap-4">
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => router.replace("/tables")}
               className="flex-1 py-4 border border-gray-600 rounded-lg items-center bg-[#303030]"
             >
               <Text className="text-lg font-bold text-white">Cancel</Text>

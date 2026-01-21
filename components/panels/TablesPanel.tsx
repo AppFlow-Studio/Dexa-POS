@@ -1,8 +1,16 @@
 import TableListItem from "@/components/tables/TableListItem";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import {
+  RefreshControl,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import Animated, { Easing, Layout } from "react-native-reanimated";
 
 interface SectionProps {
@@ -67,31 +75,30 @@ const TablesPanel: React.FC = () => {
 
   const activeTables = tables; // These are already the tables for the active floor plan.
 
-  const occupiedTables = useMemo(
-    () => {
-      // Active session statuses (Phase 4.1: Include paid but not closed tables)
-      const activeSessionStatuses = [
-        "seated",
-        "ordered",
-        "served",
-        "check_presented",
-        "paid", // Include paid tables (not yet cleared/closed)
-      ];
+  const occupiedTables = useMemo(() => {
+    // Active session statuses (Phase 4.1: Include paid but not closed tables)
+    const activeSessionStatuses = [
+      "seated",
+      "ordered",
+      "served",
+      "check_presented",
+      "paid", // Include paid tables (not yet cleared/closed)
+    ];
 
-      return activeTables.filter(
-        (table) =>
-          table.category === "table" &&
-          activeSessionStatuses.includes(table.session?.status?.toLowerCase() || "")
-      );
-    },
-    [activeTables]
-  );
+    return activeTables.filter(
+      (table) =>
+        table.category === "table" &&
+        activeSessionStatuses.includes(
+          table.session?.status?.toLowerCase() || "",
+        ),
+    );
+  }, [activeTables]);
 
   // Also include cleaning?
   // Previous logic: 'In Use' or 'Needs Cleaning'.
 
   const totalTables = activeTables.filter(
-    (table) => table.category === "table"
+    (table) => table.category === "table",
   ).length;
 
   const capacityPercentage = useMemo(
@@ -99,8 +106,30 @@ const TablesPanel: React.FC = () => {
       totalTables > 0
         ? Math.floor((occupiedTables.length / totalTables) * 100)
         : 0,
-    [occupiedTables.length, totalTables]
+    [occupiedTables.length, totalTables],
   );
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+      const { loadFloorPlanStatus } = useFloorPlanStore.getState();
+
+      // 1. Refresh Floor Plan Status (Waitlist, Tables, etc.)
+      await loadFloorPlanStatus();
+
+      // 2. Refresh Orders (Full sync)
+      if (locationId) {
+        await useOrderStore.getState().initializeOrders(locationId, true);
+      }
+    } catch (error) {
+      console.error("Failed to refresh sidebar:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <View className="h-full flex-col bg-[#292929]">
@@ -121,7 +150,18 @@ const TablesPanel: React.FC = () => {
       </View>
 
       {/* Table Sections (Just one for active plan now) */}
-      <View className="flex-1 p-2">
+      <ScrollView
+        className="flex-1 p-2"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#ffffff"
+            title="Syncing..."
+            titleColor="#ffffff"
+          />
+        }
+      >
         <Section
           title={activePlanName}
           isOpen={
@@ -155,7 +195,7 @@ const TablesPanel: React.FC = () => {
             </Text>
           )}
         </Section>
-      </View>
+      </ScrollView>
     </View>
   );
 };

@@ -9,19 +9,14 @@ import {
   Trash2,
 } from "lucide-react-native";
 import React, { useMemo } from "react";
-import {
-  Modal,
-  Pressable,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Modal, Pressable, Text, TouchableOpacity, View } from "react-native";
 
 interface OrderActionsMenuProps {
   isOpen: boolean;
   onClose: () => void;
   orderId: string | null;
   onViewDetails: () => void;
+  position?: { x: number; y: number; width: number; height: number } | null;
 }
 
 interface MenuItem {
@@ -37,9 +32,14 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   onClose,
   orderId,
   onViewDetails,
+  position,
 }) => {
-  const { ordersById, activeOrderId, addItemToActiveOrder, generateCartItemId } =
-    useOrderStore();
+  const {
+    ordersById,
+    activeOrderId,
+    addItemToActiveOrder,
+    generateCartItemId,
+  } = useOrderStore();
   const { show } = useToast();
 
   // Get order (single index lookup - ordersById is keyed by DB UUID)
@@ -95,7 +95,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     show({
       title: "Pay Outstanding",
       message: "Payment flow coming soon",
-      type: "info",
+      type: "warning",
     });
   };
 
@@ -105,7 +105,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     show({
       title: "Print Receipt",
       message: "Receipt printing coming soon",
-      type: "info",
+      type: "warning",
     });
   };
 
@@ -115,7 +115,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     show({
       title: "Refund",
       message: "Refund functionality coming soon",
-      type: "info",
+      type: "warning",
     });
   };
 
@@ -180,14 +180,24 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <Pressable
-        className="flex-1 bg-black/50"
-        onPress={onClose}
-      >
-        <View className="flex-1 items-center justify-center p-4">
+      <Pressable className="flex-1 bg-black/50" onPress={onClose}>
+        <View
+          className={`flex-1 p-4 ${
+            position ? "" : "items-center justify-center"
+          }`}
+        >
           <Pressable
             className="bg-[#1a1a1a] rounded-lg shadow-2xl overflow-hidden min-w-[220px] border border-gray-700"
             onPress={(e) => e.stopPropagation()}
+            style={
+              position
+                ? {
+                    position: "absolute",
+                    top: position.y, // Align top with button
+                    left: position.x - 210, // Align right of menu with left of button (approx)
+                  }
+                : {}
+            }
           >
             {/* Menu Header */}
             <View className="px-4 py-3 border-b border-gray-700 bg-[#252525]">

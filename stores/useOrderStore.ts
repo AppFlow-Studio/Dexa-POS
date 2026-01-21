@@ -1358,7 +1358,7 @@ const syncPaymentToBackend = async (
       })) || null;
 
     // Call process_payment_v2 RPC directly
-    console.log("[syncPaymentToBackend] Calling process_payment_v5:", {
+    console.log("[syncPaymentToBackend] Calling process_payment_v6:", {
       orderId: order.db_order_id,
       method: paymentMethod,
       amount: paymentDetails.amount,
@@ -1369,7 +1369,7 @@ const syncPaymentToBackend = async (
       terminalResponse: terminalResponse,
     });
 
-    const { data, error } = await supabase.rpc("process_payment_v5", {
+    const { data, error } = await supabase.rpc("process_payment_v6", {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
       p_amount: paymentDetails.amount,
@@ -1942,7 +1942,10 @@ interface OrderState {
   syncOrderFromBackendComplete: (orderId: string) => Promise<void>;
 
   // Initialize orders - fetch all active orders on login (replaces prefetchOrders)
-  initializeOrders: (locationId: string) => Promise<void>;
+  initializeOrders: (
+    locationId: string,
+    forceRefresh?: boolean,
+  ) => Promise<void>;
 
   // Rekey order from temp ID to DB UUID after sync
   rekeyOrder: (tempId: string, dbUuid: string) => void;
@@ -3009,7 +3012,8 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   ),
-                  stations(name)
+                  stations(station_name),
+                  created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)
                 `,
                 )
                 .eq("location_id", locationId)
@@ -7478,7 +7482,11 @@ export const useOrderStore = create<OrderState>()(
                         return {
                           ...localItem,
                           quantity: dbItem.quantity,
-                          paidQuantity: dbItem.paid_quantity || 0,
+                          // FIX: Use higher of local vs backend to prevent overwrite
+                          paidQuantity: Math.max(
+                            localItem.paidQuantity || 0,
+                            dbItem.paid_quantity || 0,
+                          ),
                           price: dbItem.unit_price,
                           cashPrice: dbItem.cash_price,
                           is_voided: dbItem.is_voided,
@@ -7542,6 +7550,7 @@ export const useOrderStore = create<OrderState>()(
                           : dbItem.unit_price) ||
                         0,
                       quantity: dbItem.quantity || 1,
+                      // When creating from DB, trust backend value
                       paidQuantity: dbItem.paid_quantity || 0,
                       // Preserve course number from backend to prevent items being grouped into course 1
                       courseNumber: dbItem.course_number || 1,
@@ -7555,6 +7564,16 @@ export const useOrderStore = create<OrderState>()(
                       is_open_item: dbItem.is_open_item || false,
                       open_item_name: dbItem.open_item_name || undefined,
                       open_item_price: dbItem.open_item_price || undefined,
+                      // FIX: Set kitchen_status for DB items to prevent merging with new items
+                      // DB items are by definition 'sent' (or later state)
+                      kitchen_status:
+                        dbItem.item_status === "Ready"
+                          ? "ready"
+                          : dbItem.item_status === "Served" ||
+                              dbItem.item_status === "Completed"
+                            ? "served"
+                            : "sent",
+                      item_status: (dbItem.item_status as any) || "Preparing",
                       // Required CartItem financial fields
                       subtotal:
                         dbItem.subtotal ||
@@ -7933,7 +7952,10 @@ export const useOrderStore = create<OrderState>()(
            * Initialize orders - fetch all active orders on login.
            * Replaces prefetchOrders with a cleaner single-index approach.
            */
-          initializeOrders: async (locationId: string): Promise<void> => {
+          initializeOrders: async (
+            locationId: string,
+            forceRefresh: boolean = false,
+          ): Promise<void> => {
             // Phase 11.3: Prevent concurrent calls
             if (get().isInitializing) {
               console.log("[initializeOrders] Already initializing, skipping");
@@ -7950,12 +7972,12 @@ export const useOrderStore = create<OrderState>()(
 
             set({ isInitializing: true });
             console.log(
-              "[initializeOrders] Fetching active orders for location:",
-              locationId,
+              `[initializeOrders] Fetching active orders for location: ${locationId} (Force: ${forceRefresh})`,
             );
 
             try {
               // Fetch all active orders with items and modifiers
+              // Use !forceRefresh logic inside transform/merge
               const { data, error } = await supabase
                 .from("orders")
                 .select(
@@ -7964,7 +7986,9 @@ export const useOrderStore = create<OrderState>()(
                   order_items (
                     *,
                     order_item_modifiers (*)
-                  )
+                  ),
+                  stations(station_name),
+                  created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)
                 `,
                 )
                 .eq("location_id", locationId)
@@ -7986,8 +8010,9 @@ export const useOrderStore = create<OrderState>()(
               const newOrderIds: string[] = [];
 
               for (const serverOrder of data) {
-                // Skip if already in store
-                if (get().ordersById[serverOrder.id]) {
+                const exists = !!get().ordersById[serverOrder.id];
+                // Skip if already in store, UNLESS forceRefresh is true
+                if (exists && !forceRefresh) {
                   continue;
                 }
 
@@ -7999,7 +8024,9 @@ export const useOrderStore = create<OrderState>()(
 
                 // Use DB UUID as the key
                 newOrders[serverOrder.id] = orderProfile;
-                newOrderIds.push(serverOrder.id);
+                if (!exists) {
+                  newOrderIds.push(serverOrder.id);
+                }
               }
 
               // Merge into store
@@ -8290,7 +8317,13 @@ export const useOrderStore = create<OrderState>()(
                   if (!dbItem) return item;
                   return {
                     ...item,
-                    paidQuantity: dbItem.paid_quantity ?? item.paidQuantity,
+                    // FIX: Use the HIGHER of local vs backend paidQuantity
+                    // This prevents backend's stale paid_quantity=0 from overwriting
+                    // the correct local value that was updated by addPaymentToOrder
+                    paidQuantity: Math.max(
+                      item.paidQuantity || 0,
+                      dbItem.paid_quantity || 0,
+                    ),
                     subtotal: dbItem.subtotal ?? item.subtotal,
                     taxAmount: dbItem.tax_amount ?? item.taxAmount,
                     discount_amount:
@@ -8463,6 +8496,8 @@ export const useOrderStore = create<OrderState>()(
                       notes: item.special_instructions || undefined,
                     },
                     item_status: item.item_status || "pending",
+                    // CRITICAL: Preserve course number from database to prevent items grouping under working course
+                    courseNumber: item.course_number || 1,
                     sync_status: "synced" as const,
                   };
                 },
