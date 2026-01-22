@@ -1,10 +1,12 @@
 import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Header from "@/components/Header";
+import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
@@ -26,6 +28,7 @@ export default function MainLayout() {
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentBottomSheetRef = useRef<BottomSheetMethods>(null);
+  const paymentDetailSheetRef = useRef<BottomSheetMethods>(null);
   const { setSheetRef } = useNotificationSheetStore();
 
   useEffect(() => {
@@ -51,6 +54,15 @@ export default function MainLayout() {
         paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
       );
   }, [paymentBottomSheetRef]);
+
+  // Register PaymentDetailBottomSheet ref with store
+  useEffect(() => {
+    usePaymentDetailSheetStore
+      .getState()
+      .setBottomSheetRef(
+        paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
+      );
+  }, [paymentDetailSheetRef]);
 
   // Realtime order syncing callbacks
   const handleOrderChange = useCallback((payload: OrderPayload) => {
@@ -146,6 +158,19 @@ export default function MainLayout() {
           pointerEvents="box-none"
         >
           <PaymentBottomSheet ref={paymentBottomSheetRef} />
+        </View>
+        {/* PaymentDetailBottomSheet in separate container with higher z-index */}
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 100,
+          }}
+          pointerEvents="box-none"
+        >
+          <PaymentDetailBottomSheet ref={paymentDetailSheetRef} />
         </View>
       </SafeAreaView>
     </KeyboardAvoidingView>

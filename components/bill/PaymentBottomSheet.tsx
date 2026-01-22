@@ -53,7 +53,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   );
 
   // 90% ensures full height on tablets, 50% for quick actions
-  const snapPoints = useMemo(() => ["50%", "80%"], []);
+  const snapPoints = useMemo(() => ["95%", "95%"], []);
 
   const handleSheetChanges = useCallback(
     (index: number) => {

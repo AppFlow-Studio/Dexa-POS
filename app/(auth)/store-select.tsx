@@ -77,8 +77,8 @@ const StoreSelectItem = ({
 
 const StoreSelectScreen = () => {
   const router = useRouter();
-  const { userId, getToken } = useAuth();
-  const supabase = createSupabaseClient(getToken);
+  const { userId } = useAuth();
+  const supabase = useSupabaseClient();
   const setSelectedStore = useStoreSettingsStore(
     (state) => state.setSelectedStore
   );

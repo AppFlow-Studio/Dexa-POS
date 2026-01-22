@@ -153,7 +153,6 @@ export class DejavooSpinAPI {
   async loadTerminal(
     terminalId: string,
     paymentTerminal?: {
-      tpn: string;
       register_id: string | null;
       auth_key: string | null;
       terminal_type?: string;
@@ -167,7 +166,7 @@ export class DejavooSpinAPI {
 
     try {
       // FAST PATH: Use local credentials if provided
-      if (paymentTerminal?.tpn && paymentTerminal?.auth_key) {
+      if (paymentTerminal?.register_id && paymentTerminal?.auth_key) {
         console.log('[DejavooSpinAPI] Using local credentials from store (fast path)');
 
         // Use local credentials with default environment settings
@@ -179,9 +178,8 @@ export class DejavooSpinAPI {
         //     : 'https://test.spinpos.net:443';
 
         this.credentials = {
-          tpn: paymentTerminal.tpn,
           authKey: paymentTerminal.auth_key,
-          registerId: paymentTerminal.register_id || undefined,
+          registerId: paymentTerminal.register_id,
           environment,
           baseUrl,
           timeout: 120, // Default timeout in seconds
@@ -190,7 +188,6 @@ export class DejavooSpinAPI {
         this.terminalId = terminalId;
 
         console.log('[DejavooSpinAPI] Local credentials loaded successfully');
-        console.log('[DejavooSpinAPI] TPN:', this.credentials.tpn);
         console.log('[DejavooSpinAPI] Register ID:', this.credentials.registerId);
         console.log('[DejavooSpinAPI] Environment:', this.credentials.environment);
         console.log('[DejavooSpinAPI] Base URL:', this.credentials.baseUrl);
@@ -220,7 +217,6 @@ export class DejavooSpinAPI {
 
       // Map RPC response to credentials structure
       this.credentials = {
-        tpn: data.tpn,
         authKey: data.auth_key,
         registerId: data.register_id,
         environment: data.api_environment,
@@ -294,7 +290,6 @@ export class DejavooSpinAPI {
       console.log('[DejavooSpinAPI] Credentials:', this.credentials);
 
       const params = new URLSearchParams({
-        'request.tpn': this.credentials.tpn,
         'request.registerId': this.credentials.registerId!,
         'request.authkey': this.credentials.authKey,
       });
@@ -309,7 +304,7 @@ export class DejavooSpinAPI {
       });
      
       const data = await response.json();
-
+     console.log('[checkStatus] Dejavoo Terminal Status', data)
       console.log('[DejavooSpinAPI] Terminal status:', data.TerminalStatus);
 
       // Update database with status
@@ -593,15 +588,14 @@ export class DejavooSpinAPI {
    * @internal
    * @returns Auth parameters object
    */
-  getAuthParams(): { AuthKey: string; RegisterId: string; Tpn?: string; OperationalTimeout?: number } {
+  getAuthParams(): { AuthKey: string; RegisterId: string; OperationalTimeout?: number } {
     if (!this.credentials) {
       throw new Error('No terminal loaded. Call loadTerminal() first.');
     }
 
     return {
       AuthKey: this.credentials.authKey,
-      RegisterId: this.credentials.registerId || this.credentials.tpn,
-      Tpn: this.credentials.tpn,
+      RegisterId: this.credentials.registerId,
       OperationalTimeout: this.credentials.timeout,
     };
   }
@@ -1546,7 +1540,6 @@ export class ReturnTransactionBuilder {
         // Auth fields (mapped from authParams)
         Authkey: authParams.AuthKey,
         RegisterId: authParams.RegisterId,
-        Tpn: authParams.Tpn,
 
         // Transaction fields
         Amount: this._amount,

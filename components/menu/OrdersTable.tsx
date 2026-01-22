@@ -1,8 +1,17 @@
 import { OrderProfile } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { ArrowDown, ArrowUp, MoreVertical } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, Pressable, Text, TouchableOpacity, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from "react-native-reanimated";
 
 export type SortColumn =
   | "time"
@@ -37,6 +46,7 @@ interface OrdersTableProps {
   sortDirection: SortDirection;
   onSort: (column: SortColumn) => void;
   onRowClick: (orderId: string) => void;
+  onDoubleClick: (orderId: string) => void;
   onMoreClick: (
     orderId: string,
     position?: { x: number; y: number; width: number; height: number },
@@ -50,6 +60,7 @@ interface OrderRowProps {
   order: OrderProfile;
   isEven: boolean;
   onRowClick: (orderId: string) => void;
+  onDoubleClick: (orderId: string) => void;
   onMoreClick: (
     orderId: string,
     position?: { x: number; y: number; width: number; height: number },
@@ -58,10 +69,11 @@ interface OrderRowProps {
 }
 
 const OrderRow = memo<OrderRowProps>(
-  ({ order, isEven, onRowClick, onMoreClick, getTableName }) => {
+  ({ order, isEven, onRowClick, onDoubleClick, onMoreClick, getTableName }) => {
     const buttonRef = React.useRef<React.ElementRef<
       typeof TouchableOpacity
     > | null>(null);
+    const scale = useSharedValue(1);
 
     // Memoize the time formatting to avoid recalculation on every render
     const timeDisplay = useMemo(() => {
@@ -92,8 +104,17 @@ const OrderRow = memo<OrderRowProps>(
     }, [order.opened_at]);
 
     const handleRowPress = useCallback(() => {
-      onRowClick(order.id);
+      // onRowClick(order.id);
+      usePaymentDetailSheetStore
+      .getState()
+      .open(
+        order.id
+      )
     }, [order.id, onRowClick]);
+
+    const handleDoublePress = useCallback(() => {
+      onDoubleClick(order.id);
+    }, [order.id, onDoubleClick]);
 
     const handleMorePress = useCallback(
       (e: any) => {
@@ -107,16 +128,54 @@ const OrderRow = memo<OrderRowProps>(
       [order.id, onMoreClick],
     );
 
+    // Double-tap gesture (requires 2 taps within 250ms)
+    const doubleTap = useMemo(
+      () =>
+        Gesture.Tap()
+          .numberOfTaps(2)
+          .maxDuration(250)
+          .onStart(() => {
+            scale.value = withSequence(
+              withSpring(0.95, { damping: 10, stiffness: 200 }),
+              withSpring(1),
+            );
+            // runOnJS(handleDoublePress)();
+          }),
+      [handleDoublePress, scale],
+    );
+
+    // Single-tap gesture (fallback)
+    const singleTap = useMemo(
+      () =>
+        Gesture.Tap().onEnd(() => {
+          scale.value = withSequence(
+            withSpring(0.98, { damping: 15, stiffness: 300 }),
+            withSpring(1),
+          );
+          runOnJS(handleRowPress)();
+        }),
+      [handleRowPress, scale],
+    );
+
+    // Compose: double-tap takes priority, single-tap is fallback
+    const composedTap = useMemo(
+      () => Gesture.Exclusive(doubleTap, singleTap),
+      [doubleTap, singleTap],
+    );
+
+    const animatedStyle = useAnimatedStyle(() => ({
+      transform: [{ scale: scale.value }],
+    }));
+
     return (
-      <TouchableOpacity
-        onPress={handleRowPress}
-        className={`
-        flex-row items-center border-b border-gray-800
-        ${isEven ? "bg-[#1a1a1a]" : "bg-[#202020]"}
-        active:bg-gray-700
-      `}
-        style={{ minHeight: 60 }}
-      >
+      <GestureDetector gesture={composedTap}>
+        <Animated.View
+          style={[{ minHeight: 60 }, animatedStyle]}
+          className={`
+          flex-row items-center border-b border-gray-800
+          ${isEven ? "bg-[#1a1a1a]" : "bg-[#202020]"}
+        `}
+        >
         {/* TIME Column - now includes order number */}
         <View className="flex-[1.5] py-3 px-4">
           <Text className="text-sm font-medium text-white">
@@ -198,7 +257,8 @@ const OrderRow = memo<OrderRowProps>(
             <MoreVertical size={16} color="#9CA3AF" />
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+        </Animated.View>
+      </GestureDetector>
     );
   },
 );
@@ -211,6 +271,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   sortDirection,
   onSort,
   onRowClick,
+  onDoubleClick,
   onMoreClick,
   refreshing,
   onRefresh,
@@ -278,11 +339,12 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         order={item}
         isEven={index % 2 === 0}
         onRowClick={onRowClick}
+        onDoubleClick={onDoubleClick}
         onMoreClick={onMoreClick}
         getTableName={getTableName}
       />
     ),
-    [onRowClick, onMoreClick, getTableName],
+    [onRowClick, onDoubleClick, onMoreClick, getTableName],
   );
 
   return (

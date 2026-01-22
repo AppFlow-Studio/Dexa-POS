@@ -217,6 +217,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }),
 
   open: (method, tableId, initialView) => {
+    // Block payments for closed orders
+    const orderState = useOrderStore.getState();
+    const activeOrder = orderState.activeOrderId
+      ? orderState.ordersById[orderState.activeOrderId]
+      : null;
+    if (activeOrder?.check_status === "Closed") {
+      toastService.show({
+        title: "Check Closed",
+        message: "This check is closed. Reopen it to process payments.",
+        type: "warning",
+      });
+      return;
+    }
+
     // OPTIMIZED: Update state BEFORE animation for instant UI response
     // This ensures the payment view is ready before the sheet animates open
     set({

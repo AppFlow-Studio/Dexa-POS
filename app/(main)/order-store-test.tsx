@@ -396,6 +396,7 @@ const OrderStoreTest = () => {
             };
             storeActions.updateItemInActiveOrder(updatedItem);
             addLog("updateItemInActiveOrder", updatedItem, { success: true });
+            
             show({ title: "Success", message: "Item updated", type: "success" });
         } catch (error: any) {
             addLog("updateItemInActiveOrder", null, null, error.message);

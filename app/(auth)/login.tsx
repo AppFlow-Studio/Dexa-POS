@@ -16,12 +16,12 @@ import {
 
 const MerchantLoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
-  console.log('useSignIn result:', {
-    signIn: !!signIn,
-    signInType: typeof signIn,
-    signInKeys: signIn ? Object.keys(signIn) : 'null',
-    isLoaded,
-  })
+  // console.log('useSignIn result:', {
+  //   signIn: !!signIn,
+  //   signInType: typeof signIn,
+  //   signInKeys: signIn ? Object.keys(signIn) : 'null',
+  //   isLoaded,
+  // })
   const router = useRouter();
   const LinkRedirectUrl = Linking.createURL("oauth-native-callback", {
     scheme: "dexapos",

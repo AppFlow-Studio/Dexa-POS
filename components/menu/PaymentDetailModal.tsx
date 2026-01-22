@@ -179,7 +179,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     setExpandedPaymentIndex(expandedPaymentIndex === index ? null : index);
   };
 
-  console.log(order)
+  console.log('[Payment Detail Modal]', order)
   // Calculate payment summary
   const paymentSummary = useMemo(() => {
     if (!order) {
@@ -327,12 +327,35 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   {order.display_number || order.order_number?.slice(-6) || "—"}
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={onClose}
-                className="w-9 h-9 rounded-full bg-gray-800 items-center justify-center"
-              >
-                <X size={18} color="#9CA3AF" />
-              </TouchableOpacity>
+              <View className="flex-row items-center gap-3">
+                {/* Order Status Badge */}
+                <View
+                  className={`px-3 py-1.5 rounded-full flex-row items-center ${
+                    order.check_status === "Opened"
+                      ? "bg-emerald-500/15 border border-emerald-500/40"
+                      : "bg-gray-700/50 border border-gray-600"
+                  }`}
+                >
+                  <View
+                    className={`w-2 h-2 rounded-full mr-2 ${
+                      order.check_status === "Opened" ? "bg-emerald-400" : "bg-gray-500"
+                    }`}
+                  />
+                  <Text
+                    className={`text-xs font-semibold uppercase tracking-wide ${
+                      order.check_status === "Opened" ? "text-emerald-400" : "text-gray-400"
+                    }`}
+                  >
+                    {order.check_status === "Opened" ? "Opened" : "Closed"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={onClose}
+                  className="w-9 h-9 rounded-full bg-gray-800 items-center justify-center"
+                >
+                  <X size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 

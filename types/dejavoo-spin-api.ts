@@ -71,9 +71,8 @@ export type PrintReceiptOption =
 export type SigCaptureOption = 'Yes' | 'No';
 
 export interface DejavooCredentials {
-  tpn: string;           // Terminal Profile Number (10-12 digits)
   authKey: string;       // Authorization password (10 chars)
-  registerId?: string;   // Alternative to TPN (2-50 chars)
+  registerId: string;   // Alternative to TPN (2-50 chars)
   environment: DejavooEnvironment;
   baseUrl: string;
   timeout?: number;      // SPIn proxy timeout (1-720 seconds)
@@ -176,12 +175,6 @@ export interface DejavooSaleRequest {
   MerchantId?: string;
 
   /**
-   * Terminal Profile Number (optional if using RegisterId)
-   * @optional
-   */
-  Tpn?: string;
-
-  /**
    * Custom timeout in seconds (1-720)
    * @optional
    * @default 120 seconds
@@ -276,12 +269,6 @@ export interface DejavooVoidRequest {
   Tag3?: string;
 
   /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
-
-  /**
    * Merchant ID (required with Multi MID)
    * @optional
    */
@@ -357,12 +344,6 @@ export interface DejavooRefundRequest {
   Tag3?: string;
 
   /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
-
-  /**
    * Merchant ID (required with Multi MID)
    * @optional
    */
@@ -428,12 +409,6 @@ export interface DejavooTipAdjustRequest {
    * @required
    */
   PerformedBy: string;
-
-  /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
 
   /**
    * Merchant ID (required with Multi MID)
@@ -509,12 +484,6 @@ export interface DejavooAuthRequest {
   Tag1?: string;
   Tag2?: string;
   Tag3?: string;
-
-  /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
 
   /**
    * Merchant ID (required with Multi MID)
@@ -593,12 +562,6 @@ export interface DejavooCaptureRequest {
   Tag3?: string;
 
   /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
-
-  /**
    * Merchant ID (required with Multi MID)
    * @optional
    */
@@ -625,15 +588,9 @@ export interface DejavooStatusRequest {
 
   /**
    * Terminal identifier / Register ID
-   * @required (use either this or Tpn)
+   * @required
    */
   RegisterId?: string;
-
-  /**
-   * Terminal Profile Number
-   * @optional (use either this or RegisterId)
-   */
-  Tpn?: string;
 
   /**
    * Reference ID of transaction to check
@@ -672,12 +629,6 @@ export interface DejavooSettleRequest {
    * @optional
    */
   PaymentType?: PaymentType;
-
-  /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
 
   /**
    * User performing the settlement
@@ -721,12 +672,6 @@ export interface DejavooPrinterRequest {
    * @optional
    */
   RefId?: string;
-
-  /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
 
   /**
    * Custom text to print (for custom receipts)
@@ -1213,7 +1158,7 @@ export interface DejavooTerminalStatusResponse {
    * Terminal Profile Number
    */
   Tpn?: string;
-
+ 
   /**
    * Register ID
    */
@@ -1446,7 +1391,6 @@ export type BaseTransactionFields = {
   Tag1?: string;
   Tag2?: string;
   Tag3?: string;
-  Tpn?: string;
   MerchantId?: string;
 };
 
@@ -1458,7 +1402,7 @@ export function createSaleRequest(
   details: {
     PaymentType: PaymentType;
     Amount: number;
-    RefId: string;
+    ReferenceId: string;
     Tip?: number;
     CustomFee?: number;
     PrintReceipt?: PrintReceiptOption;

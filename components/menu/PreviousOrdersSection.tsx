@@ -1,5 +1,6 @@
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { Search, X } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -13,7 +14,6 @@ import {
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 import OrderActionsMenu from "./OrderActionsMenu";
 import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
-import PaymentDetailModal from "./PaymentDetailModal";
 
 // Define types for props
 type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
@@ -85,6 +85,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 const PreviousOrdersSection = () => {
   const { ordersById } = useOrderStore();
   const { refreshPreviousOrders, previousOrders } = usePreviousOrdersStore();
+  const { open: openPaymentDetailSheet } = usePaymentDetailSheetStore();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -94,7 +95,6 @@ const PreviousOrdersSection = () => {
   // New state for table view
   const [sortColumn, setSortColumn] = useState<SortColumn>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [isPaymentDetailOpen, setPaymentDetailOpen] = useState(false);
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [menuOrderId, setMenuOrderId] = useState<string | null>(null);
 
@@ -187,8 +187,8 @@ const PreviousOrdersSection = () => {
   }, [ordersById, previousOrders]);
 
   const totalOrder = allOrders.length;
-  console.log("OrdersById Length", Object.keys(ordersById).length);
-  console.log("All Orders Length", allOrders.length);
+  // console.log("OrdersById Length", Object.keys(ordersById).length);
+  // console.log("All Orders Length", allOrders.length);
 
   // Filter orders based on active tab and search query
   const filteredOrders = useMemo(() => {
@@ -230,10 +230,15 @@ const PreviousOrdersSection = () => {
     }
   };
 
-  // Handle row click - open payment detail modal
+  // Handle row click - open payment detail bottom sheet
   const handleRowClick = (orderId: string) => {
-    setSelectedOrderId(orderId);
-    setPaymentDetailOpen(true);
+    console.log(orderId)
+    openPaymentDetailSheet(orderId);
+  };
+
+  // Handle double-click - set order as active
+  const handleDoubleClick = (orderId: string) => {
+    useOrderStore.getState().setActiveOrder(orderId);
   };
 
   // Handle more button click - open actions menu
@@ -251,8 +256,7 @@ const PreviousOrdersSection = () => {
   // Handle view details from menu
   const handleViewDetails = () => {
     if (menuOrderId) {
-      setSelectedOrderId(menuOrderId);
-      setPaymentDetailOpen(true);
+      openPaymentDetailSheet(menuOrderId);
     }
   };
 
@@ -297,18 +301,13 @@ const PreviousOrdersSection = () => {
         sortDirection={sortDirection}
         onSort={handleSort}
         onRowClick={handleRowClick}
+        onDoubleClick={handleDoubleClick}
         onMoreClick={handleMoreClick}
         refreshing={isRefreshing}
         onRefresh={handleRefresh}
       />
 
       {/* Modals */}
-      <PaymentDetailModal
-        isOpen={isPaymentDetailOpen}
-        onClose={() => setPaymentDetailOpen(false)}
-        orderId={selectedOrderId}
-      />
-
       <OrderActionsMenu
         isOpen={isMenuOpen}
         onClose={() => setMenuOpen(false)}

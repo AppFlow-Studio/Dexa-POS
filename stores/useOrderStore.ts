@@ -1845,6 +1845,10 @@ interface OrderState {
     orderId: string,
     status: OrderProfile["order_status"],
   ) => void;
+  updateOrderCheckStatus: (
+    orderId: string,
+    status: "Opened" | "Closed",
+  ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
     amount: number;
@@ -3827,6 +3831,16 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
 
+            // Block editing items on closed checks
+            if (order.check_status === "Closed") {
+              toastService.show({
+                title: "Check Closed",
+                message: "This check is closed. Reopen it to edit items.",
+                type: "warning",
+              });
+              return;
+            }
+
             // Phase 5: Any visible order can be modified - no ownership guard needed
 
             const originalItem = order.items.find(
@@ -4380,6 +4394,16 @@ export const useOrderStore = create<OrderState>()(
 
             const order = ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
+
+            // Block removing items from closed checks
+            if (order.check_status === "Closed") {
+              toastService.show({
+                title: "Check Closed",
+                message: "This check is closed. Reopen it to remove items.",
+                type: "warning",
+              });
+              return;
+            }
 
             // Phase 5: Any visible order can be modified - no ownership guard needed
 
@@ -5289,6 +5313,31 @@ export const useOrderStore = create<OrderState>()(
                   ...(status === "completed" || status === "void"
                     ? { check_status: "Closed" as const }
                     : {}),
+                },
+              },
+            }));
+          },
+
+          updateOrderCheckStatus: (orderId, status) => {
+            const order = get().ordersById[orderId]; // O(1) lookup
+            if (!order) return;
+
+            // Sync to backend in background
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order?.db_order_id) {
+              const dbOrderId = order.db_order_id;
+              // TODO: Add backend RPC call for updating check_status
+              
+              // For now, just update locally
+              console.log(`[updateOrderCheckStatus] Would sync check_status=${status} for order ${dbOrderId}`);
+            }
+
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  check_status: status,
                 },
               },
             }));

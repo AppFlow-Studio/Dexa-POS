@@ -8,6 +8,7 @@ import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 // SyncStatusBar removed - now using NetworkStatusBadge in Header
 // import { SyncStatusBar } from "@/components/SyncStatusBar";
+import { ClerkSessionDebugger } from "@/components/debug/ClerkSessionDebugger";
 import { LoadingProvider } from "@/contexts/LoadingContext";
 import { PosSyncProvider } from "@/contexts/PosSyncProvider";
 import { SessionKickListenerProvider } from "@/contexts/SessionKickListenerProvider";
@@ -33,11 +34,11 @@ import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import * as React from "react";
 import { Platform, Text, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
 WebBrowser.maybeCompleteAuthSession();
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider } from "react-native-safe-area-context";
 
 export const tokenCache: TokenCache = {
   async getToken(key: string) {
@@ -130,7 +131,8 @@ export default function RootLayout() {
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-     {/* <ClerkLoaded> */}
+     <ClerkLoaded>
+     {/* <ClerkSessionDebugger /> */}
         <TanstackProvider>
           <PosSyncProvider>
             <GestureHandlerRootView>
@@ -180,7 +182,7 @@ export default function RootLayout() {
             </GestureHandlerRootView>
           </PosSyncProvider>
         </TanstackProvider>
-     {/* </ClerkLoaded> */}
+     </ClerkLoaded>
     </ClerkProvider>
   );
 }
