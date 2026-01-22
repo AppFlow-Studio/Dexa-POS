@@ -487,7 +487,8 @@ export interface PreviousOrder {
   refunded?: boolean;
   refundedAmount?: number;
   originalTotal?: number;
-  service_location_id?: string; // Added service_location_id
+  service_location_id?: string;
+  service_location_name?: string;
   // Station tracking for view_scope awareness
   station_id?: string | null;
   station_name?: string | null;
@@ -731,6 +732,7 @@ export interface OrderProfilePayment {
   // Core identifiers
   id: string;
   db_payment_id?: string; // Backend ID for void operations
+  localId?: string; // Local ID for offline/sync tracking
 
   // Payment basics
   amount: number;
@@ -775,6 +777,7 @@ export interface OrderProfilePayment {
   // Sync status (for offline-first reliability)
   sync_status?: "synced" | "pending" | "failed";
   sync_error?: string;
+  sync_attempt_count?: number;
 }
 
 export interface OrderProfile {
@@ -789,6 +792,8 @@ export interface OrderProfile {
   // Link to the physical location. Crucially, this is `string | null`.
   // If it's `null', it's not a dine-in order.
   service_location_id: string | null;
+  // Table name cached at order creation time (for display without floor plan dependency)
+  service_location_name?: string;
 
   // Session tracking - bidirectional relationship with table sessions
   session_id?: string; // Backend session UUID (for dine-in orders)
@@ -834,7 +839,7 @@ export interface OrderProfile {
 
   // Final calculated values, set upon closing the order
   total_amount?: number;
-  total_cash_amount?:number;
+  total_cash_amount?: number;
   total_tax?: number;
   total_discount?: number;
 

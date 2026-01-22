@@ -82,11 +82,11 @@ const OrderRow = memo<OrderRowProps>(
       // if (diffDays === 0) dateStr = "Today";
       // else if (diffDays === 1) dateStr = "Yesterday";
       // else
-        dateStr = date.toLocaleDateString("en-US", {
-          month: "numeric",
-          day: "numeric",
-          year: "numeric",
-        });
+      dateStr = date.toLocaleDateString("en-US", {
+        month: "numeric",
+        day: "numeric",
+        year: "numeric",
+      });
 
       return { time, date: dateStr };
     }, [order.opened_at]);
@@ -144,7 +144,9 @@ const OrderRow = memo<OrderRowProps>(
           </Text>
           {order.service_location_id && (
             <Text className="text-xs text-gray-500 mt-0.5">
-              Table {getTableName(order.service_location_id)}
+              Table{" "}
+              {order.service_location_name ||
+                getTableName(order.service_location_id)}
             </Text>
           )}
         </View>

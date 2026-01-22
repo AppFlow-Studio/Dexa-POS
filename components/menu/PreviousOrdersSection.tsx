@@ -1,10 +1,8 @@
-import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
-import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { Search, X } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Pressable,
   Text,
@@ -85,10 +83,8 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  const {
-    ordersById
-  } = useOrderStore();
-  const { refreshPreviousOrders } = usePreviousOrdersStore();
+  const { ordersById } = useOrderStore();
+  const { refreshPreviousOrders, previousOrders } = usePreviousOrdersStore();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -109,36 +105,90 @@ const PreviousOrdersSection = () => {
     height: number;
   } | null>(null);
 
-
   // PHASE 3C: Subscribe to store changes
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refreshPreviousOrders(); // Call the store action
     setIsRefreshing(false);
   };
-  // Phase 4: Use selector for view_scope-aware filtering
-  // showCompleted: true to include all orders in history view
-  // const previousOrders = usePreviousOrders({ showCompleted: false });
 
   // Get all orders - combine previous orders selector with local orders for compatibility
   const allOrders: OrderProfile[] = useMemo(() => {
-    // Filter to show only non-draft orders
-    const localOrdersNotInSelector = Object.values(ordersById).filter(
-      (o: OrderProfile) => o.order_status !== "draft" || ( o.order_status == 'draft' && o.items.length >= 0),
+    // 1. Get Active/Local Orders (excluding drafts/empties as per existing logic)
+    const activeOrders = Object.values(ordersById).filter(
+      (o: OrderProfile) =>
+        o.order_status !== "draft" ||
+        (o.order_status == "draft" && o.items.length > 0),
     );
 
-    // PHASE 1: Log all orders in store for diagnostics
-    // console.log('📋 [PreviousOrdersSection] Orders from store:', {
-    //   totalOrders: localOrdersNotInSelector.length,
-    //   orderIds: localOrdersNotInSelector.map(o => `${o.display_number} (station: ${o.station_id?.slice(0, 8) || 'none'})`),
-    // });
+    // Create sets for O(1) lookup of active orders to prevent duplicates
+    const activeIds = new Set(activeOrders.map((o) => o.id));
+    const activeDbIds = new Set(
+      activeOrders.map((o) => o.db_order_id).filter(Boolean),
+    );
 
-    return [...localOrdersNotInSelector];
-  }, [ordersById]);
+    // 2. Map Previous Orders to OrderProfile format
+    // Filter out any that are already in activeOrders to avoid duplicates
+    const mappedHistoryOrders: OrderProfile[] = previousOrders
+      .filter((po) => {
+        // Exclude if ID matches or DB_ID matches an active order
+        if (activeIds.has(po.orderId)) return false;
+        if (po.db_order_id && activeDbIds.has(po.db_order_id)) return false;
+        return true;
+      })
+      .map(
+        (po) =>
+          ({
+            id: po.orderId,
+            db_order_id: po.db_order_id,
+            // Helper fields
+            display_number: po.display_number,
+            order_number: po.display_number,
+            customer_name: po.customer,
+            server_name: po.server,
+
+            // Status mapping
+            order_status: po.refunded
+              ? "refunded"
+              : po.closed_at
+                ? "completed"
+                : "pending", // Best guess mapping
+            check_status: po.checkStatus || "Opened",
+            paid_status: po.paymentStatus,
+
+            // Type mapping
+            order_type: po.type,
+
+            // Items and totals
+            items: po.items,
+            total_amount: po.total,
+            amount_paid: po.amount_paid,
+            amount_due: po.amount_due,
+
+            // Timestamps
+            opened_at: po.timestamp || po.opened_at,
+            created_at: po.timestamp, // Ensure sort works if it uses created_at
+            closed_at: po.closed_at,
+
+            // Location/Station
+            service_location_id: po.service_location_id || null, // strict null for type safety
+            service_location_name: po.service_location_name,
+            station_id: po.station_id || null,
+            _sourceStationName: po.station_name,
+
+            // Extras
+            notes: po.notes,
+            payments: po.payments,
+          }) as OrderProfile,
+      );
+
+    // Combined list: Active Orders + Missing History Orders
+    return [...activeOrders, ...mappedHistoryOrders];
+  }, [ordersById, previousOrders]);
 
   const totalOrder = allOrders.length;
-  console.log('OrdersById Length', Object.keys(ordersById).length)
-  console.log('All Orders Length', allOrders.length)
+  console.log("OrdersById Length", Object.keys(ordersById).length);
+  console.log("All Orders Length", allOrders.length);
 
   // Filter orders based on active tab and search query
   const filteredOrders = useMemo(() => {
@@ -207,7 +257,7 @@ const PreviousOrdersSection = () => {
   };
 
   return (
-  <View className="flex-1 ">
+    <View className="flex-1 ">
       {/* Header with Tabs and Search */}
       <View className="flex-row justify-between items-center mb-4 gap-x-4">
         <OrderTabs

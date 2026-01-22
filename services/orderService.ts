@@ -355,6 +355,42 @@ export class OrderService {
   }
 
   /**
+   * Fetch orders with full history details (items, modifiers, payments, station, staff).
+   * Used for Previous Orders / History view.
+   */
+  static async getHistoryOrders(
+    client: SupabaseClient,
+    locationId: string,
+    limit: number = 50,
+    statuses: OrderStatus[] | null = null,
+  ): Promise<{ data: any[] | null; error: any }> {
+    let query = client
+      .from("orders")
+      .select(
+        `
+        *,
+        order_items (
+          *,
+          order_item_modifiers (*)
+        ),
+        order_payments (*),
+        stations (station_name),
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+      `,
+      )
+      .eq("location_id", locationId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (statuses && statuses.length > 0) {
+      query = query.in("status", statuses);
+    }
+
+    const { data, error } = await query;
+    return { data, error };
+  }
+
+  /**
    * Fetch a single order by ID with all relations
    */
   static async fetchOrderById(

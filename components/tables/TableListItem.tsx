@@ -1,14 +1,13 @@
+import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
+import { useOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { PaymentStatusBadge, type PaymentStatus } from "./PaymentStatusBadge";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -19,12 +18,18 @@ import Animated, {
   Layout,
 } from "react-native-reanimated";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
+import { PaymentStatusBadge, type PaymentStatus } from "./PaymentStatusBadge";
 
 // --- Helper Functions ---
 const formatDuration = (milliseconds: number): string => {
   if (isNaN(milliseconds) || milliseconds < 0) return "0m";
-  const totalSeconds = Math.floor(milliseconds / 1000);
-  const minutes = Math.floor(totalSeconds / 60)
+  const totalMinutes = Math.floor(milliseconds / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
   return `${minutes}m`;
 };
 
@@ -42,9 +47,9 @@ const StatusIndicator = ({
     : normalizedStatus === "available"
       ? "bg-green-500"
       : normalizedStatus === "in use" ||
-        normalizedStatus === "seated" ||
-        normalizedStatus === "ordered" ||
-        normalizedStatus === "served"
+          normalizedStatus === "seated" ||
+          normalizedStatus === "ordered" ||
+          normalizedStatus === "served"
         ? "bg-blue-500"
         : "bg-red-500"; // needs cleaning / etc
 
@@ -93,7 +98,7 @@ const useTableData = (table: FloorPlanObject) => {
     if (ordersById[sessionOrderId]) return sessionOrderId;
     // Fallback: search by db_order_id
     const order = Object.values(ordersById).find(
-      (o) => o.db_order_id === sessionOrderId
+      (o) => o.db_order_id === sessionOrderId,
     );
     return order?.id || null;
   }, [sessionOrderId, ordersById]);
@@ -168,7 +173,7 @@ const useTableData = (table: FloorPlanObject) => {
     if (!order) {
       // Fallback: search by db_order_id if session.order_id is the backend UUID
       order = Object.values(ordersById).find(
-        (o) => o.db_order_id === sessionOrderId
+        (o) => o.db_order_id === sessionOrderId,
       );
     }
 
@@ -184,9 +189,9 @@ const useTableData = (table: FloorPlanObject) => {
         primaryTableId: table.id,
         displayName: isMerged
           ? `${table.name} + ${groupTables
-            .filter((t) => t.id !== table.id)
-            .map((t) => t.name)
-            .join(", ")}`
+              .filter((t) => t.id !== table.id)
+              .map((t) => t.name)
+              .join(", ")}`
           : table.name,
         status: status,
         guestCount: table.session?.party_size || 0,
@@ -215,19 +220,17 @@ const useTableData = (table: FloorPlanObject) => {
 
     // Use payment-aware totals from orderTotals selector
     // Falls back to simple calculation if selector not available
-    const subtotal = orderTotals?.subtotal ?? order.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-    const tax = orderTotals?.tax ?? order.items.reduce(
-      (sum, item) => sum + (item.taxAmount || 0),
-      0
-    );
-    const total = orderTotals?.total ?? order.total_amount ?? (subtotal + tax);
+    const subtotal =
+      orderTotals?.subtotal ??
+      order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const tax =
+      orderTotals?.tax ??
+      order.items.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
+    const total = orderTotals?.total ?? order.total_amount ?? subtotal + tax;
 
     // Payment information (Phase 3: Fine Dining Table Management)
     const amountDue = orderTotals?.amountDue ?? total;
-    const amountPaid = (order.amount_paid ?? 0);
+    const amountPaid = order.amount_paid ?? 0;
 
     // Determine payment status
     let paidStatus: PaymentStatus = "Unpaid";
@@ -235,7 +238,7 @@ const useTableData = (table: FloorPlanObject) => {
       paidStatus = "Paid";
     } else if (amountPaid > 0) {
       paidStatus = "Partial";
-    } else if (order.payments?.some(p => p.sync_status === "pending")) {
+    } else if (order.payments?.some((p) => p.sync_status === "pending")) {
       paidStatus = "Pending";
     }
 
@@ -244,9 +247,9 @@ const useTableData = (table: FloorPlanObject) => {
       primaryTableId: table.id,
       displayName: isMerged
         ? `${table.name} + ${groupTables
-          .filter((t) => t.id !== table.id)
-          .map((t) => t.name)
-          .join(", ")}`
+            .filter((t) => t.id !== table.id)
+            .map((t) => t.name)
+            .join(", ")}`
         : table.name,
       status: status,
       guestCount: order.guest_count || table.session?.party_size || 0,
@@ -256,7 +259,9 @@ const useTableData = (table: FloorPlanObject) => {
       amountDue,
       amountPaid,
       paidStatus,
-      seatedTime: seatedTime || (table.session?.seated_at ? new Date(table.session.seated_at) : null),
+      seatedTime:
+        seatedTime ||
+        (table.session?.seated_at ? new Date(table.session.seated_at) : null),
       server: serverDisplay,
       orders: groupOrders,
     };
@@ -324,15 +329,15 @@ const ExpandedView: React.FC<{
     }
 
     const allOrdersArePaid = tableData.orders.every(
-      (o) => o.paid_status === "Paid"
+      (o) => o.paid_status === "Paid",
     );
 
     if (allOrdersArePaid) {
       const allItemsInGroupAreReady = tableData.orders.every((order) =>
         order.items.every(
           (item) =>
-            item.item_status === "Ready" || item.item_status === "Served"
-        )
+            item.item_status === "Ready" || item.item_status === "Served",
+        ),
       );
 
       if (allItemsInGroupAreReady) {
@@ -406,12 +411,12 @@ const ExpandedView: React.FC<{
                   <View className="ml-2">
                     {(item.item_status === "Ready" ||
                       item.item_status === "Served") && (
-                        <CheckCircle size={14} color="#22C55E" />
-                      )}
+                      <CheckCircle size={14} color="#22C55E" />
+                    )}
                     {(item.kitchen_status === "sent" ||
                       item.item_status === "Preparing") && (
-                        <Clock size={14} color="#F59E0B" />
-                      )}
+                      <Clock size={14} color="#F59E0B" />
+                    )}
                   </View>
                 </View>
               ))}
@@ -420,15 +425,21 @@ const ExpandedView: React.FC<{
         <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
           <View className="flex-row justify-between">
             <Text className="text-sm text-gray-400">Subtotal</Text>
-            <Text className="text-sm text-gray-400">${tableData.subtotal?.toFixed(2)}</Text>
+            <Text className="text-sm text-gray-400">
+              ${tableData.subtotal?.toFixed(2)}
+            </Text>
           </View>
           <View className="flex-row justify-between">
             <Text className="text-sm text-gray-400">Tax</Text>
-            <Text className="text-sm text-gray-400">${tableData.tax?.toFixed(2)}</Text>
+            <Text className="text-sm text-gray-400">
+              ${tableData.tax?.toFixed(2)}
+            </Text>
           </View>
           <View className="flex-row justify-between mt-1">
             <Text className="text-base font-semibold text-white">Total</Text>
-            <Text className="text-base font-semibold text-white">${tableData.total?.toFixed(2)}</Text>
+            <Text className="text-base font-semibold text-white">
+              ${tableData.total?.toFixed(2)}
+            </Text>
           </View>
 
           {/* Payment Information */}
@@ -437,7 +448,9 @@ const ExpandedView: React.FC<{
               <View className="border-t border-gray-600 mt-2 pt-2" />
               <View className="flex-row justify-between">
                 <Text className="text-sm text-blue-400">Amount Paid</Text>
-                <Text className="text-sm text-blue-400">-${tableData.amountPaid.toFixed(2)}</Text>
+                <Text className="text-sm text-blue-400">
+                  -${tableData.amountPaid.toFixed(2)}
+                </Text>
               </View>
             </>
           )}
@@ -447,7 +460,9 @@ const ExpandedView: React.FC<{
               <Text className="text-lg font-bold text-white">Amount Due</Text>
               <PaymentStatusBadge status={tableData.paidStatus} size="md" />
             </View>
-            <Text className="text-lg font-bold text-white">${tableData.amountDue.toFixed(2)}</Text>
+            <Text className="text-lg font-bold text-white">
+              ${tableData.amountDue.toFixed(2)}
+            </Text>
           </View>
         </View>
       </View>
@@ -504,120 +519,127 @@ const TableListItem: React.FC<{
 }> = ({
   table,
   isExpanded,
-  onToggleExpand = () => { },
+  onToggleExpand = () => {},
   onNavigateToOrder,
   handleTablePress,
 }) => {
-    const tableData = useTableData(table);
-    const [isOvertime, setIsOvertime] = useState(false);
-    const [duration, setDuration] = useState("");
-    const { defaultSittingTimeMinutes } = useSettingsStore();
+  const tableData = useTableData(table);
+  const [isOvertime, setIsOvertime] = useState(false);
+  const [duration, setDuration] = useState("");
+  const { defaultSittingTimeMinutes } = useSettingsStore();
 
-    useEffect(() => {
-      // Check various active statuses
-      const status = tableData?.status?.toLowerCase();
-      const isActive =
-        status === "seated" ||
-        status === "ordered" ||
-        status === "served" ||
-        status === "in use";
+  useEffect(() => {
+    // Check various active statuses
+    const status = tableData?.status?.toLowerCase();
+    const isActive =
+      status === "seated" ||
+      status === "ordered" ||
+      status === "served" ||
+      status === "in use";
 
-      if (!isActive || !tableData.seatedTime) {
-        setIsOvertime(false);
-        setDuration("");
-        return;
-      }
-      const update = () => {
-        const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
-        setDuration(formatDuration(diffMs));
-        setIsOvertime(Math.floor(diffMs / 60000) > defaultSittingTimeMinutes);
-      };
-      update();
-      const timer = setInterval(update, 1000);
-      return () => clearInterval(timer);
-    }, [tableData, defaultSittingTimeMinutes]);
-
-    const handlePress = () => {
-      const status = tableData?.status?.toLowerCase();
-      // If seated/active -> toggle expand
-      if (
-        status === "seated" ||
-        status === "ordered" ||
-        status === "served" ||
-        status === "in use" ||
-        status === "check_presented"
-      ) {
-        onToggleExpand();
-      } else {
-        handleTablePress(table);
-      }
+    if (!isActive || !tableData.seatedTime) {
+      setIsOvertime(false);
+      setDuration("");
+      return;
+    }
+    const update = () => {
+      const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
+      setDuration(formatDuration(diffMs));
+      setIsOvertime(Math.floor(diffMs / 60000) > defaultSittingTimeMinutes);
     };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, [tableData, defaultSittingTimeMinutes]);
 
-    if (!tableData) return null;
-
-    const showActiveDetails =
-      tableData.status.toLowerCase() !== "available" &&
-      tableData.status.toLowerCase() !== "reserved" &&
-      tableData.status.toLowerCase() !== "cleaning";
-
-    return (
-      <Animated.View
-        layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-        className="border-b border-gray-700 overflow-hidden   "
-      >
-        <TouchableOpacity
-          onPress={handlePress}
-          className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
-        >
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-3 flex-1">
-              <StatusIndicator
-                status={tableData.status}
-                isOvertime={isOvertime}
-              />
-              <Text
-                className="text-md font-semibold text-white"
-                numberOfLines={1}
-              >
-                {tableData.displayName}
-              </Text>
-              {/* Payment Status Badge in collapsed view */}
-              {/* {showActiveDetails && tableData.paidStatus && (
-                <PaymentStatusBadge status={tableData.paidStatus} size="sm" />
-              )} */}
-            </View>
-            {showActiveDetails && (
-              <>
-                <Text className="text-base text-gray-300 w-24  text-center">
-                  {duration}
-                </Text>
-                <Text className="text-sm text-gray-300  text-center">
-                  {tableData.guestCount} Guests
-                </Text>
-                <View className="w-32 items-end">
-                  <Text className="text-base font-bold text-white">
-                    ${tableData.amountDue?.toFixed(2) || "0.00"} Due
-                  </Text>
-                  {tableData.amountPaid > 0 && (
-                    <Text className="text-xs text-gray-400">
-                      (Paid: ${tableData.amountPaid.toFixed(2)})
-                    </Text>
-                  )}
-                </View>
-              </>
-            )}
-          </View>
-          {isExpanded && showActiveDetails && (
-            <ExpandedView
-              tableData={tableData}
-              table={table}
-              onToggleExpand={onToggleExpand}
-              onNavigateToOrder={onNavigateToOrder}
-            />
-          )}
-        </TouchableOpacity>
-      </Animated.View>
-    );
+  const handlePress = () => {
+    const status = tableData?.status?.toLowerCase();
+    // If seated/active -> toggle expand
+    if (
+      status === "seated" ||
+      status === "ordered" ||
+      status === "served" ||
+      status === "in use" ||
+      status === "check_presented"
+    ) {
+      onToggleExpand();
+    } else {
+      handleTablePress(table);
+    }
   };
+
+  if (!tableData) return null;
+
+  const showActiveDetails =
+    tableData.status.toLowerCase() !== "available" &&
+    tableData.status.toLowerCase() !== "reserved" &&
+    tableData.status.toLowerCase() !== "cleaning";
+
+  return (
+    <Animated.View
+      layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
+      className="border-b border-gray-700 overflow-hidden"
+    >
+      <TouchableOpacity
+        onPress={handlePress}
+        className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
+      >
+        {/* Main Layout Container */}
+        <View className="flex-col w-full">
+          {/* Row 1: Status & Name (Always visible full width) */}
+          <View className="flex-row items-center gap-3 w-full">
+            <StatusIndicator
+              status={tableData.status}
+              isOvertime={isOvertime}
+            />
+            <Text
+              className="text-white font-semibold text-base flex-1"
+              numberOfLines={1}
+            >
+              {tableData.displayName}
+            </Text>
+          </View>
+
+          {/* Row 2: Stats (Only when active) */}
+          {showActiveDetails && (
+            <View className="flex-row items-center justify-between pl-5 mt-1.5">
+              {/* Duration */}
+              <Text className="text-xs font-medium text-blue-300 w-16">
+                {duration}
+              </Text>
+
+              {/* Guests */}
+              <Text className="text-xs text-gray-400">
+                {tableData.guestCount} Guests
+              </Text>
+
+              {/* Amount */}
+              <View className="items-end min-w-[80px]">
+                <Text className="text-sm font-bold text-white">
+                  ${tableData.amountDue?.toFixed(2) || "0.00"}
+                </Text>
+                {tableData.amountPaid > 0 && (
+                  <Text className="text-[10px] text-gray-500">
+                    Paid: ${tableData.amountPaid.toFixed(2)}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Expanded Detail View */}
+        {isExpanded && showActiveDetails && (
+          <ExpandedView
+            tableData={tableData}
+            table={table}
+            onToggleExpand={onToggleExpand}
+            onNavigateToOrder={onNavigateToOrder}
+          />
+        )}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
 
 export default TableListItem;

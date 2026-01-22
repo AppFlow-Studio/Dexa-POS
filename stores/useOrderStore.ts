@@ -1416,7 +1416,7 @@ const syncPaymentToBackend = async (
             sync_status: "pending" as const,
             sync_error: error.message || "Sync failed",
             sync_attempt_count:
-              ((payments[paymentIndex] as any).sync_attempt_count || 0) + 1,
+              (payments[paymentIndex].sync_attempt_count || 0) + 1,
           };
         }
 
@@ -3170,6 +3170,8 @@ export const useOrderStore = create<OrderState>()(
                 | "Closed",
               paid_status: mapPaymentStatus(serverOrder.payment_status),
               service_location_id: serverOrder.table_number ?? null,
+              // table_number IS the table name (e.g., "T1"), use it directly for display
+              service_location_name: serverOrder.table_number || undefined,
               customer_name: "",
 
               // Financial - use server values
@@ -5338,25 +5340,47 @@ export const useOrderStore = create<OrderState>()(
             const paymentTimestamp = new Date().toISOString();
 
             // Build itemsCovered from itemAllocations for payment tracking (with quantities)
-            const itemsCovered = itemAllocations?.map((alloc) => ({
-              itemId: alloc.itemId,
-              quantity: alloc.quantity,
-            }));
+            const itemsCovered =
+              itemAllocations?.map((alloc) => {
+                const item = order.items.find(
+                  (i) =>
+                    i.db_order_item_id === alloc.itemId ||
+                    i.id === alloc.itemId,
+                );
+                return {
+                  itemId: alloc.itemId,
+                  itemName: item?.name || "Unknown Item",
+                  quantity: alloc.quantity,
+                  unitPrice: item?.price || 0,
+                  subtotal: (item?.price || 0) * alloc.quantity,
+                };
+              }) || [];
 
-            const newPayment = {
+            const newPayment: OrderProfilePayment = {
+              id: localPaymentId, // Use local ID as temporary main ID
               localId: localPaymentId, // Unique local identifier for sync matching
               amount,
               method,
               timestamp: paymentTimestamp,
-              sync_status: "pending" as const,
+              sync_status: "pending",
+              sync_attempt_count: 0,
+              tip_amount: tipAmount || 0,
+              total_collected: amount + (tipAmount || 0),
+              itemsCovered,
+              status: "captured", // Locally deemed captured until sync says otherwise
+              isVoided: false,
               ...(cardBrand && { cardBrand }),
               ...(last4 && { last4 }),
-              ...(tipAmount && { tipAmount }),
               ...(transactionDetails && { transactionDetails }),
               // Track split info for reconciliation
-              ...(splitPortionIndex && { splitPortionIndex }),
-              ...(splitCount && { splitCount }),
-              ...(itemsCovered && { itemsCovered }),
+              ...(splitCount &&
+                splitPortionIndex && {
+                  splitInfo: {
+                    portionIndex: splitPortionIndex,
+                    totalPortions: splitCount,
+                    isLastPortion: splitPortionIndex === splitCount,
+                  },
+                }),
             };
 
             const newPayments = [...(order.payments || []), newPayment];
@@ -5464,48 +5488,56 @@ export const useOrderStore = create<OrderState>()(
               : order.opened_at;
 
             // Single atomic update with optimistic payment status
-            set((state) => ({
-              ordersById: {
-                ...state.ordersById,
-                [orderId]: {
-                  ...state.ordersById[orderId],
-                  payments: newPayments,
-                  items: updatedItems,
-                  total_amount:
-                    method === "Cash"
-                      ? totals.cash_total_amount
-                      : totals.total_amount,
-                  total_tax:
-                    method === "Cash"
-                      ? totals.cash_tax_amount
-                      : totals.tax_amount,
-                  total_discount: totals.discount_amount,
-                  // Update order_status to "preparing" if it was in draft/pending
-                  order_status: newOrderStatus,
-                  // Set opened_at timestamp when transitioning
-                  opened_at: newOpenedAt,
-                  // Optimistic update based on calculated outstanding
-                  paid_status: isFullyPaid
-                    ? ("Paid" as const)
-                    : ("Pending" as const),
-                  check_status:
-                    state.ordersById[orderId].check_status || "Opened",
+            set((state) => {
+              const currentOrder = state.ordersById[orderId];
+              if (!currentOrder) return {};
+
+              const updatedOrderProfile: OrderProfile = {
+                ...currentOrder,
+                payments: newPayments,
+                items: updatedItems,
+                total_amount:
+                  method === "Cash"
+                    ? totals.cash_total_amount
+                    : totals.total_amount,
+                total_tax:
+                  method === "Cash"
+                    ? totals.cash_tax_amount
+                    : totals.tax_amount,
+                total_discount: totals.discount_amount,
+                // Update order_status to "preparing" if it was in draft/pending
+                order_status: newOrderStatus,
+                // Set opened_at timestamp when transitioning
+                opened_at: newOpenedAt,
+                // Optimistic update based on calculated outstanding
+                paid_status: isFullyPaid ? "Paid" : "Pending",
+                check_status: currentOrder.check_status || "Opened",
+              };
+
+              const updates: Partial<OrderState> = {
+                ordersById: {
+                  ...state.ordersById,
+                  [orderId]: updatedOrderProfile,
                 },
-              },
-              ...(orderId === get().activeOrderId
-                ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                    activeOrderTotalCash: totals.cash_total_amount,
-                    activeOrderOutstandingCash: totals.cash_outstanding_total,
-                  }
-                : {}),
-            }));
+              };
+
+              // Add active order updates if applicable
+              if (orderId === get().activeOrderId) {
+                updates.activeOrderSubtotal = totals.subtotal;
+                updates.activeOrderTax = totals.tax_amount;
+                updates.activeOrderTotal = totals.total_amount;
+                updates.activeOrderDiscount = totals.discount_amount;
+                updates.activeOrderOutstandingSubtotal =
+                  totals.outstanding_subtotal;
+                updates.activeOrderOutstandingTax = totals.outstanding_tax;
+                updates.activeOrderOutstandingTotal = totals.outstanding_total;
+                updates.activeOrderTotalCash = totals.cash_total_amount;
+                updates.activeOrderOutstandingCash =
+                  totals.cash_outstanding_total;
+              }
+
+              return updates;
+            });
 
             // Sync to backend - await result and return success/failure
             // Pass rollbackState to revert optimistic updates on sync failure
@@ -7610,24 +7642,37 @@ export const useOrderStore = create<OrderState>()(
                 const allItems = [...syncedItems, ...newItemsFromDb];
 
                 // Map payments from database
-                const syncedPayments =
+                const syncedPayments: OrderProfilePayment[] =
                   dbPayments?.map((p) => ({
                     id: p.id,
+                    db_payment_id: p.id, // Ensure db_payment_id is set
                     amount: p.amount,
                     method: (p.payment_method === "card"
                       ? "Card"
                       : "Cash") as PaymentType,
                     cardBrand: p.card_brand,
                     last4: p.card_last4,
-                    tip_amount: p.tip_amount,
+                    tip_amount: p.tip_amount || 0,
+                    total_collected: p.amount + (p.tip_amount || 0),
                     // Convert backend item_ids to new format with quantities
                     // Backend doesn't store quantities per payment, so default to 1
                     itemsCovered: (p.item_ids || []).map((itemId: string) => ({
                       itemId,
+                      itemName: "Item", // Placeholder
                       quantity: 1,
+                      unitPrice: 0, // Placeholder
+                      subtotal: 0, // Placeholder
                     })),
                     timestamp: p.created_at,
+                    status:
+                      p.status === "voided"
+                        ? "voided"
+                        : p.status === "refunded"
+                          ? "refunded"
+                          : "captured",
                     isVoided: p.status === "voided",
+                    sync_status: "synced",
+                    sync_attempt_count: 0,
                   })) ||
                   localOrder?.payments ||
                   [];
@@ -7661,49 +7706,49 @@ export const useOrderStore = create<OrderState>()(
                   ? state.orderIds
                   : [...state.orderIds, localOrderId];
 
-                return {
+                const updatedOrderProfile: OrderProfile = {
+                  ...baseOrderProfile,
+                  items: allItems,
+                  payments: syncedPayments,
+                  // Use database as source of truth for financial data
+                  amount_paid: dbOrder.amount_paid || 0,
+                  amount_due: dbOrder.amount_due || 0,
+                  cash_amount_due: dbOrder.cash_amount_due, // Direct from DB - authoritative
+                  total_amount: dbOrder.card_total || dbOrder.total_amount,
+                  total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
+                  paid_status: syncedPaidStatus,
+                  check_status: isPaid ? "Closed" : "Opened",
+                  // Session tracking - sync from database
+                  session_id: dbOrder.session_id,
+                  sync_status: "synced",
+                };
+
+                const updates: Partial<OrderState> = {
                   ordersById: {
                     ...state.ordersById,
-                    [localOrderId]: {
-                      ...baseOrderProfile,
-                      items: allItems,
-                      payments: syncedPayments,
-                      // Use database as source of truth for financial data
-                      amount_paid: dbOrder.amount_paid || 0,
-                      amount_due: dbOrder.amount_due || 0,
-                      cash_amount_due: dbOrder.cash_amount_due, // Direct from DB - authoritative
-                      total_amount: dbOrder.card_total || dbOrder.total_amount,
-                      total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
-                      subtotal: dbOrder.card_subtotal || dbOrder.subtotal,
-                      paid_status: syncedPaidStatus,
-                      check_status: isPaid
-                        ? ("Closed" as const)
-                        : ("Opened" as const),
-                      // Session tracking - sync from database
-                      session_id: dbOrder.session_id,
-                      sync_status: "synced" as const,
-                    },
+                    [localOrderId]: updatedOrderProfile,
                   },
                   orderIds: newOrderIds,
-                  // Update outstanding totals if this is the active order
-                  ...(localOrderId === state.activeOrderId
-                    ? {
-                        activeOrderOutstandingTotal: dbOrder.amount_due || 0,
-                        // Priority: backend cash_amount_due > current local value > card amount_due
-                        activeOrderOutstandingCash:
-                          dbOrder.cash_amount_due ??
-                          state.activeOrderOutstandingCash ??
-                          dbOrder.amount_due ??
-                          0,
-                        activeOrderTotal:
-                          dbOrder.card_total || dbOrder.total_amount || 0,
-                        activeOrderTax:
-                          dbOrder.card_tax_amount || dbOrder.tax_amount || 0,
-                        activeOrderSubtotal:
-                          dbOrder.card_subtotal || dbOrder.subtotal || 0,
-                      }
-                    : {}),
                 };
+
+                // Update outstanding totals if this is the active order
+                if (localOrderId === state.activeOrderId) {
+                  updates.activeOrderOutstandingTotal = dbOrder.amount_due || 0;
+                  // Priority: backend cash_amount_due > current local value > card amount_due
+                  updates.activeOrderOutstandingCash =
+                    dbOrder.cash_amount_due ??
+                    state.activeOrderOutstandingCash ??
+                    dbOrder.amount_due ??
+                    0;
+                  updates.activeOrderTotal =
+                    dbOrder.card_total || dbOrder.total_amount || 0;
+                  updates.activeOrderTax =
+                    dbOrder.card_tax_amount || dbOrder.tax_amount || 0;
+                  updates.activeOrderSubtotal =
+                    dbOrder.card_subtotal || dbOrder.subtotal || 0;
+                }
+
+                return updates;
               });
 
               console.log(

@@ -1,6 +1,9 @@
 import { useToast } from "@/contexts/ToastContext";
 import { CartItem } from "@/lib/types";
-import { getAutoRetryCount, isAutoRetryInProgress } from "@/services/offlineSyncService";
+import {
+  getAutoRetryCount,
+  isAutoRetryInProgress,
+} from "@/services/offlineSyncService";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -8,7 +11,14 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { AlertTriangle, Clock, Plus, RefreshCw, Send, WifiOff } from "lucide-react-native";
+import {
+  AlertTriangle,
+  Clock,
+  Plus,
+  RefreshCw,
+  Send,
+  WifiOff,
+} from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
@@ -37,7 +47,7 @@ const BillSectionContent = React.memo(
       </>
     );
   },
-  (prev, next) => prev.cart === next.cart
+  (prev, next) => prev.cart === next.cart,
 );
 
 const BillSection = ({
@@ -56,7 +66,7 @@ const BillSection = ({
 
   // FIXED: Only subscribe to the active order, not the entire ordersById object
   const activeOrder = useOrderStore((state) =>
-    state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
+    state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined,
   );
 
   // Phase 7: Use derived selector instead of 3 individual store selectors
@@ -64,7 +74,7 @@ const BillSection = ({
 
   const startNewOrder = useOrderStore((state) => state.startNewOrder);
   const sendNewItemsToKitchen = useOrderStore(
-    (state) => state.sendNewItemsToKitchen
+    (state) => state.sendNewItemsToKitchen,
   );
   const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
   const setActiveOrder = useOrderStore((state) => state.setActiveOrder);
@@ -84,14 +94,14 @@ const BillSection = ({
   const cart = useMemo(() => activeOrder?.items || [], [activeOrder?.items]);
   const hasDraftItems = useMemo(
     () => cart.some((item) => item.isDraft),
-    [cart]
+    [cart],
   );
   const newItemsCount = useMemo(
     () =>
       cart.filter(
-        (item) => item.kitchen_status === "new" || !item.kitchen_status
+        (item) => item.kitchen_status === "new" || !item.kitchen_status,
       ).length,
-    [cart]
+    [cart],
   );
 
   // Get sync status for the active order
@@ -100,13 +110,16 @@ const BillSection = ({
       activeOrderId
         ? getSyncStatus(activeOrderId)
         : { pending: 0, failed: 0, synced: 0 },
-    [activeOrderId, getSyncStatus, cart] // Include cart to recompute when items change
+    [activeOrderId, getSyncStatus, cart], // Include cart to recompute when items change
   );
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
 
   // Track auto-retry state for UI indicator
-  const [autoRetryState, setAutoRetryState] = useState({ isRetrying: false, count: 0 });
+  const [autoRetryState, setAutoRetryState] = useState({
+    isRetrying: false,
+    count: 0,
+  });
 
   // Poll for auto-retry status when there are failed syncs
   useEffect(() => {
@@ -197,7 +210,7 @@ const BillSection = ({
       displayBalanceDue,
       isPaymentSheetOpen,
       isProcessing,
-    ]
+    ],
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
   // OPTIMIZED: Wrap callbacks with useCallback to prevent recreation on each render
@@ -256,7 +269,13 @@ const BillSection = ({
       return;
     }
     // Directly open the payment bottom sheet to the method selection
-    usePaymentStore.getState().open("Card", activeOrder?.service_location_id || null, "payment-method-selection");
+    usePaymentStore
+      .getState()
+      .open(
+        "Card",
+        activeOrder?.service_location_id || null,
+        "payment-method-selection",
+      );
   };
 
   const handleSendToKitchen = () => {
@@ -285,9 +304,26 @@ const BillSection = ({
   };
 
   // OPTIMIZED: Wrap callback with useCallback
+  // Reuse existing empty draft order if one exists (prevents inflating order counts)
   const handleStartNewOrder = useCallback(() => {
-    const newOrder = startNewOrder();
-    setActiveOrder(newOrder.id);
+    // Check if there's already an empty draft order (not synced to backend)
+    const ordersById = useOrderStore.getState().ordersById;
+    const existingEmptyDraft = Object.values(ordersById).find(
+      (o) =>
+        !o.db_order_id && // Not synced to backend
+        o.order_status === "draft" &&
+        o.items.length === 0 &&
+        o.service_location_id === null, // Not assigned to a table
+    );
+
+    if (existingEmptyDraft) {
+      // Reuse existing empty draft
+      setActiveOrder(existingEmptyDraft.id);
+    } else {
+      // Create new order only if no reusable draft exists
+      const newOrder = startNewOrder();
+      setActiveOrder(newOrder.id);
+    }
   }, [startNewOrder, setActiveOrder]);
 
   if (!activeOrderId)
@@ -338,8 +374,9 @@ const BillSection = ({
             <TouchableOpacity
               onPress={handleRetryFailedSyncs}
               disabled={autoRetryState.isRetrying}
-              className={`flex-row items-center justify-between px-3 py-2 rounded-lg ${autoRetryState.isRetrying ? "bg-amber-600/80" : "bg-red-600/80"
-                }`}
+              className={`flex-row items-center justify-between px-3 py-2 rounded-lg ${
+                autoRetryState.isRetrying ? "bg-amber-600/80" : "bg-red-600/80"
+              }`}
               activeOpacity={0.7}
             >
               <View className="flex-row items-center">
@@ -347,14 +384,16 @@ const BillSection = ({
                   <>
                     <ActivityIndicator size="small" color="#FFFFFF" />
                     <Text className="text-white text-sm font-medium ml-2">
-                      Auto-retrying {autoRetryState.count} operation{autoRetryState.count > 1 ? "s" : ""}...
+                      Auto-retrying {autoRetryState.count} operation
+                      {autoRetryState.count > 1 ? "s" : ""}...
                     </Text>
                   </>
                 ) : (
                   <>
                     <AlertTriangle size={16} color="#FFFFFF" />
                     <Text className="text-white text-sm font-medium ml-2">
-                      {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""} failed to sync
+                      {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""}{" "}
+                      failed to sync
                     </Text>
                   </>
                 )}
@@ -378,14 +417,16 @@ const BillSection = ({
           )}
 
           {/* Pending Payment Syncs Banner (only when online and has pending payments) */}
-          {isOnline && !hasFailedSyncs && activeOrder?.payments?.some(p => p.sync_status === "pending") && (
-            <View className="flex-row items-center justify-center bg-amber-600/70 px-3 py-2 rounded-lg">
-              <Clock size={16} color="#FFFFFF" />
-              <Text className="text-white text-sm font-medium ml-2">
-                Payment pending sync...
-              </Text>
-            </View>
-          )}
+          {isOnline &&
+            !hasFailedSyncs &&
+            activeOrder?.payments?.some((p) => p.sync_status === "pending") && (
+              <View className="flex-row items-center justify-center bg-amber-600/70 px-3 py-2 rounded-lg">
+                <Clock size={16} color="#FFFFFF" />
+                <Text className="text-white text-sm font-medium ml-2">
+                  Payment pending sync...
+                </Text>
+              </View>
+            )}
 
           {/* Syncing Indicator (only when online and syncing) */}
           {isOnline && !hasFailedSyncs && hasPendingSyncs && (
@@ -454,8 +495,8 @@ const BillSection = ({
                 isPayButtonDisabled
                   ? "bg-gray-500"
                   : isPartiallyPaid
-                  ? "bg-green-600"
-                  : "bg-blue-600"
+                    ? "bg-green-600"
+                    : "bg-blue-600"
               }`}
             >
               {hasPendingSyncs || isProcessing ? (
@@ -473,7 +514,7 @@ const BillSection = ({
             </TouchableOpacity>
           </View>
           {/* Cash Discount Option */}
-         
+
           <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
             <Text className="text-center text-sm text-green-400">
               Pay cash: ${cashBalanceDue?.toFixed(2)} (save $

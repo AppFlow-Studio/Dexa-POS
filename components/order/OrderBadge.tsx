@@ -1,9 +1,15 @@
 import { OrderProfile } from "@/lib/types";
-import { useOrderStore } from "@/stores/useOrderStore";
 import { useWasOrderRecentlyUpdated } from "@/stores/useConflictStore";
-import { CheckCircle, CreditCard, Eye, Repeat2, RefreshCw } from "lucide-react-native";
-import React, { useState } from "react";
-import { Text, TouchableOpacity, View, Animated } from "react-native";
+import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  CheckCircle,
+  CreditCard,
+  Eye,
+  RefreshCw,
+  Repeat2,
+} from "lucide-react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 import Popover from "react-native-popover-view";
 
 interface OrderBadgeProps {
@@ -13,110 +19,124 @@ interface OrderBadgeProps {
   onRetrieve: () => void;
 }
 
-const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
-  order,
-  onMarkReady,
-  onViewItems,
-  onRetrieve,
-}) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-
-  // Phase 6: Check if order was recently updated by another station
-  const wasRecentlyUpdated = useWasOrderRecentlyUpdated(order.db_order_id || order.id);
-
-  // Calculate payment info - prioritize backend values
-  const amountDue = order.amount_due ?? order.total_amount ?? 0;
-  const amountPaid = order.amount_paid ?? 0;
-  const isPartiallyPaid = amountPaid > 0 && order.paid_status !== "Paid";
-  const hasPayments = (order.payments?.length ?? 0) > 0;
-//  console.log("order [OrderBadgeComponent]", order.display_number,  order.amount_due);
-  // Cash pricing - use backend value or fallback to amountDue (no savings if not available)
-  const cashAmountDue = order.cash_amount_due ?? amountDue;
-  const cashSavings = amountDue - cashAmountDue;
-
-  // --- Color logic updated to use backend status values ---
-  const getStatusColor = (status: string, paidStatus: string) => {
-    if (status === "preparing") {
-      if (paidStatus === "Paid") {
-        return {
-          dot: "#3b82f6", // Teal
-          bg: "#bae6fd", // Light blue
-          border: "#2dd4bf", // Teal border
-          text: "#134e4a", // Dark teal
-        };
-      } else if( paidStatus === "Partial" ) {
-        return {
-          dot: "#8b5cf6", // Purple
-          bg: "#f5f3ff", // Light purple
-          border: "#c4b5fd", // Purple border
-          text: "#581c87", // Dark purple
-        };
-      } else {
-        return {
-          dot: "#f97316", // Orange
-          bg: "#fef3c7", // Light yellow
-          border: "#fbbf24", // Yellow border
-          text: "#92400e", // Dark brown
-        };
-      }
-    }
-    if (status === "ready") {
+// ============================================================================
+// MEMOIZED COLOR HELPER - Extracted outside component to avoid recreation
+// ============================================================================
+const getStatusColor = (status: string, paidStatus: string) => {
+  if (status === "preparing") {
+    if (paidStatus === "Paid") {
       return {
-        dot: "#10b981", // Green
-        bg: "#d1fae5", // Light green
-        border: "#34d399", // Green border
-        text: "#065f46", // Dark green
+        dot: "#3b82f6",
+        bg: "#bae6fd",
+        border: "#2dd4bf",
+        text: "#134e4a",
+      };
+    } else if (paidStatus === "Partial") {
+      return {
+        dot: "#8b5cf6",
+        bg: "#f5f3ff",
+        border: "#c4b5fd",
+        text: "#581c87",
+      };
+    } else {
+      return {
+        dot: "#f97316",
+        bg: "#fef3c7",
+        border: "#fbbf24",
+        text: "#92400e",
       };
     }
+  }
+  if (status === "ready") {
     return {
-      dot: "#6b7280", // Gray
-      bg: "#f3f4f6", // Light gray
-      border: "#d1d5db", // Gray border
-      text: "#374151", // Dark gray
+      dot: "#10b981",
+      bg: "#d1fae5",
+      border: "#34d399",
+      text: "#065f46",
     };
+  }
+  return {
+    dot: "#6b7280",
+    bg: "#f3f4f6",
+    border: "#d1d5db",
+    text: "#374151",
   };
+};
 
-  const colors = getStatusColor(order.order_status, order.paid_status);
+// ============================================================================
+// LAZY POPOVER CONTENT - Only renders when popover is visible
+// ============================================================================
+interface PopoverContentProps {
+  order: OrderProfile;
+  currentStationId: string | null;
+  onMarkReady: () => void;
+  onViewItems: () => void;
+  onRetrieve: () => void;
+  onClose: () => void;
+}
 
-  return (
-    <Popover
-      isVisible={showTooltip}
-      onRequestClose={() => setShowTooltip(false)}
+const PopoverContent = React.memo<PopoverContentProps>(
+  ({
+    order,
+    currentStationId,
+    onMarkReady,
+    onViewItems,
+    onRetrieve,
+    onClose,
+  }) => {
+    // Memoize payment calculations
+    const {
+      amountDue,
+      amountPaid,
+      isPartiallyPaid,
+      hasPayments,
+      cashAmountDue,
+      cashSavings,
+    } = useMemo(() => {
+      const due = order.amount_due ?? order.total_amount ?? 0;
+      const paid = order.amount_paid ?? 0;
+      const partial = paid > 0 && order.paid_status !== "Paid";
+      const payments = (order.payments?.length ?? 0) > 0;
+      const cashDue = order.cash_amount_due ?? due;
+      const savings = due - cashDue;
+      return {
+        amountDue: due,
+        amountPaid: paid,
+        isPartiallyPaid: partial,
+        hasPayments: payments,
+        cashAmountDue: cashDue,
+        cashSavings: savings,
+      };
+    }, [
+      order.amount_due,
+      order.total_amount,
+      order.amount_paid,
+      order.paid_status,
+      order.payments?.length,
+      order.cash_amount_due,
+    ]);
 
-      popoverStyle={{ backgroundColor: "#313131", borderRadius: 12 }}
-      from={
-        <TouchableOpacity
-          onPress={() => setShowTooltip(true)}
-          className="flex-row items-center px-3 py-2 rounded-lg border"
-          style={{
-            backgroundColor: colors.bg,
-            borderColor: wasRecentlyUpdated ? "#3b82f6" : colors.border,
-            borderWidth: wasRecentlyUpdated ? 2 : 1,
-          }}
-        >
-          {/* Phase 6: Updated indicator */}
-          {wasRecentlyUpdated && (
-            <View className="mr-1.5">
-              <RefreshCw color="#3b82f6" size={14} />
-            </View>
-          )}
-          <View
-            className="w-2.5 h-2.5 rounded-full mr-2"
-            style={{ backgroundColor: colors.dot }}
-          />
-          <Text
-            className="font-medium text-base"
-            style={{ color: colors.text }}
-            numberOfLines={1}
-          >
-            {order.customer_name
-              ? order.customer_name
-              : order.display_number || order.order_number || `#${order.id.slice(-4)}`}{" "}
-            - {order.order_status}
-          </Text>
-        </TouchableOpacity>
-      }
-    >
+    // Memoize formatted time - expensive Date operation
+    const formattedTime = useMemo(() => {
+      if (!order.opened_at) return "";
+      return new Date(order.opened_at).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }, [order.opened_at]);
+
+    // Memoize display ID
+    const displayId = useMemo(() => {
+      return (
+        order.display_number || order.order_number || `#${order.id.slice(-4)}`
+      );
+    }, [order.display_number, order.order_number, order.id]);
+
+    // Check if from another station
+    const isFromOtherStation =
+      order._sourceStationName && order.station_id !== currentStationId;
+
+    return (
       <View className="bg-[#313131] rounded-xl shadow-lg border border-gray-600 w-[380px]">
         <View className="p-4 border-b border-gray-600">
           {/* Flexible Header that wraps */}
@@ -129,7 +149,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
             </Text>
             <View className="px-2 py-1 rounded-md bg-gray-700/80">
               <Text className="text-sm font-semibold text-gray-300">
-                {order.display_number || order.order_number || `#${order.id.slice(-4)}`}
+                {displayId}
               </Text>
             </View>
             <View className="px-2 py-1 rounded-md bg-blue-900/50">
@@ -138,20 +158,22 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
               </Text>
             </View>
             <View
-              className={`px-2 py-1 rounded-md ${order.paid_status === "Paid"
-                ? "bg-green-900/50"
-                : order.paid_status === "Partial" || isPartiallyPaid
-                  ? "bg-purple-900/50"
-                  : "bg-red-900/50"
-                }`}
+              className={`px-2 py-1 rounded-md ${
+                order.paid_status === "Paid"
+                  ? "bg-green-900/50"
+                  : order.paid_status === "Partial" || isPartiallyPaid
+                    ? "bg-purple-900/50"
+                    : "bg-red-900/50"
+              }`}
             >
               <Text
-                className={`text-sm font-semibold ${order.paid_status === "Paid"
-                  ? "text-green-400"
-                  : order.paid_status === "Partial" || isPartiallyPaid
-                    ? "text-purple-400"
-                    : "text-red-400"
-                  }`}
+                className={`text-sm font-semibold ${
+                  order.paid_status === "Paid"
+                    ? "text-green-400"
+                    : order.paid_status === "Partial" || isPartiallyPaid
+                      ? "text-purple-400"
+                      : "text-red-400"
+                }`}
               >
                 {order.paid_status === "Paid"
                   ? "Paid"
@@ -161,16 +183,18 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
               </Text>
             </View>
             <View
-              className={`px-2 py-1 rounded-md ${order.order_status === "preparing"
-                ? "bg-orange-900/50"
-                : "bg-gray-700/80"
-                }`}
+              className={`px-2 py-1 rounded-md ${
+                order.order_status === "preparing"
+                  ? "bg-orange-900/50"
+                  : "bg-gray-700/80"
+              }`}
             >
               <Text
-                className={`text-sm font-semibold ${order.order_status === "preparing"
-                  ? "text-orange-400"
-                  : "text-gray-300"
-                  }`}
+                className={`text-sm font-semibold ${
+                  order.order_status === "preparing"
+                    ? "text-orange-400"
+                    : "text-gray-300"
+                }`}
               >
                 {order.order_status}
               </Text>
@@ -178,7 +202,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           </View>
 
           {/* Show source station for orders from other stations */}
-          {order._sourceStationName && order.station_id !== useOrderStore.getState().currentStationId && (
+          {isFromOtherStation && (
             <View className="flex-row items-center mt-2 pt-2 border-t border-gray-700">
               <Repeat2 color="#3b82f6" size={14} />
               <Text className="text-blue-400 text-xs ml-1">
@@ -190,24 +214,23 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           <View className="flex-row justify-between items-center w-full">
             <View>
               <Text className="text-base text-gray-400">
-                {order.items.length} items - Total: ${order.total_amount?.toFixed(2) || "0.00"}
+                {order.items.length} items - Total: $
+                {order.total_amount?.toFixed(2) || "0.00"}
               </Text>
-              {/* Show paid amount if there are partial payments */}
               {isPartiallyPaid && (
                 <Text className="text-sm text-green-400 font-medium">
                   Paid: ${amountPaid.toFixed(2)}
                 </Text>
               )}
-              {/* Show outstanding amount if not fully paid */}
               {order.paid_status !== "Paid" && amountDue > 0.01 && (
                 <Text className="text-sm text-yellow-400 font-bold">
                   Due: ${amountDue.toFixed(2)}
                 </Text>
               )}
-              {/* Show cash savings option */}
               {order.paid_status !== "Paid" && cashSavings > 0.01 && (
                 <Text className="text-xs text-green-400">
-                  Cash: ${cashAmountDue.toFixed(2)} (save ${cashSavings.toFixed(2)})
+                  Cash: ${cashAmountDue.toFixed(2)} (save $
+                  {cashSavings.toFixed(2)})
                 </Text>
               )}
               {order.paid_status === "Paid" && (
@@ -217,11 +240,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
               )}
             </View>
             <Text className="text-base text-gray-400">
-              Opened at{" "}
-              {new Date(order.opened_at!).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              Opened at {formattedTime}
             </Text>
           </View>
         </View>
@@ -235,11 +254,16 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
             {order.payments
               .filter((p) => !p.isVoided)
               .map((p, i) => (
-                <View key={i} className="flex-row justify-between items-center py-0.5">
+                <View
+                  key={i}
+                  className="flex-row justify-between items-center py-0.5"
+                >
                   <View className="flex-row items-center gap-2">
                     <Text className="text-gray-300 text-sm">{p.method}</Text>
                     {p.last4 && (
-                      <Text className="text-gray-500 text-xs">••••{p.last4}</Text>
+                      <Text className="text-gray-500 text-xs">
+                        ••••{p.last4}
+                      </Text>
                     )}
                   </View>
                   <Text className="text-gray-300 text-sm font-medium">
@@ -256,7 +280,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
             <TouchableOpacity
               onPress={() => {
                 onMarkReady();
-                setShowTooltip(false);
+                onClose();
               }}
               className="flex-row items-center p-3 rounded-lg"
             >
@@ -270,7 +294,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           <TouchableOpacity
             onPress={() => {
               onViewItems();
-              setShowTooltip(false);
+              onClose();
             }}
             className="flex-row items-center p-3 rounded-lg"
           >
@@ -284,7 +308,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
             <TouchableOpacity
               onPress={() => {
                 onRetrieve();
-                setShowTooltip(false);
+                onClose();
               }}
               className="flex-row items-center justify-between p-3 rounded-lg bg-blue-600/20"
             >
@@ -301,6 +325,100 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           )}
         </View>
       </View>
+    );
+  },
+);
+
+// ============================================================================
+// MAIN COMPONENT - Lightweight badge with lazy popover
+// ============================================================================
+const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
+  order,
+  onMarkReady,
+  onViewItems,
+  onRetrieve,
+}) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  // PERFORMANCE: Get currentStationId via selector (not getState() during render)
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+
+  // Phase 6: Check if order was recently updated by another station
+  const wasRecentlyUpdated = useWasOrderRecentlyUpdated(
+    order.db_order_id || order.id,
+  );
+
+  // PERFORMANCE: Memoize colors calculation
+  const colors = useMemo(
+    () => getStatusColor(order.order_status, order.paid_status),
+    [order.order_status, order.paid_status],
+  );
+
+  // PERFORMANCE: Memoize display text
+  const badgeText = useMemo(() => {
+    const name = order.customer_name
+      ? order.customer_name
+      : order.display_number || order.order_number || `#${order.id.slice(-4)}`;
+    return `${name} - ${order.order_status}`;
+  }, [
+    order.customer_name,
+    order.display_number,
+    order.order_number,
+    order.id,
+    order.order_status,
+  ]);
+
+  // PERFORMANCE: Memoize callbacks to prevent recreation
+  const handleClose = useCallback(() => setShowTooltip(false), []);
+  const handleOpen = useCallback(() => setShowTooltip(true), []);
+
+  return (
+    <Popover
+      isVisible={showTooltip}
+      onRequestClose={handleClose}
+      // PERFORMANCE: Disable animation for instant appearance
+      animationConfig={{ duration: 0 }}
+      popoverStyle={{ backgroundColor: "#313131", borderRadius: 12 }}
+      from={
+        <TouchableOpacity
+          onPress={handleOpen}
+          className="flex-row items-center px-3 py-2 rounded-lg border"
+          style={{
+            backgroundColor: colors.bg,
+            borderColor: wasRecentlyUpdated ? "#3b82f6" : colors.border,
+            borderWidth: wasRecentlyUpdated ? 2 : 1,
+          }}
+        >
+          {wasRecentlyUpdated && (
+            <View className="mr-1.5">
+              <RefreshCw color="#3b82f6" size={14} />
+            </View>
+          )}
+          <View
+            className="w-2.5 h-2.5 rounded-full mr-2"
+            style={{ backgroundColor: colors.dot }}
+          />
+          <Text
+            className="font-medium text-base"
+            style={{ color: colors.text }}
+            numberOfLines={1}
+          >
+            {badgeText}
+          </Text>
+        </TouchableOpacity>
+      }
+    >
+      {/* PERFORMANCE: Lazy render - only render content when popover is visible */}
+      {showTooltip ? (
+        <PopoverContent
+          order={order}
+          currentStationId={currentStationId}
+          onMarkReady={onMarkReady}
+          onViewItems={onViewItems}
+          onRetrieve={onRetrieve}
+          onClose={handleClose}
+        />
+      ) : null}
     </Popover>
   );
 };

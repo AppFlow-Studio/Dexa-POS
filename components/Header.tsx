@@ -150,15 +150,29 @@ const Header = () => {
       return;
     }
 
-    // Context-aware back navigation for /tables
+    // Handle table detail pages (/tables/[tableId]) -> always go to /tables
+    // Uses replace to avoid navigation loop issues
+    if (
+      pathname.startsWith("/tables/") &&
+      pathname.split("/").length === 3 &&
+      !pathname.includes("edit-layout")
+    ) {
+      router.replace("/tables" as Href);
+      return;
+    }
+
+    // Handle clean-table pages (/tables/clean-table/[tableId]) -> always go to /tables
+    if (
+      pathname.startsWith("/tables/clean-table/") &&
+      pathname.split("/").length === 4
+    ) {
+      router.replace("/tables" as Href);
+      return;
+    }
+
+    // /tables back button -> always go to /home to avoid loop with table details
     if (pathname === "/tables") {
-      // Check if we can go back in history
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        // Fallback to /home if no history
-        router.push("/home");
-      }
+      router.push("/home");
       return;
     }
 

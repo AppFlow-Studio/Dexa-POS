@@ -16,7 +16,11 @@ import {
 } from "@/stores/useFloorPlanStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { setOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
+import {
+  setOrderStoreSupabaseClient,
+  useOrderStore,
+} from "@/stores/useOrderStore";
+import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { TaxRate } from "@/types/menu";
@@ -49,6 +53,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setCoursingSupabaseClient(supabase);
       setOfflineSyncSupabaseClient(supabase);
       setWaitlistSupabaseClient(supabase);
+      setPreviousOrdersSupabaseClient(supabase);
 
       // Initialize offline sync service (only once)
       if (!offlineSyncInitialized.current) {
@@ -59,7 +64,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log(
-        "Supabase client registered with order, floor plan, coursing, waitlist, and offline sync"
+        "Supabase client registered with order, floor plan, coursing, waitlist, and offline sync",
       );
     }
     // return () => {
@@ -91,7 +96,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
             email,
             phone
           )
-        `
+        `,
           )
           .eq("location_id", locationId)
           .eq("is_active", true);
@@ -106,8 +111,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         const mappedEmployees: EmployeeProfile[] = (data || []).map(
           (row: any) => {
             const profile = row.staff_profiles;
-            const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""
-              }`.trim();
+            const fullName = `${profile?.first_name || ""} ${
+              profile?.last_name || ""
+            }`.trim();
 
             return {
               id: row.id, // location_member id
@@ -121,7 +127,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
               phone: profile?.phone,
               shiftStatus: "clocked_out" as const,
             };
-          }
+          },
         );
 
         // Update employee store with mapped data
@@ -135,7 +141,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    [supabase, setEmployees, setEmployeeSyncState]
+    [supabase, setEmployees, setEmployeeSyncState],
   );
 
   // Sync floor plans from backend
@@ -173,7 +179,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         console.error("Floor plan sync failed:", error);
       }
     },
-    [supabase]
+    [supabase],
   );
 
   // Sync tax rates from tax_rates table
@@ -183,7 +189,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase
           .from("tax_rates")
           .select(
-            "id, location_id, name, percentage, tax_category, is_active, created_at, updated_at"
+            "id, location_id, name, percentage, tax_category, is_active, created_at, updated_at",
           )
           .eq("location_id", locationId)
           .eq("is_active", true);
@@ -200,7 +206,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         console.error("Tax rates sync error:", err);
       }
     },
-    [supabase]
+    [supabase],
   );
 
   // Sync employees and floor plans when store is selected (parallel)
@@ -225,14 +231,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // Fetch standalone entities (categories, items, modifiers not in menus)
   const { data: standaloneData } = useStandaloneSync(
     selectedStore?.merchant_id ?? null,
-    selectedStore?.id ?? null
+    selectedStore?.id ?? null,
   );
 
   // --- INVENTORY SYNC ---
   const { data: inventoryData } = useInventorySync(selectedStore?.id ?? null);
   const setInventoryData = useInventoryStore((state) => state.setInventoryData);
   const setInventorySupabase = useInventoryStore(
-    (state) => state.setSupabaseClient
+    (state) => state.setSupabaseClient,
   );
 
   useEffect(() => {
@@ -275,7 +281,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         inventoryData.inventoryItems.length,
         "items,",
         inventoryData.menuRecipes?.length || 0,
-        "menu recipes"
+        "menu recipes",
       );
     }
   }, [inventoryData]);
@@ -414,7 +420,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         const storeSettings = useStoreSettingsStore.getState();
 
         // Reconnect realtime if disconnected or reconnecting
-        if (floorPlanStore.realtimeStatus !== 'connected') {
+        if (floorPlanStore.realtimeStatus !== "connected") {
           floorPlanStore.manualReconnect();
         }
 
@@ -424,12 +430,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Phase 11.2: Refresh orders when app resumes from background
         // This ensures orders are up-to-date after tablet sleep/wake
         if (storeSettings.selectedStore?.id) {
-          useOrderStore.getState().initializeOrders(storeSettings.selectedStore.id, true);
+          useOrderStore
+            .getState()
+            .initializeOrders(storeSettings.selectedStore.id, true);
         }
       }
     };
 
-    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    const subscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange,
+    );
 
     return () => {
       subscription.remove();

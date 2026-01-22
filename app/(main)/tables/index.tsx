@@ -7,6 +7,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { getDeviceId } from "@/lib/deviceId";
 import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
   getOrderStoreSupabaseClient,
@@ -62,6 +63,7 @@ const TablesScreen = () => {
   const [isMergeMode, setMergeMode] = useState(false);
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
+  const { loggedInEmployee } = useEmployeeStore();
 
   useEffect(() => {
     if (!activeFloorPlanId && floorPlans.length > 0) {
@@ -320,6 +322,7 @@ const TablesScreen = () => {
               items: [],
               opened_at: backendOrder.created_at,
               guest_count: guestCount,
+              server_name: loggedInEmployee?.fullName || "Unknown",
             };
 
             // Inject into store

@@ -7,7 +7,7 @@ import { OrderProfile } from "@/lib/types";
  */
 export function deduplicateOrders(orders: OrderProfile[]): OrderProfile[] {
   const orderMap = new Map<string, OrderProfile>();
-  
+
   orders.forEach((order) => {
     // If no db_order_id, treat as unique and keep
     if (!order.db_order_id) {
@@ -31,7 +31,8 @@ export function deduplicateOrders(orders: OrderProfile[]): OrderProfile[] {
       } else if (!isExistingPrefetch && !isCurrentPrefetch) {
         // Both are real orders, keep the most recently active
         const currentActivity = order.last_activity_at || order.opened_at || "";
-        const existingActivity = existing.last_activity_at || existing.opened_at || "";
+        const existingActivity =
+          existing.last_activity_at || existing.opened_at || "";
         if (currentActivity > existingActivity) {
           orderMap.set(order.db_order_id, order);
         }
@@ -49,5 +50,7 @@ export function deduplicateOrders(orders: OrderProfile[]): OrderProfile[] {
  */
 export function filterPreviousOrders(orders: OrderProfile[]): OrderProfile[] {
   console.log("orders", orders.length);
-  return orders.filter((o) => o.order_status !== "draft");
+  return orders.filter(
+    (o) => o.order_status !== "draft" && o.db_order_id, // Only include orders that have been synced to backend
+  );
 }

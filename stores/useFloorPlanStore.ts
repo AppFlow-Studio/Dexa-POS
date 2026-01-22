@@ -9,9 +9,7 @@ import {
   TableStatus,
   WaitlistEntry,
 } from "@/types/db-floor-plan-types";
-import type {
-  TableSessionPayload
-} from '@/types/real-time';
+import type { TableSessionPayload } from "@/types/real-time";
 import { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import {
@@ -31,7 +29,7 @@ export const setFloorPlanSupabaseClient = (client: SupabaseClient | null) => {
 const getClient = () => {
   if (!_supabaseClient) {
     console.warn(
-      "Supabase client not set in useFloorPlanStore, some actions may fail."
+      "Supabase client not set in useFloorPlanStore, some actions may fail.",
     );
   }
   return _supabaseClient!;
@@ -46,9 +44,9 @@ interface FloorPlanState {
   tablesById: Record<string, FloorPlanObject>; // O(1) lookup map
   waitlist: WaitlistEntry[];
   reservations: Reservation[];
-  
+
   // Realtime State
-  realtimeStatus: 'connected' | 'reconnecting' | 'disconnected';
+  realtimeStatus: "connected" | "reconnecting" | "disconnected";
   realtimeError: string | null;
   _reconnectAttempts: number;
   _reconnectTimeout: ReturnType<typeof setTimeout> | null;
@@ -93,11 +91,11 @@ interface FloorPlanState {
     tableId: string,
     x: number,
     y: number,
-    rotation?: number
+    rotation?: number,
   ) => Promise<void>;
   updateTableName: (tableId: string, name: string) => Promise<void>; // Added
   updateTablePositionsBatch: (
-    updates: Array<{ id: string; x: number; y: number; rotation?: number }>
+    updates: Array<{ id: string; x: number; y: number; rotation?: number }>,
   ) => Promise<void>;
   removeTable: (tableId: string) => Promise<void>;
 
@@ -118,7 +116,7 @@ interface FloorPlanState {
   updateSessionStatus: (
     sessionId: string,
     status: TableStatus,
-    notes?: string
+    notes?: string,
   ) => Promise<void>;
   transferSession: (sessionId: string, newTableIds: string[]) => Promise<void>;
   mergeTable: (sessionId: string, tableId: string) => Promise<void>;
@@ -143,12 +141,12 @@ interface FloorPlanState {
     quotedWaitMinutes?: number;
   }) => Promise<{ waitlistId: string; position: number; quotedWait: number }>;
   notifyWaitlistParty: (
-    waitlistId: string
+    waitlistId: string,
   ) => Promise<{ phone: string; message: string }>;
   updateWaitlistStatus: (waitlistId: string, status: string) => Promise<void>;
   seatFromWaitlist: (
     waitlistId: string,
-    tableIds: string[]
+    tableIds: string[],
   ) => Promise<{ sessionId: string; orderId?: string }>;
 
   // Reservation Actions
@@ -166,20 +164,20 @@ interface FloorPlanState {
   }) => Promise<{ reservationId: string; confirmationNumber: string }>;
   updateReservationStatus: (
     reservationId: string,
-    status: Reservation["status"]
+    status: Reservation["status"],
   ) => Promise<void>;
   assignReservationTables: (
     reservationId: string,
-    tableIds: string[]
+    tableIds: string[],
   ) => Promise<void>;
   seatReservation: (
     reservationId: string,
-    tableIds?: string[]
+    tableIds?: string[],
   ) => Promise<{ sessionId: string; orderId?: string }>;
   checkAvailability: (
     date: string,
     time: string,
-    partySize: number
+    partySize: number,
   ) => Promise<FloorPlanObject[]>;
 
   // Undo/Redo (design mode)
@@ -198,12 +196,15 @@ interface FloorPlanState {
 // Helper function to rebuild the tablesById lookup map
 // Exported for use in other stores that need to update table state
 export const buildTablesById = (
-  tables: FloorPlanObject[]
+  tables: FloorPlanObject[],
 ): Record<string, FloorPlanObject> => {
-  return tables.reduce((acc, table) => {
-    acc[table.id] = table;
-    return acc;
-  }, {} as Record<string, FloorPlanObject>);
+  return tables.reduce(
+    (acc, table) => {
+      acc[table.id] = table;
+      return acc;
+    },
+    {} as Record<string, FloorPlanObject>,
+  );
 };
 
 export const useFloorPlanStore = create<FloorPlanState>()(
@@ -228,7 +229,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         isOnline: true,
         realtimeChannel: null,
 
-        realtimeStatus: 'disconnected',
+        realtimeStatus: "disconnected",
         realtimeError: null,
         // ====================================================================
         // SETTER ACTIONS (for external sync)
@@ -242,205 +243,228 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           set({ activeFloorPlanId: floorPlanId });
         },
 
-       // setupRealtimeSubscriptions with broadcast messages:
-setupRealtimeSubscriptions: async (locationId: string) => {
-  const supabase = getClient();
-  if (!supabase) return;
+        // setupRealtimeSubscriptions with broadcast messages:
+        setupRealtimeSubscriptions: async (locationId: string) => {
+          const supabase = getClient();
+          if (!supabase) return;
 
-  // Clean up existing
-  const existingChannel = get().realtimeChannel;
-  if (existingChannel) {
-    supabase.removeChannel(existingChannel);
-  }
-
-  // IMPORTANT: Set auth for private channels
-  await supabase.realtime.setAuth();
-
-  const channel = supabase
-    .channel(`location:${locationId}:tables`, {
-      config: { private: true }, // Use private channel with RLS
-    })
-    // Listen for session changes (INSERT/UPDATE/DELETE)
-    .on('broadcast', { event: 'INSERT' }, (payload) => {
-      console.log('[Realtime] Session INSERT:', payload.payload);
-      get()._handleSessionChange(payload.payload as TableSessionPayload);
-    })
-    .on('broadcast', { event: 'UPDATE' }, (payload) => {
-      console.log('[Realtime] Session UPDATE:', payload.payload);
-      get()._handleSessionChange(payload.payload as TableSessionPayload);
-    })
-    .on('broadcast', { event: 'DELETE' }, (payload) => {
-      console.log('[Realtime] Session DELETE:', payload.payload);
-      get()._handleSessionChange(payload.payload as TableSessionPayload);
-    })
-    // Listen for table assignment changes
-    .on('broadcast', { event: 'TABLE_ASSIGNMENT_INSERT' }, (payload) => {
-      get()._debouncedRefresh();
-    })
-    .on('broadcast', { event: 'TABLE_ASSIGNMENT_UPDATE' }, (payload) => {
-      get()._debouncedRefresh();
-    })
-    .on('broadcast', { event: 'TABLE_ASSIGNMENT_DELETE' }, (payload) => {
-      get()._debouncedRefresh();
-    })
-    // Listen for order updates linked to sessions
-    .on('broadcast', { event: 'SESSION_ORDER_UPDATE' }, (payload) => {
-      // Notify order store if needed
-      get()._debouncedRefresh();
-    })
-    .subscribe((status, err) => {
-      console.log('[Realtime] Status:', status, err);
-      
-      switch (status) {
-        case 'SUBSCRIBED':
-          set({
-            realtimeStatus: 'connected',
-            realtimeError: null,
-            isOnline: true,
-            _reconnectAttempts: 0 // Reset counter on success
-          });
-          // THROTTLE (Phase 1.3): Only refresh if last refresh was > 2 seconds ago
-          const lastSync = get().lastSyncAt;
-          const now = Date.now();
-          if (!lastSync || now - new Date(lastSync).getTime() > 2000) {
-            get().loadFloorPlanStatus();
-          } else {
-            console.log('[FloorPlanStore] Skipping refresh - last sync was < 2s ago');
+          // Clean up existing
+          const existingChannel = get().realtimeChannel;
+          if (existingChannel) {
+            supabase.removeChannel(existingChannel);
           }
-          break;
-          
-        case 'CHANNEL_ERROR':
-          set({ 
-            realtimeStatus: 'reconnecting',
-            realtimeError: err?.message || 'Connection error'
-          });
-          // Auto-reconnect with backoff
-          get()._handleReconnect(locationId);
-          break;
-          
-        case 'TIMED_OUT':
-          set({ realtimeStatus: 'reconnecting' });
-          get()._handleReconnect(locationId);
-          break;
-          
-        case 'CLOSED':
-          set({ realtimeStatus: 'disconnected', isOnline: false });
-          // Auto-reconnect on close (unless cleanup was called intentionally)
-          if (!get()._isCleaningUp) {
-            get()._handleReconnect(locationId);
+
+          // IMPORTANT: Set auth for private channels
+          await supabase.realtime.setAuth();
+
+          const channel = supabase
+            .channel(`location:${locationId}:tables`, {
+              config: { private: true }, // Use private channel with RLS
+            })
+            // Listen for session changes (INSERT/UPDATE/DELETE)
+            .on("broadcast", { event: "INSERT" }, (payload) => {
+              console.log("[Realtime] Session INSERT:", payload.payload);
+              get()._handleSessionChange(
+                payload.payload as TableSessionPayload,
+              );
+            })
+            .on("broadcast", { event: "UPDATE" }, (payload) => {
+              console.log("[Realtime] Session UPDATE:", payload.payload);
+              get()._handleSessionChange(
+                payload.payload as TableSessionPayload,
+              );
+            })
+            .on("broadcast", { event: "DELETE" }, (payload) => {
+              console.log("[Realtime] Session DELETE:", payload.payload);
+              get()._handleSessionChange(
+                payload.payload as TableSessionPayload,
+              );
+            })
+            // Listen for table assignment changes
+            .on(
+              "broadcast",
+              { event: "TABLE_ASSIGNMENT_INSERT" },
+              (payload) => {
+                get()._debouncedRefresh();
+              },
+            )
+            .on(
+              "broadcast",
+              { event: "TABLE_ASSIGNMENT_UPDATE" },
+              (payload) => {
+                get()._debouncedRefresh();
+              },
+            )
+            .on(
+              "broadcast",
+              { event: "TABLE_ASSIGNMENT_DELETE" },
+              (payload) => {
+                get()._debouncedRefresh();
+              },
+            )
+            // Listen for order updates linked to sessions
+            .on("broadcast", { event: "SESSION_ORDER_UPDATE" }, (payload) => {
+              // Notify order store if needed
+              get()._debouncedRefresh();
+            })
+            .subscribe((status, err) => {
+              console.log("[Realtime] Status:", status, err);
+
+              switch (status) {
+                case "SUBSCRIBED":
+                  set({
+                    realtimeStatus: "connected",
+                    realtimeError: null,
+                    isOnline: true,
+                    _reconnectAttempts: 0, // Reset counter on success
+                  });
+                  // THROTTLE (Phase 1.3): Only refresh if last refresh was > 2 seconds ago
+                  const lastSync = get().lastSyncAt;
+                  const now = Date.now();
+                  if (!lastSync || now - new Date(lastSync).getTime() > 2000) {
+                    get().loadFloorPlanStatus();
+                  } else {
+                    console.log(
+                      "[FloorPlanStore] Skipping refresh - last sync was < 2s ago",
+                    );
+                  }
+                  break;
+
+                case "CHANNEL_ERROR":
+                  set({
+                    realtimeStatus: "reconnecting",
+                    realtimeError: err?.message || "Connection error",
+                  });
+                  // Auto-reconnect with backoff
+                  get()._handleReconnect(locationId);
+                  break;
+
+                case "TIMED_OUT":
+                  set({ realtimeStatus: "reconnecting" });
+                  get()._handleReconnect(locationId);
+                  break;
+
+                case "CLOSED":
+                  set({ realtimeStatus: "disconnected", isOnline: false });
+                  // Auto-reconnect on close (unless cleanup was called intentionally)
+                  if (!get()._isCleaningUp) {
+                    get()._handleReconnect(locationId);
+                  }
+                  break;
+              }
+            });
+
+          set({ realtimeChannel: channel, locationId });
+        },
+
+        // NEW: Smart session change handler (avoids full refresh when possible)
+        _handleSessionChange: (payload: TableSessionPayload) => {
+          const { operation, data } = payload;
+
+          if (operation === "DELETE" || !data?.session) {
+            // Full refresh for deletes (simpler)
+            get()._debouncedRefresh();
+            return;
           }
-          break;
-      }
-    });
 
-  set({ realtimeChannel: channel, locationId });
-},
+          // For INSERT/UPDATE, try to patch local state
+          const sessionId = data.session.id;
+          const tableIds = data.tables?.map((t) => t.table_id) || [];
 
-// NEW: Smart session change handler (avoids full refresh when possible)
-_handleSessionChange: (payload: TableSessionPayload) => {
-  const { operation, data } = payload;
-  
-  if (operation === 'DELETE' || !data?.session) {
-    // Full refresh for deletes (simpler)
-    get()._debouncedRefresh();
-    return;
-  }
+          set((state) => {
+            const newTables = state.tables.map((t) => {
+              // Check if this table is part of the updated session
+              if (tableIds.includes(t.id)) {
+                return {
+                  ...t,
+                  session: {
+                    id: sessionId,
+                    status: data.session.status,
+                    party_size: data.session.party_size,
+                    guest_name: data.session.guest_name,
+                    seated_at:
+                      data.session.seated_at || new Date().toISOString(),
+                    current_course: data.session.current_course,
+                    needs_attention: data.session.needs_attention,
+                    is_vip: data.session.is_vip,
+                    order_id: data.session.order_id,
+                    session_number: data.session.session_number,
+                    table_ids: tableIds,
+                  },
+                };
+              }
+              // Clear session if table was previously in this session but isn't anymore
+              if (t.session?.id === sessionId && !tableIds.includes(t.id)) {
+                return { ...t, session: undefined };
+              }
+              return t;
+            });
 
-  // For INSERT/UPDATE, try to patch local state
-  const sessionId = data.session.id;
-  const tableIds = data.tables?.map(t => t.table_id) || [];
-  
-  set((state) => {
-    const newTables = state.tables.map((t) => {
-      // Check if this table is part of the updated session
-      if (tableIds.includes(t.id)) {
-        return {
-          ...t,
-          session: {
-            id: sessionId,
-            status: data.session.status,
-            party_size: data.session.party_size,
-            server_user_id: data.session.server_user_id,
-            guest_name: data.session.guest_name,
-            seated_at: data.session.seated_at,
-            current_course: data.session.current_course,
-            working_course: data.session.working_course,
-            needs_attention: data.session.needs_attention,
-            is_vip: data.session.is_vip,
-            is_complaint: data.session.is_complaint,
-            order_id: data.session.order_id,
-            session_number: data.session.session_number,
-            table_ids: tableIds,
-          },
-        };
-      }
-      // Clear session if table was previously in this session but isn't anymore
-      if (t.session?.id === sessionId && !tableIds.includes(t.id)) {
-        return { ...t, session: undefined };
-      }
-      return t;
-    });
-    
-    return {
-      tables: newTables,
-      tablesById: buildTablesById(newTables),
-    };
-  });
-},
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
+        },
 
-// NEW: Reconnection with exponential backoff
-_reconnectAttempts: 0,
-_reconnectTimeout: null as ReturnType<typeof setTimeout> | null,
-_isCleaningUp: false,
+        // NEW: Reconnection with exponential backoff
+        _reconnectAttempts: 0,
+        _reconnectTimeout: null as ReturnType<typeof setTimeout> | null,
+        _isCleaningUp: false,
 
-_handleReconnect: (locationId: string) => {
-  const maxAttempts = 5;
-  const state = get();
-  
-  if (state._reconnectAttempts >= maxAttempts) {
-    console.warn('[Realtime] Max reconnect attempts reached');
-    set({ 
-      realtimeStatus: 'disconnected',
-      realtimeError: 'Connection failed. Tap to retry.'
-    });
-    return;
-  }
+        _handleReconnect: (locationId: string) => {
+          const maxAttempts = 5;
+          const state = get();
 
-  // Clear existing timeout
-  if (state._reconnectTimeout) {
-    clearTimeout(state._reconnectTimeout);
-  }
+          if (state._reconnectAttempts >= maxAttempts) {
+            console.warn("[Realtime] Max reconnect attempts reached");
+            set({
+              realtimeStatus: "disconnected",
+              realtimeError: "Connection failed. Tap to retry.",
+            });
+            return;
+          }
 
-  // Faster backoff: 0ms (instant), 500ms, 1s, 2s, 4s
-  const delay = state._reconnectAttempts === 0 ? 0 : 500 * Math.pow(2, state._reconnectAttempts - 1);
-  
-  console.log(`[Realtime] Reconnecting in ${delay}ms (attempt ${state._reconnectAttempts + 1})`);
-  
-  const timeout = setTimeout(async () => {
-    set({ _reconnectAttempts: get()._reconnectAttempts + 1 });
-    
-    // Unsubscribe first (Reddit pattern)
-    const channel = get().realtimeChannel;
-    if (channel) {
-      const supabase = getClient();
-      if (supabase) await supabase.removeChannel(channel);
-    }
-    
-    // Re-subscribe
-    get().setupRealtimeSubscriptions(locationId);
-  }, delay);
-  
-  set({ _reconnectTimeout: timeout });
-},
+          // Clear existing timeout
+          if (state._reconnectTimeout) {
+            clearTimeout(state._reconnectTimeout);
+          }
 
-// NEW: Manual reconnect (for UI button)
-manualReconnect: () => {
-  const locationId = get().locationId;
-  if (!locationId) return;
-  
-  set({ _reconnectAttempts: 0, realtimeStatus: 'reconnecting' });
-  get().setupRealtimeSubscriptions(locationId);
-},
+          // Faster backoff: 0ms (instant), 500ms, 1s, 2s, 4s
+          const delay =
+            state._reconnectAttempts === 0
+              ? 0
+              : 500 * Math.pow(2, state._reconnectAttempts - 1);
+
+          console.log(
+            `[Realtime] Reconnecting in ${delay}ms (attempt ${state._reconnectAttempts + 1})`,
+          );
+
+          const timeout = setTimeout(async () => {
+            set({ _reconnectAttempts: get()._reconnectAttempts + 1 });
+
+            // Unsubscribe first (Reddit pattern)
+            const channel = get().realtimeChannel;
+            if (channel) {
+              const supabase = getClient();
+              if (supabase) await supabase.removeChannel(channel);
+            }
+
+            // Re-subscribe
+            get().setupRealtimeSubscriptions(locationId);
+          }, delay);
+
+          set({ _reconnectTimeout: timeout });
+        },
+
+        // NEW: Manual reconnect (for UI button)
+        manualReconnect: () => {
+          const locationId = get().locationId;
+          if (!locationId) return;
+
+          set({ _reconnectAttempts: 0, realtimeStatus: "reconnecting" });
+          get().setupRealtimeSubscriptions(locationId);
+        },
 
         // Add debounced refresh helper (prevents rapid reloads)
         // UPDATED (Phase 1.3): Increased from 300ms to 500ms to reduce refresh frequency
@@ -502,7 +526,7 @@ manualReconnect: () => {
               p_location_id: locationId,
               p_name: name,
               p_description: description,
-            }
+            },
           );
 
           if (error) throw error;
@@ -525,7 +549,7 @@ manualReconnect: () => {
           const { error } = await FloorPlanService.updateFloorPlan(
             supabase,
             id,
-            { name }
+            { name },
           );
           if (error) throw error;
 
@@ -542,7 +566,7 @@ manualReconnect: () => {
 
           const { error } = await FloorPlanService.deleteFloorPlan(
             supabase,
-            id
+            id,
           );
           if (error) throw error;
 
@@ -574,7 +598,7 @@ manualReconnect: () => {
 
           const { data, error } = await FloorPlanService.getFloorPlanStatus(
             supabase,
-            floorPlanId
+            floorPlanId,
           );
 
           if (error) {
@@ -610,7 +634,9 @@ manualReconnect: () => {
                   const cached = ordersById[id];
 
                   if (!cached) {
-                    console.log(`[prefetch] Order ${id} not cached, will fetch`);
+                    console.log(
+                      `[prefetch] Order ${id} not cached, will fetch`,
+                    );
                   }
 
                   return !cached;
@@ -618,13 +644,13 @@ manualReconnect: () => {
 
                 if (uncachedOrderIds.length > 0) {
                   console.log(
-                    `[prefetch] ${uncachedOrderIds.length} orders not cached - initializeOrders should handle this`
+                    `[prefetch] ${uncachedOrderIds.length} orders not cached - initializeOrders should handle this`,
                   );
                   // Note: initializeOrders loads all active orders on login,
                   // individual prefetch is no longer needed
                 } else {
                   console.log(
-                    `[prefetch] All ${orderIds.length} orders already cached`
+                    `[prefetch] All ${orderIds.length} orders already cached`,
                   );
                 }
               } catch (err) {
@@ -639,14 +665,18 @@ manualReconnect: () => {
 
           // Don't refresh if already loading
           if (isLoading) {
-            console.log("[loadFloorPlanStatusIfStale] Skipping - already loading");
+            console.log(
+              "[loadFloorPlanStatusIfStale] Skipping - already loading",
+            );
             return;
           }
 
           // Check if offline - use cached data
           const isOnline = getIsOnline();
           if (!isOnline) {
-            console.log("[loadFloorPlanStatusIfStale] Offline - using cached data");
+            console.log(
+              "[loadFloorPlanStatusIfStale] Offline - using cached data",
+            );
             return;
           }
 
@@ -655,10 +685,14 @@ manualReconnect: () => {
             !lastSyncAt || Date.now() - new Date(lastSyncAt).getTime() > ttlMs;
 
           if (isStale) {
-            console.log("[loadFloorPlanStatusIfStale] Data is stale - refreshing");
+            console.log(
+              "[loadFloorPlanStatusIfStale] Data is stale - refreshing",
+            );
             await get().loadFloorPlanStatus();
           } else {
-            console.log("[loadFloorPlanStatusIfStale] Data is fresh - skipping refresh");
+            console.log(
+              "[loadFloorPlanStatusIfStale] Data is fresh - skipping refresh",
+            );
           }
         },
 
@@ -697,7 +731,7 @@ manualReconnect: () => {
               p_capacity: shape?.capacity ?? undefined,
               p_width: shape?.width ?? undefined,
               p_height: shape?.height ?? undefined,
-            }
+            },
           );
 
           if (error) throw error;
@@ -712,7 +746,7 @@ manualReconnect: () => {
           tableId: string,
           x: number,
           y: number,
-          rotation?: number
+          rotation?: number,
         ) => {
           const supabase = getClient();
           // Optimistic update - sync both tables array and tablesById map
@@ -720,7 +754,7 @@ manualReconnect: () => {
             const newTables = state.tables.map((t) =>
               t.id === tableId
                 ? { ...t, x, y, rotation: rotation ?? t.rotation }
-                : t
+                : t,
             );
             return {
               tables: newTables,
@@ -748,7 +782,7 @@ manualReconnect: () => {
           // Optimistic update - sync both tables array and tablesById map
           set((state) => {
             const newTables = state.tables.map((t) =>
-              t.id === tableId ? { ...t, name } : t
+              t.id === tableId ? { ...t, name } : t,
             );
             return {
               tables: newTables,
@@ -759,7 +793,7 @@ manualReconnect: () => {
           const { error } = await FloorPlanService.updateFloorPlanObject(
             supabase,
             tableId,
-            { name } // Assuming 'name' column exists and is updateable
+            { name }, // Assuming 'name' column exists and is updateable
           );
 
           if (error) {
@@ -779,11 +813,11 @@ manualReconnect: () => {
               const update = updatesById.get(t.id); // O(1) instead of O(n)
               return update
                 ? {
-                  ...t,
-                  x: update.x,
-                  y: update.y,
-                  rotation: update.rotation ?? t.rotation,
-                }
+                    ...t,
+                    x: update.x,
+                    y: update.y,
+                    rotation: update.rotation ?? t.rotation,
+                  }
                 : t;
             });
             return {
@@ -796,7 +830,7 @@ manualReconnect: () => {
             supabase,
             {
               p_updates: updates,
-            }
+            },
           );
 
           if (error) {
@@ -811,7 +845,7 @@ manualReconnect: () => {
 
           const { error } = await FloorPlanService.deleteFloorPlanObject(
             supabase,
-            tableId
+            tableId,
           );
 
           if (error) throw error;
@@ -823,7 +857,7 @@ manualReconnect: () => {
               tables: newTables,
               tablesById: buildTablesById(newTables),
               selectedTableIds: state.selectedTableIds.filter(
-                (id) => id !== tableId
+                (id) => id !== tableId,
               ),
             };
           });
@@ -850,23 +884,23 @@ manualReconnect: () => {
             const newTables = state.tables.map((t) =>
               params.tableIds.includes(t.id)
                 ? {
-                  ...t,
-                  session: {
-                    id: localSessionId,
-                    session_number: localSessionId.slice(-6).toUpperCase(),
-                    status: "seated" as TableStatus,
-                    party_size: params.partySize,
-                    guest_name: params.guestName,
-                    seated_at: new Date().toISOString(),
-                    table_ids: params.tableIds,
-                    order_id:
-                      params.createOrder !== false ? localOrderId : undefined,
-                    current_course: 1,
-                    needs_attention: false,
-                    is_vip: false,
-                  },
-                }
-                : t
+                    ...t,
+                    session: {
+                      id: localSessionId,
+                      session_number: localSessionId.slice(-6).toUpperCase(),
+                      status: "seated" as TableStatus,
+                      party_size: params.partySize,
+                      guest_name: params.guestName,
+                      seated_at: new Date().toISOString(),
+                      table_ids: params.tableIds,
+                      order_id:
+                        params.createOrder !== false ? localOrderId : undefined,
+                      current_course: 1,
+                      needs_attention: false,
+                      is_vip: false,
+                    },
+                  }
+                : t,
             );
             return {
               tables: newTables,
@@ -889,11 +923,11 @@ manualReconnect: () => {
                   p_reservation_id: params.reservationId || null,
                   p_waitlist_id: params.waitlistId || null,
                   p_create_order: params.createOrder ?? true,
-                  p_device_id :params.device_id || null,
-                  p_station_id : params.selected_station || null,
+                  p_device_id: params.device_id || null,
+                  p_station_id: params.selected_station || null,
                   p_staff_id:
                     useEmployeeStore.getState().loggedInEmployee?.profileId,
-                }
+                },
               );
 
               if (!error && data) {
@@ -902,14 +936,14 @@ manualReconnect: () => {
                   const newTables = state.tables.map((t) =>
                     t.session?.id === localSessionId
                       ? {
-                        ...t,
-                        session: {
-                          ...t.session!,
-                          id: data.session_id,
-                          order_id: data.order_id,
-                        },
-                      }
-                      : t
+                          ...t,
+                          session: {
+                            ...t.session!,
+                            id: data.session_id,
+                            order_id: data.order_id,
+                          },
+                        }
+                      : t,
                   );
                   return {
                     tables: newTables,
@@ -920,7 +954,10 @@ manualReconnect: () => {
                 // REMOVED (Phase 2.1): Full refresh - optimistic update already applied
                 // Realtime sync will handle any additional changes
                 // await get().loadFloorPlanStatus();
-                console.log('[SeatGuests] Data Link Order To Session Data', data)
+                console.log(
+                  "[SeatGuests] Data Link Order To Session Data",
+                  data,
+                );
 
                 // PHASE 2: Safety check - ensure bidirectional order-session link
                 if (data.order_id) {
@@ -930,16 +967,20 @@ manualReconnect: () => {
 
                   // Find the order by backend UUID or local ID
                   const order = Object.values(orderStore.ordersById).find(
-                    (o) => o.db_order_id === data.order_id || o.id === localOrderId
+                    (o) =>
+                      o.db_order_id === data.order_id || o.id === localOrderId,
                   );
 
                   // If order exists and doesn't have session_id set, link them
-                  console.log('[SeatGuests] Data Link Order To Session', data)
+                  console.log("[SeatGuests] Data Link Order To Session", data);
                   if (order && !order.session_id) {
                     console.log(
-                      "[seatGuests] Order missing session_id, establishing bidirectional link"
+                      "[seatGuests] Order missing session_id, establishing bidirectional link",
                     );
-                    await orderStore.linkOrderToSession(order.id, data.session_id);
+                    await orderStore.linkOrderToSession(
+                      order.id,
+                      data.session_id,
+                    );
                   }
                 }
 
@@ -953,7 +994,7 @@ manualReconnect: () => {
               if (error) {
                 console.error(
                   "[seatGuests] Backend error, queuing for retry:",
-                  error
+                  error,
                 );
                 await queueOperation({
                   type: "seat_guests",
@@ -1019,7 +1060,7 @@ manualReconnect: () => {
         updateSessionStatus: async (
           sessionId: string,
           status: TableStatus,
-          notes?: string
+          notes?: string,
         ) => {
           const isOnline = getIsOnline();
           const supabase = getClient();
@@ -1028,16 +1069,16 @@ manualReconnect: () => {
           console.log(
             "[updateSessionStatus] sessionId & status",
             sessionId,
-            status
+            status,
           );
           set((state) => {
             const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                  ...t,
-                  session: { ...t.session!, status },
-                }
-                : t
+                    ...t,
+                    session: { ...t.session!, status },
+                  }
+                : t,
             );
             return {
               tables: newTables,
@@ -1057,13 +1098,13 @@ manualReconnect: () => {
                   p_status: status,
                   p_notes: notes,
                   p_staff_id,
-                }
+                },
               );
 
               if (error) {
                 console.error(
                   "[updateSessionStatus] Backend error, queuing:",
-                  error
+                  error,
                 );
                 await queueOperation({
                   type: "update_session_status",
@@ -1101,7 +1142,7 @@ manualReconnect: () => {
             {
               p_session_id: sessionId,
               p_new_table_ids: newTableIds,
-            }
+            },
           );
 
           if (error) throw error;
@@ -1116,7 +1157,7 @@ manualReconnect: () => {
             {
               p_session_id: sessionId,
               p_table_id: tableId,
-            }
+            },
           );
 
           if (error) throw error;
@@ -1131,7 +1172,7 @@ manualReconnect: () => {
             {
               p_session_id: sessionId,
               p_table_id: tableId,
-            }
+            },
           );
 
           console.log("[unmergeTable] error", error);
@@ -1147,7 +1188,7 @@ manualReconnect: () => {
           const { data, error } = await FloorPlanService.advanceCourse(
             supabase,
             sessionId,
-            p_staff_id
+            p_staff_id,
           );
 
           if (error) throw error;
@@ -1158,13 +1199,13 @@ manualReconnect: () => {
             const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                  ...t,
-                  session: {
-                    ...t.session!,
-                    current_course: data.current_course,
-                  },
-                }
-                : t
+                    ...t,
+                    session: {
+                      ...t.session!,
+                      current_course: data.current_course,
+                    },
+                  }
+                : t,
             );
             return {
               tables: newTables,
@@ -1198,7 +1239,7 @@ manualReconnect: () => {
           // 1. ALWAYS update local state first (optimistic)
           set((state) => {
             const newTables = state.tables.map((t) =>
-              t.id === tableId ? { ...t, session: undefined } : t
+              t.id === tableId ? { ...t, session: undefined } : t,
             );
             return {
               tables: newTables,
@@ -1219,7 +1260,7 @@ manualReconnect: () => {
                   p_status: "available",
                   p_notes: "Order voided",
                   p_staff_id,
-                }
+                },
               );
 
               if (error) {
@@ -1227,14 +1268,16 @@ manualReconnect: () => {
                 // ROLLBACK: Restore original session on backend failure
                 set((state) => {
                   const newTables = state.tables.map((t) =>
-                    t.id === tableId ? { ...t, session: originalSession } : t
+                    t.id === tableId ? { ...t, session: originalSession } : t,
                   );
                   return {
                     tables: newTables,
                     tablesById: buildTablesById(newTables),
                   };
                 });
-                throw new Error(`Failed to clear session: ${error.message || error}`);
+                throw new Error(
+                  `Failed to clear session: ${error.message || error}`,
+                );
               } else {
                 // Success - optimistic update already applied
                 // Realtime sync will handle any additional changes
@@ -1244,7 +1287,7 @@ manualReconnect: () => {
               // ROLLBACK: Restore original session on exception
               set((state) => {
                 const newTables = state.tables.map((t) =>
-                  t.id === tableId ? { ...t, session: originalSession } : t
+                  t.id === tableId ? { ...t, session: originalSession } : t,
                 );
                 return {
                   tables: newTables,
@@ -1284,7 +1327,7 @@ manualReconnect: () => {
 
           const { data, error } = await FloorPlanService.getWaitlist(
             supabase,
-            locationId
+            locationId,
           );
 
           if (error) {
@@ -1310,7 +1353,7 @@ manualReconnect: () => {
               p_notes: params.notes,
               p_preferred_section: params.preferredSection,
               p_quoted_wait_minutes: params.quotedWaitMinutes,
-            }
+            },
           );
 
           if (error) throw error;
@@ -1327,7 +1370,7 @@ manualReconnect: () => {
           const supabase = getClient();
           const { data, error } = await FloorPlanService.notifyWaitlistParty(
             supabase,
-            waitlistId
+            waitlistId,
           );
 
           if (error) throw error;
@@ -1344,7 +1387,7 @@ manualReconnect: () => {
           const { error } = await FloorPlanService.updateWaitlistStatus(
             supabase,
             waitlistId,
-            status
+            status,
           );
 
           if (error) throw error;
@@ -1355,7 +1398,7 @@ manualReconnect: () => {
           const { data, error } = await FloorPlanService.seatFromWaitlist(
             supabase,
             waitlistId,
-            tableIds
+            tableIds,
           );
 
           if (error) throw error;
@@ -1382,7 +1425,7 @@ manualReconnect: () => {
           const { data, error } = await FloorPlanService.getReservations(
             supabase,
             locationId,
-            date
+            date,
           );
 
           if (error) {
@@ -1411,7 +1454,7 @@ manualReconnect: () => {
               p_notes: params.notes,
               p_special_requests: params.specialRequests,
               p_is_vip: params.isVip,
-            }
+            },
           );
 
           if (error) throw error;
@@ -1428,7 +1471,7 @@ manualReconnect: () => {
           const { error } = await FloorPlanService.updateReservationStatus(
             supabase,
             reservationId,
-            status
+            status,
           );
 
           if (error) throw error;
@@ -1439,7 +1482,7 @@ manualReconnect: () => {
           const { error } = await FloorPlanService.assignReservationTables(
             supabase,
             reservationId,
-            tableIds
+            tableIds,
           );
 
           if (error) throw error;
@@ -1450,7 +1493,7 @@ manualReconnect: () => {
           const { data, error } = await FloorPlanService.seatReservation(
             supabase,
             reservationId,
-            tableIds
+            tableIds,
           );
 
           if (error) throw error;
@@ -1476,7 +1519,7 @@ manualReconnect: () => {
               p_date: date,
               p_time: time,
               p_party_size: partySize,
-            }
+            },
           );
 
           if (error) throw error;
@@ -1541,7 +1584,7 @@ manualReconnect: () => {
             state.tablesById = buildTablesById(state.tables);
           }
         },
-      }
-    )
-  )
+      },
+    ),
+  ),
 );

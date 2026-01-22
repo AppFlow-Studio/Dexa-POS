@@ -183,7 +183,8 @@ function deriveItemCoverage(
       }
 
       // Use paid_quantity from item, or fallback to item quantity
-      const quantity = item.paid_quantity > 0 ? item.paid_quantity : item.quantity;
+      const quantity =
+        item.paid_quantity > 0 ? item.paid_quantity : item.quantity;
       const unitPrice = isCashPriced ? item.cash_price : item.unit_price;
 
       return {
@@ -365,13 +366,18 @@ export function transformBroadcastToOrder(
     check_status: backendOrder.check_status || "Opened",
     paid_status: mapPaymentStatus(backendOrder.payment_status),
     service_location_id: backendOrder.table_number,
+    // table_number IS the table name (e.g., "T1"), so use it directly for display
+    service_location_name: backendOrder.table_number || undefined,
     server_name:
       backendOrder.server_name || backendOrder.assigned_server_id || undefined,
     customer_name: "",
 
     // Financial - use card pricing as default
     total_amount: backendOrder.card_total || backendOrder.total_amount,
-    total_cash_amount: backendOrder.cash_total || backendOrder.card_total || backendOrder.total_amount,
+    total_cash_amount:
+      backendOrder.cash_total ||
+      backendOrder.card_total ||
+      backendOrder.total_amount,
     total_tax: backendOrder.card_tax_amount || backendOrder.tax_amount,
     total_discount: backendOrder.discount_amount,
     amount_paid: backendOrder.amount_paid,
