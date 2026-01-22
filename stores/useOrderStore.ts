@@ -8831,6 +8831,7 @@ export const useOrderStore = create<OrderState>()(
               console.error("Error rehydrating order store:", error);
               return;
             }
+
             // After hydration, recalculate totals for the active order
             if (state?.activeOrderId) {
               // Small delay to ensure orders array is synced by subscription

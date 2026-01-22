@@ -1,4 +1,3 @@
-import AttachedModifierPanel from "@/components/bill/AttachedModifierPanel";
 import BillSection from "@/components/bill/BillSection";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import MenuSection from "@/components/menu/MenuSection";
@@ -36,7 +35,7 @@ const OrderProcessing = () => {
   // Compute orders array from IDs - only recalculates when orderIds or ordersById change
   const orders = useMemo(
     () => orderIds.map((id) => ordersById[id]).filter(Boolean),
-    [orderIds, ordersById]
+    [orderIds, ordersById],
   );
 
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
@@ -47,17 +46,21 @@ const OrderProcessing = () => {
 
   useEffect(() => {
     // OPTIMIZED: Use memoized find helpers with O(1) lookup when possible
-    // Find an existing empty draft order (not assigned to table, no items)
+    // Find an existing empty draft order (not assigned to table, no items, NOT PAID)
     const emptyDraft = orders.find(
       (o) =>
         o.service_location_id === null &&
         o.order_status === "draft" &&
-        o.items.length === 0
+        o.items.length === 0 &&
+        o.paid_status !== "Paid", // Exclude paid orders
     );
 
-    // Find any global draft order (not assigned to table)
+    // Find any global draft order (not assigned to table, NOT PAID)
     const globalDraft = orders.find(
-      (o) => o.service_location_id === null && o.order_status === "draft"
+      (o) =>
+        o.service_location_id === null &&
+        o.order_status === "draft" &&
+        o.paid_status !== "Paid", // Exclude paid orders
     );
 
     if (!activeOrderId) {
@@ -103,10 +106,12 @@ const OrderProcessing = () => {
         // Condition 1: Any "preparing" order with items (Takeaway, Delivery only)
         ((o.order_status === "preparing" && o.items.length > 0) ||
           // Condition 2: Unpaid orders that need payment
-          ((o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial") &&
+          ((o.paid_status === "Unpaid" ||
+            o.paid_status === "Pending" ||
+            o.paid_status === "Partial") &&
             o.order_status !== "completed" &&
             o.order_status !== "draft" &&
-            o.order_status !== "void"))
+            o.order_status !== "void")),
     );
 
     return kitchenOrders;
