@@ -80,7 +80,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const TableComponent = shapeDef?.component;
 
   const activeOrderForThisTable = orders.find(
-    (o) => o.service_location_id === table.id && o.order_status !== "void"
+    (o) => o.service_location_id === table.id && o.order_status !== "void",
   );
   // console.log('[DraggableTable] activeOrderForThisTable', activeOrderForThisTable)
 
@@ -92,7 +92,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       if (!order) {
         // Fallback: search by db_order_id if session.order_id is the backend UUID
         order = Object.values(ordersById).find(
-          (o) => o.db_order_id === table.session?.order_id
+          (o) => o.db_order_id === table.session?.order_id,
         );
       }
       return order;
@@ -130,7 +130,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       const diffMins = Math.floor(diffMs / 60000);
 
       setDuration(`${diffMins} min`);
-      setIsOvertime(diffMins > defaultSittingTimeMinutes);
+      setIsOvertime(
+        defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes,
+      );
     };
 
     updateTimer(); // Initial run
@@ -194,7 +196,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
     pulseScale.value = withSequence(
       withTiming(1.05, { duration: 100 }),
-      withSpring(1, { damping: 10 })
+      withSpring(1, { damping: 10 }),
     );
   }, [table.session?.status, table.session?.order_id]);
 
@@ -213,7 +215,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         rotation.value = current.r || 0;
       }
     },
-    [table.x, table.y, table.rotation]
+    [table.x, table.y, table.rotation],
   );
 
   useEffect(() => {
@@ -238,7 +240,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         table.id,
         translateX.value,
         translateY.value,
-        rotation.value
+        rotation.value,
       );
     });
 
@@ -260,7 +262,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         table.id,
         translateX.value,
         translateY.value,
-        snappedRotation
+        snappedRotation,
       );
     });
 
@@ -298,7 +300,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const orderTotal =
     orderForThisGroup?.items?.reduce(
       (acc: number, item: any) => acc + item.price * item.quantity,
-      0
+      0,
     ) || 0;
 
   const tableStatus = table.session?.status || "available"; // Fallback

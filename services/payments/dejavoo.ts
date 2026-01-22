@@ -315,7 +315,6 @@ export class DejavooService {
     try {
       const request: DejavooTipAdjustRequest = {
         PaymentType: 'Credit',
-        TransactionType: 'TipAdjust',
         Amount: params.originalAmount,
         TipAmount: params.newTipAmount,
         ReferenceId: params.referenceId,

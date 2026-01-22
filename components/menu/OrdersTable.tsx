@@ -3,14 +3,13 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { ArrowDown, ArrowUp, MoreVertical } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
-import { FlatList, Pressable, Text, TouchableOpacity, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { Gesture } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
-  useAnimatedStyle,
   useSharedValue,
   withSequence,
-  withSpring,
+  withSpring
 } from "react-native-reanimated";
 
 export type SortColumn =
@@ -112,9 +111,9 @@ const OrderRow = memo<OrderRowProps>(
       )
     }, [order.id, onRowClick]);
 
-    const handleDoublePress = useCallback(() => {
-      onDoubleClick(order.id);
-    }, [order.id, onDoubleClick]);
+    // const handleDoublePress = useCallback(() => {
+    //   onDoubleClick(order.id);
+    // }, [order.id, onDoubleClick]);
 
     const handleMorePress = useCallback(
       (e: any) => {
@@ -128,21 +127,21 @@ const OrderRow = memo<OrderRowProps>(
       [order.id, onMoreClick],
     );
 
-    // Double-tap gesture (requires 2 taps within 250ms)
-    const doubleTap = useMemo(
-      () =>
-        Gesture.Tap()
-          .numberOfTaps(2)
-          .maxDuration(250)
-          .onStart(() => {
-            scale.value = withSequence(
-              withSpring(0.95, { damping: 10, stiffness: 200 }),
-              withSpring(1),
-            );
-            // runOnJS(handleDoublePress)();
-          }),
-      [handleDoublePress, scale],
-    );
+    // // Double-tap gesture (requires 2 taps within 250ms)
+    // const doubleTap = useMemo(
+    //   () =>
+    //     Gesture.Tap()
+    //       .numberOfTaps(2)
+    //       .maxDuration(250)
+    //       .onStart(() => {
+    //         scale.value = withSequence(
+    //           withSpring(0.95, { damping: 10, stiffness: 200 }),
+    //           withSpring(1),
+    //         );
+    //         // runOnJS(handleDoublePress)();
+    //       }),
+    //   [handleDoublePress, scale],
+    // );
 
     // Single-tap gesture (fallback)
     const singleTap = useMemo(
@@ -158,19 +157,21 @@ const OrderRow = memo<OrderRowProps>(
     );
 
     // Compose: double-tap takes priority, single-tap is fallback
-    const composedTap = useMemo(
-      () => Gesture.Exclusive(doubleTap, singleTap),
-      [doubleTap, singleTap],
-    );
+    // const composedTap = useMemo(
+    //   () => Gesture.Exclusive(doubleTap, singleTap),
+    //   [doubleTap, singleTap],
+    // );
 
-    const animatedStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: scale.value }],
-    }));
+    // const animatedStyle = useAnimatedStyle(() => ({
+    //   transform: [{ scale: scale.value }],
+    // }));
 
     return (
-      <GestureDetector gesture={composedTap}>
+      <TouchableOpacity
+      onPressIn={handleRowPress}
+      >
         <Animated.View
-          style={[{ minHeight: 60 }, animatedStyle]}
+          style={[{ minHeight: 60 }]}
           className={`
           flex-row items-center border-b border-gray-800
           ${isEven ? "bg-[#1a1a1a]" : "bg-[#202020]"}
@@ -258,7 +259,7 @@ const OrderRow = memo<OrderRowProps>(
           </TouchableOpacity>
         </View>
         </Animated.View>
-      </GestureDetector>
+        </TouchableOpacity>
     );
   },
 );

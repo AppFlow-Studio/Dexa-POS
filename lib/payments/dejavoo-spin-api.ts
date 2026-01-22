@@ -12,6 +12,8 @@ import {
   DejavooSaleResponse,
   DejavooReturnRequest,
   DejavooReturnResponse,
+  DejavooTipAdjustRequest,
+  DejavooTipAdjustResponse,
   DejavooBaseResponse,
   DejavooEnvironment,
   PaymentType,
@@ -383,6 +385,33 @@ export class DejavooSpinAPI {
     return new ReturnTransactionBuilder(this);
   }
 
+  /**
+   * Create a TIP ADJUST transaction builder
+   *
+   * Returns a fluent builder for adjusting the tip amount on a completed Credit card transaction.
+   * Must reference the original sale transaction via referenceId.
+   *
+   * @returns TipAdjustTransactionBuilder for method chaining
+   *
+   * @example
+   * ```typescript
+   * const result = await api
+   *   .tipAdjust()
+   *   .amount(10.00)           // Original sale amount
+   *   .tipAmount(5.00)         // New tip amount
+   *   .referenceId('SALE_123') // Original sale reference
+   *   .getExtendedData(true)
+   *   .execute();
+   *
+   * if (result.success) {
+   *   console.log('Tip adjusted:', result.helpers?.getTotalAmount());
+   * }
+   * ```
+   */
+  tipAdjust(): TipAdjustTransactionBuilder {
+    return new TipAdjustTransactionBuilder(this);
+  }
+
   // ============================================================
   // INTERNAL METHODS
   // ============================================================
@@ -395,7 +424,7 @@ export class DejavooSpinAPI {
    * @param request - Request payload
    * @returns Promise with structured response
    */
-  async executeRequest<T extends DejavooBaseResponse>(
+  async executeRequest<T extends Record<string, any>>(
     endpoint: string,
     request: Record<string, any>
   ): Promise<DejavooAPIResponse<T>> {
@@ -426,12 +455,15 @@ export class DejavooSpinAPI {
       const parsedExtData = data.ExtData ? parseExtData(data.ExtData) : undefined;
 
       // Determine success based on result code
-      const success = isApprovedResponse(data);
+      // Cast to any to support both old and new response formats
+      const success = isApprovedResponse(data as any);
 
       // Extract error code if present
       let errorCode: number | undefined;
+      let errorMessage: string | undefined;
       if (!success) {
         const match = data.Message?.match(/\d+/);
+        errorMessage = data?.DetailedMessage
         errorCode = match ? parseInt(match[0], 10) : undefined;
       }
 
@@ -529,7 +561,7 @@ export class DejavooSpinAPI {
         },
 
         // Status
-        isApproved: () => isApprovedResponse(data),
+        isApproved: () => isApprovedResponse(data as any),
         getResultCode: () => {
           // New format
           if ('GeneralResponse' in data) return (data as any).GeneralResponse?.ResultCode;
@@ -1638,5 +1670,404 @@ export class ReturnTransactionBuilder {
    */
   getTags(): (string | undefined)[] {
     return [this._tag1, this._tag2, this._tag3];
+  }
+}
+
+// ============================================================
+// TIP ADJUST TRANSACTION BUILDER
+// ============================================================
+
+/**
+ * Fluent builder for TIP ADJUST transactions
+ *
+ * Adjusts the tip amount on a completed Credit card transaction.
+ * Must reference the original sale transaction via referenceId.
+ *
+ * @example
+ * ```typescript
+ * const result = await api
+ *   .tipAdjust()
+ *   .amount(10.00)           // Original sale amount
+ *   .tipAmount(5.00)         // New tip amount
+ *   .referenceId('SALE_123') // Original sale reference
+ *   .getExtendedData(true)
+ *   .execute();
+ *
+ * if (result.success) {
+ *   console.log('Tip adjusted to:', result.helpers?.getTotalAmount());
+ *   console.log('Card:', result.helpers?.getCardType());
+ * }
+ * ```
+ */
+export class TipAdjustTransactionBuilder {
+  private api: DejavooSpinAPI;
+
+  // Required fields
+  private _amount?: number;
+  private _tipAmount?: number;
+  private _referenceId?: string;
+
+  // Optional fields
+  private _merchantNumber?: string | null;
+  private _getExtendedData?: boolean;
+  private _isReadyForIS?: boolean;
+  private _callbackUrl?: string;
+  private _tpn?: string;
+  private _timeout?: number | null;
+  private _customFields?: Record<string, any>;
+  private _performedBy?: string; // For backend logging only
+
+  constructor(api: DejavooSpinAPI) {
+    this.api = api;
+  }
+
+  // ============================================================
+  // REQUIRED FIELDS
+  // ============================================================
+
+  /**
+   * Set original sale amount (REQUIRED)
+   *
+   * @param value - Original sale amount in dollars (must be > 0)
+   * @returns this for chaining
+   * @throws Error if amount <= 0
+   *
+   * @example
+   * ```typescript
+   * builder.amount(10.00)
+   * ```
+   */
+  amount(value: number): this {
+    if (value <= 0) {
+      throw new Error('Amount must be greater than 0');
+    }
+    this._amount = value;
+    return this;
+  }
+
+  /**
+   * Set new tip amount (REQUIRED)
+   *
+   * @param value - New tip amount in dollars (must be >= 0)
+   * @returns this for chaining
+   * @throws Error if tipAmount < 0
+   *
+   * @example
+   * ```typescript
+   * builder.tipAmount(5.00)
+   * ```
+   */
+  tipAmount(value: number): this {
+    if (value < 0) {
+      throw new Error('Tip amount cannot be negative');
+    }
+    this._tipAmount = value;
+    return this;
+  }
+
+  /**
+   * Set reference ID of original sale transaction (REQUIRED)
+   *
+   * Must match the ReferenceId from the original sale.
+   *
+   * @param value - Reference ID of original sale (max 50 chars)
+   * @returns this for chaining
+   * @throws Error if length > 50
+   *
+   * @example
+   * ```typescript
+   * builder.referenceId('SALE_1234567_1234')
+   * ```
+   */
+  referenceId(value: string): this {
+    if (value.length > 50) {
+      throw new Error('ReferenceId cannot exceed 50 characters');
+    }
+    this._referenceId = value;
+    return this;
+  }
+
+  // ============================================================
+  // OPTIONAL FIELDS
+  // ============================================================
+
+  /**
+   * Set merchant number
+   *
+   * @param value - Merchant number or null
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.merchantNumber('MERCH_12345')
+   * ```
+   */
+  merchantNumber(value: string | null): this {
+    this._merchantNumber = value;
+    return this;
+  }
+
+  /**
+   * Set whether to request extended transaction data
+   *
+   * @param value - Whether to get extended data
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.getExtendedData(true)
+   * ```
+   */
+  getExtendedData(value: boolean): this {
+    this._getExtendedData = value;
+    return this;
+  }
+
+  /**
+   * Set integration service readiness flag
+   *
+   * @param value - IS readiness flag
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.isReadyForIS(false)
+   * ```
+   */
+  isReadyForIS(value: boolean): this {
+    this._isReadyForIS = value;
+    return this;
+  }
+
+  /**
+   * Set webhook callback URL
+   *
+   * @param value - Callback URL for transaction updates
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.callbackUrl('https://myapp.com/webhooks/tip-adjust')
+   * ```
+   */
+  callbackUrl(value: string): this {
+    this._callbackUrl = value;
+    return this;
+  }
+
+  /**
+   * Set Terminal Profile Number
+   *
+   * @param value - TPN value
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.tpn('z11invtest69')
+   * ```
+   */
+  tpn(value: string): this {
+    this._tpn = value;
+    return this;
+  }
+
+  /**
+   * Set custom timeout in seconds
+   *
+   * Overrides the terminal's default timeout.
+   *
+   * @param value - Timeout in seconds (1-720) or null
+   * @returns this for chaining
+   * @throws Error if not in range 1-720
+   *
+   * @example
+   * ```typescript
+   * builder.timeout(180) // 3 minutes
+   * ```
+   */
+  timeout(value: number | null): this {
+    if (value !== null && (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max)) {
+      throw new Error(
+        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`
+      );
+    }
+    this._timeout = value;
+    return this;
+  }
+
+  /**
+   * Set custom fields for additional data
+   *
+   * @param value - Custom fields object
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.customFields({ orderId: '12345', reason: 'customer request' })
+   * ```
+   */
+  customFields(value: Record<string, any>): this {
+    this._customFields = value;
+    return this;
+  }
+
+  /**
+   * Set user performing the transaction (for backend logging only)
+   *
+   * Note: This field is NOT sent to the Dejavoo API.
+   * It's used for internal Supabase logging.
+   *
+   * @param value - User identifier, typically email (max 100 chars)
+   * @returns this for chaining
+   * @throws Error if length > 100
+   *
+   * @example
+   * ```typescript
+   * builder.performedBy('server@restaurant.com')
+   * ```
+   */
+  performedBy(value: string): this {
+    if (value.length > 100) {
+      throw new Error('PerformedBy cannot exceed 100 characters');
+    }
+    this._performedBy = value;
+    return this;
+  }
+
+  // ============================================================
+  // EXECUTE
+  // ============================================================
+
+  /**
+   * Execute the TIP ADJUST transaction
+   *
+   * Validates required fields, builds the request, and sends to the terminal.
+   * Shows toast notification for user feedback.
+   *
+   * @returns Promise with transaction result
+   *
+   * @example
+   * ```typescript
+   * const result = await builder.execute();
+   *
+   * if (result.success) {
+   *   console.log('Tip adjusted!', result.helpers?.getTotalAmount());
+   *   console.log('Auth Code:', result.helpers?.getAuthCode());
+   * } else {
+   *   console.error('Tip adjust failed:', result.error);
+   * }
+   * ```
+   */
+  async execute(): Promise<DejavooAPIResponse<DejavooTipAdjustResponse>> {
+    // Validate required fields
+    if (this._amount === undefined) {
+      const error = 'Amount is required. Call .amount() before execute()';
+      console.error('[TipAdjustTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    if (this._tipAmount === undefined) {
+      const error = 'Tip amount is required. Call .tipAmount() before execute()';
+      console.error('[TipAdjustTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    if (!this._referenceId) {
+      const error = 'Reference ID is required. Call .referenceId() before execute()';
+      console.error('[TipAdjustTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    try {
+      // Get auth params from API instance
+      const authParams = this.api.getAuthParams();
+
+      // Build request object
+      const request: DejavooTipAdjustRequest = {
+        // Auth fields
+        Authkey: authParams.AuthKey,
+        RegisterId: authParams.RegisterId,
+
+        // Required transaction fields
+        Amount: this._amount,
+        TipAmount: this._tipAmount,
+        PaymentType: 'Credit', // TipAdjust only supports Credit
+        ReferenceId: this._referenceId,
+
+        // Optional fields
+        MerchantNumber: this._merchantNumber,
+        GetExtendedData: this._getExtendedData,
+        IsReadyForIS: this._isReadyForIS,
+        SPInProxyTimeout: this._timeout ?? authParams.OperationalTimeout ?? null,
+        Tpn: this._tpn,
+        CustomFields: this._customFields,
+
+        // Callback (only if URL provided)
+        CallbackInfo: this._callbackUrl ? { Url: this._callbackUrl } : undefined,
+      };
+
+      // Note: PerformedBy is NOT included in the API request
+      // It's stored separately for backend logging
+      console.log('[TipAdjustTransactionBuilder] PerformedBy (backend only):', this._performedBy);
+
+      // Execute request through API
+      const response = await this.api.executeRequest<DejavooTipAdjustResponse>(
+        '/v2/Payment/TipAdjust',
+        request
+      );
+
+      // Show toast notification for user feedback
+      if (response.success) {
+        const total = this._amount + this._tipAmount;
+        toastService.show({
+          title: 'Tip Adjusted',
+          message: `Tip adjusted to $${this._tipAmount.toFixed(2)} (Total: $${total.toFixed(2)})`,
+          type: 'success',
+          duration: 3000,
+        });
+      } else {
+        const errorMsg = response.error || 'Tip adjustment failed';
+        const detailedMsg = response.errorCode
+          ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
+          : errorMsg;
+
+        toastService.show({
+          title: 'Tip Adjust Failed',
+          message: detailedMsg,
+          type: 'error',
+          duration: 5000,
+        });
+      }
+
+      return response;
+    } catch (err) {
+      console.error('[TipAdjustTransactionBuilder] Execute failed:', err);
+
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+
+      toastService.show({
+        title: 'Tip Adjust Error',
+        message: errorMsg,
+        type: 'error',
+        duration: 5000,
+      });
+
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
+  }
+
+  // ============================================================
+  // GETTERS (for backend logging access)
+  // ============================================================
+
+  /**
+   * Get the performedBy value for backend logging
+   * @returns User who performed the transaction
+   */
+  getPerformedBy(): string | undefined {
+    return this._performedBy;
   }
 }

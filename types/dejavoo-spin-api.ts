@@ -359,6 +359,7 @@ export interface DejavooRefundRequest {
 /**
  * TIP ADJUST Request
  * Adjusts tip amount on a completed Credit card transaction
+ * POST /v2/Payment/TipAdjust
  * @see https://docs.ipospays.com/spin-specification/apidocs
  */
 export interface DejavooTipAdjustRequest {
@@ -366,19 +367,7 @@ export interface DejavooTipAdjustRequest {
    * Authentication key
    * @required
    */
-  AuthKey: string;
-
-  /**
-   * Must be "Credit" for tip adjustments
-   * @required
-   */
-  PaymentType: 'Credit';
-
-  /**
-   * Must be set to "TipAdjust"
-   * @required
-   */
-  TransType: 'TipAdjust';
+  Authkey: string;
 
   /**
    * Terminal identifier / Register ID
@@ -396,25 +385,63 @@ export interface DejavooTipAdjustRequest {
    * New tip amount to apply
    * @required
    */
-  Tip: number;
+  TipAmount: number;
+
+  /**
+   * Must be "Credit" for tip adjustments
+   * @required
+   */
+  PaymentType: 'Credit';
 
   /**
    * Reference ID of original sale transaction
    * @required
    */
-  RefId: string;
+  ReferenceId: string;
 
   /**
-   * User performing the adjustment
-   * @required
-   */
-  PerformedBy: string;
-
-  /**
-   * Merchant ID (required with Multi MID)
+   * Merchant number (optional)
    * @optional
    */
-  MerchantId?: string;
+  MerchantNumber?: string | null;
+
+  /**
+   * Whether to retrieve extended transaction data
+   * @optional
+   */
+  GetExtendedData?: boolean;
+
+  /**
+   * Integration service readiness flag
+   * @optional
+   */
+  IsReadyForIS?: boolean;
+
+  /**
+   * Callback URL for async notifications
+   * @optional
+   */
+  CallbackInfo?: {
+    Url: string;
+  };
+
+  /**
+   * Terminal Profile Number
+   * @optional
+   */
+  Tpn?: string;
+
+  /**
+   * Custom timeout in seconds (1-720)
+   * @optional
+   */
+  SPInProxyTimeout?: number | null;
+
+  /**
+   * Custom fields for additional data
+   * @optional
+   */
+  CustomFields?: Record<string, any>;
 }
 
 /**
@@ -1098,14 +1125,83 @@ export interface DejavooCaptureResponse extends DejavooBaseResponse {
 
 /**
  * TIP ADJUST Response
+ * Response from POST /v2/Payment/TipAdjust
  */
 export interface DejavooTipAdjustResponse extends DejavooBaseResponse {
+  /**
+   * Amounts breakdown (total, base, tip, fee, tax)
+   */
+  Amounts: DejavooAmounts;
+
+  /**
+   * General response information (result code, status, message)
+   */
+  GeneralResponse: DejavooGeneralResponse;
+
+  /**
+   * Payment method used (always 'Credit' for TipAdjust)
+   */
   PaymentType: 'Credit';
-  TransType: 'TipAdjust';
-  Amount: number;
-  Tip: number;
-  TotalAmount: number;
-  RefId: string;
+
+  /**
+   * Transaction type (should be 'TipAdjust')
+   */
+  TransactionType: string;
+
+  /**
+   * Authorization code from processor
+   */
+  AuthCode: string;
+
+  /**
+   * Reference ID from the request
+   */
+  ReferenceId: string;
+
+  /**
+   * Invoice number assigned by terminal
+   */
+  InvoiceNumber: string;
+
+  /**
+   * Terminal serial number
+   */
+  SerialNumber: string;
+
+  /**
+   * Current batch number
+   */
+  BatchNumber: string;
+
+  /**
+   * Transaction number within batch
+   */
+  TransactionNumber: string;
+
+  /**
+   * Whether this transaction has been voided
+   */
+  Voided: boolean;
+
+  /**
+   * Retrieval Reference Number
+   */
+  RRN: string;
+
+  /**
+   * Extended transaction data by application
+   */
+  ExtendedDataByApplication: DejavooExtendedDataByApplication[];
+
+  /**
+   * Card data (type, entry mode, last 4, etc.)
+   */
+  CardData: DejavooCardData;
+
+  /**
+   * EMV chip data (if applicable)
+   */
+  EMVData: Record<string, any>;
 }
 
 /**

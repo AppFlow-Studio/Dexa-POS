@@ -14,15 +14,18 @@ const DialogClose = DialogPrimitive.Close;
 
 function DialogOverlayWeb({
   className,
+  align = "center",
   ...props
 }: DialogPrimitive.OverlayProps & {
   ref?: React.RefObject<DialogPrimitive.OverlayRef>;
+  align?: "center" | "end";
 }) {
   const { open } = DialogPrimitive.useRootContext();
   return (
     <DialogPrimitive.Overlay
       className={cn(
-        "bg-black/80 flex justify-center items-center p-2 absolute top-0 right-0 bottom-0 left-0",
+        "bg-black/80 flex justify-center absolute top-0 right-0 bottom-0 left-0",
+        align === "end" ? "items-end pb-0" : "items-center p-2",
         open
           ? "web:animate-in web:fade-in-0"
           : "web:animate-out web:fade-out-0",
@@ -36,16 +39,19 @@ function DialogOverlayWeb({
 function DialogOverlayNative({
   className,
   children,
+  align = "center",
   ...props
 }: DialogPrimitive.OverlayProps & {
   ref?: React.RefObject<DialogPrimitive.OverlayRef>;
   children?: React.ReactNode;
+  align?: "center" | "end";
 }) {
   return (
     <DialogPrimitive.Overlay
       style={StyleSheet.absoluteFill}
       className={cn(
-        "flex bg-black/80 justify-center items-center p-2",
+        "flex bg-black/80 justify-center",
+        align === "end" ? "items-end pb-0" : "items-center p-2",
         className
       )}
       {...props}
@@ -69,19 +75,22 @@ function DialogContent({
   className,
   children,
   portalHost,
+  align = "center",
   ...props
 }: DialogPrimitive.ContentProps & {
   ref?: React.RefObject<DialogPrimitive.ContentRef>;
   className?: string;
   portalHost?: string;
+  align?: "center" | "end";
 }) {
   const { open } = DialogPrimitive.useRootContext();
   return (
     <DialogPortal hostName={portalHost}>
-      <DialogOverlay>
+      <DialogOverlay align={align}>
         <DialogPrimitive.Content
           className={cn(
-            "max-w-2xl w-full gap-4 web:cursor-default bg-background p-6 shadow-lg web:duration-200 rounded-lg",
+            "max-w-2xl w-full gap-4 web:cursor-default bg-background p-6 shadow-lg web:duration-200",
+            align === "end" ? "rounded-t-lg rounded-b-none" : "rounded-lg",
             open
               ? "web:animate-in web:fade-in-0 web:zoom-in-95"
               : "web:animate-out web:fade-out-0 web:zoom-out-95",

@@ -1067,6 +1067,31 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 };
 
 // ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+const formatTimestamp = (timestamp: string): string => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return `Today, ${date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })}`;
+  }
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
@@ -1226,29 +1251,6 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     return { subtotal, discount, tax, total };
   }, [order]);
 
-  // Format timestamp
-  const formatTimestamp = useCallback((timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-
-    if (isToday) {
-      return `Today, ${date.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      })}`;
-    }
-
-    return date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  }, []);
-
   // Handlers
   const handleReopenOrder = useCallback(() => {
     if (!orderId) return;
@@ -1264,7 +1266,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     if (!orderId) return;
     useOrderStore.getState().setActiveOrder(orderId);
     close();
-    router.push("/order-processing");
+    // router.push("/order-processing");
   }, [orderId, close, router]);
 
   const handleIssueReceipt = useCallback(() => {
@@ -1293,33 +1295,16 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     [show]
   );
 
-  // console.log(order)
-
   return (
     <Modal
       visible={isOpen}
       animationType="slide"
       transparent={true}
       onRequestClose={close}
+      statusBarTranslucent
     >
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' }}>
-        <View style={{
-          flex: 1,
-          backgroundColor: '#161616',
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-        }}>
-          {/* Handle indicator */}
-          <View style={{
-            width: 40,
-            height: 4,
-            backgroundColor: '#4B5563',
-            borderRadius: 2,
-            alignSelf: 'center',
-            marginTop: 12,
-            marginBottom: 8
-          }} />
-
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+        <View style={{ height: '90%', backgroundColor: '#161616', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
           {!order ? (
             <View className="flex-1 items-center justify-center">
               <Text className="text-gray-500">Loading order...</Text>
@@ -1330,7 +1315,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
               <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-800">
                 <View className="flex-row items-center">
                   <Text className="text-xl font-bold text-white">Payment Details</Text>
-                  <Text className="text-sm text-gray-500 ml-2">
+                  <Text className="text-lg text-gray-500 ml-2">
                     Order {order.display_number || order.order_number?.slice(-6) || "—"}
                   </Text>
                 </View>
@@ -1363,9 +1348,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   {/* Close Button */}
                   <TouchableOpacity
                     onPress={close}
-                    className="w-9 h-9 rounded-full bg-gray-800 items-center justify-center"
+                    className="px-4 py-2 rounded-lg bg-gray-800 items-center justify-center"
                   >
-                    <X size={18} color="#9CA3AF" />
+                    <Text className="text-sm font-semibold text-gray-300">CLOSE</Text>
                   </TouchableOpacity>
                 </View>
               </View>

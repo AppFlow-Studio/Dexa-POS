@@ -16,7 +16,7 @@ import {
   RotateCcw,
   X,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 interface PaymentDetailModalProps {
@@ -156,8 +156,38 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
 );
 
 // ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+const formatTimestamp = (timestamp: string): string => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return `Today, ${date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })}`;
+  }
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
+/**
+ * DEPRECATED
+ * @param param0 
+ * @returns 
+ */
 const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   isOpen,
   onClose,
@@ -175,11 +205,10 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   });
 
   // Toggle payment expansion
-  const togglePaymentExpansion = (index: number) => {
-    setExpandedPaymentIndex(expandedPaymentIndex === index ? null : index);
-  };
+  const togglePaymentExpansion = useCallback((index: number) => {
+    setExpandedPaymentIndex((prev) => (prev === index ? null : index));
+  }, []);
 
-  console.log('[Payment Detail Modal]', order)
   // Calculate payment summary
   const paymentSummary = useMemo(() => {
     if (!order) {
@@ -236,69 +265,47 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     };
   }, [order]);
 
-  // Format timestamp elegantly
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-
-    if (isToday) {
-      return `Today, ${date.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      })}`;
-    }
-
-    return date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
-
   // Handle actions
-  const handleReOpenOrder = () => {
+  const handleReOpenOrder = useCallback(() => {
     show({
       title: "Re-open Order",
       message: "Re-opening order functionality coming soon",
       type: "warning",
     });
-  };
+  }, [show]);
 
-  const handleAdjustTip = () => {
+  const handleAdjustTip = useCallback(() => {
     show({
       title: "Adjust Tip",
       message: "Tip adjustment functionality coming soon",
       type: "warning",
     });
-  };
+  }, [show]);
 
-  const handleRefund = () => {
+  const handleRefund = useCallback(() => {
     if (!orderId) return;
     onClose();
     router.push(`/previous-orders/${orderId}`);
-  };
+  }, [orderId, onClose, router]);
 
-  const handleIssueReceipt = () => {
+  const handleIssueReceipt = useCallback(() => {
     show({
       title: "Issue Receipt",
       message: "Receipt printing functionality coming soon",
       type: "warning",
     });
-  };
+  }, [show]);
 
   if (!order) return null;
 
   const hasTips = paymentSummary.payments.some((p) => p.tipAmount > 0);
-  console.log('Payment Detail Modal', )
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
         className="p-0 bg-[#161616] border-gray-800"
         style={{ width: 650, maxWidth: "95%" }}
+        align="end"
       >
         <View
           className="bg-[#161616] rounded-2xl overflow-hidden"

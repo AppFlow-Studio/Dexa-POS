@@ -545,7 +545,10 @@ const TableListItem: React.FC<{
     const update = () => {
       const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
       setDuration(formatDuration(diffMs));
-      setIsOvertime(Math.floor(diffMs / 60000) > defaultSittingTimeMinutes);
+      setIsOvertime(
+        defaultSittingTimeMinutes > 0 &&
+          Math.floor(diffMs / 60000) > defaultSittingTimeMinutes,
+      );
     };
     update();
     const timer = setInterval(update, 1000);

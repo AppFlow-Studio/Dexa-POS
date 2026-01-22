@@ -40,13 +40,16 @@ interface RefundRecord {
 interface PreviousOrdersState {
   previousOrders: PreviousOrder[];
   refunds: RefundRecord[];
+  newOrdersCount: number; // Tracks how many new orders are available on server
 
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
   getOrderById: (orderId: string) => PreviousOrder | undefined;
   searchOrders: (query: string) => PreviousOrder[];
   getOrdersByDate: (date: Date) => PreviousOrder[];
-  refreshPreviousOrders: () => Promise<void>; // New action for pull-to-refresh
+  refreshPreviousOrders: () => Promise<void>; // Full refresh from backend
+  checkForNewOrders: () => Promise<number>; // Check for new orders (lightweight)
+  clearNewOrdersCount: () => void; // Reset new orders counter
 
   // Refund actions
   refundFullOrder: (
@@ -68,6 +71,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
   (set, get) => ({
     previousOrders: [],
     refunds: [],
+    newOrdersCount: 0,
 
     addOrderToHistory: (order: OrderProfile) => {
       // An order should be added to history if it has reached a final state.
@@ -328,13 +332,61 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        set({ previousOrders: mergedPreviousOrders });
+        set({ previousOrders: mergedPreviousOrders, newOrdersCount: 0 });
         console.log(
           `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded.`,
         );
       } catch (err) {
         console.error("Error in refreshPreviousOrders:", err);
       }
+    },
+
+    // Check for new orders by fetching latest 10 and comparing IDs
+    checkForNewOrders: async () => {
+      const client = _supabaseClient;
+      if (!client) {
+        return 0;
+      }
+
+      const locationId = useFloorPlanStore.getState().locationId;
+      if (!locationId) {
+        return 0;
+      }
+
+      try {
+        // Fetch only the latest 10 orders (lightweight check)
+        const { data: latestOrders, error } =
+          await OrderService.getHistoryOrders(client, locationId, 10, null);
+
+        if (error || !latestOrders) {
+          return 0;
+        }
+
+        // Get current local order IDs
+        const localOrderIds = new Set(
+          get().previousOrders.map((o) => o.db_order_id || o.orderId),
+        );
+
+        // Count how many fetched orders are NOT in local state
+        let newCount = 0;
+        for (const order of latestOrders) {
+          if (!localOrderIds.has(order.id)) {
+            newCount++;
+          }
+        }
+
+        // Update state
+        set({ newOrdersCount: newCount });
+        return newCount;
+      } catch (err) {
+        console.error("Error checking for new orders:", err);
+        return 0;
+      }
+    },
+
+    // Clear the new orders counter (called after user taps refresh)
+    clearNewOrdersCount: () => {
+      set({ newOrdersCount: 0 });
     },
 
     refundFullOrder: (
