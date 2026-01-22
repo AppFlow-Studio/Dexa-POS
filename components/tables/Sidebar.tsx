@@ -1,6 +1,6 @@
+import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { images } from "@/lib/image";
 import { cn } from "@/lib/utils";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
   BarChart3,
   ChevronLeft,
@@ -52,7 +52,51 @@ const Sidebar: React.FC<SidebarProps> = ({
   const widthSV = useSharedValue(EXPANDED_WIDTH);
   const opacitySV = useSharedValue(1);
 
-  const { realtimeStatus } = useFloorPlanStore();
+  // Get actual Realtime Channel status (not store status)
+  const { floor } = useLocationRealtime();
+
+  // Determine connection status based on actual channel state
+  // "Offline" = CHANNEL_ERROR (max retries reached) or CLOSED
+  // "Syncing..." = actively reconnecting (TIMED_OUT or reconnectAttempts > 0 but not error)
+  const isOffline =
+    !floor.isConnected &&
+    (floor.status.state === "CHANNEL_ERROR" || floor.status.state === "CLOSED");
+  const isSyncing =
+    !floor.isConnected && !isOffline && floor.status.reconnectAttempts > 0;
+
+  // Background periodic retry when channel is in error state
+  // This handles both: internet restored AND server restored scenarios
+  useEffect(() => {
+    // Only set up retry interval when we're offline (channel error)
+    if (!isOffline) return;
+
+    console.log(
+      "[Sidebar] Channel offline, starting periodic retry (every 30s)...",
+    );
+
+    // Initial retry after 5 seconds
+    const initialRetryId = setTimeout(() => {
+      console.log("[Sidebar] Initial retry attempt...");
+      floor.reconnect();
+    }, 5000);
+
+    // Then periodic retry every 30 seconds
+    const intervalId = setInterval(() => {
+      console.log("[Sidebar] Periodic retry attempt...");
+      floor.reconnect();
+    }, 30000); // 30 seconds
+
+    return () => {
+      clearTimeout(initialRetryId);
+      clearInterval(intervalId);
+    };
+  }, [isOffline, floor]);
+
+  // Manual reconnect handler (for tappable status indicator)
+  const handleManualReconnect = () => {
+    console.log("[Sidebar] Manual reconnect triggered");
+    floor.reconnect();
+  };
 
   useEffect(() => {
     const config = {
@@ -62,7 +106,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     widthSV.value = withTiming(
       isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
-      config
+      config,
     );
     opacitySV.value = withTiming(isExpanded ? 1 : 0, { duration: 150 });
   }, [isExpanded]);
@@ -173,7 +217,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 className={cn(
                   "flex-row items-center rounded-xl h-12 px-3 transition-all duration-100",
-                  isActive ? "bg-blue-600" : "hover:bg-[#252525]"
+                  isActive ? "bg-blue-600" : "hover:bg-[#252525]",
                 )}
               >
                 <View className="w-6 items-center justify-center">
@@ -187,7 +231,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <Text
                     className={cn(
                       "text-base font-medium",
-                      isActive ? "text-white" : "text-gray-300"
+                      isActive ? "text-white" : "text-gray-300",
                     )}
                     numberOfLines={1}
                   >
@@ -219,12 +263,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         </Animated.View>
 
         {/* Live Status Indicator - Bottom of Sidebar */}
-        <View className="p-3 border-t border-gray-800 flex-row items-center justify-center">
+        {/* Tappable when offline/syncing to trigger manual reconnect */}
+        <TouchableOpacity
+          className="p-3 border-t border-gray-800 flex-row items-center justify-center"
+          onPress={!floor.isConnected ? handleManualReconnect : undefined}
+          activeOpacity={!floor.isConnected ? 0.7 : 1}
+        >
           <View
             className={`w-2.5 h-2.5 rounded-full ${
-              realtimeStatus === "connected"
+              floor.isConnected
                 ? "bg-green-500"
-                : realtimeStatus === "reconnecting"
+                : isSyncing
                   ? "bg-amber-500"
                   : "bg-red-500"
             }`}
@@ -234,14 +283,14 @@ const Sidebar: React.FC<SidebarProps> = ({
               style={textStyle}
               className="text-sm text-gray-400 ml-2"
             >
-              {realtimeStatus === "connected"
+              {floor.isConnected
                 ? "Live"
-                : realtimeStatus === "reconnecting"
+                : isSyncing
                   ? "Syncing..."
-                  : "Offline"}
+                  : "Offline - Tap to retry"}
             </Animated.Text>
           )}
-        </View>
+        </TouchableOpacity>
       </Animated.View>
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">

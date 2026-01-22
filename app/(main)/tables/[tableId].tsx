@@ -193,7 +193,9 @@ const UpdateTableScreen = () => {
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
       setDuration(`${diffMins} min`);
-      setIsOvertime(diffMins > defaultSittingTimeMinutes);
+      setIsOvertime(
+        defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes,
+      );
     };
 
     updateDuration(); // Run immediately

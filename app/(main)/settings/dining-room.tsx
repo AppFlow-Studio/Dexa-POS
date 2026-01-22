@@ -16,7 +16,7 @@ import {
   Settings2,
   Users,
 } from "lucide-react-native";
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -47,13 +47,13 @@ const DiningRoomScreen = () => {
       available: allTables.filter(
         (t) =>
           (t.session?.status || "available") === "available" &&
-          t.category === "table"
+          t.category === "table",
       ).length,
       inUse: allTables.filter(
         (t) =>
           (t.session?.status || "available") !== "available" &&
           t.session?.status !== "cleaning" &&
-          t.category === "table"
+          t.category === "table",
       ).length,
       cleaning: allTables.filter((t) => t.session?.status === "cleaning")
         .length,
@@ -300,20 +300,41 @@ const DiningRoomScreen = () => {
               {/* Sitting Time & Automation */}
               <View className="gap-4">
                 <View>
-                  <Label className="text-white text-base mb-1">
-                    Default Sitting Time (min)
-                  </Label>
-                  <Text className="text-gray-400 text-xs mb-2">
-                    Used to estimate table turnover
-                  </Text>
-                  <Input
-                    className="bg-[#212121] border-gray-600 text-white h-10"
-                    value={settings.defaultSittingTimeMinutes.toString()}
-                    onChangeText={(v) =>
-                      settings.setDefaultSittingTimeMinutes(parseInt(v) || 60)
-                    }
-                    keyboardType="numeric"
-                  />
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View>
+                      <Label className="text-white text-base">
+                        Limit Sitting Time
+                      </Label>
+                      <Text className="text-gray-400 text-xs">
+                        Alert when tables exceed time limit
+                      </Text>
+                    </View>
+                    <Switch
+                      checked={settings.defaultSittingTimeMinutes > 0}
+                      onCheckedChange={(v) =>
+                        settings.setDefaultSittingTimeMinutes(v ? 60 : 0)
+                      }
+                    />
+                  </View>
+
+                  {settings.defaultSittingTimeMinutes > 0 && (
+                    <View>
+                      <Label className="text-gray-400 text-xs mb-1.5">
+                        Duration (minutes)
+                      </Label>
+                      <Input
+                        className="bg-[#212121] border-gray-600 text-white h-10"
+                        value={settings.defaultSittingTimeMinutes.toString()}
+                        onChangeText={(v) => {
+                          const val = parseInt(v);
+                          settings.setDefaultSittingTimeMinutes(
+                            isNaN(val) ? 0 : val,
+                          );
+                        }}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  )}
                 </View>
 
                 <View className="flex-row items-center justify-between">

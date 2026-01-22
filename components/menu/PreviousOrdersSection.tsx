@@ -1,8 +1,8 @@
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { Search, X } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import { RefreshCw, Search, X } from "lucide-react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   Text,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 import OrderActionsMenu from "./OrderActionsMenu";
 import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
@@ -84,7 +85,13 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 
 const PreviousOrdersSection = () => {
   const { ordersById } = useOrderStore();
-  const { refreshPreviousOrders, previousOrders } = usePreviousOrdersStore();
+  const {
+    refreshPreviousOrders,
+    previousOrders,
+    newOrdersCount,
+    checkForNewOrders,
+    clearNewOrdersCount,
+  } = usePreviousOrdersStore();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -105,12 +112,34 @@ const PreviousOrdersSection = () => {
     height: number;
   } | null>(null);
 
-  // PHASE 3C: Subscribe to store changes
-  const handleRefresh = async () => {
+  // Initial load and background check for new orders every 15 seconds
+  useEffect(() => {
+    // Initial fetch when screen loads
+    refreshPreviousOrders();
+
+    // Set up interval to check for new orders every 15 seconds
+    const intervalId = setInterval(() => {
+      checkForNewOrders();
+    }, 15000); // 15 seconds
+
+    // Cleanup interval when component unmounts
+    return () => {
+      clearInterval(intervalId);
+      clearNewOrdersCount(); // Reset counter when leaving screen
+    };
+  }, []);
+
+  // Handle refresh (called from pull-to-refresh or banner tap)
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await refreshPreviousOrders(); // Call the store action
+    await refreshPreviousOrders(); // This also clears newOrdersCount
     setIsRefreshing(false);
-  };
+  }, [refreshPreviousOrders]);
+
+  // Handle new orders banner tap
+  const handleNewOrdersBannerTap = useCallback(async () => {
+    await handleRefresh();
+  }, [handleRefresh]);
 
   // Get all orders - combine previous orders selector with local orders for compatibility
   const allOrders: OrderProfile[] = useMemo(() => {
@@ -289,18 +318,49 @@ const PreviousOrdersSection = () => {
         </View>
       </View>
 
-      {/* Orders Table */}
-      {/* Orders Table - No ScrollView wrapper to avoid nested VirtualizedLists */}
-      <OrdersTable
-        orders={filteredOrders}
-        sortColumn={sortColumn}
-        sortDirection={sortDirection}
-        onSort={handleSort}
-        onRowClick={handleRowClick}
-        onMoreClick={handleMoreClick}
-        refreshing={isRefreshing}
-        onRefresh={handleRefresh}
-      />
+      {/* Orders Table Container - relative for absolute positioning of banner */}
+      <View className="flex-1 relative">
+        {/* Orders Table - No ScrollView wrapper to avoid nested VirtualizedLists */}
+        <OrdersTable
+          orders={filteredOrders}
+          sortColumn={sortColumn}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+          onRowClick={handleRowClick}
+          onMoreClick={handleMoreClick}
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+        />
+
+        {/* New Orders Banner - Floating */}
+        {newOrdersCount > 0 && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(200)}
+            className="absolute top-4 left-0 right-0 items-center z-10"
+            pointerEvents="box-none"
+          >
+            <TouchableOpacity
+              onPress={handleNewOrdersBannerTap}
+              activeOpacity={0.8}
+              className="flex-row items-center gap-2 px-5 py-3 rounded-full bg-green-600 shadow-lg"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 8,
+              }}
+            >
+              <RefreshCw size={16} color="#fff" />
+              <Text className="text-white font-semibold text-sm">
+                {newOrdersCount} New Order{newOrdersCount > 1 ? "s" : ""} - Tap
+                to Refresh
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+      </View>
 
       {/* Modals */}
       <PaymentDetailModal

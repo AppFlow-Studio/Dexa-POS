@@ -2315,7 +2315,13 @@ export const useOrderStore = create<OrderState>()(
 
             const state = get();
             const { currentStationId } = state;
-            const localOrder = state.ordersById[dbOrderId];
+            // Option B: Backup Deduplication - Find order by key OR by db_order_id property
+            // This prevents duplicates if an order is still keyed by its local ID
+            const localOrder =
+              state.ordersById[dbOrderId] ||
+              Object.values(state.ordersById).find(
+                (o) => o.db_order_id === dbOrderId,
+              );
             const currentLocationId =
               useStoreSettingsStore.getState().selectedStore?.id;
 
@@ -2686,8 +2692,12 @@ export const useOrderStore = create<OrderState>()(
 
             switch (operation) {
               case "INSERT":
-                // DEDUPLICATION: Only create if order doesn't exist locally
-                const existingOrder = state.ordersById[dbOrderId];
+                // DEDUPLICATION: Check if order exists (by key OR by property)
+                const existingOrder =
+                  state.ordersById[dbOrderId] ||
+                  Object.values(state.ordersById).find(
+                    (o) => o.db_order_id === dbOrderId,
+                  );
                 if (existingOrder) {
                   console.log(
                     "[OrderBroadcast] Remote INSERT - order already exists:",
@@ -3748,22 +3758,67 @@ export const useOrderStore = create<OrderState>()(
                   createdAt: string,
                   syncVersion?: number,
                 ) => {
-                  set((state) => ({
-                    ordersById: {
-                      ...state.ordersById,
-                      [orderId]: {
-                        ...state.ordersById[orderId],
-                        db_order_id: dbOrderId,
-                        order_number: orderNumber,
-                        display_number: displayNumber,
-                        sync_status: "synced" as const,
-                        sync_version: syncVersion ?? 1, // Store sync_version from backend
-                        // Set opened_at from backend's created_at (when 1st item was added)
-                        opened_at:
-                          state.ordersById[orderId]?.opened_at || createdAt,
+                  set((state) => {
+                    // Option A: Re-key order from local ID to db ID
+                    const existingOrder = state.ordersById[orderId];
+                    if (!existingOrder) return state;
+
+                    // If orderId is already the dbOrderId, just update it (no re-key needed)
+                    if (orderId === dbOrderId) {
+                      return {
+                        ordersById: {
+                          ...state.ordersById,
+                          [orderId]: {
+                            ...existingOrder,
+                            db_order_id: dbOrderId,
+                            order_number: orderNumber,
+                            display_number: displayNumber,
+                            sync_status: "synced" as const,
+                            sync_version: syncVersion ?? 1,
+                            opened_at: existingOrder.opened_at || createdAt,
+                          },
+                        },
+                      };
+                    }
+
+                    // Otherwise, re-key: remove old key, add new key
+                    console.log(
+                      `[setOrderDbId] Re-keying order from ${orderId} to ${dbOrderId}`,
+                    );
+                    const { [orderId]: oldOrder, ...otherOrders } =
+                      state.ordersById;
+
+                    const newOrder: OrderProfile = {
+                      ...oldOrder,
+                      id: dbOrderId, // Update ID to dbOrderId
+                      db_order_id: dbOrderId,
+                      order_number: orderNumber,
+                      display_number: displayNumber,
+                      sync_status: "synced" as const,
+                      sync_version: syncVersion ?? 1,
+                      opened_at: oldOrder.opened_at || createdAt,
+                    };
+
+                    return {
+                      ordersById: {
+                        ...otherOrders,
+                        [dbOrderId]: newOrder,
                       },
-                    },
-                  }));
+                      // Update orderIds list
+                      orderIds: state.orderIds.map((id) =>
+                        id === orderId ? dbOrderId : id,
+                      ),
+                      // Update active order if needed
+                      activeOrderId:
+                        state.activeOrderId === orderId
+                          ? dbOrderId
+                          : state.activeOrderId,
+                      // Update working set if needed
+                      workingSetOrderIds: state.workingSetOrderIds.map((id) =>
+                        id === orderId ? dbOrderId : id,
+                      ),
+                    };
+                  });
                 };
 
                 // Create and track the sync promise - wrapped in queue to serialize additions
