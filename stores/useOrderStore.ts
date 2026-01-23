@@ -2379,6 +2379,7 @@ export const useOrderStore = create<OrderState>()(
                       localOrder.amount_paid === backendOrder.amount_paid &&
                       localOrder.order_status === backendOrder.status &&
                       localOrder.total_amount === backendOrder.card_total &&
+                      localOrder.check_status === backendOrder.check_status
                       localOrder.items.length ===
                         (backendOrder.order_items?.length ??
                           localOrder.items.length) &&

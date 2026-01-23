@@ -1113,6 +1113,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     return state.ordersById[orderId] || null;
   });
 
+  console.log('[PaymentDetailSheet]',activeOrder)
   // Fallback to previousOrders for history orders
   const previousOrder = usePreviousOrdersStore((state) => {
     if (!orderId || activeOrder) return null;

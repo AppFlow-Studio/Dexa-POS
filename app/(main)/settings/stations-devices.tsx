@@ -1,3 +1,5 @@
+import { CFDPairingQR } from "@/components/cfd/CFDPairingQR";
+import { CFDStatusBadge } from "@/components/cfd/CFDStatusBadge";
 import { createSupabaseClient } from "@/lib/supabase";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Station } from "@/types/station";
@@ -20,6 +22,8 @@ import {
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
+  Pressable,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -30,6 +34,7 @@ const StationsDevicesScreen = () => {
   const { getToken } = useAuth();
   const supabase = createSupabaseClient(getToken);
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const [showPairing, setShowPairing] = useState(false)
 
   const [expandedSections, setExpandedSections] = useState({
     stations: true,
@@ -555,6 +560,44 @@ const StationsDevicesScreen = () => {
               )}
             </View>
           )}
+
+          {/* CFD Section */}
+      <View className="bg-neutral-900 rounded-xl p-4 mt-4">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-3">
+            <Monitor size={24} color="#9ca3af" />
+            <View>
+              <Text className="text-white text-lg font-semibold">
+                Customer Display
+              </Text>
+              <Text className="text-neutral-500 text-sm">
+                Show order details to customers
+              </Text>
+            </View>
+          </View>
+          
+          <CFDStatusBadge onPress={() => setShowPairing(true)} />
+        </View>
+
+        <Pressable
+          onPress={() => setShowPairing(true)}
+          className="bg-emerald-600 mt-4 py-3 rounded-lg items-center"
+        >
+          <Text className="text-white font-semibold">Connect Display</Text>
+        </Pressable>
+      </View>
+
+      {/* Pairing Modal */}
+      <Modal
+        visible={showPairing}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPairing(false)}
+      >
+        <View className="flex-1 bg-black/80 justify-center items-center p-4">
+          <CFDPairingQR onClose={() => setShowPairing(false)} />
+        </View>
+      </Modal>
 
           {/* Security Notice */}
           <View className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
