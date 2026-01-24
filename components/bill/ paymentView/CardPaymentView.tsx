@@ -1,13 +1,17 @@
+import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
+import { useCFD } from "@/contexts/CFDProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
-import { isTerminalConnectivityError, getTerminalErrorMessage } from "@/lib/payments/dejavoo-error-detector";
+import {
+  getTerminalErrorMessage,
+  isTerminalConnectivityError,
+} from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
-import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { CheckCircle2, Wifi } from "lucide-react-native";
 import { useEffect, useState } from "react";
@@ -44,6 +48,15 @@ const CardPaymentView = () => {
   );
   const [dejavooError, setDejavooError] = useState<string | null>(null);
 
+  const {
+    showTipSelection,
+    updateTip,
+    setScreenState,
+    setBaseAmount,
+    tipResponse,
+    clearTipResponse,
+  } = useCFD();
+
   const { selectedStation } = useStoreSettingsStore();
   // console.log('selectedStation', selectedStation);
 
@@ -52,10 +65,10 @@ const CardPaymentView = () => {
     status: terminalStatus,
     isReady: terminalReady,
     errorMessage: terminalErrorMessage,
-    recheckStatus
+    recheckStatus,
   } = useTerminalStatus(
     selectedStation?.payment_terminal?.id,
-    selectedStation?.payment_terminal
+    selectedStation?.payment_terminal,
   );
 
   const TIP_PRESETS = [18, 20, 25];
@@ -67,6 +80,7 @@ const CardPaymentView = () => {
     const calculatedTip = (percentage / 100) * totalToPay;
     setTipInput(calculatedTip.toFixed(2));
     setSelectedTipPreset(percentage);
+    updateTip(calculatedTip, percentage);
   };
 
   const handleTipInputChange = (value: string) => {
@@ -74,6 +88,7 @@ const CardPaymentView = () => {
     if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
       setTipInput(value);
       setSelectedTipPreset(null); // Clear preset when manually typing
+      updateTip(parseFloat(value) || 0, null);
     }
   };
 
@@ -95,122 +110,161 @@ const CardPaymentView = () => {
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;
 
+  // Sync with CFD Tip Selection
+  useEffect(() => {
+    if (status === "ready") {
+      showTipSelection(totalToPay, [18, 20, 25]);
+      clearTipResponse();
+    }
+
+    // Cleanup: Reset CFD state when leaving the card payment view
+    return () => {
+      setScreenState(null);
+      setBaseAmount(null);
+    };
+  }, [status]); // Only trigger when entering ready state
+
+  // Handle CFD Tip Response
+  useEffect(() => {
+    if (tipResponse) {
+      const tipDollars = (tipResponse.tipAmount / 100).toFixed(2);
+      setTipInput(tipDollars);
+
+      if (tipResponse.tipPercentage) {
+        setSelectedTipPreset(tipResponse.tipPercentage);
+      } else {
+        setSelectedTipPreset(null);
+      }
+    }
+  }, [tipResponse]);
+
   // Logic: Simulate terminal interaction
   useEffect(() => {
-    if (status === "processing") { 
+    if (status === "processing") {
       const processPayment = async () => {
         if (!selectedStation?.payment_terminal) {
-          throw new Error('No payment terminal selected');
+          throw new Error("No payment terminal selected");
         }
-        try{
-          
-            const DejavooAPI = new DejavooSpinAPI(supabase);
-            // 2. Load terminal credentials (fast path with local credentials)
-            console.log('[CashPayment] Loading terminal:', selectedStation?.payment_terminal);
-            const loaded = await DejavooAPI.loadTerminal(
-              selectedStation?.payment_terminal?.id || '',
-              selectedStation?.payment_terminal // Pass local credentials for fast path
+        try {
+          const DejavooAPI = new DejavooSpinAPI(supabase);
+          // 2. Load terminal credentials (fast path with local credentials)
+          console.log(
+            "[CashPayment] Loading terminal:",
+            selectedStation?.payment_terminal,
+          );
+          const loaded = await DejavooAPI.loadTerminal(
+            selectedStation?.payment_terminal?.id || "",
+            selectedStation?.payment_terminal, // Pass local credentials for fast path
+          );
+          console.log("[CashPayment] Terminal loaded:", loaded);
+
+          if (!loaded) {
+            throw new Error("Failed to load terminal credentials");
+          }
+
+          // 3. Prepare transaction data
+          const tipAmount = parseFloat(tipInput) || 0;
+          // const amountTenderedNum = parseFloat(amountTendered) || 0;
+
+          // Generate unique RefId
+          const refId = activeSplit
+            ? generateRefId(
+                "CARD",
+                parseInt(activeSplitId?.split("_")[1] || "0"),
+              )
+            : generateRefId("CARD");
+
+          console.log("[CashPayment] Executing sale transaction...", {
+            amount: totalToPay,
+            tip: tipAmount,
+            refId,
+            split: activeSplit?.customerName,
+          });
+
+          const result = await DejavooAPI.sale()
+            .amount(totalToPay)
+            .tip(tipAmount)
+            .paymentType("Credit")
+            .refId(refId)
+            // .performedBy('cashier@pos.com') // TODO: Get from employee store
+            // .withTags(
+            //   activeSplit ? 'Split' : 'Full',
+            //   activeOrderId?.substring(0, 8) || 'ORDER'
+            // )
+            .execute();
+
+          // 5. Log complete response
+          console.log("=== DEJAVOO SALE RESPONSE ===");
+          console.log("Success:", result.success);
+          console.log(
+            "Raw Response:",
+            JSON.stringify(result.rawResponse, null, 2),
+          );
+
+          if (result.helpers) {
+            console.log("=== RESPONSE HELPERS ===");
+            console.log("Reference ID:", result.helpers.getReferenceId());
+            console.log(
+              "Transaction Number:",
+              result.helpers.getTransactionNumber(),
             );
-            console.log('[CashPayment] Terminal loaded:', loaded);
+            console.log("Invoice Number:", result.helpers.getInvoiceNumber());
+            console.log("Batch Number:", result.helpers.getBatchNumber());
+            console.log("Auth Number:", result.helpers.getAuthCode());
+            console.log("Total Amount:", result.helpers.getTotalAmount());
+            console.log("Base Amount:", result.helpers.getBaseAmount());
+            console.log("Tip Amount:", result.helpers.getTipAmount());
+            console.log("Card Type:", result.helpers.getCardType());
+            console.log("Card Last 4:", result.helpers.getCardLast4());
+            console.log("Entry Mode:", result.helpers.getEntryMode());
+            console.log("Cardholder Name:", result.helpers.getCardholderName());
+            console.log("Is Approved:", result.helpers.isApproved());
+            console.log("Result Code:", result.helpers.getResultCode());
+            console.log("Status Code:", result.helpers.getStatusCode());
+            console.log("Message:", result.helpers.getMessage());
+          }
+          console.log("=== END DEJAVOO RESPONSE ===");
 
-            if (!loaded) {
-              throw new Error('Failed to load terminal credentials');
-            }
+          // 6. Handle result
+          // Check for terminal connectivity error first
+          if (!result.success && isTerminalConnectivityError(result)) {
+            const errorMsg = getTerminalErrorMessage(result);
+            toastService.show({
+              title: "Terminal Disconnected",
+              message: errorMsg,
+              type: "error",
+              duration: 5000,
+            });
+            close(); // Immediate safe close
+            return;
+          }
 
-            // 3. Prepare transaction data
-            const tipAmount = parseFloat(tipInput) || 0;
-            // const amountTenderedNum = parseFloat(amountTendered) || 0;
+          // Handle all other transaction errors (declined, timeout, etc.)
+          if (!result.success) {
+            setDejavooError(result.error || "Transaction failed");
+            setStatus("ready");
+            return;
+          }
 
-            // Generate unique RefId
-            const refId = activeSplit
-              ? generateRefId('CARD', parseInt(activeSplitId?.split('_')[1] || '0'))
-              : generateRefId('CARD');
-
-            console.log('[CashPayment] Executing sale transaction...', {
-              amount: totalToPay,
-              tip: tipAmount,
-              refId,
-              split: activeSplit?.customerName,
-          });
-
-          const result = await DejavooAPI
-          .sale()
-          .amount(totalToPay)
-          .tip(tipAmount)
-          .paymentType('Credit') 
-          .refId(refId)
-          // .performedBy('cashier@pos.com') // TODO: Get from employee store
-          // .withTags(
-          //   activeSplit ? 'Split' : 'Full',
-          //   activeOrderId?.substring(0, 8) || 'ORDER'
-          // )
-          .execute();
-  
-        // 5. Log complete response
-        console.log('=== DEJAVOO SALE RESPONSE ===');
-        console.log('Success:', result.success);
-        console.log('Raw Response:', JSON.stringify(result.rawResponse, null, 2));
-  
-        if (result.helpers) {
-          console.log('=== RESPONSE HELPERS ===');
-          console.log('Reference ID:', result.helpers.getReferenceId());
-          console.log('Transaction Number:', result.helpers.getTransactionNumber());
-          console.log('Invoice Number:', result.helpers.getInvoiceNumber());
-          console.log('Batch Number:', result.helpers.getBatchNumber());
-          console.log('Auth Number:', result.helpers.getAuthCode());
-          console.log('Total Amount:', result.helpers.getTotalAmount());
-          console.log('Base Amount:', result.helpers.getBaseAmount());
-          console.log('Tip Amount:', result.helpers.getTipAmount());
-          console.log('Card Type:', result.helpers.getCardType());
-          console.log('Card Last 4:', result.helpers.getCardLast4());
-          console.log('Entry Mode:', result.helpers.getEntryMode());
-          console.log('Cardholder Name:', result.helpers.getCardholderName());
-          console.log('Is Approved:', result.helpers.isApproved());
-          console.log('Result Code:', result.helpers.getResultCode());
-          console.log('Status Code:', result.helpers.getStatusCode());
-          console.log('Message:', result.helpers.getMessage());
-        }
-        console.log('=== END DEJAVOO RESPONSE ===');
-  
-        // 6. Handle result
-        // Check for terminal connectivity error first
-        if (!result.success && isTerminalConnectivityError(result)) {
-          const errorMsg = getTerminalErrorMessage(result);
-          toastService.show({
-            title: 'Terminal Disconnected',
-            message: errorMsg,
-            type: 'error',
-            duration: 5000,
-          });
-          close(); // Immediate safe close
-          return;
-        }
-
-        // Handle all other transaction errors (declined, timeout, etc.)
-        if (!result.success) {
-          setDejavooError(result.error || 'Transaction failed');
-          setStatus("ready");
-          return;
-        }
-
-        // Success
-        if (result.success) {
-           setStatus("success");
-        }
+          // Success
+          if (result.success) {
+            setStatus("success");
+          }
         } catch (error) {
-          console.error('[CardPayment] Error processing payment:', error);
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          console.error("[CardPayment] Error processing payment:", error);
+          const errorMsg =
+            error instanceof Error ? error.message : "Unknown error";
           setDejavooError(errorMsg);
           // Show error toast
           toastService.show({
-            title: 'Transaction Failed',
+            title: "Transaction Failed",
             message: errorMsg,
-            type: 'error',
+            type: "error",
           });
           setStatus("ready");
           return;
         }
-      }
+      };
       processPayment();
     }
   }, [status]);
@@ -220,8 +274,7 @@ const CardPaymentView = () => {
     if (status === "success" && activeOrderId) {
       // Use central handler instead of direct store call
       // Pass the tip amount and explicit card pricing flag
-      handlePaymentCompletion(
-        {
+      handlePaymentCompletion({
         method: "Card",
         tipAmount: tipAmount,
         transactionDetails: {
@@ -250,7 +303,7 @@ const CardPaymentView = () => {
         keyboardShouldPersistTaps="handled"
       >
         {/* Terminal Status Banner */}
-        {terminalStatus !== 'online' && (
+        {terminalStatus !== "online" && (
           <View className="mb-4">
             <TerminalStatusBanner
               status={terminalStatus}
@@ -383,14 +436,12 @@ const CardPaymentView = () => {
           )}
         </View>
 
-      {/* Error Display */}
-      {dejavooError && (
-        <View className="absolute bottom-24 left-4 right-4 p-4 bg-red-900/20 border border-red-500 rounded-xl">
-          <Text className="text-red-400 font-medium">
-            {dejavooError}
-          </Text>
-        </View>
-      )}
+        {/* Error Display */}
+        {dejavooError && (
+          <View className="absolute bottom-24 left-4 right-4 p-4 bg-red-900/20 border border-red-500 rounded-xl">
+            <Text className="text-red-400 font-medium">{dejavooError}</Text>
+          </View>
+        )}
         {/* Bottom Section: Receipt Details & Actions */}
         <Animated.View entering={FadeInDown.delay(200)} className="w-full">
           {/* Receipt Breakdown Card */}

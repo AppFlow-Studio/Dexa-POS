@@ -199,9 +199,7 @@ const BillSection = ({
     () =>
       !activeOrder ||
       cart.length === 0 ||
-      hasDraftItems ||
       displayBalanceDue <= 0 ||
-      isPaymentSheetOpen ||
       isProcessing,
     [
       activeOrder,
@@ -228,7 +226,7 @@ const BillSection = ({
 
   const handlePayClick = () => {
     // Safety guard: Prevent payment if button should be disabled
-    if (isPayButtonDisabled || isProcessing || isPaymentSheetOpen) {
+    if (isPayButtonDisabled || isProcessing) {
       return;
     }
 
@@ -408,7 +406,7 @@ const BillSection = ({
                 <Text className="text-white text-xs ml-1">Retry</Text>
               </View>
               {!autoRetryState.isRetrying && (
-                <View className="flex-row items-center">
+                <View className="flex-row i tems-center">
                   <RefreshCw size={14} color="#FFFFFF" />
                   <Text className="text-white text-xs ml-1">Retry Now</Text>
                 </View>
