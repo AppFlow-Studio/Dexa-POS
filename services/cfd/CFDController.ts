@@ -1,95 +1,111 @@
 // src/services/cfd/CFDController.ts
-import { WebSocketServer } from './WebSocketServer'
-import { TcpServer } from '@/native/TcpServer'
 import type {
-  CFDPayload,
-  CFDTipResponse,
-  CFDScreenState,
-  CFDCartItem,
   CFDBranding,
+  CFDCartItem,
   CFDMessage,
   CFDPairingData,
-} from '@/types/cfd.types'
+  CFDPayload,
+  CFDScreenState,
+  CFDTipResponse,
+} from "@/types/cfd.types";
+import * as Device from "expo-device";
+import { WebSocketServer } from "./WebSocketServer";
 
 interface CFDCallbacks {
-  onCFDConnected?: (clientId: string) => void
-  onCFDDisconnected?: (clientId: string) => void
-  onTipSelected?: (response: CFDTipResponse) => void
+  onCFDConnected?: (clientId: string) => void;
+  onCFDDisconnected?: (clientId: string) => void;
+  onTipSelected?: (response: CFDTipResponse) => void;
 }
 
 export class CFDController {
-  private server: WebSocketServer
-  private callbacks: CFDCallbacks = {}
-  private lastPayload: Partial<CFDPayload> = {}
-  private serverInfo: { ip: string; port: number } | null = null
+  private server: WebSocketServer;
+  private callbacks: CFDCallbacks = {};
+  private lastPayload: Partial<CFDPayload> = {};
+  private serverInfo: { ip: string; port: number } | null = null;
 
   // Station/Location context
-  private stationId: string
-  private stationName: string
-  private locationId: string
-  private branding: CFDBranding
+  private stationId: string;
+  private stationName: string;
+  private locationId: string;
+  private branding: CFDBranding;
 
   constructor(config: {
-    stationId: string
-    stationName: string
-    locationId: string
-    branding: CFDBranding
-    port?: number
+    stationId: string;
+    stationName: string;
+    locationId: string;
+    branding: CFDBranding;
+    port?: number;
   }) {
-    this.stationId = config.stationId
-    this.stationName = config.stationName
-    this.locationId = config.locationId
-    this.branding = config.branding
-    this.server = new WebSocketServer(config.port ?? 8080)
+    this.stationId = config.stationId;
+    this.stationName = config.stationName;
+    this.locationId = config.locationId;
+    this.branding = config.branding;
+    this.server = new WebSocketServer(config.port ?? 8080);
   }
 
   async start(callbacks?: CFDCallbacks): Promise<{ ip: string; port: number }> {
-    if (callbacks) this.callbacks = callbacks
+    if (callbacks) this.callbacks = callbacks;
 
     this.serverInfo = await this.server.start({
       onConnect: (clientId) => {
-        console.log('[CFD] Client connected:', clientId)
-        this.callbacks.onCFDConnected?.(clientId)
-        
+        console.log("[CFD] Client connected:", clientId);
+        this.callbacks.onCFDConnected?.(clientId);
+
         // Send current state + branding to new client
-        this.sendFullState()
+        this.sendFullState();
       },
       onDisconnect: (clientId) => {
-        console.log('[CFD] Client disconnected:', clientId)
-        this.callbacks.onCFDDisconnected?.(clientId)
+        console.log("[CFD] Client disconnected:", clientId);
+        this.callbacks.onCFDDisconnected?.(clientId);
       },
       onMessage: (clientId, raw) => {
-        this.handleMessage(clientId, raw)
+        this.handleMessage(clientId, raw);
       },
-    })
+    });
 
-    console.log(`[CFD] Controller ready at ${this.serverInfo.ip}:${this.serverInfo.port}`)
-    return this.serverInfo
+    // Emulator Handling: Verify if running on emulator and override IP
+    // Android emulators (10.0.2.x) cannot be reached by other emulators/devices
+    // We replace it with the specific Host Mac IP for testing
+    if (!Device.isDevice && this.serverInfo.ip.startsWith("10.0.2.")) {
+      console.log(
+        "[CFD] Emulator detected. Overriding IP with Host Loopback: 10.0.2.2:8081",
+      );
+      this.serverInfo.ip = "10.0.2.2";
+      this.serverInfo.port = 8081;
+    }
+
+    console.log(
+      `[CFD] Controller ready at ${this.serverInfo.ip}:${this.serverInfo.port}`,
+    );
+    return this.serverInfo;
   }
 
   private handleMessage(clientId: string, raw: string): void {
     try {
-      const message: CFDMessage = JSON.parse(raw)
+      const message: CFDMessage = JSON.parse(raw);
 
       switch (message.type) {
-        case 'ping':
-          this.server.send(clientId, JSON.stringify({
-            type: 'pong',
-            timestamp: Date.now(),
-          }))
-          break
+        case "ping":
+          this.server.send(
+            clientId,
+            JSON.stringify({
+              type: "pong",
+              timestamp: Date.now(),
+            }),
+          );
+          break;
 
-        case 'tip_selected':
+        case "tip_selected":
           if (message.payload) {
-            this.callbacks.onTipSelected?.(message.payload as CFDTipResponse)
+            this.callbacks.onTipSelected?.(message.payload as CFDTipResponse);
           }
-          break
+          break;
 
         default:
-          console.log('[CFD] Unknown message type:', message.type)
+          console.log("[CFD] Unknown message type:", message.type);
       }
     } catch (e) {
-      console.error('[CFD] Parse error:', e)
+      console.error("[CFD] Parse error:", e);
     }
   }
 
@@ -98,7 +114,7 @@ export class CFDController {
       stationId: this.stationId,
       stationName: this.stationName,
       locationId: this.locationId,
-      screenState: this.lastPayload.screenState ?? 'idle',
+      screenState: this.lastPayload.screenState ?? "idle",
       orderNumber: this.lastPayload.orderNumber ?? null,
       orderType: this.lastPayload.orderType ?? null,
       guestCount: this.lastPayload.guestCount ?? null,
@@ -107,25 +123,26 @@ export class CFDController {
       discountAmount: this.lastPayload.discountAmount ?? 0,
       taxAmount: this.lastPayload.taxAmount ?? 0,
       tipAmount: this.lastPayload.tipAmount ?? 0,
+      tipPercentage: this.lastPayload.tipPercentage ?? null,
       total: this.lastPayload.total ?? 0,
       outstandingTotal: this.lastPayload.outstandingTotal ?? 0,
       amountPaid: this.lastPayload.amountPaid ?? 0,
       branding: this.branding,
       tipConfig: this.lastPayload.tipConfig,
       timestamp: Date.now(),
-    }
+    };
 
-    this.broadcast(payload)
+    this.broadcast(payload);
   }
 
   private broadcast(payload: CFDPayload): void {
-    this.lastPayload = payload
+    this.lastPayload = payload;
     const message: CFDMessage = {
-      type: 'state_update',
+      type: "state_update",
       payload,
       timestamp: Date.now(),
-    }
-    this.server.broadcast(JSON.stringify(message))
+    };
+    this.server.broadcast(JSON.stringify(message));
   }
 
   // ==================== PUBLIC API ====================
@@ -134,21 +151,25 @@ export class CFDController {
    * Update cart display on CFD
    */
   updateOrder(params: {
-    orderNumber: string | null
-    orderType: string | null
-    guestCount: number | null
-    items: CFDCartItem[]
-    subtotal: number
-    discountAmount: number
-    taxAmount: number
-    tipAmount: number
-    total: number
-    outstandingTotal: number
-    amountPaid: number
+    screenState?: CFDScreenState;
+    orderNumber: string | null;
+    orderType: string | null;
+    guestCount: number | null;
+    items: CFDCartItem[];
+    subtotal: number;
+    discountAmount: number;
+    taxAmount: number;
+    tipAmount: number;
+    tipPercentage: number | null;
+    total: number;
+    outstandingTotal: number;
+    amountPaid: number;
+    tipConfig?: CFDPayload["tipConfig"];
   }): void {
-    const screenState: CFDScreenState = params.items.length > 0 ? 'ordering' : 'idle'
+    const screenState =
+      params.screenState || (params.items.length > 0 ? "ordering" : "idle");
 
-    this.broadcast({
+    const payload: CFDPayload = {
       stationId: this.stationId,
       stationName: this.stationName,
       locationId: this.locationId,
@@ -156,23 +177,28 @@ export class CFDController {
       ...params,
       branding: this.branding,
       timestamp: Date.now(),
-    })
+    };
+
+    this.broadcast(payload);
   }
 
   /**
    * Show tip selection screen
    */
-  showTipSelection(subtotalForTip: number, presetPercentages = [15, 18, 20, 25]): void {
+  showTipSelection(
+    subtotalForTip: number,
+    presetPercentages = [15, 18, 20, 25],
+  ): void {
     this.broadcast({
-      ...this.lastPayload as CFDPayload,
-      screenState: 'tip_selection',
+      ...(this.lastPayload as CFDPayload),
+      screenState: "tip_selection",
       tipConfig: {
         subtotalForTip,
         presetPercentages,
         allowCustom: true,
       },
       timestamp: Date.now(),
-    })
+    });
   }
 
   /**
@@ -180,10 +206,10 @@ export class CFDController {
    */
   showPayment(): void {
     this.broadcast({
-      ...this.lastPayload as CFDPayload,
-      screenState: 'payment',
+      ...(this.lastPayload as CFDPayload),
+      screenState: "payment",
       timestamp: Date.now(),
-    })
+    });
   }
 
   /**
@@ -191,10 +217,10 @@ export class CFDController {
    */
   showProcessing(): void {
     this.broadcast({
-      ...this.lastPayload as CFDPayload,
-      screenState: 'processing',
+      ...(this.lastPayload as CFDPayload),
+      screenState: "processing",
       timestamp: Date.now(),
-    })
+    });
   }
 
   /**
@@ -202,10 +228,10 @@ export class CFDController {
    */
   showApproved(): void {
     this.broadcast({
-      ...this.lastPayload as CFDPayload,
-      screenState: 'approved',
+      ...(this.lastPayload as CFDPayload),
+      screenState: "approved",
       timestamp: Date.now(),
-    })
+    });
   }
 
   /**
@@ -213,10 +239,10 @@ export class CFDController {
    */
   showDeclined(): void {
     this.broadcast({
-      ...this.lastPayload as CFDPayload,
-      screenState: 'declined',
+      ...(this.lastPayload as CFDPayload),
+      screenState: "declined",
       timestamp: Date.now(),
-    })
+    });
   }
 
   /**
@@ -227,7 +253,7 @@ export class CFDController {
       stationId: this.stationId,
       stationName: this.stationName,
       locationId: this.locationId,
-      screenState: 'idle',
+      screenState: "idle",
       orderNumber: null,
       orderType: null,
       guestCount: null,
@@ -236,19 +262,20 @@ export class CFDController {
       discountAmount: 0,
       taxAmount: 0,
       tipAmount: 0,
+      tipPercentage: null,
       total: 0,
       outstandingTotal: 0,
       amountPaid: 0,
       branding: this.branding,
       timestamp: Date.now(),
-    })
+    });
   }
 
   /**
    * Get QR code pairing data
    */
   getPairingData(): CFDPairingData | null {
-    if (!this.serverInfo) return null
+    if (!this.serverInfo) return null;
 
     return {
       ip: this.serverInfo.ip,
@@ -257,23 +284,23 @@ export class CFDController {
       stationName: this.stationName,
       locationId: this.locationId,
       locationName: this.branding.restaurantName,
-    }
+    };
   }
 
   get isConnected(): boolean {
-    return this.server.clientCount > 0
+    return this.server.clientCount > 0;
   }
 
   get clientCount(): number {
-    return this.server.clientCount
+    return this.server.clientCount;
   }
 
   getServerInfo(): { ip: string; port: number } | null {
-    return this.serverInfo
+    return this.serverInfo;
   }
 
   async stop(): Promise<void> {
-    await this.server.stop()
-    this.serverInfo = null
+    await this.server.stop();
+    this.serverInfo = null;
   }
 }

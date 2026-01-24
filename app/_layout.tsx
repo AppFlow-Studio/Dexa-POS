@@ -8,7 +8,7 @@ import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 // SyncStatusBar removed - now using NetworkStatusBadge in Header
 // import { SyncStatusBar } from "@/components/SyncStatusBar";
-import { ClerkSessionDebugger } from "@/components/debug/ClerkSessionDebugger";
+import { CFDProvider } from "@/contexts/CFDProvider";
 import { LoadingProvider } from "@/contexts/LoadingContext";
 import { PosSyncProvider } from "@/contexts/PosSyncProvider";
 import { SessionKickListenerProvider } from "@/contexts/SessionKickListenerProvider";
@@ -43,20 +43,20 @@ WebBrowser.maybeCompleteAuthSession();
 export const tokenCache: TokenCache = {
   async getToken(key: string) {
     try {
-      return await SecureStore.getItemAsync(key)
+      return await SecureStore.getItemAsync(key);
     } catch (error) {
-      console.error('[TokenCache] Error:', error)
-      return null
+      console.error("[TokenCache] Error:", error);
+      return null;
     }
   },
   async saveToken(key: string, value: string) {
     try {
-      await SecureStore.setItemAsync(key, value)
+      await SecureStore.setItemAsync(key, value);
     } catch (error) {
-      console.error('[TokenCache] Error:', error)
+      console.error("[TokenCache] Error:", error);
     }
   },
-}
+};
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -71,7 +71,7 @@ const DARK_THEME: Theme = {
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary
+  ErrorBoundary,
 } from "expo-router";
 
 export default function RootLayout() {
@@ -126,13 +126,13 @@ export default function RootLayout() {
     );
   }
 
-  console.log('Clerk Key:', publishableKey?.substring(0, 20))
-  console.log('TokenCache:', typeof tokenCache)
+  console.log("Clerk Key:", publishableKey?.substring(0, 20));
+  console.log("TokenCache:", typeof tokenCache);
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-     <ClerkLoaded>
-     {/* <ClerkSessionDebugger /> */}
+      <ClerkLoaded>
+        {/* <ClerkSessionDebugger /> */}
         <TanstackProvider>
           <PosSyncProvider>
             <GestureHandlerRootView>
@@ -144,35 +144,37 @@ export default function RootLayout() {
                     <ToastProvider>
                       <LoadingProvider>
                         <SessionKickListenerProvider>
-                          <StatusBar style={"dark"} translucent />
-                          <Stack screenOptions={{ headerShown: false }} />
-                          <PortalHost />
-                          <SearchBottomSheet />
-                          <ItemCustomizationDialog />
-                          <ClockInWallModal
-                            isOpen={isClockInWallOpen}
-                            onClose={hideClockInWall}
-                          />
-                          <ManagerPinModal />
-                          <CustomerSheet />
-                          <Toasts
-                            defaultStyle={{
-                              view: {
-                                backgroundColor: "#ffffff",
-                                borderWidth: 1,
-                                borderColor: "#e5e7eb",
-                                flex: 1,
-                              },
-                              text: {
-                                color: "#1f2937",
-                                fontWeight: "bold",
-                                fontSize: 24,
-                              },
-                              indicator: {
-                                backgroundColor: "#659AF0",
-                              },
-                            }}
-                          />
+                          <CFDProvider>
+                            <StatusBar style={"dark"} translucent />
+                            <Stack screenOptions={{ headerShown: false }} />
+                            <PortalHost />
+                            <SearchBottomSheet />
+                            <ItemCustomizationDialog />
+                            <ClockInWallModal
+                              isOpen={isClockInWallOpen}
+                              onClose={hideClockInWall}
+                            />
+                            <ManagerPinModal />
+                            <CustomerSheet />
+                            <Toasts
+                              defaultStyle={{
+                                view: {
+                                  backgroundColor: "#ffffff",
+                                  borderWidth: 1,
+                                  borderColor: "#e5e7eb",
+                                  flex: 1,
+                                },
+                                text: {
+                                  color: "#1f2937",
+                                  fontWeight: "bold",
+                                  fontSize: 24,
+                                },
+                                indicator: {
+                                  backgroundColor: "#659AF0",
+                                },
+                              }}
+                            />
+                          </CFDProvider>
                         </SessionKickListenerProvider>
                       </LoadingProvider>
                     </ToastProvider>
@@ -182,7 +184,7 @@ export default function RootLayout() {
             </GestureHandlerRootView>
           </PosSyncProvider>
         </TanstackProvider>
-     </ClerkLoaded>
+      </ClerkLoaded>
     </ClerkProvider>
   );
 }

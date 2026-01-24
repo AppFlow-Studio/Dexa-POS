@@ -1,7 +1,11 @@
 import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
+import { useCFD } from "@/contexts/CFDProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
-import { getTerminalErrorMessage, isTerminalConnectivityError } from "@/lib/payments/dejavoo-error-detector";
+import {
+  getTerminalErrorMessage,
+  isTerminalConnectivityError,
+} from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -10,7 +14,7 @@ import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ScrollView,
   Text,
@@ -46,15 +50,24 @@ const CashPaymentView = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [dejavooError, setDejavooError] = useState<string | null>(null);
 
+  const {
+    showTipSelection,
+    updateTip,
+    setScreenState,
+    setBaseAmount,
+    tipResponse,
+    clearTipResponse,
+  } = useCFD();
+
   // Check terminal status on mount
   const {
     status: terminalStatus,
     isReady: terminalReady,
     errorMessage: terminalErrorMessage,
-    recheckStatus
+    recheckStatus,
   } = useTerminalStatus(
     selectedStation?.payment_terminal?.id,
-    selectedStation?.payment_terminal
+    selectedStation?.payment_terminal,
   );
 
   const TIP_PRESETS = [18, 20, 25];
@@ -109,6 +122,7 @@ const CashPaymentView = () => {
     const calculatedTip = (percentage / 100) * total;
     setTipInput(calculatedTip.toFixed(2));
     setSelectedTipPreset(percentage);
+    updateTip(calculatedTip, percentage);
   };
 
   const handleTipInputChange = (value: string) => {
@@ -116,13 +130,41 @@ const CashPaymentView = () => {
     if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
       setTipInput(value);
       setSelectedTipPreset(null); // Clear preset when manually typing
+      updateTip(parseFloat(value) || 0, null);
     }
   };
+
+  // Sync CFD on mount
+  useEffect(() => {
+    // Show tip selection on CFD when Cash View opens with the local cash-priced total
+    showTipSelection(total, [18, 20, 25]);
+    clearTipResponse();
+
+    // Cleanup: Reset CFD state when leaving the cash payment view
+    return () => {
+      setScreenState(null);
+      setBaseAmount(null);
+    };
+  }, []); // Only run once on mount
+
+  // Handle CFD Tip Response
+  useEffect(() => {
+    if (tipResponse) {
+      const tipDollars = (tipResponse.tipAmount / 100).toFixed(2);
+      setTipInput(tipDollars);
+
+      if (tipResponse.tipPercentage) {
+        setSelectedTipPreset(tipResponse.tipPercentage);
+      } else {
+        setSelectedTipPreset(null);
+      }
+    }
+  }, [tipResponse]);
 
   const handleProcessCashPayment = async () => {
     // Validate terminal
     if (!selectedStation?.payment_terminal) {
-      throw new Error('No payment terminal selected');
+      throw new Error("No payment terminal selected");
     }
 
     setIsProcessing(true);
@@ -130,19 +172,19 @@ const CashPaymentView = () => {
 
     try {
       // 1. Initialize Dejavoo API
-      console.log('[CashPayment] Initializing Dejavoo API...');
+      console.log("[CashPayment] Initializing Dejavoo API...");
       const DejavooAPI = new DejavooSpinAPI(supabase);
 
       // // 2. Load terminal credentials (fast path with local credentials)
       // console.log('[CashPayment] Loading terminal:', selectedStation?.payment_terminal);
       const loaded = await DejavooAPI.loadTerminal(
         selectedStation.payment_terminal.id,
-        selectedStation.payment_terminal // Pass local credentials for fast path
+        selectedStation.payment_terminal, // Pass local credentials for fast path
       );
       // console.log('[CashPayment] Terminal loaded:', loaded);
 
       if (!loaded) {
-        throw new Error('Failed to load terminal credentials');
+        throw new Error("Failed to load terminal credentials");
       }
 
       // 3. Prepare transaction data
@@ -151,10 +193,10 @@ const CashPaymentView = () => {
 
       // Generate unique RefId
       const refId = activeSplit
-        ? generateRefId('CASH', parseInt(activeSplitId?.split('_')[1] || '0'))
-        : generateRefId('CASH');
+        ? generateRefId("CASH", parseInt(activeSplitId?.split("_")[1] || "0"))
+        : generateRefId("CASH");
 
-      console.log('[CashPayment] Executing sale transaction...', {
+      console.log("[CashPayment] Executing sale transaction...", {
         amount: total,
         tip: tipAmount,
         refId,
@@ -162,11 +204,10 @@ const CashPaymentView = () => {
       });
 
       // 4. Execute sale transaction
-      const result = await DejavooAPI
-        .sale()
+      const result = await DejavooAPI.sale()
         .amount(total)
         .tip(tipAmount)
-        .paymentType('Cash') 
+        .paymentType("Cash")
         .refId(refId)
         // .performedBy('cashier@pos.com') // TODO: Get from employee store
         // .withTags(
@@ -175,90 +216,93 @@ const CashPaymentView = () => {
         // )
         .execute();
 
-    // 5. Log complete response
-      console.log('=== DEJAVOO SALE RESPONSE ===');
-      console.log('Success:', result.success);
-      console.log('Raw Response:', JSON.stringify(result.rawResponse, null, 2));
+      // 5. Log complete response
+      console.log("=== DEJAVOO SALE RESPONSE ===");
+      console.log("Success:", result.success);
+      console.log("Raw Response:", JSON.stringify(result.rawResponse, null, 2));
 
       if (result.helpers) {
-        console.log('=== RESPONSE HELPERS ===');
-        console.log('Reference ID:', result.helpers.getReferenceId());
-        console.log('Transaction Number:', result.helpers.getTransactionNumber());
-        console.log('Invoice Number:', result.helpers.getInvoiceNumber());
-        console.log('Batch Number:', result.helpers.getBatchNumber());
-        console.log('Auth Number:', result.helpers.getAuthCode());
-        console.log('Total Amount:', result.helpers.getTotalAmount());
-        console.log('Base Amount:', result.helpers.getBaseAmount());
-        console.log('Tip Amount:', result.helpers.getTipAmount());
-        console.log('Card Type:', result.helpers.getCardType());
-        console.log('Card Last 4:', result.helpers.getCardLast4());
-        console.log('Entry Mode:', result.helpers.getEntryMode());
-        console.log('Cardholder Name:', result.helpers.getCardholderName());
-        console.log('Is Approved:', result.helpers.isApproved());
-        console.log('Result Code:', result.helpers.getResultCode());
-        console.log('Status Code:', result.helpers.getStatusCode());
-        console.log('Message:', result.helpers.getMessage());
+        console.log("=== RESPONSE HELPERS ===");
+        console.log("Reference ID:", result.helpers.getReferenceId());
+        console.log(
+          "Transaction Number:",
+          result.helpers.getTransactionNumber(),
+        );
+        console.log("Invoice Number:", result.helpers.getInvoiceNumber());
+        console.log("Batch Number:", result.helpers.getBatchNumber());
+        console.log("Auth Number:", result.helpers.getAuthCode());
+        console.log("Total Amount:", result.helpers.getTotalAmount());
+        console.log("Base Amount:", result.helpers.getBaseAmount());
+        console.log("Tip Amount:", result.helpers.getTipAmount());
+        console.log("Card Type:", result.helpers.getCardType());
+        console.log("Card Last 4:", result.helpers.getCardLast4());
+        console.log("Entry Mode:", result.helpers.getEntryMode());
+        console.log("Cardholder Name:", result.helpers.getCardholderName());
+        console.log("Is Approved:", result.helpers.isApproved());
+        console.log("Result Code:", result.helpers.getResultCode());
+        console.log("Status Code:", result.helpers.getStatusCode());
+        console.log("Message:", result.helpers.getMessage());
       }
-      console.log('=== END DEJAVOO RESPONSE ===');
+      console.log("=== END DEJAVOO RESPONSE ===");
 
       // 6. Handle result
-     // Check for terminal connectivity error first
+      // Check for terminal connectivity error first
       if (!result.success && isTerminalConnectivityError(result)) {
         const errorMsg = getTerminalErrorMessage(result);
         toastService.show({
-          title: 'Terminal Disconnected',
+          title: "Terminal Disconnected",
           message: errorMsg,
-          type: 'error',
+          type: "error",
           duration: 5000,
         });
         setIsProcessing(false);
         close(); // Immediate safe close
         return;
       }
-    //   // Success - Pass Dejavoo transaction details to payment handler
+      //   // Success - Pass Dejavoo transaction details to payment handler
       if (result.success) {
         handlePaymentCompletion({
           method: "Cash",
           tipAmount: tipAmount,
           transactionDetails: {
-          amountTendered: amountTenderedNum,
-          isCashPriced: true,
-          dejavooTransaction: {
-            referenceId: result.helpers?.getReferenceId(),
-            transactionNumber: result.helpers?.getTransactionNumber(),
-            invoiceNumber: result.helpers?.getInvoiceNumber(),
-            batchNumber: result.helpers?.getBatchNumber(),
-            authCode: result.helpers?.getAuthCode(),
-            totalAmount: result.helpers?.getTotalAmount(),
-            baseAmount: result.helpers?.getBaseAmount(),
-            tipAmount: result.helpers?.getTipAmount(),
-            cardType: result.helpers?.getCardType(),
-            entryMode: result.helpers?.getEntryMode(),
-            resultCode: result.helpers?.getResultCode(),
-            statusCode: result.helpers?.getStatusCode(),
-            message: result.helpers?.getMessage(),
-            rrn: result.helpers?.getRRN(),
-            cardLast4: result.helpers?.getCardLast4(),
+            amountTendered: amountTenderedNum,
+            isCashPriced: true,
+            dejavooTransaction: {
+              referenceId: result.helpers?.getReferenceId(),
+              transactionNumber: result.helpers?.getTransactionNumber(),
+              invoiceNumber: result.helpers?.getInvoiceNumber(),
+              batchNumber: result.helpers?.getBatchNumber(),
+              authCode: result.helpers?.getAuthCode(),
+              totalAmount: result.helpers?.getTotalAmount(),
+              baseAmount: result.helpers?.getBaseAmount(),
+              tipAmount: result.helpers?.getTipAmount(),
+              cardType: result.helpers?.getCardType(),
+              entryMode: result.helpers?.getEntryMode(),
+              resultCode: result.helpers?.getResultCode(),
+              statusCode: result.helpers?.getStatusCode(),
+              message: result.helpers?.getMessage(),
+              rrn: result.helpers?.getRRN(),
+              cardLast4: result.helpers?.getCardLast4(),
+            },
           },
-        }});
+        });
       }
     } catch (error) {
-      console.error('[CashPayment] Error processing payment:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error("[CashPayment] Error processing payment:", error);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       setDejavooError(errorMsg);
 
-    //   // Show error toast
+      //   // Show error toast
       toastService.show({
-        title: 'Payment Error',
+        title: "Payment Error",
         message: errorMsg,
-        type: 'error',
+        type: "error",
       });
       close();
-
     } finally {
       setIsProcessing(false);
     }
-   }
+  };
 
   const handleBack = () => {
     setView("payment-method-selection");
@@ -284,7 +328,7 @@ const CashPaymentView = () => {
         </View>
 
         {/* Terminal Status Banner */}
-        {terminalStatus !== 'online' && (
+        {terminalStatus !== "online" && (
           <View className="mx-4 mb-4">
             <TerminalStatusBanner
               status={terminalStatus}
@@ -449,9 +493,7 @@ const CashPaymentView = () => {
       {/* Error Display */}
       {dejavooError && (
         <View className="absolute bottom-24 left-4 right-4 p-4 bg-red-900/20 border border-red-500 rounded-xl">
-          <Text className="text-red-400 font-medium">
-            {dejavooError}
-          </Text>
+          <Text className="text-red-400 font-medium">{dejavooError}</Text>
         </View>
       )}
 
@@ -468,16 +510,17 @@ const CashPaymentView = () => {
 
           <TouchableOpacity
             onPress={handleProcessCashPayment}
-            disabled={(!isSufficient && total > 0) || isProcessing } //|| !terminalReady
+            disabled={(!isSufficient && total > 0) || isProcessing} //|| !terminalReady
             className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-sm
-              ${(isSufficient || total === 0) && !isProcessing // && terminalReady
-                ? "bg-blue-600 active:bg-blue-700"
-                : "bg-[#333] border border-[#404040]"
+              ${
+                (isSufficient || total === 0) && !isProcessing // && terminalReady
+                  ? "bg-blue-600 active:bg-blue-700"
+                  : "bg-[#333] border border-[#404040]"
               }`}
           >
             <Text
               className={`font-bold text-lg ${
-                (isSufficient || total === 0) && !isProcessing  // && terminalReady
+                (isSufficient || total === 0) && !isProcessing // && terminalReady
                   ? "text-white"
                   : "text-gray-500"
               }`}

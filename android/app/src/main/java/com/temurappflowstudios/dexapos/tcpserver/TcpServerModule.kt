@@ -36,13 +36,26 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun startServer(port: Int, promise: Promise) {
         if (isRunning) {
-            promise.reject("ALREADY_RUNNING", "Server is already running")
-            return
+            // If already running on the SAME port, just resolve successfully
+            if (serverSocket?.localPort == port) {
+                promise.resolve(Arguments.createMap().apply {
+                    putString("ip", getLocalIpAddress())
+                    putInt("port", port)
+                })
+                return
+            }
+            // If running on a DIFFERENT port, stop first then continue
+            stopServerInternal()
         }
 
         executor.execute {
             try {
-                serverSocket = ServerSocket(port, 50, InetAddress.getByName("0.0.0.0"))
+                // Use unbound socket to enable reuse address before binding
+                val socket = ServerSocket()
+                socket.reuseAddress = true // Crucial for "Address already in use" fix
+                socket.bind(java.net.InetSocketAddress(InetAddress.getByName("0.0.0.0"), port))
+                
+                serverSocket = socket
                 isRunning = true
                 
                 val ip = getLocalIpAddress()
@@ -71,18 +84,27 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    @ReactMethod
-    fun stopServer(promise: Promise) {
+    private fun stopServerInternal() {
         isRunning = false
         try {
             clients.values.forEach { it.close() }
             clients.clear()
             serverSocket?.close()
             serverSocket = null
-            promise.resolve(true)
         } catch (e: Exception) {
-            promise.reject("STOP_FAILED", e.message)
+            Log.e(TAG, "Error stopping server: ${e.message}")
         }
+    }
+
+    @ReactMethod
+    fun stopServer(promise: Promise) {
+        stopServerInternal()
+        promise.resolve(true)
+    }
+
+    override fun invalidate() {
+        super.invalidate()
+        stopServerInternal()
     }
 
     // ==================== CLIENT MANAGEMENT ====================
@@ -187,11 +209,18 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
         val onData: (String, String) -> Unit
     ) {
         private val output: OutputStream = socket.getOutputStream()
-        private val reader: BufferedReader = BufferedReader(InputStreamReader(socket.getInputStream()))
+        private val input: java.io.InputStream = socket.getInputStream()
 
         fun send(data: String) {
             try {
-                output.write(data.toByteArray())
+                // Determine if data is raw bytes or string? 
+                // For simplicity, we assume the JS sends us a STRING which is actually raw bytes in string form (bad) 
+                // OR we assume JS sends us Base64? 
+                // Current implementation in WebSocketServer.ts sends .toString('binary') which is a raw string.
+                // It is safer if JS sends Base64, but let's stick to .toByteArary() for now if JS sends raw string, 
+                // OR change JS to send Base64 too. 
+                // Let's assume JS sends raw chars for now (native module takes String).
+                output.write(data.toByteArray(Charsets.ISO_8859_1)) // Use Latin1 to preserve byte values 1-to-1 if passed as string
                 output.flush()
             } catch (e: Exception) {
                 Log.e(TAG, "Send error to $id: ${e.message}")
@@ -200,20 +229,16 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
 
         fun startReading(onDisconnect: () -> Unit) {
             try {
-                val buffer = StringBuilder()
-                val charBuffer = CharArray(4096)
+                val buffer = ByteArray(4096)
                 
                 while (socket.isConnected && !socket.isClosed) {
-                    val bytesRead = reader.read(charBuffer)
+                    val bytesRead = input.read(buffer)
                     if (bytesRead == -1) break
                     
-                    buffer.append(charBuffer, 0, bytesRead)
-                    
-                    // Forward complete data chunks
-                    val data = buffer.toString()
-                    if (data.isNotEmpty()) {
-                        onData(id, data)
-                        buffer.clear()
+                    if (bytesRead > 0) {
+                        // Convert raw bytes to Base64 to safely transmit to JS
+                        val base64Data = android.util.Base64.encodeToString(buffer, 0, bytesRead, android.util.Base64.NO_WRAP)
+                        onData(id, base64Data)
                     }
                 }
             } catch (e: Exception) {
