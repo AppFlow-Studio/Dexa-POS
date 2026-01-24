@@ -342,6 +342,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
 
   // PERFORMANCE: Get currentStationId via selector (not getState() during render)
   const currentStationId = useOrderStore((s) => s.currentStationId);
+  const activeOrderId = useOrderStore((s) => s.activeOrderId)
 
   // Phase 6: Check if order was recently updated by another station
   const wasRecentlyUpdated = useWasOrderRecentlyUpdated(
@@ -385,8 +386,8 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           className="flex-row items-center px-3 py-2 rounded-lg border"
           style={{
             backgroundColor: colors.bg,
-            borderColor: wasRecentlyUpdated ? "#3b82f6" : colors.border,
-            borderWidth: wasRecentlyUpdated ? 2 : 1,
+            borderColor: activeOrderId == order.id || wasRecentlyUpdated ? "#3b82f6" : colors.border,
+            borderWidth: activeOrderId == order.id || wasRecentlyUpdated ? 3 : 1,
           }}
         >
           {wasRecentlyUpdated && (

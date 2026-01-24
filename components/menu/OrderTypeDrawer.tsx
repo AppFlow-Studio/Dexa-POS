@@ -66,7 +66,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
 
   const orderTypes = [
-    { value: "dine_in", label: "Dine In" },
+    // { value: "dine_in", label: "Dine In" },
     { value: "takeout", label: "Takeaway" },
     { value: "delivery", label: "Delivery" },
   ];

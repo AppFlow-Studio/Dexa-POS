@@ -449,12 +449,12 @@ const CardPaymentView = () => {
           {status === "ready" && (
             <TouchableOpacity
               onPress={handleChargeCard}
-              disabled={!terminalReady}
-              className={`w-full py-4 rounded-xl mb-4 items-center ${
-                terminalReady
-                  ? "bg-blue-600 active:bg-blue-700"
-                  : "bg-gray-600 opacity-50"
-              }`}
+              // disabled={!terminalReady}
+              // className={`w-full py-4 rounded-xl mb-4 items-center ${
+              //   terminalReady
+              //     ? "bg-blue-600 active:bg-blue-700"
+              //     : "bg-gray-600 opacity-50"
+              // }`}
             >
               <Text className="text-white font-bold text-lg">
                 Charge Card ${grandTotal.toFixed(2)}
