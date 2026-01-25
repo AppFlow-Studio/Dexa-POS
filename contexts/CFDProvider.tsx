@@ -1,22 +1,23 @@
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { CFDController } from "@/services/cfd/CFDController";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
-  CFDCartItem,
-  CFDPairingData,
-  CFDPayload,
-  CFDScreenState,
-  CFDTipResponse,
+    CFDCartItem,
+    CFDPairingData,
+    CFDPayload,
+    CFDScreenState,
+    CFDTipResponse,
 } from "@/types/cfd.types";
 import { usePathname } from "expo-router";
 import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 
 const DEBUG = true; // Set to true for terminal logs
@@ -214,7 +215,39 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     selectedStore?.id,
     selectedStore?.name,
     selectedStation?.station_name,
+    selectedStation?.station_name,
   ]);
+
+  // Fetch and Sync Carousel Images
+  const supabase = useSupabaseClient();
+  useEffect(() => {
+    const fetchImages = async () => {
+      if (!selectedStore?.id || !controllerRef.current) return;
+
+      try {
+        const { data, error } = await supabase.rpc("get_active_cfd_images", {
+          target_location_id: selectedStore.id,
+        });
+
+        if (error) {
+          console.error("[CFD] Failed to fetch images:", error);
+          return;
+        }
+
+        if (data && Array.isArray(data)) {
+          const imageUrls = data.map((d: any) => d.image_url);
+          console.log("[CFD] Updating carousel images:", imageUrls.length);
+          controllerRef.current.updateCarouselImages(imageUrls);
+        }
+      } catch (err) {
+        console.error("[CFD] Error fetching images:", err);
+      }
+    };
+
+    if (isConnected) {
+      fetchImages();
+    }
+  }, [isConnected, selectedStore?.id]);
 
   // Auto-sync order to CFD
   useEffect(() => {

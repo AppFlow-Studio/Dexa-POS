@@ -68,6 +68,8 @@ export interface CFDPayload {
     allowCustom: boolean;
   };
 
+  carouselImages?: string[];
+
   // Timestamp
   timestamp: number;
 }
