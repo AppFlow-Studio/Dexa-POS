@@ -265,6 +265,102 @@ export class OrderService {
   }
 
   /**
+   * Create a reversal record for a refund/void.
+   */
+  static async createReversal(
+    client: SupabaseClient,
+    params: {
+      original_payment_id: string;
+      original_psp_reference: string | null;
+      reversal_reference_id: string | null;
+      reversal_type: string;
+      amount: number;
+      reason_code: string;
+      reason_description?: string | null;
+      initiated_by: string;
+      approved_by?: string | null;
+    },
+  ): Promise<{ data: any | null; error: any }> {
+    const { data, error } = await client.rpc("create_reversal", {
+      p_original_payment_id: params.original_payment_id,
+      p_original_psp_reference: params.original_psp_reference,
+      p_reversal_reference_id: params.reversal_reference_id,
+      p_reversal_type: params.reversal_type,
+      p_amount: params.amount,
+      p_reason_code: params.reason_code,
+      p_reason_description: params.reason_description ?? null,
+      p_initiated_by: params.initiated_by,
+      p_approved_by: params.approved_by ?? null,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Update reversal status and terminal response.
+   */
+  static async updateReversalStatus(
+    client: SupabaseClient,
+    reversalId: string,
+    status: "pending" | "completed" | "failed",
+    terminalResponse?: Record<string, unknown> | null,
+    emvData?: Record<string, unknown> | null,
+  ): Promise<{ data: any | null; error: any }> {
+    const { data, error } = await client.rpc("update_reversal_status", {
+      p_reversal_id: reversalId,
+      p_status: status,
+      p_terminal_response: terminalResponse ?? null,
+      p_emv_data: emvData ?? null,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Apply refund to payment totals and status.
+   */
+  static async applyRefundToPayment(
+    client: SupabaseClient,
+    paymentId: string,
+    refundAmount: number,
+    reversalType: "void" | "refund" | "partial_refund" | "item_return",
+  ): Promise<{ data: any | null; error: any }> {
+    const { data, error } = await client.rpc("apply_refund_to_payment", {
+      p_payment_id: paymentId,
+      p_refund_amount: refundAmount,
+      p_reversal_type: reversalType,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Record refund line items and update order_items refunded totals.
+   */
+  static async recordRefundItems(
+    client: SupabaseClient,
+    reversalId: string,
+    items: Array<Record<string, unknown>>,
+  ): Promise<{ data: any | null; error: any }> {
+    const { data, error } = await client.rpc("record_refund_items", {
+      p_reversal_id: reversalId,
+      p_items: items,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Recalculate order payment status after refunds.
+   */
+  static async updateOrderPaymentStatusAfterRefund(
+    client: SupabaseClient,
+    orderId: string,
+  ): Promise<{ data: any | null; error: any }> {
+    const { data, error } = await client.rpc(
+      "update_order_payment_status_after_refund",
+      { p_order_id: orderId },
+    );
+    return { data, error };
+  }
+
+  /**
    * Void an item in an order
    */
   static async voidOrderItem(

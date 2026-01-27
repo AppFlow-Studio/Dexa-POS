@@ -168,7 +168,7 @@ const OrderRow = memo<OrderRowProps>(
 
     return (
       <TouchableOpacity
-      onPressIn={handleRowPress}
+      onPress={handleRowPress}
       >
         <Animated.View
           style={[{ minHeight: 60 }]}

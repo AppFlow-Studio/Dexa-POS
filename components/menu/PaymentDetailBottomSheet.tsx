@@ -1,8 +1,13 @@
 import { useToast } from "@/contexts/ToastContext";
-import type { CartItem, OrderPaymentItemCoverage, OrderProfile } from "@/lib/types";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment } from "@/lib/types";
+import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useRouter } from "expo-router";
 import {
@@ -13,6 +18,7 @@ import {
   ChevronUp,
   CircleDollarSign,
   CreditCard,
+  Delete,
   DollarSign,
   Package,
   Printer,
@@ -28,7 +34,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 // ============================================================================
 // TYPES
@@ -42,15 +48,57 @@ interface PaymentRowData {
   isVoided: boolean;
   last4?: string;
   cardBrand?: string;
+  cardInfo?: {
+    brand?: string;
+    last4?: string;
+    entryMode?: string;
+    authCode?: string;
+    rrn?: string;
+    transactionNumber?: string;
+    referenceId?: string;
+    invoiceNumber?: string;
+  };
   itemsCovered?: OrderPaymentItemCoverage[];
   isCashPriced?: boolean;
   cashSavings?: number;
   subtotal_portion?: number;
   tax_portion?: number;
+  paymentId?: string;
+  dbPaymentId?: string;
+  originalPaymentIndex: number;
+  referenceId?: string;
 }
 
-type RightPaneView = "summary" | "refund";
-type RefundType = "full" | "items" | "amount" | "payments";
+type RightPaneView = "summary" | "refund" | "tipAdjust";
+
+interface TipAdjustPaymentRow {
+  paymentIndex: number;
+  paymentId?: string;
+  dbPaymentId?: string;
+  method: string;
+  orderAmount: number;
+  currentTip: number;
+  referenceId?: string;
+  last4?: string;
+  cardBrand?: string;
+  entryMode?: string;
+  timestamp?: string;
+  isCard: boolean;
+}
+type RefundType = "full" | "items" | "payments";
+
+interface PerPaymentRefundDetail {
+  paymentIndex: number;
+  originalPaymentId?: string;
+  dbPaymentId?: string;
+  method: string;
+  orderAmountToRefund: number;
+  tipAmountToRefund: number;
+  totalRefund: number;
+  referenceId?: string;
+  last4?: string;
+  cardBrand?: string;
+}
 
 // ============================================================================
 // REUSABLE COMPONENTS
@@ -172,6 +220,75 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
     <Text className="text-xs text-gray-500 mt-1 font-medium">{label}</Text>
   </View>
 );
+
+const normalizeCardBrand = (brand?: string) =>
+  brand?.trim().toLowerCase() || "";
+
+const formatCardBrand = (brand?: string) => {
+  switch (normalizeCardBrand(brand)) {
+    case "visa":
+      return "Visa";
+    case "mastercard":
+      return "Mastercard";
+    case "amex":
+    case "american express":
+      return "Amex";
+    case "discover":
+      return "Discover";
+    case "diners":
+    case "diners club":
+      return "Diners";
+    case "jcb":
+      return "JCB";
+    default:
+      return brand ? brand : "";
+  }
+};
+
+const getCardBrandBadgeStyles = (brand?: string) => {
+  switch (normalizeCardBrand(brand)) {
+    case "visa":
+      return { container: "bg-blue-500/10 border-blue-500/40", text: "text-blue-300" };
+    case "mastercard":
+      return { container: "bg-amber-500/10 border-amber-500/40", text: "text-amber-300" };
+    case "amex":
+    case "american express":
+      return { container: "bg-cyan-500/10 border-cyan-500/40", text: "text-cyan-300" };
+    case "discover":
+      return { container: "bg-orange-500/10 border-orange-500/40", text: "text-orange-300" };
+    default:
+      return { container: "bg-gray-800 border-gray-700", text: "text-gray-300" };
+  }
+};
+
+const CardBrandBadge: React.FC<{ brand?: string }> = ({ brand }) => {
+  const label = formatCardBrand(brand);
+  if (!label) return null;
+  const styles = getCardBrandBadgeStyles(brand);
+
+  return (
+    <View className={`px-2 py-0.5 rounded border ${styles.container}`}>
+      <Text className={`text-[10px] font-semibold uppercase ${styles.text}`}>
+        {label}
+      </Text>
+    </View>
+  );
+};
+
+const CardInfoItem: React.FC<{ label: string; value?: string }> = ({
+  label,
+  value,
+}) => {
+  if (!value) return null;
+  return (
+    <View className="w-1/2 pr-2 mb-2">
+      <Text className="text-[10px] text-gray-500 uppercase">{label}</Text>
+      <Text className="text-xs text-gray-200" numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
+};
 
 // ============================================================================
 // LEFT PANE - ORDER RECEIPT VIEW
@@ -372,6 +489,7 @@ interface RightPaneSummaryProps {
   onReopenOrder: () => void;
   onContinueCharging: () => void;
   onIssueReceipt: () => void;
+  onTipAdjust: () => void;
   onRefund: () => void;
   formatTimestamp: (timestamp: string) => string;
 }
@@ -382,6 +500,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onReopenOrder,
   onContinueCharging,
   onIssueReceipt,
+  onTipAdjust,
   onRefund,
   formatTimestamp,
 }) => {
@@ -392,6 +511,9 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   const isOpen = order?.check_status === "Opened";
   const balanceDue = paymentSummary.orderTotal - paymentSummary.collected;
   const hasBalanceDue = balanceDue > 0.01;
+  const hasCardPayments = paymentSummary.payments.some(
+    (p) => p.method === "Card" && !p.isVoided
+  );
 
   return (
     <View className="flex-[6] bg-[#161616]">
@@ -447,7 +569,15 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             paymentSummary.payments.map((payment, index) => {
               const hasItemsCovered =
                 payment.itemsCovered && payment.itemsCovered.length > 0;
+              const hasCardInfo =
+                !!payment.cardInfo &&
+                Object.values(payment.cardInfo).some(Boolean);
+              const canExpand = hasItemsCovered || hasCardInfo;
               const isExpanded = expandedPaymentIndex === index;
+              const cardBrandLabel = formatCardBrand(
+                payment.cardInfo?.brand || payment.cardBrand
+              );
+              const cardLast4 = payment.cardInfo?.last4 || payment.last4;
 
               return (
                 <View
@@ -460,10 +590,9 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                 >
                   <TouchableOpacity
                     onPress={() =>
-                      hasItemsCovered &&
-                      setExpandedPaymentIndex(isExpanded ? null : index)
+                      canExpand && setExpandedPaymentIndex(isExpanded ? null : index)
                     }
-                    activeOpacity={hasItemsCovered ? 0.7 : 1}
+                    activeOpacity={canExpand ? 0.7 : 1}
                     className="flex-row items-center py-3"
                   >
                     {/* Payment Method Icon */}
@@ -489,10 +618,17 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                             payment.isVoided ? "text-gray-500" : "text-white"
                           }`}
                         >
-                          {payment.method === "Card" && payment.last4
-                            ? `•••• ${payment.last4}`
+                          {payment.method === "Card" && (cardLast4 || cardBrandLabel)
+                            ? `${cardBrandLabel || "Card"}${
+                                cardLast4 ? ` •••• ${cardLast4}` : ""
+                              }`
                             : payment.method}
                         </Text>
+                        {payment.method === "Card" && cardBrandLabel && (
+                          <View className="ml-2">
+                            <CardBrandBadge brand={cardBrandLabel} />
+                          </View>
+                        )}
                         {payment.isVoided && (
                           <View className="ml-2 px-1.5 py-0.5 bg-red-500/20 rounded">
                             <Text className="text-[10px] text-red-400 font-medium">
@@ -505,12 +641,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                         <Text className="text-xs text-gray-500">
                           {formatTimestamp(payment.timestamp)}
                         </Text>
-                        {hasItemsCovered && (
+                        {canExpand && (
                           <View className="flex-row items-center ml-2">
                             <Package size={10} color="#6B7280" />
-                            <Text className="text-xs text-gray-500 ml-1">
-                              {payment.itemsCovered!.length} items
-                            </Text>
+                            {hasItemsCovered && (
+                              <Text className="text-xs text-gray-500 ml-1">
+                                {payment.itemsCovered!.length} items
+                              </Text>
+                            )}
                             {isExpanded ? (
                               <ChevronUp size={12} color="#6B7280" />
                             ) : (
@@ -540,39 +678,87 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                     </View>
                   </TouchableOpacity>
 
-                  {/* Expanded Items */}
-                  {isExpanded && hasItemsCovered && (
+                  {/* Expanded Details */}
+                  {isExpanded && canExpand && (
                     <View className="bg-[#1a1a1a] rounded-lg mb-3 p-3 border border-gray-800">
-                      <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
-                        <Package size={12} color="#6B7280" />
-                        <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase">
-                          Items Covered
-                        </Text>
-                      </View>
-                      {payment.itemsCovered!.map((item, itemIndex) => (
-                        <View
-                          key={item.itemId || itemIndex}
-                          className={`flex-row items-center justify-between py-2 ${
-                            itemIndex < payment.itemsCovered!.length - 1
-                              ? "border-b border-gray-800/50"
-                              : ""
-                          }`}
-                        >
-                          <View className="flex-row items-center flex-1">
-                            <View className="w-6 h-6 rounded bg-gray-800 items-center justify-center mr-2">
-                              <Text className="text-xs font-bold text-gray-400">
-                                {item.quantity}x
-                              </Text>
-                            </View>
-                            <Text className="text-sm text-gray-300" numberOfLines={1}>
-                              {item.itemName}
+                      {hasCardInfo && (
+                        <View className={hasItemsCovered ? "mb-3" : ""}>
+                          <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
+                            <CreditCard size={12} color="#6B7280" />
+                            <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase">
+                              Card Details
                             </Text>
                           </View>
-                          <Text className="text-sm font-medium text-white">
-                            ${item.subtotal.toFixed(2)}
-                          </Text>
+                          <View className="flex-row items-center justify-between">
+                            <View className="flex-row items-center">
+                              {payment.cardInfo?.brand && (
+                                <CardBrandBadge brand={payment.cardInfo.brand} />
+                              )}
+                              {payment.cardInfo?.last4 && (
+                                <Text className="text-sm text-gray-300 ml-2">
+                                  •••• {payment.cardInfo.last4}
+                                </Text>
+                              )}
+                            </View>
+                            {payment.cardInfo?.entryMode && (
+                              <Text className="text-xs text-gray-500">
+                                Entry: {payment.cardInfo.entryMode}
+                              </Text>
+                            )}
+                          </View>
+                          <View className="flex-row flex-wrap mt-3">
+                            <CardInfoItem label="Auth Code" value={payment.cardInfo?.authCode} />
+                            <CardInfoItem label="RRN" value={payment.cardInfo?.rrn} />
+                            <CardInfoItem
+                              label="Txn #"
+                              value={payment.cardInfo?.transactionNumber}
+                            />
+                            <CardInfoItem
+                              label="Ref ID"
+                              value={payment.cardInfo?.referenceId}
+                            />
+                            <CardInfoItem
+                              label="Invoice"
+                              value={payment.cardInfo?.invoiceNumber}
+                            />
+                          </View>
                         </View>
-                      ))}
+                      )}
+
+                      {hasItemsCovered && (
+                        <View>
+                          <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
+                            <Package size={12} color="#6B7280" />
+                            <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase">
+                              Items Covered
+                            </Text>
+                          </View>
+                          {payment.itemsCovered!.map((item, itemIndex) => (
+                            <View
+                              key={item.itemId || itemIndex}
+                              className={`flex-row items-center justify-between py-2 ${
+                                itemIndex < payment.itemsCovered!.length - 1
+                                  ? "border-b border-gray-800/50"
+                                  : ""
+                              }`}
+                            >
+                              <View className="flex-row items-center flex-1">
+                                <View className="w-6 h-6 rounded bg-gray-800 items-center justify-center mr-2">
+                                  <Text className="text-xs font-bold text-gray-400">
+                                    {item.quantity}x
+                                  </Text>
+                                </View>
+                                <Text className="text-sm text-gray-300" numberOfLines={1}>
+                                  {item.itemName}
+                                </Text>
+                              </View>
+                              <Text className="text-sm font-medium text-white">
+                                ${item.subtotal.toFixed(2)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                     </View>
                   )}
                 </View>
@@ -608,12 +794,474 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             variant="success"
           />
           <ActionButton
+            icon={<CircleDollarSign size={16} color="#3B82F6" />}
+            label="Tip Adjust"
+            onPress={onTipAdjust}
+            variant="primary"
+            disabled={!hasCardPayments}
+          />
+          <ActionButton
             icon={<RefreshCcw size={16} color="#EF4444" />}
             label="Refund"
             onPress={onRefund}
             variant="danger"
             disabled={paymentSummary.collected <= 0}
           />
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// ============================================================================
+// RIGHT PANE - TIP ADJUST VIEW
+// ============================================================================
+interface RightPaneTipAdjustProps {
+  order: OrderProfile;
+  paymentSummary: {
+    orderTotal: number;
+    orderCashTotal: number;
+    refunds: number;
+    collected: number;
+    payments: PaymentRowData[];
+  };
+  onBack: () => void;
+  onTipAdjusted: () => void;
+}
+
+const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
+  order,
+  paymentSummary,
+  onBack,
+  onTipAdjusted,
+}) => {
+  const { show } = useToast();
+  const supabase = useSupabaseClient();
+  const { selectedStation } = useStoreSettingsStore();
+  const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
+  console.log('PaymentDetailBottomSheet Payment Summary', paymentSummary);
+  const [tipAmounts, setTipAmounts] = useState<Record<number, string>>({});
+  const [activeInput, setActiveInput] = useState<number | null>(null);
+  const [processing, setProcessing] = useState(false);
+
+  // Filter card payments that are not voided
+  const cardPayments: TipAdjustPaymentRow[] = useMemo(() => {
+    return paymentSummary.payments
+      .filter((p) => p.method === "Card" && !p.isVoided)
+      .map((p) => ({
+        paymentIndex: p.originalPaymentIndex,
+        paymentId: p.paymentId,
+        dbPaymentId: p.dbPaymentId,
+        method: p.method,
+        orderAmount: p.orderAmount,
+        currentTip: p.tipAmount,
+        referenceId: p.referenceId || p.cardInfo?.referenceId,
+        last4: p.last4 || p.cardInfo?.last4,
+        cardBrand: p.cardBrand || p.cardInfo?.brand,
+        entryMode: p.cardInfo?.entryMode,
+        timestamp: p.timestamp,
+        isCard: true,
+      }));
+  }, [paymentSummary.payments]);
+
+  // Initialize tip amounts from current tips (pre-fill existing values)
+  useEffect(() => {
+    const initial: Record<number, string> = {};
+    cardPayments.forEach((p) => {
+      initial[p.paymentIndex] = p.currentTip > 0 ? p.currentTip.toFixed(2) : "";
+    });
+    setTipAmounts(initial);
+    if (cardPayments.length > 0) {
+      setActiveInput(cardPayments[0].paymentIndex);
+    }
+  }, [cardPayments]);
+
+  // Computed values
+  const totalNewTips = useMemo(() => {
+    return Object.values(tipAmounts).reduce(
+      (sum, val) => sum + (parseFloat(val) || 0),
+      0
+    );
+  }, [tipAmounts]);
+
+  const totalOrderAmount = useMemo(() => {
+    return cardPayments.reduce((sum, p) => sum + p.orderAmount, 0);
+  }, [cardPayments]);
+
+  const hasChanges = useMemo(() => {
+    return cardPayments.some((p) => {
+      const newTip = parseFloat(tipAmounts[p.paymentIndex] || "0") || 0;
+      return Math.abs(newTip - p.currentTip) > 0.001;
+    });
+  }, [cardPayments, tipAmounts]);
+
+  const tipDelta = useMemo(() => {
+    const totalCurrentTips = cardPayments.reduce((sum, p) => sum + p.currentTip, 0);
+    return totalNewTips - totalCurrentTips;
+  }, [cardPayments, totalNewTips]);
+
+  // Select a payment row for editing
+  const handleSelectPayment = useCallback(
+    (paymentIndex: number) => {
+      setActiveInput(paymentIndex);
+    },
+    []
+  );
+
+  // Keypad handler
+  const handleKeyPress = useCallback(
+    (key: string) => {
+      if (activeInput === null) return;
+
+      setTipAmounts((prev) => {
+        const current = prev[activeInput] || "";
+
+        if (key === "backspace") {
+          const updated = current.slice(0, -1);
+          return { ...prev, [activeInput]: updated };
+        }
+
+        if (key === ".") {
+          if (current.includes(".")) return prev;
+          return { ...prev, [activeInput]: current + "." };
+        }
+
+        // Limit decimal places to 2
+        const parts = current.split(".");
+        if (parts.length > 1 && parts[1].length >= 2) return prev;
+
+        return { ...prev, [activeInput]: current + key };
+      });
+    },
+    [activeInput]
+  );
+
+  // Update local order store with new tip amounts
+  const updateLocalTipState = useCallback(() => {
+    const storeState = useOrderStore.getState();
+    const currentOrder = storeState.ordersById[order.id];
+    if (!currentOrder?.payments) return;
+
+    const updatedPayments = currentOrder.payments.map((p) => {
+      // Find matching card payment by index
+      const match = cardPayments.find((cp) => cp.paymentIndex === currentOrder.payments!.indexOf(p));
+      if (!match) return p;
+      const newTip = parseFloat(tipAmounts[match.paymentIndex] || "0") || 0;
+      if (Math.abs(newTip - (p.tip_amount || 0)) < 0.001) return p;
+      return {
+        ...p,
+        tip_amount: newTip,
+        total_collected: p.amount + newTip,
+      };
+    });
+
+    useOrderStore.setState((state) => ({
+      ordersById: {
+        ...state.ordersById,
+        [order.id]: {
+          ...currentOrder,
+          payments: updatedPayments,
+        },
+      },
+    }));
+  }, [order.id, cardPayments, tipAmounts]);
+
+  // Handle adjust tips
+  const handleAdjustTips = async () => {
+    setProcessing(true);
+    try {
+      if (!selectedStation?.payment_terminal) {
+        show({ title: "Terminal Error", message: "No payment terminal configured.", type: "error" });
+        setProcessing(false);
+        return;
+      }
+
+      const api = new DejavooSpinAPI(supabase);
+      const loaded = await api.loadTerminal(
+        selectedStation.payment_terminal.id,
+        selectedStation.payment_terminal
+      );
+
+      if (!loaded) {
+        show({ title: "Terminal Error", message: "Failed to connect to terminal.", type: "error" });
+        setProcessing(false);
+        return;
+      }
+
+      for (const payment of cardPayments) {
+        console.log('PaymentDetailBottomSheet', payment);
+        const newTip = parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0;
+        if (Math.abs(newTip - payment.currentTip) < 0.001) continue; // skip unchanged
+
+        if (!payment.referenceId) {
+          show({
+            title: "Warning",
+            message: `Cannot adjust tip for payment without reference ID (••••${payment.last4 || "????"}).`,
+            type: "warning",
+          });
+          continue;
+        }
+        console.log('PaymentDetailBottomSheet', payment.referenceId);
+        const result = await api
+          .tipAdjust()
+          .amount(payment.orderAmount)
+          .tipAmount(newTip)
+          .referenceId(payment.referenceId)
+          .execute();
+
+        if (!result.success) {
+          show({
+            title: "Tip Adjust Failed",
+            message: result.error || "Unknown error",
+            type: "error",
+          });
+          setProcessing(false);
+          return;
+        }
+      }
+
+      // Persist tip adjustments to database
+      const dbAdjustments: TipAdjustment[] = cardPayments
+        .filter((payment) => {
+          const newTip = parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0;
+          return payment.dbPaymentId && Math.abs(newTip - payment.currentTip) > 0.001;
+        })
+        .map((payment) => ({
+          payment_id: payment.dbPaymentId!,
+          new_tip_amount: parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0,
+        }));
+
+      console.log('PaymentDetailBottomSheet DB Adjustments', dbAdjustments);
+
+      if (dbAdjustments.length > 0 && order.db_order_id) {
+        try {
+          await adjustTips(
+            supabase,
+            order.db_order_id,
+            dbAdjustments,
+            loggedInEmployee?.profileId,
+          );
+        } catch (dbError) {
+          console.error("Failed to persist tip adjustments to database:", dbError);
+          show({
+            title: "Tip Adjust Failed",
+            message: "Tips adjusted on terminal but failed to save to database. Please contact support.",
+            type: "error",
+          });
+          setProcessing(false);
+          return;
+        }
+      }
+
+      // Only update local state after DB persistence succeeds
+      updateLocalTipState();
+
+      show({
+        title: "Tips Adjusted",
+        message: "Tip adjustments processed successfully.",
+        type: "success",
+      });
+      onTipAdjusted();
+    } catch (error) {
+      show({ title: "Error", message: String(error), type: "error" });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const keypadKeys = [
+    ["1", "2", "3"],
+    ["4", "5", "6"],
+    ["7", "8", "9"],
+    [".", "0", "backspace"],
+  ];
+
+  // console.log('PaymentDetailBottomSheet', cardPayments);
+  return (
+    <View className="flex-[6] bg-[#161616]">
+      {/* Header */}
+      <View className="flex-row items-center px-4 py-3 border-b border-gray-800">
+        <TouchableOpacity
+          onPress={onBack}
+          className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center mr-3"
+        >
+          <ArrowLeft size={16} color="#9CA3AF" />
+        </TouchableOpacity>
+        <Text className="text-lg font-bold text-white">Adjust Tips</Text>
+      </View>
+
+      <ScrollView
+        className="flex-1"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 120 }}
+      >
+        {/* Three-Column Table */}
+        <View className="px-4 py-4">
+          {/* Column Headers */}
+          <View className="flex-row items-center px-3 pb-2 border-b border-gray-800">
+            <Text className="flex-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+              Payments
+            </Text>
+            <Text className="w-24 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">
+              Order
+            </Text>
+            <Text className="w-28 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">
+              New Tip
+            </Text>
+          </View>
+
+          {/* Payment Rows */}
+          {cardPayments.map((payment) => {
+            const brandLabel = formatCardBrand(payment.cardBrand);
+            const isActive = activeInput === payment.paymentIndex;
+            const tipValue = tipAmounts[payment.paymentIndex] || "";
+            const hasTip = payment.currentTip > 0;
+
+            return (
+              <TouchableOpacity
+                key={payment.paymentIndex}
+                onPress={() => handleSelectPayment(payment.paymentIndex)}
+                activeOpacity={0.7}
+                className={`flex-row items-center py-4 px-3 border-b border-gray-800/50 ${
+                  isActive ? "bg-blue-500/5" : ""
+                }`}
+              >
+                {/* Payment Column */}
+                <View className="flex-1 flex-row items-center">
+                  {/* Green check for payments with existing tip */}
+                  <View className="w-6 items-center justify-center mr-1">
+                    {hasTip && <Check size={16} color="#22C55E" />}
+                  </View>
+                  <View className="w-10 h-10 rounded-lg bg-gray-800 items-center justify-center mr-3">
+                    <CreditCard size={18} color="#9CA3AF" />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-base font-semibold text-white">
+                        {payment.last4 || "••••"}
+                        {payment.entryMode ? ` • ${payment.entryMode}` : ""}
+                      </Text>
+                      {brandLabel ? (
+                        <CardBrandBadge brand={payment.cardBrand} />
+                      ) : null}
+                    </View>
+                    <Text className="text-xs text-gray-500 mt-0.5">
+                      {brandLabel || "Card"}
+                      {payment.timestamp ? ` — ${payment.timestamp}` : ""}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Amount Column */}
+                <Text className="w-24 text-base font-semibold text-white text-right">
+                  ${payment.orderAmount.toFixed(2)}
+                </Text>
+
+                {/* New Tip Column */}
+                <View className="w-28 items-end">
+                  <View
+                    className={`rounded-lg border px-3 py-2 ${
+                      isActive
+                        ? "bg-blue-500/10 border-blue-500/40"
+                        : "bg-gray-800/50 border-gray-700"
+                    }`}
+                  >
+                    <Text
+                      className={`text-base font-semibold text-right ${
+                        tipValue
+                          ? isActive ? "text-blue-300" : "text-white"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      ${tipValue || "0.00"}
+                    </Text>
+                  </View>
+                  <Text className="text-[10px] text-gray-500 mt-1 text-right">
+                    of ${payment.currentTip.toFixed(2)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Summary Bar */}
+        <View className="px-4">
+          <View className="flex-row justify-between bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
+            <View className="items-center">
+              <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">Order Total</Text>
+              <Text className="text-base font-bold text-white">
+                ${totalOrderAmount.toFixed(2)}
+              </Text>
+            </View>
+            <View className="items-center">
+              <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">New Tips</Text>
+              <Text className="text-base font-bold text-blue-400">
+                ${totalNewTips.toFixed(2)}
+              </Text>
+            </View>
+            <View className="items-center">
+              <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">Grand Total</Text>
+              <Text className="text-base font-bold text-emerald-400">
+                ${(totalOrderAmount + totalNewTips).toFixed(2)}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Numeric Keypad */}
+        <View className="px-4 mt-4">
+          {keypadKeys.map((row, rowIndex) => (
+            <View key={rowIndex} className="flex-row gap-2 mb-2">
+              {row.map((key) => (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => handleKeyPress(key)}
+                  className="flex-1 py-3 bg-gray-800 border border-gray-700 rounded-lg items-center justify-center active:bg-gray-600"
+                >
+                  {key === "backspace" ? (
+                    <Delete size={20} color="#FFFFFF" />
+                  ) : (
+                    <Text className="text-white text-xl font-semibold">{key}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Action Buttons Footer */}
+      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-[#1a1a1a] border-t border-gray-800">
+        <View className="flex-row gap-3">
+          <TouchableOpacity
+            onPress={onBack}
+            disabled={processing}
+            className="flex-1 py-4 rounded-xl bg-gray-800 border border-gray-600 items-center justify-center"
+          >
+            <Text className="text-base font-bold text-gray-300">CANCEL</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleAdjustTips}
+            disabled={!hasChanges || processing}
+            className={`flex-[2] py-4 rounded-xl items-center justify-center ${
+              hasChanges && !processing ? "bg-blue-600" : "bg-gray-700"
+            }`}
+          >
+            {processing ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text
+                className={`text-base font-bold ${
+                  hasChanges ? "text-white" : "text-gray-500"
+                }`}
+              >
+                {hasChanges
+                  ? `ADJUST BY ${tipDelta >= 0 ? "+" : "-"}$${Math.abs(tipDelta).toFixed(2)}`
+                  : "ADJUST TIPS"}
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -632,7 +1280,13 @@ interface RightPaneRefundProps {
     payments: PaymentRowData[];
   };
   onBack: () => void;
-  onProcessRefund: (type: RefundType, amount: number, reason: string, selectedItems?: any[], selectedPayments?: string[]) => void;
+  onProcessRefund: (
+    type: RefundType,
+    totalAmount: number,
+    reason: string,
+    perPaymentDetails: PerPaymentRefundDetail[],
+    selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
+  ) => void;
 }
 
 const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
@@ -642,10 +1296,14 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   onProcessRefund,
 }) => {
   const [refundType, setRefundType] = useState<RefundType>("full");
-  const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
-  const [selectedPayments, setSelectedPayments] = useState<Set<number>>(new Set());
+  const [paymentRefundAmounts, setPaymentRefundAmounts] = useState<
+    Record<number, { orderAmount: string; tipAmount: string }>
+  >({});
+  const [itemPaymentAssignment, setItemPaymentAssignment] = useState<
+    Record<string, number>
+  >({});
 
   const maxRefundable = paymentSummary.collected - paymentSummary.refunds;
 
@@ -654,26 +1312,30 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     return paymentSummary.payments.filter((p) => !p.isVoided);
   }, [paymentSummary.payments]);
 
-  // Calculate selected items total
+  // Calculate selected items total (price + tax)
   const selectedItemsTotal = useMemo(() => {
     if (!order?.items) return 0;
     return order.items.reduce((sum: number, item: CartItem) => {
       const selectedQty = selectedItems[item.id] || 0;
-      return sum + (item.price || 0) * selectedQty;
+      if (selectedQty <= 0) return sum;
+      const itemSubtotal = (item.price || 0) * selectedQty;
+      const perUnitTax =
+        item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0;
+      const itemTax = perUnitTax * selectedQty;
+      return sum + itemSubtotal + itemTax;
     }, 0);
   }, [selectedItems, order?.items]);
 
-  // Calculate selected payments total
-  const selectedPaymentsTotal = useMemo(() => {
+  // Calculate per-payment refund total
+  const paymentRefundTotal = useMemo(() => {
     let total = 0;
-    selectedPayments.forEach((index) => {
-      const payment = refundablePayments[index];
-      if (payment) {
-        total += payment.collected;
-      }
+    Object.values(paymentRefundAmounts).forEach((amounts) => {
+      total +=
+        (parseFloat(amounts.orderAmount) || 0) +
+        (parseFloat(amounts.tipAmount) || 0);
     });
     return total;
-  }, [selectedPayments, refundablePayments]);
+  }, [paymentRefundAmounts]);
 
   const getRefundAmount = () => {
     switch (refundType) {
@@ -681,19 +1343,74 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         return maxRefundable;
       case "items":
         return selectedItemsTotal;
-      case "amount":
-        return parseFloat(refundAmount) || 0;
       case "payments":
-        return selectedPaymentsTotal;
+        return paymentRefundTotal;
       default:
         return 0;
     }
   };
 
+  // Helper: find which payment covers a given item via itemsCovered
+  const getPaymentForItem = useCallback(
+    (itemId: string): PaymentRowData | null => {
+      for (const payment of refundablePayments) {
+        if (payment.itemsCovered?.some((ic) => ic.itemId === itemId)) {
+          return payment;
+        }
+      }
+      return null;
+    },
+    [refundablePayments]
+  );
+
+  // Helper: get human-readable payment label
+  const getPaymentLabel = useCallback((payment: PaymentRowData): string => {
+    if (payment.method === "Card") {
+      const brand = formatCardBrand(payment.cardBrand || payment.cardInfo?.brand);
+      const last4 = payment.last4 || payment.cardInfo?.last4;
+      if (brand && last4) return `${brand} ••••${last4}`;
+      if (last4) return `Card ••••${last4}`;
+      if (brand) return brand;
+      return "Card";
+    }
+    return "Cash";
+  }, []);
+
+  // Validation: all selected unallocated items must have a payment assigned
+  const allItemsHavePayment = useMemo(() => {
+    if (refundType !== "items") return true;
+    for (const [itemId, qty] of Object.entries(selectedItems)) {
+      if (qty <= 0) continue;
+      const coveringPayment = getPaymentForItem(itemId);
+      if (!coveringPayment && itemPaymentAssignment[itemId] === undefined) {
+        return false;
+      }
+    }
+    return true;
+  }, [selectedItems, itemPaymentAssignment, refundType, getPaymentForItem]);
+
+  // Validation: no per-payment amount exceeds its original
+  const paymentAmountsValid = useMemo(() => {
+    if (refundType !== "payments") return true;
+    for (const [indexStr, amounts] of Object.entries(paymentRefundAmounts)) {
+      const index = parseInt(indexStr);
+      const payment = refundablePayments[index];
+      if (!payment) continue;
+      const orderAmt = parseFloat(amounts.orderAmount) || 0;
+      const tipAmt = parseFloat(amounts.tipAmount) || 0;
+      if (orderAmt > payment.orderAmount || tipAmt > payment.tipAmount)
+        return false;
+      if (orderAmt < 0 || tipAmt < 0) return false;
+    }
+    return true;
+  }, [paymentRefundAmounts, refundablePayments, refundType]);
+
   const canProcess =
     refundReason.trim().length > 0 &&
     getRefundAmount() > 0 &&
-    getRefundAmount() <= maxRefundable;
+    getRefundAmount() <= maxRefundable &&
+    allItemsHavePayment &&
+    paymentAmountsValid;
 
   const handleToggleItem = (itemId: string, maxQty: number) => {
     setSelectedItems((prev) => {
@@ -717,16 +1434,130 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     }
   };
 
-  const handleTogglePayment = (index: number) => {
-    setSelectedPayments((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-      } else {
-        newSet.add(index);
+  const handlePaymentAmountChange = (
+    index: number,
+    field: "orderAmount" | "tipAmount",
+    value: string
+  ) => {
+    const cleaned = value.replace(/[^0-9.]/g, "");
+    const parts = cleaned.split(".");
+    if (parts.length > 2) return;
+    if (parts[1]?.length > 2) return;
+    setPaymentRefundAmounts((prev) => ({
+      ...prev,
+      [index]: {
+        orderAmount: prev[index]?.orderAmount || "",
+        tipAmount: prev[index]?.tipAmount || "",
+        [field]: cleaned,
+      },
+    }));
+  };
+
+  const handleFillAllForPayment = (index: number) => {
+    const payment = refundablePayments[index];
+    if (!payment) return;
+    setPaymentRefundAmounts((prev) => ({
+      ...prev,
+      [index]: {
+        orderAmount: payment.orderAmount.toFixed(2),
+        tipAmount: payment.tipAmount.toFixed(2),
+      },
+    }));
+  };
+
+  // Build per-payment refund details for processing
+  const buildPerPaymentDetails = (): PerPaymentRefundDetail[] => {
+    const details: PerPaymentRefundDetail[] = [];
+
+    if (refundType === "full") {
+      refundablePayments.forEach((payment) => {
+        details.push({
+          paymentIndex: payment.originalPaymentIndex,
+          originalPaymentId: payment.paymentId,
+          dbPaymentId: payment.dbPaymentId,
+          method: payment.method,
+          orderAmountToRefund: payment.orderAmount,
+          tipAmountToRefund: payment.tipAmount,
+          totalRefund: payment.collected,
+          referenceId: payment.referenceId,
+          last4: payment.last4 || payment.cardInfo?.last4,
+          cardBrand: payment.cardBrand || payment.cardInfo?.brand,
+        });
+      });
+    } else if (refundType === "payments") {
+      Object.entries(paymentRefundAmounts).forEach(([indexStr, amounts]) => {
+        const index = parseInt(indexStr);
+        const payment = refundablePayments[index];
+        if (!payment) return;
+        const orderAmt = parseFloat(amounts.orderAmount) || 0;
+        const tipAmt = parseFloat(amounts.tipAmount) || 0;
+        if (orderAmt + tipAmt <= 0) return;
+        details.push({
+          paymentIndex: payment.originalPaymentIndex,
+          originalPaymentId: payment.paymentId,
+          dbPaymentId: payment.dbPaymentId,
+          method: payment.method,
+          orderAmountToRefund: orderAmt,
+          tipAmountToRefund: tipAmt,
+          totalRefund: orderAmt + tipAmt,
+          referenceId: payment.referenceId,
+          last4: payment.last4 || payment.cardInfo?.last4,
+          cardBrand: payment.cardBrand || payment.cardInfo?.brand,
+        });
+      });
+    } else if (refundType === "items") {
+      // Group selected items by their covering payment
+      const paymentItemMap: Record<
+        number,
+        { itemId: string; quantity: number; amount: number }[]
+      > = {};
+
+      for (const [itemId, qty] of Object.entries(selectedItems)) {
+        if (qty <= 0) continue;
+        const item = order?.items?.find((i: CartItem) => i.id === itemId);
+        if (!item) continue;
+        const itemSubtotal = (item.price || 0) * qty;
+        const perUnitTax =
+          item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0;
+        const amount = itemSubtotal + perUnitTax * qty;
+
+        let paymentIdx: number | undefined;
+        const coveringPayment = getPaymentForItem(itemId);
+        if (coveringPayment) {
+          paymentIdx = coveringPayment.originalPaymentIndex;
+        } else if (itemPaymentAssignment[itemId] !== undefined) {
+          paymentIdx =
+            refundablePayments[itemPaymentAssignment[itemId]]
+              ?.originalPaymentIndex;
+        }
+
+        if (paymentIdx !== undefined) {
+          if (!paymentItemMap[paymentIdx]) paymentItemMap[paymentIdx] = [];
+          paymentItemMap[paymentIdx].push({ itemId, quantity: qty, amount });
+        }
       }
-      return newSet;
-    });
+
+      for (const [paymentIdxStr, items] of Object.entries(paymentItemMap)) {
+        const paymentIdx = parseInt(paymentIdxStr);
+        const payment = paymentSummary.payments[paymentIdx];
+        if (!payment) continue;
+        const totalAmount = items.reduce((sum, i) => sum + i.amount, 0);
+        details.push({
+          paymentIndex: paymentIdx,
+          originalPaymentId: payment.paymentId,
+          dbPaymentId: payment.dbPaymentId,
+          method: payment.method,
+          orderAmountToRefund: totalAmount,
+          tipAmountToRefund: 0,
+          totalRefund: totalAmount,
+          referenceId: payment.referenceId,
+          last4: payment.last4 || payment.cardInfo?.last4,
+          cardBrand: payment.cardBrand || payment.cardInfo?.brand,
+        });
+      }
+    }
+
+    return details;
   };
 
   return (
@@ -757,7 +1588,6 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
               { key: "full", label: "Full Refund" },
               { key: "items", label: "By Item" },
               { key: "payments", label: "By Payment" },
-              { key: "amount", label: "Custom" },
             ].map((type) => (
               <TouchableOpacity
                 key={type.key}
@@ -780,12 +1610,56 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           </View>
         </View>
 
-        {/* Full Refund View */}
+        {/* Full Refund View — Payment Breakdown */}
         {refundType === "full" && (
           <View className="px-4">
-            <View className="bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
-              <Text className="text-sm text-gray-400 mb-2">
-                Refund Amount
+            <Text className="text-xs text-gray-500 mb-3">
+              All payments will be fully reversed
+            </Text>
+            {refundablePayments.map((payment, index) => {
+              const label = getPaymentLabel(payment);
+              return (
+                <View
+                  key={index}
+                  className="flex-row items-center py-3 border-b border-gray-800/50"
+                >
+                  <View className="w-10 h-10 rounded-lg bg-gray-800 items-center justify-center mr-3">
+                    {payment.method === "Card" ? (
+                      <CreditCard size={18} color="#9CA3AF" />
+                    ) : (
+                      <Banknote size={18} color="#22C55E" />
+                    )}
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-medium text-white">
+                      {label}
+                    </Text>
+                    {payment.method === "Card" && (
+                      <CardBrandBadge
+                        brand={payment.cardBrand || payment.cardInfo?.brand}
+                      />
+                    )}
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-xs text-gray-500">
+                      Order: ${payment.orderAmount.toFixed(2)}
+                    </Text>
+                    {payment.tipAmount > 0 && (
+                      <Text className="text-xs text-blue-400">
+                        Tip: ${payment.tipAmount.toFixed(2)}
+                      </Text>
+                    )}
+                    <Text className="text-sm font-bold text-red-400">
+                      ${payment.collected.toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+            <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
+              <Text className="text-sm text-gray-400 mb-1">
+                {refundablePayments.length} payment
+                {refundablePayments.length !== 1 ? "s" : ""} to reverse
               </Text>
               <Text className="text-3xl font-bold text-red-400">
                 ${maxRefundable.toFixed(2)}
@@ -797,7 +1671,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           </View>
         )}
 
-        {/* Items Selection View */}
+        {/* Items Selection View — with coverage badges & payment selector */}
         {refundType === "items" && (
           <View className="px-4">
             <Text className="text-xs text-gray-500 mb-3">
@@ -809,66 +1683,131 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 const maxQty = item.paidQuantity || item.quantity;
                 const isSelected = selectedItems[item.id] !== undefined;
                 const selectedQty = selectedItems[item.id] || 0;
+                const coveringPayment = getPaymentForItem(item.id);
+                const needsAssignment = isSelected && !coveringPayment;
+                const assignedPaymentIdx = itemPaymentAssignment[item.id];
 
                 return (
-                  <View
-                    key={item.id}
-                    className={`flex-row items-center py-3 border-b border-gray-800/50 ${
-                      isSelected ? "bg-blue-500/5" : ""
-                    }`}
-                  >
-                    <TouchableOpacity
-                      onPress={() => handleToggleItem(item.id, maxQty)}
-                      className={`w-6 h-6 rounded border mr-3 items-center justify-center ${
-                        isSelected
-                          ? "bg-blue-500 border-blue-500"
-                          : "border-gray-600"
+                  <View key={item.id}>
+                    <View
+                      className={`flex-row items-center py-3 border-b border-gray-800/50 ${
+                        isSelected ? "bg-blue-500/5" : ""
                       }`}
                     >
-                      {isSelected && <Check size={14} color="#FFFFFF" />}
-                    </TouchableOpacity>
-                    <View className="flex-1">
-                      <Text className="text-sm text-white">{item.name}</Text>
-                      <Text className="text-xs text-gray-500">
-                        ${(item.price || 0).toFixed(2)} each
-                      </Text>
-                    </View>
-                    {isSelected && (
-                      <View className="flex-row items-center">
-                        <TouchableOpacity
-                          onPress={() =>
-                            handleQuantityChange(item.id, selectedQty - 1, maxQty)
-                          }
-                          className="w-8 h-8 rounded bg-gray-800 items-center justify-center"
-                        >
-                          <Text className="text-white font-bold">-</Text>
-                        </TouchableOpacity>
-                        <Text className="text-white font-medium mx-3">
-                          {selectedQty}
+                      <TouchableOpacity
+                        onPress={() => handleToggleItem(item.id, maxQty)}
+                        className={`w-6 h-6 rounded border mr-3 items-center justify-center ${
+                          isSelected
+                            ? "bg-blue-500 border-blue-500"
+                            : "border-gray-600"
+                        }`}
+                      >
+                        {isSelected && <Check size={14} color="#FFFFFF" />}
+                      </TouchableOpacity>
+                      <View className="flex-1">
+                        <Text className="text-sm text-white">{item.name}</Text>
+                        <Text className="text-xs text-gray-500">
+                          ${(item.price || 0).toFixed(2)}
+                          {(item.taxAmount || 0) > 0 &&
+                            ` + $${(item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0).toFixed(2)} tax`}
+                          {" "}each
                         </Text>
-                        <TouchableOpacity
-                          onPress={() =>
-                            handleQuantityChange(item.id, selectedQty + 1, maxQty)
-                          }
-                          className="w-8 h-8 rounded bg-gray-800 items-center justify-center"
-                          disabled={selectedQty >= maxQty}
-                        >
-                          <Text
-                            className={`font-bold ${
-                              selectedQty >= maxQty
-                                ? "text-gray-600"
-                                : "text-white"
-                            }`}
-                          >
-                            +
-                          </Text>
-                        </TouchableOpacity>
+                        {/* Coverage badge */}
+                        {coveringPayment && (
+                          <View className="mt-1">
+                            <View className="bg-gray-800 border border-gray-700 rounded-full px-2 py-0.5 self-start">
+                              <Text className="text-[10px] text-gray-400">
+                                Covered by {getPaymentLabel(coveringPayment)}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
                       </View>
-                    )}
-                    {!isSelected && (
-                      <Text className="text-sm text-gray-500">
-                        max {maxQty}
-                      </Text>
+                      {isSelected && (
+                        <View className="flex-row items-center">
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleQuantityChange(
+                                item.id,
+                                selectedQty - 1,
+                                maxQty
+                              )
+                            }
+                            className="w-8 h-8 rounded bg-gray-800 items-center justify-center"
+                          >
+                            <Text className="text-white font-bold">-</Text>
+                          </TouchableOpacity>
+                          <Text className="text-white font-medium mx-3">
+                            {selectedQty}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() =>
+                              handleQuantityChange(
+                                item.id,
+                                selectedQty + 1,
+                                maxQty
+                              )
+                            }
+                            className="w-8 h-8 rounded bg-gray-800 items-center justify-center"
+                            disabled={selectedQty >= maxQty}
+                          >
+                            <Text
+                              className={`font-bold ${
+                                selectedQty >= maxQty
+                                  ? "text-gray-600"
+                                  : "text-white"
+                              }`}
+                            >
+                              +
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                      {!isSelected && (
+                        <Text className="text-sm text-gray-500">
+                          max {maxQty}
+                        </Text>
+                      )}
+                    </View>
+
+                    {/* Payment selector for unallocated selected items */}
+                    {needsAssignment && (
+                      <View className="px-9 py-2 bg-gray-900/50 border-b border-gray-800/50">
+                        <Text className="text-xs text-gray-400 mb-2">
+                          Select refund destination:
+                        </Text>
+                        <View className="flex-row flex-wrap gap-2">
+                          {refundablePayments.map((payment, pIdx) => {
+                            const isAssigned = assignedPaymentIdx === pIdx;
+                            return (
+                              <TouchableOpacity
+                                key={pIdx}
+                                onPress={() =>
+                                  setItemPaymentAssignment((prev) => ({
+                                    ...prev,
+                                    [item.id]: pIdx,
+                                  }))
+                                }
+                                className={`px-3 py-1.5 rounded-full border ${
+                                  isAssigned
+                                    ? "bg-blue-500/15 border-blue-500/50"
+                                    : "bg-gray-800 border-gray-700"
+                                }`}
+                              >
+                                <Text
+                                  className={`text-xs font-medium ${
+                                    isAssigned
+                                      ? "text-blue-400"
+                                      : "text-gray-400"
+                                  }`}
+                                >
+                                  {getPaymentLabel(payment)}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
                     )}
                   </View>
                 );
@@ -886,127 +1825,141 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           </View>
         )}
 
-        {/* Payments Selection View */}
+        {/* By Payment View — Per-Payment Editable Amounts */}
         {refundType === "payments" && (
           <View className="px-4">
             <Text className="text-xs text-gray-500 mb-3">
-              Select payments to void/refund
+              Enter refund amounts per payment
             </Text>
             {refundablePayments.length === 0 ? (
               <View className="py-8 items-center">
                 <View className="w-12 h-12 rounded-full bg-gray-800/50 items-center justify-center mb-3">
                   <CreditCard size={24} color="#4B5563" />
                 </View>
-                <Text className="text-gray-500 text-sm">No refundable payments</Text>
-              </View>
-            ) : (
-              refundablePayments.map((payment, index) => {
-                const isSelected = selectedPayments.has(index);
-
-                return (
-                  <View
-                    key={index}
-                    className={`flex-row items-center py-3 border-b border-gray-800/50 ${
-                      isSelected ? "bg-blue-500/5" : ""
-                    }`}
-                  >
-                    <TouchableOpacity
-                      onPress={() => handleTogglePayment(index)}
-                      className={`w-6 h-6 rounded border mr-3 items-center justify-center ${
-                        isSelected
-                          ? "bg-blue-500 border-blue-500"
-                          : "border-gray-600"
-                      }`}
-                    >
-                      {isSelected && <Check size={14} color="#FFFFFF" />}
-                    </TouchableOpacity>
-
-                    {/* Payment Method Icon */}
-                    <View className="w-10 h-10 rounded-lg bg-gray-800 items-center justify-center mr-3">
-                      {payment.method === "Card" ? (
-                        <CreditCard size={18} color="#9CA3AF" />
-                      ) : (
-                        <Banknote size={18} color="#22C55E" />
-                      )}
-                    </View>
-
-                    {/* Payment Details */}
-                    <View className="flex-1">
-                      <Text className="text-sm font-medium text-white">
-                        {payment.method === "Card" && payment.last4
-                          ? `•••• ${payment.last4}`
-                          : payment.method}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
-                        {new Date(payment.timestamp).toLocaleString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
-                      </Text>
-                    </View>
-
-                    {/* Amount */}
-                    <View className="items-end">
-                      {payment.tipAmount > 0 && (
-                        <Text className="text-xs text-blue-400">
-                          +${payment.tipAmount.toFixed(2)} tip
-                        </Text>
-                      )}
-                      <Text className="text-base font-bold text-emerald-400">
-                        ${payment.collected.toFixed(2)}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-
-            {/* Selected Payments Total */}
-            {selectedPaymentsTotal > 0 && (
-              <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
-                <View className="flex-row justify-between items-center mb-1">
-                  <Text className="text-sm text-gray-400">
-                    {selectedPayments.size} payment{selectedPayments.size > 1 ? "s" : ""} selected
-                  </Text>
-                </View>
-                <Text className="text-2xl font-bold text-red-400">
-                  ${selectedPaymentsTotal.toFixed(2)}
+                <Text className="text-gray-500 text-sm">
+                  No refundable payments
                 </Text>
               </View>
-            )}
-          </View>
-        )}
+            ) : (
+              <>
+                {/* Column Headers */}
+                <View className="flex-row items-center py-2 border-b border-gray-700 mb-1">
+                  <Text className="flex-1 text-[10px] font-bold text-gray-500 uppercase">
+                    Payment
+                  </Text>
+                  <Text className="w-20 text-[10px] font-bold text-gray-500 uppercase text-center">
+                    Order
+                  </Text>
+                  <Text className="w-20 text-[10px] font-bold text-gray-500 uppercase text-center">
+                    Tips + Grat
+                  </Text>
+                  <Text className="w-20 text-[10px] font-bold text-gray-500 uppercase text-center">
+                    Collected
+                  </Text>
+                  <Text className="w-12 text-[10px] font-bold text-gray-500 uppercase text-center">
+                    All
+                  </Text>
+                </View>
 
-        {/* Custom Amount View */}
-        {refundType === "amount" && (
-          <View className="px-4">
-            <View className="bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
-              <Text className="text-sm text-gray-400 mb-2">Enter Amount</Text>
-              <View className="flex-row items-center">
-                <Text className="text-3xl font-bold text-white mr-2">$</Text>
-                <TextInput
-                  value={refundAmount}
-                  onChangeText={(text) => {
-                    // Only allow numbers and one decimal
-                    const cleaned = text.replace(/[^0-9.]/g, "");
-                    const parts = cleaned.split(".");
-                    if (parts.length > 2) return;
-                    if (parts[1]?.length > 2) return;
-                    setRefundAmount(cleaned);
-                  }}
-                  placeholder="0.00"
-                  placeholderTextColor="#4B5563"
-                  keyboardType="decimal-pad"
-                  className="text-3xl font-bold text-white flex-1"
-                />
-              </View>
-              <Text className="text-xs text-gray-500 mt-2">
-                Max refundable: ${maxRefundable.toFixed(2)}
-              </Text>
-            </View>
+                {refundablePayments.map((payment, index) => {
+                  const amounts = paymentRefundAmounts[index] || {
+                    orderAmount: "",
+                    tipAmount: "",
+                  };
+                  const orderAmt = parseFloat(amounts.orderAmount) || 0;
+                  const tipAmt = parseFloat(amounts.tipAmount) || 0;
+                  const orderExceeds = orderAmt > payment.orderAmount;
+                  const tipExceeds = tipAmt > payment.tipAmount;
+
+                  return (
+                    <View
+                      key={index}
+                      className="flex-row items-center py-2 border-b border-gray-800/50"
+                    >
+                      {/* Payment label */}
+                      <View className="flex-1 flex-row items-center">
+                        <View className="w-8 h-8 rounded-lg bg-gray-800 items-center justify-center mr-2">
+                          {payment.method === "Card" ? (
+                            <CreditCard size={14} color="#9CA3AF" />
+                          ) : (
+                            <Banknote size={14} color="#22C55E" />
+                          )}
+                        </View>
+                        <Text
+                          className="text-xs font-medium text-white"
+                          numberOfLines={1}
+                        >
+                          {getPaymentLabel(payment)}
+                        </Text>
+                      </View>
+
+                      {/* Order amount input */}
+                      <View className="w-20 px-1">
+                        <TextInput
+                          value={amounts.orderAmount}
+                          onChangeText={(v) =>
+                            handlePaymentAmountChange(index, "orderAmount", v)
+                          }
+                          placeholder={payment.orderAmount.toFixed(2)}
+                          placeholderTextColor="#4B5563"
+                          keyboardType="decimal-pad"
+                          className={`text-xs text-center py-1.5 px-1 rounded border ${
+                            orderExceeds
+                              ? "bg-red-500/10 border-red-500/50 text-red-400"
+                              : "bg-rose-500/10 border-gray-700 text-white"
+                          }`}
+                        />
+                      </View>
+
+                      {/* Tip amount input */}
+                      <View className="w-20 px-1">
+                        <TextInput
+                          value={amounts.tipAmount}
+                          onChangeText={(v) =>
+                            handlePaymentAmountChange(index, "tipAmount", v)
+                          }
+                          placeholder={payment.tipAmount.toFixed(2)}
+                          placeholderTextColor="#4B5563"
+                          keyboardType="decimal-pad"
+                          className={`text-xs text-center py-1.5 px-1 rounded border ${
+                            tipExceeds
+                              ? "bg-red-500/10 border-red-500/50 text-red-400"
+                              : "bg-rose-500/10 border-gray-700 text-white"
+                          }`}
+                        />
+                      </View>
+
+                      {/* Collected display */}
+                      <Text className="w-20 text-xs text-gray-400 text-center">
+                        ${payment.collected.toFixed(2)}
+                      </Text>
+
+                      {/* ALL button */}
+                      <TouchableOpacity
+                        onPress={() => handleFillAllForPayment(index)}
+                        className="w-12 items-center"
+                      >
+                        <View className="bg-blue-500/10 border border-blue-500/40 rounded px-2 py-1">
+                          <Text className="text-[10px] font-bold text-blue-400">
+                            ALL
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+
+                {/* Payment Refund Total */}
+                {paymentRefundTotal > 0 && (
+                  <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
+                    <Text className="text-sm text-gray-400">Total Refund</Text>
+                    <Text className="text-2xl font-bold text-red-400">
+                      ${paymentRefundTotal.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
           </View>
         )}
 
@@ -1032,21 +1985,30 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
       <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-[#1a1a1a] border-t border-gray-800">
         <TouchableOpacity
           onPress={() => {
+            const perPaymentDetails = buildPerPaymentDetails();
             const items =
               refundType === "items"
                 ? Object.entries(selectedItems).map(([id, qty]) => ({
                     itemId: id,
                     quantity: qty,
+                    paymentIndex: (() => {
+                      const covering = getPaymentForItem(id);
+                      if (covering) return covering.originalPaymentIndex;
+                      const assigned = itemPaymentAssignment[id];
+                      if (assigned !== undefined)
+                        return refundablePayments[assigned]
+                          ?.originalPaymentIndex;
+                      return undefined;
+                    })(),
                   }))
                 : undefined;
-            const paymentIds =
-              refundType === "payments"
-                ? Array.from(selectedPayments).map((index) => {
-                    // Return payment identifier - could be payment ID or index
-                    return String(index);
-                  })
-                : undefined;
-            onProcessRefund(refundType, getRefundAmount(), refundReason, items, paymentIds);
+            onProcessRefund(
+              refundType,
+              getRefundAmount(),
+              refundReason,
+              perPaymentDetails,
+              items
+            );
           }}
           disabled={!canProcess}
           className={`w-full py-4 rounded-xl items-center justify-center ${
@@ -1113,7 +2075,6 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     return state.ordersById[orderId] || null;
   });
 
-  console.log('[PaymentDetailSheet]',activeOrder)
   // Fallback to previousOrders for history orders
   const previousOrder = usePreviousOrdersStore((state) => {
     if (!orderId || activeOrder) return null;
@@ -1197,11 +2158,35 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     const payments: PaymentRowData[] = [];
 
     if (order.payments && order.payments.length > 0) {
-      order.payments.forEach((payment: any) => {
+      order.payments.forEach((payment: OrderProfilePayment, index: number) => {
         const orderAmount = payment.amount || 0;
         const tipAmount = payment.tip_amount || 0;
         const isVoided = payment.isVoided || false;
         const collected = isVoided ? 0 : orderAmount + tipAmount;
+        const txDetails = payment.transactionDetails?.dejavooTransaction;
+        const cardBrand = payment.cardBrand || txDetails?.cardType;
+        const last4 = payment.last4 || txDetails?.cardLast4;
+        const cardInfo =
+          payment.method === "Card" || txDetails
+            ? {
+                brand: cardBrand,
+                last4,
+                entryMode: txDetails?.entryMode
+                  ? String(txDetails.entryMode)
+                  : undefined,
+                authCode: txDetails?.authCode ? String(txDetails.authCode) : undefined,
+                rrn: txDetails?.rrn ? String(txDetails.rrn) : undefined,
+                transactionNumber: txDetails?.transactionNumber
+                  ? String(txDetails.transactionNumber)
+                  : undefined,
+                referenceId: txDetails?.referenceId
+                  ? String(txDetails.referenceId)
+                  : undefined,
+                invoiceNumber: txDetails?.invoiceNumber
+                  ? String(txDetails.invoiceNumber)
+                  : undefined,
+              }
+            : undefined;
 
         if (isVoided) {
           totalRefunded += orderAmount + tipAmount;
@@ -1216,13 +2201,20 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           tipAmount,
           collected,
           isVoided,
-          last4: payment.last4,
-          cardBrand: payment.cardBrand,
+          last4,
+          cardBrand,
+          cardInfo,
           itemsCovered: payment.itemsCovered,
           isCashPriced: payment.isCashPriced,
           cashSavings: payment.cashSavings,
           subtotal_portion: payment.subtotal_portion,
           tax_portion: payment.tax_portion,
+          paymentId: payment.id,
+          dbPaymentId: payment.db_payment_id,
+          originalPaymentIndex: index,
+          referenceId: txDetails?.referenceId
+            ? String(txDetails.referenceId)
+            : undefined,
         });
       });
     }
@@ -1282,13 +2274,33 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     setRightPaneView("refund");
   }, []);
 
+  const handleTipAdjust = useCallback(() => {
+    setRightPaneView("tipAdjust");
+  }, []);
+
+  const handleTipAdjusted = useCallback(() => {
+    setRightPaneView("summary");
+  }, []);
+
   const handleProcessRefund = useCallback(
-    (type: RefundType, amount: number, reason: string, selectedItems?: any[], selectedPaymentIds?: string[]) => {
+    (
+      type: RefundType,
+      totalAmount: number,
+      reason: string,
+      perPaymentDetails: PerPaymentRefundDetail[],
+      selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
+    ) => {
       // TODO: Implement actual refund processing via store
-      console.log("Processing refund:", { type, amount, reason, selectedItems, selectedPaymentIds });
+      console.log("Processing refund:", {
+        type,
+        totalAmount,
+        reason,
+        perPaymentDetails,
+        selectedItems,
+      });
       show({
         title: "Refund Processed",
-        message: `$${amount.toFixed(2)} refund processed successfully.`,
+        message: `$${totalAmount.toFixed(2)} refund processed successfully.`,
         type: "success",
       });
       setRightPaneView("summary");
@@ -1367,7 +2379,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   total={orderTotals.total}
                 />
 
-                {/* Right Pane - Summary or Refund */}
+                {/* Right Pane - Summary, Refund, or Tip Adjust */}
                 {rightPaneView === "summary" ? (
                   <RightPaneSummary
                     order={order}
@@ -1375,15 +2387,23 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onReopenOrder={handleReopenOrder}
                     onContinueCharging={handleContinueCharging}
                     onIssueReceipt={handleIssueReceipt}
+                    onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
                     formatTimestamp={formatTimestamp}
                   />
-                ) : (
+                ) : rightPaneView === "refund" ? (
                   <RightPaneRefund
                     order={order}
                     paymentSummary={paymentSummary}
                     onBack={() => setRightPaneView("summary")}
                     onProcessRefund={handleProcessRefund}
+                  />
+                ) : (
+                  <RightPaneTipAdjust
+                    order={order}
+                    paymentSummary={paymentSummary}
+                    onBack={() => setRightPaneView("summary")}
+                    onTipAdjusted={handleTipAdjusted}
                   />
                 )}
               </View>

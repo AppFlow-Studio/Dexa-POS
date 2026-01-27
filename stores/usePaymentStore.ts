@@ -1,5 +1,5 @@
 import { toastService } from "@/lib/toastService";
-import { CartItem } from "@/lib/types";
+import { CartItem, OrderPaymentTransactionDetails } from "@/lib/types";
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import {
   getFailedPayments,
@@ -141,7 +141,7 @@ interface PaymentState {
 } : { 
   method: string, 
   tipAmount?: number, 
-  transactionDetails?: Record<string, any>, 
+  transactionDetails?: OrderPaymentTransactionDetails, 
   dejavooTransaction?: DejavooSaleTransactionResponse,
   amountOverride?: number 
 }) => Promise<void>;
@@ -613,7 +613,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   },
 
   handlePaymentCompletion: async (
-    { method, tipAmount, transactionDetails, amountOverride, dejavooTransaction }: { method: string, tipAmount?: number, transactionDetails?: Record<string, any>, amountOverride?: number, dejavooTransaction?: DejavooSaleTransactionResponse }
+    { method, tipAmount, transactionDetails, amountOverride, dejavooTransaction }: { method: string, tipAmount?: number, transactionDetails?: OrderPaymentTransactionDetails, amountOverride?: number, dejavooTransaction?: DejavooSaleTransactionResponse }
   ) => {
     const { activeSplitId, splits, splitSourceView, close } = get();
     const { activeOrderId, addPaymentToOrder } = useOrderStore.getState();
@@ -736,11 +736,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           orderType: finalOrder?.order_type || "unknown",
           totalAmount: paymentsTotal,
           cashAmount: (finalOrder?.payments || [])
-            .filter((p) => p.payment_method === "Cash" || p.payment_method === "cash")
+            .filter((p) => String(p.method).toLowerCase() === "cash")
             .reduce((sum, p) => sum + (p.amount || 0), 0),
           paymentMethod: method,
-          sessionId: finalOrder?.session_id,
-          tableId: finalOrder?.service_location_id,
+          sessionId: finalOrder?.session_id ?? undefined,
+          tableId: finalOrder?.service_location_id ?? undefined,
         };
 
         await eventBus.emit("order:paid", eventPayload);
@@ -825,11 +825,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         orderType: finalOrder?.order_type || "unknown",
         totalAmount: paymentsTotal,
         cashAmount: (finalOrder?.payments || [])
-          .filter((p) => p.payment_method === "Cash" || p.payment_method === "cash")
+          .filter((p) => String(p.method).toLowerCase() === "cash")
           .reduce((sum, p) => sum + (p.amount || 0), 0),
         paymentMethod: method,
-        sessionId: finalOrder?.session_id,
-        tableId: finalOrder?.service_location_id,
+        sessionId: finalOrder?.session_id ?? undefined,
+        tableId: finalOrder?.service_location_id ?? undefined,
       };
 
       await eventBus.emit("order:paid", eventPayload);
@@ -858,7 +858,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     return new Promise((resolve) => {
       try {
         setTimeout(() => {
-          get().handlePaymentCompletion("Card", details.tipAmount);
+          get().handlePaymentCompletion({
+            method: "Card",
+            tipAmount: details.tipAmount,
+          });
           resolve(true);
         }, 2000);
       } catch (error: any) {

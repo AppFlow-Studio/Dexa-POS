@@ -175,6 +175,7 @@ const CardPaymentView = () => {
             : generateRefId("CARD");
 
           console.log("[CashPayment] Executing sale transaction...", {
+            grandTotal: grandTotal,
             amount: totalToPay,
             tip: tipAmount,
             refId,
@@ -182,7 +183,7 @@ const CardPaymentView = () => {
           });
 
           const result = await DejavooAPI.sale()
-            .amount(totalToPay)
+            .amount(grandTotal)
             .tip(tipAmount)
             .paymentType("Credit")
             .refId(refId)
@@ -209,6 +210,8 @@ const CardPaymentView = () => {
               result.helpers.getTransactionNumber(),
             );
             console.log("Invoice Number:", result.helpers.getInvoiceNumber());
+            console.log("RRN:", result.helpers.getRRN());
+
             console.log("Batch Number:", result.helpers.getBatchNumber());
             console.log("Auth Number:", result.helpers.getAuthCode());
             console.log("Total Amount:", result.helpers.getTotalAmount());
@@ -249,6 +252,82 @@ const CardPaymentView = () => {
           // Success
           if (result.success) {
             setStatus("success");
+            const rawResponse = result.rawResponse as Record<string, any> | undefined;
+            const generalResponse = rawResponse?.GeneralResponse;
+            const cardData = rawResponse?.CardData;
+            const emvRaw = rawResponse?.EMVData;
+            const amountsRaw = rawResponse?.Amounts;
+            const amounts = {
+              totalAmount:
+                amountsRaw?.TotalAmount ?? result.helpers?.getTotalAmount(),
+              amount: amountsRaw?.Amount ?? result.helpers?.getBaseAmount(),
+              tipAmount: amountsRaw?.TipAmount ?? result.helpers?.getTipAmount(),
+              feeAmount: amountsRaw?.FeeAmount,
+              taxAmount: amountsRaw?.TaxAmount,
+            };
+            const emvData = emvRaw
+              ? {
+                  applicationName: emvRaw?.ApplicationName,
+                  aid: emvRaw?.AID,
+                  tvr: emvRaw?.TVR,
+                  tsi: emvRaw?.TSI,
+                  iad: emvRaw?.IAD,
+                  arc: emvRaw?.ARC,
+                }
+              : undefined;
+            const dejavooTransaction = {
+              referenceId: result.helpers?.getReferenceId() ?? rawResponse?.ReferenceId,
+              transactionNumber:
+                result.helpers?.getTransactionNumber() ??
+                rawResponse?.TransactionNumber,
+              invoiceNumber:
+                result.helpers?.getInvoiceNumber() ?? rawResponse?.InvoiceNumber,
+              batchNumber:
+                result.helpers?.getBatchNumber() ?? rawResponse?.BatchNumber,
+              authCode: result.helpers?.getAuthCode() ?? rawResponse?.AuthCode,
+              totalAmount: amounts.totalAmount,
+              baseAmount: amounts.amount,
+              tipAmount: amounts.tipAmount,
+              cardType: result.helpers?.getCardType() ?? cardData?.CardType,
+              cardLast4: result.helpers?.getCardLast4() ?? cardData?.Last4,
+              entryMode: result.helpers?.getEntryMode() ?? cardData?.EntryType,
+              entryType: cardData?.EntryType,
+              resultCode:
+                result.helpers?.getResultCode() ?? generalResponse?.ResultCode,
+              statusCode:
+                result.helpers?.getStatusCode() ?? generalResponse?.StatusCode,
+              message: result.helpers?.getMessage() ?? generalResponse?.Message,
+              rrn: result.helpers?.getRRN() ?? rawResponse?.RRN,
+              pnReferenceId:
+                rawResponse?.PNRef ?? rawResponse?.PNReferenceId,
+              transactionType:
+                result.helpers?.getTransactionType() ??
+                rawResponse?.TransactionType,
+              serialNumber: rawResponse?.SerialNumber,
+              hostResponseCode:
+                generalResponse?.HostResponseCode ?? generalResponse?.StatusCode,
+              hostResponseMessage:
+                generalResponse?.HostResponseMessage ??
+                generalResponse?.Message,
+              resultMessage: generalResponse?.Message,
+              amounts,
+              emvData,
+            };
+            handlePaymentCompletion({
+              method: "Card",
+              tipAmount: tipAmount,
+              transactionDetails: {
+                terminalType: "manual", // Default for now
+                // authorizationCode: "AUTH" + Math.floor(Math.random() * 10000),
+                isCashPriced: false, // Explicit card pricing
+                authorizationCode: dejavooTransaction.authCode,
+                cardType: dejavooTransaction.cardType,
+                last4: dejavooTransaction.cardLast4,
+                transactionId: dejavooTransaction.referenceId,
+                dejavooTransaction,
+              },
+              amountOverride: totalToPay,
+            });
           }
         } catch (error) {
           console.error("[CardPayment] Error processing payment:", error);
@@ -274,16 +353,7 @@ const CardPaymentView = () => {
     if (status === "success" && activeOrderId) {
       // Use central handler instead of direct store call
       // Pass the tip amount and explicit card pricing flag
-      handlePaymentCompletion({
-        method: "Card",
-        tipAmount: tipAmount,
-        transactionDetails: {
-          terminalType: "manual", // Default for now
-          authorizationCode: "AUTH" + Math.floor(Math.random() * 10000),
-          isCashPriced: false, // Explicit card pricing
-        },
-        amountOverride: totalToPay,
-      });
+     
     }
   }, [status, activeOrderId, handlePaymentCompletion, tipAmount]);
 

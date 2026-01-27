@@ -1,5 +1,5 @@
-// android/app/src/main/java/temurappflowstudios/dexapos/tcpserver/TcpServerPackage.kt
-package temurappflowstudios.dexapos.tcpserver
+// android/app/src/main/java/com/temurappflowstudios/dexapos/tcpserver/TcpServerPackage.kt
+package com.temurappflowstudios.dexapos.tcpserver
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

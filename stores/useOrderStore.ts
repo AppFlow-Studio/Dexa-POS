@@ -5,6 +5,7 @@ import {
   Discount,
   OrderAppliedDiscount,
   OrderPaymentItemCoverage,
+  OrderPaymentTransactionDetails,
   OrderProfile,
   OrderProfilePayment,
   PaymentType,
@@ -1231,7 +1232,7 @@ const syncPaymentToBackend = async (
     amount: number;
     method: PaymentType;
     tipAmount?: number;
-    transactionDetails?: Record<string, any>;
+    transactionDetails?: OrderPaymentTransactionDetails;
     itemAllocations?: { itemId: string; quantity: number; amount?: number }[]; // Per-item allocations with quantities
     splitCount?: number; // Optional: split count for split payments
     splitPortionIndex?: number; // Optional: split portion index for split payments
@@ -1254,6 +1255,56 @@ const syncPaymentToBackend = async (
   }
 
   console.log("[syncPaymentToBackend] paymentDetails:", paymentDetails);
+  const buildTerminalResponse = (): Record<string, unknown> | null => {
+    const details = paymentDetails.transactionDetails;
+    if (!details) return null;
+
+    const tx = details.dejavooTransaction;
+    const entryType = tx?.entryType ?? tx?.entryMode;
+    const amounts = tx?.amounts || {
+      totalAmount: tx?.totalAmount,
+      amount: tx?.baseAmount,
+      tipAmount: tx?.tipAmount,
+    };
+
+    const baseResponse = {
+      terminal_type: details.terminalType || "manual",
+      authorization_code: details.authorizationCode ?? tx?.authCode,
+      card_type: details.cardType ?? tx?.cardType,
+      card_last_four: details.last4 ?? tx?.cardLast4,
+      transaction_id: details.transactionId ?? tx?.referenceId,
+    };
+
+    const extendedResponse = tx
+      ? {
+          reference_id: tx.referenceId,
+          rrn: tx.rrn,
+          pn_reference_id: tx.pnReferenceId,
+          auth_code: tx.authCode,
+          batch_number: tx.batchNumber,
+          transaction_number: tx.transactionNumber,
+          invoice_number: tx.invoiceNumber,
+          transaction_type: tx.transactionType,
+          serial_number: tx.serialNumber,
+          entry_type: entryType,
+          result_code: tx.resultCode,
+          status_code: tx.statusCode,
+          result_message: tx.message ?? tx.resultMessage,
+          host_response_code: tx.hostResponseCode,
+          host_response_message: tx.hostResponseMessage,
+          amounts,
+          emv_data: tx.emvData,
+          dejavoo_transaction: tx,
+        }
+      : {};
+
+    const combined = { ...baseResponse, ...extendedResponse };
+    const hasData = Object.values(combined).some(
+      (value) => value !== undefined && value !== null && value !== "",
+    );
+
+    return hasData ? combined : null;
+  };
   // ========================================================================
   // OFFLINE-FIRST: Queue payment for later sync if order not in DB yet
   // ========================================================================
@@ -1264,20 +1315,7 @@ const syncPaymentToBackend = async (
     );
 
     const isCash = paymentDetails.method === "Cash";
-
-    // Build terminal response for card payments
-    const terminalResponse =
-      !isCash && paymentDetails.transactionDetails
-        ? {
-            terminal_type:
-              paymentDetails.transactionDetails.terminalType || "manual",
-            authorization_code:
-              paymentDetails.transactionDetails.authorizationCode,
-            card_type: paymentDetails.transactionDetails.cardType,
-            card_last_four: paymentDetails.transactionDetails.last4,
-            transaction_id: paymentDetails.transactionDetails.transactionId,
-          }
-        : null;
+    const terminalResponse = buildTerminalResponse();
 
     // Build item allocations for per-item payments (convert to backend format)
     const itemAllocations =
@@ -1324,31 +1362,7 @@ const syncPaymentToBackend = async (
     // Determine if this is a cash or card payment
     const isCash = paymentDetails.method === "Cash";
     const paymentMethod = isCash ? "cash" : "card";
-
-    // Build terminal response for card payments
-    const terminalResponse =
-      !isCash && paymentDetails.transactionDetails
-        ? {
-            terminal_type:
-              paymentDetails.transactionDetails.terminalType || "manual",
-            authorization_code:
-              paymentDetails.transactionDetails.authorizationCode,
-            card_type: paymentDetails.transactionDetails.cardType,
-            card_last_four: paymentDetails.transactionDetails.last4,
-            transaction_id: paymentDetails.transactionDetails.transactionId,
-            ...(paymentDetails.transactionDetails?.dejavooTransaction
-              ? {
-                  dejavoo_transaction:
-                    paymentDetails.transactionDetails.dejavooTransaction,
-                }
-              : {}),
-          }
-        : paymentDetails.transactionDetails?.dejavooTransaction
-          ? {
-              dejavoo_transaction:
-                paymentDetails?.transactionDetails?.dejavooTransaction,
-            }
-          : null;
+    const terminalResponse = buildTerminalResponse();
 
     // Build item allocations for per-item payments (convert to backend format)
     // Filter out undefined amount values to avoid JSON serialization issues
@@ -1430,18 +1444,7 @@ const syncPaymentToBackend = async (
 
       // Queue for retry - build payment params for process_payment_v5
       const isCashRetry = paymentDetails.method === "Cash";
-      const terminalResponseRetry =
-        !isCashRetry && paymentDetails.transactionDetails
-          ? {
-              terminal_type:
-                paymentDetails.transactionDetails.terminalType || "manual",
-              authorization_code:
-                paymentDetails.transactionDetails.authorizationCode,
-              card_type: paymentDetails.transactionDetails.cardType,
-              card_last_four: paymentDetails.transactionDetails.last4,
-              transaction_id: paymentDetails.transactionDetails.transactionId,
-            }
-          : null;
+      const terminalResponseRetry = buildTerminalResponse();
 
       // Build item allocations for retry
       const itemAllocationsRetry =
@@ -8221,8 +8224,13 @@ export const useOrderStore = create<OrderState>()(
                 const normalized = normalizeFetchedOrder(
                   serverOrder as FetchedOrderData,
                 );
+                if( normalized.id == '67aa73f4-574c-4fc5-a033-05da770a2f74'){
+                  console.log('normalizeFetchedOrder', normalized);
+                }
                 const orderProfile = transformBroadcastToOrder(normalized);
-
+                if( orderProfile.db_order_id == '67aa73f4-574c-4fc5-a033-05da770a2f74'){
+                  console.log('orderProfile', orderProfile);
+                }
                 // Use DB UUID as the key
                 newOrders[serverOrder.id] = orderProfile;
                 if (!exists) {

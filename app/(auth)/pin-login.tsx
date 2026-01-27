@@ -305,6 +305,11 @@ const PinLoginScreen = () => {
         p_os_version: info.os_version,
         p_hardware_model: info.hardware_model,
       });
+      if (navigator.onLine) {
+        console.log('Internet connection is available');
+      } else {
+        console.log('Internet connection is not available');
+      }
       const { data, error } = await supabase.rpc("pos_staff_login_v2", {
         p_location_id: selectedStore.id,
         p_pin_code: pin,

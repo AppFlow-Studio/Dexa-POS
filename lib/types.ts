@@ -1,4 +1,9 @@
 import { ComponentType } from "react";
+import type { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
+import type {
+  OrderRefundItemRecord,
+  ReversalRecord,
+} from "@/types/refunds";
 import { TABLE_SHAPES } from "./table-shapes";
 
 // --- INVENTORY TYPES ---
@@ -401,6 +406,7 @@ export interface CartItem {
   availableDiscount?: Discount;
   appliedDiscount?: Discount | null;
   refundedQuantity?: number;
+  refundedAmount?: number;
   // Tax fields for per-item tax calculation
   tax_category?: string | null; // e.g., "standard", "alcohol"
   is_tax_exempt?: boolean;
@@ -724,6 +730,23 @@ export interface OrderPaymentItemCoverage {
   subtotal: number; // quantity * unitPrice
 }
 
+export interface OrderPaymentTransactionDetails {
+  terminalType?: string;
+  authorizationCode?: string;
+  cardType?: string;
+  last4?: string;
+  transactionId?: string;
+  amountTendered?: number;
+  changeGiven?: number;
+  isCashPriced?: boolean;
+  splitLabel?: string;
+  isCashPayment?: boolean;
+  isCash?: boolean;
+  // Full Dejavoo response details (sanitized, no First4/BIN/IPosToken)
+  dejavooTransaction?: DejavooSaleTransactionResponse;
+  [key: string]: unknown;
+}
+
 /**
  * Payment record for UI consumption with enhanced item coverage tracking.
  * Used in OrderProfile.payments array.
@@ -773,11 +796,14 @@ export interface OrderProfilePayment {
   isVoided: boolean;
   voidReason?: string;
   voidedAt?: string;
-
+  refundedAmount?: number;
+  refundedAt?: string;
+  reference_id?: string;
   // Sync status (for offline-first reliability)
   sync_status?: "synced" | "pending" | "failed";
   sync_error?: string;
   sync_attempt_count?: number;
+  transactionDetails?: OrderPaymentTransactionDetails;
 }
 
 export interface OrderProfile {
@@ -859,6 +885,8 @@ export interface OrderProfile {
   paymentMethod?: PaymentType; // Example usage
   payments?: OrderProfilePayment[]; // Payment records with full details
   notes?: string; // Order-level notes (customer requests, special instructions)
+  reversals?: ReversalRecord[];
+  order_refund_items?: OrderRefundItemRecord[];
 
   // === STATION TRACKING ===
   station_id?: string | null; // Station that created this order

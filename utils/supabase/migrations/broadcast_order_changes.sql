@@ -4,6 +4,9 @@ DECLARE
   order_data jsonb;
   order_items_data jsonb;
   order_payments_data jsonb;
+  order_refund_items_data jsonb;
+  reversals_data jsonb;
+
   v_topic text;
   v_location_id uuid;
   v_station_name text;
@@ -62,6 +65,8 @@ BEGIN
         'item_status', oi.item_status,
         'kitchen_status', oi.kitchen_status,
         'paid_quantity', COALESCE(oi.paid_quantity, 0),
+        'refunded_quantity', COALESCE(oi.refunded_quantity, 0),
+        'refunded_amount', COALESCE(oi.refunded_amount, 0),
         'course_number', oi.course_number,
         'is_voided', COALESCE(oi.is_voided, false),
         'is_open_item', COALESCE(oi.is_open_item, false),
@@ -89,7 +94,7 @@ BEGIN
     FROM order_items oi
     WHERE oi.order_id = NEW.id
       AND COALESCE(oi.is_voided, false) = false;
-
+     
     -- Fetch order payments for this order
     SELECT COALESCE(jsonb_agg(
       jsonb_build_object(
@@ -116,14 +121,80 @@ BEGIN
         'terminal_type', op.terminal_type,
         'is_voided', COALESCE(op.is_voided, false),
         'void_reason', op.void_reason,
+        'refunded_amount', COALESCE(op.refunded_amount, 0),
+        'refunded_at', op.refunded_at,
         'captured_at', op.captured_at,
-        'created_at', op.created_at
+        'authorization_code', op.authorization_code,
+        'auth_code', op.auth_code,
+        'rrn', op.rrn,
+        'batch_number', op.batch_number,
+        'dejavoo_batch_number', op.dejavoo_batch_number,
+        'dejavoo_invoice_number', op.dejavoo_invoice_number,
+        'result_code', op.result_code,
+        'entry_mode', op.processor_response->'dejavoo_transaction'->>'entryMode',
+        'reference_number', op.reference_number,
+        'reference_id', op.reference_number,
+        'created_at', op.initiated_at
       )
     ), '[]'::jsonb) INTO order_payments_data
     FROM order_payments op
     WHERE op.order_id = NEW.id
       AND op.status = 'captured';
     -- TODO: Need to account for if not captured its auth
+
+    -- Fetch reversals for this order (via payment linkage)
+    SELECT COALESCE(jsonb_agg(
+      jsonb_build_object(
+        'id', r.id,
+        'original_payment_id', r.original_payment_id,
+        'original_psp_reference', r.original_psp_reference,
+        'reversal_reference_id', r.reversal_reference_id,
+        'merchant_id', r.merchant_id,
+        'location_id', r.location_id,
+        'reversal_type', r.reversal_type,
+        'amount', r.amount,
+        'reason_code', r.reason_code,
+        'reason_description', r.reason_description,
+        'status', r.status,
+        'initiated_by', r.initiated_by,
+        'approved_by', r.approved_by,
+        'requested_at', r.requested_at,
+        'completed_at', r.completed_at,
+        'failed_at', r.failed_at,
+        'terminal_response', r.terminal_response,
+        'emv_data', r.emv_data,
+        'metadata', r.metadata
+      )
+    ), '[]'::jsonb) INTO reversals_data
+    FROM reversals r
+    JOIN order_payments op ON op.id = r.original_payment_id
+    WHERE op.order_id = NEW.id;
+
+    -- Fetch refund line items for this order
+    SELECT COALESCE(jsonb_agg(
+      jsonb_build_object(
+        'id', ori.id,
+        'reversal_id', ori.reversal_id,
+        'order_item_id', ori.order_item_id,
+        'order_payment_item_id', ori.order_payment_item_id,
+        'quantity_refunded', ori.quantity_refunded,
+        'unit_price_refunded', ori.unit_price_refunded,
+        'subtotal_refunded', ori.subtotal_refunded,
+        'tax_refunded', ori.tax_refunded,
+        'total_refunded', ori.total_refunded,
+        'refund_reason', ori.refund_reason,
+        'refund_reason_detail', ori.refund_reason_detail,
+        'return_to_inventory', ori.return_to_inventory,
+        'inventory_updated', ori.inventory_updated,
+        'created_at', ori.created_at
+      )
+    ), '[]'::jsonb) INTO order_refund_items_data
+    FROM order_refund_items ori
+    JOIN order_items oi ON oi.id = ori.order_item_id
+    WHERE oi.order_id = NEW.id;
+
+
+
     -- Build order_data in parts to avoid 100 argument limit
     -- Part 1: Identifiers and relationships
     order_data := jsonb_build_object(
@@ -196,7 +267,9 @@ BEGIN
       'sync_version', NEW.sync_version,
       'is_offline', NEW.is_offline,
       'order_items', order_items_data,
-      'order_payments', order_payments_data
+      'order_payments', order_payments_data,
+      'reversals', reversals_data,
+      'order_refund_items', order_refund_items_data
     );
 
     -- Build final payload

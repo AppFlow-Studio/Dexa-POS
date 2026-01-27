@@ -14,6 +14,8 @@ import {
   DejavooReturnResponse,
   DejavooTipAdjustRequest,
   DejavooTipAdjustResponse,
+  DejavooVoidV2Request,
+  DejavooVoidV2Response,
   DejavooBaseResponse,
   DejavooEnvironment,
   PaymentType,
@@ -290,7 +292,11 @@ export class DejavooSpinAPI {
      // ${this.getBaseUrl()}
       const url = `https://test.spinpos.net/v2/Common/TerminalStatus`;
       console.log('[DejavooSpinAPI] Credentials:', this.credentials);
-
+      if (navigator.onLine) {
+        console.log('Internet connection is available');
+      } else {
+        console.log('Internet connection is not available');
+      }
       const params = new URLSearchParams({
         'request.registerId': this.credentials.registerId!,
         'request.authkey': this.credentials.authKey,
@@ -410,6 +416,27 @@ export class DejavooSpinAPI {
    */
   tipAdjust(): TipAdjustTransactionBuilder {
     return new TipAdjustTransactionBuilder(this);
+  }
+
+  /**
+   * Create a VOID transaction builder
+   *
+   * Returns a fluent builder for constructing and executing a void transaction.
+   * Cancels a previous transaction within the current open batch.
+   *
+   * @returns VoidTransactionBuilder for method chaining
+   *
+   * @example
+   * ```typescript
+   * const result = await api
+   *   .void()
+   *   .amount(25.99)
+   *   .referenceId('SALE_1234567_1234')
+   *   .execute();
+   * ```
+   */
+  void(): VoidTransactionBuilder {
+    return new VoidTransactionBuilder(this);
   }
 
   // ============================================================
@@ -2069,5 +2096,390 @@ export class TipAdjustTransactionBuilder {
    */
   getPerformedBy(): string | undefined {
     return this._performedBy;
+  }
+}
+
+// ============================================================
+// VOID TRANSACTION BUILDER
+// ============================================================
+
+/**
+ * Fluent builder for VOID transactions
+ *
+ * Cancels a previous transaction within the current open batch.
+ * Must reference the original transaction via referenceId.
+ *
+ * @example
+ * ```typescript
+ * const result = await api
+ *   .void()
+ *   .amount(25.99)
+ *   .referenceId('SALE_1234567_1234')
+ *   .paymentType('Credit')
+ *   .execute();
+ *
+ * if (result.success) {
+ *   console.log('Voided:', result.data?.Voided);
+ * }
+ * ```
+ */
+export class VoidTransactionBuilder {
+  private api: DejavooSpinAPI;
+
+  // Required fields
+  private _amount?: number;
+  private _referenceId?: string;
+
+  // Optional fields with defaults
+  private _paymentType: PaymentType = 'Credit';
+  private _printReceipt?: 'Yes' | 'No';
+  private _getReceipt?: 'Yes' | 'No';
+  private _merchantNumber?: string | null;
+  private _captureSignature?: boolean;
+  private _getExtendedData?: boolean;
+  private _tpn?: string;
+  private _timeout?: number | null;
+  private _callbackUrl?: string;
+  private _customFields?: Record<string, any>;
+  private _performedBy?: string; // For backend logging only
+  private _tag1?: string;
+  private _tag2?: string;
+  private _tag3?: string;
+
+  constructor(api: DejavooSpinAPI) {
+    this.api = api;
+  }
+
+  // ============================================================
+  // REQUIRED FIELDS
+  // ============================================================
+
+  /**
+   * Set original transaction amount (REQUIRED)
+   *
+   * @param value - Original transaction amount in dollars (must be > 0)
+   * @returns this for chaining
+   * @throws Error if amount <= 0
+   */
+  amount(value: number): this {
+    if (value <= 0) {
+      throw new Error('Amount must be greater than 0');
+    }
+    this._amount = value;
+    return this;
+  }
+
+  /**
+   * Set reference ID of original transaction to void (REQUIRED)
+   *
+   * Must match the ReferenceId from the original transaction.
+   *
+   * @param value - Reference ID of original transaction (max 50 chars)
+   * @returns this for chaining
+   * @throws Error if length > 50
+   */
+  referenceId(value: string): this {
+    if (value.length > 50) {
+      throw new Error('ReferenceId cannot exceed 50 characters');
+    }
+    this._referenceId = value;
+    return this;
+  }
+
+  // ============================================================
+  // OPTIONAL FIELDS
+  // ============================================================
+
+  /**
+   * Set payment type
+   *
+   * @param value - Payment method type
+   * @returns this for chaining
+   * @default 'Credit'
+   */
+  paymentType(value: PaymentType): this {
+    this._paymentType = value;
+    return this;
+  }
+
+  /**
+   * Set receipt printing preference
+   *
+   * @param value - Print option ('Yes' or 'No')
+   * @returns this for chaining
+   */
+  printReceipt(value: 'Yes' | 'No'): this {
+    this._printReceipt = value;
+    return this;
+  }
+
+  /**
+   * Set whether to retrieve receipt data
+   *
+   * @param value - Get receipt option ('Yes' or 'No')
+   * @returns this for chaining
+   */
+  getReceipt(value: 'Yes' | 'No'): this {
+    this._getReceipt = value;
+    return this;
+  }
+
+  /**
+   * Set merchant number
+   *
+   * @param value - Merchant number or null
+   * @returns this for chaining
+   */
+  merchantNumber(value: string | null): this {
+    this._merchantNumber = value;
+    return this;
+  }
+
+  /**
+   * Set signature capture preference
+   *
+   * @param value - Whether to capture signature
+   * @returns this for chaining
+   */
+  captureSignature(value: boolean): this {
+    this._captureSignature = value;
+    return this;
+  }
+
+  /**
+   * Set whether to request extended transaction data
+   *
+   * @param value - Whether to get extended data
+   * @returns this for chaining
+   */
+  getExtendedData(value: boolean): this {
+    this._getExtendedData = value;
+    return this;
+  }
+
+  /**
+   * Set Terminal Profile Number
+   *
+   * @param value - TPN value
+   * @returns this for chaining
+   */
+  tpn(value: string): this {
+    this._tpn = value;
+    return this;
+  }
+
+  /**
+   * Set custom timeout in seconds
+   *
+   * @param value - Timeout in seconds (1-720) or null
+   * @returns this for chaining
+   * @throws Error if not in range 1-720
+   */
+  timeout(value: number | null): this {
+    if (value !== null && (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max)) {
+      throw new Error(
+        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`
+      );
+    }
+    this._timeout = value;
+    return this;
+  }
+
+  /**
+   * Set webhook callback URL
+   *
+   * @param value - Callback URL for transaction updates
+   * @returns this for chaining
+   */
+  callbackUrl(value: string): this {
+    this._callbackUrl = value;
+    return this;
+  }
+
+  /**
+   * Set custom fields for additional data
+   *
+   * @param value - Custom fields object
+   * @returns this for chaining
+   */
+  customFields(value: Record<string, any>): this {
+    this._customFields = value;
+    return this;
+  }
+
+  /**
+   * Set user performing the transaction (for backend logging only)
+   *
+   * Note: This field is NOT sent to the Dejavoo API.
+   * It's used for internal Supabase logging.
+   *
+   * @param value - User identifier, typically email (max 100 chars)
+   * @returns this for chaining
+   * @throws Error if length > 100
+   */
+  performedBy(value: string): this {
+    if (value.length > 100) {
+      throw new Error('PerformedBy cannot exceed 100 characters');
+    }
+    this._performedBy = value;
+    return this;
+  }
+
+  /**
+   * Set transaction tags for categorization and reporting
+   *
+   * Note: Tags are for backend logging only, not sent to Dejavoo API.
+   *
+   * @param tags - Up to 3 tags (8 chars each max)
+   * @returns this for chaining
+   * @throws Error if more than 3 tags or any tag > 8 chars
+   */
+  withTags(...tags: string[]): this {
+    if (tags.length > 3) {
+      throw new Error('Maximum 3 tags allowed');
+    }
+
+    tags.forEach((tag, i) => {
+      if (tag.length > 8) {
+        throw new Error(`Tag ${i + 1} exceeds 8 character limit`);
+      }
+    });
+
+    this._tag1 = tags[0];
+    this._tag2 = tags[1];
+    this._tag3 = tags[2];
+
+    return this;
+  }
+
+  // ============================================================
+  // EXECUTE
+  // ============================================================
+
+  /**
+   * Execute the VOID transaction
+   *
+   * Validates required fields, builds the request, and sends to the terminal.
+   * Shows toast notification for user feedback.
+   *
+   * @returns Promise with transaction result
+   */
+  async execute(): Promise<DejavooAPIResponse<DejavooVoidV2Response>> {
+    // Validate required fields
+    if (this._amount === undefined) {
+      const error = 'Amount is required. Call .amount() before execute()';
+      console.error('[VoidTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    if (!this._referenceId) {
+      const error = 'Reference ID is required. Call .referenceId() before execute()';
+      console.error('[VoidTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    try {
+      // Get auth params from API instance
+      const authParams = this.api.getAuthParams();
+
+      // Build request object
+      const request: DejavooVoidV2Request = {
+        // Auth fields
+        Authkey: authParams.AuthKey,
+
+        // Required transaction fields
+        Amount: this._amount,
+        PaymentType: this._paymentType,
+        ReferenceId: this._referenceId,
+
+        // Receipt options
+        PrintReceipt: this._printReceipt,
+        GetReceipt: this._getReceipt,
+
+        // Optional fields
+        MerchantNumber: this._merchantNumber,
+        CaptureSignature: this._captureSignature,
+        GetExtendedData: this._getExtendedData,
+        Tpn: this._tpn,
+        SPInProxyTimeout: this._timeout ?? authParams.OperationalTimeout ?? null,
+
+        // Callback (only if URL provided)
+        CallbackInfo: this._callbackUrl ? { Url: this._callbackUrl } : undefined,
+
+        // Custom fields
+        CustomFields: this._customFields,
+      };
+
+      // Note: PerformedBy and Tag fields are NOT included in the API request
+      // They are stored separately for backend logging in Supabase
+      console.log('[VoidTransactionBuilder] PerformedBy (backend only):', this._performedBy);
+      console.log('[VoidTransactionBuilder] Tags (backend only):', this._tag1, this._tag2, this._tag3);
+
+      // Execute request through API
+      const response = await this.api.executeRequest<DejavooVoidV2Response>(
+        '/v2/Payment/Void',
+        request
+      );
+
+      // Show toast notification for user feedback
+      if (response.success) {
+        toastService.show({
+          title: 'Void Approved',
+          message: `$${this._amount.toFixed(2)} voided successfully`,
+          type: 'success',
+          duration: 3000,
+        });
+      } else {
+        const errorMsg = response.error || 'Void transaction failed';
+        const detailedMsg = response.errorCode
+          ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
+          : errorMsg;
+
+        toastService.show({
+          title: 'Void Failed',
+          message: detailedMsg,
+          type: 'error',
+          duration: 5000,
+        });
+      }
+
+      return response;
+    } catch (err) {
+      console.error('[VoidTransactionBuilder] Execute failed:', err);
+
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+
+      toastService.show({
+        title: 'Void Error',
+        message: errorMsg,
+        type: 'error',
+        duration: 5000,
+      });
+
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
+  }
+
+  // ============================================================
+  // GETTERS (for backend logging access)
+  // ============================================================
+
+  /**
+   * Get the performedBy value for backend logging
+   * @returns User who performed the transaction
+   */
+  getPerformedBy(): string | undefined {
+    return this._performedBy;
+  }
+
+  /**
+   * Get the tags for backend logging
+   * @returns Array of tags [tag1, tag2, tag3]
+   */
+  getTags(): (string | undefined)[] {
+    return [this._tag1, this._tag2, this._tag3];
   }
 }

@@ -93,6 +93,8 @@ export function transformBroadcastItems(
     // Quantity tracking
     quantity: item.quantity,
     paidQuantity: item.paid_quantity || 0,
+    refundedQuantity: item.refunded_quantity || 0,
+    refundedAmount: item.refunded_amount || 0,
 
     // Pricing
     price: item.unit_price,
@@ -270,6 +272,28 @@ function transformBroadcastPaymentToProfile(
     timestamp: payment.captured_at ?? payment.created_at,
     isVoided: payment.is_voided,
     voidReason: payment.void_reason ?? undefined,
+    refundedAmount: payment.refunded_amount ?? undefined,
+    refundedAt: payment.refunded_at ?? undefined,
+    reference_id: payment.reference_id ?? undefined,
+    transactionDetails: payment.payment_method === "card" ? {
+      terminalType: payment.terminal_type ?? undefined,
+      authorizationCode: payment.authorization_code ?? payment.auth_code ?? undefined,
+      cardType: payment.card_type ?? undefined,
+      last4: payment.card_last_four ?? undefined,
+      transactionId: payment.transaction_id ?? undefined,
+      dejavooTransaction: {
+        authCode: payment.auth_code ?? payment.authorization_code ?? undefined,
+        batchNumber: payment.dejavoo_batch_number ?? payment.batch_number ?? undefined,
+        invoiceNumber: payment.dejavoo_invoice_number ?? undefined,
+        referenceId: payment.reference_id ?? undefined,
+        transactionNumber: payment.transaction_id ?? undefined,
+        cardType: payment.card_type ?? undefined,
+        cardLast4: payment.card_last_four ?? undefined,
+        entryMode: payment.entry_mode ?? undefined,
+        rrn: payment.rrn ?? undefined,
+        resultCode: payment.result_code ?? undefined,
+      } as any,
+    } : undefined,
     sync_status: "synced",
   };
 }
@@ -392,6 +416,8 @@ export function transformBroadcastToOrder(
       backendOrder.order_payments,
       backendOrder.order_items,
     ),
+    reversals: backendOrder.reversals ?? undefined,
+    order_refund_items: backendOrder.order_refund_items ?? undefined,
 
     // Timestamps
     opened_at: backendOrder.created_at,
@@ -491,6 +517,8 @@ export interface FetchedOrderItem {
   item_status?: string | null;
   kitchen_status?: string | null;
   paid_quantity?: number | null;
+  refunded_quantity?: number | null;
+  refunded_amount?: number | null;
   course_number?: number | null;
   is_voided?: boolean | null;
   is_open_item?: boolean | null;
@@ -556,6 +584,17 @@ export interface FetchedOrderPayment {
   transaction_id: string | null;
   authorization_code: string | null;
   processor_response: Record<string, unknown> | null;
+  reference_number: string | null;
+
+  // Dejavoo-specific columns (extracted by process_payment_v6.sql)
+  dejavoo_response_code: string | null;
+  dejavoo_batch_number: string | null;
+  dejavoo_invoice_number: string | null;
+  auth_code: string | null;
+  rrn: string | null;
+  result_code: string | null;
+  result_message: string | null;
+  batch_number: string | null;
 
   // Void/Refund tracking
   is_voided: boolean | null;
@@ -563,6 +602,7 @@ export interface FetchedOrderPayment {
   voided_by: string | null;
   void_reason: string | null;
   refunded_amount: number | null;
+  refunded_at: string | null;
 
   // Staff tracking
   processed_by_staff_id: string | null;
@@ -624,6 +664,8 @@ function normalizeFetchedItems(
     item_status: item.item_status ?? "pending",
     kitchen_status: item.kitchen_status ?? null,
     paid_quantity: item.paid_quantity ?? 0,
+    refunded_quantity: item.refunded_quantity ?? 0,
+    refunded_amount: item.refunded_amount ?? 0,
     course_number: item.course_number ?? null,
     is_voided: item.is_voided ?? false,
     is_open_item: item.is_open_item ?? false,
@@ -692,8 +734,19 @@ function normalizeFetchedPayment(
     terminal_type: payment.terminal_type,
     is_voided: payment.is_voided ?? false,
     void_reason: payment.void_reason,
+    refunded_amount: payment.refunded_amount ?? 0,
+    refunded_at: payment.refunded_at,
     captured_at: payment.captured_at,
     created_at: payment.created_at,
+    reference_id: payment.reference_number ?? null,
+    authorization_code: payment.authorization_code ?? null,
+    auth_code: payment.auth_code ?? null,
+    rrn: payment.rrn ?? (payment.processor_response as any)?.dejavoo_transaction?.rrn ?? null,
+    batch_number: payment.batch_number ?? null,
+    dejavoo_batch_number: payment.dejavoo_batch_number ?? null,
+    dejavoo_invoice_number: payment.dejavoo_invoice_number ?? null,
+    entry_mode: (payment.processor_response as any)?.dejavoo_transaction?.entryMode ?? null,
+    result_code: payment.result_code ?? null,
   };
 }
 
@@ -728,7 +781,6 @@ export function normalizeFetchedOrder(
     order_number: fetchedOrder.order_number,
     display_number: fetchedOrder.display_number,
     external_id: fetchedOrder.external_id ?? null,
-
     // Relationships
     merchant_id: fetchedOrder.merchant_id,
     location_id: fetchedOrder.location_id,

@@ -16,7 +16,7 @@ import com.facebook.soloader.SoLoader
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
-import temurappflowstudios.dexapos.tcpserver.TcpServerPackage
+import com.temurappflowstudios.dexapos.tcpserver.TcpServerPackage
 
 class MainApplication : Application(), ReactApplication {
 

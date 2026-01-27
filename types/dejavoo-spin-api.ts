@@ -276,6 +276,27 @@ export interface DejavooVoidRequest {
 }
 
 /**
+ * VOID Transaction Request (v2)
+ * Cancels a previous transaction within the current open batch via /v2/Payment/Void
+ * @see https://docs.ipospays.com/spin-specification/apidocs
+ */
+export interface DejavooVoidV2Request {
+  Authkey: string;
+  Amount: number;
+  PaymentType: PaymentType;
+  ReferenceId: string;
+  PrintReceipt?: 'Yes' | 'No';
+  GetReceipt?: 'Yes' | 'No';
+  MerchantNumber?: string | null;
+  CaptureSignature?: boolean;
+  GetExtendedData?: boolean;
+  Tpn?: string;
+  SPInProxyTimeout?: number | null;
+  CallbackInfo?: { Url: string };
+  CustomFields?: Record<string, any>;
+}
+
+/**
  * REFUND Transaction Request
  * Returns funds to customer (can be standalone or linked to original sale)
  * @see https://docs.ipospays.com/spin-specification/apidocs
@@ -1042,6 +1063,64 @@ export interface DejavooVoidResponse extends DejavooBaseResponse {
 }
 
 /**
+ * VOID Transaction Response (v2)
+ * Response from POST /v2/Payment/Void
+ */
+export interface DejavooVoidV2Response {
+  GeneralResponse: {
+    HostResponseCode: string;
+    HostResponseMessage: string;
+    ResultCode: string;
+    StatusCode: string;
+    Message: string;
+    DetailedMessage: string;
+    DelayBeforeNextRequest: number | null;
+  };
+  PaymentType: PaymentType;
+  TransactionType: string;
+  Amounts: {
+    TotalAmount: number | null;
+    Amount: number | null;
+    TipAmount: number | null;
+    FeeAmount: number | null;
+    TaxAmount: number | null;
+  };
+  AuthCode: string;
+  ReferenceId: string;
+  InvoiceNumber: string;
+  SerialNumber: string;
+  BatchNumber: string;
+  TransactionNumber: string;
+  Voided: boolean;
+  Signature: string;
+  IPosToken: string;
+  Token: string;
+  RRN: string;
+  ExtendedDataByApplication: Record<string, any>;
+  CardData: {
+    CardType: string;
+    EntryType: string;
+    Last4: string;
+    First4: string;
+    BIN: string;
+    ExpirationDate: string;
+    Name: string;
+  };
+  EMVData: {
+    ApplicationName: string;
+    AID: string;
+    TVR: string;
+    TSI: string;
+    IAD: string;
+    ARC: string;
+  };
+  Receipts: {
+    Customer: string;
+    Merchant: string;
+  };
+}
+
+/**
  * REFUND Transaction Response
  */
 export interface DejavooRefundResponse extends DejavooBaseResponse {
@@ -1554,19 +1633,41 @@ export function createRefundRequest(
 
 
 export interface DejavooSaleTransactionResponse {
-  referenceId: string 
-  transactionNumber: string 
-  invoiceNumber: string 
-  batchNumber: string 
-  authCode: string 
-  totalAmount: string 
-  baseAmount: string 
-  tipAmount: string 
-  cardType: string
-  cardLast4: string
-  entryMode: string 
-  resultCode: string 
-  statusCode: string 
-  message: string
-  rrn: string 
+  referenceId?: string;
+  transactionNumber?: string;
+  invoiceNumber?: string;
+  batchNumber?: string;
+  authCode?: string;
+  totalAmount?: number;
+  baseAmount?: number;
+  tipAmount?: number;
+  cardType?: string;
+  cardLast4?: string;
+  entryMode?: string;
+  entryType?: string;
+  resultCode?: string;
+  statusCode?: string;
+  message?: string;
+  rrn?: string;
+  pnReferenceId?: string;
+  transactionType?: string;
+  serialNumber?: string;
+  hostResponseCode?: string;
+  hostResponseMessage?: string;
+  resultMessage?: string;
+  amounts?: {
+    totalAmount?: number;
+    amount?: number;
+    tipAmount?: number;
+    feeAmount?: number;
+    taxAmount?: number;
+  };
+  emvData?: {
+    applicationName?: string;
+    aid?: string;
+    tvr?: string;
+    tsi?: string;
+    iad?: string;
+    arc?: string;
+  };
 }

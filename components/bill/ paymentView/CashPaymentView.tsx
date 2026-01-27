@@ -261,29 +261,75 @@ const CashPaymentView = () => {
       }
       //   // Success - Pass Dejavoo transaction details to payment handler
       if (result.success) {
+        const rawResponse = result.rawResponse as Record<string, any> | undefined;
+        const generalResponse = rawResponse?.GeneralResponse;
+        const cardData = rawResponse?.CardData;
+        const emvRaw = rawResponse?.EMVData;
+        const amountsRaw = rawResponse?.Amounts;
+        const amounts = {
+          totalAmount: amountsRaw?.TotalAmount ?? result.helpers?.getTotalAmount(),
+          amount: amountsRaw?.Amount ?? result.helpers?.getBaseAmount(),
+          tipAmount: amountsRaw?.TipAmount ?? result.helpers?.getTipAmount(),
+          feeAmount: amountsRaw?.FeeAmount,
+          taxAmount: amountsRaw?.TaxAmount,
+        };
+        const emvData = emvRaw
+          ? {
+              applicationName: emvRaw?.ApplicationName,
+              aid: emvRaw?.AID,
+              tvr: emvRaw?.TVR,
+              tsi: emvRaw?.TSI,
+              iad: emvRaw?.IAD,
+              arc: emvRaw?.ARC,
+            }
+          : undefined;
+        const dejavooTransaction = {
+          referenceId: result.helpers?.getReferenceId() ?? rawResponse?.ReferenceId,
+          transactionNumber:
+            result.helpers?.getTransactionNumber() ??
+            rawResponse?.TransactionNumber,
+          invoiceNumber:
+            result.helpers?.getInvoiceNumber() ?? rawResponse?.InvoiceNumber,
+          batchNumber:
+            result.helpers?.getBatchNumber() ?? rawResponse?.BatchNumber,
+          authCode: result.helpers?.getAuthCode() ?? rawResponse?.AuthCode,
+          totalAmount: amounts.totalAmount,
+          baseAmount: amounts.amount,
+          tipAmount: amounts.tipAmount,
+          cardType: result.helpers?.getCardType() ?? cardData?.CardType,
+          cardLast4: result.helpers?.getCardLast4() ?? cardData?.Last4,
+          entryMode: result.helpers?.getEntryMode() ?? cardData?.EntryType,
+          entryType: cardData?.EntryType,
+          resultCode:
+            result.helpers?.getResultCode() ?? generalResponse?.ResultCode,
+          statusCode:
+            result.helpers?.getStatusCode() ?? generalResponse?.StatusCode,
+          message: result.helpers?.getMessage() ?? generalResponse?.Message,
+          rrn: result.helpers?.getRRN() ?? rawResponse?.RRN,
+          pnReferenceId:
+            rawResponse?.PNRef ?? rawResponse?.PNReferenceId,
+          transactionType:
+            result.helpers?.getTransactionType() ?? rawResponse?.TransactionType,
+          serialNumber: rawResponse?.SerialNumber,
+          hostResponseCode:
+            generalResponse?.HostResponseCode ?? generalResponse?.StatusCode,
+          hostResponseMessage:
+            generalResponse?.HostResponseMessage ?? generalResponse?.Message,
+          resultMessage: generalResponse?.Message,
+          amounts,
+          emvData,
+        };
         handlePaymentCompletion({
           method: "Cash",
           tipAmount: tipAmount,
           transactionDetails: {
             amountTendered: amountTenderedNum,
             isCashPriced: true,
-            dejavooTransaction: {
-              referenceId: result.helpers?.getReferenceId(),
-              transactionNumber: result.helpers?.getTransactionNumber(),
-              invoiceNumber: result.helpers?.getInvoiceNumber(),
-              batchNumber: result.helpers?.getBatchNumber(),
-              authCode: result.helpers?.getAuthCode(),
-              totalAmount: result.helpers?.getTotalAmount(),
-              baseAmount: result.helpers?.getBaseAmount(),
-              tipAmount: result.helpers?.getTipAmount(),
-              cardType: result.helpers?.getCardType(),
-              entryMode: result.helpers?.getEntryMode(),
-              resultCode: result.helpers?.getResultCode(),
-              statusCode: result.helpers?.getStatusCode(),
-              message: result.helpers?.getMessage(),
-              rrn: result.helpers?.getRRN(),
-              cardLast4: result.helpers?.getCardLast4(),
-            },
+            authorizationCode: dejavooTransaction.authCode,
+            cardType: dejavooTransaction.cardType,
+            last4: dejavooTransaction.cardLast4,
+            transactionId: dejavooTransaction.referenceId,
+            dejavooTransaction,
           },
         });
       }

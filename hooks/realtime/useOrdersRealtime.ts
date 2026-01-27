@@ -38,6 +38,8 @@ export interface BroadcastOrderItemData {
   item_status: string;
   kitchen_status: string | null;
   paid_quantity: number;
+  refunded_quantity?: number;
+  refunded_amount?: number;
   course_number: number | null;
   is_voided: boolean;
   is_open_item: boolean;
@@ -86,10 +88,23 @@ export interface BroadcastOrderPaymentData {
   card_last_four: string | null;
   transaction_id: string | null;
   terminal_type: string | null;
+  reference_id: string | null;
+
+  // Card transaction detail fields
+  authorization_code: string | null;
+  auth_code: string | null;
+  rrn: string | null;
+  batch_number: string | null;
+  dejavoo_batch_number: string | null;
+  dejavoo_invoice_number: string | null;
+  entry_mode: string | null;
+  result_code: string | null;
 
   // Void tracking
   is_voided: boolean;
   void_reason: string | null;
+  refunded_amount?: number;
+  refunded_at?: string | null;
 
   // Timestamps
   captured_at: string | null;
@@ -187,6 +202,8 @@ export interface BroadcastOrderData {
 
   // Order payments
   order_payments?: BroadcastOrderPaymentData[];
+  reversals?: Array<Record<string, unknown>>;
+  order_refund_items?: Array<Record<string, unknown>>;
 }
 
 export interface OrderBroadcastPayload {

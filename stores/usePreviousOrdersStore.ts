@@ -1,5 +1,7 @@
 import { OrderProfile, PaymentType, PreviousOrder } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
+import { RefundService } from "@/services/refundService";
+import type { RefundReasonType, RefundRequest } from "@/types/refunds";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
   FetchedOrderData,
@@ -37,6 +39,25 @@ interface RefundRecord {
   paymentMethod: PaymentType;
 }
 
+const toRefundReasonType = (reason: string): RefundReasonType => {
+  switch (reason) {
+    case "customer_request":
+    case "item_quality":
+    case "wrong_item":
+    case "never_received":
+    case "duplicate_charge":
+    case "price_adjustment":
+    case "order_cancelled":
+    case "kitchen_error":
+    case "manager_comp":
+    case "other":
+      return reason;
+    default:
+      return "other";
+  }
+};
+
+
 interface PreviousOrdersState {
   previousOrders: PreviousOrder[];
   refunds: RefundRecord[];
@@ -57,13 +78,13 @@ interface PreviousOrdersState {
     reason: string,
     refundedBy: string,
     paymentMethod: PaymentType,
-  ) => void;
+  ) => Promise<void>;
   refundItems: (
     orderId: string,
     items: Array<{ itemId: string; quantity: number; reason: string }>,
     refundedBy: string,
     paymentMethod: PaymentType,
-  ) => void;
+  ) => Promise<void>;
   getRefundsForOrder: (orderId: string) => RefundRecord[];
 }
 
@@ -389,7 +410,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       set({ newOrdersCount: 0 });
     },
 
-    refundFullOrder: (
+    refundFullOrder: async (
       orderId: string,
       reason: string,
       refundedBy: string,
@@ -398,6 +419,22 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       const order = get().getOrderById(orderId);
       if (!order || order.refunded) {
         return;
+      }
+
+      if (_supabaseClient) {
+        const refundService = new RefundService(_supabaseClient);
+        const refundRequest: RefundRequest = {
+          orderId,
+          refundType: { type: "full_payment" },
+          reason: toRefundReasonType(reason),
+          reasonDetail: reason,
+          initiatedBy: refundedBy,
+        };
+        const result = await refundService.processRefund(refundRequest);
+        if (!result.success) {
+          console.error("Refund failed:", result.error);
+          return;
+        }
       }
 
       const refundRecord: RefundRecord = {
@@ -434,7 +471,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       }));
     },
 
-    refundItems: (
+    refundItems: async (
       orderId: string,
       itemsToRefund: Array<{
         itemId: string;
@@ -477,6 +514,32 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       if (refundItemsForRecord.length === 0) {
         console.error("Refund failed: No valid items to refund.");
         return;
+      }
+
+      if (_supabaseClient) {
+        const refundService = new RefundService(_supabaseClient);
+        const refundRequest: RefundRequest = {
+          orderId,
+          refundType: {
+            type: "item_return",
+            items: itemsToRefund.map((item) => ({
+              orderItemId: item.itemId,
+              quantityToRefund: item.quantity,
+              reason: toRefundReasonType(item.reason),
+              reasonDetail: item.reason,
+            })),
+          },
+          reason: toRefundReasonType(
+            itemsToRefund.map((i) => i.reason).find(Boolean) || "other",
+          ),
+          reasonDetail: itemsToRefund.map((i) => i.reason).join(", "),
+          initiatedBy: refundedBy,
+        };
+        const result = await refundService.processRefund(refundRequest);
+        if (!result.success) {
+          console.error("Refund failed:", result.error);
+          return;
+        }
       }
 
       // 2. Create the new refund record object
