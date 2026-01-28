@@ -47,6 +47,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+  const [showRefundedDiscountDialog, setShowRefundedDiscountDialog] = useState(false);
   const { show } = useToast();
 
   // Animation values for shake effect
@@ -68,6 +69,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const hasItems = (activeOrder?.items?.length ?? 0) > 0;
   const balance = activeOrder?.amount_due ?? 0;
   const isBalanceZero = hasItems && balance <= 0;
+
+  // Check if order has refunds - if so, discounts cannot be applied
+  const hasRefunds = useMemo(() => {
+    const payments = activeOrder?.payments || [];
+    return payments.some((p) => (p.refundedAmount ?? 0) > 0);
+  }, [activeOrder?.payments]);
+  const canApplyDiscount = !hasRefunds;
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true);
@@ -205,6 +213,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const handleOpenDiscounts = () => {
+    // Show dialog if order has refunds
+    if (!canApplyDiscount) {
+      setShowRefundedDiscountDialog(true);
+      return;
+    }
+    
     if (ref && "current" in ref && ref.current) {
       ref.current.close();
     }
@@ -280,15 +294,28 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               </TouchableOpacity>
             </View>
             <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
-              <Text className="text-xl font-semibold text-white">
-                Discounts
-              </Text>
+              <View>
+                <Text className="text-xl font-semibold text-white">
+                  Discounts
+                </Text>
+                {!canApplyDiscount && (
+                  <Text className="text-xs text-gray-500">
+                    Unavailable for refunded orders
+                  </Text>
+                )}
+              </View>
               <TouchableOpacity
                 onPress={handleOpenDiscounts}
-                className="flex-row items-center gap-x-2 bg-[#303030] border border-purple-700 p-2 rounded-lg"
+                className={`flex-row items-center gap-x-2 p-2 rounded-lg ${
+                  canApplyDiscount
+                    ? "bg-[#303030] border border-purple-700"
+                    : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                }`}
               >
-                <Tag color="#a855f7" size={16} />
-                <Text className="text-base text-purple-400 font-semibold">
+                <Tag color={canApplyDiscount ? "#a855f7" : "#6B7280"} size={16} />
+                <Text className={`text-base font-semibold ${
+                  canApplyDiscount ? "text-purple-400" : "text-gray-500"
+                }`}>
                   Apply Discount
                 </Text>
               </TouchableOpacity>
@@ -458,6 +485,28 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         confirmText="Yes, Void Order"
         variant="destructive"
       />
+      <Dialog
+        open={showRefundedDiscountDialog}
+        onOpenChange={() => setShowRefundedDiscountDialog(false)}
+      >
+        <DialogContent className="w-80 bg-[#303030] border-gray-600 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-center text-xl font-semibold text-white">
+              Cannot Add Discount
+            </DialogTitle>
+          </DialogHeader>
+          <Text className="text-center text-gray-300 mt-4">
+            Discounts cannot be applied to orders that have been refunded or
+            partially refunded.
+          </Text>
+          <TouchableOpacity
+            onPress={() => setShowRefundedDiscountDialog(false)}
+            className="mt-6 py-3 bg-blue-600 rounded-lg"
+          >
+            <Text className="text-center text-white font-semibold">OK</Text>
+          </TouchableOpacity>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

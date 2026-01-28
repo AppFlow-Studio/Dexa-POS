@@ -11,6 +11,7 @@ import React, {
 
 // Define a default duration for toasts if none is provided
 const DEFAULT_TOAST_DURATION = 4000; // 4 seconds
+let toastCounter = 0;
 
 export interface ToastProps {
   id: string;
@@ -45,7 +46,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 
   const show = useCallback(
     (options: Omit<ToastProps, "id">) => {
-      const id = Date.now().toString();
+      const id = `toast-${Date.now()}-${++toastCounter}`;
       const newToast: ToastProps = { id, ...options };
       setToasts((prevToasts) => [newToast, ...prevToasts]);
 

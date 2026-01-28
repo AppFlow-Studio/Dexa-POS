@@ -106,6 +106,17 @@ export interface BroadcastOrderPaymentData {
   refunded_amount?: number;
   refunded_at?: string | null;
 
+  // Return/refund tracking fields
+  is_returned?: boolean;
+  returned_at?: string | null;
+  returned_by?: string | null;
+  return_amount?: number;
+  return_rrn?: string | null;
+  return_auth_code?: string | null;
+  return_reference_id?: string | null;
+  return_number?: string | null;
+  return_reason?: string | null;
+
   // Timestamps
   captured_at: string | null;
   created_at: string;

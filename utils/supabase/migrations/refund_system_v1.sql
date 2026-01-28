@@ -53,8 +53,9 @@ END $$;
 CREATE TABLE IF NOT EXISTS reversals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   original_payment_id UUID NOT NULL REFERENCES order_payments(id),
-  original_psp_reference TEXT, -- RRN
+  original_psp_reference TEXT, -- RRN from original payment
   reversal_reference_id TEXT, -- Internal reference for this reversal
+  reversal_psp_reference TEXT, -- RRN/PNReferenceId from the void/refund response
   merchant_id UUID NOT NULL REFERENCES merchants(id),
   location_id UUID NOT NULL REFERENCES locations(id),
   reversal_type reversal_type NOT NULL,
@@ -62,15 +63,24 @@ CREATE TABLE IF NOT EXISTS reversals (
   reason_code refund_reason_type NOT NULL,
   reason_description TEXT,
   status reversal_status_type NOT NULL DEFAULT 'pending',
+  result_code TEXT, -- Terminal result code (e.g., "0" for approved)
+  response_message TEXT, -- Terminal response message (e.g., "Approved")
   initiated_by UUID,
   approved_by UUID,
   requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at TIMESTAMPTZ, -- When the terminal processed the reversal
   completed_at TIMESTAMPTZ,
   failed_at TIMESTAMPTZ,
   terminal_response JSONB,
   emv_data JSONB,
   metadata JSONB
 );
+
+-- Add columns if table already exists
+ALTER TABLE reversals ADD COLUMN IF NOT EXISTS reversal_psp_reference TEXT;
+ALTER TABLE reversals ADD COLUMN IF NOT EXISTS result_code TEXT;
+ALTER TABLE reversals ADD COLUMN IF NOT EXISTS response_message TEXT;
+ALTER TABLE reversals ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_reversals_original_payment
   ON reversals(original_payment_id);
@@ -188,7 +198,10 @@ CREATE OR REPLACE FUNCTION update_reversal_status(
   p_reversal_id uuid,
   p_status reversal_status_type,
   p_terminal_response jsonb DEFAULT NULL,
-  p_emv_data jsonb DEFAULT NULL
+  p_emv_data jsonb DEFAULT NULL,
+  p_result_code text DEFAULT NULL,
+  p_response_message text DEFAULT NULL,
+  p_reversal_psp_reference text DEFAULT NULL
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -199,6 +212,10 @@ BEGIN
   SET status = p_status,
       terminal_response = COALESCE(p_terminal_response, terminal_response),
       emv_data = COALESCE(p_emv_data, emv_data),
+      result_code = COALESCE(p_result_code, result_code),
+      response_message = COALESCE(p_response_message, response_message),
+      reversal_psp_reference = COALESCE(p_reversal_psp_reference, reversal_psp_reference),
+      processed_at = CASE WHEN p_status = 'completed' THEN now() ELSE processed_at END,
       completed_at = CASE WHEN p_status = 'completed' THEN now() ELSE completed_at END,
       failed_at = CASE WHEN p_status = 'failed' THEN now() ELSE failed_at END
   WHERE id = p_reversal_id;
@@ -211,7 +228,13 @@ $$;
 CREATE OR REPLACE FUNCTION apply_refund_to_payment(
   p_payment_id uuid,
   p_refund_amount numeric,
-  p_reversal_type reversal_type
+  p_reversal_type reversal_type,
+  p_return_rrn text DEFAULT NULL,
+  p_return_auth_code text DEFAULT NULL,
+  p_return_reference_id text DEFAULT NULL,
+  p_return_number text DEFAULT NULL,
+  p_return_reason text DEFAULT NULL,
+  p_initiated_by uuid DEFAULT NULL
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -220,7 +243,7 @@ AS $$
 DECLARE
   v_payment record;
   v_new_refunded numeric;
-  v_new_status text;
+  v_new_status payment_status;
 BEGIN
   SELECT * INTO v_payment
   FROM order_payments op
@@ -236,18 +259,28 @@ BEGIN
   v_new_refunded := COALESCE(v_payment.refunded_amount, 0) + p_refund_amount;
 
   IF p_reversal_type = 'void' THEN
-    v_new_status := 'void';
+    v_new_status := 'void'::payment_status;
   ELSIF v_new_refunded + 0.0001 >= v_payment.amount THEN
-    v_new_status := 'refunded';
+    v_new_status := 'refunded'::payment_status;
   ELSE
-    v_new_status := 'partially_refunded';
+    v_new_status := 'partially_refunded'::payment_status;
   END IF;
 
   UPDATE order_payments
   SET refunded_amount = v_new_refunded,
       refunded_at = now(),
       status = v_new_status,
-      is_voided = (p_reversal_type = 'void')
+      is_voided = (p_reversal_type = 'void'),
+      -- Return/refund tracking fields
+      is_returned = true,
+      returned_at = now(),
+      returned_by = COALESCE(p_initiated_by, returned_by),
+      return_amount = v_new_refunded,
+      return_rrn = COALESCE(p_return_rrn, return_rrn),
+      return_auth_code = COALESCE(p_return_auth_code, return_auth_code),
+      return_reference_id = COALESCE(p_return_reference_id, return_reference_id),
+      return_number = COALESCE(p_return_number, return_number),
+      return_reason = COALESCE(p_return_reason, return_reason)
   WHERE id = p_payment_id;
 END;
 $$;
@@ -321,7 +354,7 @@ DECLARE
   v_order record;
   v_total_paid numeric;
   v_amount_due numeric;
-  v_payment_status text;
+  v_payment_status payment_status;
 BEGIN
   SELECT * INTO v_order
   FROM orders
@@ -337,16 +370,16 @@ BEGIN
   INTO v_total_paid
   FROM order_payments
   WHERE order_id = p_order_id
-    AND status IN ('captured', 'refunded', 'partially_refunded', 'void');
+    AND status IN ('captured'::payment_status, 'refunded'::payment_status, 'partially_refunded'::payment_status, 'void'::payment_status);
 
   v_amount_due := COALESCE(v_order.total_amount, 0) - v_total_paid;
 
   IF v_amount_due <= 0 THEN
-    v_payment_status := 'paid';
+    v_payment_status := 'paid'::payment_status;
   ELSIF v_total_paid > 0 THEN
-    v_payment_status := 'partial';
+    v_payment_status := 'partial'::payment_status;
   ELSE
-    v_payment_status := 'refunded';
+    v_payment_status := 'refunded'::payment_status;
   END IF;
 
   UPDATE orders

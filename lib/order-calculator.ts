@@ -652,7 +652,7 @@ export function distributeDiscountToItems(
 // }
 
 export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals {
-  const { items, checkDiscount, taxRatesMap } = input;
+  const { items, checkDiscount, taxRatesMap, payments = [] } = input;
   const activeItems = items.filter((item) => !item.is_voided);
 
   if (activeItems.length === 0) {
@@ -791,7 +791,9 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
       totalCashTax = totalCashTax.plus(itemCashTax);
       
       // Outstanding calculations
-      const unpaidQty = data.item.quantity - (data.item.paidQuantity ?? 0);
+      // Account for refunded quantities - refunded items need to be paid again
+      const effectivePaidQty = (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0);
+      const unpaidQty = data.item.quantity - effectivePaidQty;
       if (unpaidQty > 0) {
         const unpaidProportion = new Decimal(unpaidQty).dividedBy(data.item.quantity);
         
@@ -817,7 +819,9 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
       }
     } else {
       // Tax exempt item - still track outstanding subtotals
-      const unpaidQty = data.item.quantity - (data.item.paidQuantity ?? 0);
+      // Account for refunded quantities - refunded items need to be paid again
+      const effectivePaidQty = (data.item.paidQuantity ?? 0) - (data.item.refundedQuantity ?? 0);
+      const unpaidQty = data.item.quantity - effectivePaidQty;
       if (unpaidQty > 0) {
         const unpaidProportion = new Decimal(unpaidQty).dividedBy(data.item.quantity);
         outstandingCardSubtotal = outstandingCardSubtotal.plus(
@@ -836,8 +840,40 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   
   const cardTotal = netCardSubtotal.plus(totalCardTax);
   const cashTotal = netCashSubtotal.plus(totalCashTax);
-  const outstandingCardTotal = outstandingCardSubtotal.plus(outstandingCardTax);
-  const outstandingCashTotal = outstandingCashSubtotal.plus(outstandingCashTax);
+  let outstandingCardTotal = outstandingCardSubtotal.plus(outstandingCardTax);
+  let outstandingCashTotal = outstandingCashSubtotal.plus(outstandingCashTax);
+
+  // =========================================================================
+  // PAYMENT-LEVEL REFUND HANDLING
+  // For custom amount refunds that aren't tied to specific items
+  // =========================================================================
+  
+  if (payments.length > 0) {
+    // Calculate effective paid from payments (amount - refundedAmount)
+    const effectivePaid = payments
+      .filter(p => !p.isVoided)
+      .reduce((sum, p) => {
+        const refunded = p.refundedAmount ?? 0;
+        return sum.plus(new Decimal(p.amount).minus(refunded));
+      }, new Decimal(0));
+    
+    // Payment-based outstanding = total - effective_paid
+    const paymentBasedOutstanding = Decimal.max(
+      cardTotal.minus(effectivePaid),
+      new Decimal(0)
+    );
+    
+    // Use MAX of item-based and payment-based outstanding
+    // This ensures both item refunds AND custom amount refunds are reflected
+    outstandingCardTotal = Decimal.max(outstandingCardTotal, paymentBasedOutstanding);
+    
+    // Similarly for cash pricing
+    const paymentBasedCashOutstanding = Decimal.max(
+      cashTotal.minus(effectivePaid),
+      new Decimal(0)
+    );
+    outstandingCashTotal = Decimal.max(outstandingCashTotal, paymentBasedCashOutstanding);
+  }
 
   return {
     // Gross subtotals (pre-discount)

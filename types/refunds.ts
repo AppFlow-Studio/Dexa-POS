@@ -1,5 +1,6 @@
 import type { PaymentMethod } from "@/types/db-order-management-types";
 import type { DejavooRefundResponse } from "@/types/dejavoo-spin-api";
+import { StationPaymentTerminal } from "./station";
 
 export type ReversalType =
   | "void"
@@ -40,6 +41,10 @@ export interface RefundRequest {
   reasonDetail?: string;
   initiatedBy: string; // staff_id
   approvedBy?: string; // manager_id if required
+  referenceId?: string;
+  payment_terminal_id: string;
+  payment_terminal_name?: string;
+  payment_terminal?: StationPaymentTerminal;
 }
 
 export interface ReversalRecord {
@@ -47,6 +52,7 @@ export interface ReversalRecord {
   original_payment_id: string;
   original_psp_reference: string | null;
   reversal_reference_id: string | null;
+  reversal_psp_reference?: string | null; // RRN from void/refund response
   merchant_id: string;
   location_id: string;
   reversal_type: ReversalType;
@@ -54,9 +60,12 @@ export interface ReversalRecord {
   reason_code: RefundReasonType;
   reason_description: string | null;
   status: ReversalStatusType;
+  result_code?: string | null; // Terminal result code (e.g., "0" for approved)
+  response_message?: string | null; // Terminal response message (e.g., "Approved")
   initiated_by: string | null;
   approved_by: string | null;
   requested_at: string;
+  processed_at?: string | null; // When terminal processed the reversal
   completed_at: string | null;
   failed_at: string | null;
   terminal_response?: Record<string, unknown> | null;

@@ -13,7 +13,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Check, X } from "lucide-react-native";
-import React, { forwardRef, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 interface DiscountBottomSheetProps {
@@ -52,6 +52,24 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   const itemsWithAvailableDiscounts = cartItems.filter(
     (item) => !!item.availableDiscount,
   );
+
+  // Check if order has refunds - if so, show warning and close sheet
+  const hasRefunds = useMemo(() => {
+    const payments = activeOrder?.payments || [];
+    return payments.some((p) => (p.refundedAmount ?? 0) > 0);
+  }, [activeOrder?.payments]);
+
+  // Close sheet and show warning if order has refunds
+  useEffect(() => {
+    if (hasRefunds && ref && "current" in ref && ref.current) {
+      show({
+        title: "Discounts Unavailable",
+        message: "Cannot add discounts to refunded orders.",
+        type: "warning",
+      });
+      ref.current.close();
+    }
+  }, [hasRefunds, ref, show]);
 
   const eligibilityResults = useMemo(() => {
     if (!activeOrder) return [];

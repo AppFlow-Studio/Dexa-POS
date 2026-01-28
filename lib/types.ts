@@ -6,6 +6,9 @@ import type {
 } from "@/types/refunds";
 import { TABLE_SHAPES } from "./table-shapes";
 
+// Re-export refund types
+export type { ReversalRecord, OrderRefundItemRecord };
+
 // --- INVENTORY TYPES ---
 export type InventoryUnit = "bottle" | "pcs" | "lbs" | "bag" | "qt";
 
@@ -799,6 +802,18 @@ export interface OrderProfilePayment {
   refundedAmount?: number;
   refundedAt?: string;
   reference_id?: string;
+
+  // Return/refund tracking fields
+  isReturned?: boolean;
+  returnedAt?: string;
+  returnedBy?: string;
+  returnAmount?: number;
+  returnRrn?: string;
+  returnAuthCode?: string;
+  returnReferenceId?: string;
+  returnNumber?: string;
+  returnReason?: string;
+
   // Sync status (for offline-first reliability)
   sync_status?: "synced" | "pending" | "failed";
   sync_error?: string;

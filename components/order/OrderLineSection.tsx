@@ -1,15 +1,23 @@
+import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
   useStationOrders,
   useOrderTypeCounts,
 } from "@/stores/selectors/orderSelectors";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import OrderCard from "./OrderCard";
 import OrderLineItemsModal from "./OrderLineItemsModal";
 import OrderTabs from "./OrderTabs";
+
+// Helper function to check if order is fully refunded
+const isOrderFullyRefunded = (order: OrderProfile): boolean => {
+  const payments = order.payments || [];
+  if (payments.length === 0) return false;
+  return payments.every((p) => (p.refundedAmount ?? 0) >= (p.amount ?? 0));
+};
 
 // Define a constant for the width of each card plus its margin for accurate scrolling
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
@@ -19,6 +27,7 @@ const OrderLineSection: React.FC = () => {
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
+  const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
 
   // Phase 4: Use selectors for station-based order filtering
   // This ensures only orders from this station (or adopted orders) are shown
@@ -30,13 +39,27 @@ const OrderLineSection: React.FC = () => {
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  // Filter station orders to only show those that are preparing or unpaid
-  // (preserves original logic but now applies to station-filtered orders)
+  // Filter station orders to show:
+  // 1. Orders that are preparing
+  // 2. Orders that are unpaid
+  // 3. Closed orders with outstanding balance (from refunds)
+  // 4. Fully refunded orders (need to be marked as done)
   const visibleOrders = useMemo(() => {
-    return stationOrders.filter(
-      (o) =>
-        o.order_status === "preparing" || o.paid_status !== "Paid"
-    );
+    return stationOrders.filter((o) => {
+      // Show preparing orders
+      if (o.order_status === "preparing") return true;
+      
+      // Show unpaid orders
+      if (o.paid_status !== "Paid") return true;
+      
+      // Show closed orders with outstanding balance (from refunds)
+      if (o.check_status === "Closed" && (o.amount_due ?? 0) > 0) return true;
+      
+      // Show fully refunded orders
+      if (isOrderFullyRefunded(o)) return true;
+      
+      return false;
+    });
   }, [stationOrders]);
 
   // Map tab names to order_type values for filtering
@@ -104,6 +127,17 @@ const OrderLineSection: React.FC = () => {
     setActiveOrder(orderId);
   };
 
+  // Handler for Mark Done - archives the order
+  const handleMarkDone = useCallback((orderId: string) => {
+    archiveOrder(orderId);
+  }, [archiveOrder]);
+
+  // Handler for Reopen Check - reopens the check and sets as active order
+  const handleReopenCheck = useCallback((orderId: string) => {
+    updateOrderCheckStatus(orderId, "Opened");
+    setActiveOrder(orderId);
+  }, [updateOrderCheckStatus, setActiveOrder]);
+
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
@@ -146,6 +180,8 @@ const OrderLineSection: React.FC = () => {
             onViewItems={() => handleViewItems(item.id)}
             onComplete={() => handleCompleteOrder(item.id)}
             onRetrieve={() => handleRetrieve(item.id)}
+            onMarkDone={() => handleMarkDone(item.id)}
+            onReopenCheck={() => handleReopenCheck(item.id)}
           />
         )}
         ListEmptyComponent={

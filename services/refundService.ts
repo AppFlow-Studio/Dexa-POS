@@ -9,6 +9,7 @@ import type {
   RefundRequest,
   RefundResult,
 } from "@/types/refunds";
+import { StationPaymentTerminal } from "@/types/station";
 
 type RefundContext = {
   orderId: string;
@@ -125,6 +126,9 @@ export class RefundService {
       return { success: false, error: "Payment not found for refund." };
     }
 
+    console.log('processItemReturn Payment', payment);
+   console.log('processItemReturn Request', request);
+
     const useVoid = payment.isVoidable;
     const reversalType = useVoid ? "void" : "refund";
 
@@ -148,19 +152,35 @@ export class RefundService {
       };
     }
 
+    console.log('processFullPaymentRefund Reversal', reversal);
+
     const terminalResult = await this.processTerminalRefund(
       payment,
       payment.availableForRefund,
       useVoid,
+      request.payment_terminal_id,
+      request?.payment_terminal ?? undefined,
     );
 
+    console.log('processFullPaymentRefund Terminal Result', terminalResult);
+    
     if (!terminalResult.success) {
-      await OrderService.updateReversalStatus(
-        this.supabase,
-        reversal.id,
-        "failed",
-        terminalResult.terminalResponse ?? null,
-      );
+      // Try to update reversal status to failed, but don't let DB errors block the error response
+      try {
+        const failedResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+        const { error: updateError } = await OrderService.updateReversalStatus(
+          this.supabase,
+          reversal.id,
+          "failed",
+          failedResponse ?? null,
+        );
+        if (updateError) {
+          console.error('[RefundService] Failed to update reversal status:', updateError);
+        }
+      } catch (dbError) {
+        console.error('[RefundService] Exception updating reversal status:', dbError);
+      }
+      
       return {
         success: false,
         reversalId: reversal.id,
@@ -168,24 +188,58 @@ export class RefundService {
       };
     }
 
-    await Promise.all([
+    // Extract terminal response fields for storage
+    // Cast to any since DejavooRefundResponse doesn't have all fields from the raw API response
+    const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+    const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
+    const returnDetails = {
+      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as string | undefined,
+      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode) as string | undefined,
+      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId) as string | undefined,
+      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber) as string | undefined,
+      reason: request.reasonDetail,
+      initiatedBy: request.initiatedBy,
+    };
+
+    // Update all records - collect errors but don't fail the whole operation
+    const dbErrors: string[] = [];
+
+    const [reversalResult, paymentResult, orderResult] = await Promise.all([
       OrderService.updateReversalStatus(
         this.supabase,
         reversal.id,
         "completed",
-        terminalResult.terminalResponse ?? null,
+        terminalResponse ?? null,
+        (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
+        generalResponse?.ResultCode ?? null,
+        generalResponse?.Message ?? null,
+        ((terminalResponse?.RRN ?? terminalResponse?.PNReferenceId) as string) ?? null,
       ),
       OrderService.applyRefundToPayment(
         this.supabase,
         payment.paymentId,
         payment.availableForRefund,
         reversalType,
+        returnDetails,
       ),
       OrderService.updateOrderPaymentStatusAfterRefund(
         this.supabase,
         request.orderId,
       ),
     ]);
+
+    if (reversalResult.error) {
+      console.error('[RefundService] updateReversalStatus error:', reversalResult.error);
+      dbErrors.push(`Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`);
+    }
+    if (paymentResult.error) {
+      console.error('[RefundService] applyRefundToPayment error:', paymentResult.error);
+      dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
+    }
+    if (orderResult.error) {
+      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
+      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
+    }
 
     const refundItems = await this.buildFullRefundItems(request.orderId, reversal.id, request.reason, request.reasonDetail);
     if (refundItems.length > 0) {
@@ -200,6 +254,8 @@ export class RefundService {
       success: true,
       reversalId: reversal.id,
       terminalResponse: terminalResult.terminalResponse,
+      // Include DB errors as warning - terminal refund succeeded but DB updates had issues
+      error: dbErrors.length > 0 ? `Refund processed but: ${dbErrors.join('; ')}` : undefined,
     };
   }
 
@@ -244,15 +300,27 @@ export class RefundService {
       payment,
       amount,
       useVoid,
+      request.payment_terminal_id ?? payment.terminalId ?? '',
+      request.payment_terminal ?? undefined,
     );
 
     if (!terminalResult.success) {
-      await OrderService.updateReversalStatus(
-        this.supabase,
-        reversal.id,
-        "failed",
-        terminalResult.terminalResponse ?? null,
-      );
+      // Try to update reversal status to failed
+      try {
+        const failedResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+        const { error: updateError } = await OrderService.updateReversalStatus(
+          this.supabase,
+          reversal.id,
+          "failed",
+          failedResponse ?? null,
+        );
+        if (updateError) {
+          console.error('[RefundService] Failed to update reversal status:', updateError);
+        }
+      } catch (dbError) {
+        console.error('[RefundService] Exception updating reversal status:', dbError);
+      }
+      
       return {
         success: false,
         reversalId: reversal.id,
@@ -260,29 +328,65 @@ export class RefundService {
       };
     }
 
-    await Promise.all([
+    // Extract terminal response fields for storage
+    // Cast to any since DejavooRefundResponse doesn't have all fields from the raw API response
+    const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+    const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
+    const returnDetails = {
+      rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as string | undefined,
+      authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode) as string | undefined,
+      referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId) as string | undefined,
+      transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber) as string | undefined,
+      reason: request.reasonDetail,
+      initiatedBy: request.initiatedBy,
+    };
+
+    // Update all records - collect errors but don't fail the whole operation
+    const dbErrors: string[] = [];
+    
+    const [reversalResult, paymentResult, orderResult] = await Promise.all([
       OrderService.updateReversalStatus(
         this.supabase,
         reversal.id,
         "completed",
-        terminalResult.terminalResponse ?? null,
+        terminalResponse ?? null,
+        (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
+        generalResponse?.ResultCode ?? null,
+        generalResponse?.Message ?? null,
+        ((terminalResponse?.RRN ?? terminalResponse?.PNReferenceId) as string) ?? null,
       ),
       OrderService.applyRefundToPayment(
         this.supabase,
         payment.paymentId,
         amount,
         reversalType,
+        returnDetails,
       ),
       OrderService.updateOrderPaymentStatusAfterRefund(
         this.supabase,
         request.orderId,
       ),
     ]);
+    
+    if (reversalResult.error) {
+      console.error('[RefundService] updateReversalStatus error:', reversalResult.error);
+      dbErrors.push(`Reversal status update failed: ${reversalResult.error.message || reversalResult.error}`);
+    }
+    if (paymentResult.error) {
+      console.error('[RefundService] applyRefundToPayment error:', paymentResult.error);
+      dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
+    }
+    if (orderResult.error) {
+      console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
+      dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
+    }
 
     return {
       success: true,
       reversalId: reversal.id,
       terminalResponse: terminalResult.terminalResponse,
+      // Include DB errors as warning - terminal refund succeeded but DB updates had issues
+      error: dbErrors.length > 0 ? `Refund processed but: ${dbErrors.join('; ')}` : undefined,
     };
   }
 
@@ -317,6 +421,7 @@ export class RefundService {
           continue;
         }
 
+
         const { data: reversal, error: reversalError } =
           await OrderService.createReversal(this.supabase, {
             original_payment_id: payment.paymentId,
@@ -339,33 +444,67 @@ export class RefundService {
           payment,
           amount,
           false,
+          request.payment_terminal_id ?? payment.terminalId ?? '',
+          request.payment_terminal ?? undefined,
         );
 
         if (!terminalResult.success) {
-          await OrderService.updateReversalStatus(
-            this.supabase,
-            reversal.id,
-            "failed",
-            terminalResult.terminalResponse ?? null,
-          );
+          // Try to update reversal status to failed
+          try {
+            const failedResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+            await OrderService.updateReversalStatus(
+              this.supabase,
+              reversal.id,
+              "failed",
+              failedResponse ?? null,
+            );
+          } catch (dbError) {
+            console.error('[RefundService] Exception updating reversal status:', dbError);
+          }
           errors.push(terminalResult.error || "Terminal refund failed.");
           continue;
         }
 
-        await Promise.all([
+        // Extract terminal response fields for storage
+        // Cast to any since DejavooRefundResponse doesn't have all fields from the raw API response
+        const terminalResponse = terminalResult.terminalResponse as Record<string, unknown> | undefined;
+        const generalResponse = (terminalResponse?.GeneralResponse as { ResultCode?: string; Message?: string }) ?? undefined;
+        const returnDetails = {
+          rrn: (terminalResponse?.RRN ?? terminalResponse?.rrn) as string | undefined,
+          authCode: (terminalResponse?.AuthCode ?? terminalResponse?.authCode) as string | undefined,
+          referenceId: (terminalResponse?.ReferenceId ?? terminalResponse?.referenceId) as string | undefined,
+          transactionNumber: (terminalResponse?.TransactionNumber ?? terminalResponse?.transactionNumber) as string | undefined,
+          reason: request.reasonDetail,
+          initiatedBy: request.initiatedBy,
+        };
+
+        // Update records - log errors but continue
+        const [reversalStatusResult, paymentRefundResult] = await Promise.all([
           OrderService.updateReversalStatus(
             this.supabase,
             reversal.id,
             "completed",
-            terminalResult.terminalResponse ?? null,
+            terminalResponse ?? null,
+            (terminalResponse?.EMVData as Record<string, unknown>) ?? null,
+            generalResponse?.ResultCode ?? null,
+            generalResponse?.Message ?? null,
+            ((terminalResponse?.RRN ?? terminalResponse?.PNReferenceId) as string) ?? null,
           ),
           OrderService.applyRefundToPayment(
             this.supabase,
             payment.paymentId,
             amount,
             "item_return",
+            returnDetails,
           ),
         ]);
+        
+        if (reversalStatusResult.error) {
+          console.error('[RefundService] Item return - updateReversalStatus error:', reversalStatusResult.error);
+        }
+        if (paymentRefundResult.error) {
+          console.error('[RefundService] Item return - applyRefundToPayment error:', paymentRefundResult.error);
+        }
 
         reversals.push({ reversalId: reversal.id, paymentId, amount });
 
@@ -407,18 +546,32 @@ export class RefundService {
     payment: PaymentRefundContext,
     amount: number,
     useVoid: boolean,
+    terminalId: string,
+    terminal: StationPaymentTerminal | undefined,
   ): Promise<{ success: boolean; terminalResponse?: DejavooRefundResponse; error?: string }> {
-    if (!payment.terminalId || !payment.referenceId) {
-      return { success: false, error: "Missing terminal or reference ID." };
+    // Check for missing required fields with specific error messages
+    console.log('processTerminalRefund Payment', payment);
+    if (!terminalId && !payment.referenceId) {
+      return { success: false, error: "Missing both terminal ID and reference ID. Cannot process terminal refund." };
+    }
+    if (!terminalId) {
+      return { success: false, error: "Missing terminal ID. The payment was not processed through a terminal." };
+    }
+    if (!payment.referenceId) {
+      return { success: false, error: "Missing reference ID. Cannot locate original transaction." };
     }
 
+
     const api = new DejavooSpinAPI(this.supabase);
-    const loaded = await api.loadTerminal(payment.terminalId);
+    const loaded = await api.loadTerminal(terminalId, terminal);
     if (!loaded) {
       return { success: false, error: "Failed to load terminal credentials." };
     }
 
+    console.log('processTerminalRefund Loaded Terminal', loaded);
+
     if (useVoid) {
+      
       const result = await api
         .void()
         .amount(amount)

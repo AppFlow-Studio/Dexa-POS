@@ -159,6 +159,7 @@ export class DejavooSpinAPI {
     paymentTerminal?: {
       register_id: string | null;
       auth_key: string | null;
+      tpn?: string | null;
       terminal_type?: string;
     }
   ): Promise<boolean> {
@@ -184,6 +185,7 @@ export class DejavooSpinAPI {
         this.credentials = {
           authKey: paymentTerminal.auth_key,
           registerId: paymentTerminal.register_id,
+          tpn: paymentTerminal.tpn ?? undefined,
           environment,
           baseUrl,
           timeout: 120, // Default timeout in seconds
@@ -193,6 +195,7 @@ export class DejavooSpinAPI {
 
         console.log('[DejavooSpinAPI] Local credentials loaded successfully');
         console.log('[DejavooSpinAPI] Register ID:', this.credentials.registerId);
+        console.log('[DejavooSpinAPI] TPN:', this.credentials.tpn ? '****' + this.credentials.tpn.slice(-4) : 'not set');
         console.log('[DejavooSpinAPI] Environment:', this.credentials.environment);
         console.log('[DejavooSpinAPI] Base URL:', this.credentials.baseUrl);
 
@@ -223,6 +226,7 @@ export class DejavooSpinAPI {
       this.credentials = {
         authKey: data.auth_key,
         registerId: data.register_id,
+        tpn: data.tpn,
         environment: data.api_environment,
         baseUrl: data.api_base_url,
         timeout: data.spin_proxy_timeout,
@@ -231,6 +235,7 @@ export class DejavooSpinAPI {
       this.terminalId = terminalId;
 
       console.log('[DejavooSpinAPI] Credentials loaded successfully from database');
+      console.log('[DejavooSpinAPI] TPN:', this.credentials.tpn ? '****' + this.credentials.tpn.slice(-4) : 'not set');
       console.log('[DejavooSpinAPI] Environment:', this.credentials.environment);
       console.log('[DejavooSpinAPI] Base URL:', this.credentials.baseUrl);
 
@@ -292,12 +297,10 @@ export class DejavooSpinAPI {
      // ${this.getBaseUrl()}
       const url = `https://test.spinpos.net/v2/Common/TerminalStatus`;
       console.log('[DejavooSpinAPI] Credentials:', this.credentials);
-      if (navigator.onLine) {
-        console.log('Internet connection is available');
-      } else {
-        console.log('Internet connection is not available');
-      }
+      
+      // Build params - TPN is required for terminal status check
       const params = new URLSearchParams({
+        'request.tpn': this.credentials.tpn ?? '',
         'request.registerId': this.credentials.registerId!,
         'request.authkey': this.credentials.authKey,
       });
@@ -647,7 +650,7 @@ export class DejavooSpinAPI {
    * @internal
    * @returns Auth parameters object
    */
-  getAuthParams(): { AuthKey: string; RegisterId: string; OperationalTimeout?: number } {
+  getAuthParams(): { AuthKey: string; RegisterId: string; Tpn?: string; OperationalTimeout?: number } {
     if (!this.credentials) {
       throw new Error('No terminal loaded. Call loadTerminal() first.');
     }
@@ -655,6 +658,7 @@ export class DejavooSpinAPI {
     return {
       AuthKey: this.credentials.authKey,
       RegisterId: this.credentials.registerId,
+      Tpn: this.credentials.tpn,
       OperationalTimeout: this.credentials.timeout,
     };
   }
@@ -2400,7 +2404,7 @@ export class VoidTransactionBuilder {
         MerchantNumber: this._merchantNumber,
         CaptureSignature: this._captureSignature,
         GetExtendedData: this._getExtendedData,
-        Tpn: this._tpn,
+        Tpn: this._tpn ?? authParams.Tpn,  // Use builder value or fallback to credentials
         SPInProxyTimeout: this._timeout ?? authParams.OperationalTimeout ?? null,
 
         // Callback (only if URL provided)

@@ -24,7 +24,7 @@ export interface OrderCalculationInput {
   items: CartItem[];
   checkDiscount: Discount | null;
   taxRatesMap: TaxRatesMap;
-  payments?: { amount: number; isVoided?: boolean }[];
+  payments?: { amount: number; isVoided?: boolean; refundedAmount?: number }[];
   /** Optional cash discount rate for dual pricing (default uses store settings) */
   cashDiscountRate?: number;
 }

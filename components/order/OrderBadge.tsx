@@ -22,7 +22,25 @@ interface OrderBadgeProps {
 // ============================================================================
 // MEMOIZED COLOR HELPER - Extracted outside component to avoid recreation
 // ============================================================================
-const getStatusColor = (status: string, paidStatus: string) => {
+const getStatusColor = (status: string, paidStatus: string, refundState?: { isFullyRefunded: boolean; isPartiallyRefunded: boolean }) => {
+  // Handle refund states first - they take priority
+  if (refundState?.isFullyRefunded) {
+    return {
+      dot: "#ef4444",
+      bg: "#fef2f2",
+      border: "#f87171",
+      text: "#991b1b",
+    };
+  }
+  if (refundState?.isPartiallyRefunded) {
+    return {
+      dot: "#f97316",
+      bg: "#fff7ed",
+      border: "#fb923c",
+      text: "#9a3412",
+    };
+  }
+  
   if (status === "preparing") {
     if (paidStatus === "Paid") {
       return {
@@ -84,6 +102,23 @@ const PopoverContent = React.memo<PopoverContentProps>(
     onRetrieve,
     onClose,
   }) => {
+    // Memoize refund status
+    const refundStatus = useMemo(() => {
+      const payments = order.payments || [];
+      if (payments.length === 0) {
+        return { hasRefund: false, isFullyRefunded: false, isPartiallyRefunded: false, totalRefunded: 0 };
+      }
+      
+      const totalRefunded = payments.reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
+      const hasRefund = totalRefunded > 0;
+      const isFullyRefunded = payments.length > 0 && payments.every(
+        p => (p.refundedAmount ?? 0) >= (p.amount ?? 0)
+      );
+      const isPartiallyRefunded = hasRefund && !isFullyRefunded;
+      
+      return { hasRefund, isFullyRefunded, isPartiallyRefunded, totalRefunded };
+    }, [order.payments]);
+
     // Memoize payment calculations
     const {
       amountDue,
@@ -159,29 +194,49 @@ const PopoverContent = React.memo<PopoverContentProps>(
             </View>
             <View
               className={`px-2 py-1 rounded-md ${
-                order.paid_status === "Paid"
-                  ? "bg-green-900/50"
-                  : order.paid_status === "Partial" || isPartiallyPaid
-                    ? "bg-purple-900/50"
-                    : "bg-red-900/50"
+                refundStatus.isFullyRefunded
+                  ? "bg-red-900/50"
+                  : refundStatus.isPartiallyRefunded
+                    ? "bg-orange-900/50"
+                    : order.paid_status === "Paid"
+                      ? "bg-green-900/50"
+                      : order.paid_status === "Partial" || isPartiallyPaid
+                        ? "bg-purple-900/50"
+                        : "bg-red-900/50"
               }`}
             >
               <Text
                 className={`text-sm font-semibold ${
-                  order.paid_status === "Paid"
-                    ? "text-green-400"
-                    : order.paid_status === "Partial" || isPartiallyPaid
-                      ? "text-purple-400"
-                      : "text-red-400"
+                  refundStatus.isFullyRefunded
+                    ? "text-red-400"
+                    : refundStatus.isPartiallyRefunded
+                      ? "text-orange-400"
+                      : order.paid_status === "Paid"
+                        ? "text-green-400"
+                        : order.paid_status === "Partial" || isPartiallyPaid
+                          ? "text-purple-400"
+                          : "text-red-400"
                 }`}
               >
-                {order.paid_status === "Paid"
-                  ? "Paid"
-                  : order.paid_status === "Partial" || isPartiallyPaid
-                    ? "Partial"
-                    : order.paid_status}
+                {refundStatus.isFullyRefunded
+                  ? "REFUNDED"
+                  : refundStatus.isPartiallyRefunded
+                    ? "Partial Refund"
+                    : order.paid_status === "Paid"
+                      ? "Paid"
+                      : order.paid_status === "Partial" || isPartiallyPaid
+                        ? "Partial"
+                        : order.paid_status}
               </Text>
             </View>
+            {/* Closed badge when check is closed */}
+            {order.check_status === "Closed" && (
+              <View className="px-2 py-1 rounded-md bg-gray-700/50">
+                <Text className="text-sm font-semibold text-gray-400">
+                  Closed
+                </Text>
+              </View>
+            )}
             <View
               className={`px-2 py-1 rounded-md ${
                 order.order_status === "preparing"
@@ -217,25 +272,35 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 {order.items.length} items - Total: $
                 {order.total_amount?.toFixed(2) || "0.00"}
               </Text>
-              {isPartiallyPaid && (
+              {refundStatus.totalRefunded > 0 && (
+                <Text className="text-sm text-red-400 font-medium">
+                  Refunded: ${refundStatus.totalRefunded.toFixed(2)}
+                </Text>
+              )}
+              {isPartiallyPaid && !refundStatus.isFullyRefunded && (
                 <Text className="text-sm text-green-400 font-medium">
                   Paid: ${amountPaid.toFixed(2)}
                 </Text>
               )}
-              {order.paid_status !== "Paid" && amountDue > 0.01 && (
+              {!refundStatus.isFullyRefunded && amountDue > 0.01 && (
                 <Text className="text-sm text-yellow-400 font-bold">
                   Due: ${amountDue.toFixed(2)}
                 </Text>
               )}
-              {order.paid_status !== "Paid" && cashSavings > 0.01 && (
+              {order.paid_status !== "Paid" && !refundStatus.hasRefund && cashSavings > 0.01 && (
                 <Text className="text-xs text-green-400">
                   Cash: ${cashAmountDue.toFixed(2)} (save $
                   {cashSavings.toFixed(2)})
                 </Text>
               )}
-              {order.paid_status === "Paid" && (
+              {order.paid_status === "Paid" && !refundStatus.hasRefund && (
                 <Text className="text-sm text-green-400 font-medium">
-                  Fully Paid ✓
+                  Fully Paid
+                </Text>
+              )}
+              {refundStatus.isFullyRefunded && (
+                <Text className="text-sm text-red-400 font-medium">
+                  Order Refunded
                 </Text>
               )}
             </View>
@@ -349,24 +414,46 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     order.db_order_id || order.id,
   );
 
-  // PERFORMANCE: Memoize colors calculation
+  // Calculate refund status for badge colors
+  const refundState = useMemo(() => {
+    const payments = order.payments || [];
+    if (payments.length === 0) {
+      return { isFullyRefunded: false, isPartiallyRefunded: false };
+    }
+    
+    const hasRefund = payments.some(p => (p.refundedAmount ?? 0) > 0);
+    const isFullyRefunded = payments.length > 0 && payments.every(
+      p => (p.refundedAmount ?? 0) >= (p.amount ?? 0)
+    );
+    const isPartiallyRefunded = hasRefund && !isFullyRefunded;
+    
+    return { isFullyRefunded, isPartiallyRefunded };
+  }, [order.payments]);
+
+  // PERFORMANCE: Memoize colors calculation with refund state
   const colors = useMemo(
-    () => getStatusColor(order.order_status, order.paid_status),
-    [order.order_status, order.paid_status],
+    () => getStatusColor(order.order_status, order.paid_status, refundState),
+    [order.order_status, order.paid_status, refundState],
   );
 
-  // PERFORMANCE: Memoize display text
+  // PERFORMANCE: Memoize display text - include refund status if applicable
   const badgeText = useMemo(() => {
     const name = order.customer_name
       ? order.customer_name
       : order.display_number || order.order_number || `#${order.id.slice(-4)}`;
-    return `${name} - ${order.order_status}`;
+    const statusText = refundState.isFullyRefunded 
+      ? "REFUNDED"
+      : refundState.isPartiallyRefunded 
+        ? "partial refund"
+        : order.order_status;
+    return `${name} - ${statusText}`;
   }, [
     order.customer_name,
     order.display_number,
     order.order_number,
     order.id,
     order.order_status,
+    refundState,
   ]);
 
   // PERFORMANCE: Memoize callbacks to prevent recreation
@@ -426,17 +513,23 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
+  // Helper to calculate total refunded for comparison
+  const getTotalRefunded = (order: OrderProfile) => 
+    (order.payments || []).reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
+  
   // Return true if props are equal (skip re-render)
   return (
     prev.order.id === next.order.id &&
     prev.order.order_status === next.order.order_status &&
     prev.order.paid_status === next.order.paid_status &&
+    prev.order.check_status === next.order.check_status &&
     prev.order.items.length === next.order.items.length &&
     prev.order.amount_due === next.order.amount_due &&
     prev.order.amount_paid === next.order.amount_paid &&
     prev.order.total_amount === next.order.total_amount &&
     prev.order.customer_name === next.order.customer_name &&
     prev.order.payments?.length === next.order.payments?.length &&
+    getTotalRefunded(prev.order) === getTotalRefunded(next.order) &&
     // Station-related fields for display
     prev.order.station_id === next.order.station_id &&
     prev.order._sourceStationName === next.order._sourceStationName

@@ -1549,6 +1549,7 @@ const syncPaymentToBackend = async (
               ? {
                   ...p,
                   id: data.payment_id,
+                  db_payment_id: data.payment_id,
                   // Keep existing itemsCovered (with quantities) from optimistic update
                   // Only set from backend if local is missing
                   itemsCovered:
@@ -1837,7 +1838,7 @@ interface OrderState {
   ) => void;
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
-  updateActiveOrderDetails: (details: Partial<OrderProfile>) => void;
+  updateActiveOrderDetails: (details: Partial<OrderProfile>) => Promise<void>;
   applyDiscountToCheck: (orderId: string, discount: Discount) => void;
   removeCheckDiscount: (orderId: string) => void;
   applyDiscountToItem: (orderId: string, itemId: string) => void;
@@ -1851,7 +1852,7 @@ interface OrderState {
   updateOrderCheckStatus: (
     orderId: string,
     status: "Opened" | "Closed",
-  ) => void;
+  ) => Promise<void>;
   addPaymentToOrder: (details: {
     orderId: string;
     amount: number;
@@ -2382,7 +2383,7 @@ export const useOrderStore = create<OrderState>()(
                       localOrder.amount_paid === backendOrder.amount_paid &&
                       localOrder.order_status === backendOrder.status &&
                       localOrder.total_amount === backendOrder.card_total &&
-                      localOrder.check_status === backendOrder.check_status
+                      localOrder.check_status === backendOrder.check_status &&
                       localOrder.items.length ===
                         (backendOrder.order_items?.length ??
                           localOrder.items.length) &&
@@ -4714,14 +4715,14 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
-          updateActiveOrderDetails: (details) => {
+          updateActiveOrderDetails: async (details) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
 
             const order = ordersById[activeOrderId];
             if (!order) return;
 
-            // Update local state immediately
+            // Update local state immediately (optimistic update)
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
@@ -4732,48 +4733,83 @@ export const useOrderStore = create<OrderState>()(
               },
             }));
 
-            // Sync to backend (fire-and-forget, non-blocking)
+            // Sync to backend
             const supabase = _supabaseClient;
-            if (supabase && order.db_order_id) {
-              // Sync customer_name to orders table
-              if (details.customer_name !== undefined) {
-                supabase
+            const isOnline = getIsOnline();
+
+            if (!supabase || !order.db_order_id) {
+              console.log("[updateActiveOrderDetails] No supabase client or db_order_id, local-only update");
+              return;
+            }
+
+            if (!isOnline) {
+              console.log("[updateActiveOrderDetails] Offline - update will sync on reconnect via broadcast");
+              return;
+            }
+
+            let syncNeeded = false;
+
+            // Sync customer_name to orders table
+            if (details.customer_name !== undefined) {
+              try {
+                const { error } = await supabase
                   .from("orders")
                   .update({
                     customer_name: details.customer_name,
                     customer_id: details.customer_id,
                   })
-                  .eq("id", order.db_order_id)
-                  .then(({ error }) => {
-                    if (error)
-                      console.error("Failed to sync customer_name:", error);
-                    else console.log("Synced customer_name to backend");
-                  });
+                  .eq("id", order.db_order_id);
+
+                if (error) {
+                  console.error("Failed to sync customer_name:", error);
+                } else {
+                  console.log("Synced customer_name to backend");
+                  syncNeeded = true;
+                }
+              } catch (error) {
+                console.error("Failed to sync customer_name:", error);
               }
+            }
 
-              // Sync guest_count to table_sessions.party_size
-              if (
-                details.guest_count !== undefined &&
-                order.service_location_id
-              ) {
-                // Get session ID from the table via floor plan store
-                const table =
-                  useFloorPlanStore.getState().tablesById[
-                    order.service_location_id
-                  ];
-                const sessionId = table?.session?.id;
+            // Sync guest_count to table_sessions.party_size
+            if (
+              details.guest_count !== undefined &&
+              order.service_location_id
+            ) {
+              // Get session ID from the table via floor plan store
+              const table =
+                useFloorPlanStore.getState().tablesById[
+                  order.service_location_id
+                ];
+              const sessionId = table?.session?.id;
 
-                if (sessionId) {
-                  supabase
+              if (sessionId) {
+                try {
+                  const { error } = await supabase
                     .from("table_sessions")
                     .update({ party_size: details.guest_count })
-                    .eq("id", sessionId)
-                    .then(({ error }) => {
-                      if (error)
-                        console.error("Failed to sync guest_count:", error);
-                      else console.log("Synced guest_count to backend");
-                    });
+                    .eq("id", sessionId);
+
+                  if (error) {
+                    console.error("Failed to sync guest_count:", error);
+                  } else {
+                    console.log("Synced guest_count to backend");
+                    syncNeeded = true;
+                  }
+                } catch (error) {
+                  console.error("Failed to sync guest_count:", error);
                 }
+              }
+            }
+
+            // Sync verification: Refresh order from backend to ensure local state matches
+            if (syncNeeded && order.db_order_id) {
+              try {
+                await get().syncOrderFromBackendComplete(order.db_order_id);
+                console.log("[updateActiveOrderDetails] Post-update sync completed");
+              } catch (syncError) {
+                console.warn("[updateActiveOrderDetails] Post-update sync failed:", syncError);
+                // Non-blocking - local state is still valid, will reconcile via broadcast
               }
             }
           },
@@ -5377,20 +5413,11 @@ export const useOrderStore = create<OrderState>()(
             }));
           },
 
-          updateOrderCheckStatus: (orderId, status) => {
+          updateOrderCheckStatus: async (orderId, status) => {
             const order = get().ordersById[orderId]; // O(1) lookup
             if (!order) return;
 
-            // Sync to backend in background
-            const supabase = getOrderStoreSupabaseClient();
-            if (supabase && order?.db_order_id) {
-              const dbOrderId = order.db_order_id;
-              // TODO: Add backend RPC call for updating check_status
-              
-              // For now, just update locally
-              console.log(`[updateOrderCheckStatus] Would sync check_status=${status} for order ${dbOrderId}`);
-            }
-
+            // 1. Optimistic local update first
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
@@ -5400,6 +5427,85 @@ export const useOrderStore = create<OrderState>()(
                 },
               },
             }));
+
+            // 2. Sync to backend
+            const supabase = getOrderStoreSupabaseClient();
+            const isOnline = getIsOnline();
+            
+            if (!supabase || !order.db_order_id) {
+              console.log(`[updateOrderCheckStatus] No supabase client or db_order_id, local-only update`);
+              return;
+            }
+
+            if (!isOnline) {
+              console.log(`[updateOrderCheckStatus] Offline - queuing for later sync`);
+              // Queue operation for later
+              await queueOperation({
+                type: status === "Closed" ? "close_check" : "reopen_check",
+                params: {
+                  p_order_id: order.db_order_id,
+                  p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+                },
+                localOrderId: orderId,
+              });
+              return;
+            }
+
+            // Online - sync immediately
+            const dbOrderId = order.db_order_id;
+            const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId;
+
+            try {
+              if (status === "Closed") {
+                console.log(`[updateOrderCheckStatus] Closing check for order ${dbOrderId}`);
+                const result = await OrderService.closeCheck(supabase, dbOrderId, staffId);
+                if (!result.success) {
+                  console.error(`[updateOrderCheckStatus] closeCheck failed:`, result.error);
+                  // Rollback local state on failure
+                  set((state) => ({
+                    ordersById: {
+                      ...state.ordersById,
+                      [orderId]: {
+                        ...state.ordersById[orderId],
+                        check_status: "Opened", // Rollback
+                      },
+                    },
+                  }));
+                }
+              } else {
+                console.log(`[updateOrderCheckStatus] Reopening check for order ${dbOrderId}`);
+                if (!staffId) {
+                  console.error(`[updateOrderCheckStatus] No staff ID for reopenCheck`);
+                  return;
+                }
+                const result = await OrderService.reopenCheck(supabase, dbOrderId, staffId);
+                if (!result.success) {
+                  console.error(`[updateOrderCheckStatus] reopenCheck failed:`, result.error);
+                  // Rollback local state on failure
+                  set((state) => ({
+                    ordersById: {
+                      ...state.ordersById,
+                      [orderId]: {
+                        ...state.ordersById[orderId],
+                        check_status: "Closed", // Rollback
+                      },
+                    },
+                  }));
+                }
+              }
+            } catch (error) {
+              console.error(`[updateOrderCheckStatus] Error:`, error);
+              // Rollback on exception
+              set((state) => ({
+                ordersById: {
+                  ...state.ordersById,
+                  [orderId]: {
+                    ...state.ordersById[orderId],
+                    check_status: status === "Closed" ? "Opened" : "Closed", // Rollback
+                  },
+                },
+              }));
+            }
           },
 
           addPaymentToOrder: async ({
@@ -8649,14 +8755,20 @@ export const useOrderStore = create<OrderState>()(
                   hasOrder: !!data.order,
                   itemsCount: data.items?.length || 0,
                   paymentsCount: data.payments?.length || 0,
+                  reversalsCount: data.reversals?.length || 0,
+                  refundItemsCount: data.order_refund_items?.length || 0,
+                  stationName: data.station_name,
                   rawItemsData: data.items,
                 },
               );
 
-              // Extract response components
+              // Extract response components (including new fields from updated RPC)
               const orderData = data.order;
               const itemsData = data.items || [];
               const paymentsData = data.payments || [];
+              const reversalsData = data.reversals || [];
+              const orderRefundItemsData = data.order_refund_items || [];
+              const stationName = data.station_name;
 
               if (!orderData) {
                 console.error(
@@ -8693,6 +8805,9 @@ export const useOrderStore = create<OrderState>()(
                     subtotal: item.subtotal,
                     taxAmount: item.tax_amount || 0,
                     discount_amount: item.discount_amount || 0,
+                    // Refund tracking fields
+                    refundedQuantity: item.refunded_quantity || 0,
+                    refundedAmount: item.refunded_amount || 0,
                     customizations: {
                       size: item.selected_size_id
                         ? {
@@ -8705,6 +8820,7 @@ export const useOrderStore = create<OrderState>()(
                       notes: item.special_instructions || undefined,
                     },
                     item_status: item.item_status || "pending",
+                    kitchen_status: item.kitchen_status || undefined,
                     // CRITICAL: Preserve course number from database to prevent items grouping under working course
                     courseNumber: item.course_number || 1,
                     sync_status: "synced" as const,
@@ -8712,15 +8828,93 @@ export const useOrderStore = create<OrderState>()(
                 },
               );
 
-              // Transform payments to OrderProfile format
-              const transformedPayments = paymentsData.map((payment: any) => ({
+              // Transform payments to OrderProfile format with comprehensive fields
+              const transformedPayments: OrderProfilePayment[] = paymentsData.map((payment: any) => ({
+                // Core identifiers
                 id: payment.id,
-                amount: payment.amount,
-                method: payment.payment_method as PaymentType,
+                db_payment_id: payment.id,
+                
+                // Payment basics
+                amount: payment.amount || 0,
+                method: (payment.payment_method === "cash" ? "Cash" : "Card") as PaymentType,
+                tip_amount: payment.tip_amount || 0,
+                total_collected: (payment.amount || 0) + (payment.tip_amount || 0),
+                
+                // Card details
                 cardBrand: payment.card_type,
                 last4: payment.card_last_four,
-                tip_amount: payment.tip_amount || 0,
-                timestamp: payment.initiated_at,
+                
+                // Cash details
+                amountTendered: payment.amount_tendered,
+                changeGiven: payment.change_given || 0,
+                isCashPriced: payment.is_cash_priced || false,
+                
+                // Portions
+                subtotal_portion: payment.subtotal_portion,
+                tax_portion: payment.tax_portion,
+                discount_portion: payment.discount_portion,
+                
+                // Split payment info
+                splitInfo: payment.split_count && payment.split_count > 1 ? {
+                  portionIndex: payment.split_portion_index || 0,
+                  totalPortions: payment.split_count,
+                  isLastPortion: (payment.split_portion_index || 0) === payment.split_count - 1,
+                } : undefined,
+                
+                // Item coverage
+                itemsCovered: (payment.covers_items || []).map((itemId: string) => ({
+                  itemId,
+                  quantityPaid: 0, // Will be reconciled from order_payment_items if needed
+                  amountPaid: 0,
+                })),
+                
+                // Status and timestamps
+                status: payment.status || "captured",
+                timestamp: payment.initiated_at || payment.created_at,
+                
+                // Void tracking
+                isVoided: payment.is_voided || false,
+                voidReason: payment.void_reason,
+                voidedAt: payment.voided_at,
+                
+                // Refund tracking
+                refundedAmount: payment.refunded_amount || 0,
+                refundedAt: payment.refunded_at,
+                reference_id: payment.reference_number,
+                
+                // Return tracking fields
+                isReturned: payment.is_returned || false,
+                returnedAt: payment.returned_at,
+                returnedBy: payment.returned_by,
+                returnAmount: payment.return_amount || 0,
+                returnRrn: payment.return_rrn,
+                returnAuthCode: payment.return_auth_code,
+                returnReferenceId: payment.return_reference_id,
+                returnNumber: payment.return_number,
+                returnReason: payment.return_reason,
+                
+                // Transaction details
+                transactionDetails: {
+                  terminalType: payment.terminal_type,
+                  authorizationCode: payment.authorization_code || payment.auth_code,
+                  cardType: payment.card_type,
+                  last4: payment.card_last_four,
+                  transactionId: payment.transaction_id,
+                  amountTendered: payment.amount_tendered,
+                  changeGiven: payment.change_given,
+                  isCashPriced: payment.is_cash_priced,
+                  isCash: payment.payment_method === "cash",
+                  // Include dejavoo response from processor_response if available
+                  dejavooTransaction: payment.processor_response?.dejavoo_transaction,
+                  // Additional terminal fields
+                  rrn: payment.rrn,
+                  batchNumber: payment.batch_number || payment.dejavoo_batch_number,
+                  invoiceNumber: payment.dejavoo_invoice_number,
+                  entryMode: payment.processor_response?.dejavoo_transaction?.entryMode,
+                  referenceId: payment.reference_number,
+                },
+                
+                // Sync status
                 sync_status: "synced" as const,
               }));
 
@@ -8735,11 +8929,15 @@ export const useOrderStore = create<OrderState>()(
               console.log("[syncOrderFromBackendComplete] Transformed data:", {
                 transformedItemsCount: transformedItems.length,
                 transformedPaymentsCount: transformedPayments.length,
+                reversalsCount: reversalsData.length,
+                refundItemsCount: orderRefundItemsData.length,
+                stationName,
                 firstItemSample: transformedItems[0]
                   ? {
                       id: transformedItems[0].id,
                       name: transformedItems[0].name,
                       quantity: transformedItems[0].quantity,
+                      refundedQuantity: transformedItems[0].refundedQuantity,
                     }
                   : null,
               });
@@ -8762,6 +8960,8 @@ export const useOrderStore = create<OrderState>()(
                   isActiveOrder: true, // orderId === state.activeOrderId
                   updatingItems: transformedItems.length,
                   updatingPayments: transformedPayments.length,
+                  updatingReversals: reversalsData.length,
+                  updatingRefundItems: orderRefundItemsData.length,
                 });
 
                 // Build the updated order once to avoid duplication
@@ -8769,12 +8969,19 @@ export const useOrderStore = create<OrderState>()(
                   ...currentOrder,
                   items: transformedItems,
                   payments: transformedPayments,
+                  // Reversals and refund items from backend
+                  reversals: reversalsData,
+                  order_refund_items: orderRefundItemsData,
+                  // Station name from backend
+                  _sourceStationName: stationName || currentOrder._sourceStationName,
+                  // Financial totals
                   total_amount: orderData.card_total ?? orderData.total_amount,
                   total_tax: orderData.tax_amount,
                   total_discount: orderData.discount_amount,
                   amount_paid: orderData.amount_paid,
                   amount_due: orderData.amount_due,
                   cash_amount_due: orderData.cash_amount_due,
+                  // Status fields
                   paid_status: paidStatus,
                   order_status: orderData.status,
                   sync_version: orderData.sync_version,

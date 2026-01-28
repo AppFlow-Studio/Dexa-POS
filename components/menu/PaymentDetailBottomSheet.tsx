@@ -1,13 +1,17 @@
+import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
-import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment } from "@/lib/types";
+import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, ReversalRecord } from "@/lib/types";
+import { RefundService } from "@/services/refundService";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type { RefundReasonType, RefundRequest } from "@/types/refunds";
+import { formatDistanceToNow } from "date-fns";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useRouter } from "expo-router";
 import {
@@ -86,6 +90,24 @@ interface TipAdjustPaymentRow {
   isCard: boolean;
 }
 type RefundType = "full" | "items" | "payments";
+
+const toRefundReasonType = (reason: string): RefundReasonType => {
+  switch (reason) {
+    case "customer_request":
+    case "item_quality":
+    case "wrong_item":
+    case "never_received":
+    case "duplicate_charge":
+    case "price_adjustment":
+    case "order_cancelled":
+    case "kitchen_error":
+    case "manager_comp":
+    case "other":
+      return reason;
+    default:
+      return "other";
+  }
+};
 
 interface PerPaymentRefundDetail {
   paymentIndex: number;
@@ -355,10 +377,13 @@ const LeftPane: React.FC<LeftPaneProps> = ({
         <View className="px-4 py-2">
           {order?.items?.map((item: CartItem, index: number) => {
             const isVoided = item.is_voided;
-            const isPaid = (item.paidQuantity || 0) >= item.quantity;
-            const isPartialPaid =
-              (item.paidQuantity || 0) > 0 &&
-              (item.paidQuantity || 0) < item.quantity;
+            // Account for refunded quantities - refunded items need to be paid again
+            const effectivePaidQty = (item.paidQuantity || 0) - (item.refundedQuantity || 0);
+            const hasRefund = (item.refundedQuantity || 0) > 0;
+            const isPaid = effectivePaidQty >= item.quantity && !hasRefund;
+            const isPartialPaid = effectivePaidQty > 0 && effectivePaidQty < item.quantity;
+            const isFullyRefunded = hasRefund && effectivePaidQty <= 0;
+            const isPartiallyRefunded = hasRefund && effectivePaidQty > 0;
 
             return (
               <View
@@ -380,6 +405,20 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                           </Text>
                         </View>
                       )}
+                      {isFullyRefunded && !isVoided && (
+                        <View className="bg-red-500/20 px-1.5 py-0.5 rounded mr-2">
+                          <Text className="text-[10px] font-bold text-red-400">
+                            REFUNDED
+                          </Text>
+                        </View>
+                      )}
+                      {isPartiallyRefunded && !isVoided && (
+                        <View className="bg-orange-500/20 px-1.5 py-0.5 rounded mr-2">
+                          <Text className="text-[10px] font-bold text-orange-400">
+                            {item.refundedQuantity} REFUND
+                          </Text>
+                        </View>
+                      )}
                       {isPaid && !isVoided && (
                         <View className="bg-emerald-500/20 px-1.5 py-0.5 rounded mr-2">
                           <Text className="text-[10px] font-bold text-emerald-400">
@@ -387,10 +426,10 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                           </Text>
                         </View>
                       )}
-                      {isPartialPaid && !isVoided && (
+                      {isPartialPaid && !isVoided && !hasRefund && (
                         <View className="bg-amber-500/20 px-1.5 py-0.5 rounded mr-2">
                           <Text className="text-[10px] font-bold text-amber-400">
-                            {item.paidQuantity}/{item.quantity}
+                            {effectivePaidQty}/{item.quantity}
                           </Text>
                         </View>
                       )}
@@ -514,6 +553,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   const hasCardPayments = paymentSummary.payments.some(
     (p) => p.method === "Card" && !p.isVoided
   );
+
+  // Helper to get completed reversals for a specific payment
+  const getReversalsForPayment = useCallback((paymentId: string | undefined): ReversalRecord[] => {
+    if (!paymentId || !order?.reversals) return [];
+    return (order.reversals as ReversalRecord[]).filter(
+      (r) => r.original_payment_id === paymentId && r.status === 'completed'
+    );
+  }, [order?.reversals]);
 
   return (
     <View className="flex-[6] bg-[#161616]">
@@ -761,6 +808,42 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       )}
                     </View>
                   )}
+
+                  {/* Refund/Void History for this payment */}
+                  {payment.dbPaymentId && getReversalsForPayment(payment.dbPaymentId).map((reversal, rIdx) => (
+                    <View 
+                      key={`reversal-${reversal.id || rIdx}`} 
+                      className="flex-row items-center py-2 pl-12 border-t border-gray-800/30"
+                    >
+                      <View className="w-8 h-8 rounded-lg bg-red-500/10 items-center justify-center mr-3">
+                        <RotateCcw size={14} color="#EF4444" />
+                      </View>
+                      <View className="flex-1">
+                        <View className="flex-row items-center">
+                          <Text className="text-xs text-red-400 font-medium">
+                            {reversal.reversal_type === 'void' ? 'VOIDED' : 
+                             reversal.reversal_type === 'refund' ? 'REFUNDED' :
+                             reversal.reversal_type === 'partial_refund' ? 'PARTIAL REFUND' : 'ITEM RETURN'}
+                          </Text>
+                          {reversal.reason_description && (
+                            <Text className="text-xs text-gray-500 ml-2" numberOfLines={1}>
+                              • {reversal.reason_description}
+                            </Text>
+                          )}
+                        </View>
+                        <Text className="text-xs text-gray-500">
+                          {reversal.completed_at 
+                            ? formatDistanceToNow(new Date(reversal.completed_at), { addSuffix: true }) 
+                            : reversal.requested_at 
+                              ? formatDistanceToNow(new Date(reversal.requested_at), { addSuffix: true })
+                              : ''}
+                        </Text>
+                      </View>
+                      <Text className="text-sm font-medium text-red-400">
+                        -${Number(reversal.amount || 0).toFixed(2)}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               );
             })
@@ -837,8 +920,9 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
 }) => {
   const { show } = useToast();
   const supabase = useSupabaseClient();
-  const { selectedStation } = useStoreSettingsStore();
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
+  const { orders: ordersRealtime } = useLocationRealtime();
   console.log('PaymentDetailBottomSheet Payment Summary', paymentSummary);
   const [tipAmounts, setTipAmounts] = useState<Record<number, string>>({});
   const [activeInput, setActiveInput] = useState<number | null>(null);
@@ -1053,14 +1137,34 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         }
       }
 
-      // Only update local state after DB persistence succeeds
-      updateLocalTipState();
+      // CRITICAL: Sync order from backend to ensure local state is updated
+      // This replaces the weak updateLocalTipState() which used index-based matching
+      // syncOrderFromBackendComplete fetches all order data including updated payment tips
+      const dbOrderId = order.db_order_id;
+      if (dbOrderId) {
+        try {
+          await useOrderStore.getState().syncOrderFromBackendComplete(dbOrderId);
+          console.log('[TipAdjust] Post-adjustment sync completed for order:', dbOrderId);
+        } catch (syncError) {
+          console.warn('[TipAdjust] Post-adjustment sync failed:', syncError);
+          // Non-blocking - tip adjustment succeeded, sync can be retried via broadcast
+        }
+      }
 
-      show({
-        title: "Tips Adjusted",
-        message: "Tip adjustments processed successfully.",
-        type: "success",
-      });
+      // Show success toast with realtime awareness
+      if (!ordersRealtime.isConnected) {
+        show({
+          title: "Tips Adjusted",
+          message: "Tip adjustments saved. Real-time sync offline - data refreshed manually.",
+          type: "warning",
+        });
+      } else {
+        show({
+          title: "Tips Adjusted",
+          message: "Tip adjustments processed successfully.",
+          type: "success",
+        });
+      }
       onTipAdjusted();
     } catch (error) {
       show({ title: "Error", message: String(error), type: "error" });
@@ -1286,7 +1390,8 @@ interface RightPaneRefundProps {
     reason: string,
     perPaymentDetails: PerPaymentRefundDetail[],
     selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
-  ) => void;
+  ) => Promise<boolean>;
+  refundProcessing: boolean;
 }
 
 const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
@@ -1294,7 +1399,10 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   paymentSummary,
   onBack,
   onProcessRefund,
+  refundProcessing,
 }) => {
+  const { show } = useToast();
+  const processingRef = useRef(false);
   const [refundType, setRefundType] = useState<RefundType>("full");
   const [refundReason, setRefundReason] = useState("");
   const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
@@ -1305,6 +1413,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     Record<string, number>
   >({});
 
+
   const maxRefundable = paymentSummary.collected - paymentSummary.refunds;
 
   // Filter out voided payments - only non-voided payments can be refunded
@@ -1312,11 +1421,18 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     return paymentSummary.payments.filter((p) => !p.isVoided);
   }, [paymentSummary.payments]);
 
+  const getRefundableQty = useCallback((item: CartItem) => {
+    const paidQty = item.paidQuantity ?? item.quantity ?? 0;
+    const refundedQty = item.refundedQuantity ?? 0;
+    return Math.max(0, paidQty - refundedQty);
+  }, []);
+
   // Calculate selected items total (price + tax)
   const selectedItemsTotal = useMemo(() => {
     if (!order?.items) return 0;
     return order.items.reduce((sum: number, item: CartItem) => {
-      const selectedQty = selectedItems[item.id] || 0;
+      const maxQty = getRefundableQty(item);
+      const selectedQty = Math.min(selectedItems[item.id] || 0, maxQty);
       if (selectedQty <= 0) return sum;
       const itemSubtotal = (item.price || 0) * selectedQty;
       const perUnitTax =
@@ -1324,7 +1440,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
       const itemTax = perUnitTax * selectedQty;
       return sum + itemSubtotal + itemTax;
     }, 0);
-  }, [selectedItems, order?.items]);
+  }, [selectedItems, order?.items, getRefundableQty]);
 
   // Calculate per-payment refund total
   const paymentRefundTotal = useMemo(() => {
@@ -1336,6 +1452,21 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     });
     return total;
   }, [paymentRefundAmounts]);
+
+  const customAmountActive = useMemo(() => {
+    const hasAmounts = Object.values(paymentRefundAmounts).some((amounts) => {
+      const orderAmt = parseFloat(amounts.orderAmount) || 0;
+      const tipAmt = parseFloat(amounts.tipAmount) || 0;
+      return orderAmt + tipAmt > 0;
+    });
+    if (refundType === "payments") {
+      return paymentRefundTotal > 0;
+    }
+    return hasAmounts;
+  }, [paymentRefundAmounts, paymentRefundTotal, refundType]);
+
+  const hasRefundablePayments = refundablePayments.length > 0;
+  const isZeroRefundable = maxRefundable <= 0 || !hasRefundablePayments;
 
   const getRefundAmount = () => {
     switch (refundType) {
@@ -1349,6 +1480,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
         return 0;
     }
   };
+
+  const itemsDisabled = customAmountActive || isZeroRefundable;
 
   // Helper: find which payment covers a given item via itemsCovered
   const getPaymentForItem = useCallback(
@@ -1375,6 +1508,31 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     }
     return "Cash";
   }, []);
+
+  useEffect(() => {
+    if (!order?.items) return;
+    setSelectedItems((prev) => {
+      let changed = false;
+      const next: Record<string, number> = { ...prev };
+      order.items.forEach((item: CartItem) => {
+        const maxQty = getRefundableQty(item);
+        if (maxQty <= 0 && next[item.id]) {
+          delete next[item.id];
+          changed = true;
+          return;
+        }
+        if (next[item.id] && next[item.id] > maxQty) {
+          if (maxQty > 0) {
+            next[item.id] = maxQty;
+          } else {
+            delete next[item.id];
+          }
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [order?.items, getRefundableQty]);
 
   // Validation: all selected unallocated items must have a payment assigned
   const allItemsHavePayment = useMemo(() => {
@@ -1410,9 +1568,20 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     getRefundAmount() > 0 &&
     getRefundAmount() <= maxRefundable &&
     allItemsHavePayment &&
-    paymentAmountsValid;
-
+    paymentAmountsValid &&
+    !isZeroRefundable &&
+    !(refundType === "items" && customAmountActive);
+  // console.log('Can Process Refund', {
+  //   refundReason,
+  //   refundAmount: getRefundAmount(),
+  //   maxRefundable: maxRefundable,
+  //   allItemsHavePayment,
+  //   paymentAmountsValid,
+  //   isZeroRefundable,
+  //   customAmountActive,
+  // });
   const handleToggleItem = (itemId: string, maxQty: number) => {
+    if (customAmountActive || isZeroRefundable || maxQty <= 0) return;
     setSelectedItems((prev) => {
       if (prev[itemId]) {
         const { [itemId]: removed, ...rest } = prev;
@@ -1423,6 +1592,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   };
 
   const handleQuantityChange = (itemId: string, qty: number, maxQty: number) => {
+    if (customAmountActive || isZeroRefundable) return;
     if (qty <= 0) {
       const { [itemId]: removed, ...rest } = selectedItems;
       setSelectedItems(rest);
@@ -1465,6 +1635,24 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     }));
   };
 
+  const resetRefundState = useCallback(() => {
+    setRefundType("full");
+    setRefundReason("");
+    setSelectedItems({});
+    setPaymentRefundAmounts({});
+    setItemPaymentAssignment({});
+  }, []);
+
+  const refundLogs = useMemo(() => {
+    const logs = (order?.reversals || []) as any[];
+    return logs
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime(),
+      );
+  }, [order?.reversals]);
+
   // Build per-payment refund details for processing
   const buildPerPaymentDetails = (): PerPaymentRefundDetail[] => {
     const details: PerPaymentRefundDetail[] = [];
@@ -1505,7 +1693,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           cardBrand: payment.cardBrand || payment.cardInfo?.brand,
         });
       });
-    } else if (refundType === "items") {
+    } else if (refundType === "items" && !customAmountActive && !isZeroRefundable) {
       // Group selected items by their covering payment
       const paymentItemMap: Record<
         number,
@@ -1610,6 +1798,16 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           </View>
         </View>
 
+        {isZeroRefundable && (
+          <View className="px-4 pb-2">
+            <View className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+              <Text className="text-xs text-amber-300">
+                No refundable balance available. All refundable payments are voided or fully refunded.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Full Refund View — Payment Breakdown */}
         {refundType === "full" && (
           <View className="px-4">
@@ -1677,10 +1875,17 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             <Text className="text-xs text-gray-500 mb-3">
               Select items to refund
             </Text>
+            {itemsDisabled && (
+              <View className="mb-3 bg-gray-900/70 border border-gray-700 rounded-lg px-3 py-2">
+                <Text className="text-xs text-gray-400">
+                  Clear custom refund amounts to refund by items.
+                </Text>
+              </View>
+            )}
             {order?.items
               ?.filter((item: CartItem) => !item.is_voided)
               .map((item: CartItem) => {
-                const maxQty = item.paidQuantity || item.quantity;
+                const maxQty = getRefundableQty(item);
                 const isSelected = selectedItems[item.id] !== undefined;
                 const selectedQty = selectedItems[item.id] || 0;
                 const coveringPayment = getPaymentForItem(item.id);
@@ -1696,6 +1901,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     >
                       <TouchableOpacity
                         onPress={() => handleToggleItem(item.id, maxQty)}
+                        disabled={itemsDisabled || maxQty <= 0}
                         className={`w-6 h-6 rounded border mr-3 items-center justify-center ${
                           isSelected
                             ? "bg-blue-500 border-blue-500"
@@ -1712,6 +1918,11 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             ` + $${(item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0).toFixed(2)} tax`}
                           {" "}each
                         </Text>
+                        {maxQty <= 0 && (
+                          <Text className="text-[10px] text-gray-500 mt-1">
+                            Fully refunded
+                          </Text>
+                        )}
                         {/* Coverage badge */}
                         {coveringPayment && (
                           <View className="mt-1">
@@ -1733,6 +1944,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                                 maxQty
                               )
                             }
+                            disabled={itemsDisabled}
                             className="w-8 h-8 rounded bg-gray-800 items-center justify-center"
                           >
                             <Text className="text-white font-bold">-</Text>
@@ -1749,7 +1961,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                               )
                             }
                             className="w-8 h-8 rounded bg-gray-800 items-center justify-center"
-                            disabled={selectedQty >= maxQty}
+                            disabled={itemsDisabled || selectedQty >= maxQty}
                           >
                             <Text
                               className={`font-bold ${
@@ -1771,7 +1983,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     </View>
 
                     {/* Payment selector for unallocated selected items */}
-                    {needsAssignment && (
+                    {needsAssignment && !itemsDisabled && (
                       <View className="px-9 py-2 bg-gray-900/50 border-b border-gray-800/50">
                         <Text className="text-xs text-gray-400 mb-2">
                           Select refund destination:
@@ -1979,49 +2191,125 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             style={{ textAlignVertical: "top", minHeight: 80 }}
           />
         </View>
+
+        {refundLogs.length > 0 && (
+          <View className="px-4 mt-4">
+            <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+              Refund Log
+            </Text>
+            <View className="bg-[#1a1a1a] rounded-xl border border-gray-800">
+              {refundLogs.map((log, index) => (
+                <View
+                  key={log.id || index}
+                  className={`px-4 py-3 ${index !== 0 ? "border-t border-gray-800/60" : ""}`}
+                >
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-sm text-white font-medium">
+                      {String(log.reversal_type || "refund").toUpperCase()}
+                    </Text>
+                    <Text className="text-sm text-red-400 font-semibold">
+                      ${Number(log.amount || 0).toFixed(2)}
+                    </Text>
+                  </View>
+                  <Text className="text-xs text-gray-500 mt-1">
+                    {log.reason_description || log.reason_code || "—"}
+                  </Text>
+                  <Text className="text-[10px] text-gray-600 mt-1">
+                    {log.requested_at ? new Date(log.requested_at).toLocaleString() : "—"}
+                    {log.status ? ` • ${log.status}` : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* Process Button */}
       <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-[#1a1a1a] border-t border-gray-800">
         <TouchableOpacity
-          onPress={() => {
-            const perPaymentDetails = buildPerPaymentDetails();
-            const items =
-              refundType === "items"
-                ? Object.entries(selectedItems).map(([id, qty]) => ({
-                    itemId: id,
-                    quantity: qty,
-                    paymentIndex: (() => {
-                      const covering = getPaymentForItem(id);
-                      if (covering) return covering.originalPaymentIndex;
-                      const assigned = itemPaymentAssignment[id];
-                      if (assigned !== undefined)
-                        return refundablePayments[assigned]
-                          ?.originalPaymentIndex;
-                      return undefined;
-                    })(),
-                  }))
-                : undefined;
-            onProcessRefund(
-              refundType,
-              getRefundAmount(),
-              refundReason,
-              perPaymentDetails,
-              items
-            );
+          onPress={async () => {
+            if (refundProcessing || processingRef.current) {
+              console.log("[Refund] Already processing");
+              return;
+            }
+
+            if (!canProcess) {
+              console.log("[Refund] Blocked by validation", {
+                refundType,
+                maxRefundable,
+                refundReason,
+                paymentRefundTotal,
+                selectedItemsTotal,
+                allItemsHavePayment,
+                paymentAmountsValid,
+                isZeroRefundable,
+                customAmountActive,
+              });
+              show({
+                title: "Refund Not Ready",
+                message:
+                  "Check reason, amounts, and refundable balance before processing.",
+                type: "warning",
+              });
+              return;
+            }
+            processingRef.current = true;
+            try {
+              const perPaymentDetails = buildPerPaymentDetails();
+              const items =
+                refundType === "items" && !itemsDisabled
+                  ? Object.entries(selectedItems).map(([id, qty]) => ({
+                      itemId: id,
+                      quantity: qty,
+                      paymentIndex: (() => {
+                        const covering = getPaymentForItem(id);
+                        if (covering) return covering.originalPaymentIndex;
+                        const assigned = itemPaymentAssignment[id];
+                        if (assigned !== undefined)
+                          return refundablePayments[assigned]
+                            ?.originalPaymentIndex;
+                        return undefined;
+                      })(),
+                    }))
+                  : undefined;
+              const success = await onProcessRefund(
+                refundType,
+                getRefundAmount(),
+                refundReason,
+                perPaymentDetails,
+                items
+              );
+              if (success) {
+                resetRefundState();
+              }
+            } catch (error) {
+              console.error("[Refund] Unexpected error:", error);
+              show({
+                title: "Refund Failed",
+                message: "Unexpected error while processing refund.",
+                type: "error",
+              });
+            } finally {
+              processingRef.current = false;
+            }
           }}
-          disabled={!canProcess}
+          disabled={!canProcess || refundProcessing}
           className={`w-full py-4 rounded-xl items-center justify-center ${
-            canProcess ? "bg-red-500" : "bg-gray-700"
+            canProcess && !refundProcessing ? "bg-red-500" : "bg-gray-700"
           }`}
         >
-          <Text
-            className={`text-base font-bold ${
-              canProcess ? "text-white" : "text-gray-500"
-            }`}
-          >
-            Process Refund • ${getRefundAmount().toFixed(2)}
-          </Text>
+          {refundProcessing ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text
+              className={`text-base font-bold ${
+                canProcess ? "text-white" : "text-gray-500"
+              }`}
+            >
+              Process Refund • ${getRefundAmount().toFixed(2)}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -2063,6 +2351,14 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   const { show } = useToast();
   const router = useRouter();
   const internalRef = useRef<BottomSheetMethods>(null);
+  const supabase = useSupabaseClient();
+  const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
+  const [refundProcessing, setRefundProcessing] = useState(false);
+  const refundProcessingRef = useRef(false);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  
+  // Get realtime connection status for post-refund sync awareness
+  const { orders: ordersRealtime } = useLocationRealtime();
 
   const { isOpen, orderId, close } = usePaymentDetailSheetStore();
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
@@ -2195,7 +2491,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         }
 
         payments.push({
-          method: payment.method || "Unknown",
+          method: payment.method?.toLowerCase() === "card" ? "Card"
+            : payment.method?.toLowerCase() === "cash" ? "Cash"
+            : payment.method || "Unknown",
           timestamp: payment.timestamp || new Date().toISOString(),
           orderAmount,
           tipAmount,
@@ -2210,7 +2508,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           subtotal_portion: payment.subtotal_portion,
           tax_portion: payment.tax_portion,
           paymentId: payment.id,
-          dbPaymentId: payment.db_payment_id,
+          dbPaymentId: payment.db_payment_id || payment.id,
           originalPaymentIndex: index,
           referenceId: txDetails?.referenceId
             ? String(txDetails.referenceId)
@@ -2227,6 +2525,24 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       payments,
     };
   }, [order]);
+
+  // Diagnostic: log when refund button would be disabled
+  useEffect(() => {
+    if (isOpen && order) {
+      console.log("[PaymentDetail] Payment summary:", {
+        collected: paymentSummary.collected,
+        refunds: paymentSummary.refunds,
+        paymentsCount: paymentSummary.payments.length,
+        refundButtonDisabled: paymentSummary.collected <= 0,
+        orderPaymentsCount: order.payments?.length ?? 0,
+        orderPayments: order.payments?.map((p: any) => ({
+          amount: p.amount,
+          isVoided: p.isVoided,
+          method: p.method,
+        })),
+      });
+    }
+  }, [isOpen, order, paymentSummary]);
 
   // Calculate order totals for left pane
   const orderTotals = useMemo(() => {
@@ -2271,6 +2587,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   }, [show]);
 
   const handleRefund = useCallback(() => {
+    console.log("[PaymentDetail] Refund button pressed, navigating to refund view");
     setRightPaneView("refund");
   }, []);
 
@@ -2283,29 +2600,233 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   }, []);
 
   const handleProcessRefund = useCallback(
-    (
+    async (
       type: RefundType,
       totalAmount: number,
       reason: string,
       perPaymentDetails: PerPaymentRefundDetail[],
       selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
-    ) => {
-      // TODO: Implement actual refund processing via store
-      console.log("Processing refund:", {
+    ): Promise<boolean> => {
+      console.log("[RefundProcess] handleProcessRefund called", {
         type,
         totalAmount,
         reason,
-        perPaymentDetails,
-        selectedItems,
+        perPaymentDetailsCount: perPaymentDetails.length,
+        selectedItemsCount: selectedItems?.length,
+        terminalId: selectedStation?.payment_terminal?.id,
       });
-      show({
-        title: "Refund Processed",
-        message: `$${totalAmount.toFixed(2)} refund processed successfully.`,
-        type: "success",
-      });
-      setRightPaneView("summary");
+
+      if (refundProcessingRef.current) {
+        show({
+          title: "Refund Failed",
+          message: 'Refund already in progress.',
+          type: "error",
+        });
+        return false;
+      }
+      
+      if (!order) {
+        show({ title: "Refund Failed", message: "Order not found.", type: "error" });
+        return false;
+      }
+      if (!supabase) {
+        show({ title: "Refund Failed", message: "Supabase unavailable.", type: "error" });
+        return false;
+      }
+      if (!loggedInEmployee?.profileId) {
+        show({
+          title: "Refund Failed",
+          message: "Staff profile missing. Please re-authenticate.",
+          type: "error",
+        });
+        return false;
+      }
+
+      const orderIdForRefund = order.db_order_id || order.id;
+      console.log('Order ID for Refund', orderIdForRefund);
+      const refundService = new RefundService(supabase);
+      const reasonType = toRefundReasonType(reason);
+
+      refundProcessingRef.current = true;
+      setRefundProcessing(true);
+      try {
+        if (type === "items") {
+          if (!selectedItems || selectedItems.length === 0) {
+            show({
+              title: "Refund Failed",
+              message: "Select items to refund.",
+              type: "error",
+            });
+            return false;
+          }
+          const refundRequest: RefundRequest = {
+            orderId: orderIdForRefund,
+            payment_terminal_id: selectedStation?.payment_terminal?.id || "",
+            payment_terminal: selectedStation?.payment_terminal || undefined,
+            refundType: {
+              type: "item_return",
+              items: selectedItems.map((item) => ({
+                orderItemId: item.itemId,
+                quantityToRefund: item.quantity,
+                reason: reasonType,
+                reasonDetail: reason,
+              })),
+            },
+            reason: reasonType,
+            reasonDetail: reason,
+            initiatedBy: loggedInEmployee.profileId,
+          };
+
+          const result = await refundService.processRefund(refundRequest);
+          if (!result.success) {
+            show({
+              title: "Refund Failed",
+              message: result.error || "Refund failed.",
+              type: "error",
+            });
+            return false;
+          }
+          
+          // CRITICAL: Sync order from backend to ensure local state is updated
+          // This is necessary because broadcast may be delayed or disconnected
+          const dbOrderId = order?.db_order_id;
+          if (dbOrderId) {
+            try {
+              await useOrderStore.getState().syncOrderFromBackendComplete(dbOrderId);
+              console.log('[Refund] Post-refund sync completed for order:', dbOrderId);
+            } catch (syncError) {
+              console.warn('[Refund] Post-refund sync failed:', syncError);
+              // Non-blocking - refund succeeded, sync can be retried via broadcast
+            }
+          }
+          
+          // Show success with optional warning for DB issues or offline status
+          if (result.error) {
+            // Refund succeeded but had DB update issues
+            show({
+              title: "Refund Processed (with warnings)",
+              message: `$${totalAmount.toFixed(2)} refunded. ${result.error}`,
+              type: "warning",
+            });
+          } else if (!ordersRealtime.isConnected) {
+            // Refund succeeded but realtime is offline - data was synced manually
+            show({
+              title: "Refund Processed",
+              message: `$${totalAmount.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
+              type: "warning",
+            });
+          } else {
+            show({
+              title: "Refund Processed",
+              message: `$${totalAmount.toFixed(2)} refund processed successfully.`,
+              type: "success",
+            });
+          }
+          setRightPaneView("summary");
+          return true;
+        }
+
+        if (perPaymentDetails.length === 0) {
+          show({
+            title: "Refund Failed",
+            message: "No refundable payments selected.",
+            type: "error",
+          });
+          return false;
+        }
+
+        const errors: string[] = [];
+        const warnings: string[] = [];
+        for (const detail of perPaymentDetails) {
+          if (!detail.dbPaymentId) {
+            errors.push("Missing payment reference for refund.");
+            continue;
+          }
+
+          const refundType =
+            type === "full"
+              ? { type: "full_payment" as const }
+              : { type: "partial_amount" as const, amount: detail.totalRefund };
+
+          const refundRequest: RefundRequest = {
+            orderId: orderIdForRefund,
+            paymentId: detail.dbPaymentId,
+            refundType,
+            reason: reasonType,
+            reasonDetail: reason,
+            initiatedBy: loggedInEmployee.profileId,
+            referenceId: detail.referenceId,
+            payment_terminal_id: selectedStation?.payment_terminal?.id || "",
+            payment_terminal: selectedStation?.payment_terminal || undefined,
+          };
+
+          const result = await refundService.processRefund(refundRequest);
+          if (!result.success) {
+            errors.push(result.error || "Refund failed.");
+          } else if (result.error) {
+            // Refund succeeded but had warnings (DB update issues)
+            warnings.push(result.error);
+          }
+        }
+
+        if (errors.length > 0) {
+          show({
+            title: "Refund Failed",
+            message: errors.join(" "),
+            type: "error",
+          });
+          return false;
+        }
+
+        // CRITICAL: Sync order from backend to ensure local state is updated
+        // This is necessary because broadcast may be delayed or disconnected
+        const dbOrderId = order?.db_order_id;
+        if (dbOrderId) {
+          try {
+            await useOrderStore.getState().syncOrderFromBackendComplete(dbOrderId);
+            console.log('[Refund] Post-refund sync completed for order:', dbOrderId);
+          } catch (syncError) {
+            console.warn('[Refund] Post-refund sync failed:', syncError);
+            // Non-blocking - refund succeeded, sync can be retried via broadcast
+          }
+        }
+
+        // Show success with optional warnings or offline status
+        if (warnings.length > 0) {
+          show({
+            title: "Refund Processed (with warnings)",
+            message: `$${totalAmount.toFixed(2)} refunded. ${warnings.join("; ")}`,
+            type: "warning",
+          });
+        } else if (!ordersRealtime.isConnected) {
+          // Refund succeeded but realtime is offline - data was synced manually
+          show({
+            title: "Refund Processed",
+            message: `$${totalAmount.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
+            type: "warning",
+          });
+        } else {
+          show({
+            title: "Refund Processed",
+            message: `$${totalAmount.toFixed(2)} refund processed successfully.`,
+            type: "success",
+          });
+        }
+        setRightPaneView("summary");
+        return true;
+      } catch (error) {
+        show({
+          title: "Refund Failed",
+          message: String(error),
+          type: "error",
+        });
+        return false;
+      } finally {
+        refundProcessingRef.current = false;
+        setRefundProcessing(false);
+      }
     },
-    [show]
+    [order, supabase, loggedInEmployee?.profileId, show, selectedStation, ordersRealtime.isConnected]
   );
 
   return (
@@ -2330,6 +2851,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   <Text className="text-xl font-bold text-white">Payment Details</Text>
                   <Text className="text-lg text-gray-500 ml-2">
                     Order {order.display_number || order.order_number?.slice(-6) || "—"}
+                  </Text>
+                  <Text className="text-sm text-gray-500 ml-2">
+                    {order.opened_at ? formatTimestamp(order.opened_at) : "—"}
                   </Text>
                 </View>
                 <View className="flex-row items-center gap-3">
@@ -2397,6 +2921,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     paymentSummary={paymentSummary}
                     onBack={() => setRightPaneView("summary")}
                     onProcessRefund={handleProcessRefund}
+                    refundProcessing={refundProcessing}
                   />
                 ) : (
                   <RightPaneTipAdjust

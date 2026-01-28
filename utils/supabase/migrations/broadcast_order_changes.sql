@@ -134,13 +134,23 @@ BEGIN
         'entry_mode', op.processor_response->'dejavoo_transaction'->>'entryMode',
         'reference_number', op.reference_number,
         'reference_id', op.reference_number,
-        'created_at', op.initiated_at
+        'created_at', op.initiated_at,
+        -- Return/refund tracking fields
+        'is_returned', COALESCE(op.is_returned, false),
+        'returned_at', op.returned_at,
+        'returned_by', op.returned_by,
+        'return_amount', COALESCE(op.return_amount, 0),
+        'return_rrn', op.return_rrn,
+        'return_auth_code', op.return_auth_code,
+        'return_reference_id', op.return_reference_id,
+        'return_number', op.return_number,
+        'return_reason', op.return_reason
       )
     ), '[]'::jsonb) INTO order_payments_data
     FROM order_payments op
     WHERE op.order_id = NEW.id
-      AND op.status = 'captured';
-    -- TODO: Need to account for if not captured its auth
+      AND op.status IN ('captured', 'refunded', 'partially_refunded', 'void');
+    -- Include refunded/voided payments for history display
 
     -- Fetch reversals for this order (via payment linkage)
     SELECT COALESCE(jsonb_agg(
@@ -149,6 +159,7 @@ BEGIN
         'original_payment_id', r.original_payment_id,
         'original_psp_reference', r.original_psp_reference,
         'reversal_reference_id', r.reversal_reference_id,
+        'reversal_psp_reference', r.reversal_psp_reference,
         'merchant_id', r.merchant_id,
         'location_id', r.location_id,
         'reversal_type', r.reversal_type,
@@ -156,9 +167,12 @@ BEGIN
         'reason_code', r.reason_code,
         'reason_description', r.reason_description,
         'status', r.status,
+        'result_code', r.result_code,
+        'response_message', r.response_message,
         'initiated_by', r.initiated_by,
         'approved_by', r.approved_by,
         'requested_at', r.requested_at,
+        'processed_at', r.processed_at,
         'completed_at', r.completed_at,
         'failed_at', r.failed_at,
         'terminal_response', r.terminal_response,

@@ -297,25 +297,61 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       <Text className="text-white text-xs font-bold">VOID</Text>
                     </View>
                   )}
-                  {/* Paid status badge */}
-                  {!isVoided &&
-                    item.paidQuantity > 0 &&
-                    item.paidQuantity >= item.quantity && (
-                      <View className="bg-green-600/20 px-2 py-0.5 rounded mr-2">
-                        <Text className="text-green-400 text-xs font-bold">
-                          PAID
-                        </Text>
-                      </View>
-                    )}
-                  {!isVoided &&
-                    item.paidQuantity > 0 &&
-                    item.paidQuantity < item.quantity && (
-                      <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
-                        <Text className="text-yellow-400 text-xs font-bold">
-                          {item.paidQuantity}/{item.quantity} PAID
-                        </Text>
-                      </View>
-                    )}
+                  {/* Paid/Refunded status badges - account for refunds */}
+                  {(() => {
+                    const effectivePaidQty = (item.paidQuantity ?? 0) - (item.refundedQuantity ?? 0);
+                    const hasRefund = (item.refundedQuantity ?? 0) > 0;
+                    const isFullyPaid = effectivePaidQty >= item.quantity;
+                    const isPartiallyPaid = effectivePaidQty > 0 && effectivePaidQty < item.quantity;
+
+                    if (isVoided) return null;
+
+                    // Fully refunded - no effective paid quantity
+                    if (hasRefund && effectivePaidQty <= 0) {
+                      return (
+                        <View className="bg-red-600/20 px-2 py-0.5 rounded mr-2">
+                          <Text className="text-red-400 text-xs font-bold">
+                            REFUNDED
+                          </Text>
+                        </View>
+                      );
+                    }
+
+                    // Partially refunded - some still paid
+                    if (hasRefund && effectivePaidQty > 0) {
+                      return (
+                        <View className="bg-orange-600/20 px-2 py-0.5 rounded mr-2">
+                          <Text className="text-orange-400 text-xs font-bold">
+                            {item.refundedQuantity} REFUNDED
+                          </Text>
+                        </View>
+                      );
+                    }
+
+                    // Fully paid, no refunds
+                    if (isFullyPaid) {
+                      return (
+                        <View className="bg-green-600/20 px-2 py-0.5 rounded mr-2">
+                          <Text className="text-green-400 text-xs font-bold">
+                            PAID
+                          </Text>
+                        </View>
+                      );
+                    }
+
+                    // Partially paid
+                    if (isPartiallyPaid) {
+                      return (
+                        <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
+                          <Text className="text-yellow-400 text-xs font-bold">
+                            {effectivePaidQty}/{item.quantity} PAID
+                          </Text>
+                        </View>
+                      );
+                    }
+
+                    return null;
+                  })()}
                   <Text
                     className={`font-semibold text-base ${
                       isVoided ? "text-gray-500 line-through" : "text-white"
@@ -414,6 +450,7 @@ const BillItem = React.memo(BillItemComponent, (prev, next) => {
     prev.item.is_voided !== next.item.is_voided ||
     prev.item.void_reason !== next.item.void_reason ||
     prev.item.paidQuantity !== next.item.paidQuantity ||
+    prev.item.refundedQuantity !== next.item.refundedQuantity ||
     prev.item.kitchen_status !== next.item.kitchen_status ||
     prev.item.isDraft !== next.item.isDraft ||
     prev.item.customizations?.notes !== next.item.customizations?.notes ||

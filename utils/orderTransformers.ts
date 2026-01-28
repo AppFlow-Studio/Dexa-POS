@@ -16,6 +16,8 @@ import type {
   OrderPaymentItemCoverage,
   OrderProfile,
   OrderProfilePayment,
+  OrderRefundItemRecord,
+  ReversalRecord,
 } from "@/lib/types";
 
 /**
@@ -275,6 +277,16 @@ function transformBroadcastPaymentToProfile(
     refundedAmount: payment.refunded_amount ?? undefined,
     refundedAt: payment.refunded_at ?? undefined,
     reference_id: payment.reference_id ?? undefined,
+    // Return/refund tracking fields
+    isReturned: payment.is_returned ?? undefined,
+    returnedAt: payment.returned_at ?? undefined,
+    returnedBy: payment.returned_by ?? undefined,
+    returnAmount: payment.return_amount ?? undefined,
+    returnRrn: payment.return_rrn ?? undefined,
+    returnAuthCode: payment.return_auth_code ?? undefined,
+    returnReferenceId: payment.return_reference_id ?? undefined,
+    returnNumber: payment.return_number ?? undefined,
+    returnReason: payment.return_reason ?? undefined,
     transactionDetails: payment.payment_method === "card" ? {
       terminalType: payment.terminal_type ?? undefined,
       authorizationCode: payment.authorization_code ?? payment.auth_code ?? undefined,
@@ -416,8 +428,9 @@ export function transformBroadcastToOrder(
       backendOrder.order_payments,
       backendOrder.order_items,
     ),
-    reversals: backendOrder.reversals ?? undefined,
-    order_refund_items: backendOrder.order_refund_items ?? undefined,
+    // Cast reversals and refund items to proper types (broadcast returns Record<string, unknown>[])
+    reversals: (backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined,
+    order_refund_items: (backendOrder.order_refund_items as unknown as OrderRefundItemRecord[]) ?? undefined,
 
     // Timestamps
     opened_at: backendOrder.created_at,
@@ -604,6 +617,17 @@ export interface FetchedOrderPayment {
   refunded_amount: number | null;
   refunded_at: string | null;
 
+  // Return/refund tracking fields
+  is_returned: boolean | null;
+  returned_at: string | null;
+  returned_by: string | null;
+  return_amount: number | null;
+  return_rrn: string | null;
+  return_auth_code: string | null;
+  return_reference_id: string | null;
+  return_number: string | null;
+  return_reason: string | null;
+
   // Staff tracking
   processed_by_staff_id: string | null;
 
@@ -747,6 +771,16 @@ function normalizeFetchedPayment(
     dejavoo_invoice_number: payment.dejavoo_invoice_number ?? null,
     entry_mode: (payment.processor_response as any)?.dejavoo_transaction?.entryMode ?? null,
     result_code: payment.result_code ?? null,
+    // Return/refund tracking fields
+    is_returned: payment.is_returned ?? false,
+    returned_at: payment.returned_at,
+    returned_by: payment.returned_by,
+    return_amount: payment.return_amount ?? 0,
+    return_rrn: payment.return_rrn,
+    return_auth_code: payment.return_auth_code,
+    return_reference_id: payment.return_reference_id,
+    return_number: payment.return_number,
+    return_reason: payment.return_reason,
   };
 }
 

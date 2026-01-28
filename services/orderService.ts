@@ -304,13 +304,20 @@ export class OrderService {
     status: "pending" | "completed" | "failed",
     terminalResponse?: Record<string, unknown> | null,
     emvData?: Record<string, unknown> | null,
+    resultCode?: string | null,
+    responseMessage?: string | null,
+    reversalPspReference?: string | null,
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await client.rpc("update_reversal_status", {
       p_reversal_id: reversalId,
       p_status: status,
       p_terminal_response: terminalResponse ?? null,
       p_emv_data: emvData ?? null,
+      p_result_code: resultCode ?? null,
+      p_response_message: responseMessage ?? null,
+      p_reversal_psp_reference: reversalPspReference ?? null,
     });
+    console.log('updateReversalStatus', data, error);
     return { data, error };
   }
 
@@ -322,12 +329,27 @@ export class OrderService {
     paymentId: string,
     refundAmount: number,
     reversalType: "void" | "refund" | "partial_refund" | "item_return",
+    returnDetails?: {
+      rrn?: string;
+      authCode?: string;
+      referenceId?: string;
+      transactionNumber?: string;
+      reason?: string;
+      initiatedBy?: string;
+    },
   ): Promise<{ data: any | null; error: any }> {
     const { data, error } = await client.rpc("apply_refund_to_payment", {
       p_payment_id: paymentId,
       p_refund_amount: refundAmount,
       p_reversal_type: reversalType,
+      p_return_rrn: returnDetails?.rrn ?? null,
+      p_return_auth_code: returnDetails?.authCode ?? null,
+      p_return_reference_id: returnDetails?.referenceId ?? null,
+      p_return_number: returnDetails?.transactionNumber ?? null,
+      p_return_reason: returnDetails?.reason ?? null,
+      p_initiated_by: returnDetails?.initiatedBy ?? null,
     });
+    console.log('applyRefundToPayment', data, error);
     return { data, error };
   }
 
@@ -357,6 +379,7 @@ export class OrderService {
       "update_order_payment_status_after_refund",
       { p_order_id: orderId },
     );
+    console.log('updateOrderPaymentStatusAfterRefund', data, error);
     return { data, error };
   }
 

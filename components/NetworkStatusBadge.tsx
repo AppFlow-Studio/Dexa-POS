@@ -46,7 +46,7 @@ export function NetworkStatusBadge(): React.ReactElement {
   // console.log(isOnline)
   // Get active order info from store
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const syncOrderFromDatabase = useOrderStore((s) => s.syncOrderFromDatabase);
+  const syncOrderFromBackendComplete = useOrderStore((s) => s.syncOrderFromBackendComplete);
 
   // Payment offline status
   const {
@@ -99,9 +99,9 @@ export function NetworkStatusBadge(): React.ReactElement {
 
     setIsSyncingOrder(true);
     try {
-      const result = await syncOrderFromDatabase(activeOrderId);
+      const result = await syncOrderFromBackendComplete(activeOrderId);
 
-      if (result.success) {
+      // if (result.success) {
         toastService.show({
           title: "Order Synced",
           message: "Order data refreshed from server",
@@ -109,13 +109,13 @@ export function NetworkStatusBadge(): React.ReactElement {
         });
         // Collapse after successful sync
         setIsExpanded(false);
-      } else {
-        toastService.show({
-          title: "Sync Failed",
-          message: result.error || "Unable to sync order",
-          type: "error",
-        });
-      }
+      // } else {
+      //   toastService.show({
+      //     title: "Sync Failed",
+      //     message: result.error || "Unable to sync order",
+      //     type: "error",
+      //   });
+      // }
     } catch (error: any) {
       toastService.show({
         title: "Sync Error",

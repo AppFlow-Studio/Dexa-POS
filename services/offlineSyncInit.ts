@@ -526,6 +526,61 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       }
 
       // ================================================================
+      // CHECK STATUS HANDLERS - Close/Reopen check
+      // ================================================================
+      case "close_check": {
+        const { p_order_id, p_staff_id } = op.params;
+
+        const resolvedOrderId = op.localOrderId
+          ? resolveOrderId(op.localOrderId)
+          : p_order_id;
+
+        if (!resolvedOrderId) {
+          console.log(
+            "[OfflineSync] close_check: Order not synced yet, will retry",
+          );
+          return false;
+        }
+
+        const result = await OrderService.closeCheck(
+          _supabaseClient,
+          resolvedOrderId,
+          p_staff_id,
+        );
+        return result.success;
+      }
+
+      case "reopen_check": {
+        const { p_order_id, p_staff_id, p_reason } = op.params;
+
+        const resolvedOrderId = op.localOrderId
+          ? resolveOrderId(op.localOrderId)
+          : p_order_id;
+
+        if (!resolvedOrderId) {
+          console.log(
+            "[OfflineSync] reopen_check: Order not synced yet, will retry",
+          );
+          return false;
+        }
+
+        if (!p_staff_id) {
+          console.log(
+            "[OfflineSync] reopen_check: No staff ID provided, cannot reopen",
+          );
+          return false;
+        }
+
+        const result = await OrderService.reopenCheck(
+          _supabaseClient,
+          resolvedOrderId,
+          p_staff_id,
+          p_reason,
+        );
+        return result.success;
+      }
+
+      // ================================================================
       // UNIFIED PAYMENT HANDLER - Uses process_payment_v2
       // Handles: Full card, Full cash, Split, Per-item payments
       // ================================================================

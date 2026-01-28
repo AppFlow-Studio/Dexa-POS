@@ -48,6 +48,9 @@ export type OperationType =
   | "seat_guests"
   | "update_session_status"
   | "link_order_to_session"  // Bidirectional order-session linking
+  // Check status operations
+  | "close_check"           // Close check (lock from edits)
+  | "reopen_check"          // Reopen closed check
   // Coursing operations
   | "fire_course";
 
@@ -76,6 +79,10 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   fire_course: 4,
   update_order_status: 4,
   send_to_kitchen: 4,       // Kitchen send after items synced
+  
+  // Check status operations (after items/payments)
+  close_check: 4,           // Close check
+  reopen_check: 4,          // Reopen check
 
   // Payments last (after everything else synced)
   process_payment: 5,       // Unified payment via process_payment_v2

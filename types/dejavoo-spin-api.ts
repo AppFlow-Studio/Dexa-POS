@@ -73,6 +73,7 @@ export type SigCaptureOption = 'Yes' | 'No';
 export interface DejavooCredentials {
   authKey: string;       // Authorization password (10 chars)
   registerId: string;   // Alternative to TPN (2-50 chars)
+  tpn?: string;         // Terminal Profile Number (required for Void and CheckStatus)
   environment: DejavooEnvironment;
   baseUrl: string;
   timeout?: number;      // SPIn proxy timeout (1-720 seconds)

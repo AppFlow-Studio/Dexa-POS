@@ -4589,6 +4589,8 @@ export type Database = {
           prep_station: string | null
           price_paid: number | null
           quantity: number
+          refunded_amount: number | null
+          refunded_quantity: number | null
           rush: boolean | null
           selected_size_id: string | null
           selected_size_name: string | null
@@ -4653,6 +4655,8 @@ export type Database = {
           prep_station?: string | null
           price_paid?: number | null
           quantity?: number
+          refunded_amount?: number | null
+          refunded_quantity?: number | null
           rush?: boolean | null
           selected_size_id?: string | null
           selected_size_name?: string | null
@@ -4717,6 +4721,8 @@ export type Database = {
           prep_station?: string | null
           price_paid?: number | null
           quantity?: number
+          refunded_amount?: number | null
+          refunded_quantity?: number | null
           rush?: boolean | null
           selected_size_id?: string | null
           selected_size_name?: string | null
@@ -5165,6 +5171,79 @@ export type Database = {
             columns: ["voided_by"]
             isOneToOne: false
             referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_refund_items: {
+        Row: {
+          created_at: string
+          id: string
+          inventory_updated: boolean | null
+          order_item_id: string
+          order_payment_item_id: string | null
+          quantity_refunded: number
+          refund_reason: Database["public"]["Enums"]["refund_reason_type"]
+          refund_reason_detail: string | null
+          return_to_inventory: boolean | null
+          reversal_id: string
+          subtotal_refunded: number
+          tax_refunded: number
+          total_refunded: number
+          unit_price_refunded: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inventory_updated?: boolean | null
+          order_item_id: string
+          order_payment_item_id?: string | null
+          quantity_refunded?: number
+          refund_reason: Database["public"]["Enums"]["refund_reason_type"]
+          refund_reason_detail?: string | null
+          return_to_inventory?: boolean | null
+          reversal_id: string
+          subtotal_refunded: number
+          tax_refunded?: number
+          total_refunded: number
+          unit_price_refunded: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inventory_updated?: boolean | null
+          order_item_id?: string
+          order_payment_item_id?: string | null
+          quantity_refunded?: number
+          refund_reason?: Database["public"]["Enums"]["refund_reason_type"]
+          refund_reason_detail?: string | null
+          return_to_inventory?: boolean | null
+          reversal_id?: string
+          subtotal_refunded?: number
+          tax_refunded?: number
+          total_refunded?: number
+          unit_price_refunded?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_refund_items_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_refund_items_order_payment_item_id_fkey"
+            columns: ["order_payment_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_payment_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_refund_items_reversal_id_fkey"
+            columns: ["reversal_id"]
+            isOneToOne: false
+            referencedRelation: "reversals"
             referencedColumns: ["id"]
           },
         ]
@@ -6641,6 +6720,8 @@ export type Database = {
         Row: {
           amount: number
           approved_by: string | null
+          completed_at: string | null
+          emv_data: Json | null
           id: string
           initiated_by: string | null
           location_id: string
@@ -6662,6 +6743,8 @@ export type Database = {
         Insert: {
           amount: number
           approved_by?: string | null
+          completed_at?: string | null
+          emv_data?: Json | null
           id?: string
           initiated_by?: string | null
           location_id: string
@@ -6683,6 +6766,8 @@ export type Database = {
         Update: {
           amount?: number
           approved_by?: string | null
+          completed_at?: string | null
+          emv_data?: Json | null
           id?: string
           initiated_by?: string | null
           location_id?: string
@@ -9369,6 +9454,14 @@ export type Database = {
         Args: { p_order_id: string; p_order_item_id: string }
         Returns: undefined
       }
+      apply_refund_to_payment: {
+        Args: {
+          p_payment_id: string
+          p_refund_amount: number
+          p_reversal_type: Database["public"]["Enums"]["reversal_type"]
+        }
+        Returns: undefined
+      }
       approve_shift_swap: {
         Args: { p_manager_id: string; p_request_id: string }
         Returns: boolean
@@ -9540,6 +9633,48 @@ export type Database = {
           p_special_requests?: string
         }
         Returns: Json
+      }
+      create_reversal: {
+        Args: {
+          p_amount: number
+          p_approved_by: string
+          p_initiated_by: string
+          p_original_payment_id: string
+          p_original_psp_reference: string
+          p_reason_code: Database["public"]["Enums"]["refund_reason_type"]
+          p_reason_description: string
+          p_reversal_reference_id: string
+          p_reversal_type: Database["public"]["Enums"]["reversal_type"]
+        }
+        Returns: {
+          amount: number
+          approved_by: string | null
+          completed_at: string | null
+          emv_data: Json | null
+          id: string
+          initiated_by: string | null
+          location_id: string
+          merchant_id: string
+          original_payment_id: string
+          original_psp_reference: string | null
+          processed_at: string | null
+          raw_response: Json | null
+          reason_code: string | null
+          reason_description: string | null
+          requested_at: string
+          response_message: string | null
+          result_code: string | null
+          reversal_psp_reference: string | null
+          reversal_reference_id: string
+          reversal_type: string
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reversals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       current_user_id: { Args: never; Returns: string }
       debug_pin_test: {
@@ -10200,6 +10335,10 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: Json
       }
+      record_refund_items: {
+        Args: { p_items: Json; p_reversal_id: string }
+        Returns: undefined
+      }
       record_session_event: {
         Args: {
           p_event_data?: Json
@@ -10385,6 +10524,10 @@ export type Database = {
         }
         Returns: Json
       }
+      update_order_payment_status_after_refund: {
+        Args: { p_order_id: string }
+        Returns: undefined
+      }
       update_order_status: {
         Args: {
           p_new_status: Database["public"]["Enums"]["order_status"]
@@ -10401,6 +10544,15 @@ export type Database = {
           p_status: Database["public"]["Enums"]["reservation_status"]
         }
         Returns: Json
+      }
+      update_reversal_status: {
+        Args: {
+          p_emv_data?: Json
+          p_reversal_id: string
+          p_status: Database["public"]["Enums"]["reversal_status_type"]
+          p_terminal_response?: Json
+        }
+        Returns: undefined
       }
       update_session_staff: {
         Args: {
@@ -10577,6 +10729,17 @@ export type Database = {
         | "paid"
         | "partial"
       pricing_mode: "card" | "cash" | "mixed"
+      refund_reason_type:
+        | "customer_request"
+        | "item_quality"
+        | "wrong_item"
+        | "never_received"
+        | "duplicate_charge"
+        | "price_adjustment"
+        | "order_cancelled"
+        | "kitchen_error"
+        | "manager_comp"
+        | "other"
       reservation_status:
         | "pending"
         | "confirmed"
@@ -10586,6 +10749,8 @@ export type Database = {
         | "completed"
         | "no_show"
         | "cancelled"
+      reversal_status_type: "pending" | "completed" | "failed"
+      reversal_type: "void" | "refund" | "partial_refund" | "item_return"
       session_event_type:
         | "seated"
         | "order_placed"
@@ -10809,6 +10974,18 @@ export const Constants = {
         "partial",
       ],
       pricing_mode: ["card", "cash", "mixed"],
+      refund_reason_type: [
+        "customer_request",
+        "item_quality",
+        "wrong_item",
+        "never_received",
+        "duplicate_charge",
+        "price_adjustment",
+        "order_cancelled",
+        "kitchen_error",
+        "manager_comp",
+        "other",
+      ],
       reservation_status: [
         "pending",
         "confirmed",
@@ -10819,6 +10996,8 @@ export const Constants = {
         "no_show",
         "cancelled",
       ],
+      reversal_status_type: ["pending", "completed", "failed"],
+      reversal_type: ["void", "refund", "partial_refund", "item_return"],
       session_event_type: [
         "seated",
         "order_placed",
