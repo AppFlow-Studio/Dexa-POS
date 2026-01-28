@@ -4,33 +4,33 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
-  ArrowLeft,
-  Check,
-  ChefHat,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  Flame,
-  Inbox,
-  RefreshCw,
-  ShoppingBag,
-  Truck,
-  UtensilsCrossed,
+    ArrowLeft,
+    Check,
+    ChefHat,
+    ChevronDown,
+    ChevronUp,
+    Clock,
+    Flame,
+    Inbox,
+    RefreshCw,
+    ShoppingBag,
+    Truck,
+    UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  Animated,
-  FlatList,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    Animated,
+    FlatList,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // New Data Structure for Cards
@@ -79,387 +79,524 @@ interface KDSOrderCardProps {
   onMarkServed: () => void;
 }
 
-const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
-  data,
-  onStartCooking,
-  onMarkReady,
-  onMarkServed,
+// Simple Skeleton Bar Component - uses inline styles for reliability
+const SkeletonBar = ({
+  width,
+  height,
+  style,
+}: {
+  width: number | string;
+  height: number;
+  style?: any;
 }) => {
-  const { order, courseNumber, items, status, startTime, tableName } = data;
-
-  const [timeElapsed, setTimeElapsed] = useState(getTimeElapsed(startTime));
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-
-  // Double-tap detection
-  const lastTapRef = useRef<number>(0);
-  const DOUBLE_TAP_DELAY = 350;
-  const firstTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Animations
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const opacityAnim = useRef(new Animated.Value(1)).current;
-
-  const triggerFirstTapFeedback = () => {
-    Animated.sequence([
-      Animated.timing(opacityAnim, {
-        toValue: 0.7,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0.85,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
-    firstTapTimeoutRef.current = setTimeout(() => {
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }).start();
-    }, 400);
-  };
-
-  const triggerDoubleTapAnimation = () => {
-    if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
-    opacityAnim.setValue(1);
-
-    Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 0.96,
-        duration: 60,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1.02,
-        duration: 60,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const handleDoubleTap = () => {
-    const now = Date.now();
-    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
-      triggerDoubleTapAnimation();
-      if (status === "pending") onStartCooking();
-      else if (status === "cooking") onMarkReady();
-      else if (status === "ready") onMarkServed();
-      lastTapRef.current = 0;
-    } else {
-      triggerFirstTapFeedback();
-      lastTapRef.current = now;
-    }
-  };
+  const opacity = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
-    return () => {
-      if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
-    };
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.7,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
   }, []);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeElapsed(getTimeElapsed(startTime));
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [startTime]);
-
-  const getOrderTypeConfig = () => {
-    const type = order.order_type?.toLowerCase() || "dine_in";
-    if (type === "dine_in" || type === "dine in") {
-      return {
-        icon: <UtensilsCrossed size={11} color="#d97706" />,
-        label: "DINE IN",
-      };
-    }
-    if (type === "delivery") {
-      return { icon: <Truck size={11} color="#22c55e" />, label: "DELIVERY" };
-    }
-    return {
-      icon: <ShoppingBag size={11} color="#3b82f6" />,
-      label: "TAKEOUT",
-    };
-  };
-
-  const orderTypeConfig = getOrderTypeConfig();
-  const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
-
-  const getStatusColor = () => {
-    switch (status) {
-      case "pending":
-        return "#d97706";
-      case "cooking":
-        return "#ea580c";
-      case "ready":
-        return "#16a34a";
-      default:
-        return "#6b7280";
-    }
-  };
-
-  const getButtonConfig = () => {
-    switch (status) {
-      case "pending":
-        return { label: "START", color: "#d97706", onPress: onStartCooking };
-      case "cooking":
-        return { label: "READY", color: "#ea580c", onPress: onMarkReady };
-      case "ready":
-        return { label: "SERVE", color: "#16a34a", onPress: onMarkServed };
-      default:
-        return { label: "", color: "#6b7280", onPress: () => {} };
-    }
-  };
-
-  const buttonConfig = getButtonConfig();
-
-  const toggleItemExpanded = (itemId: string) => {
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      return next;
-    });
-  };
-
-  const renderItemDetails = (item: CartItem) => {
-    const details: React.ReactNode[] = [];
-
-    // Size
-    if (item.customizations?.size) {
-      details.push(
-        <Text key="size" className="text-blue-400 text-xs ml-6 mt-1">
-          Size: {item.customizations.size.name}
-        </Text>,
-      );
-    }
-
-    // Modifiers
-    if (
-      item.customizations?.modifiers &&
-      item.customizations.modifiers.length > 0
-    ) {
-      item.customizations.modifiers.forEach((mod, modIndex) => {
-        const optionNames = mod.options.map((opt) => opt.name).join(", ");
-        details.push(
-          <View key={`mod-${modIndex}`} className="ml-6 mt-1">
-            <Text className="text-purple-400 text-xs">
-              • {mod.categoryName}: {optionNames}
-            </Text>
-          </View>,
-        );
-      });
-    }
-
-    // Add-ons
-    if (item.customizations?.addOns && item.customizations.addOns.length > 0) {
-      item.customizations.addOns.forEach((addon, addonIndex) => {
-        details.push(
-          <Text
-            key={`addon-${addonIndex}`}
-            className="text-green-400 text-xs ml-6 mt-1"
-          >
-            + {addon.name} (+${addon.price.toFixed(2)})
-          </Text>,
-        );
-      });
-    }
-
-    // Notes
-    if (item.customizations?.notes) {
-      details.push(
-        <Text
-          key="notes"
-          className="text-yellow-500 text-xs italic ml-6 mt-1"
-          numberOfLines={2}
-        >
-          "{item.customizations.notes}"
-        </Text>,
-      );
-    }
-
-    return details.length > 0 ? (
-      details
-    ) : (
-      <Text className="text-gray-500 text-xs ml-6 mt-1 italic">
-        No special instructions
-      </Text>
-    );
-  };
-
   return (
-    <TouchableOpacity activeOpacity={1} onPress={handleDoubleTap}>
-      <Animated.View
+    <Animated.View
+      style={[
+        {
+          width: typeof width === "number" ? width : undefined,
+          height,
+          backgroundColor: "#4B5563",
+          borderRadius: 4,
+          opacity,
+        },
+        style,
+      ]}
+    />
+  );
+};
+
+const KDSSkeletonCard = () => {
+  return (
+    <View
+      style={{
+        marginHorizontal: 6,
+        marginVertical: 4,
+        borderRadius: 10,
+        overflow: "hidden",
+        backgroundColor: "#2a2a2e",
+        borderWidth: 2,
+        borderColor: "#444",
+        height: 180,
+      }}
+    >
+      {/* Header Skeleton */}
+      <View
         style={{
-          marginHorizontal: 6,
-          marginVertical: 4,
-          borderRadius: 10,
-          overflow: "hidden",
-          backgroundColor: "#2a2a2e",
-          borderWidth: 2,
-          borderColor: getStatusColor(),
-          shadowColor: getStatusColor(),
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 6,
-          elevation: 4,
-          transform: [{ scale: scaleAnim }],
-          opacity: opacityAnim,
+          backgroundColor: "#333338",
+          paddingHorizontal: 10,
+          paddingVertical: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: "#444",
+          flexDirection: "row",
+          justifyContent: "space-between",
         }}
       >
-        {/* Header */}
-        <View
+        <View>
+          <SkeletonBar width={80} height={18} style={{ marginBottom: 6 }} />
+          <SkeletonBar width={60} height={12} />
+        </View>
+        <View className="items-end">
+          <SkeletonBar width={40} height={14} style={{ marginBottom: 6 }} />
+          <SkeletonBar width={50} height={14} />
+        </View>
+      </View>
+
+      {/* Items Skeleton */}
+      <View style={{ padding: 12, flex: 1 }}>
+        <View className="flex-row items-center mb-3">
+          <SkeletonBar
+            width={24}
+            height={24}
+            style={{ marginRight: 8, borderRadius: 4 }}
+          />
+          <SkeletonBar width={120} height={16} />
+        </View>
+        <View className="flex-row items-center mb-3">
+          <SkeletonBar
+            width={24}
+            height={24}
+            style={{ marginRight: 8, borderRadius: 4 }}
+          />
+          <SkeletonBar width={100} height={16} />
+        </View>
+        <View className="flex-row items-center">
+          <SkeletonBar
+            width={24}
+            height={24}
+            style={{ marginRight: 8, borderRadius: 4 }}
+          />
+          <SkeletonBar width={140} height={16} />
+        </View>
+      </View>
+
+      {/* Button Skeleton */}
+      <View
+        style={{
+          height: 40,
+          backgroundColor: "#3f3f46",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <SkeletonBar width={60} height={14} />
+      </View>
+    </View>
+  );
+};
+
+// Memoized KDS Card for performance
+const KDSOrderCard = React.memo<KDSOrderCardProps>(
+  ({ data, onStartCooking, onMarkReady, onMarkServed }) => {
+    const { order, courseNumber, items, status, startTime, tableName } = data;
+
+    const [timeElapsed, setTimeElapsed] = useState(getTimeElapsed(startTime));
+    const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+    // ... (keep existing logic)
+    // Re-write the internal logic to ensure it works with ReplaceFileContent or Paste full function content
+    // Since I can't partially match easily, I'll provide the FULL implementation of KDSOrderCard again but wrapped in React.memo
+
+    // Double-tap detection
+    const lastTapRef = useRef<number>(0);
+    const DOUBLE_TAP_DELAY = 350;
+    const firstTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null,
+    );
+
+    // Animations
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const opacityAnim = useRef(new Animated.Value(1)).current;
+
+    const triggerFirstTapFeedback = () => {
+      Animated.sequence([
+        Animated.timing(opacityAnim, {
+          toValue: 0.7,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 0.85,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
+      firstTapTimeoutRef.current = setTimeout(() => {
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
+      }, 400);
+    };
+
+    const triggerDoubleTapAnimation = () => {
+      if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
+      opacityAnim.setValue(1);
+
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 0.96,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1.02,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 80,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    };
+
+    const handleDoubleTap = () => {
+      const now = Date.now();
+      if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+        triggerDoubleTapAnimation();
+        if (status === "pending") onStartCooking();
+        else if (status === "cooking") onMarkReady();
+        else if (status === "ready") onMarkServed();
+        lastTapRef.current = 0;
+      } else {
+        triggerFirstTapFeedback();
+        lastTapRef.current = now;
+      }
+    };
+
+    useEffect(() => {
+      return () => {
+        if (firstTapTimeoutRef.current)
+          clearTimeout(firstTapTimeoutRef.current);
+      };
+    }, []);
+
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setTimeElapsed(getTimeElapsed(startTime));
+      }, 30000);
+      return () => clearInterval(interval);
+    }, [startTime]);
+
+    const getOrderTypeConfig = () => {
+      const type = order.order_type?.toLowerCase() || "dine_in";
+      if (type === "dine_in" || type === "dine in") {
+        return {
+          icon: <UtensilsCrossed size={11} color="#d97706" />,
+          label: "DINE IN",
+        };
+      }
+      if (type === "delivery") {
+        return { icon: <Truck size={11} color="#22c55e" />, label: "DELIVERY" };
+      }
+      return {
+        icon: <ShoppingBag size={11} color="#3b82f6" />,
+        label: "TAKEOUT",
+      };
+    };
+
+    const orderTypeConfig = getOrderTypeConfig();
+    // const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
+
+    const getStatusColor = () => {
+      switch (status) {
+        case "pending":
+          return "#d97706";
+        case "cooking":
+          return "#ea580c";
+        case "ready":
+          return "#16a34a";
+        default:
+          return "#6b7280";
+      }
+    };
+
+    const getButtonConfig = () => {
+      switch (status) {
+        case "pending":
+          return { label: "START", color: "#d97706", onPress: onStartCooking };
+        case "cooking":
+          return { label: "READY", color: "#ea580c", onPress: onMarkReady };
+        case "ready":
+          return { label: "SERVE", color: "#16a34a", onPress: onMarkServed };
+        default:
+          return { label: "", color: "#6b7280", onPress: () => {} };
+      }
+    };
+
+    const buttonConfig = getButtonConfig();
+
+    const toggleItemExpanded = (itemId: string) => {
+      setExpandedItems((prev) => {
+        const next = new Set(prev);
+        if (next.has(itemId)) {
+          next.delete(itemId);
+        } else {
+          next.add(itemId);
+        }
+        return next;
+      });
+    };
+
+    const renderItemDetails = (item: CartItem) => {
+      const details: React.ReactNode[] = [];
+
+      // Size
+      if (item.customizations?.size) {
+        details.push(
+          <Text key="size" className="text-blue-400 text-xs ml-6 mt-1">
+            Size: {item.customizations.size.name}
+          </Text>,
+        );
+      }
+
+      // Modifiers
+      if (
+        item.customizations?.modifiers &&
+        item.customizations.modifiers.length > 0
+      ) {
+        item.customizations.modifiers.forEach((mod, modIndex) => {
+          const optionNames = mod.options.map((opt) => opt.name).join(", ");
+          details.push(
+            <View key={`mod-${modIndex}`} className="ml-6 mt-1">
+              <Text className="text-purple-400 text-xs">
+                • {mod.categoryName}: {optionNames}
+              </Text>
+            </View>,
+          );
+        });
+      }
+
+      // Add-ons
+      if (
+        item.customizations?.addOns &&
+        item.customizations.addOns.length > 0
+      ) {
+        item.customizations.addOns.forEach((addon, addonIndex) => {
+          details.push(
+            <Text
+              key={`addon-${addonIndex}`}
+              className="text-green-400 text-xs ml-6 mt-1"
+            >
+              + {addon.name} (+${addon.price.toFixed(2)})
+            </Text>,
+          );
+        });
+      }
+
+      // Notes
+      if (item.customizations?.notes) {
+        details.push(
+          <Text
+            key="notes"
+            className="text-yellow-500 text-xs italic ml-6 mt-1"
+            numberOfLines={2}
+          >
+            "{item.customizations.notes}"
+          </Text>,
+        );
+      }
+
+      return details.length > 0 ? (
+        details
+      ) : (
+        <Text className="text-gray-500 text-xs ml-6 mt-1 italic">
+          No special instructions
+        </Text>
+      );
+    };
+
+    return (
+      <TouchableOpacity activeOpacity={1} onPress={handleDoubleTap}>
+        <Animated.View
           style={{
-            backgroundColor: "#333338",
-            paddingHorizontal: 10,
-            paddingVertical: 8,
-            borderBottomWidth: 1,
-            borderBottomColor: "#444",
+            marginHorizontal: 6,
+            marginVertical: 4,
+            borderRadius: 10,
+            overflow: "hidden",
+            backgroundColor: "#2a2a2e",
+            borderWidth: 2,
+            borderColor: getStatusColor(),
+            shadowColor: getStatusColor(),
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.3,
+            shadowRadius: 6,
+            elevation: 4,
+            transform: [{ scale: scaleAnim }],
+            opacity: opacityAnim,
           }}
         >
-          <View className="flex-row justify-between items-center">
-            <View className="flex-1">
-              <Text className="text-lg font-bold text-white" numberOfLines={1}>
-                {order.display_number ||
-                  order.order_number?.slice(-4) ||
-                  "----"}
-                <Text className="text-amber-400"> C{courseNumber}</Text>
-              </Text>
-              {tableName && (
-                <Text className="text-sm text-gray-400">{tableName}</Text>
-              )}
-              <Text className="text-white text-sm">
-                {order.opened_at
-                  ? new Date(order.opened_at).toLocaleDateString("en-US")
-                  : ""}
-              </Text>
-            </View>
-            <View className="items-end">
-              <View className="flex-row items-center">
-                <Clock size={10} color={getUrgencyColor(startTime)} />
+          {/* Header */}
+          <View
+            style={{
+              backgroundColor: "#333338",
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              borderBottomWidth: 1,
+              borderBottomColor: "#444",
+            }}
+          >
+            <View className="flex-row justify-between items-center">
+              <View className="flex-1">
                 <Text
-                  style={{
-                    color: getUrgencyColor(startTime),
-                    fontSize: 11,
-                    fontWeight: "600",
-                    marginLeft: 3,
-                  }}
+                  className="text-lg font-bold text-white"
+                  numberOfLines={1}
                 >
-                  {timeElapsed}
+                  {order.display_number ||
+                    order.order_number?.slice(-4) ||
+                    "----"}
+                  <Text className="text-amber-400"> C{courseNumber}</Text>
+                </Text>
+                {tableName && (
+                  <Text className="text-sm text-gray-400">{tableName}</Text>
+                )}
+                <Text className="text-white text-sm">
+                  {order.opened_at
+                    ? new Date(order.opened_at).toLocaleDateString("en-US")
+                    : ""}
                 </Text>
               </View>
-              <View className="flex-row items-center mt-1">
-                {orderTypeConfig.icon}
-                <Text className="text-gray-400 text-xs ml-1">
-                  {orderTypeConfig.label}
-                </Text>
+              <View className="items-end">
+                <View className="flex-row items-center">
+                  <Clock size={10} color={getUrgencyColor(startTime)} />
+                  <Text
+                    style={{
+                      color: getUrgencyColor(startTime),
+                      fontSize: 11,
+                      fontWeight: "600",
+                      marginLeft: 3,
+                    }}
+                  >
+                    {timeElapsed}
+                  </Text>
+                </View>
+                <View className="flex-row items-center mt-1">
+                  {orderTypeConfig.icon}
+                  <Text className="text-gray-400 text-xs ml-1">
+                    {orderTypeConfig.label}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Items */}
-        <View style={{ padding: 8, backgroundColor: "#252528" }}>
-          {items.slice(0, 4).map((item, index) => {
-            const itemKey = `${item.id}_${index}`;
-            const isExpanded = expandedItems.has(itemKey);
-            const hasDetails =
-              item.customizations?.size ||
-              (item.customizations?.modifiers &&
-                item.customizations.modifiers.length > 0) ||
-              (item.customizations?.addOns &&
-                item.customizations.addOns.length > 0) ||
-              item.customizations?.notes;
+          {/* Items */}
+          <View style={{ padding: 8, backgroundColor: "#252528" }}>
+            {items.slice(0, 4).map((item, index) => {
+              const itemKey = `${item.id}_${index}`;
+              const isExpanded = expandedItems.has(itemKey);
+              const hasDetails =
+                item.customizations?.size ||
+                (item.customizations?.modifiers &&
+                  item.customizations.modifiers.length > 0) ||
+                (item.customizations?.addOns &&
+                  item.customizations.addOns.length > 0) ||
+                item.customizations?.notes;
 
-            return (
-              <View
-                key={itemKey}
-                className={
-                  index !== Math.min(items.length - 1, 3) ? "mb-2" : ""
-                }
-              >
-                <TouchableOpacity
-                  onPress={() => hasDetails && toggleItemExpanded(itemKey)}
-                  activeOpacity={hasDetails ? 0.7 : 1}
-                  className="flex-row items-start"
+              return (
+                <View
+                  key={itemKey}
+                  className={
+                    index !== Math.min(items.length - 1, 3) ? "mb-2" : ""
+                  }
                 >
-                  <View
-                    style={{
-                      backgroundColor: "#3a3a40",
-                      width: 24,
-                      height: 24,
-                      borderRadius: 5,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 6,
-                    }}
+                  <TouchableOpacity
+                    onPress={() => hasDetails && toggleItemExpanded(itemKey)}
+                    activeOpacity={hasDetails ? 0.7 : 1}
+                    className="flex-row items-start"
                   >
-                    <Text className="text-white text-sm font-bold">
-                      {item.quantity}
-                    </Text>
-                  </View>
-                  <View className="flex-1">
-                    <Text
-                      className="text-white text-sm font-medium"
-                      numberOfLines={1}
+                    <View
+                      style={{
+                        backgroundColor: "#3a3a40",
+                        width: 24,
+                        height: 24,
+                        borderRadius: 5,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 6,
+                      }}
                     >
-                      {item.name}
-                    </Text>
-                  </View>
-                  {hasDetails && (
-                    <View style={{ paddingLeft: 4 }}>
-                      {isExpanded ? (
-                        <ChevronUp size={14} color="#9ca3af" />
-                      ) : (
-                        <ChevronDown size={14} color="#9ca3af" />
-                      )}
+                      <Text className="text-white text-sm font-bold">
+                        {item.quantity}
+                      </Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text
+                        className="text-white text-sm font-medium"
+                        numberOfLines={1}
+                      >
+                        {item.name}
+                      </Text>
+                    </View>
+                    {hasDetails && (
+                      <View style={{ paddingLeft: 4 }}>
+                        {isExpanded ? (
+                          <ChevronUp size={14} color="#9ca3af" />
+                        ) : (
+                          <ChevronDown size={14} color="#9ca3af" />
+                        )}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  {isExpanded && (
+                    <View style={{ paddingBottom: 4 }}>
+                      {renderItemDetails(item)}
                     </View>
                   )}
-                </TouchableOpacity>
-                {isExpanded && (
-                  <View style={{ paddingBottom: 4 }}>
-                    {renderItemDetails(item)}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-          {items.length > 4 && (
-            <Text className="text-gray-500 text-xs text-center mt-1">
-              +{items.length - 4} more items
-            </Text>
-          )}
-        </View>
+                </View>
+              );
+            })}
+            {items.length > 4 && (
+              <Text className="text-gray-500 text-xs text-center mt-1">
+                +{items.length - 4} more items
+              </Text>
+            )}
+          </View>
 
-        {/* Action Button */}
-        <TouchableOpacity
-          onPress={buttonConfig.onPress}
-          style={{
-            backgroundColor: buttonConfig.color,
-            paddingVertical: 10,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text className="text-white font-bold text-sm">
-            {buttonConfig.label}
-          </Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </TouchableOpacity>
-  );
-};
+          {/* Action Button */}
+          <TouchableOpacity
+            onPress={buttonConfig.onPress}
+            style={{
+              backgroundColor: buttonConfig.color,
+              paddingVertical: 10,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text className="text-white font-bold text-sm">
+              {buttonConfig.label}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  },
+);
 
 // Column Component
 const MIN_CARD_HEIGHT = 140;
@@ -474,6 +611,7 @@ interface KDSColumnProps {
   cards: KDSCardData[];
   emptyMessage: string;
   isFocused: boolean;
+  isLoading?: boolean;
   onHeaderPress: () => void;
   onStartCooking: (orderId: string, itemIds: string[]) => void;
   onMarkReady: (orderId: string, itemIds: string[]) => void;
@@ -489,6 +627,7 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
   cards,
   emptyMessage,
   isFocused,
+  isLoading,
   onHeaderPress,
   onStartCooking,
   onMarkReady,
@@ -521,6 +660,7 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
 
   const renderCard = (card: KDSCardData) => (
     <KDSOrderCard
+      key={card.id}
       data={card}
       onStartCooking={() =>
         onStartCooking(
@@ -581,63 +721,99 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
             borderRadius: 10,
           }}
         >
-          <Text className="text-white font-bold text-sm">{count}</Text>
+          <Text className="text-white font-bold text-sm">
+            {isLoading ? "-" : count}
+          </Text>
         </View>
       </TouchableOpacity>
 
-      {/* Cards Container */}
-      {isFocused ? (
-        // Focused mode: 4-column grid using FlatList
-        <FlatList
-          data={cards}
-          keyExtractor={(item) => item.id}
-          numColumns={4}
-          contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
-          columnWrapperStyle={{ gap: 8 }}
-          renderItem={({ item }) => (
-            <View style={{ flex: 1, marginBottom: 8 }}>{renderCard(item)}</View>
-          )}
-          ListEmptyComponent={
-            <View className="flex-1 items-center justify-center py-8">
-              <Text className="text-gray-500 text-sm text-center">
-                {emptyMessage}
-              </Text>
-            </View>
-          }
-        />
-      ) : (
-        // Unfocused mode: Simple scrollable list
+      {/* Skeletons or Cards */}
+      {isLoading ? (
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
-          showsVerticalScrollIndicator={true}
+          showsVerticalScrollIndicator={false}
         >
-          {cards.length === 0 ? (
-            <View className="items-center justify-center py-8">
-              <Text className="text-gray-500 text-sm text-center">
-                {emptyMessage}
-              </Text>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <View key={`skeleton-${i}`} className="mb-2">
+              <KDSSkeletonCard />
             </View>
-          ) : (
-            cards.map((card) => <View key={card.id}>{renderCard(card)}</View>)
-          )}
+          ))}
         </ScrollView>
+      ) : (
+        /* Cards Container */
+        isActiveContent()
       )}
     </View>
   );
+
+  function isActiveContent() {
+    return isFocused ? (
+      // Focused mode: 4-column grid using FlatList
+      <FlatList
+        data={cards}
+        keyExtractor={(item) => item.id}
+        numColumns={4}
+        contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
+        columnWrapperStyle={{ gap: 8 }}
+        renderItem={({ item }) => (
+          <View style={{ flex: 1, marginBottom: 8 }}>{renderCard(item)}</View>
+        )}
+        ListEmptyComponent={
+          <View className="flex-1 items-center justify-center py-8">
+            <Text className="text-gray-500 text-sm text-center">
+              {emptyMessage}
+            </Text>
+          </View>
+        }
+      />
+    ) : (
+      // Unfocused mode: Simple scrollable list
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
+        showsVerticalScrollIndicator={true}
+      >
+        {cards.length === 0 ? (
+          <View className="items-center justify-center py-8">
+            <Text className="text-gray-500 text-sm text-center">
+              {emptyMessage}
+            </Text>
+          </View>
+        ) : (
+          cards.map((card) => <View key={card.id}>{renderCard(card)}</View>)
+        )}
+      </ScrollView>
+    );
+  }
 };
 
 const KitchenDisplayScreen = () => {
-  const {
-    ordersById,
-    markCourseItemsAsCooking,
-    markCourseItemsAsReady,
-    markCourseItemsAsServed,
-  } = useOrderStore();
+  // OPTIMIZED: Granular selectors to prevent unnecessary re-renders
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const markCourseItemsAsCooking = useOrderStore(
+    (s) => s.markCourseItemsAsCooking,
+  );
+  const markCourseItemsAsReady = useOrderStore((s) => s.markCourseItemsAsReady);
+  const markCourseItemsAsServed = useOrderStore(
+    (s) => s.markCourseItemsAsServed,
+  );
+
   const { tables } = useFloorPlanStore();
   const { getItemCourse, loadFromServer, byOrderId } = useCoursingStore();
   const [refreshing, setRefreshing] = useState(false);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
+
+  // DEFERRED LOADING STATE
+  const [isReady, setIsReady] = useState(false);
+
+  // Trigger deferred loading - 500ms to show skeleton visibly
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 500); // Allow navigation to complete and show skeletons
+    return () => clearTimeout(timer);
+  }, []);
 
   // Load coursing data for all active orders
   useEffect(() => {
@@ -658,6 +834,15 @@ const KitchenDisplayScreen = () => {
 
   // Transform orders to cards grouped by status
   const { pendingCards, cookingCards, readyCards, counts } = useMemo(() => {
+    // OPTIMIZATION: Skip heavy calculation if not ready (showing skeletons)
+    if (!isReady) {
+      return {
+        pendingCards: [],
+        cookingCards: [],
+        readyCards: [],
+        counts: { pending: 0, cooking: 0, ready: 0 },
+      };
+    }
     const pending: KDSCardData[] = [];
     const cooking: KDSCardData[] = [];
     const ready: KDSCardData[] = [];
@@ -687,8 +872,9 @@ const KitchenDisplayScreen = () => {
 
       const relevantItems = order.items.filter(
         (item) =>
-          !item.is_voided && // NEW: Exclude voided items
-          (item.kitchen_status === "sent" ||
+          !item.is_voided &&
+          (!item.kitchen_status || // Fallback: Treat missing status as sent/pending
+            item.kitchen_status === "sent" ||
             item.kitchen_status === "preparing" ||
             item.kitchen_status === "ready"),
       );
@@ -766,7 +952,7 @@ const KitchenDisplayScreen = () => {
         ),
       },
     };
-  }, [ordersById, byOrderId]);
+  }, [ordersById, byOrderId, isReady]);
 
   const handleStartCooking = useCallback(
     (orderId: string, itemIds: string[]) => {
@@ -858,6 +1044,7 @@ const KitchenDisplayScreen = () => {
             cards={pendingCards}
             emptyMessage="No pending orders"
             isFocused={true}
+            isLoading={!isReady}
             onHeaderPress={() => setFocusedColumn(null)}
             onStartCooking={handleStartCooking}
             onMarkReady={handleMarkReady}
@@ -873,6 +1060,7 @@ const KitchenDisplayScreen = () => {
             cards={cookingCards}
             emptyMessage="No orders cooking"
             isFocused={true}
+            isLoading={!isReady}
             onHeaderPress={() => setFocusedColumn(null)}
             onStartCooking={handleStartCooking}
             onMarkReady={handleMarkReady}
@@ -888,6 +1076,7 @@ const KitchenDisplayScreen = () => {
             cards={readyCards}
             emptyMessage="No orders ready"
             isFocused={true}
+            isLoading={!isReady}
             onHeaderPress={() => setFocusedColumn(null)}
             onStartCooking={handleStartCooking}
             onMarkReady={handleMarkReady}
@@ -904,6 +1093,7 @@ const KitchenDisplayScreen = () => {
               cards={pendingCards}
               emptyMessage="No pending orders"
               isFocused={false}
+              isLoading={!isReady}
               onHeaderPress={() => setFocusedColumn("PENDING")}
               onStartCooking={handleStartCooking}
               onMarkReady={handleMarkReady}
@@ -918,6 +1108,7 @@ const KitchenDisplayScreen = () => {
               cards={cookingCards}
               emptyMessage="No orders cooking"
               isFocused={false}
+              isLoading={!isReady}
               onHeaderPress={() => setFocusedColumn("COOKING")}
               onStartCooking={handleStartCooking}
               onMarkReady={handleMarkReady}
@@ -932,6 +1123,7 @@ const KitchenDisplayScreen = () => {
               cards={readyCards}
               emptyMessage="No orders ready"
               isFocused={false}
+              isLoading={!isReady}
               onHeaderPress={() => setFocusedColumn("READY")}
               onStartCooking={handleStartCooking}
               onMarkReady={handleMarkReady}

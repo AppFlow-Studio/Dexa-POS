@@ -2,12 +2,12 @@ import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { isValidUUID } from "@/lib/offlineIdRegistry";
 import {
-  createCustomerOffline,
-  createCustomerOnline,
-  fetchAndCacheCustomers,
-  getCachedCustomers,
-  linkCustomerToOrder,
-  processCustomerQueue,
+    createCustomerOffline,
+    createCustomerOnline,
+    fetchAndCacheCustomers,
+    getCachedCustomers,
+    linkCustomerToOrder,
+    processCustomerQueue,
 } from "@/services/customer";
 import { getIsOnline } from "@/services/offlineSyncService";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
@@ -15,20 +15,40 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { CustomerWithMeta } from "@/types/customer";
 import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetFlatList,
-  BottomSheetTextInput,
-  BottomSheetView,
+    BottomSheetBackdrop,
+    BottomSheetFlatList,
+    BottomSheetTextInput,
+    BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import { Search, X } from "lucide-react-native";
+import { ArrowLeft, Search, X } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+
+// Helper to format address for display (handles JSON or string)
+export const formatAddress = (address: string | null | undefined) => {
+  if (!address) return "";
+  try {
+    const parsed = JSON.parse(address);
+    if (parsed && typeof parsed === "object") {
+      const parts = [
+        parsed.street,
+        parsed.city,
+        parsed.state,
+        parsed.zip,
+      ].filter(Boolean);
+      return parts.join(", ");
+    }
+    return address;
+  } catch {
+    return address;
+  }
+};
 
 const CustomerSheet: React.FC = () => {
   const sheetRef = useRef<BottomSheet>(null);
@@ -40,13 +60,23 @@ const CustomerSheet: React.FC = () => {
   const { show } = useToast();
   const supabase = useSupabaseClient();
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
+  // Mode: "search" or "add"
+  const [viewMode, setViewMode] = useState<"search" | "add">("search");
 
-  // --- NEW: State for the secondary search input ---
-  const [secondarySearch, setSecondarySearch] = useState("");
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Add Customer State
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+
+  // Address Fields
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [stateCode, setStateCode] = useState("");
+  const [zip, setZip] = useState("");
+
+  const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
   const isAssignDisabled = !activeOrderId;
 
   useEffect(() => {
@@ -77,46 +107,34 @@ const CustomerSheet: React.FC = () => {
         console.warn("Failed to refresh customers:", err);
       }
     }
-  }, []); // Empty deps - uses ref for latest values
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
       refreshCustomers();
+      // Reset state on open
+      setViewMode("search");
+      setSearchQuery("");
+      clearForm();
     }
   }, [isOpen, refreshCustomers]);
 
   const filteredCustomers = useMemo(() => {
-    const nameQuery = name.toLowerCase().trim();
-    const phoneQuery = phone.trim();
-    const secondaryQuery = secondarySearch.toLowerCase().trim();
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return customers;
 
-    // Start with all customers
-    let filtered = customers;
+    return customers.filter((c: CustomerWithMeta) => {
+      const nameMatch = (c.name || "").toLowerCase().includes(query);
+      const phoneRaw = (c.phone ?? c.phoneNumber ?? "").toLowerCase();
+      const phoneMatch = phoneRaw.includes(query);
 
-    // Apply the main search/create fields first
-    if (nameQuery || phoneQuery) {
-      filtered = filtered.filter((c: CustomerWithMeta) => {
-        const phoneValue = (c.phone ?? c.phoneNumber ?? "").toLowerCase();
-        return (
-          (c.name || "").toLowerCase().includes(nameQuery) &&
-          phoneValue.includes(phoneQuery.toLowerCase())
-        );
-      });
-    }
+      // Address matching - simplified
+      // If address is JSON, we stringify it to search, or just check the raw string
+      const addressMatch = (c.address || "").toLowerCase().includes(query);
 
-    // Then, apply the secondary search on the already filtered list
-    if (secondaryQuery) {
-      filtered = filtered.filter((c: CustomerWithMeta) => {
-        const phoneValue = (c.phone ?? c.phoneNumber ?? "").toLowerCase();
-        return (
-          (c.name || "").toLowerCase().includes(secondaryQuery) ||
-          phoneValue.includes(secondaryQuery)
-        );
-      });
-    }
-
-    return filtered;
-  }, [name, phone, secondarySearch, customers]);
+      return nameMatch || phoneMatch || addressMatch;
+    });
+  }, [searchQuery, customers]);
 
   const handleSelectCustomer = async (customer: CustomerWithMeta) => {
     if (!activeOrderId) return;
@@ -129,12 +147,15 @@ const CustomerSheet: React.FC = () => {
       return;
     }
 
+    // Format address if it's JSON
+    const displayAddress = formatAddress(customer.address);
+
     // Optimistic UI update for order details
     console.log("[CustomerSheet] customer", customer);
     updateActiveOrderDetails({
       customer_name: customer.name || "",
       customer_phone: customer.phone ?? customer.phoneNumber ?? "",
-      delivery_address: customer.address ?? "",
+      delivery_address: displayAddress,
       customer_id: customer.id,
     });
 
@@ -169,12 +190,30 @@ const CustomerSheet: React.FC = () => {
     }
   };
 
-  const handleAddNewCustomer = async () => {
-    if (!name.trim() || !phone.trim()) {
+  const handlePhoneChange = (text: string) => {
+    // Strip non-numeric characters
+    const cleaned = text.replace(/\D/g, "");
+
+    // Format as (###) - ### - ####
+    let formatted = cleaned;
+    if (cleaned.length > 6) {
+      formatted = `(${cleaned.slice(0, 3)}) - ${cleaned.slice(3, 6)} - ${cleaned.slice(6, 10)}`;
+    } else if (cleaned.length > 3) {
+      formatted = `(${cleaned.slice(0, 3)}) - ${cleaned.slice(3)}`;
+    } else if (cleaned.length > 0) {
+      formatted = `(${cleaned}`;
+    }
+
+    setNewPhone(formatted);
+  };
+
+  const handleSaveNewCustomer = async () => {
+    // Validate
+    const rawPhone = newPhone.replace(/\D/g, "");
+    if (!newName.trim() || rawPhone.length < 10) {
       show({
         title: "Missing Information",
-        message:
-          "Customer name and phone number are required to add a new customer.",
+        message: "Please enter a valid name and a 10-digit phone number.",
         type: "error",
       });
       return;
@@ -189,21 +228,32 @@ const CustomerSheet: React.FC = () => {
       return;
     }
 
+    // Construct address JSON
+    const addressObj = {
+      street: street.trim(),
+      city: city.trim(),
+      state: stateCode.trim(),
+      zip: zip.trim(),
+    };
+    // Only save address if at least one field is filled
+    const hasAddress = Object.values(addressObj).some((val) => val.length > 0);
+    const addressString = hasAddress ? JSON.stringify(addressObj) : "";
+
     const online = getIsOnline();
 
     try {
       const newCustomer = online
         ? await createCustomerOnline(supabase, {
             merchantId: selectedStore.merchant_id,
-            name,
-            phone,
-            address,
+            name: newName.trim(),
+            phone: newPhone.trim(), // Save formatted or raw? Usually raw is better for search, but user wants format. Saving formatted for consistency with request.
+            address: addressString,
           })
         : createCustomerOffline({
             merchantId: selectedStore.id,
-            name,
-            phone,
-            address,
+            name: newName.trim(),
+            phone: newPhone.trim(),
+            address: addressString,
           });
 
       setCustomers(getCachedCustomers());
@@ -218,15 +268,18 @@ const CustomerSheet: React.FC = () => {
   };
 
   const clearForm = () => {
-    setName("");
-    setPhone("");
-    setAddress("");
-    setSecondarySearch(""); // Also clear the secondary search
+    setNewName("");
+    setNewPhone("");
+    setStreet("");
+    setCity("");
+    setStateCode("");
+    setZip("");
   };
 
   const handleClose = () => {
     closeSheet();
     clearForm();
+    setViewMode("search");
   };
 
   const snapPoints = useMemo(() => ["85%", "90%"], []);
@@ -249,102 +302,191 @@ const CustomerSheet: React.FC = () => {
       )}
     >
       <BottomSheetView className="flex-1 bg-[#212121]">
+        {/* Header */}
         <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
-          <Text className="text-2xl font-bold text-white">Assign Customer</Text>
+          <View className="flex-row items-center gap-x-3">
+            {viewMode === "add" && (
+              <TouchableOpacity onPress={() => setViewMode("search")}>
+                <ArrowLeft color="white" size={24} />
+              </TouchableOpacity>
+            )}
+            <Text className="text-2xl font-bold text-white">
+              {viewMode === "search" ? "Assign Customer" : "Add New Customer"}
+            </Text>
+          </View>
 
-          <View className="flex-row gap-x-8 items-center justify-between">
-            <TouchableOpacity
-              disabled={isAssignDisabled}
-              onPress={handleAddNewCustomer}
-              className={`w-fit py-3 px-4 rounded-xl items-center ${
-                isAssignDisabled ? "bg-blue-600/50" : "bg-blue-600"
-              }`}
-            >
-              <Text className="text-lg font-bold text-white">
-                Add New Customer
-              </Text>
-            </TouchableOpacity>
+          <View className="flex-row gap-x-4 items-center">
+            {viewMode === "search" && (
+              <TouchableOpacity
+                disabled={isAssignDisabled}
+                onPress={() => setViewMode("add")}
+                className={`py-2 px-4 rounded-xl items-center ${
+                  isAssignDisabled ? "bg-blue-600/50" : "bg-blue-600"
+                }`}
+              >
+                <Text className="text-lg font-bold text-white">+ Add New</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={handleClose} className="p-2">
               <X color="#9CA3AF" size={24} />
             </TouchableOpacity>
           </View>
         </View>
 
-        <View className="p-4 gap-y-3">
-          {/* --- FIX: Renamed placeholder --- */}
-          <BottomSheetTextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Customer Name"
-            placeholderTextColor="#6B7280"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-4 py-2 text-white text-lg"
-          />
-          {/* --- FIX: Added blue border --- */}
-          <BottomSheetTextInput
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="Phone Number"
-            placeholderTextColor="#6B7280"
-            keyboardType="phone-pad"
-            className="bg-[#303030] border border-blue-500 rounded-lg h-16 px-4 py-2 text-white text-lg"
-          />
-          <BottomSheetTextInput
-            value={address}
-            onChangeText={setAddress}
-            placeholder="Delivery Address (Optional)"
-            placeholderTextColor="#6B7280"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-4 py-2 text-white text-lg"
-          />
-        </View>
-
-        <BottomSheetFlatList
-          data={filteredCustomers}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
-          renderItem={({ item }: { item: CustomerWithMeta }) => (
-            <TouchableOpacity
-              disabled={isAssignDisabled}
-              onPress={() => handleSelectCustomer(item)}
-              className={`p-3 border-b border-gray-700 ${
-                isAssignDisabled ? "opacity-60" : ""
-              }`}
-            >
-              <Text className="text-xl font-semibold text-white">
-                {item.name}
-              </Text>
-              <View className="flex-row items-center gap-x-2">
-                <Text className="text-lg text-gray-400">
-                  {item.phone ?? item.phoneNumber}
-                </Text>
-                {item.is_offline && (
-                  <Text className="text-xs text-yellow-400">Offline</Text>
+        {viewMode === "search" ? (
+          <View className="flex-1">
+            {/* Unified Search Bar */}
+            <View className="p-4">
+              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 h-14">
+                <Search size={22} color="#9CA3AF" />
+                <BottomSheetTextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search by Name, Phone, or Address..."
+                  placeholderTextColor="#6B7280"
+                  className="flex-1 ml-3 text-white text-lg"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery("")}>
+                    <X size={20} color="#6B7280" />
+                  </TouchableOpacity>
                 )}
               </View>
-            </TouchableOpacity>
-          )}
-          ListHeaderComponent={
-            <View className="px-3 pb-3 flex-row items-center justify-between gap-x-3">
-              <Text className="text-xl font-semibold text-gray-300 mb-2">
-                Existing Customers
-              </Text>
-              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3">
-                <Search size={20} color="#9CA3AF" />
+            </View>
+
+            <BottomSheetFlatList
+              data={filteredCustomers}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: 120,
+              }}
+              renderItem={({ item }: { item: CustomerWithMeta }) => (
+                <TouchableOpacity
+                  disabled={isAssignDisabled}
+                  onPress={() => handleSelectCustomer(item)}
+                  className={`p-4 border-b border-gray-700 ${
+                    isAssignDisabled ? "opacity-60" : ""
+                  }`}
+                >
+                  <View className="flex-row justify-between items-start">
+                    <View>
+                      <Text className="text-xl font-semibold text-white">
+                        {item.name || "Unknown Name"}
+                      </Text>
+                      <Text className="text-lg text-gray-400 mt-1">
+                        {item.phone ?? item.phoneNumber}
+                      </Text>
+                      {item.address ? (
+                        <Text
+                          className="text-sm text-gray-500 mt-1 max-w-[300px]"
+                          numberOfLines={1}
+                        >
+                          {formatAddress(item.address)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {item.is_offline && (
+                      <Text className="text-xs text-yellow-400 font-medium">
+                        Offline
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text className="text-lg text-gray-500 text-center p-6">
+                  No customers found.
+                </Text>
+              }
+            />
+          </View>
+        ) : (
+          <View className="p-6">
+            <Text className="text-gray-400 mb-6">
+              Enter the customer's details below. Address fields are optional.
+            </Text>
+
+            <View className="gap-y-4">
+              <View>
+                <Text className="text-gray-300 mb-2 font-medium">
+                  Full Name *
+                </Text>
                 <BottomSheetTextInput
-                  value={secondarySearch}
-                  onChangeText={setSecondarySearch}
-                  placeholder="Search existing customers..."
+                  value={newName}
+                  onChangeText={setNewName}
+                  placeholder="e.g. John Doe"
                   placeholderTextColor="#6B7280"
-                  className="h-12 ml-2 text-white text-base"
+                  className="bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
                 />
               </View>
+
+              <View>
+                <Text className="text-gray-300 mb-2 font-medium">
+                  Phone Number *
+                </Text>
+                <BottomSheetTextInput
+                  value={newPhone}
+                  onChangeText={handlePhoneChange}
+                  placeholder="(555) - 555 - 5555"
+                  maxLength={20}
+                  keyboardType="phone-pad"
+                  placeholderTextColor="#6B7280"
+                  className="bg-[#303030] border border-blue-500 rounded-lg h-14 px-4 text-white text-lg"
+                />
+              </View>
+
+              <View className="mt-2">
+                <Text className="text-gray-300 mb-2 font-medium">
+                  Delivery Address
+                </Text>
+
+                <BottomSheetTextInput
+                  value={street}
+                  onChangeText={setStreet}
+                  placeholder="Street Address"
+                  placeholderTextColor="#6B7280"
+                  className="bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg mb-3"
+                />
+
+                <View className="flex-row gap-x-3 mb-3">
+                  <BottomSheetTextInput
+                    value={city}
+                    onChangeText={setCity}
+                    placeholder="City"
+                    placeholderTextColor="#6B7280"
+                    className="flex-[2] bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
+                  />
+                  <BottomSheetTextInput
+                    value={stateCode}
+                    onChangeText={setStateCode}
+                    placeholder="State"
+                    placeholderTextColor="#6B7280"
+                    className="flex-[1] bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
+                  />
+                </View>
+
+                <BottomSheetTextInput
+                  value={zip}
+                  onChangeText={setZip}
+                  placeholder="Zip Code"
+                  keyboardType="numeric"
+                  placeholderTextColor="#6B7280"
+                  className="w-1/2 bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
+                />
+              </View>
+
+              <TouchableOpacity
+                onPress={handleSaveNewCustomer}
+                className="mt-6 bg-blue-600 rounded-xl h-14 items-center justify-center"
+              >
+                <Text className="text-white text-xl font-bold">
+                  Save Customer
+                </Text>
+              </TouchableOpacity>
             </View>
-          }
-          ListEmptyComponent={
-            <Text className="text-lg text-gray-500 text-center p-6">
-              No customers found.
-            </Text>
-          }
-        />
+          </View>
+        )}
       </BottomSheetView>
     </BottomSheet>
   );

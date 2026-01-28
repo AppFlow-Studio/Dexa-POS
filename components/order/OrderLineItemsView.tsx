@@ -1,6 +1,6 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import ReadOnlyBillItem from "./ReadOnlyBillItem";
 
@@ -16,47 +16,54 @@ const OrderLineItemsView = ({
   onClose: () => void;
   orderId: string | null;
 }) => {
-  // Get all data directly from the order store
-  const { ordersById } = useOrderStore();
-
-  // Find the specific order to view using the passed orderId, not the global activeOrderId
-  const orderToView = ordersById[orderId || ""];
+  // CRITICAL FIX: Use proper selector with direct ID lookup instead of destructuring entire store
+  // This prevents re-renders when unrelated orders change
+  const orderToView = useOrderStore((s) => s.ordersById[orderId || ""]);
   const items = orderToView?.items || [];
 
   // Calculate totals - prefer backend values, fallback to local calculation
-  const { subtotal, discount, tax, total, amountPaid, amountDue } = useMemo(() => {
-    if (!orderToView) {
-      return { subtotal: 0, discount: 0, tax: 0, total: 0, amountPaid: 0, amountDue: 0 };
-    }
+  const { subtotal, discount, tax, total, amountPaid, amountDue } =
+    useMemo(() => {
+      if (!orderToView) {
+        return {
+          subtotal: 0,
+          discount: 0,
+          tax: 0,
+          total: 0,
+          amountPaid: 0,
+          amountDue: 0,
+        };
+      }
 
-    // Calculate local subtotal from items as fallback
-    const localSubtotal = orderToView.items.reduce(
-      (acc, item) => acc + item.price * item.quantity,
-      0
-    );
+      // Calculate local subtotal from items as fallback
+      const localSubtotal = orderToView.items.reduce(
+        (acc, item) => acc + item.price * item.quantity,
+        0,
+      );
 
-    // Calculate discount
-    const disc = orderToView.checkDiscount
-      ? localSubtotal * orderToView.checkDiscount.value
-      : 0;
+      // Calculate discount
+      const disc = orderToView.checkDiscount
+        ? localSubtotal * orderToView.checkDiscount.value
+        : 0;
 
-    // Prefer backend values, fallback to local calculations
-    // Note: OrderProfile doesn't have a subtotal property, so we derive it from total - tax
-    const finalTax = orderToView.total_tax ?? 0;
-    const finalTotal = orderToView.total_amount ?? (localSubtotal - disc + finalTax);
-    const finalSubtotal = finalTotal - finalTax; // Derive subtotal from total - tax
-    const finalAmountPaid = orderToView.amount_paid ?? 0;
-    const finalAmountDue = orderToView.amount_due ?? finalTotal;
+      // Prefer backend values, fallback to local calculations
+      // Note: OrderProfile doesn't have a subtotal property, so we derive it from total - tax
+      const finalTax = orderToView.total_tax ?? 0;
+      const finalTotal =
+        orderToView.total_amount ?? localSubtotal - disc + finalTax;
+      const finalSubtotal = finalTotal - finalTax; // Derive subtotal from total - tax
+      const finalAmountPaid = orderToView.amount_paid ?? 0;
+      const finalAmountDue = orderToView.amount_due ?? finalTotal;
 
-    return {
-      subtotal: finalSubtotal > 0 ? finalSubtotal : localSubtotal,
-      discount: disc,
-      tax: finalTax,
-      total: finalTotal,
-      amountPaid: finalAmountPaid,
-      amountDue: finalAmountDue,
-    };
-  }, [orderToView]);
+      return {
+        subtotal: finalSubtotal > 0 ? finalSubtotal : localSubtotal,
+        discount: disc,
+        tax: finalTax,
+        total: finalTotal,
+        amountPaid: finalAmountPaid,
+        amountDue: finalAmountDue,
+      };
+    }, [orderToView]);
 
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
@@ -131,13 +138,16 @@ const OrderLineItemsView = ({
           </Text>
           {orderToView.display_number && (
             <Text className="text-sm text-gray-400">
-              {new Date(orderToView.opened_at || Date.now()).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {new Date(orderToView.opened_at || Date.now()).toLocaleDateString(
+                "en-US",
+                {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                },
+              )}
             </Text>
           )}
         </View>
@@ -241,7 +251,9 @@ const OrderLineItemsView = ({
           {/* Amount Due (if not fully paid) */}
           {amountDue > 0.01 && orderToView.paid_status !== "Paid" && (
             <View className="flex-row justify-between items-center pt-2 mt-2 border-t border-dashed border-[#555]">
-              <Text className="text-lg font-bold text-yellow-400">Balance Due</Text>
+              <Text className="text-lg font-bold text-yellow-400">
+                Balance Due
+              </Text>
               <Text
                 className="text-xl font-bold text-yellow-400"
                 style={{ fontFamily: "monospace" }}
@@ -288,7 +300,9 @@ const OrderLineItemsView = ({
                 </View>
                 <View className="flex-row items-center gap-2">
                   <View className="px-2 py-0.5 rounded border border-green-600">
-                    <Text className="text-green-400 text-xs font-medium">Paid</Text>
+                    <Text className="text-green-400 text-xs font-medium">
+                      Paid
+                    </Text>
                   </View>
                   <Text
                     className="text-gray-300 font-medium"

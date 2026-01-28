@@ -5,11 +5,11 @@ import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Pressable,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
@@ -84,7 +84,8 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  const { ordersById } = useOrderStore();
+  // CRITICAL FIX: Use proper selector instead of destructuring entire store
+  const ordersById = useOrderStore((s) => s.ordersById);
   const { open: openPaymentDetailSheet } = usePaymentDetailSheetStore();
   const {
     refreshPreviousOrders,
@@ -261,7 +262,7 @@ const PreviousOrdersSection = () => {
 
   // Handle row click - open payment detail bottom sheet
   const handleRowClick = (orderId: string) => {
-    console.log(orderId)
+    // DEBUG: console.log(orderId);
     openPaymentDetailSheet(orderId);
   };
 

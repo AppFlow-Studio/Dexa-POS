@@ -49,7 +49,6 @@ export function deduplicateOrders(orders: OrderProfile[]): OrderProfile[] {
  * Excludes: void status, draft status, orders with no items
  */
 export function filterPreviousOrders(orders: OrderProfile[]): OrderProfile[] {
-  console.log("orders", orders.length);
   return orders.filter(
     (o) => o.order_status !== "draft" && o.db_order_id, // Only include orders that have been synced to backend
   );

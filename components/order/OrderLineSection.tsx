@@ -1,8 +1,8 @@
-import { useOrderStore } from "@/stores/useOrderStore";
 import {
-  useStationOrders,
-  useOrderTypeCounts,
+    useOrderTypeCounts,
+    useStationOrders,
 } from "@/stores/selectors/orderSelectors";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
@@ -14,7 +14,7 @@ import OrderTabs from "./OrderTabs";
 // Define a constant for the width of each card plus its margin for accurate scrolling
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
 
-const OrderLineSection: React.FC = () => {
+const OrderLineSectionContent: React.FC = () => {
   // Store actions
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
@@ -34,8 +34,7 @@ const OrderLineSection: React.FC = () => {
   // (preserves original logic but now applies to station-filtered orders)
   const visibleOrders = useMemo(() => {
     return stationOrders.filter(
-      (o) =>
-        o.order_status === "preparing" || o.paid_status !== "Paid"
+      (o) => o.order_status === "preparing" || o.paid_status !== "Paid",
     );
   }, [stationOrders]);
 
@@ -104,6 +103,11 @@ const OrderLineSection: React.FC = () => {
     setActiveOrder(orderId);
   };
 
+  // Memoize the reversed array to verify referential integrity for FlatList
+  const reversedFilteredOrders = useMemo(() => {
+    return filteredOrders.slice().reverse();
+  }, [filteredOrders]);
+
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
@@ -130,11 +134,16 @@ const OrderLineSection: React.FC = () => {
 
       <FlatList
         ref={flatListRef}
-        data={filteredOrders.slice().reverse()}
+        data={reversedFilteredOrders}
         keyExtractor={(item) => item.id}
         horizontal
         showsHorizontalScrollIndicator={false}
         className="mt-4"
+        // OPTIMIZED: FlatList performance props
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={3}
+        removeClippedSubviews={true}
         getItemLayout={(data, index) => ({
           length: CARD_WIDTH_WITH_MARGIN,
           offset: CARD_WIDTH_WITH_MARGIN * index,
@@ -165,4 +174,5 @@ const OrderLineSection: React.FC = () => {
   );
 };
 
+const OrderLineSection = React.memo(OrderLineSectionContent);
 export default OrderLineSection;

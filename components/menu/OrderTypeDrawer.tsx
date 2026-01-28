@@ -9,6 +9,7 @@ import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { formatAddress } from "../bill/CustomerSheet";
 import { GuestCountModal } from "../tables/GuestCountModal";
 import TableLayoutView from "../tables/TableLayoutView";
 import { Dialog, DialogContent } from "../ui/dialog";
@@ -292,7 +293,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                   </Text>
                   <View className="w-full p-3 border border-gray-600 rounded-lg bg-[#212121] h-16 justify-center">
                     <Text className="text-xl text-white">
-                      {activeOrder?.delivery_address || "No address set"}
+                      {formatAddress(activeOrder?.delivery_address) ||
+                        "No address set"}
                     </Text>
                   </View>
                 </View>

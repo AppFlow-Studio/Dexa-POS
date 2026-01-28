@@ -36,7 +36,13 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { FlatList, Pressable, Text, TouchableOpacity, View } from "react-native";
+import {
+  FlatList,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
@@ -100,12 +106,18 @@ const getImageSource = (item: MenuItemType) => {
 // OPTIMIZED: Memoized spacer component
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
-const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOrder = false }) => {
+
+const MenuSectionContent: React.FC<MenuSectionProps> = ({
+  onOrderClosedCheck,
+  isTableOrder = false,
+}) => {
   // ============================================================
   // MENU BLOCKING - For inline overlay pattern
   // ============================================================
   const isMenuBlocked = useModifierSidebarStore(selectIsMenuBlocked);
-  const cancelAndRemoveDraft = useModifierSidebarStore(selectCancelAndRemoveDraft);
+  const cancelAndRemoveDraft = useModifierSidebarStore(
+    selectCancelAndRemoveDraft,
+  );
 
   // State for the active filters
   const menus = useMenuStore((s) => s.menus);
@@ -114,7 +126,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
   const categories = useMenuStore((s) => s.categories);
   const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
-  const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId); 
+  const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId);
 
   const { requestPinOverride } = usePinOverrideStore();
 
@@ -126,7 +138,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
     return order?.order_type || "Takeaway";
   });
   const updateActiveOrderDetails = useOrderStore(
-    (s) => s.updateActiveOrderDetails
+    (s) => s.updateActiveOrderDetails,
   );
 
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
@@ -151,7 +163,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
     return menus.find(
       (m) =>
         (isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)) &&
-        menuHasItems(m)
+        menuHasItems(m),
     );
   };
 
@@ -253,7 +265,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
 
   // State to hold the items that are actually displayed after filtering
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
-    []
+    [],
   );
   const openSearch = useSearchStore((state) => state.openSearch);
 
@@ -283,45 +295,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
     }
   };
 
-  // Compute next availability window for the active category
-  // const nextAvailability = useMemo(() => {
-  //   const cat = categories.find((c) => c.name === activeCategory);
-  //   const rules = (cat?.schedules || []).filter((r) => r.isActive);
-  //   const availableNow = activeCategory
-  //     ? isCategoryAvailableNow(activeCategory)
-  //     : false;
-  //   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  //   const now = new Date();
-
-  //   let bestStart: Date | null = null;
-  //   let bestEnd: Date | null = null;
-
-  //   // Search up to two weeks ahead for the next window
-  //   for (let offset = 0; offset < 14 && !availableNow; offset++) {
-  //     const check = new Date(now);
-  //     check.setDate(now.getDate() + offset);
-  //     const dayKey = dayNames[check.getDay()];
-  //     const todays = rules.filter((r) => r.days.includes(dayKey as any));
-  //     for (const r of todays) {
-  //       const [sh, sm] = r.startTime.split(":").map(Number);
-  //       const [eh, em] = r.endTime.split(":").map(Number);
-  //       const start = new Date(check);
-  //       start.setHours(sh, sm || 0, 0, 0);
-  //       const end = new Date(check);
-  //       end.setHours(eh, em || 0, 0, 0);
-  //       if (start > now) {
-  //         if (!bestStart || start < bestStart) {
-  //           bestStart = start;
-  //           bestEnd = end;
-  //         }
-  //       }
-  //     }
-  //     if (bestStart) break;
-  //   }
-
-  //   return { availableNow, start: bestStart, end: bestEnd };
-  // }, [activeCategory, categories, isCategoryAvailableNow, availabilityTick]);
-
   useEffect(() => {
     if (!activeCategory || !activeMeal) {
       setFilteredMenuItems([]);
@@ -331,7 +304,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
     // Find the active menu and category to get the context-specific items
     const currentMenu = menus.find((m) => m.name === activeMeal);
     const currentCategory = currentMenu?.categories.find(
-      (c) => c.name === activeCategory
+      (c) => c.name === activeCategory,
     );
 
     if (!currentCategory || !currentCategory.items) {
@@ -413,7 +386,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
         />
       );
     },
-    [onOrderClosedCheck, currentCategoryId, activeMenuId]
+    [onOrderClosedCheck, currentCategoryId, activeMenuId],
   );
 
   const formatTime = (d?: Date | null) =>
@@ -423,31 +396,40 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
   // This eliminates re-renders when opening/closing the modifier screen
   return (
     <>
-      <View className={`mt-4 flex-1 bg-[#323232] ${isTableOrder ? "rounded-tl-3xl" : ""}`}>
-        <View className={`${isTableOrder ? "px-3 py-2" : ""} flex flex-row items-center justify-between pb-3`}>
+      <View
+        className={`mt-4 flex-1 bg-[#323232] ${isTableOrder ? "rounded-tl-3xl" : ""}`}
+      >
+        <View
+          className={`${isTableOrder ? "px-3 py-2" : ""} flex flex-row items-center justify-between pb-3`}
+        >
           <View className="flex-row items-center gap-3">
             <Text className="text-xl font-bold text-white">Menu</Text>
-            {!isTableOrder && <TouchableOpacity
-              onPress={() => { }}
-              className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
-            >
-              <Text className="text-white font-medium mr-2 text-base">
-                Order Type:
-              </Text>
-              <Text className="text-blue-400 font-semibold text-base">
-                {typeof currentOrderType === "string"
-                  ? currentOrderType
-                  : (currentOrderType as any)?.label || "Takeaway"}
-              </Text>
-            </TouchableOpacity>}
+            {!isTableOrder && (
+              <TouchableOpacity
+                onPress={() => {}}
+                className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
+              >
+                <Text className="text-white font-medium mr-2 text-base">
+                  Order Type:
+                </Text>
+                <Text className="text-blue-400 font-semibold text-base">
+                  {typeof currentOrderType === "string"
+                    ? currentOrderType
+                    : (currentOrderType as any)?.label || "Takeaway"}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <View className={`flex-1 flex-row justify-end items-center gap-x-2 ${isTableOrder ? "px-3" : ""}`}>
+          <View
+            className={`flex-1 flex-row justify-end items-center gap-x-2 ${isTableOrder ? "px-3" : ""}`}
+          >
             <TouchableOpacity
               onPress={() => setActiveTab("Menu")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Menu"
-                ? "border-2 border-blue-400"
-                : "border border-gray-600"
-                }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+                activeTab == "Menu"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <Table color="#9CA3AF" size={20} />
             </TouchableOpacity>
@@ -459,31 +441,37 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setActiveTab("Open Item")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Open Item"
-                ? "border-2 border-blue-400"
-                : "border border-gray-600"
-                }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+                activeTab == "Open Item"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <PackagePlus color="#9CA3AF" size={20} />
             </TouchableOpacity>
 
-            {!isTableOrder && <Link
-              href="/tables"
-              className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
-            >
-              <Sofa color="#9CA3AF" size={20} />
-            </Link>}
+            {!isTableOrder && (
+              <Link
+                href="/tables"
+                className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
+              >
+                <Sofa color="#9CA3AF" size={20} />
+              </Link>
+            )}
 
-            {!isTableOrder && <TouchableOpacity
-              onPress={() => setActiveTab("Orders")}
-              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${activeTab == "Orders"
-                ? "border-2 border-blue-400"
-                : "border border-gray-600"
+            {!isTableOrder && (
+              <TouchableOpacity
+                onPress={() => setActiveTab("Orders")}
+                className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${
+                  activeTab == "Orders"
+                    ? "border-2 border-blue-400"
+                    : "border border-gray-600"
                 }`}
-            >
-              <Logs color="#9CA3AF" size={20} />
-              <Text className="text-gray-300 ml-2 text-base">Orders</Text>
-            </TouchableOpacity>}
+              >
+                <Logs color="#9CA3AF" size={20} />
+                <Text className="text-gray-300 ml-2 text-base">Orders</Text>
+              </TouchableOpacity>
+            )}
 
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
               <DialogTrigger asChild>
@@ -523,28 +511,30 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
                       <TouchableOpacity
                         key={menu.id}
                         onPress={() => handleMenuSelect(menu.name)}
-                        className={`p-4 rounded-xl border-2 ${isSelected
-                          ? "bg-blue-600 border-blue-400"
-                          : !isAvailable
-                            ? "bg-[#252538] border-gray-700 opacity-50"
-                            : "bg-[#252538] border-[#3a3a5c]"
-                          }`}
+                        className={`p-4 rounded-xl border-2 ${
+                          isSelected
+                            ? "bg-blue-600 border-blue-400"
+                            : !isAvailable
+                              ? "bg-[#252538] border-gray-700 opacity-50"
+                              : "bg-[#252538] border-[#3a3a5c]"
+                        }`}
                         style={
                           isSelected
                             ? {
-                              shadowColor: "#3b82f6",
-                              shadowOffset: { width: 0, height: 4 },
-                              shadowOpacity: 0.3,
-                              shadowRadius: 8,
-                              elevation: 8,
-                            }
+                                shadowColor: "#3b82f6",
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.3,
+                                shadowRadius: 8,
+                                elevation: 8,
+                              }
                             : undefined
                         }
                       >
                         <View className="flex-row justify-between items-center">
                           <Text
-                            className={`font-bold text-lg ${isSelected ? "text-white" : "text-gray-100"
-                              }`}
+                            className={`font-bold text-lg ${
+                              isSelected ? "text-white" : "text-gray-100"
+                            }`}
                           >
                             {menu.name}
                           </Text>
@@ -556,8 +546,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
                           )}
                         </View>
                         <Text
-                          className={`text-sm mt-1 ${isSelected ? "text-blue-100" : "text-gray-400"
-                            }`}
+                          className={`text-sm mt-1 ${
+                            isSelected ? "text-blue-100" : "text-gray-400"
+                          }`}
                         >
                           {menu.description}
                         </Text>
@@ -565,14 +556,16 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
                           {menu.categories.map((category, index) => (
                             <View
                               key={index}
-                              className={`px-3 py-1.5 rounded-full ${isSelected
-                                ? "bg-blue-500/80"
-                                : "bg-blue-900/40 border border-blue-800/50"
-                                }`}
+                              className={`px-3 py-1.5 rounded-full ${
+                                isSelected
+                                  ? "bg-blue-500/80"
+                                  : "bg-blue-900/40 border border-blue-800/50"
+                              }`}
                             >
                               <Text
-                                className={`text-xs font-medium ${isSelected ? "text-white" : "text-blue-300"
-                                  }`}
+                                className={`text-xs font-medium ${
+                                  isSelected ? "text-white" : "text-blue-300"
+                                }`}
                               >
                                 {category.name}
                               </Text>
@@ -597,7 +590,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
                   setActiveMeal(value);
                   setActiveCategory(
                     menus.find((menu) => menu.name === value)?.categories[0]
-                      ?.name || ""
+                      ?.name || "",
                   );
                 }}
                 activeCategory={activeCategory || ""}
@@ -615,36 +608,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
                 </Text>
               </View>
             ))}
-
-          {/* Availability indicator for active category */}
-          {/* {activeTab === "Menu" && (
-            <View className="mt-3 mb-1 flex-row items-center gap-3">
-              <View
-                className={`px-3 py-2 rounded-full ${nextAvailability.availableNow
-                    ? "bg-green-900/30 border border-green-500"
-                    : "bg-red-900/30 border border-red-500"
-                  }`}
-              >
-                <Text
-                  className={`text-sm ${nextAvailability.availableNow ? "text-green-400" : "text-red-400"
-                    }`}
-                >
-                  {nextAvailability.availableNow ? "Available now" : "Unavailable now"}
-                </Text>
-              </View>
-              {!nextAvailability.availableNow && (
-                <Text className="text-sm text-gray-300">
-                  {(() => {
-                    const s = nextAvailability.start as Date | null | undefined;
-                    const e = nextAvailability.end as Date | null | undefined;
-                    return s
-                      ? `Next: ${s.toLocaleDateString(undefined, { weekday: "short" })} ${formatTime(s)} – ${formatTime(e)}`
-                      : "No upcoming window";
-                  })()}
-                </Text>
-              )}
-            </View>
-          )} */}
 
           {activeTab === "Menu" ? (
             activeMeal ? (
@@ -706,16 +669,18 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
         )}
       </View>
 
+      {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}
+      <ModifierScreenOverlay />
+
       <OrderTypeDrawer
         isVisible={isOrderTypeDrawerOpen}
         onClose={closeDrawer}
         onOrderTypeSelect={handleOrderTypeSelect}
         currentOrderType={currentOrderType}
       />
-      {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}
-      <ModifierScreenOverlay />
-    </> 
+    </>
   );
 };
 
+const MenuSection = React.memo(MenuSectionContent);
 export default MenuSection;

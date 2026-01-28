@@ -5,37 +5,58 @@ import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import OrderLineSection from "@/components/order/OrderLineSection";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/contexts/ToastContext"; // New Import
+import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
+import { useShallow } from "zustand/react/shallow";
 
 const OrderProcessing = () => {
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const startNewOrder = useOrderStore((s) => s.startNewOrder);
-  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus);
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
 
-  // FIXED: Subscribe to orderIds (stable array) and lookup orders when needed
-  // This prevents infinite loops from Object.values() creating new arrays
-  const orderIds = useOrderStore((s) => s.orderIds);
-  const ordersById = useOrderStore((s) => s.ordersById);
+  // OPTIMIZED: Use shallow selector to filter orders inside the store selector.
+  // This prevents the component from re-rendering unless the resulting list of filtered orders changes.
+  // We compute both the filtered list and its reverse here to avoid extra memos.
+  const reversedFilteredOrders = useOrderStore(
+    useShallow((state) => {
+      // 1. Get all orders
+      const orders = state.orderIds
+        .map((id) => state.ordersById[id])
+        .filter(Boolean);
 
-  // Compute orders array from IDs - only recalculates when orderIds or ordersById change
-  const orders = useMemo(
-    () => orderIds.map((id) => ordersById[id]).filter(Boolean),
-    [orderIds, ordersById],
+      // 2. Filter kitchen orders
+      const kitchenOrders = orders.filter(
+        (o) =>
+          // Exclude Dine In orders entirely
+          o.order_type !== "Dine In" &&
+          o.order_type !== "dine_in" &&
+          // Condition 1: Any "preparing" order with items (Takeaway, Delivery only)
+          ((o.order_status === "preparing" && o.items.length > 0) ||
+            // Condition 2: Unpaid orders that need payment
+            ((o.paid_status === "Unpaid" ||
+              o.paid_status === "Pending" ||
+              o.paid_status === "Partial") &&
+              o.order_status !== "completed" &&
+              o.order_status !== "draft" &&
+              o.order_status !== "void")),
+      );
+
+      // 3. Return reversed list
+      return kitchenOrders.slice().reverse();
+    }),
   );
 
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
@@ -44,43 +65,44 @@ const OrderProcessing = () => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
+  // OPTIMIZED: Effect now uses getState() to avoid subscribing to all orders
   useEffect(() => {
-    // OPTIMIZED: Use memoized find helpers with O(1) lookup when possible
-    // Find an existing empty draft order (not assigned to table, no items, NOT PAID)
-    const emptyDraft = orders.find(
+    // Only run if activeOrderId is missing, or we need to validate it
+    // access state directly without subscription
+    const state = useOrderStore.getState();
+    const ordersById = state.ordersById;
+    const orderIds = state.orderIds;
+    const allOrders = orderIds.map((id) => ordersById[id]).filter(Boolean);
+
+    // Find drafts (O(N) search but only runs on mount/reset)
+    const emptyDraft = allOrders.find(
       (o) =>
         o.service_location_id === null &&
         o.order_status === "draft" &&
         o.items.length === 0 &&
-        o.paid_status !== "Paid", // Exclude paid orders
+        o.paid_status !== "Paid",
     );
 
-    // Find any global draft order (not assigned to table, NOT PAID)
-    const globalDraft = orders.find(
+    const globalDraft = allOrders.find(
       (o) =>
         o.service_location_id === null &&
         o.order_status === "draft" &&
-        o.paid_status !== "Paid", // Exclude paid orders
+        o.paid_status !== "Paid",
     );
 
     if (!activeOrderId) {
       if (emptyDraft) {
-        // Reuse existing empty draft
         setActiveOrder(emptyDraft.id);
       } else if (globalDraft) {
-        // Use global draft with items
         setActiveOrder(globalDraft.id);
       } else {
-        // Create new draft only if none exist
         const newOrder = startNewOrder();
         setActiveOrder(newOrder.id);
       }
       return;
     }
 
-    // If activeOrderId exists, do not override it here. This allows "Retrieve to Pay"
-    // to set a non-global order as active without being reset by this effect.
-    // OPTIMIZED: Use O(1) lookup instead of orders.find()
+    // Verify current active order exists
     const currentActive = ordersById[activeOrderId];
     if (!currentActive) {
       if (emptyDraft) {
@@ -92,34 +114,7 @@ const OrderProcessing = () => {
         setActiveOrder(newOrder.id);
       }
     }
-  }, [orders, activeOrderId, ordersById, setActiveOrder, startNewOrder]);
-
-  // State to hold the orders that are actually displayed
-  const filteredOrders = useMemo(() => {
-    // Show orders that are in a "kitchen" state (preparing) or unpaid
-    // EXCLUDE Dine In orders - they belong on Tables view
-    const kitchenOrders = orders.filter(
-      (o) =>
-        // Exclude Dine In orders entirely
-        o.order_type !== "Dine In" &&
-        o.order_type !== "dine_in" &&
-        // Condition 1: Any "preparing" order with items (Takeaway, Delivery only)
-        ((o.order_status === "preparing" && o.items.length > 0) ||
-          // Condition 2: Unpaid orders that need payment
-          ((o.paid_status === "Unpaid" ||
-            o.paid_status === "Pending" ||
-            o.paid_status === "Partial") &&
-            o.order_status !== "completed" &&
-            o.order_status !== "draft" &&
-            o.order_status !== "void")),
-    );
-
-    return kitchenOrders;
-  }, [orders]);
-
-  const reversedFilteredOrders = useMemo(() => {
-    return filteredOrders.slice().reverse();
-  }, [filteredOrders]);
+  }, [activeOrderId, setActiveOrder, startNewOrder]);
 
   const handleViewItems = (orderId: string) => {
     setSelectedOrderId(orderId);
@@ -127,17 +122,13 @@ const OrderProcessing = () => {
   };
 
   const handleMarkReady = (order: OrderProfile) => {
-    // First, mark the order as ready
     markAllItemsAsReady(order.id);
     console.log("we are readying", order.order_type, order.paid_status);
 
-    // Then, check if it's a Takeaway order and archive it
-    // Note: archiveOrder now handles inventory deduction automatically
     if (order.order_type === "Takeaway" && order.paid_status === "Paid") {
-      // A small delay can improve UX, ensuring the user sees the status change before it disappears.
       setTimeout(() => {
         archiveOrder(order.id);
-      }, 500); // 0.5 second delay
+      }, 500);
     }
   };
 
@@ -145,41 +136,20 @@ const OrderProcessing = () => {
     setActiveOrder(orderId);
   };
 
-  // Placeholder functions for MoreOptionsBottomSheet
   const { show } = useToast();
 
-  const handleCloseCheck = () => {
-    show({
-      title: "Close Check",
-      message:
-        "Close Check functionality for Order Processing not yet implemented.",
-      type: "success",
-    });
-  };
-
-  const handleApplyDiscount = () => {
-    show({
-      title: "Apply Discount",
-      message:
-        "Apply Discount functionality for Order Processing not yet implemented.",
-      type: "success",
-    });
-  };
-
-  const handleApplyVoucher = () => {
-    show({
-      title: "Apply Voucher",
-      message:
-        "Apply Voucher functionality for Order Processing not yet implemented.",
-      type: "success",
-    });
-  };
+  // DEFERRED RENDERING: Wait for navigation transition to complete before rendering heavy components
+  const [isReady, setIsReady] = useState(false);
+  useEffect(() => {
+    // Small delay to allow screen transition to finish
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <View className="flex-1 flex-col bg-[#212121]">
-      {/* AttachedModifierPanel - Renders over menu area for inline editing */}
-      {/* <AttachedModifierPanel /> */}
-
       <View className="flex-1 flex-row">
         <BillSection
           moreOptionsSheetRef={
@@ -204,29 +174,36 @@ const OrderProcessing = () => {
                   <Text className="text-2xl font-bold text-white">
                     Order Line
                   </Text>
-                  {filteredOrders?.length > 0 && (
+                  {reversedFilteredOrders?.length > 0 && (
                     <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-1 h-8 w-8">
                       <Text className="text-base font-bold text-white">
-                        {filteredOrders.length}
+                        {reversedFilteredOrders.length}
                       </Text>
                     </Badge>
                   )}
                 </View>
               </AccordionTrigger>
               <AccordionContent>
-                <OrderLineSection />
+                {/* Defer rendering of heavy list */}
+                {isReady ? (
+                  <OrderLineSection />
+                ) : (
+                  <View className="h-64 items-center justify-center">
+                    <Text className="text-gray-500">Loading orders...</Text>
+                  </View>
+                )}
               </AccordionContent>
             </AccordionItem>
           </Accordion>
 
           <View
             className={
-              !isAccordionOpen && filteredOrders.length > 0
+              !isAccordionOpen && reversedFilteredOrders.length > 0
                 ? "opacity-100"
                 : "opacity-0"
             }
             style={
-              !isAccordionOpen && filteredOrders.length > 0
+              !isAccordionOpen && reversedFilteredOrders.length > 0
                 ? { height: "auto" }
                 : { height: 0 }
             }
@@ -235,9 +212,14 @@ const OrderProcessing = () => {
               horizontal
               data={reversedFilteredOrders}
               keyExtractor={(item) => item.id}
-              className="mt-2 max-h-16" // Adjusted height
+              className="mt-2 max-h-16"
               contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
               showsHorizontalScrollIndicator={false}
+              // OPTIMIZED: Performance props for badge list
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={3}
+              removeClippedSubviews={true}
               renderItem={({ item }) => (
                 <OrderBadge
                   order={item}
@@ -249,7 +231,8 @@ const OrderProcessing = () => {
             />
           </View>
 
-          <MenuSection />
+          {/* Defer MenuSection as well - it's very heavy */}
+          {isReady ? <MenuSection /> : <View className="flex-1" />}
         </View>
       </View>
       <MoreOptionsBottomSheet
