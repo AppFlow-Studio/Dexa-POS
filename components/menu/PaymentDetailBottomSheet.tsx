@@ -6,6 +6,11 @@ import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePaym
 import { RefundService } from "@/services/refundService";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+// import type {
+//     CartItem,
+//     OrderPaymentItemCoverage,
+//     OrderProfile,
+// } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
@@ -15,30 +20,38 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "expo-router";
 import {
-  ArrowLeft,
-  Banknote,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  CircleDollarSign,
-  CreditCard,
-  Delete,
-  DollarSign,
-  Package,
-  Printer,
-  RefreshCcw,
-  RotateCcw,
-  X,
+    ArrowLeft,
+    Banknote,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    CircleDollarSign,
+    CreditCard,
+    Delete,
+    DollarSign,
+    Package,
+    Printer,
+    RefreshCcw,
+    RotateCcw,
+    X,
 } from "lucide-react-native";
 import React, {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
+    useCallback,
+    useEffect,
+    useImperativeHandle,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
-import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+    Modal,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 // ============================================================================
 // TYPES
@@ -333,7 +346,10 @@ const LeftPane: React.FC<LeftPaneProps> = ({
 }) => {
   // Get modifiers display for an item
   const getModifiersDisplay = (item: CartItem) => {
-    if (!item.customizations.modifiers || item.customizations.modifiers.length === 0) {
+    if (
+      !item.customizations.modifiers ||
+      item.customizations.modifiers.length === 0
+    ) {
       return null;
     }
 
@@ -341,7 +357,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
       const optionNames = mod.options?.map((opt) => opt.name).join(", ") || "";
       const priceAdjust = mod.options?.reduce(
         (sum, opt) => sum + (opt.price || 0),
-        0
+        0,
       );
 
       return (
@@ -549,9 +565,9 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onRefund,
   formatTimestamp,
 }) => {
-  const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<number | null>(
-    null
-  );
+  const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
+    number | null
+  >(null);
 
   const isOpen = order?.check_status === "Opened";
   const balanceDue = paymentSummary.orderTotal - paymentSummary.collected + (paymentSummary.refunds || 0);
@@ -617,7 +633,9 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               <View className="w-12 h-12 rounded-full bg-gray-800/50 items-center justify-center mb-3">
                 <CreditCard size={24} color="#4B5563" />
               </View>
-              <Text className="text-gray-500 text-sm">No payments recorded</Text>
+              <Text className="text-gray-500 text-sm">
+                No payments recorded
+              </Text>
             </View>
           ) : (
             paymentSummary.payments.map((payment, index) => {
@@ -1657,8 +1675,11 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     });
   };
 
-  const handleQuantityChange = (itemId: string, qty: number, maxQty: number) => {
-    if (isZeroRefundable) return;
+  const handleQuantityChange = (
+    itemId: string,
+    qty: number,
+    maxQty: number,
+  ) => {
     if (qty <= 0) {
       const { [itemId]: removed, ...rest } = selectedItems;
       setSelectedItems(rest);
@@ -2543,7 +2564,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         collapse: () => {},
         close: () => close(),
         forceClose: () => close(),
-      }) as BottomSheetMethods
+      }) as BottomSheetMethods,
   );
 
   // Calculate payment summary
@@ -2664,7 +2685,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     const subtotal = (order.items || []).reduce(
       (sum: number, item: CartItem) =>
         item.is_voided ? sum : sum + (item.price || 0) * item.quantity,
-      0
+      0,
     );
     const discount = order.total_discount || 0;
     const tax = order.total_tax || 0;
@@ -2965,8 +2986,21 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       }}
       statusBarTranslucent
     >
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-        <View style={{ height: '90%', backgroundColor: '#161616', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.6)",
+          justifyContent: "flex-end",
+        }}
+      >
+        <View
+          style={{
+            height: "90%",
+            backgroundColor: "#161616",
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+          }}
+        >
           {!order ? (
             <View className="flex-1 items-center justify-center">
               <Text className="text-gray-500">Loading order...</Text>
@@ -2976,9 +3010,14 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
               {/* Header */}
               <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-800">
                 <View className="flex-row items-center">
-                  <Text className="text-xl font-bold text-white">Payment Details</Text>
+                  <Text className="text-xl font-bold text-white">
+                    Payment Details
+                  </Text>
                   <Text className="text-lg text-gray-500 ml-2">
-                    Order {order.display_number || order.order_number?.slice(-6) || "—"}
+                    Order{" "}
+                    {order.display_number ||
+                      order.order_number?.slice(-6) ||
+                      "—"}
                   </Text>
                   <Text className="text-sm text-gray-500 ml-2">
                     {order.opened_at ? formatTimestamp(order.opened_at) : "—"}
@@ -3017,7 +3056,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     className="px-4 py-2 rounded-lg bg-gray-800 items-center justify-center"
                     style={{ opacity: (refundProcessing || tipProcessing) ? 0.3 : 1 }}
                   >
-                    <Text className="text-sm font-semibold text-gray-300">CLOSE</Text>
+                    <Text className="text-sm font-semibold text-gray-300">
+                      CLOSE
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -3072,7 +3113,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 };
 
 const PaymentDetailBottomSheet = React.forwardRef(
-  PaymentDetailBottomSheetComponent
+  PaymentDetailBottomSheetComponent,
 );
 PaymentDetailBottomSheet.displayName = "PaymentDetailBottomSheet";
 

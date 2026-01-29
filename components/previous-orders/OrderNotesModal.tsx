@@ -1,25 +1,26 @@
-import { CartItem, PreviousOrder } from "@/lib/types";
+import { CartItem, OrderProfile } from "@/lib/types";
 import { X } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Animated,
-  Easing,
-  PanResponder,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View
+    Animated,
+    Easing,
+    PanResponder,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 
 interface OrderNotesModalProps {
   isOpen: boolean;
   onClose: () => void;
-  order: PreviousOrder | null;
+  order: OrderProfile | null;
 }
 
 // Helper to truncate long order IDs
 const truncateOrderId = (orderId: string, maxLength: number = 12) => {
+  if (!orderId) return "";
   if (orderId.length <= maxLength) return orderId;
   return `${orderId.slice(0, maxLength)}...`;
 };
@@ -49,7 +50,7 @@ const ModifierItem = ({ item }: { item: CartItem }) => (
                     (opt) =>
                       `${opt.name}${
                         opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""
-                      }`
+                      }`,
                   )
                   .join(", ")}
               </Text>
@@ -112,6 +113,7 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
   onClose,
   order,
 }) => {
+  // ... (keep hooks and useEffect as they are)
   const slideAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -147,7 +149,7 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
           }).start();
         }
       },
-    })
+    }),
   ).current;
 
   useEffect(() => {
@@ -221,7 +223,7 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
                     inputRange: [0, 1],
                     outputRange: [0, 500],
                   }),
-                  dragY
+                  dragY,
                 ),
               },
               { scale: scaleAnim },
@@ -258,11 +260,14 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
           {/* Order Info Badge */}
           <View style={styles.orderInfoBadge}>
             <Text style={styles.orderInfoText}>
-              Order #{truncateOrderId(order.orderId)}
+              Order #
+              {truncateOrderId(
+                order.display_number || order.order_number || order.id || "",
+              )}
             </Text>
             <View style={styles.orderInfoDivider} />
             <Text style={styles.orderTotalText}>
-              Total ${order.total.toFixed(2)}
+              Total ${(order.total_amount || 0).toFixed(2)}
             </Text>
           </View>
 

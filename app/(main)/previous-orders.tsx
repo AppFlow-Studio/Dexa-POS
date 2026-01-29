@@ -1,10 +1,8 @@
 import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
-import AdvancedRefundModal from "@/components/previous-orders/AdvancedRefundModal";
 import OrderDetailsBottomSheet from "@/components/previous-orders/OrderDetailsBottomSheet";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import OrderTypeFilterDropdown from "@/components/previous-orders/OrderTypeFilterDropdown";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
-import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
 import SortControls from "@/components/previous-orders/SortControls";
 import StatusFilterDropdown from "@/components/previous-orders/StatusFilterDropdown";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
@@ -17,8 +15,10 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { filterPreviousOrders } from "@/utils/orderUtils";
 import type { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search } from "lucide-react-native";
-import { useMemo, useRef, useState } from "react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   DimensionValue,
   FlatList,
   KeyboardAvoidingView,
@@ -55,23 +55,117 @@ const HeaderCell = ({
   </View>
 );
 
+// Simple Skeleton Bar Component - uses inline styles for reliability
+const SkeletonBar = ({
+  width,
+  height,
+  style,
+}: {
+  width: number | string;
+  height: number;
+  style?: any;
+}) => {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.7,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
+
+  return (
+    <Animated.View
+      style={[
+        {
+          width: typeof width === "number" ? width : undefined,
+          height,
+          backgroundColor: "#4B5563",
+          borderRadius: 4,
+          opacity,
+        },
+        style,
+      ]}
+    />
+  );
+};
+
+// Skeleton Row Component
+const SkeletonRow = () => (
+  <View
+    className="flex-row items-center p-4 border-b border-gray-700"
+    style={{ height: 72 }}
+  >
+    <View style={{ width: "8%" }} className="pr-2">
+      <SkeletonBar width={48} height={16} />
+    </View>
+    <View style={{ width: "22%" }} className="pr-2">
+      <SkeletonBar width={120} height={16} style={{ marginBottom: 8 }} />
+      <SkeletonBar width={80} height={12} />
+    </View>
+    <View style={{ width: "12%" }} className="pr-2">
+      <SkeletonBar width={90} height={16} />
+    </View>
+    <View style={{ width: "10%" }} className="pr-2">
+      <SkeletonBar width={70} height={24} style={{ borderRadius: 12 }} />
+    </View>
+    <View style={{ width: "10%" }} className="pr-2">
+      <SkeletonBar width={70} height={16} />
+    </View>
+    <View style={{ width: "7%" }} className="pr-2">
+      <SkeletonBar width={50} height={24} style={{ borderRadius: 6 }} />
+    </View>
+    <View style={{ width: "10%" }} className="pr-2">
+      <SkeletonBar width={70} height={24} style={{ borderRadius: 12 }} />
+    </View>
+    <View style={{ width: "8%" }} className="pr-2">
+      <SkeletonBar width={60} height={16} />
+    </View>
+    <View style={{ width: "8%" }} className="pr-2">
+      <SkeletonBar width={32} height={32} style={{ borderRadius: 6 }} />
+    </View>
+    <View style={{ width: "5%" }} className="items-end">
+      <SkeletonBar width={32} height={32} style={{ borderRadius: 16 }} />
+    </View>
+  </View>
+);
+
 const PreviousOrdersScreen = () => {
   // State for the notes modal
   const [activeModal, setActiveModal] = useState<
     "notes" | "print" | "delete" | "modifiers" | "refund" | null
   >(null);
 
+  // DEFERRED LOADING STATE
+  const [isReady, setIsReady] = useState(false);
+
+  // Trigger deferred loading - 500ms to show skeleton visibly
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 500); // 500ms delay so user sees the skeleton loader
+    return () => clearTimeout(timer);
+  }, []);
+
   const { selectedStore } = useStoreSettingsStore();
   const [selectedOrderItems, setSelectedOrderItems] = useState<CartItem[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(
-    null
-  );
-  const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<OrderProfile | null>(
-    null
-  );
-  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<OrderProfile | null>(
-    null
-  );
+  const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(null);
+  const [selectedOrderForReceipt, setSelectedOrderForReceipt] =
+    useState<OrderProfile | null>(null);
+  const [selectedOrderForDetails, setSelectedOrderForDetails] =
+    useState<OrderProfile | null>(null);
   const orderDetailsSheetRef = useRef<BottomSheetMethods>(null);
   const [dateRange, setDateRange] = useState<DateRange>({
     from: new Date(),
@@ -85,12 +179,14 @@ const PreviousOrdersScreen = () => {
   const [statusFilter, setStatusFilter] = useState<PaymentStatus[]>([]);
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType[]>([]);
 
-  // const previousOrders = usePreviousOrders({ showCompleted: false });
-  const { ordersById } = useOrderStore();
-  // console.log("ordersById", ordersById);
-  // console.log("previousOrders", previousOrders);
+  // CRITICAL FIX: Use proper selector instead of destructuring entire store
+  const ordersById = useOrderStore((s) => s.ordersById);
+
   // Process orders: deduplicate, filter, and apply search/sort
+  // OPTIMIZED: Only calculate when isReady is true to prevent blocking navigation
   const filteredOrders = useMemo(() => {
+    if (!isReady) return []; // Return empty during initial render
+
     // Filter to show only relevant orders
     let filtered = filterPreviousOrders(Object.values(ordersById));
 
@@ -99,21 +195,25 @@ const PreviousOrdersScreen = () => {
       const lowerQuery = searchText.toLowerCase();
       filtered = filtered.filter(
         (order) =>
-          (order.display_number || order.order_number || order.id).toLowerCase().includes(lowerQuery) ||
-          (order.customer_name || "walk-in").toLowerCase().includes(lowerQuery)
+          (order.display_number || order.order_number || order.id)
+            .toLowerCase()
+            .includes(lowerQuery) ||
+          (order.customer_name || "walk-in").toLowerCase().includes(lowerQuery),
       );
     }
 
     // Step 4: Apply status filter
     if (statusFilter.length > 0) {
       filtered = filtered.filter((o) =>
-        statusFilter.includes(o.paid_status as PaymentStatus)
+        statusFilter.includes(o.paid_status as PaymentStatus),
       );
     }
 
     // Step 5: Apply order type filter
     if (orderTypeFilter.length > 0) {
-      filtered = filtered.filter((o) => orderTypeFilter.includes(o.order_type as OrderType));
+      filtered = filtered.filter((o) =>
+        orderTypeFilter.includes(o.order_type as OrderType),
+      );
     }
 
     // Step 6: Sort orders
@@ -136,23 +236,32 @@ const PreviousOrdersScreen = () => {
     });
 
     return filtered;
-  }, [ordersById, searchText, statusFilter, orderTypeFilter, sortBy, sortOrder]);
+  }, [
+    ordersById,
+    searchText,
+    statusFilter,
+    orderTypeFilter,
+    sortBy,
+    sortOrder,
+    isReady, // Add isReady dep
+  ]);
 
-  const handleOpenNotes = (order: OrderProfile) => {
+  // Wrappers for callbacks (no changes needed)
+  const handleOpenNotes = useCallback((order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("notes");
-  };
+  }, []);
 
-  const handleOpenDelete = (order: OrderProfile) => {
+  const handleOpenDelete = useCallback((order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("delete");
-  };
+  }, []);
 
-  const handleOpenPrint = (order: OrderProfile) => {
+  const handleOpenPrint = useCallback((order: OrderProfile) => {
     setSelectedOrderForReceipt(order);
-    // setActiveModal("print");
-  };
+  }, []);
 
+  // ... (keep handleConfirmDelete, handleCloseCheck, handleReopenCheck, handleRefund, handleDoublePress as is)
   const handleConfirmDelete = () => {
     if (selectedOrderItems) {
       // This needs to be implemented with actual state management for MOCK_PREVIOUS_ORDERS
@@ -161,7 +270,7 @@ const PreviousOrdersScreen = () => {
     setActiveModal(null); // Close the modal
   };
 
-  const handleCloseCheck = async (order: OrderProfile) => {
+  const handleCloseCheck = useCallback(async (order: OrderProfile) => {
     if (!order.db_order_id) {
       console.warn("Cannot close check - no db_order_id");
       return;
@@ -183,9 +292,9 @@ const PreviousOrdersScreen = () => {
     } catch (err) {
       console.error("Failed to close check:", err);
     }
-  };
+  }, []);
 
-  const handleReopenCheck = async (order: OrderProfile) => {
+  const handleReopenCheck = useCallback(async (order: OrderProfile) => {
     if (!order.db_order_id) {
       console.warn("Cannot reopen check - no db_order_id");
       return;
@@ -207,19 +316,18 @@ const PreviousOrdersScreen = () => {
     } catch (err) {
       console.error("Failed to reopen check:", err);
     }
-  };
+  }, []);
 
-  const handleRefund = (order: OrderProfile) => {
+  const handleRefund = useCallback((order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("refund");
-  };
+  }, []);
 
-  const handleDoublePress = (order: OrderProfile) => {
+  const handleDoublePress = useCallback((order: OrderProfile) => {
     setSelectedOrderForDetails(order);
     orderDetailsSheetRef.current?.snapToIndex?.(0);
-  };
+  }, []);
 
-  // console.log("filteredOrders", filteredOrders[21]);
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -266,38 +374,49 @@ const PreviousOrdersScreen = () => {
           {/* Table Header */}
           <View className="flex-row p-4 border-b border-gray-700">
             {columns.map((col) => (
-              <HeaderCell
-                key={col.label}
-                label={col.label}
-                width={col.width}
-              />
+              <HeaderCell key={col.label} label={col.label} width={col.width} />
             ))}
           </View>
 
           {/* Table Body */}
-          <FlatList
-            data={filteredOrders}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <PreviousOrderRow
-                order={item}
-                onViewNotes={handleOpenNotes}
-                onDelete={() => handleOpenDelete(item)}
-                onPrint={() => handleOpenPrint(item)}
-                onCloseCheck={handleCloseCheck}
-                onReopenCheck={handleReopenCheck}
-                onRefund={handleRefund}
-                onDoublePress={handleDoublePress}
-              />
-            )}
-            ListEmptyComponent={
-              <View className="items-center justify-center py-8">
-                <Text className="text-xl text-gray-500">
-                  No orders found for this date.
-                </Text>
-              </View>
-            }
-          />
+          {/* Conditional Rendering: Skeletons vs Data */}
+          {!isReady ? (
+            <View className="flex-1">
+              {/* Render 10 skeleton rows */}
+              {Array.from({ length: 12 }).map((_, index) => (
+                <SkeletonRow key={`skeleton-${index}`} />
+              ))}
+            </View>
+          ) : (
+            <FlatList
+              data={filteredOrders}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <PreviousOrderRow
+                  order={item}
+                  onViewNotes={handleOpenNotes}
+                  onDelete={handleOpenDelete}
+                  onPrint={handleOpenPrint}
+                  onCloseCheck={handleCloseCheck}
+                  onReopenCheck={handleReopenCheck}
+                  onRefund={handleRefund}
+                  onDoublePress={handleDoublePress}
+                />
+              )}
+              ListEmptyComponent={
+                <View className="items-center justify-center py-8">
+                  <Text className="text-xl text-gray-500">
+                    No orders found for this date.
+                  </Text>
+                </View>
+              }
+              // Performance optimizations
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={true}
+            />
+          )}
         </View>
 
         <OrderNotesModal

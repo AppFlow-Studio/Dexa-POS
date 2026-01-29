@@ -3,8 +3,8 @@ import { useCFD } from "@/contexts/CFDProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
-  getTerminalErrorMessage,
-  isTerminalConnectivityError,
+    getTerminalErrorMessage,
+    isTerminalConnectivityError,
 } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
@@ -16,11 +16,11 @@ import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { CheckCircle2, Wifi } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 const CardPaymentView = () => {
@@ -126,6 +126,13 @@ const CardPaymentView = () => {
   useEffect(() => {
     if (status === "ready") {
       showTipSelection(totalToPay, [18, 20, 25]);
+
+      // Resync existing tip selection if state persisted
+      const currentTipAmount = parseFloat(tipInput) || 0;
+      if (currentTipAmount > 0 || selectedTipPreset !== null) {
+        updateTip(currentTipAmount, selectedTipPreset);
+      }
+
       clearTipResponse();
     }
 

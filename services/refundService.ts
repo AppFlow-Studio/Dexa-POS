@@ -581,6 +581,11 @@ export class RefundService {
     terminalId: string,
     terminal: StationPaymentTerminal | undefined,
   ): Promise<{ success: boolean; terminalResponse?: DejavooRefundResponse; error?: string }> {
+    // Cash payments don't go through the terminal — just succeed immediately
+    if (payment.paymentMethod?.toLowerCase() === 'cash') {
+      return { success: true };
+    }
+
     // Check for missing required fields with specific error messages
     console.log('processTerminalRefund Payment', payment);
     if (!terminalId && !payment.referenceId) {

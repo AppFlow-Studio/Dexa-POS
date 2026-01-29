@@ -9,11 +9,11 @@
  * Guiding Principle: "The store holds everything; selectors decide what each component sees."
  */
 
+import { calculateOrderTotals } from "@/lib/order-calculator";
+import type { OrderProfile } from "@/lib/types";
 import { useMemo } from "react";
 import { useOrderStore } from "../useOrderStore";
 import { useStoreSettingsStore } from "../useStoreSettingsStore";
-import { calculateOrderTotals } from "@/lib/order-calculator";
-import type { OrderProfile } from "@/lib/types";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SELECTOR: Active Order Totals (Phase 7 - Derived State)
@@ -81,13 +81,29 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
 
     // Get tip from payments array (sum of all non-voided payment tips)
     const tip = (activeOrder.payments ?? [])
-      .filter(p => !p.isVoided)
+      .filter((p) => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
 
     const amountDue = totals.outstanding_total;
     const cashAmountDue = totals.cash_outstanding_total;
+    // Check if any payments exist (excluding voided) - determines authority
+    const hasPayments = (activeOrder.payments ?? []).some((p) => !p.isVoided);
 
+    // Authority logic: frontend before first payment, backend after
+    // Before payment: use frontend calculations for real-time accuracy
+    // After payment: use backend values as source of truth for payment state
+    // const amountDue = hasPayments
+    //   ? (backendAmountDue ?? totals.outstanding_total)
+    //   : totals.outstanding_total;
 
+    // const cashAmountDue = hasPayments
+    //   ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+    //   : totals.cash_outstanding_total;
+
+    // Helper to count query items accurately
+    const itemCount = activeOrder.items
+      .filter((item) => !item.is_voided)
+      .reduce((sum, item) => sum + item.quantity, 0);
 
     return {
       subtotal: totals.subtotal,
@@ -95,10 +111,10 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
       cashTax: totals.cash_tax_amount,
       total: totals.total_amount,
       discount: totals.discount_amount,
-      itemCount: activeItems.reduce((sum, item) => sum + item.quantity, 0),
+      itemCount,
       tip,
       amountDue,
-      cashAmountDue,  // ✅ FIX: Use the calculated variable, not totals.cash_outstanding_total
+      cashAmountDue,
       outstandingSubtotal: totals.outstanding_subtotal,
       outstandingTax: totals.outstanding_tax,
       cashSubtotal: totals.cash_subtotal,
@@ -119,7 +135,9 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
  * @param orderId - Local order ID (not db_order_id) to calculate totals for
  * @returns Order totals or null if order not found
  */
-export function useOrderTotals(orderId: string | null): ActiveOrderTotals | null {
+export function useOrderTotals(
+  orderId: string | null,
+): ActiveOrderTotals | null {
   const ordersById = useOrderStore((s) => s.ordersById);
   const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
 
@@ -144,11 +162,22 @@ export function useOrderTotals(orderId: string | null): ActiveOrderTotals | null
 
     // Get tip from payments array (sum of all non-voided payment tips)
     const tip = (order.payments ?? [])
-      .filter(p => !p.isVoided)
+      .filter((p) => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
 
     const amountDue = totals.outstanding_total;
     const cashAmountDue = totals.cash_outstanding_total;
+    // Check if any payments exist (excluding voided) - determines authority
+    const hasPayments = (order.payments ?? []).some((p) => !p.isVoided);
+
+    // // Authority logic: frontend before first payment, backend after
+    // const amountDue = hasPayments
+    //   ? (backendAmountDue ?? totals.outstanding_total)
+    //   : totals.outstanding_total;
+
+    // const cashAmountDue = hasPayments
+    //   ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+    //   : totals.cash_outstanding_total;
 
     return {
       subtotal: totals.subtotal,
@@ -206,17 +235,23 @@ export function useStationOrders(): OrderProfile[] {
   return useMemo(() => {
     if (!currentStationId) return [];
 
-    const inactiveStatuses = ["completed", "voided", "cancelled", "void"];
-    const dineInTypes = ["Dine In", "dine_in"];
+    const inactiveStatuses = new Set([
+      "completed",
+      "voided",
+      "cancelled",
+      "void",
+    ]);
+    const dineInTypes = new Set(["Dine In", "dine_in"]);
     const workingSet = new Set(workingSetOrderIds);
 
+    // Filter relevant orders directly
     return Object.values(ordersById)
       .filter((order) => {
         // Exclude Dine In orders (handled by table/floor plan flow)
-        if (dineInTypes.includes(order.order_type ?? "")) return false;
+        if (dineInTypes.has(order.order_type ?? "")) return false;
 
         // Must not be inactive
-        if (inactiveStatuses.includes(order.order_status ?? "")) return false;
+        if (inactiveStatuses.has(order.order_status ?? "")) return false;
 
         // Must have items
         if (!order.items || order.items.length === 0) return false;
@@ -225,7 +260,8 @@ export function useStationOrders(): OrderProfile[] {
         if (order.order_status === "draft") return false;
 
         // Include if: in working set OR our station's order
-        const isInWorkingSet = order.db_order_id && workingSet.has(order.db_order_id);
+        const isInWorkingSet =
+          order.db_order_id && workingSet.has(order.db_order_id);
         const isOurStationOrder = order.station_id === currentStationId;
 
         return isInWorkingSet || isOurStationOrder;
@@ -263,7 +299,12 @@ export function useOtherStationOrders(): OrderProfile[] {
     if (!currentStationId) return [];
 
     const workingSet = new Set(workingSetOrderIds);
-    const inactiveStatuses = ["completed", "voided", "cancelled", "void"];
+    const inactiveStatuses = new Set([
+      "completed",
+      "voided",
+      "cancelled",
+      "void",
+    ]);
 
     return Object.values(ordersById)
       .filter((order) => {
@@ -271,10 +312,11 @@ export function useOtherStationOrders(): OrderProfile[] {
         if (order.station_id === currentStationId) return false;
 
         // Must not be in working set (those show in StationOrders)
-        if (order.db_order_id && workingSet.has(order.db_order_id)) return false;
+        if (order.db_order_id && workingSet.has(order.db_order_id))
+          return false;
 
         // Must not be inactive
-        if (inactiveStatuses.includes(order.order_status ?? "")) return false;
+        if (inactiveStatuses.has(order.order_status ?? "")) return false;
 
         return true;
       })
@@ -292,15 +334,20 @@ export function useOtherStationOrders(): OrderProfile[] {
 
 export function useOrderTypeCounts(): Record<string, number> {
   const stationOrders = useStationOrders();
-  const OnlyUncomplete = stationOrders.filter((o) => ( o.order_status !== 'completed' && o.order_status !== 'ready' ) && o.paid_status !== 'Paid')
+  const OnlyUncomplete = stationOrders.filter(
+    (o) =>
+      o.order_status !== "completed" &&
+      o.order_status !== "ready" &&
+      o.paid_status !== "Paid",
+  );
   return useMemo(() => {
     return {
       All: OnlyUncomplete.length,
       Takeaway: OnlyUncomplete.filter(
-        (o) => o.order_type === "takeout" || o.order_type === "Takeaway"
+        (o) => o.order_type === "takeout" || o.order_type === "Takeaway",
       ).length,
       Delivery: OnlyUncomplete.filter(
-        (o) => o.order_type === "delivery" || o.order_type === "Delivery"
+        (o) => o.order_type === "delivery" || o.order_type === "Delivery",
       ).length,
     };
   }, [stationOrders]);
@@ -327,35 +374,51 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
   return useMemo(() => {
     if (!currentStationId || !currentStation) return [];
 
-    const inactiveStatuses = ["completed", "voided", "cancelled", "void"];
-    const dineInTypes = ["Dine In", "dine_in"];
+    const inactiveStatuses = new Set([
+      "completed",
+      "voided",
+      "cancelled",
+      "void",
+    ]);
+    const dineInTypes = new Set(["Dine In", "dine_in"]);
     const workingSet = new Set(workingSetOrderIds);
 
     // Get IDs that are in OrderLineSection to exclude (avoid duplicates)
-    const stationOrderIds = new Set(
-      Object.values(ordersById)
-        .filter((o) => {
-          if (dineInTypes.includes(o.order_type ?? "")) return false;
-          if (inactiveStatuses.includes(o.order_status ?? "")) return false;
-          if (o.order_status === "draft") return false;
-          if (!o.items || o.items.length === 0) return false;
+    // Optimize: Single pass to build exclusion set
+    const stationOrderIds = new Set<string>();
 
-          // In working set OR our station's order
-          const isInWorkingSet = o.db_order_id && workingSet.has(o.db_order_id);
-          const isOurStationOrder = o.station_id === currentStationId;
+    const allOrders = Object.values(ordersById);
 
-          return isInWorkingSet || isOurStationOrder;
-        })
-        .map((o) => o.id)
-    );
+    // First pass mainly to identify station orders for exclusion
+    for (const o of allOrders) {
+      if (
+        !dineInTypes.has(o.order_type ?? "") &&
+        !inactiveStatuses.has(o.order_status ?? "") &&
+        o.order_status !== "draft" &&
+        o.items &&
+        o.items.length > 0
+      ) {
+        const isInWorkingSet = o.db_order_id && workingSet.has(o.db_order_id);
+        const isOurStationOrder = o.station_id === currentStationId;
+        if (isInWorkingSet || isOurStationOrder) {
+          stationOrderIds.add(o.id);
+        }
+      }
+    }
 
-    let result = Object.values(ordersById).filter((order) => {
+    const viewScope = currentStation.view_scope || "own";
+    const onlineTypes = new Set([
+      "delivery",
+      "takeout",
+      "Delivery",
+      "Takeaway",
+    ]);
+
+    let result = allOrders.filter((order) => {
       // Exclude orders already in OrderLineSection
       if (stationOrderIds.has(order.id)) return false;
 
       // Apply view_scope rules
-      const viewScope = currentStation.view_scope || "own";
-
       switch (viewScope) {
         case "own":
           // Only our station's orders
@@ -368,8 +431,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
 
         case "online":
           // Only online order types
-          const onlineTypes = ["delivery", "takeout", "Delivery", "Takeaway"];
-          if (!onlineTypes.includes(order.order_type ?? "")) return false;
+          if (!onlineTypes.has(order.order_type ?? "")) return false;
           break;
       }
 
@@ -379,20 +441,20 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     // Apply user filters
     if (filters?.orderTypes?.length) {
       result = result.filter((o) =>
-        filters.orderTypes!.includes(o.order_type as string)
+        filters.orderTypes!.includes(o.order_type as string),
       );
     }
 
     if (filters?.status?.length) {
       result = result.filter((o) =>
-        filters.status!.includes(o.order_status as string)
+        filters.status!.includes(o.order_status as string),
       );
     }
 
     // Filter completed orders unless explicitly requested
     if (!filters?.showCompleted) {
       result = result.filter(
-        (o) => !inactiveStatuses.includes(o.order_status ?? "")
+        (o) => !inactiveStatuses.has(o.order_status ?? ""),
       );
     }
 
@@ -402,7 +464,13 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
       const bTime = new Date(b.opened_at || 0).getTime();
       return bTime - aTime;
     });
-  }, [ordersById, currentStationId, currentStation, workingSetOrderIds, filters]);
+  }, [
+    ordersById,
+    currentStationId,
+    currentStation,
+    workingSetOrderIds,
+    filters,
+  ]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

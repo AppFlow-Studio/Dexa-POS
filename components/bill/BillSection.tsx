@@ -1,8 +1,8 @@
 import { useToast } from "@/contexts/ToastContext";
 import { CartItem } from "@/lib/types";
 import {
-  getAutoRetryCount,
-  isAutoRetryInProgress,
+    getAutoRetryCount,
+    isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
@@ -12,12 +12,12 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import {
-  AlertTriangle,
-  Clock,
-  Plus,
-  RefreshCw,
-  Send,
-  WifiOff,
+    AlertTriangle,
+    Clock,
+    Plus,
+    RefreshCw,
+    Send,
+    WifiOff,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -28,7 +28,7 @@ import OrderDetails from "./OrderDetails";
 import Totals from "./Totals";
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
-const BillSectionContent = React.memo(
+const BillItemsAndTotals = React.memo(
   ({ cart }: { cart: CartItem[] }) => {
     const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
@@ -50,7 +50,7 @@ const BillSectionContent = React.memo(
   (prev, next) => prev.cart === next.cart,
 );
 
-const BillSection = ({
+const BillSectionContent = ({
   showOrderDetails = true,
   showPlaymentActions = true,
   moreOptionsSheetRef,
@@ -438,7 +438,7 @@ const BillSection = ({
         </View>
       )}
 
-      <BillSectionContent cart={cart} />
+      <BillItemsAndTotals cart={cart} />
       <View className="py-3 px-4 bg-[#212121]">
         <View className="flex-row gap-4">
           {/* Start New Order Button */}
@@ -532,4 +532,5 @@ const BillSection = ({
   );
 };
 
+const BillSection = React.memo(BillSectionContent);
 export default BillSection;

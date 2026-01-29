@@ -102,6 +102,13 @@ const OrderRow = memo<OrderRowProps>(
       return { time, date: dateStr };
     }, [order.opened_at]);
 
+    const totalRefunded = useMemo(() => {
+      return (order.payments || []).reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
+    }, [order.payments]);
+
+    const isFullyRefunded = order.order_status === "refunded" ||
+      (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0));
+
     const handleRowPress = useCallback(() => {
       // onRowClick(order.id);
       usePaymentDetailSheetStore
@@ -246,6 +253,16 @@ const OrderRow = memo<OrderRowProps>(
           >
             {order.paid_status}
           </Text>
+          {totalRefunded > 0 && (
+            <Text className="text-xs font-medium mt-0.5 text-red-400">
+              {isFullyRefunded ? "Refunded" : "Partial"} ${totalRefunded.toFixed(2)}
+            </Text>
+          )}
+          <View className={`mt-1 px-1.5 py-0.5 rounded ${order.check_status === "Closed" ? "bg-gray-700" : "bg-emerald-900/30"}`}>
+            <Text className={`text-[10px] font-semibold ${order.check_status === "Closed" ? "text-gray-300" : "text-emerald-400"}`}>
+              {order.check_status === "Closed" ? "Closed" : "Open"}
+            </Text>
+          </View>
         </View>
 
         {/* ACTIONS Column */}

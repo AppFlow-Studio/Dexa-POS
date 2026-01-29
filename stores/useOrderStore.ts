@@ -7076,11 +7076,11 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // Show toast after the state update
-            toastService.show({
-              title: "Items Sent",
-              message: "New items have been sent to the kitchen.",
-              type: "success",
-            });
+            // toastService.show({
+            //   title: "Items Sent",
+            //   message: "New items have been sent to the kitchen.",
+            //   type: "success",
+            // });
 
             // recalculateTotals(orderId);
           },

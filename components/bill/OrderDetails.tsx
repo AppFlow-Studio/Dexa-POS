@@ -6,8 +6,8 @@ import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Edit3, Plus, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -42,7 +42,13 @@ const OrderDetailsComponent: React.FC = () => {
   });
   const orderType = useOrderStore((s) => {
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.order_type || "takeout";
+    const type = order?.order_type || "takeout";
+    const labels: Record<string, string> = {
+      dine_in: "Dine In",
+      takeout: "Takeaway",
+      delivery: "Delivery",
+    };
+    return labels[type] || type;
   });
   const serviceLocationId = useOrderStore((s) => {
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
@@ -54,7 +60,9 @@ const OrderDetailsComponent: React.FC = () => {
   });
 
   // Actions - stable function references
-  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const updateActiveOrderDetails = useOrderStore(
+    (s) => s.updateActiveOrderDetails,
+  );
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
 
   const { openDrawer } = useOrderTypeDrawerStore();
@@ -62,7 +70,7 @@ const OrderDetailsComponent: React.FC = () => {
 
   // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
-    undefined
+    undefined,
   );
   // Temporary storage for selected table (not yet assigned to order)
   const [pendingTableSelection, setLocalPendingTableSelection] = useState<
@@ -86,9 +94,7 @@ const OrderDetailsComponent: React.FC = () => {
     const tablesById = useFloorPlanStore.getState().tablesById;
     return Object.values(tablesById)
       .filter(
-        (t) =>
-          t.session?.status === "available" ||
-          t.id === serviceLocationId
+        (t) => t.session?.status === "available" || t.id === serviceLocationId,
       )
       .map((t) => ({ label: t.name, value: t.id }));
   }, [serviceLocationId]);
@@ -106,7 +112,9 @@ const OrderDetailsComponent: React.FC = () => {
     // Only update if conditions are met and value is different
     if (serviceLocationId && orderStatus === "preparing") {
       // Use O(1) lookup directly from store
-      const table = useFloorPlanStore.getState().getTableById(serviceLocationId);
+      const table = useFloorPlanStore
+        .getState()
+        .getTableById(serviceLocationId);
       if (table) {
         setSelectedTable({ label: table.name, value: table.id });
         lastProcessedServiceLocationRef.current = serviceLocationId;
@@ -180,7 +188,7 @@ const OrderDetailsComponent: React.FC = () => {
     }
 
     // Create a new cart item for the open item
-    const newOpenItem = {
+    const newOpenItem: any = {
       id: `open_item_${Date.now()}`,
       itemId: `open_item_${Date.now()}`,
       menuItemId: `open_item_${Date.now()}`,
@@ -193,6 +201,17 @@ const OrderDetailsComponent: React.FC = () => {
       },
       availableDiscount: undefined,
       appliedDiscount: null,
+      // Default missing properties to satisfy CartItem
+      paidQuantity: 0,
+      unitPrice: price,
+      cashPrice: price,
+      subtotal: price,
+      baseCardPrice: price,
+      baseCashPrice: price,
+      cashSubtotal: price,
+      taxRate: 0,
+      taxAmount: 0,
+      cashTaxAmount: 0,
     };
 
     addItemToActiveOrder(newOpenItem);
@@ -200,7 +219,7 @@ const OrderDetailsComponent: React.FC = () => {
     show({
       title: "Item Added",
       message: `${openItemName.trim()} for $${price.toFixed(
-        2
+        2,
       )} has been added to the order.`,
       type: "success",
     });
@@ -260,7 +279,11 @@ const OrderDetailsComponent: React.FC = () => {
           <Label className="text-white font-semibold text-xl">Customer</Label>
           <TouchableOpacity
             onPress={openSheet}
-            className="flex-row w-full items-center p-2 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-12"
+            className={`flex-row w-full items-center p-2 border-2 rounded-lg h-12 ${
+              customerName
+                ? "border-green-500 bg-[#303030] border-solid"
+                : "border-dashed border-gray-700 bg-[#303030]"
+            }`}
           >
             {customerName ? (
               <>

@@ -1,12 +1,12 @@
 // src/services/cfd/CFDController.ts
 import type {
-  CFDBranding,
-  CFDCartItem,
-  CFDMessage,
-  CFDPairingData,
-  CFDPayload,
-  CFDScreenState,
-  CFDTipResponse,
+    CFDBranding,
+    CFDCartItem,
+    CFDMessage,
+    CFDPairingData,
+    CFDPayload,
+    CFDScreenState,
+    CFDTipResponse,
 } from "@/types/cfd.types";
 import * as Device from "expo-device";
 import { WebSocketServer } from "./WebSocketServer";
@@ -129,6 +129,7 @@ export class CFDController {
       amountPaid: this.lastPayload.amountPaid ?? 0,
       branding: this.branding,
       tipConfig: this.lastPayload.tipConfig,
+      carouselImages: this.lastPayload.carouselImages,
       timestamp: Date.now(),
     };
 
@@ -267,6 +268,7 @@ export class CFDController {
       outstandingTotal: 0,
       amountPaid: 0,
       branding: this.branding,
+      carouselImages: this.lastPayload.carouselImages,
       timestamp: Date.now(),
     });
   }
@@ -285,6 +287,17 @@ export class CFDController {
       locationId: this.locationId,
       locationName: this.branding.restaurantName,
     };
+  }
+
+  /**
+   * Update idle carousel images
+   */
+  updateCarouselImages(images: string[]): void {
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      carouselImages: images,
+      timestamp: Date.now(),
+    });
   }
 
   get isConnected(): boolean {
