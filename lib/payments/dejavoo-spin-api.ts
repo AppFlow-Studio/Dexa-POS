@@ -442,6 +442,25 @@ export class DejavooSpinAPI {
     return new VoidTransactionBuilder(this);
   }
 
+  /**
+   * Create an ABORT TRANSACTION builder
+   *
+   * Sends an abort request to cancel an in-flight transaction on the terminal.
+   *
+   * @returns AbortTransactionBuilder for method chaining
+   *
+   * @example
+   * ```typescript
+   * const result = await api
+   *   .abortTransaction()
+   *   .referenceId('CARD_1234567_1234')
+   *   .execute();
+   * ```
+   */
+  abortTransaction(): AbortTransactionBuilder {
+    return new AbortTransactionBuilder(this);
+  }
+
   // ============================================================
   // INTERNAL METHODS
   // ============================================================
@@ -2485,5 +2504,106 @@ export class VoidTransactionBuilder {
    */
   getTags(): (string | undefined)[] {
     return [this._tag1, this._tag2, this._tag3];
+  }
+}
+
+// ============================================================
+// ABORT TRANSACTION BUILDER
+// ============================================================
+
+/**
+ * Fluent builder for ABORT TRANSACTION requests
+ *
+ * Sends an abort request to cancel an in-flight transaction on the terminal.
+ * Must reference the transaction via referenceId.
+ *
+ * @example
+ * ```typescript
+ * const result = await api
+ *   .abortTransaction()
+ *   .referenceId('CARD_1234567_1234')
+ *   .execute();
+ * ```
+ */
+export class AbortTransactionBuilder {
+  private api: DejavooSpinAPI;
+  private _referenceId?: string;
+
+  constructor(api: DejavooSpinAPI) {
+    this.api = api;
+  }
+
+  /**
+   * Set reference ID of the transaction to abort (REQUIRED)
+   *
+   * @param value - Reference ID of the in-flight transaction
+   * @returns this for chaining
+   */
+  referenceId(value: string): this {
+    this._referenceId = value;
+    return this;
+  }
+
+  /**
+   * Execute the ABORT TRANSACTION request
+   *
+   * @returns Promise with transaction result
+   */
+  async execute(): Promise<DejavooAPIResponse<Record<string, any>>> {
+    if (!this._referenceId) {
+      const error = 'Reference ID is required. Call .referenceId() before execute()';
+      console.error('[AbortTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    try {
+      const authParams = this.api.getAuthParams();
+
+      const request = {
+        ReferenceId: this._referenceId,
+        RegisterId: authParams.RegisterId,
+        Authkey: authParams.AuthKey,
+        CustomFields: {},
+      };
+
+      const response = await this.api.executeRequest<Record<string, any>>(
+        '/v2/Payment/AbortTransaction',
+        request
+      );
+
+      if (response.success) {
+        toastService.show({
+          title: 'Transaction Cancelled',
+          message: 'The transaction has been aborted.',
+          type: 'success',
+          duration: 3000,
+        });
+      } else {
+        toastService.show({
+          title: 'Abort Failed',
+          message: response.error || 'Failed to abort transaction.',
+          type: 'error',
+          duration: 5000,
+        });
+      }
+
+      return response;
+    } catch (err) {
+      console.error('[AbortTransactionBuilder] Execute failed:', err);
+
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+
+      toastService.show({
+        title: 'Abort Error',
+        message: errorMsg,
+        type: 'error',
+        duration: 5000,
+      });
+
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
   }
 }

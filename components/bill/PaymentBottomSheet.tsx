@@ -34,7 +34,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PaymentBottomSheetProps
 > = (props, ref) => {
-  const { view, close, isDirty, setIsDirty, handleSuccessClose } =
+  const { view, close, isDirty, setIsDirty, handleSuccessClose, isTransactionProcessing } =
     usePaymentStore();
   const [showConfirmation, setShowConfirmation] = useState(false);
   
@@ -53,10 +53,15 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   );
 
   // 90% ensures full height on tablets, 50% for quick actions
-  const snapPoints = useMemo(() => ["95%", "95%"], []);
+  const snapPoints = useMemo(() => ["90%", "95%", '100%'], []);
 
   const handleSheetChanges = useCallback(
     (index: number) => {
+      // Block dismissal while a transaction is processing
+      if (index === -1 && isTransactionProcessing) {
+        internalRef.current?.snapToIndex(0);
+        return;
+      }
       if (index === -1 && isDirty && !showConfirmation) {
         setShowConfirmation(true);
         internalRef.current?.snapToIndex(0);
@@ -69,7 +74,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         }
       }
     },
-    [isDirty, close, showConfirmation, view, handleSuccessClose]
+    [isDirty, close, showConfirmation, view, handleSuccessClose, isTransactionProcessing]
   );
 
   const handleConfirmClose = () => {
@@ -84,6 +89,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   };
 
   const handleAttemptClose = () => {
+    if (isTransactionProcessing) return; // Block close during active transaction
     if (isDirty) {
       setShowConfirmation(true);
     } else {
@@ -142,7 +148,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         ref={internalRef}
         index={-1}
         snapPoints={snapPoints}
-        enablePanDownToClose={true}
+        enablePanDownToClose={!isTransactionProcessing}
         onChange={handleSheetChanges}
         backgroundStyle={{ backgroundColor: "#212121" }}
         handleIndicatorStyle={{ backgroundColor: "#707070" }}
@@ -150,12 +156,13 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         topInset={60}
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
+        
       >
         <BottomSheetScrollView style={styles.container}>
           {/* Header */}
           <View className="bg-[#212121] p-4 flex-row justify-between items-center border-b border-[#333]">
             <Text className="text-2xl font-bold text-white">Payment</Text>
-            <TouchableOpacity onPress={handleAttemptClose}>
+            <TouchableOpacity onPress={handleAttemptClose} disabled={isTransactionProcessing} style={{ opacity: isTransactionProcessing ? 0.3 : 1 }}>
               <X size={24} color="#FFF" />
             </TouchableOpacity>
           </View>

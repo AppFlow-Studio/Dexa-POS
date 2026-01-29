@@ -1,31 +1,31 @@
 import {
-  CardType,
-  formatCardNumber,
-  validateCardNumber,
-  validateExpiry,
+    CardType,
+    formatCardNumber,
+    validateCardNumber,
+    validateExpiry,
 } from "@/lib/card-validation";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import {
-  AlertCircle,
-  ArrowLeft,
-  CreditCard,
-  DollarSign,
-  Eye,
-  EyeOff,
-  Lock,
-  ShieldCheck,
+    AlertCircle,
+    ArrowLeft,
+    CreditCard,
+    DollarSign,
+    Eye,
+    EyeOff,
+    Lock,
+    ShieldCheck,
 } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 
@@ -113,8 +113,13 @@ const ErrorText = ({ error }: { error?: string }) => {
 const ManualCardEntryView = () => {
   const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
   // 1. Get Split Data from Store
-  const { setView, processManualCardPayment, activeSplitId, splits } =
+  const { setView, processManualCardPayment, activeSplitId, splits, expandSheetToFull } =
     usePaymentStore();
+
+  // Expand bottom sheet to full height when entering manual card entry view
+  useEffect(() => {
+    expandSheetToFull();
+  }, [expandSheetToFull]);
 
   // 2. Calculate Amount to Pay
   const activeSplit = splits.find((s) => s.id === activeSplitId);

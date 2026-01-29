@@ -14,7 +14,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { CheckCircle2, Wifi } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -37,8 +37,13 @@ const CardPaymentView = () => {
     ordersById,
   } = useOrderStore();
 
-  const { close, handlePaymentCompletion, activeSplitId, splits } =
+  const { close, handlePaymentCompletion, activeSplitId, splits, expandSheetToFull, setTransactionProcessing } =
     usePaymentStore();
+
+  // Expand bottom sheet to full height when entering card payment view
+  useEffect(() => {
+    expandSheetToFull();
+  }, [expandSheetToFull]);
   const [status, setStatus] = useState<
     "ready" | "processing" | "rejected" | "success"
   >("ready");
@@ -47,6 +52,13 @@ const CardPaymentView = () => {
     null,
   );
   const [dejavooError, setDejavooError] = useState<string | null>(null);
+  const currentRefIdRef = useRef<string | null>(null);
+
+  // Sync isTransactionProcessing with status
+  useEffect(() => {
+    setTransactionProcessing(status === "processing");
+    return () => { setTransactionProcessing(false); };
+  }, [status, setTransactionProcessing]);
 
   const {
     showTipSelection,
@@ -177,6 +189,7 @@ const CardPaymentView = () => {
                 staSuffix,
               )
             : generateRefId("CARD", undefined, locSuffix, staSuffix);
+          currentRefIdRef.current = refId;
 
           console.log("[CashPayment] Executing sale transaction...", {
             grandTotal: grandTotal,
@@ -589,7 +602,26 @@ const CardPaymentView = () => {
 
           {(status === "processing" || status === "ready") && (
             <TouchableOpacity
-              onPress={close}
+              onPress={async () => {
+                if (status === "processing" && currentRefIdRef.current) {
+                  // Abort in-flight transaction on terminal
+                  try {
+                    const DejavooAPI = new DejavooSpinAPI(supabase);
+                    await DejavooAPI.loadTerminal(
+                      selectedStation?.payment_terminal?.id || "",
+                      selectedStation?.payment_terminal,
+                    );
+                    await DejavooAPI.abortTransaction()
+                      .referenceId(currentRefIdRef.current)
+                      .execute();
+                  } catch (err) {
+                    console.error("[CardPayment] Abort failed:", err);
+                  }
+                  setStatus("ready");
+                } else {
+                  close();
+                }
+              }}
               className="w-full py-4 bg-[#2A2A2A] border border-[#404040] rounded-xl active:bg-[#333]"
             >
               <Text className="text-lg font-bold text-gray-300 text-center">

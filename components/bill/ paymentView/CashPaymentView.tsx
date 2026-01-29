@@ -3,8 +3,8 @@ import { useCFD } from "@/contexts/CFDProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
-  getTerminalErrorMessage,
-  isTerminalConnectivityError,
+    getTerminalErrorMessage,
+    isTerminalConnectivityError,
 } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
@@ -16,11 +16,11 @@ import { generateRefId } from "@/types/dejavoo-spin-api";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ScrollView,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 const CashPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
@@ -33,8 +33,13 @@ const CashPaymentView = () => {
     ordersById,
   } = useOrderStore();
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
-  const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
+  const { close, setView, activeSplitId, splits, handlePaymentCompletion, expandSheetToFull, setTransactionProcessing } =
     usePaymentStore();
+
+  // Expand bottom sheet to full height when entering cash payment view
+  useEffect(() => {
+    expandSheetToFull();
+  }, [expandSheetToFull]);
 
   const { selectedStation, selectedStore } = useStoreSettingsStore();
   // console.log('selectedStation', selectedStation);
@@ -49,6 +54,12 @@ const CashPaymentView = () => {
   );
   const [isProcessing, setIsProcessing] = useState(false);
   const [dejavooError, setDejavooError] = useState<string | null>(null);
+
+  // Sync isTransactionProcessing with isProcessing
+  useEffect(() => {
+    setTransactionProcessing(isProcessing);
+    return () => { setTransactionProcessing(false); };
+  }, [isProcessing, setTransactionProcessing]);
 
   const {
     showTipSelection,

@@ -263,7 +263,7 @@ export class DejavooService {
 
     try {
       const request: DejavooRefundRequest = {
-        PaymentType: params.paymentType || 'Card',
+        PaymentType: params.paymentType || 'Credit',
         TransactionType: 'Refund',
         Amount: params.amount,
         ReferenceId: params.referenceId,

@@ -2,10 +2,10 @@ import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import { toastService } from "@/lib/toastService";
 import { CartItem, OrderPaymentTransactionDetails } from "@/lib/types";
 import {
-    getFailedPayments,
-    getPendingPaymentsCount,
-    OfflineOperation,
-    retryFailedOperation,
+  getFailedPayments,
+  getPendingPaymentsCount,
+  OfflineOperation,
+  retryFailedOperation,
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { useConflictStore } from "@/stores/useConflictStore";
@@ -14,9 +14,9 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
 import {
-    calculateItemEffectiveCashPrice,
-    getOrderStoreSupabaseClient,
-    useOrderStore,
+  calculateItemEffectiveCashPrice,
+  getOrderStoreSupabaseClient,
+  useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
@@ -173,6 +173,8 @@ interface PaymentState {
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
   openPayForItems: () => void; // Action to open the pay-for-items split review view
+  expandSheetToFull: () => void; // Action to expand bottom sheet to 100% height
+  collapseSheetToDefault: () => void; // Action to collapse bottom sheet to default (~90%) height
 
   // Offline payment tracking
   pendingPaymentsCount: number;
@@ -180,6 +182,10 @@ interface PaymentState {
   refreshOfflinePaymentStatus: () => void;
   retryFailedPayment: (operationId: string) => Promise<void>;
   isPaymentQueued: boolean; // True if current payment was queued for offline sync
+
+  // Transaction processing state (prevents sheet dismissal during active transactions)
+  isTransactionProcessing: boolean;
+  setTransactionProcessing: (val: boolean) => void;
 
   // Phase 6: Payment locking
   lockedOrderId: string | null; // Currently locked order ID
@@ -209,6 +215,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   pendingPaymentsCount: 0,
   failedPayments: [],
   isPaymentQueued: false,
+  // Transaction processing state
+  isTransactionProcessing: false,
+  setTransactionProcessing: (val) => set({ isTransactionProcessing: val }),
+
   // Phase 6: Payment locking state
   lockedOrderId: null,
   lockExpiresAt: null,
@@ -258,14 +268,19 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     set({ isOpen: false });
   },
 
-  setView: (view: PaymentView) =>
+  setView: (view: PaymentView) => {
+    // Auto-collapse sheet when going back to payment method selection
+    if (view === "payment-method-selection" || view === "split-options" || view === "cardOptions") {
+      get().collapseSheetToDefault();
+    }
     set((state) => ({
       view,
       progress: {
         currentStep: paymentViewToStepMap[view] || state.progress.currentStep,
         totalSteps: totalSteps,
       },
-    })),
+    }));
+  },
 
   setActiveTableId: (tableId) => set({ activeTableId: tableId }),
   clearActiveTableId: () => set({ activeTableId: null }),
@@ -287,6 +302,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       completedPaymentInfo: null, // Clear payment info on reset
       progress: { currentStep: 1, totalSteps: totalSteps },
       isPaymentQueued: false,
+      isTransactionProcessing: false,
     });
   },
 
@@ -470,6 +486,27 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         totalSteps: totalSteps,
       },
     });
+  },
+
+  // Expand bottom sheet to full height (100%)
+  // Used when entering payment input views (Card, Cash, Manual)
+  expandSheetToFull: () => {
+    const ref = get().paymentBottomSheetRef;
+    if (ref?.current) {
+      // snapToIndex with the highest index (typically 2 for 100%)
+      // This ensures the sheet expands to full height for payment input
+      ref.current.snapToIndex(3);
+    }
+  },
+
+  // Collapse bottom sheet to default height (~90%)
+  // Used when going back to payment method selection view
+  collapseSheetToDefault: () => {
+    const ref = get().paymentBottomSheetRef;
+    if (ref?.current) {
+      // snapToIndex 1 is typically ~90% height
+      ref.current.snapToIndex(1);
+    }
   },
 
   // --- PAYMENT LOOP LOGIC ---
@@ -676,6 +713,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         isCashPriced: isCashPayment,
       };
 
+      // Before payment: send items to kitchen if order is still in draft/pending
+      // Must happen BEFORE addPaymentToOrder so items are still kitchen_status "new"
+      // and sendNewItemsToKitchenForOrder actually executes (updates DB via update_order_status RPC)
+      const prePaymentOrder = useOrderStore.getState().ordersById[activeOrderId];
+      if (
+        prePaymentOrder &&
+        (prePaymentOrder.order_status === "draft" || prePaymentOrder.order_status === "pending")
+      ) {
+        await useOrderStore.getState().sendNewItemsToKitchenForOrder(activeOrderId);
+      }
+
       // Await payment and check for success
       // Only pass splitCount/splitPortionIndex for EVEN split payments
       // For per-item payments (split-by-item, pay-for-items), we pass itemAllocations instead
@@ -716,7 +764,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (nextPending) {
         set({ view: "split-payment-success" });
       } else {
-        // All splits paid - capture final order state
+        // All splits paid — kitchen send already happened before first split payment
+
+        // Capture final order state
         const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
         // Calculate effective total paid (subtract refunded amounts)
         const paymentsTotal = (finalOrder?.payments || []).reduce(
@@ -781,6 +831,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         ...transactionDetails,
         isCashPriced: isCashPayment,
       };
+
+      // Before payment: send items to kitchen if order is still in draft/pending
+      // Must happen BEFORE addPaymentToOrder so items are still kitchen_status "new"
+      // and sendNewItemsToKitchenForOrder actually executes (updates DB via update_order_status RPC)
+      if (
+        currentOrder &&
+        (currentOrder.order_status === "draft" || currentOrder.order_status === "pending")
+      ) {
+        await sendNewItemsToKitchenForOrder(activeOrderId);
+      }
 
       // Await payment and check for success
       const paymentSuccess = await addPaymentToOrder({

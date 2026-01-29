@@ -97,6 +97,7 @@ export function usePaymentTerminal() {
       });
 
       // Update database
+      // TODO: IMPLEMENT THIS
       await supabase.rpc('update_terminal_status', {
         p_terminal_id: targetId,
         p_status: result.status,

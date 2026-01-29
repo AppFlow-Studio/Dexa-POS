@@ -296,6 +296,8 @@ const ORDER_CREATION_TIMEOUT_MS = 30000; // 30 seconds
 // This prevents overwhelming the database with concurrent item additions and ensures
 // calculate_order_totals_fast always sees all previously added items
 const pendingItemAdditions: Map<string, Promise<boolean>> = new Map();
+// Per-order serial chain to prevent concurrent ensureOrderCreated calls
+const orderAdditionChains = new Map<string, Promise<any>>();
 
 // ============================================================================
 // DRAFT ORDER CLEANUP CONFIGURATION
@@ -320,45 +322,45 @@ let draftCleanupInterval: ReturnType<typeof setInterval> | null = null;
  * @returns Promise<boolean> - true if item was added successfully
  */
 /**
- * PERFORMANCE FIX: Run item additions in parallel instead of serializing.
+ * Serialized item addition queue.
  *
- * Previous behavior: Serialized all additions (5 items = 5× network latency)
- * New behavior: Run additions concurrently (5 items ≈ 1× network latency)
- *
- * This is safe because:
- * 1. ensureOrderCreated() already handles order creation race conditions
- * 2. Each item addition is atomic at the database level (single RPC call)
- * 3. Item IDs are unique, so concurrent additions don't conflict
- *
- * We still track pending additions for waitForPendingSyncs() to work.
+ * Items are chained per-order so that each addition waits for the previous
+ * one to finish. This prevents race conditions where multiple items call
+ * ensureOrderCreated() concurrently and the order gets re-keyed from
+ * localId → dbOrderId while other additions are in-flight.
  */
 const queueItemAddition = async (
   orderId: string,
   addFn: () => Promise<boolean>,
 ): Promise<boolean> => {
-  // Track this addition in the pending map (for sync barrier support)
-  const additionPromise = (async () => {
+  // Chain this addition after any previous additions for this order
+  const previousChain = orderAdditionChains.get(orderId) ?? Promise.resolve();
+
+  const chainedPromise = previousChain.then(async () => {
     try {
       return await addFn();
     } catch (error) {
       console.error("[queueItemAddition] Error adding item:", error);
       return false;
     }
-  })();
+  });
 
-  // Store the promise (overwrites previous, but that's fine - we only need to track "any pending")
-  pendingItemAdditions.set(orderId, additionPromise);
+  // Update the chain (so next addition waits for this one)
+  orderAdditionChains.set(orderId, chainedPromise);
 
-  // Run immediately without waiting for other additions
-  const result = await additionPromise;
+  // Track for sync barrier
+  pendingItemAdditions.set(orderId, chainedPromise);
 
-  // Clean up after completion (with small delay to prevent race with other additions)
-  setTimeout(() => {
-    const current = pendingItemAdditions.get(orderId);
-    if (current === additionPromise) {
-      pendingItemAdditions.delete(orderId);
-    }
-  }, 50);
+  const result = await chainedPromise;
+
+  // Clean up chain if this was the last link
+  if (orderAdditionChains.get(orderId) === chainedPromise) {
+    orderAdditionChains.delete(orderId);
+  }
+  // Clean up pending map
+  if (pendingItemAdditions.get(orderId) === chainedPromise) {
+    pendingItemAdditions.delete(orderId);
+  }
 
   return result;
 };
@@ -407,6 +409,17 @@ const ensureOrderCreated = async (
       `[ensureOrderCreated] Order ${order.id} already has db_order_id: ${currentOrder.db_order_id}`,
     );
     return currentOrder.db_order_id;
+  }
+
+  // Fallback: order may have been re-keyed from localId → dbOrderId
+  if (order.db_order_id) {
+    const reKeyedOrder = useOrderStore.getState().ordersById[order.db_order_id];
+    if (reKeyedOrder?.db_order_id) {
+      console.log(
+        `[ensureOrderCreated] Order ${order.id} was re-keyed, found at ${order.db_order_id}`,
+      );
+      return reKeyedOrder.db_order_id;
+    }
   }
 
   // ========================================================================
@@ -689,6 +702,20 @@ const addItemToBackend = async (
   const supabase = _supabaseClient;
   const isNetworkOnline = getIsOnline();
 
+  // Resolve the current key for this order in ordersById.
+  // After re-key, order.id (local ID) no longer exists — use db_order_id instead.
+  let _knownDbOrderId: string | null = null;
+  const resolveOrderKey = (): string => {
+    const state = useOrderStore.getState();
+    if (state.ordersById[order.id]) return order.id;
+    if (order.db_order_id && state.ordersById[order.db_order_id])
+      return order.db_order_id;
+    // After ensureOrderCreated, dbOrderId is known but snapshot may not have it
+    if (_knownDbOrderId && state.ordersById[_knownDbOrderId])
+      return _knownDbOrderId;
+    return order.id; // fallback
+  };
+
   const selectedStore = useStoreSettingsStore.getState().selectedStore;
   if (!selectedStore) {
     console.log("Backend sync skipped: No store selected");
@@ -779,7 +806,8 @@ const addItemToBackend = async (
 
     // Mark item as pending sync in store
     useOrderStore.setState((state) => {
-      const currentOrder = state.ordersById[order.id];
+      const orderKey = resolveOrderKey();
+      const currentOrder = state.ordersById[orderKey];
       if (!currentOrder) return state;
 
       const updatedItems = currentOrder.items.map((i) =>
@@ -789,7 +817,7 @@ const addItemToBackend = async (
       return {
         ordersById: {
           ...state.ordersById,
-          [order.id]: {
+          [orderKey]: {
             ...currentOrder,
             items: updatedItems,
           },
@@ -808,6 +836,11 @@ const addItemToBackend = async (
     // ========================================================================
     // This uses a per-order lock to prevent multiple simultaneous order creations
     const dbOrderId = await ensureOrderCreated(order, setOrderDbId);
+
+    // Capture dbOrderId so resolveOrderKey can find re-keyed orders
+    if (dbOrderId && dbOrderId !== "pending_offline") {
+      _knownDbOrderId = dbOrderId;
+    }
 
     // ========================================================================
     // HANDLE OFFLINE MODE RESULT FROM ensureOrderCreated
@@ -845,7 +878,8 @@ const addItemToBackend = async (
       });
       // Mark item as pending sync
       useOrderStore.setState((state) => {
-        const currentOrder = state.ordersById[order.id];
+        const orderKey = resolveOrderKey();
+        const currentOrder = state.ordersById[orderKey];
         if (!currentOrder) return state;
 
         const updatedItems = currentOrder.items.map((i) =>
@@ -855,7 +889,7 @@ const addItemToBackend = async (
         return {
           ordersById: {
             ...state.ordersById,
-            [order.id]: {
+            [orderKey]: {
               ...currentOrder,
               items: updatedItems,
             },
@@ -943,7 +977,8 @@ const addItemToBackend = async (
 
       if (addResult?.order_item_id) {
         useOrderStore.setState((state) => {
-          const currentOrder = state.ordersById[order.id];
+          const orderKey = resolveOrderKey();
+          const currentOrder = state.ordersById[orderKey];
           if (!currentOrder) return state;
 
           const updatedItems = currentOrder.items.map((i) =>
@@ -958,7 +993,7 @@ const addItemToBackend = async (
           return {
             ordersById: {
               ...state.ordersById,
-              [order.id]: {
+              [orderKey]: {
                 ...currentOrder,
                 items: updatedItems,
               },
@@ -972,11 +1007,11 @@ const addItemToBackend = async (
         invalidateCalculationCache();
 
         // Apply any queued backend updates now that local sync is complete
-        useOrderStore.getState().applyQueuedUpdates(order.id);
+        useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
       }
 
       if (onSyncComplete) {
-        onSyncComplete(order.id);
+        onSyncComplete(resolveOrderKey());
       }
 
       return true;
@@ -1141,8 +1176,34 @@ const addItemToBackend = async (
 
     // Store the backend order_item_id on the local CartItem for future updates/voids
     if (addResult?.order_item_id) {
+      // Check if item was removed locally while we were syncing
+      const currentState = useOrderStore.getState();
+      const orderKey = resolveOrderKey();
+      const currentOrder = currentState.ordersById[orderKey];
+      const itemStillExists = currentOrder?.items.some((i) => i.id === item.id);
+
+      if (!itemStillExists) {
+        // Item was removed locally during sync — clean up backend
+        console.log(
+          `[addItemToBackend] Item ${item.id} was removed locally during sync, removing from backend`,
+        );
+        try {
+          await OrderService.removeOrderItem(supabase, addResult.order_item_id);
+        } catch (err) {
+          console.error("Failed to remove orphaned backend item:", err);
+          await queueOperation({
+            type: "remove_item",
+            params: { orderItemId: addResult.order_item_id },
+            localOrderId: order.id,
+            localItemId: item.id,
+          });
+        }
+        return true; // Sync completed (added then removed)
+      }
+
       useOrderStore.setState((state) => {
-        const currentOrder = state.ordersById[order.id];
+        const orderKey = resolveOrderKey();
+        const currentOrder = state.ordersById[orderKey];
         if (!currentOrder) return state;
 
         const updatedItems = currentOrder.items.map((i) =>
@@ -1157,7 +1218,7 @@ const addItemToBackend = async (
         return {
           ordersById: {
             ...state.ordersById,
-            [order.id]: {
+            [orderKey]: {
               ...currentOrder,
               items: updatedItems,
             },
@@ -1171,7 +1232,7 @@ const addItemToBackend = async (
       invalidateCalculationCache();
 
       // Apply any queued backend updates now that local sync is complete
-      useOrderStore.getState().applyQueuedUpdates(order.id);
+      useOrderStore.getState().applyQueuedUpdates(resolveOrderKey());
 
       console.log(
         `Saved db_order_item_id: ${addResult.order_item_id} for item: ${item.id}`,
@@ -1180,7 +1241,7 @@ const addItemToBackend = async (
 
     // Trigger recalculation now that db_order_id is available
     if (onSyncComplete) {
-      onSyncComplete(order.id);
+      onSyncComplete(resolveOrderKey());
     }
 
     return true;
@@ -1554,12 +1615,20 @@ const syncPaymentToBackend = async (
                   // Keep existing itemsCovered (with quantities) from optimistic update
                   // Only set from backend if local is missing
                   itemsCovered:
-                    p.itemsCovered ||
-                    (data.items_covered?.map((id: string) => ({
-                      itemId: id,
-                      quantity: 1,
-                    })) ??
-                      []),
+                    (p.itemsCovered && p.itemsCovered.length > 0)
+                      ? p.itemsCovered
+                      : (data.items_covered?.map((id: string) => {
+                          const item = currentOrder.items.find(
+                            (i) => i.db_order_item_id === id || i.id === id,
+                          );
+                          return {
+                            itemId: id,
+                            itemName: item?.name || "Unknown Item",
+                            quantity: item ? (item.quantity - (item.refundedQuantity || 0)) : 1,
+                            unitPrice: item?.price || 0,
+                            subtotal: item ? (item.price || 0) * (item.quantity - (item.refundedQuantity || 0)) : 0,
+                          };
+                        }) ?? []),
                   timestamp: new Date().toISOString(),
                   sync_status: "synced" as const,
                   sync_error: undefined,
@@ -2095,9 +2164,27 @@ function mergePayments(
       (!lp.db_payment_id && !lp.id?.startsWith("payment_")),
   );
 
+  // Deduplicate: remove pending local payments that already appear in broadcast.
+  // Race condition: broadcast can arrive before syncPaymentToBackend completes,
+  // so a payment may exist as both a broadcast entry and a pending local entry.
+  // Match by amount + method + close timestamp (within 60s) to detect duplicates.
+  const dedupedPendingPayments = pendingLocalPayments.filter((lp) => {
+    const hasBroadcastMatch = broadcastPayments.some(
+      (bp) =>
+        bp.amount === lp.amount &&
+        bp.method === lp.method &&
+        lp.timestamp &&
+        bp.timestamp &&
+        Math.abs(
+          new Date(bp.timestamp).getTime() - new Date(lp.timestamp).getTime(),
+        ) < 60000,
+    );
+    return !hasBroadcastMatch;
+  });
+
   // Use broadcast payments as the base (they have correct itemsCovered from covers_items)
-  // Then append any pending local payments
-  return [...broadcastPayments, ...pendingLocalPayments];
+  // Then append any truly pending local payments (not yet in broadcast)
+  return [...broadcastPayments, ...dedupedPendingPayments];
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -2575,15 +2662,20 @@ export const useOrderStore = create<OrderState>()(
                           existingOrder.sync_version ??
                           0,
 
-                        // Update totals if no pending changes
-                        ...(!hasPendingChanges
-                          ? {
-                              // Status
-                              order_status: backendOrder.status,
-                              check_status:
-                                backendOrder.check_status ||
-                                existingOrder.check_status ||
-                                "Opened",
+                        // Don't let broadcast revert a locally-preparing order back to draft
+                        // This protects optimistic status updates after payment from being overwritten
+                        ...(() => {
+                          const isLocalAhead =
+                            existingOrder.order_status === "preparing" &&
+                            backendOrder.status === "draft";
+                          return !hasPendingChanges && !isLocalAhead
+                            ? {
+                                // Status
+                                order_status: backendOrder.status,
+                                check_status:
+                                  backendOrder.check_status ||
+                                  existingOrder.check_status ||
+                                  "Opened",
 
                               // Card totals (default display)
                               total_amount: backendOrder.card_total,
@@ -2594,7 +2686,8 @@ export const useOrderStore = create<OrderState>()(
                                 backendOrder.sent_to_kitchen_at ||
                                 existingOrder.sent_to_kitchen_at,
                             }
-                          : {}),
+                          : {};
+                        })(),
                       };
 
                       return {
@@ -3787,8 +3880,11 @@ export const useOrderStore = create<OrderState>()(
                   itemId: string,
                   error: string,
                 ) => {
+                  const resolvedOrderId = get().ordersById[currentOrderId]
+                    ? currentOrderId
+                    : get().activeOrderId || currentOrderId;
                   updateItemSyncStatusAction(
-                    currentOrderId,
+                    resolvedOrderId,
                     itemId,
                     "failed",
                     error,
@@ -3883,12 +3979,13 @@ export const useOrderStore = create<OrderState>()(
                   ),
                 )
                   .then((success) => {
-                    // Phase 7C: Removed redundant "synced" call - addItemToBackend
-                    // already sets sync status to "synced" via useSyncStatusStore
+                    // Resolve current order ID (may have been re-keyed)
+                    const resolvedOrderId = get().ordersById[currentOrderId]
+                      ? currentOrderId
+                      : get().activeOrderId || currentOrderId;
                     if (!success) {
-                      // Only need to set failed status here
                       updateItemSyncStatusAction(
-                        currentOrderId,
+                        resolvedOrderId,
                         syncItemId,
                         "failed",
                         "Backend sync failed",
@@ -3898,8 +3995,11 @@ export const useOrderStore = create<OrderState>()(
                   })
                   .catch((err) => {
                     console.error("Background sync failed:", err);
+                    const resolvedOrderId = get().ordersById[currentOrderId]
+                      ? currentOrderId
+                      : get().activeOrderId || currentOrderId;
                     updateItemSyncStatusAction(
-                      currentOrderId,
+                      resolvedOrderId,
                       syncItemId,
                       "failed",
                       err?.message || "Unknown error",
@@ -5590,21 +5690,29 @@ export const useOrderStore = create<OrderState>()(
             const paymentTimestamp = new Date().toISOString();
 
             // Build itemsCovered from itemAllocations for payment tracking (with quantities)
-            const itemsCovered =
-              itemAllocations?.map((alloc) => {
-                const item = order.items.find(
-                  (i) =>
-                    i.db_order_item_id === alloc.itemId ||
-                    i.id === alloc.itemId,
-                );
-                return {
-                  itemId: alloc.itemId,
-                  itemName: item?.name || "Unknown Item",
-                  quantity: alloc.quantity,
-                  unitPrice: item?.price || 0,
-                  subtotal: (item?.price || 0) * alloc.quantity,
-                };
-              }) || [];
+            // For full payments without explicit allocations, auto-generate from all unpaid items
+            const effectiveAllocations = itemAllocations || order.items
+              .filter((item) => !item.is_voided && item.quantity > (item.paidQuantity || 0))
+              .map((item) => ({
+                itemId: item.db_order_item_id || item.id,
+                quantity: item.quantity - (item.paidQuantity || 0),
+                amount: (item.price || 0) * (item.quantity - (item.paidQuantity || 0)),
+              }));
+
+            const itemsCovered = effectiveAllocations.map((alloc) => {
+              const item = order.items.find(
+                (i) =>
+                  i.db_order_item_id === alloc.itemId ||
+                  i.id === alloc.itemId,
+              );
+              return {
+                itemId: alloc.itemId,
+                itemName: item?.name || "Unknown Item",
+                quantity: alloc.quantity,
+                unitPrice: item?.price || 0,
+                subtotal: (item?.price || 0) * alloc.quantity,
+              };
+            });
 
             const newPayment: OrderProfilePayment = {
               id: localPaymentId, // Use local ID as temporary main ID
@@ -5742,10 +5850,30 @@ export const useOrderStore = create<OrderState>()(
               const currentOrder = state.ordersById[orderId];
               if (!currentOrder) return {};
 
+              // Merge db_order_item_id from latest state into updatedItems
+              // This prevents the race condition where addItemToBackend sets
+              // db_order_item_id between when we captured the snapshot and now
+              const mergedItems = updatedItems.map((updatedItem) => {
+                const latestItem = currentOrder.items.find(
+                  (i) => i.id === updatedItem.id,
+                );
+                if (latestItem?.db_order_item_id && !updatedItem.db_order_item_id) {
+                  return { ...updatedItem, db_order_item_id: latestItem.db_order_item_id };
+                }
+                return updatedItem;
+              });
+
+              // Merge in any NEW items added between snapshot and now
+              const mergedItemIds = new Set(mergedItems.map((i) => i.id));
+              const newItemsSinceSnapshot = currentOrder.items.filter(
+                (i) => !mergedItemIds.has(i.id),
+              );
+              const finalItems = [...mergedItems, ...newItemsSinceSnapshot];
+
               const updatedOrderProfile: OrderProfile = {
                 ...currentOrder,
                 payments: newPayments,
-                items: updatedItems,
+                items: finalItems,
                 total_amount:
                   method === "Cash"
                     ? totals.cash_total_amount
@@ -8073,16 +8201,22 @@ export const useOrderStore = create<OrderState>()(
                     p.payment_method === "cash" ? "Cash" : "Card";
                   const tipAmount = p.tip_amount ?? 0;
 
-                  // Derive item coverage from covers_items
+                  // Derive item coverage from covers_items using order context
+                  const orderItems = order?.items || [];
                   const itemsCovered: OrderPaymentItemCoverage[] = (
                     p.covers_items || []
-                  ).map((itemId: string) => ({
-                    itemId,
-                    itemName: "Unknown Item", // Would need items context to derive
-                    quantity: 1, // Default - would need items context
-                    unitPrice: 0,
-                    subtotal: 0,
-                  }));
+                  ).map((itemId: string) => {
+                    const item = orderItems.find(
+                      (i) => i.db_order_item_id === itemId || i.id === itemId,
+                    );
+                    return {
+                      itemId,
+                      itemName: item?.name || "Unknown Item",
+                      quantity: item?.paidQuantity || item?.quantity || 1,
+                      unitPrice: item?.price || 0,
+                      subtotal: (item?.price || 0) * (item?.paidQuantity || item?.quantity || 1),
+                    };
+                  });
 
                   // Build split info if applicable
                   const splitInfo =
@@ -8897,12 +9031,19 @@ export const useOrderStore = create<OrderState>()(
                   isLastPortion: (payment.split_portion_index || 0) === payment.split_count - 1,
                 } : undefined,
                 
-                // Item coverage
-                itemsCovered: (payment.covers_items || []).map((itemId: string) => ({
-                  itemId,
-                  quantityPaid: 0, // Will be reconciled from order_payment_items if needed
-                  amountPaid: 0,
-                })),
+                // Item coverage — derive from covers_items with order items context
+                itemsCovered: (payment.covers_items || []).map((itemId: string) => {
+                  const item = transformedItems.find(
+                    (i) => i.db_order_item_id === itemId || i.id === itemId,
+                  );
+                  return {
+                    itemId,
+                    itemName: item?.name || "Unknown Item",
+                    quantity: item?.paidQuantity || item?.quantity || 1,
+                    unitPrice: item?.price || 0,
+                    subtotal: (item?.price || 0) * (item?.paidQuantity || item?.quantity || 1),
+                  };
+                }),
                 
                 // Status and timestamps
                 status: payment.status || "captured",
@@ -9000,10 +9141,15 @@ export const useOrderStore = create<OrderState>()(
                   updatingRefundItems: orderRefundItemsData.length,
                 });
 
+                // Preserve local items that haven't synced to backend yet
+                const localPendingItems = currentOrder.items.filter(
+                  (item) => !item.db_order_item_id && !item.isDraft,
+                );
+
                 // Build the updated order once to avoid duplication
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
-                  items: transformedItems,
+                  items: [...transformedItems, ...localPendingItems],
                   payments: transformedPayments,
                   // Reversals and refund items from backend
                   reversals: reversalsData,

@@ -352,7 +352,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
             {optionNames}
             {'   '}
             {(priceAdjust && priceAdjust > 0) ? (
-              <Text className="text-emerald-500 text-xs"> +$${priceAdjust?.toFixed(2)}</Text>
+              <Text className="text-emerald-500 text-xs"> +${priceAdjust?.toFixed(2)}</Text>
             )
           : (
             <Text className="text-gray-500 text-xs"> +${priceAdjust?.toFixed(2)}</Text>
@@ -917,6 +917,7 @@ interface RightPaneTipAdjustProps {
   };
   onBack: () => void;
   onTipAdjusted: () => void;
+  onProcessingChange?: (processing: boolean) => void;
 }
 
 const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
@@ -924,6 +925,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   paymentSummary,
   onBack,
   onTipAdjusted,
+  onProcessingChange,
 }) => {
   const { show } = useToast();
   const supabase = useSupabaseClient();
@@ -934,6 +936,11 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   const [tipAmounts, setTipAmounts] = useState<Record<number, string>>({});
   const [activeInput, setActiveInput] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
+
+  // Notify parent of processing state changes
+  // useEffect(() => {
+  //   onProcessingChange?.(processing);
+  // }, [processing, onProcessingChange]);
 
   // Filter card payments that are not voided
   const cardPayments: TipAdjustPaymentRow[] = useMemo(() => {
@@ -1140,7 +1147,12 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             type: "error",
           });
           setProcessing(false);
+          onProcessingChange?.(false);
           return;
+        }
+        finally {
+          setProcessing(false);
+          onProcessingChange?.(false);
         }
       }
 
@@ -1189,12 +1201,30 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
 
   // console.log('PaymentDetailBottomSheet', cardPayments);
   return (
-    <View className="flex-[6] bg-[#161616]">
+    <View className="flex-[6] bg-[#161616]" style={{ position: 'relative' }}>
+      {/* Processing Overlay */}
+      {processing && (
+        <View
+          className="absolute inset-0 z-50 items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+        >
+          <View className="bg-[#1f1f1f] rounded-2xl p-8 items-center mx-8 border border-gray-700">
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text className="text-white text-lg font-bold mt-4">Adjusting Tips</Text>
+            <Text className="text-gray-400 text-sm mt-2 text-center">
+              Processing tip adjustments on terminal...{"\n"}Please do not close this screen.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Header */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-800">
         <TouchableOpacity
           onPress={onBack}
+          disabled={processing}
           className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center mr-3"
+          style={{ opacity: processing ? 0.3 : 1 }}
         >
           <ArrowLeft size={16} color="#9CA3AF" />
         </TouchableOpacity>
@@ -1786,12 +1816,30 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   };
 
   return (
-    <View className="flex-[6] bg-[#161616]">
+    <View className="flex-[6] bg-[#161616]" style={{ position: 'relative' }}>
+      {/* Processing Overlay */}
+      {refundProcessing && (
+        <View
+          className="absolute inset-0 z-50 items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+        >
+          <View className="bg-[#1f1f1f] rounded-2xl p-8 items-center mx-8 border border-gray-700">
+            <ActivityIndicator size="large" color="#EF4444" />
+            <Text className="text-white text-lg font-bold mt-4">Processing Refund</Text>
+            <Text className="text-gray-400 text-sm mt-2 text-center">
+              Processing refund on terminal...{"\n"}Please do not close this screen.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Header */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-800">
         <TouchableOpacity
           onPress={onBack}
+          disabled={refundProcessing}
           className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center mr-3"
+          style={{ opacity: refundProcessing ? 0.3 : 1 }}
         >
           <ArrowLeft size={16} color="#9CA3AF" />
         </TouchableOpacity>
@@ -2415,6 +2463,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
   const [refundProcessing, setRefundProcessing] = useState(false);
   const refundProcessingRef = useRef(false);
+  const [tipProcessing, setTipProcessing] = useState(false);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   
   // Get realtime connection status for post-refund sync awareness
@@ -2910,7 +2959,10 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       visible={isOpen}
       animationType="slide"
       transparent={true}
-      onRequestClose={close}
+      onRequestClose={() => {
+        if (refundProcessing || tipProcessing) return;
+        close();
+      }}
       statusBarTranslucent
     >
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
@@ -2961,7 +3013,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   {/* Close Button */}
                   <TouchableOpacity
                     onPress={close}
+                    disabled={refundProcessing || tipProcessing}
                     className="px-4 py-2 rounded-lg bg-gray-800 items-center justify-center"
+                    style={{ opacity: (refundProcessing || tipProcessing) ? 0.3 : 1 }}
                   >
                     <Text className="text-sm font-semibold text-gray-300">CLOSE</Text>
                   </TouchableOpacity>
@@ -3005,6 +3059,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     paymentSummary={paymentSummary}
                     onBack={() => setRightPaneView("summary")}
                     onTipAdjusted={handleTipAdjusted}
+                    onProcessingChange={setTipProcessing}
                   />
                 )}
               </View>

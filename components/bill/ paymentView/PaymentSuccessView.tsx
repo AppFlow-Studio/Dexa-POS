@@ -151,7 +151,7 @@ const PaymentSuccessView = () => {
             // (shouldn't happen, but provides safety)
             let totalPaid = completedPaymentInfo?.totalPaid ?? 0;
             let totalTips = completedPaymentInfo?.totalTips ?? 0;
-
+            console.log('completedPaymentInfo', completedPaymentInfo);
             if (!completedPaymentInfo) {
               // Fallback: calculate from live payments (original behavior)
               // Calculate effective total paid (subtract refunded amounts)

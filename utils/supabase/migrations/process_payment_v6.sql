@@ -785,9 +785,20 @@ BEGIN
 
     -- ============================================
     -- 13. Set Final amount_due
+    --     FIX: When order is fully paid, force amount_due to 0.
+    --     This prevents the custom_refund_balance logic from inflating
+    --     amount_due when a cash payment (at cash price) is compared
+    --     against card_total, producing a false residual.
     -- ============================================
-    v_new_amount_due := v_unpaid_card_total;
-    v_new_cash_amount_due := v_unpaid_cash_total;
+    IF v_order_fully_paid THEN
+        v_new_amount_due := 0;
+        v_new_cash_amount_due := 0;
+        v_unpaid_card_total := 0;
+        v_unpaid_cash_total := 0;
+    ELSE
+        v_new_amount_due := v_unpaid_card_total;
+        v_new_cash_amount_due := v_unpaid_cash_total;
+    END IF;
 
     -- ============================================
     -- 14. Update Order
@@ -888,14 +899,19 @@ DECLARE
     -- Pre-payment unpaid totals (for full remaining detection)
     v_pre_unpaid_card_total numeric := 0;
     v_pre_unpaid_cash_total numeric := 0;
-    
+
+    -- Refund balance tracking (for custom refunds not tied to items)
+    v_effective_paid numeric := 0;
+    v_payment_based_due numeric := 0;
+    v_custom_refund_balance numeric := 0;
+
     -- Payment totals by type
     v_total_cash_paid numeric := 0;
     v_total_card_paid numeric := 0;
-    
+
     -- Fully paid detection
     v_order_fully_paid boolean := false;
-    
+
     -- Split evenly tracking
     v_split_card_portion numeric;
     v_split_cash_portion numeric;
@@ -907,7 +923,7 @@ DECLARE
     -- Full remaining payment detection
     v_is_full_remaining boolean := false;
     v_target_unpaid numeric := 0;
-     
+
     -- Dejavoo Transaction Tracking
     v_dejavoo_reference_id text;
     v_dejavoo_transaction_number text;
@@ -924,20 +940,20 @@ BEGIN
     v_is_cash := p_payment_method = 'cash';
     v_is_item_payment := p_item_allocations IS NOT NULL AND jsonb_array_length(p_item_allocations) > 0;
     v_is_split_payment := p_split_count IS NOT NULL AND p_split_count > 1;
-    
+
     -- ============================================
     -- 1. Get Order with Validation
     -- ============================================
-    SELECT * INTO v_order 
-    FROM public.orders 
+    SELECT * INTO v_order
+    FROM public.orders
     WHERE id = p_order_id
       AND merchant_id = user_merchant_id()
       AND location_id = ANY(user_location_ids());
-      
+
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Order not found or access denied';
     END IF;
-    
+
     -- Allow payment if order has been refunded (amount_due > 0) even if payment_status is 'paid'
     IF v_order.payment_status = 'paid' AND COALESCE(v_order.amount_due, 0) <= 0 THEN
         RAISE EXCEPTION 'Order is already fully paid';
@@ -993,24 +1009,38 @@ BEGIN
     WHERE oi.order_id = p_order_id
       AND oi.is_voided = false
       AND (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) > 0;
-    
+
+    -- Account for custom refund balance (refunds not tied to specific items)
+    -- Same logic as calculate_order_totals_fast
+    SELECT COALESCE(SUM(amount - COALESCE(refunded_amount, 0)), 0)
+    INTO v_effective_paid
+    FROM public.order_payments
+    WHERE order_id = p_order_id
+      AND status IN ('captured', 'partially_refunded', 'refunded')
+      AND is_voided = false;
+
+    v_payment_based_due := GREATEST(v_order.card_total - v_effective_paid, 0);
+    v_custom_refund_balance := GREATEST(v_payment_based_due - v_pre_unpaid_card_total, 0);
+    v_pre_unpaid_card_total := v_pre_unpaid_card_total + v_custom_refund_balance;
+    v_pre_unpaid_cash_total := v_pre_unpaid_cash_total + v_custom_refund_balance;
+
     -- If nothing to pay, return early
-    IF v_unpaid_items_count = 0 THEN
-        RAISE EXCEPTION 'No unpaid items remaining on this order';
-    END IF;
+    IF v_unpaid_items_count = 0 AND v_custom_refund_balance <= 0 THEN                                                  
+        RAISE EXCEPTION 'No unpaid items remaining on this order';                                                  
+    END IF; 
 
     -- ============================================
     -- 3. Get Existing Payment Totals by Type
     -- ============================================
-    SELECT 
+    SELECT
         COALESCE(SUM(CASE WHEN is_cash_priced THEN total_amount ELSE 0 END), 0),
         COALESCE(SUM(CASE WHEN NOT is_cash_priced THEN total_amount ELSE 0 END), 0)
     INTO v_total_cash_paid, v_total_card_paid
     FROM public.order_payments
-    WHERE order_id = p_order_id 
+    WHERE order_id = p_order_id
       AND status = 'captured';
 
-    
+
     -- ============================================
     -- 4. Split Payment Validation
     -- ============================================
@@ -1535,6 +1565,19 @@ BEGIN
     WHERE oi.order_id = p_order_id
       AND oi.is_voided = false
       AND (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)) > 0;
+
+    -- Re-apply custom refund balance for post-payment state
+    SELECT COALESCE(SUM(amount - COALESCE(refunded_amount, 0)), 0)
+    INTO v_effective_paid
+    FROM public.order_payments
+    WHERE order_id = p_order_id
+      AND status IN ('captured', 'partially_refunded', 'refunded')
+      AND is_voided = false;
+
+    v_payment_based_due := GREATEST(v_order.card_total - v_effective_paid, 0);
+    v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0);
+    v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
+    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
 
     -- ============================================
     -- 11. Determine if Order is Fully Paid
