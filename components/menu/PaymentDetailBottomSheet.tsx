@@ -5,14 +5,14 @@ import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, ReversalRecord } from "@/lib/types";
 import { RefundService } from "@/services/refundService";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
-import { useOrderStore } from "@/stores/useOrderStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { RefundReasonType, RefundRequest } from "@/types/refunds";
-import { formatDistanceToNow } from "date-fns";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -71,6 +71,7 @@ interface PaymentRowData {
   dbPaymentId?: string;
   originalPaymentIndex: number;
   referenceId?: string;
+  refundedAmount?: number;
 }
 
 type RightPaneView = "summary" | "refund" | "tipAdjust";
@@ -229,13 +230,13 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
       </View>
     </View>
     <Text className="text-xl font-bold text-white" numberOfLines={1}>
-      {isNegative && amount > 0 ? "−" : ""}${amount.toFixed(2)}
+      {isNegative && amount > 0 ? "−" : ""}${amount?.toFixed(2)}
     </Text>
     {cashAmount !== undefined && cashAmount > 0 && (
       <View className="flex-row items-center mt-0.5">
         <Banknote color="#22C55E" size={14} />
         <Text className="text-sm font-medium text-gray-400 ml-1">
-          ${cashAmount.toFixed(2)}
+          ${cashAmount?.toFixed(2)}
         </Text>
       </View>
     )}
@@ -349,9 +350,14 @@ const LeftPane: React.FC<LeftPaneProps> = ({
           <Text className="text-xs text-gray-400 flex-1">
             {mod.categoryName ? `${mod.categoryName}: ` : ""}
             {optionNames}
-            {priceAdjust && priceAdjust > 0 && (
-              <Text className="text-emerald-500"> +${priceAdjust.toFixed(2)}</Text>
-            )}
+            {'   '}
+            {(priceAdjust && priceAdjust > 0) ? (
+              <Text className="text-emerald-500 text-xs"> +$${priceAdjust?.toFixed(2)}</Text>
+            )
+          : (
+            <Text className="text-gray-500 text-xs"> +${priceAdjust?.toFixed(2)}</Text>
+          )
+          }
           </Text>
         </View>
       );
@@ -466,7 +472,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                         isVoided ? "text-gray-600 line-through" : "text-white"
                       }`}
                     >
-                      ${((item.price || 0) * item.quantity).toFixed(2)}
+                      ${((item.price || 0) * item.quantity)?.toFixed(2)}
                     </Text>
                   </View>
                 </View>
@@ -488,24 +494,24 @@ const LeftPane: React.FC<LeftPaneProps> = ({
       <View className="px-4 py-3 border-t border-gray-800 bg-[#161616]">
         <View className="flex-row justify-between mb-1">
           <Text className="text-sm text-gray-400">Subtotal</Text>
-          <Text className="text-sm text-gray-300">${subtotal.toFixed(2)}</Text>
+          <Text className="text-sm text-gray-300">${subtotal?.toFixed(2)}</Text>
         </View>
         {discount > 0 && (
           <View className="flex-row justify-between mb-1">
             <Text className="text-sm text-emerald-400">Discount</Text>
             <Text className="text-sm text-emerald-400">
-              -${discount.toFixed(2)}
+              -${discount?.toFixed(2)}
             </Text>
           </View>
         )}
         <View className="flex-row justify-between mb-2">
           <Text className="text-sm text-gray-400">Tax</Text>
-          <Text className="text-sm text-gray-300">${tax.toFixed(2)}</Text>
+          <Text className="text-sm text-gray-300">${tax?.toFixed(2)}</Text>
         </View>
         <View className="flex-row justify-between pt-2 border-t border-gray-700">
           <Text className="text-base font-bold text-white">Total</Text>
           <Text className="text-base font-bold text-white">
-            ${total.toFixed(2)}
+            ${total?.toFixed(2)}
           </Text>
         </View>
       </View>
@@ -548,8 +554,9 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   );
 
   const isOpen = order?.check_status === "Opened";
-  const balanceDue = paymentSummary.orderTotal - paymentSummary.collected;
+  const balanceDue = paymentSummary.orderTotal - paymentSummary.collected + (paymentSummary.refunds || 0);
   const hasBalanceDue = balanceDue > 0.01;
+  console.log("balanceDue", balanceDue?.toFixed(2));
   const hasCardPayments = paymentSummary.payments.some(
     (p) => p.method === "Card" && !p.isVoided
   );
@@ -710,7 +717,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                     <View className="items-end">
                       {payment.tipAmount > 0 && (
                         <Text className="text-xs text-blue-400">
-                          +${payment.tipAmount.toFixed(2)} tip
+                          +${payment.tipAmount?.toFixed(2)} tip
                         </Text>
                       )}
                       <Text
@@ -720,7 +727,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       >
                         {payment.isVoided
                           ? "Voided"
-                          : `$${payment.collected.toFixed(2)}`}
+                          : `$${payment.collected?.toFixed(2)}`}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -800,7 +807,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                                 </Text>
                               </View>
                               <Text className="text-sm font-medium text-white">
-                                ${item.subtotal.toFixed(2)}
+                                ${item.subtotal?.toFixed(2)}
                               </Text>
                             </View>
                           ))}
@@ -840,7 +847,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                         </Text>
                       </View>
                       <Text className="text-sm font-medium text-red-400">
-                        -${Number(reversal.amount || 0).toFixed(2)}
+                        -${Number(reversal.amount || 0)?.toFixed(2)}
                       </Text>
                     </View>
                   ))}
@@ -952,7 +959,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   useEffect(() => {
     const initial: Record<number, string> = {};
     cardPayments.forEach((p) => {
-      initial[p.paymentIndex] = p.currentTip > 0 ? p.currentTip.toFixed(2) : "";
+      initial[p.paymentIndex] = p.currentTip > 0 ? p.currentTip?.toFixed(2) : "";
     });
     setTipAmounts(initial);
     if (cardPayments.length > 0) {
@@ -969,7 +976,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   }, [tipAmounts]);
 
   const totalOrderAmount = useMemo(() => {
-    return cardPayments.reduce((sum, p) => sum + p.orderAmount, 0);
+    return cardPayments.reduce((sum, p) => sum + p.orderAmount || 0, 0);
   }, [cardPayments]);
 
   const hasChanges = useMemo(() => {
@@ -1258,7 +1265,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
 
                 {/* Amount Column */}
                 <Text className="w-24 text-base font-semibold text-white text-right">
-                  ${payment.orderAmount.toFixed(2)}
+                  ${payment.orderAmount?.toFixed(2)}
                 </Text>
 
                 {/* New Tip Column */}
@@ -1281,7 +1288,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                     </Text>
                   </View>
                   <Text className="text-[10px] text-gray-500 mt-1 text-right">
-                    of ${payment.currentTip.toFixed(2)}
+                    of ${payment.currentTip?.toFixed(2)}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -1295,19 +1302,19 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <View className="items-center">
               <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">Order Total</Text>
               <Text className="text-base font-bold text-white">
-                ${totalOrderAmount.toFixed(2)}
+                ${totalOrderAmount?.toFixed(2)}
               </Text>
             </View>
             <View className="items-center">
               <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">New Tips</Text>
               <Text className="text-base font-bold text-blue-400">
-                ${totalNewTips.toFixed(2)}
+                ${totalNewTips?.toFixed(2)}
               </Text>
             </View>
             <View className="items-center">
               <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">Grand Total</Text>
               <Text className="text-base font-bold text-emerald-400">
-                ${(totalOrderAmount + totalNewTips).toFixed(2)}
+                ${(totalOrderAmount + totalNewTips)?.toFixed(2)}
               </Text>
             </View>
           </View>
@@ -1361,7 +1368,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 }`}
               >
                 {hasChanges
-                  ? `ADJUST BY ${tipDelta >= 0 ? "+" : "-"}$${Math.abs(tipDelta).toFixed(2)}`
+                  ? `ADJUST BY ${tipDelta >= 0 ? "+" : "-"}$${Math.abs(tipDelta)?.toFixed(2)}`
                   : "ADJUST TIPS"}
               </Text>
             )}
@@ -1413,13 +1420,30 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     Record<string, number>
   >({});
 
+  console.log("paymentSummary", paymentSummary);
+  const maxRefundable =  paymentSummary.collected - paymentSummary.refunds;
 
-  const maxRefundable = paymentSummary.collected - paymentSummary.refunds;
-
-  // Filter out voided payments - only non-voided payments can be refunded
+  // Filter out voided payments and fully refunded payments - only payments with remaining balance can be refunded
   const refundablePayments = useMemo(() => {
-    return paymentSummary.payments.filter((p) => !p.isVoided);
+    return paymentSummary.payments.filter((p) => {
+      if (p.isVoided) return false;
+      // Check if payment has remaining balance to refund
+      const remainingBalance = p.collected - (p.refundedAmount || 0);
+      return remainingBalance > 0;
+    });
   }, [paymentSummary.payments]);
+
+  // Calculate remaining refundable amounts per payment (after partial refunds)
+  const getRemainingAmounts = useCallback((payment: PaymentRowData) => {
+    const refunded = payment.refundedAmount || 0;
+    // Apply refunds to order portion first, then tips
+    const orderRefunded = Math.min(refunded, payment.orderAmount);
+    const tipRefunded = Math.max(0, refunded - payment.orderAmount);
+    return {
+      remainingOrder: Math.max(0, payment.orderAmount - orderRefunded),
+      remainingTip: Math.max(0, payment.tipAmount - tipRefunded),
+    };
+  }, []);
 
   const getRefundableQty = useCallback((item: CartItem) => {
     const paidQty = item.paidQuantity ?? item.quantity ?? 0;
@@ -1464,6 +1488,14 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     }
     return hasAmounts;
   }, [paymentRefundAmounts, paymentRefundTotal, refundType]);
+  
+
+  console.log("customAmountActive debug", {
+    customAmountActive,
+    refundType,
+    paymentRefundTotal,
+    paymentRefundAmountsKeys: Object.keys(paymentRefundAmounts),
+  });
 
   const hasRefundablePayments = refundablePayments.length > 0;
   const isZeroRefundable = maxRefundable <= 0 || !hasRefundablePayments;
@@ -1547,21 +1579,22 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     return true;
   }, [selectedItems, itemPaymentAssignment, refundType, getPaymentForItem]);
 
-  // Validation: no per-payment amount exceeds its original
+  // Validation: no per-payment amount exceeds its remaining refundable amount
   const paymentAmountsValid = useMemo(() => {
     if (refundType !== "payments") return true;
     for (const [indexStr, amounts] of Object.entries(paymentRefundAmounts)) {
       const index = parseInt(indexStr);
       const payment = refundablePayments[index];
       if (!payment) continue;
+      const { remainingOrder, remainingTip } = getRemainingAmounts(payment);
       const orderAmt = parseFloat(amounts.orderAmount) || 0;
       const tipAmt = parseFloat(amounts.tipAmount) || 0;
-      if (orderAmt > payment.orderAmount || tipAmt > payment.tipAmount)
+      if (orderAmt > remainingOrder || tipAmt > remainingTip)
         return false;
       if (orderAmt < 0 || tipAmt < 0) return false;
     }
     return true;
-  }, [paymentRefundAmounts, refundablePayments, refundType]);
+  }, [paymentRefundAmounts, refundablePayments, refundType, getRemainingAmounts]);
 
   const canProcess =
     refundReason.trim().length > 0 &&
@@ -1626,11 +1659,12 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   const handleFillAllForPayment = (index: number) => {
     const payment = refundablePayments[index];
     if (!payment) return;
+    const { remainingOrder, remainingTip } = getRemainingAmounts(payment);
     setPaymentRefundAmounts((prev) => ({
       ...prev,
       [index]: {
-        orderAmount: payment.orderAmount.toFixed(2),
-        tipAmount: payment.tipAmount.toFixed(2),
+        orderAmount: remainingOrder.toFixed(2),
+        tipAmount: remainingTip.toFixed(2),
       },
     }));
   };
@@ -1776,25 +1810,39 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
               { key: "full", label: "Full Refund" },
               { key: "items", label: "By Item" },
               { key: "payments", label: "By Payment" },
-            ].map((type) => (
-              <TouchableOpacity
-                key={type.key}
-                onPress={() => setRefundType(type.key as RefundType)}
-                className={`flex-1 py-3 px-3 rounded-lg border ${
-                  refundType === type.key
-                    ? "bg-blue-500/10 border-blue-500/50"
-                    : "bg-gray-800 border-gray-700"
-                }`}
-              >
-                <Text
-                  className={`text-sm font-medium text-center ${
-                    refundType === type.key ? "text-blue-400" : "text-gray-400"
+            ].map((type) => {
+              // Disable Items tab when custom amount refund is active
+              const isDisabled = type.key === "items" && (customAmountActive || paymentRefundTotal > 0);
+              return (
+                <TouchableOpacity
+                  key={type.key}
+                  onPress={() => {
+                    if (isDisabled) return;
+                    setRefundType(type.key as RefundType);
+                  }}
+                  disabled={isDisabled}
+                  className={`flex-1 py-3 px-3 rounded-lg border ${
+                    isDisabled
+                      ? "bg-gray-900 border-gray-800 opacity-50"
+                      : refundType === type.key
+                        ? "bg-blue-500/10 border-blue-500/50"
+                        : "bg-gray-800 border-gray-700"
                   }`}
                 >
-                  {type.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    className={`text-sm font-medium text-center ${
+                      isDisabled
+                        ? "text-gray-600"
+                        : refundType === type.key
+                          ? "text-blue-400"
+                          : "text-gray-400"
+                    }`}
+                  >
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -1840,15 +1888,15 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   </View>
                   <View className="items-end">
                     <Text className="text-xs text-gray-500">
-                      Order: ${payment.orderAmount.toFixed(2)}
+                      Order: ${payment.orderAmount?.toFixed(2)}
                     </Text>
                     {payment.tipAmount > 0 && (
                       <Text className="text-xs text-blue-400">
-                        Tip: ${payment.tipAmount.toFixed(2)}
+                        Tip: ${payment.tipAmount?.toFixed(2)}
                       </Text>
                     )}
                     <Text className="text-sm font-bold text-red-400">
-                      ${payment.collected.toFixed(2)}
+                      ${payment.collected?.toFixed(2)}
                     </Text>
                   </View>
                 </View>
@@ -1860,7 +1908,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 {refundablePayments.length !== 1 ? "s" : ""} to reverse
               </Text>
               <Text className="text-3xl font-bold text-red-400">
-                ${maxRefundable.toFixed(2)}
+                ${maxRefundable?.toFixed(2)}
               </Text>
               <Text className="text-xs text-gray-500 mt-1">
                 Full refund of collected amount
@@ -1913,9 +1961,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       <View className="flex-1">
                         <Text className="text-sm text-white">{item.name}</Text>
                         <Text className="text-xs text-gray-500">
-                          ${(item.price || 0).toFixed(2)}
+                          ${(item.price || 0)?.toFixed(2)}
                           {(item.taxAmount || 0) > 0 &&
-                            ` + $${(item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0).toFixed(2)} tax`}
+                            ` + $${(item.quantity > 0 ? (item.taxAmount || 0) / item.quantity : 0)?.toFixed(2)} tax`}
                           {" "}each
                         </Text>
                         {maxQty <= 0 && (
@@ -2030,7 +2078,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
               <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
                 <Text className="text-sm text-gray-400">Refund Amount</Text>
                 <Text className="text-2xl font-bold text-red-400">
-                  ${selectedItemsTotal.toFixed(2)}
+                  ${selectedItemsTotal?.toFixed(2)}
                 </Text>
               </View>
             )}
@@ -2055,20 +2103,20 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             ) : (
               <>
                 {/* Column Headers */}
-                <View className="flex-row items-center py-2 border-b border-gray-700 mb-1">
-                  <Text className="flex-1 text-[10px] font-bold text-gray-500 uppercase">
+                <View className="flex-row items-center py-3 border-b border-gray-700 mb-2">
+                  <Text className="flex-1 text-xs font-bold text-gray-500 uppercase">
                     Payment
                   </Text>
-                  <Text className="w-20 text-[10px] font-bold text-gray-500 uppercase text-center">
+                  <Text className="w-24 text-xs font-bold text-gray-500 uppercase text-center">
                     Order
                   </Text>
-                  <Text className="w-20 text-[10px] font-bold text-gray-500 uppercase text-center">
+                  <Text className="w-24 text-xs font-bold text-gray-500 uppercase text-center">
                     Tips + Grat
                   </Text>
-                  <Text className="w-20 text-[10px] font-bold text-gray-500 uppercase text-center">
+                  <Text className="w-24 text-xs font-bold text-gray-500 uppercase text-center">
                     Collected
                   </Text>
-                  <Text className="w-12 text-[10px] font-bold text-gray-500 uppercase text-center">
+                  <Text className="w-16 text-xs font-bold text-gray-500 uppercase text-center">
                     All
                   </Text>
                 </View>
@@ -2078,27 +2126,28 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                     orderAmount: "",
                     tipAmount: "",
                   };
+                  const { remainingOrder, remainingTip } = getRemainingAmounts(payment);
                   const orderAmt = parseFloat(amounts.orderAmount) || 0;
                   const tipAmt = parseFloat(amounts.tipAmount) || 0;
-                  const orderExceeds = orderAmt > payment.orderAmount;
-                  const tipExceeds = tipAmt > payment.tipAmount;
+                  const orderExceeds = orderAmt > remainingOrder;
+                  const tipExceeds = tipAmt > remainingTip;
 
                   return (
                     <View
                       key={index}
-                      className="flex-row items-center py-2 border-b border-gray-800/50"
+                      className="flex-row items-center py-4 border border-gray-700 rounded-xl mb-2 bg-[#1a1a1a]"
                     >
                       {/* Payment label */}
-                      <View className="flex-1 flex-row items-center">
-                        <View className="w-8 h-8 rounded-lg bg-gray-800 items-center justify-center mr-2">
+                      <View className="flex-1 flex-row items-center pl-3">
+                        <View className="w-12 h-12 rounded-lg bg-gray-800 items-center justify-center mr-3">
                           {payment.method === "Card" ? (
-                            <CreditCard size={14} color="#9CA3AF" />
+                            <CreditCard size={20} color="#9CA3AF" />
                           ) : (
-                            <Banknote size={14} color="#22C55E" />
+                            <Banknote size={20} color="#22C55E" />
                           )}
                         </View>
                         <Text
-                          className="text-xs font-medium text-white"
+                          className="text-sm font-medium text-white"
                           numberOfLines={1}
                         >
                           {getPaymentLabel(payment)}
@@ -2106,53 +2155,53 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       </View>
 
                       {/* Order amount input */}
-                      <View className="w-20 px-1">
+                      <View className="w-24 px-2">
                         <TextInput
                           value={amounts.orderAmount}
                           onChangeText={(v) =>
                             handlePaymentAmountChange(index, "orderAmount", v)
                           }
-                          placeholder={payment.orderAmount.toFixed(2)}
+                          placeholder={remainingOrder.toFixed(2)}
                           placeholderTextColor="#4B5563"
                           keyboardType="decimal-pad"
-                          className={`text-xs text-center py-1.5 px-1 rounded border ${
+                          className={`text-sm text-center py-3 px-3 rounded-lg border-2 ${
                             orderExceeds
                               ? "bg-red-500/10 border-red-500/50 text-red-400"
-                              : "bg-rose-500/10 border-gray-700 text-white"
+                              : "bg-rose-500/10 border-gray-600 text-white"
                           }`}
                         />
                       </View>
 
                       {/* Tip amount input */}
-                      <View className="w-20 px-1">
+                      <View className="w-24 px-2">
                         <TextInput
                           value={amounts.tipAmount}
                           onChangeText={(v) =>
                             handlePaymentAmountChange(index, "tipAmount", v)
                           }
-                          placeholder={payment.tipAmount.toFixed(2)}
+                          placeholder={remainingTip.toFixed(2)}
                           placeholderTextColor="#4B5563"
                           keyboardType="decimal-pad"
-                          className={`text-xs text-center py-1.5 px-1 rounded border ${
+                          className={`text-sm text-center py-3 px-3 rounded-lg border-2 ${
                             tipExceeds
                               ? "bg-red-500/10 border-red-500/50 text-red-400"
-                              : "bg-rose-500/10 border-gray-700 text-white"
+                              : "bg-rose-500/10 border-gray-600 text-white"
                           }`}
                         />
                       </View>
 
                       {/* Collected display */}
-                      <Text className="w-20 text-xs text-gray-400 text-center">
-                        ${payment.collected.toFixed(2)}
+                      <Text className="w-24 text-sm text-gray-400 text-center">
+                        ${payment.collected?.toFixed(2)}
                       </Text>
 
                       {/* ALL button */}
                       <TouchableOpacity
                         onPress={() => handleFillAllForPayment(index)}
-                        className="w-12 items-center"
+                        className="w-16 items-center pr-2"
                       >
-                        <View className="bg-blue-500/10 border border-blue-500/40 rounded px-2 py-1">
-                          <Text className="text-[10px] font-bold text-blue-400">
+                        <View className="bg-blue-500/10 border-2 border-blue-500/40 rounded-lg px-3 py-2">
+                          <Text className="text-xs font-bold text-blue-400">
                             ALL
                           </Text>
                         </View>
@@ -2166,7 +2215,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
                     <Text className="text-sm text-gray-400">Total Refund</Text>
                     <Text className="text-2xl font-bold text-red-400">
-                      ${paymentRefundTotal.toFixed(2)}
+                      ${paymentRefundTotal?.toFixed(2)}
                     </Text>
                   </View>
                 )}
@@ -2208,7 +2257,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       {String(log.reversal_type || "refund").toUpperCase()}
                     </Text>
                     <Text className="text-sm text-red-400 font-semibold">
-                      ${Number(log.amount || 0).toFixed(2)}
+                      ${Number(log.amount || 0)?.toFixed(2)}
                     </Text>
                   </View>
                   <Text className="text-xs text-gray-500 mt-1">
@@ -2307,7 +2356,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 canProcess ? "text-white" : "text-gray-500"
               }`}
             >
-              Process Refund • ${getRefundAmount().toFixed(2)}
+              Process Refund • ${getRefundAmount()?.toFixed(2)}
             </Text>
           )}
         </TouchableOpacity>
@@ -2452,7 +2501,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     let totalRefunded = 0;
     let totalCollected = 0;
     const payments: PaymentRowData[] = [];
-
+    // console.log("order.payments", order.payments);
     if (order.payments && order.payments.length > 0) {
       order.payments.forEach((payment: OrderProfilePayment, index: number) => {
         const orderAmount = payment.amount || 0;
@@ -2484,10 +2533,12 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
               }
             : undefined;
 
-        if (isVoided) {
-          totalRefunded += orderAmount + tipAmount;
-        } else {
+        // Only count non-voided payments for collected and refunded totals
+        // Voided payments were never collected, so they don't affect the refundable balance
+        if (!isVoided) {
           totalCollected += collected;
+          // Track actual refunds from this payment (not voided amounts)
+          totalRefunded += payment.refundedAmount || 0;
         }
 
         payments.push({
@@ -2513,6 +2564,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           referenceId: txDetails?.referenceId
             ? String(txDetails.referenceId)
             : undefined,
+          refundedAmount: payment.refundedAmount || 0,
         });
       });
     }
@@ -2539,6 +2591,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           amount: p.amount,
           isVoided: p.isVoided,
           method: p.method,
+          refundedAmount: p.refundedAmount,
         })),
       });
     }
@@ -2705,20 +2758,20 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
             // Refund succeeded but had DB update issues
             show({
               title: "Refund Processed (with warnings)",
-              message: `$${totalAmount.toFixed(2)} refunded. ${result.error}`,
+              message: `$${totalAmount?.toFixed(2)} refunded. ${result.error}`,
               type: "warning",
             });
           } else if (!ordersRealtime.isConnected) {
             // Refund succeeded but realtime is offline - data was synced manually
             show({
               title: "Refund Processed",
-              message: `$${totalAmount.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
+              message: `$${totalAmount?.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
               type: "warning",
             });
           } else {
             show({
               title: "Refund Processed",
-              message: `$${totalAmount.toFixed(2)} refund processed successfully.`,
+              message: `$${totalAmount?.toFixed(2)} refund processed successfully.`,
               type: "success",
             });
           }
@@ -2737,7 +2790,16 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 
         const errors: string[] = [];
         const warnings: string[] = [];
-        for (const detail of perPaymentDetails) {
+        for (let i = 0; i < perPaymentDetails.length; i++) {
+          const detail = perPaymentDetails[i];
+          
+          // Add delay before subsequent refunds to allow terminal to reset
+          // This prevents "Service Busy" errors when processing multiple payments
+          if (i > 0) {
+            console.log('[Refund] Waiting for terminal to be ready before next refund...');
+            await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+          }
+          
           if (!detail.dbPaymentId) {
             errors.push("Missing payment reference for refund.");
             continue;
@@ -2795,20 +2857,20 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         if (warnings.length > 0) {
           show({
             title: "Refund Processed (with warnings)",
-            message: `$${totalAmount.toFixed(2)} refunded. ${warnings.join("; ")}`,
+            message: `$${totalAmount?.toFixed(2)} refunded. ${warnings.join("; ")}`,
             type: "warning",
           });
         } else if (!ordersRealtime.isConnected) {
           // Refund succeeded but realtime is offline - data was synced manually
           show({
             title: "Refund Processed",
-            message: `$${totalAmount.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
+            message: `$${totalAmount?.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
             type: "warning",
           });
         } else {
           show({
             title: "Refund Processed",
-            message: `$${totalAmount.toFixed(2)} refund processed successfully.`,
+            message: `$${totalAmount?.toFixed(2)} refund processed successfully.`,
             type: "success",
           });
         }

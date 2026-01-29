@@ -158,11 +158,10 @@ const BillSection = ({
 
   // Check if order is partially paid (has payments but not fully paid)
   const isPartiallyPaid = useMemo(() => {
-    return (
-      (activeOrder?.payments?.length ?? 0) > 0 &&
-      activeOrder?.paid_status !== "Paid"
-    );
-  }, [activeOrder?.payments, activeOrder?.paid_status]);
+    const hasPayments = (activeOrder?.payments?.length ?? 0) > 0;
+    const hasDue = (orderTotals?.amountDue ?? 0) > 0.01;
+    return hasPayments && (activeOrder?.paid_status !== "Paid" || hasDue);
+  }, [activeOrder?.payments, activeOrder?.paid_status, orderTotals?.amountDue]);
 
   // Calculate cash savings for dual-price display
   // Phase 7: Now uses derived selector which already prioritizes backend values

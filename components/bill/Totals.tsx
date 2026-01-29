@@ -31,7 +31,11 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
     }
 
     const hasPayments = (activeOrder?.payments?.length ?? 0) > 0;
-    const isPaid = activeOrder?.paid_status === "Paid";
+    const isPaid = activeOrder?.paid_status === "Paid" && totals.amountDue <= 0.01;
+
+    const totalRefunded = (activeOrder?.payments ?? [])
+      .filter((p: any) => !p.isVoided)
+      .reduce((sum: number, p: any) => sum + (p.refundedAmount || 0), 0);
 
     // Derived selector already prioritizes backend values for amountDue
     const balanceDue = totals.amountDue;
@@ -52,6 +56,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       cashBalanceDue,
       cashSavings: cashSavings > 0.01 ? cashSavings : 0,
       amountPaid: Math.max(0, amountPaid),
+      totalRefunded,
     };
   }, [totals, activeOrder]);
 
@@ -111,15 +116,25 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         </View>
       )}
 
+      {/* Refunded amount */}
+      {paymentInfo.totalRefunded > 0 && (
+        <View className="flex-row justify-between items-center mt-1">
+          <Text className="text-lg text-red-400">Refunded</Text>
+          <Text className="text-lg font-medium text-red-400">
+            +${paymentInfo.totalRefunded.toFixed(2)}
+          </Text>
+        </View>
+      )}
+
       {/* Balance Due (only show if there's a remaining balance after payment) */}
-      {/* {paymentInfo.hasPayments && !paymentInfo.isPaid && paymentInfo.balanceDue > 0.01 && (
+      {paymentInfo.hasPayments && !paymentInfo.isPaid && paymentInfo.balanceDue > 0.01 && (
         <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-yellow-600/50">
           <Text className="text-lg font-bold text-yellow-400">Balance Due</Text>
           <Text className="text-lg font-bold text-yellow-400">
             ${paymentInfo.balanceDue.toFixed(2)}
           </Text>
         </View>
-      )} */}
+      )}
 
       {/* Cash Discount Option (show when not fully paid and cash price is lower) */}
       {/* {!paymentInfo.isPaid && paymentInfo.cashSavings > 0 && paymentInfo.balanceDue > 0.01 && (

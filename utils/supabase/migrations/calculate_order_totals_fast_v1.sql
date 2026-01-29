@@ -10,6 +10,10 @@ DECLARE
     v_original_cash_subtotal numeric;
     v_unpaid_card_total numeric;
     v_unpaid_cash_total numeric;
+    v_effective_paid numeric;
+    v_payment_refunded numeric;
+    v_card_total_calc numeric;
+    v_payment_based_due numeric;
 BEGIN
     -- Get original (pre-discount) subtotals and discount amount
     SELECT 
@@ -37,7 +41,7 @@ BEGIN
     INTO v_service_charge, v_amount_paid
     FROM public.orders WHERE id = p_order_id;
 
-    -- Calculate amount_due from UNPAID items
+    -- Calculate amount_due from UNPAID items (item-level calculation)
     -- Account for refunded_quantity: refunded items need to be paid again
     -- Formula: unpaid_qty = quantity - paid_quantity + refunded_quantity
     SELECT 
@@ -54,6 +58,29 @@ BEGIN
     WHERE order_id = p_order_id 
       AND is_voided = false 
       AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
+
+    -- Calculate effective amount paid from payments (payment-level calculation)
+    -- This handles custom amount refunds that aren't tied to specific items
+    SELECT 
+        COALESCE(SUM(amount - COALESCE(refunded_amount, 0)), 0),
+        COALESCE(SUM(COALESCE(refunded_amount, 0)), 0)
+    INTO v_effective_paid, v_payment_refunded
+    FROM public.order_payments
+    WHERE order_id = p_order_id
+      AND status IN ('captured', 'partially_refunded', 'refunded')
+      AND is_voided = false;
+
+    -- Calculate card total for payment-based due calculation
+    v_card_total_calc := v_card_subtotal + v_card_tax + v_service_charge;
+    
+    -- Payment-based amount due = total - effective_paid (handles custom refunds)
+    v_payment_based_due := GREATEST(v_card_total_calc - v_effective_paid, 0);
+    
+    -- Final amount_due = MAX of item-based and payment-based calculations
+    -- This ensures both item refunds AND custom amount refunds are properly reflected
+    v_unpaid_card_total := GREATEST(v_unpaid_card_total, v_payment_based_due);
+    v_unpaid_cash_total := GREATEST(v_unpaid_cash_total, v_payment_based_due);
+
 
     -- Update order with totals
     UPDATE public.orders SET

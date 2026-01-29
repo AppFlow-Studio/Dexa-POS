@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { OrderService } from "@/services/orderService";
 import type { DejavooRefundResponse } from "@/types/dejavoo-spin-api";
@@ -10,6 +9,7 @@ import type {
   RefundResult,
 } from "@/types/refunds";
 import { StationPaymentTerminal } from "@/types/station";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type RefundContext = {
   orderId: string;
@@ -204,7 +204,8 @@ export class RefundService {
     // Update all records - collect errors but don't fail the whole operation
     const dbErrors: string[] = [];
 
-    const [reversalResult, paymentResult, orderResult] = await Promise.all([
+    // First, update reversal and payment in parallel
+    const [reversalResult, paymentResult] = await Promise.all([
       OrderService.updateReversalStatus(
         this.supabase,
         reversal.id,
@@ -222,10 +223,6 @@ export class RefundService {
         reversalType,
         returnDetails,
       ),
-      OrderService.updateOrderPaymentStatusAfterRefund(
-        this.supabase,
-        request.orderId,
-      ),
     ]);
 
     if (reversalResult.error) {
@@ -236,6 +233,14 @@ export class RefundService {
       console.error('[RefundService] applyRefundToPayment error:', paymentResult.error);
       dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
     }
+    
+    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER applyRefundToPayment completes
+    // to avoid race condition where it reads stale refunded_amount data
+    const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
+      this.supabase,
+      request.orderId,
+    );
+    
     if (orderResult.error) {
       console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
       dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
@@ -344,7 +349,8 @@ export class RefundService {
     // Update all records - collect errors but don't fail the whole operation
     const dbErrors: string[] = [];
     
-    const [reversalResult, paymentResult, orderResult] = await Promise.all([
+    // First, update reversal and payment in parallel
+    const [reversalResult, paymentResult] = await Promise.all([
       OrderService.updateReversalStatus(
         this.supabase,
         reversal.id,
@@ -362,10 +368,6 @@ export class RefundService {
         reversalType,
         returnDetails,
       ),
-      OrderService.updateOrderPaymentStatusAfterRefund(
-        this.supabase,
-        request.orderId,
-      ),
     ]);
     
     if (reversalResult.error) {
@@ -376,6 +378,14 @@ export class RefundService {
       console.error('[RefundService] applyRefundToPayment error:', paymentResult.error);
       dbErrors.push(`Payment update failed: ${paymentResult.error.message || paymentResult.error}`);
     }
+    
+    // IMPORTANT: Call updateOrderPaymentStatusAfterRefund AFTER applyRefundToPayment completes
+    // to avoid race condition where it reads stale refunded_amount data
+    const orderResult = await OrderService.updateOrderPaymentStatusAfterRefund(
+      this.supabase,
+      request.orderId,
+    );
+    
     if (orderResult.error) {
       console.error('[RefundService] updateOrderPaymentStatus error:', orderResult.error);
       dbErrors.push(`Order status update failed: ${orderResult.error.message || orderResult.error}`);
@@ -406,6 +416,7 @@ export class RefundService {
 
     const reversals: Array<{ reversalId: string; paymentId: string; amount: number }> = [];
     const errors: string[] = [];
+    let terminalRefundCount = 0; // Track terminal refunds for delay between operations
 
     for (const paymentAllocation of allocation.items) {
       const paymentTotals: Record<string, number> = {};
@@ -421,6 +432,11 @@ export class RefundService {
           continue;
         }
 
+        // Add delay before subsequent terminal refunds to prevent "Service Busy" errors
+        if (terminalRefundCount > 0) {
+          console.log('[RefundService] Waiting for terminal to be ready before next refund...');
+          await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+        }
 
         const { data: reversal, error: reversalError } =
           await OrderService.createReversal(this.supabase, {
@@ -440,6 +456,7 @@ export class RefundService {
           continue;
         }
 
+        terminalRefundCount++; // Increment before terminal call
         const terminalResult = await this.processTerminalRefund(
           payment,
           amount,

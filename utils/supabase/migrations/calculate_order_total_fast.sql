@@ -13,7 +13,7 @@
 -- CALLED BY: replace_order_item_modifiers_v2
 -- CALLED BY: recalculate_order_discount
 -- ============================================
-CREATE OR REPLACE FUNCTION calculate_order_total_fast(
+CREATE OR REPLACE FUNCTION calculate_order_totals_fast(
     p_order_id uuid,
 )
 RETURNS jsonb

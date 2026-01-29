@@ -154,8 +154,12 @@ const PaymentSuccessView = () => {
 
             if (!completedPaymentInfo) {
               // Fallback: calculate from live payments (original behavior)
+              // Calculate effective total paid (subtract refunded amounts)
               const payments = activeOrder?.payments || [];
-              totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+              totalPaid = payments.reduce(
+                (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
+                0
+              );
               totalTips = payments.reduce((sum, p) => {
                 const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
                 return sum + tip;

@@ -863,16 +863,14 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
       new Decimal(0)
     );
     
-    // Use MAX of item-based and payment-based outstanding
-    // This ensures both item refunds AND custom amount refunds are reflected
-    outstandingCardTotal = Decimal.max(outstandingCardTotal, paymentBasedOutstanding);
-    
-    // Similarly for cash pricing
-    const paymentBasedCashOutstanding = Decimal.max(
-      cashTotal.minus(effectivePaid),
+    // Custom refund balance = payment-based due NOT covered by item-level unpaid
+    // This is a flat monetary amount from custom refunds — same regardless of card/cash pricing
+    const customRefundBalance = Decimal.max(
+      paymentBasedOutstanding.minus(outstandingCardTotal),
       new Decimal(0)
     );
-    outstandingCashTotal = Decimal.max(outstandingCashTotal, paymentBasedCashOutstanding);
+    outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance);
+    outstandingCashTotal = outstandingCashTotal.plus(customRefundBalance);
   }
 
   return {

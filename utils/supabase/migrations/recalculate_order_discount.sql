@@ -10,6 +10,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+
 DECLARE
     v_discount RECORD;
     v_preset_discount RECORD;
@@ -25,17 +26,6 @@ DECLARE
     v_last_item_id UUID;
     v_item_calcs JSONB;
     
-    -- Order totals
-    v_gross_card_subtotal NUMERIC;
-    v_gross_cash_subtotal NUMERIC;
-    v_total_discount NUMERIC;
-    v_net_card_subtotal NUMERIC;
-    v_net_cash_subtotal NUMERIC;
-    v_card_tax NUMERIC;
-    v_cash_tax NUMERIC;
-    v_card_total NUMERIC;
-    v_cash_total NUMERIC;
-    v_amount_paid NUMERIC;
 BEGIN
     -- ============================================
     -- 1. Get Active Order-Level Discount
@@ -290,51 +280,9 @@ BEGIN
     END IF;
     
     -- ============================================
-    -- 7. Recalculate Order Totals
+    -- 7. Recalculate Order Totals (centralized, handles refunds)
     -- ============================================
-    SELECT COALESCE(amount_paid, 0) INTO v_amount_paid
-    FROM public.orders WHERE id = p_order_id;
-    
-    SELECT 
-        COALESCE(SUM(quantity * unit_price), 0),
-        COALESCE(SUM(quantity * COALESCE(cash_price, unit_price)), 0),
-        COALESCE(SUM(discount_amount), 0),
-        COALESCE(SUM(subtotal), 0),
-        COALESCE(SUM(cash_subtotal), 0),
-        COALESCE(SUM(tax_amount), 0),
-        COALESCE(SUM(cash_tax_amount), 0)
-    INTO 
-        v_gross_card_subtotal,
-        v_gross_cash_subtotal,
-        v_total_discount,
-        v_net_card_subtotal,
-        v_net_cash_subtotal,
-        v_card_tax,
-        v_cash_tax
-    FROM public.order_items
-    WHERE order_id = p_order_id AND is_voided = false;
-    
-    v_card_total := v_net_card_subtotal + v_card_tax;
-    v_cash_total := v_net_cash_subtotal + v_cash_tax;
-    
-    UPDATE public.orders SET
-        card_subtotal = v_gross_card_subtotal,
-        cash_subtotal = v_gross_cash_subtotal,
-        subtotal = v_gross_card_subtotal,
-        discount_amount = v_total_discount,
-        effective_subtotal = v_net_card_subtotal,
-        card_tax_amount = v_card_tax,
-        cash_tax_amount = v_cash_tax,
-        tax_amount = v_card_tax,
-        effective_tax_amount = v_card_tax,
-        card_total = v_card_total,
-        cash_total = v_cash_total,
-        total_amount = v_card_total,
-        effective_total = v_card_total,
-        amount_due = GREATEST(v_card_total - v_amount_paid, 0),
-        cash_amount_due = GREATEST(v_cash_total - v_amount_paid, 0),
-        updated_at = now()
-    WHERE id = p_order_id;
+    PERFORM calculate_order_totals_fast(p_order_id);
     
     -- ============================================
     -- 8. Return Result
@@ -346,14 +294,7 @@ BEGIN
         'discount_name', v_discount.discount_name,
         'pre_discount_subtotal', v_applicable_subtotal,
         'calculated_amount', v_new_calculated_amount,
-        'affected_items_count', array_length(v_affected_item_ids, 1),
-        'order_totals', jsonb_build_object(
-            'card_subtotal', v_gross_card_subtotal,
-            'discount_amount', v_total_discount,
-            'effective_subtotal', v_net_card_subtotal,
-            'card_tax', v_card_tax,
-            'card_total', v_card_total,
-            'cash_total', v_cash_total
-        )
+        'affected_items_count', array_length(v_affected_item_ids, 1)
     );
 END;
+

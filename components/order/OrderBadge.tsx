@@ -369,7 +369,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
             </Text>
           </TouchableOpacity>
 
-          {order.paid_status !== "Paid" && amountDue > 0.01 && (
+          {order.paid_status !== "Paid" && amountDue > 0.01 && order.check_status !== "Closed" && (
             <TouchableOpacity
               onPress={() => {
                 onRetrieve();

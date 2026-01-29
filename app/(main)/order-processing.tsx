@@ -93,7 +93,8 @@ const OrderProcessing = () => {
       }
     }
   }, [orders, activeOrderId, ordersById, setActiveOrder, startNewOrder]);
-
+ 
+   
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
     // Show orders that are in a "kitchen" state (preparing) or unpaid
@@ -116,6 +117,7 @@ const OrderProcessing = () => {
 
     return kitchenOrders;
   }, [orders]);
+  console.log("filteredOrders", filteredOrders);
 
   const reversedFilteredOrders = useMemo(() => {
     return filteredOrders.slice().reverse();
@@ -133,7 +135,7 @@ const OrderProcessing = () => {
 
     // Then, check if it's a Takeaway order and archive it
     // Note: archiveOrder now handles inventory deduction automatically
-    if (order.order_type === "Takeaway" && order.paid_status === "Paid") {
+    if (order.order_type === "Takeaway" && order.paid_status === "Paid" ||  order.check_status !== "Closed") {
       // A small delay can improve UX, ensuring the user sees the status change before it disappears.
       setTimeout(() => {
         archiveOrder(order.id);

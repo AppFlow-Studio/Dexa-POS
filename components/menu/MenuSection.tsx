@@ -44,6 +44,8 @@ import ModifierScreenOverlay from "./ModifierScreenOverlay";
 import OpenItemAdder from "./OpenItemAdder";
 import OrderTypeDrawer from "./OrderTypeDrawer";
 import PreviousOrdersSection from "./PreviousOrdersSection";
+import Animated, { LinearTransition } from 'react-native-reanimated';
+
 interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
   isTableOrder?: boolean;
@@ -649,7 +651,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
           {activeTab === "Menu" ? (
             activeMeal ? (
               <View key={"Menu"} className={`${isTableOrder ? "px-3" : ""}`}>
-                <FlatList
+                <Animated.FlatList
                   data={dataWithSpacers}
                   keyExtractor={keyExtractor}
                   numColumns={numColumns}
@@ -678,6 +680,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOr
                     </View>
                   }
                   renderItem={renderMenuItem}
+                  itemLayoutAnimation={LinearTransition.duration(500)}
                 />
               </View>
             ) : null

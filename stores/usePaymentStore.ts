@@ -1,23 +1,23 @@
+import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import { toastService } from "@/lib/toastService";
 import { CartItem, OrderPaymentTransactionDetails } from "@/lib/types";
-import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import {
-  getFailedPayments,
-  getPendingPaymentsCount,
-  OfflineOperation,
-  retryFailedOperation,
+    getFailedPayments,
+    getPendingPaymentsCount,
+    OfflineOperation,
+    retryFailedOperation,
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { useConflictStore } from "@/stores/useConflictStore";
+import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
 import {
-  calculateItemEffectiveCashPrice,
-  getOrderStoreSupabaseClient,
-  useOrderStore,
+    calculateItemEffectiveCashPrice,
+    getOrderStoreSupabaseClient,
+    useOrderStore,
 } from "./useOrderStore";
-import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
   | "review"
@@ -718,8 +718,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       } else {
         // All splits paid - capture final order state
         const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
+        // Calculate effective total paid (subtract refunded amounts)
         const paymentsTotal = (finalOrder?.payments || []).reduce(
-          (sum, p) => sum + (p.amount || 0),
+          (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
           0,
         );
         const tipsTotal = (finalOrder?.payments || []).reduce(
@@ -801,9 +802,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const updatedOrder = useOrderStore.getState().ordersById[activeOrderId];
 
       // Capture payment info for success view
+      // Calculate effective total paid (subtract refunded amounts)
       const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
       const paymentsTotal = (finalOrder?.payments || []).reduce(
-        (sum, p) => sum + (p.amount || 0),
+        (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
         0,
       );
       const tipsTotal = (finalOrder?.payments || []).reduce(

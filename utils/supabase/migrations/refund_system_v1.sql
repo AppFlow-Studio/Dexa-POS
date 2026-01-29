@@ -342,6 +342,8 @@ $$;
 
 -- ============================================
 -- 9. RPC: Update order payment status after refund
+-- Uses calculate_order_totals_fast for comprehensive recalculation
+-- including both item-based and payment-based refunds
 -- ============================================
 CREATE OR REPLACE FUNCTION update_order_payment_status_after_refund(
   p_order_id uuid
@@ -352,10 +354,9 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_order record;
-  v_total_paid numeric;
-  v_amount_due numeric;
   v_payment_status payment_status;
 BEGIN
+  -- Verify order access
   SELECT * INTO v_order
   FROM orders
   WHERE id = p_order_id
@@ -366,26 +367,26 @@ BEGIN
     RAISE EXCEPTION 'Order not found or access denied';
   END IF;
 
-  SELECT COALESCE(SUM(amount - COALESCE(refunded_amount, 0)), 0)
-  INTO v_total_paid
-  FROM order_payments
-  WHERE order_id = p_order_id
-    AND status IN ('captured'::payment_status, 'refunded'::payment_status, 'partially_refunded'::payment_status, 'void'::payment_status);
+  -- Use calculate_order_totals_fast for comprehensive calculation
+  -- This includes both item-level refunds (refunded_quantity) and
+  -- payment-level refunds (refunded_amount) using MAX logic
+  PERFORM calculate_order_totals_fast(p_order_id);
+  
+  -- Refresh order data after recalculation
+  SELECT * INTO v_order FROM orders WHERE id = p_order_id;
 
-  v_amount_due := COALESCE(v_order.total_amount, 0) - v_total_paid;
-
-  IF v_amount_due <= 0 THEN
+  -- Determine payment status based on recalculated amounts
+  IF COALESCE(v_order.amount_due, 0) <= 0 THEN
     v_payment_status := 'paid'::payment_status;
-  ELSIF v_total_paid > 0 THEN
+  ELSIF COALESCE(v_order.amount_paid, 0) > 0 THEN
     v_payment_status := 'partial'::payment_status;
   ELSE
     v_payment_status := 'refunded'::payment_status;
   END IF;
 
+  -- Update only the payment_status (totals already updated by calculate_order_totals_fast)
   UPDATE orders
-  SET payment_status = v_payment_status,
-      amount_paid = v_total_paid,
-      amount_due = GREATEST(0, v_amount_due)
+  SET payment_status = v_payment_status
   WHERE id = p_order_id;
 END;
 $$;
