@@ -528,9 +528,11 @@ export class RefundService {
         
         if (reversalStatusResult.error) {
           console.error('[RefundService] Item return - updateReversalStatus error:', reversalStatusResult.error);
+          errors.push(`Reversal status update failed: ${reversalStatusResult.error.message || reversalStatusResult.error}`);
         }
         if (paymentRefundResult.error) {
           console.error('[RefundService] Item return - applyRefundToPayment error:', paymentRefundResult.error);
+          errors.push(`Payment update failed: ${paymentRefundResult.error.message || paymentRefundResult.error}`);
         }
 
         reversals.push({ reversalId: reversal.id, paymentId, amount });
@@ -557,10 +559,13 @@ export class RefundService {
       }
     }
 
-    await OrderService.updateOrderPaymentStatusAfterRefund(
+    const orderStatusResult = await OrderService.updateOrderPaymentStatusAfterRefund(
       this.supabase,
       request.orderId,
     );
+    if (orderStatusResult.error) {
+      console.error('[RefundService] updateOrderPaymentStatus error:', orderStatusResult.error);
+    }
 
     return {
       success: reversals.length > 0,

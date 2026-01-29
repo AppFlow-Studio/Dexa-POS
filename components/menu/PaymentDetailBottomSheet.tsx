@@ -1420,7 +1420,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     Record<string, number>
   >({});
 
-  console.log("paymentSummary", paymentSummary);
+  // console.log("paymentSummary", paymentSummary);
   const maxRefundable =  paymentSummary.collected - paymentSummary.refunds;
 
   // Filter out voided payments and fully refunded payments - only payments with remaining balance can be refunded
@@ -1456,7 +1456,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     if (!order?.items) return 0;
     return order.items.reduce((sum: number, item: CartItem) => {
       const maxQty = getRefundableQty(item);
-      const selectedQty = Math.min(selectedItems[item.id] || 0, maxQty);
+      const selectedQty = Math.min(selectedItems[item.db_order_item_id || ''] || 0, maxQty);
       if (selectedQty <= 0) return sum;
       const itemSubtotal = (item.price || 0) * selectedQty;
       const perUnitTax =
@@ -1478,24 +1478,25 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   }, [paymentRefundAmounts]);
 
   const customAmountActive = useMemo(() => {
-    const hasAmounts = Object.values(paymentRefundAmounts).some((amounts) => {
-      const orderAmt = parseFloat(amounts.orderAmount) || 0;
-      const tipAmt = parseFloat(amounts.tipAmount) || 0;
-      return orderAmt + tipAmt > 0;
-    });
-    if (refundType === "payments") {
-      return paymentRefundTotal > 0;
-    }
-    return hasAmounts;
-  }, [paymentRefundAmounts, paymentRefundTotal, refundType]);
+    if (refundType !== "payments") return false;
+    return paymentRefundTotal > 0;
+  }, [paymentRefundTotal, refundType]);
   
 
-  console.log("customAmountActive debug", {
-    customAmountActive,
-    refundType,
-    paymentRefundTotal,
-    paymentRefundAmountsKeys: Object.keys(paymentRefundAmounts),
-  });
+  // console.log("customAmountActive debug", {
+  //   customAmountActive,
+  //   refundType,
+  //   paymentRefundTotal,
+  //   paymentRefundAmountsKeys: Object.keys(paymentRefundAmounts),
+  // });
+
+  const hasCustomAmountRefund = useMemo(() => {
+    if (!order?.reversals) return false;
+    return (order.reversals as ReversalRecord[]).some(
+      (r) => r.status === 'completed' &&
+             (r.reversal_type === 'partial_refund' || r.reversal_type === 'refund')
+    );
+  }, [order?.reversals]);
 
   const hasRefundablePayments = refundablePayments.length > 0;
   const isZeroRefundable = maxRefundable <= 0 || !hasRefundablePayments;
@@ -1513,7 +1514,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     }
   };
 
-  const itemsDisabled = customAmountActive || isZeroRefundable;
+  const itemsDisabled = isZeroRefundable;
 
   // Helper: find which payment covers a given item via itemsCovered
   const getPaymentForItem = useCallback(
@@ -1547,17 +1548,19 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
       let changed = false;
       const next: Record<string, number> = { ...prev };
       order.items.forEach((item: CartItem) => {
+        // TODO: Need to research offline scenario where item.db_order_item_id is not available
+        if (!item.db_order_item_id) return;
         const maxQty = getRefundableQty(item);
-        if (maxQty <= 0 && next[item.id]) {
-          delete next[item.id];
+        if (maxQty <= 0 && next[item.db_order_item_id || '']) {
+          delete next[item.db_order_item_id || ''];
           changed = true;
           return;
         }
-        if (next[item.id] && next[item.id] > maxQty) {
+        if (next[item.db_order_item_id || ''] && next[item.db_order_item_id || ''] > maxQty) {
           if (maxQty > 0) {
-            next[item.id] = maxQty;
+            next[item.db_order_item_id || ''] = maxQty;
           } else {
-            delete next[item.id];
+            delete next[item.db_order_item_id || ''];
           }
           changed = true;
         }
@@ -1565,7 +1568,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
       return changed ? next : prev;
     });
   }, [order?.items, getRefundableQty]);
-
+  console.log("[RightPaneRefund] selectedItems", selectedItems);
+  console.log("[RightPaneRefund] order?.items", order?.items);
   // Validation: all selected unallocated items must have a payment assigned
   const allItemsHavePayment = useMemo(() => {
     if (refundType !== "items") return true;
@@ -1602,8 +1606,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
     getRefundAmount() <= maxRefundable &&
     allItemsHavePayment &&
     paymentAmountsValid &&
-    !isZeroRefundable &&
-    !(refundType === "items" && customAmountActive);
+    !isZeroRefundable;
   // console.log('Can Process Refund', {
   //   refundReason,
   //   refundAmount: getRefundAmount(),
@@ -1614,7 +1617,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   //   customAmountActive,
   // });
   const handleToggleItem = (itemId: string, maxQty: number) => {
-    if (customAmountActive || isZeroRefundable || maxQty <= 0) return;
+    if (isZeroRefundable || maxQty <= 0) return;
     setSelectedItems((prev) => {
       if (prev[itemId]) {
         const { [itemId]: removed, ...rest } = prev;
@@ -1625,7 +1628,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   };
 
   const handleQuantityChange = (itemId: string, qty: number, maxQty: number) => {
-    if (customAmountActive || isZeroRefundable) return;
+    if (isZeroRefundable) return;
     if (qty <= 0) {
       const { [itemId]: removed, ...rest } = selectedItems;
       setSelectedItems(rest);
@@ -1727,7 +1730,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           cardBrand: payment.cardBrand || payment.cardInfo?.brand,
         });
       });
-    } else if (refundType === "items" && !customAmountActive && !isZeroRefundable) {
+    } else if (refundType === "items" && !isZeroRefundable) {
       // Group selected items by their covering payment
       const paymentItemMap: Record<
         number,
@@ -1812,13 +1815,21 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
               { key: "payments", label: "By Payment" },
             ].map((type) => {
               // Disable Items tab when custom amount refund is active
-              const isDisabled = type.key === "items" && (customAmountActive || paymentRefundTotal > 0);
+              const isDisabled = type.key === "items" && (hasCustomAmountRefund || isZeroRefundable);
               return (
                 <TouchableOpacity
                   key={type.key}
                   onPress={() => {
                     if (isDisabled) return;
-                    setRefundType(type.key as RefundType);
+                    const newType = type.key as RefundType;
+                    // Clear cross-mode state on tab switch
+                    if (newType === "items") {
+                      setPaymentRefundAmounts({});
+                    } else if (newType === "payments" || newType === "full") {
+                      setSelectedItems({});
+                      setItemPaymentAssignment({});
+                    }
+                    setRefundType(newType);
                   }}
                   disabled={isDisabled}
                   className={`flex-1 py-3 px-3 rounded-lg border ${
@@ -1934,11 +1945,11 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
               ?.filter((item: CartItem) => !item.is_voided)
               .map((item: CartItem) => {
                 const maxQty = getRefundableQty(item);
-                const isSelected = selectedItems[item.id] !== undefined;
-                const selectedQty = selectedItems[item.id] || 0;
-                const coveringPayment = getPaymentForItem(item.id);
+                const isSelected = selectedItems[item?.db_order_item_id] !== undefined;
+                const selectedQty = selectedItems[item?.db_order_item_id] || 0;
+                const coveringPayment = getPaymentForItem(item?.db_order_item_id);
                 const needsAssignment = isSelected && !coveringPayment;
-                const assignedPaymentIdx = itemPaymentAssignment[item.id];
+                const assignedPaymentIdx = itemPaymentAssignment[item?.db_order_item_id];
 
                 return (
                   <View key={item.id}>
@@ -1948,7 +1959,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                       }`}
                     >
                       <TouchableOpacity
-                        onPress={() => handleToggleItem(item.id, maxQty)}
+                        onPress={() => handleToggleItem(item.db_order_item_id || '', maxQty)}
                         disabled={itemsDisabled || maxQty <= 0}
                         className={`w-6 h-6 rounded border mr-3 items-center justify-center ${
                           isSelected
@@ -1987,7 +1998,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           <TouchableOpacity
                             onPress={() =>
                               handleQuantityChange(
-                                item.id,
+                                item.db_order_item_id || '',
                                 selectedQty - 1,
                                 maxQty
                               )
@@ -2003,7 +2014,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                           <TouchableOpacity
                             onPress={() =>
                               handleQuantityChange(
-                                item.id,
+                                item.db_order_item_id || '',
                                 selectedQty + 1,
                                 maxQty
                               )
@@ -2045,7 +2056,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                                 onPress={() =>
                                   setItemPaymentAssignment((prev) => ({
                                     ...prev,
-                                    [item.id]: pIdx,
+                                    [item.db_order_item_id || '']: pIdx,
                                   }))
                                 }
                                 className={`px-3 py-1.5 rounded-full border ${
@@ -2712,6 +2723,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
             });
             return false;
           }
+          console.log('[Refund] Selected items', selectedItems);
           const refundRequest: RefundRequest = {
             orderId: orderIdForRefund,
             payment_terminal_id: selectedStation?.payment_terminal?.id || "",

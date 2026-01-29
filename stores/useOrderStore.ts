@@ -56,6 +56,7 @@ import {
   mapPaymentStatus,
   normalizeFetchedOrder,
   transformBroadcastItems,
+  transformBroadcastPaymentsToProfile,
   transformBroadcastToOrder,
   type FetchedOrderData,
 } from "@/utils/orderTransformers";
@@ -2078,6 +2079,27 @@ const createDebouncedOrderRefresh = (get: () => OrderState) => {
   };
 };
 
+/**
+ * Merges broadcast payments (with correct itemsCovered from covers_items)
+ * with local payments, preserving any pending local payments that haven't
+ * synced yet.
+ */
+function mergePayments(
+  localPayments: OrderProfilePayment[],
+  broadcastPayments: OrderProfilePayment[],
+): OrderProfilePayment[] {
+  // Keep any local payments that are still pending sync (no db_payment_id)
+  const pendingLocalPayments = localPayments.filter(
+    (lp) =>
+      lp.sync_status === "pending" ||
+      (!lp.db_payment_id && !lp.id?.startsWith("payment_")),
+  );
+
+  // Use broadcast payments as the base (they have correct itemsCovered from covers_items)
+  // Then append any pending local payments
+  return [...broadcastPayments, ...pendingLocalPayments];
+}
+
 export const useOrderStore = create<OrderState>()(
   subscribeWithSelector(
     persist(
@@ -2529,6 +2551,20 @@ export const useOrderStore = create<OrderState>()(
                         paid_status: mapPaymentStatus(
                           backendOrder.payment_status,
                         ),
+
+                        // Update payments from broadcast if available (preserves itemsCovered/covers_items)
+                        ...(backendOrder.order_payments &&
+                        backendOrder.order_payments.length > 0
+                          ? {
+                              payments: mergePayments(
+                                existingOrder.payments || [],
+                                transformBroadcastPaymentsToProfile(
+                                  backendOrder.order_payments,
+                                  backendOrder.order_items,
+                                ),
+                              ),
+                            }
+                          : {}),
 
                         // Update items with merged data (Phase 2.5)
                         items: mergedItems,
