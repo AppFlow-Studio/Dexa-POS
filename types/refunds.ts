@@ -45,6 +45,7 @@ export interface RefundRequest {
   payment_terminal_id: string;
   payment_terminal_name?: string;
   payment_terminal?: StationPaymentTerminal;
+  stationId?: string; // station performing the refund
 }
 
 export interface ReversalRecord {

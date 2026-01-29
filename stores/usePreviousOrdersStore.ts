@@ -3,6 +3,7 @@ import { OrderService } from "@/services/orderService";
 import { RefundService } from "@/services/refundService";
 import type { RefundReasonType, RefundRequest } from "@/types/refunds";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   FetchedOrderData,
   normalizeFetchedOrder,
@@ -423,12 +424,16 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       if (_supabaseClient) {
         const refundService = new RefundService(_supabaseClient);
+        const station = useStoreSettingsStore.getState().selectedStation;
         const refundRequest: RefundRequest = {
           orderId,
           refundType: { type: "full_payment" },
           reason: toRefundReasonType(reason),
           reasonDetail: reason,
           initiatedBy: refundedBy,
+          payment_terminal_id: station?.payment_terminal?.id || "",
+          payment_terminal: station?.payment_terminal || undefined,
+          stationId: station?.id,
         };
         const result = await refundService.processRefund(refundRequest);
         if (!result.success) {
@@ -518,6 +523,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       if (_supabaseClient) {
         const refundService = new RefundService(_supabaseClient);
+        const station = useStoreSettingsStore.getState().selectedStation;
         const refundRequest: RefundRequest = {
           orderId,
           refundType: {
@@ -534,6 +540,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           ),
           reasonDetail: itemsToRefund.map((i) => i.reason).join(", "),
           initiatedBy: refundedBy,
+          payment_terminal_id: station?.payment_terminal?.id || "",
+          payment_terminal: station?.payment_terminal || undefined,
+          stationId: station?.id,
         };
         const result = await refundService.processRefund(refundRequest);
         if (!result.success) {

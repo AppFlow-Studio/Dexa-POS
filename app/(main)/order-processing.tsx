@@ -117,7 +117,7 @@ const OrderProcessing = () => {
 
     return kitchenOrders;
   }, [orders]);
-  console.log("filteredOrders", filteredOrders);
+  // console.log("filteredOrders", filteredOrders);
 
   const reversedFilteredOrders = useMemo(() => {
     return filteredOrders.slice().reverse();

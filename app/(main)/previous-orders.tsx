@@ -219,7 +219,7 @@ const PreviousOrdersScreen = () => {
     orderDetailsSheetRef.current?.snapToIndex?.(0);
   };
 
-  console.log("filteredOrders", filteredOrders[21]);
+  // console.log("filteredOrders", filteredOrders[21]);
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}

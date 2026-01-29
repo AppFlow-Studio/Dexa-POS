@@ -17,6 +17,7 @@ type RefundContext = {
   payment?: PaymentRefundContext;
   locationId?: string | null;
   merchantId?: string | null;
+  stationId?: string | null;
 };
 
 export class RefundService {
@@ -46,6 +47,14 @@ export class RefundService {
       default:
         return { success: false, error: "Unknown refund type." };
     }
+  }
+
+  private buildReversalRefId(context: RefundContext): string {
+    const locSuffix = context.locationId?.slice(-4) ?? '';
+    const staSuffix = context.stationId?.slice(-4) ?? '';
+    const locPart = locSuffix ? `_${locSuffix}` : '';
+    const staPart = staSuffix ? `_${staSuffix}` : '';
+    return `REV${locPart}${staPart}_${Date.now()}`;
   }
 
   private async gatherRefundContext(
@@ -114,6 +123,7 @@ export class RefundService {
       payment: selectedPayment,
       locationId: order.location_id,
       merchantId: order.merchant_id,
+      stationId: request.stationId ?? null,
     };
   }
 
@@ -136,7 +146,7 @@ export class RefundService {
       await OrderService.createReversal(this.supabase, {
         original_payment_id: payment.paymentId,
         original_psp_reference: payment.rrn,
-        reversal_reference_id: `REV_${Date.now()}`,
+        reversal_reference_id: this.buildReversalRefId(context),
         reversal_type: reversalType,
         amount: payment.availableForRefund,
         reason_code: request.reason,
@@ -285,7 +295,7 @@ export class RefundService {
       await OrderService.createReversal(this.supabase, {
         original_payment_id: payment.paymentId,
         original_psp_reference: payment.rrn,
-        reversal_reference_id: `REV_${Date.now()}`,
+        reversal_reference_id: this.buildReversalRefId(context),
         reversal_type: reversalType,
         amount,
         reason_code: request.reason,
@@ -442,7 +452,7 @@ export class RefundService {
           await OrderService.createReversal(this.supabase, {
             original_payment_id: payment.paymentId,
             original_psp_reference: payment.rrn,
-            reversal_reference_id: `REV_${Date.now()}`,
+            reversal_reference_id: this.buildReversalRefId(context),
             reversal_type: "item_return",
             amount,
             reason_code: request.reason,

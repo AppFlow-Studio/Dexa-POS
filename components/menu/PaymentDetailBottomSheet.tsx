@@ -2716,6 +2716,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
             orderId: orderIdForRefund,
             payment_terminal_id: selectedStation?.payment_terminal?.id || "",
             payment_terminal: selectedStation?.payment_terminal || undefined,
+            stationId: selectedStation?.id,
             refundType: {
               type: "item_return",
               items: selectedItems.map((item) => ({
@@ -2820,6 +2821,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
             referenceId: detail.referenceId,
             payment_terminal_id: selectedStation?.payment_terminal?.id || "",
             payment_terminal: selectedStation?.payment_terminal || undefined,
+            stationId: selectedStation?.id,
           };
 
           const result = await refundService.processRefund(refundRequest);

@@ -36,7 +36,7 @@ const CashPaymentView = () => {
   const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
     usePaymentStore();
 
-  const { selectedStation } = useStoreSettingsStore();
+  const { selectedStation, selectedStore } = useStoreSettingsStore();
   // console.log('selectedStation', selectedStation);
   // Dejavoo integration
   const supabase = useSupabaseClient();
@@ -192,9 +192,11 @@ const CashPaymentView = () => {
       const amountTenderedNum = parseFloat(amountTendered) || 0;
 
       // Generate unique RefId
+      const locSuffix = selectedStore?.id?.slice(-4) ?? '';
+      const staSuffix = selectedStation?.id?.slice(-4) ?? '';
       const refId = activeSplit
-        ? generateRefId("CASH", parseInt(activeSplitId?.split("_")[1] || "0"))
-        : generateRefId("CASH");
+        ? generateRefId("CASH", parseInt(activeSplitId?.split("_")[1] || "0"), locSuffix, staSuffix)
+        : generateRefId("CASH", undefined, locSuffix, staSuffix);
 
       console.log("[CashPayment] Executing sale transaction...", {
         amount: total,

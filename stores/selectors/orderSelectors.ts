@@ -52,7 +52,8 @@ export interface ActiveOrderTotals {
  * - activeOrderCashAmountDue → cashAmountDue
  *
  * Uses calculateOrderTotals with TTL caching (order-calculator.ts).
- * Prioritizes backend values for amount_due/cash_amount_due when available.
+ * Always uses frontend calculator for amount_due/cash_amount_due to correctly
+ * handle payment-level refunds even when backend values are stale.
  */
 export function useActiveOrderTotals(): ActiveOrderTotals | null {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -67,12 +68,10 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
 
-    // Use backend values if available (authoritative for payment state)
-    // console.log("activeOrder [useActiveOrderTotals]", activeOrder);
-    const backendAmountDue = activeOrder.amount_due;
-    const backendCashAmountDue = activeOrder.cash_amount_due;
-//  console.log("backendCashAmountDue [useActiveOrderTotals] backendCashAmountDue", backendCashAmountDue);
     // Calculate totals (uses TTL cache internally)
+    // Frontend calculator handles payment-level refunds correctly,
+    // so always use its result instead of backend amount_due which
+    // can be stale/incorrect after item changes on refunded orders.
     const totals = calculateOrderTotals({
       items: activeOrder.items,
       checkDiscount: activeOrder.checkDiscount ?? null,
@@ -85,19 +84,8 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
       .filter(p => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
 
-    // Check if any payments exist (excluding voided) - determines authority
-    const hasPayments = (activeOrder.payments ?? []).some(p => !p.isVoided);
-
-    // Authority logic: frontend before first payment, backend after
-    // Before payment: use frontend calculations for real-time accuracy
-    // After payment: use backend values as source of truth for payment state
-    const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
-      : totals.outstanding_total;
-
-    const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
-      : totals.cash_outstanding_total;
+    const amountDue = totals.outstanding_total;
+    const cashAmountDue = totals.cash_outstanding_total;
 
 
 
@@ -125,9 +113,8 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
  * Phase 3.1: Fine Dining Table Management
  * Enables payment display for any table/order without needing it to be the active order.
  *
- * Uses the same authority logic as useActiveOrderTotals:
- * - Backend values authoritative after first payment
- * - Frontend calculation used before payments
+ * Uses the same logic as useActiveOrderTotals:
+ * - Always uses frontend calculator for amount_due to correctly handle refunds
  *
  * @param orderId - Local order ID (not db_order_id) to calculate totals for
  * @returns Order totals or null if order not found
@@ -144,11 +131,10 @@ export function useOrderTotals(orderId: string | null): ActiveOrderTotals | null
 
     const activeItems = order.items.filter((item) => !item.is_voided);
 
-    // Use backend values if available (authoritative for payment state)
-    const backendAmountDue = order.amount_due;
-    const backendCashAmountDue = order.cash_amount_due;
-
     // Calculate totals (uses TTL cache internally)
+    // Frontend calculator handles payment-level refunds correctly,
+    // so always use its result instead of backend amount_due which
+    // can be stale/incorrect after item changes on refunded orders.
     const totals = calculateOrderTotals({
       items: order.items,
       checkDiscount: order.checkDiscount ?? null,
@@ -161,17 +147,8 @@ export function useOrderTotals(orderId: string | null): ActiveOrderTotals | null
       .filter(p => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
 
-    // Check if any payments exist (excluding voided) - determines authority
-    const hasPayments = (order.payments ?? []).some(p => !p.isVoided);
-
-    // Authority logic: frontend before first payment, backend after
-    const amountDue = hasPayments
-      ? (backendAmountDue ?? totals.outstanding_total)
-      : totals.outstanding_total;
-
-    const cashAmountDue = hasPayments
-      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
-      : totals.cash_outstanding_total;
+    const amountDue = totals.outstanding_total;
+    const cashAmountDue = totals.cash_outstanding_total;
 
     return {
       subtotal: totals.subtotal,

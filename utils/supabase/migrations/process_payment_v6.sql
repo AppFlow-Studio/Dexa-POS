@@ -168,7 +168,8 @@ BEGIN
     v_pre_unpaid_cash_total := v_pre_unpaid_cash_total + v_custom_refund_balance;
 
     -- If nothing to pay, return early
-    IF v_unpaid_items_count = 0 THEN
+    -- Allow payment when custom refund balance exists (payment-level refund debt)
+    IF v_unpaid_items_count = 0 AND v_custom_refund_balance <= 0 THEN
         RAISE EXCEPTION 'No unpaid items remaining on this order';
     END IF;
 

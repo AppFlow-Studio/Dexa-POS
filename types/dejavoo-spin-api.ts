@@ -1531,26 +1531,32 @@ export function parseExtData(extData: string): Partial<ExtendedData> {
 
 /**
  * Generate a unique RefId for transactions
- * Format: PREFIX_TIMESTAMP_RANDOM or PREFIX_SPLIT{n}_TIMESTAMP_RANDOM
- * @param prefix - Optional prefix (e.g., 'SALE', 'VOID')
+ * Format: PREFIX[_LOC][_STA][_SPLIT{n}]_TIMESTAMP_RANDOM
+ * @param prefix - Optional prefix (e.g., 'CASH', 'CARD')
  * @param splitIndex - Optional split index for split payments (e.g., 1, 2, 3)
+ * @param locationSuffix - Optional last-4 chars of location ID
+ * @param stationSuffix - Optional last-4 chars of station ID
  * @returns Unique reference ID (max 50 chars)
  * @example
- * generateRefId('SALE')          → 'SALE_1737168000123_4567'
- * generateRefId('SALE', 1)       → 'SALE_SPLIT1_1737168000123_4567'
- * generateRefId('SALE', 2)       → 'SALE_SPLIT2_1737168000456_8901'
+ * generateRefId('CASH', undefined, 'ef0', 'bcd')  → 'CASH_ef0_bcd_1737168000123_4567'
+ * generateRefId('CARD', 1, 'ef0', 'bcd')           → 'CARD_ef0_bcd_SPLIT1_1737168000123_4567'
  */
-export function generateRefId(prefix: string = 'TXN', splitIndex?: number): string {
+export function generateRefId(
+  prefix: string = 'TXN',
+  splitIndex?: number,
+  locationSuffix?: string,
+  stationSuffix?: string
+): string {
   const timestamp = Date.now();
   const random = Math.floor(Math.random() * 10000)
     .toString()
     .padStart(4, '0');
 
-  if (splitIndex !== undefined) {
-    return `${prefix}_SPLIT${splitIndex}_${timestamp}_${random}`.substring(0, 50);
-  }
+  const locPart = locationSuffix ? `_${locationSuffix}` : '';
+  const staPart = stationSuffix ? `_${stationSuffix}` : '';
+  const splitPart = splitIndex !== undefined ? `_SPLIT${splitIndex}` : '';
 
-  return `${prefix}_${timestamp}_${random}`.substring(0, 50); // Max 50 chars
+  return `${prefix}${locPart}${staPart}${splitPart}_${timestamp}_${random}`.substring(0, 50);
 }
 
 // ============================================================

@@ -57,7 +57,7 @@ const CardPaymentView = () => {
     clearTipResponse,
   } = useCFD();
 
-  const { selectedStation } = useStoreSettingsStore();
+  const { selectedStation, selectedStore } = useStoreSettingsStore();
   // console.log('selectedStation', selectedStation);
 
   // Check terminal status on mount
@@ -167,12 +167,16 @@ const CardPaymentView = () => {
           // const amountTenderedNum = parseFloat(amountTendered) || 0;
 
           // Generate unique RefId
+          const locSuffix = selectedStore?.id?.slice(-4) ?? '';
+          const staSuffix = selectedStation?.id?.slice(-4) ?? '';
           const refId = activeSplit
             ? generateRefId(
                 "CARD",
                 parseInt(activeSplitId?.split("_")[1] || "0"),
+                locSuffix,
+                staSuffix,
               )
-            : generateRefId("CARD");
+            : generateRefId("CARD", undefined, locSuffix, staSuffix);
 
           console.log("[CashPayment] Executing sale transaction...", {
             grandTotal: grandTotal,
