@@ -1,32 +1,3 @@
--- ============================================
--- MANAGE ORDER DISCOUNT (with Item Distribution)
--- Actions: 'apply', 'void'
--- Distributes discounts to order_items
--- Recalculates order totals atomically
-
--- ============================================
-CREATE OR REPLACE FUNCTION public.manage_order_discount(
-    p_action TEXT,                              -- 'apply' or 'void'
-    p_order_id UUID,
-    p_staff_id UUID,
-    -- For 'apply':
-    p_discount_id UUID DEFAULT NULL,            -- NULL for custom discounts
-    p_discount_name TEXT DEFAULT NULL,          -- Required - display name
-    p_discount_type TEXT DEFAULT NULL,          -- 'percentage' or 'fixed'
-    p_discount_value NUMERIC DEFAULT NULL,      -- The value (10 for 10% or $10)
-    p_source TEXT DEFAULT 'preset',             -- 'preset', 'custom', 'promo_code'
-    p_reason TEXT DEFAULT NULL,                 -- Why discount was applied
-    p_applied_to_item_ids UUID[] DEFAULT NULL,  -- NULL = order-level, array = item-level
-    p_approved_by_staff_id UUID DEFAULT NULL,   -- Manager who approved
-    -- For 'void':
-    p_order_discount_id UUID DEFAULT NULL,      -- Which discount to void
-    p_void_reason TEXT DEFAULT NULL             -- Why voided
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
 
 DECLARE
     v_order RECORD;
@@ -36,9 +7,6 @@ DECLARE
     v_calculated_amount NUMERIC := 0;
     v_pre_discount_subtotal NUMERIC;
     v_applicable_subtotal NUMERIC;
-    v_calculated_cash_amount NUMERIC := 0;
-    v_pre_discount_cash_subtotal NUMERIC;
-    v_applicable_cash_subtotal NUMERIC;
     v_discount_type TEXT;
     v_discount_value NUMERIC;
     v_discount_name TEXT;
@@ -235,9 +203,8 @@ BEGIN
         END IF;
         
         IF p_applied_to_item_ids IS NOT NULL AND array_length(p_applied_to_item_ids, 1) > 0 THEN
-            SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                   COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)), 0)
-            INTO v_applicable_subtotal, v_applicable_cash_subtotal
+            SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0)
+            INTO v_applicable_subtotal
             FROM public.order_items oi
             WHERE oi.id = ANY(p_applied_to_item_ids)
               AND oi.order_id = p_order_id AND oi.is_voided = false
@@ -248,10 +215,8 @@ BEGIN
             WHERE id = ANY(p_applied_to_item_ids) AND order_id = p_order_id
               AND is_voided = false AND quantity > COALESCE(paid_quantity, 0);
         ELSE
-            SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                   COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)), 0),
-                   array_agg(oi.id)
-            INTO v_applicable_subtotal, v_applicable_cash_subtotal, v_affected_item_ids
+            SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
+            INTO v_applicable_subtotal, v_affected_item_ids
             FROM public.order_items oi
             WHERE oi.order_id = p_order_id AND oi.is_voided = false
               AND oi.quantity > COALESCE(oi.paid_quantity, 0);
@@ -260,10 +225,8 @@ BEGIN
         -- Apply exclusions for preset discounts only
         IF v_is_preset_discount THEN
             IF COALESCE(v_discount.exclude_alcohol, false) THEN
-                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                       COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)), 0),
-                       array_agg(oi.id)
-                INTO v_applicable_subtotal, v_applicable_cash_subtotal, v_affected_item_ids
+                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
+                INTO v_applicable_subtotal, v_affected_item_ids
                 FROM public.order_items oi
                 LEFT JOIN public.menu_items mi ON mi.id = oi.menu_item_id
                 WHERE oi.order_id = p_order_id AND oi.is_voided = false
@@ -273,26 +236,22 @@ BEGIN
             END IF;
             
             IF v_discount.exclude_categories IS NOT NULL THEN
-                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                       COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)), 0),
-                       array_agg(oi.id)
-                INTO v_applicable_subtotal, v_applicable_cash_subtotal, v_affected_item_ids
+                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
+                INTO v_applicable_subtotal, v_affected_item_ids
                 FROM public.order_items oi
                 WHERE oi.order_id = p_order_id AND oi.is_voided = false
                   AND oi.quantity > COALESCE(oi.paid_quantity, 0)
                   AND (p_applied_to_item_ids IS NULL OR oi.id = ANY(p_applied_to_item_ids))
                   AND NOT EXISTS (
-                      SELECT 1 FROM public.menu_items mi
-                      WHERE mi.id = oi.menu_item_id
+                      SELECT 1 FROM public.menu_items mi 
+                      WHERE mi.id = oi.menu_item_id 
                         AND mi.category_id = ANY(v_discount.exclude_categories)
                   );
             END IF;
             
             IF v_discount.applies_to_categories IS NOT NULL THEN
-                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                       COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)), 0),
-                       array_agg(oi.id)
-                INTO v_applicable_subtotal, v_applicable_cash_subtotal, v_affected_item_ids
+                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
+                INTO v_applicable_subtotal, v_affected_item_ids
                 FROM public.order_items oi
                 LEFT JOIN public.menu_items mi ON mi.id = oi.menu_item_id
                 WHERE oi.order_id = p_order_id AND oi.is_voided = false
@@ -316,28 +275,23 @@ BEGIN
         END IF;
         
         v_pre_discount_subtotal := v_applicable_subtotal;
-        v_pre_discount_cash_subtotal := v_applicable_cash_subtotal;
-
+        
         IF v_discount_type = 'percentage' THEN
             v_calculated_amount := ROUND(v_applicable_subtotal * (v_discount_value / 100), 2);
-            v_calculated_cash_amount := ROUND(v_applicable_cash_subtotal * (v_discount_value / 100), 2);
             IF v_max_discount_amount IS NOT NULL THEN
                 v_calculated_amount := LEAST(v_calculated_amount, v_max_discount_amount);
-                v_calculated_cash_amount := LEAST(v_calculated_cash_amount, v_max_discount_amount);
             END IF;
         ELSE
             v_calculated_amount := LEAST(v_discount_value, v_applicable_subtotal);
-            v_calculated_cash_amount := LEAST(v_discount_value, v_applicable_cash_subtotal);
         END IF;
         
         INSERT INTO public.order_discounts (
             order_id, discount_id, discount_name, discount_type, discount_value, source,
-            calculated_amount, pre_discount_subtotal, calculated_cash_amount, pre_discount_cash_subtotal,
-            applied_by_staff_profiles_id, approved_by_staff_profiles_id, applied_at, applied_to_item_ids, reason
+            calculated_amount, pre_discount_subtotal, applied_by_staff_profiles_id,
+            approved_by_staff_profiles_id, applied_at, applied_to_item_ids, reason
         ) VALUES (
             p_order_id, p_discount_id, v_discount_name, v_discount_type::discount_type,
             v_discount_value, p_source::discount_source, v_calculated_amount, v_pre_discount_subtotal,
-            v_calculated_cash_amount, v_pre_discount_cash_subtotal,
             p_staff_id, p_approved_by_staff_id, now(), v_affected_item_ids, p_reason
         ) RETURNING id INTO v_order_discount_id;
         
@@ -440,19 +394,13 @@ BEGIN
     v_new_card_total := v_new_card_subtotal + v_new_card_tax;
     v_new_cash_total := v_new_cash_subtotal + v_new_cash_tax;
     
-    SELECT
-        COALESCE(SUM(
-            ROUND(oi.subtotal * (oi.quantity - COALESCE(oi.paid_quantity, 0))::NUMERIC / NULLIF(oi.quantity, 0), 2) +
-            ROUND(oi.tax_amount * (oi.quantity - COALESCE(oi.paid_quantity, 0))::NUMERIC / NULLIF(oi.quantity, 0), 2)
-        ), 0),
-        COALESCE(SUM(
-            ROUND(oi.cash_subtotal * (oi.quantity - COALESCE(oi.paid_quantity, 0))::NUMERIC / NULLIF(oi.quantity, 0), 2) +
-            ROUND(oi.cash_tax_amount * (oi.quantity - COALESCE(oi.paid_quantity, 0))::NUMERIC / NULLIF(oi.quantity, 0), 2)
-        ), 0)
+    SELECT 
+        COALESCE(SUM(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) +
+            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) * COALESCE(oi.tax_rate, 0) / 100, 2)), 0),
+        COALESCE(SUM(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) +
+            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) * COALESCE(oi.tax_rate, 0) / 100, 2)), 0)
     INTO v_new_amount_due, v_new_cash_amount_due
-    FROM public.order_items oi
-    WHERE oi.order_id = p_order_id AND oi.is_voided = false
-      AND oi.quantity > COALESCE(oi.paid_quantity, 0);
+    FROM public.order_items oi WHERE oi.order_id = p_order_id AND oi.is_voided = false AND oi.quantity > COALESCE(oi.paid_quantity, 0);
     
     UPDATE public.orders SET
         card_subtotal = v_original_card_subtotal, cash_subtotal = v_original_cash_subtotal,
@@ -468,7 +416,7 @@ BEGIN
         'discount', CASE WHEN p_action = 'apply' THEN jsonb_build_object(
             'id', v_order_discount_id, 'discount_id', p_discount_id, 'discount_name', v_discount_name,
             'discount_type', v_discount_type, 'discount_value', v_discount_value, 'source', p_source,
-            'calculated_amount', v_calculated_amount, 'calculated_cash_amount', v_calculated_cash_amount, 'applied_to_item_ids', v_affected_item_ids
+            'calculated_amount', v_calculated_amount, 'applied_to_item_ids', v_affected_item_ids
         ) ELSE NULL END,
         'order', jsonb_build_object(
             'id', p_order_id, 'card_subtotal', v_original_card_subtotal, 'cash_subtotal', v_original_cash_subtotal,
@@ -498,8 +446,3 @@ BEGIN
         )
     );
 END;
-
-$$;
-
--- Grant permissions
-GRANT EXECUTE ON FUNCTION public.manage_order_discount TO authenticated;

@@ -7,6 +7,7 @@ import {
   Eye,
   RefreshCw,
   Repeat2,
+  RotateCcw,
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -17,6 +18,7 @@ interface OrderBadgeProps {
   onMarkReady: () => void;
   onViewItems: () => void;
   onRetrieve: () => void;
+  onReopenCheck?: () => void;
 }
 
 // ============================================================================
@@ -90,6 +92,7 @@ interface PopoverContentProps {
   onMarkReady: () => void;
   onViewItems: () => void;
   onRetrieve: () => void;
+  onReopenCheck?: () => void;
   onClose: () => void;
 }
 
@@ -100,6 +103,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
     onMarkReady,
     onViewItems,
     onRetrieve,
+    onReopenCheck,
     onClose,
   }) => {
     // Memoize refund status
@@ -369,7 +373,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
             </Text>
           </TouchableOpacity>
 
-          {order.paid_status !== "Paid" && amountDue > 0.01 && order.check_status !== "Closed" && (
+          {order.paid_status !== "Paid" && amountDue > 0.01 && order.check_status !== "Closed" ? (
             <TouchableOpacity
               onPress={() => {
                 onRetrieve();
@@ -387,7 +391,27 @@ const PopoverContent = React.memo<PopoverContentProps>(
                 ${amountDue.toFixed(2)}
               </Text>
             </TouchableOpacity>
-          )}
+          ) :
+        order.paid_status !== "Paid" && amountDue >= 0.01 && order.check_status == "Closed" ? (
+            <TouchableOpacity
+              onPress={() => {
+                onReopenCheck?.();
+                onClose();
+              }}
+              className="flex-row items-center justify-between p-3 rounded-lg bg-amber-600/20"
+            >
+              <View className="flex-row items-center">
+                <RotateCcw color="#f59e0b" size={20} />
+                <Text className="ml-3 font-semibold text-amber-400 text-lg">
+                  Reopen Check
+                </Text>
+              </View>
+              <Text className="font-bold text-amber-400 text-lg">
+                ${amountDue.toFixed(2)}
+              </Text>
+            </TouchableOpacity>
+          ) : null 
+        }
         </View>
       </View>
     );
@@ -402,6 +426,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   onMarkReady,
   onViewItems,
   onRetrieve,
+  onReopenCheck,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -504,6 +529,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           onMarkReady={onMarkReady}
           onViewItems={onViewItems}
           onRetrieve={onRetrieve}
+          onReopenCheck={onReopenCheck}
           onClose={handleClose}
         />
       ) : null}

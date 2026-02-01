@@ -26,6 +26,7 @@ const OrderProcessing = () => {
   const startNewOrder = useOrderStore((s) => s.startNewOrder);
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
+  const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
 
   // OPTIMIZED: Use shallow selector to filter orders inside the store selector.
   // This prevents the component from re-rendering unless the resulting list of filtered orders changes.
@@ -139,6 +140,11 @@ const OrderProcessing = () => {
     setActiveOrder(orderId);
   };
 
+  const handleReopenCheck = (orderId: string) => {
+    updateOrderCheckStatus(orderId, "Opened");
+    setActiveOrder(orderId);
+  };
+
   const { show } = useToast();
 
   // DEFERRED RENDERING: Wait for navigation transition to complete before rendering heavy components
@@ -229,6 +235,7 @@ const OrderProcessing = () => {
                   onMarkReady={() => handleMarkReady(item)}
                   onViewItems={() => handleViewItems(item.id)}
                   onRetrieve={() => handleRetrieve(item.id)}
+                  onReopenCheck={() => handleReopenCheck(item.id)}
                 />
               )}
             />

@@ -52,8 +52,8 @@ export interface ActiveOrderTotals {
  * - activeOrderCashAmountDue → cashAmountDue
  *
  * Uses calculateOrderTotals with TTL caching (order-calculator.ts).
- * Always uses frontend calculator for amount_due/cash_amount_due to correctly
- * handle payment-level refunds even when backend values are stale.
+ * Hybrid authority: uses frontend calculator before first payment for real-time
+ * accuracy, switches to backend amount_due after payments for authoritative values.
  */
 export function useActiveOrderTotals(): ActiveOrderTotals | null {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -69,9 +69,6 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
 
     // Calculate totals (uses TTL cache internally)
-    // Frontend calculator handles payment-level refunds correctly,
-    // so always use its result instead of backend amount_due which
-    // can be stale/incorrect after item changes on refunded orders.
     const totals = calculateOrderTotals({
       items: activeOrder.items,
       checkDiscount: activeOrder.checkDiscount ?? null,
@@ -84,21 +81,31 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
       .filter((p) => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
 
-    const amountDue = totals.outstanding_total;
-    const cashAmountDue = totals.cash_outstanding_total;
-    // Check if any payments exist (excluding voided) - determines authority
+    // Backend values (authoritative after payments)
+    const backendAmountDue = activeOrder.amount_due;
+    const backendCashAmountDue = activeOrder.cash_amount_due;
     const hasPayments = (activeOrder.payments ?? []).some((p) => !p.isVoided);
 
     // Authority logic: frontend before first payment, backend after
     // Before payment: use frontend calculations for real-time accuracy
     // After payment: use backend values as source of truth for payment state
-    // const amountDue = hasPayments
-    //   ? (backendAmountDue ?? totals.outstanding_total)
-    //   : totals.outstanding_total;
+    const amountDue = hasPayments
+      ? (backendAmountDue ?? totals.outstanding_total)
+      : totals.outstanding_total;
 
-    // const cashAmountDue = hasPayments
-    //   ? (backendCashAmountDue ?? totals.cash_outstanding_total)
-    //   : totals.cash_outstanding_total;
+    const cashAmountDue = hasPayments
+      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      : totals.cash_outstanding_total;
+
+    // Diagnostic: warn when frontend and backend values diverge
+    if (hasPayments && backendAmountDue !== undefined &&
+        Math.abs(backendAmountDue - totals.outstanding_total) > 0.02) {
+      console.warn('[useActiveOrderTotals] Frontend/backend mismatch:', {
+        frontend: totals.outstanding_total,
+        backend: backendAmountDue,
+        orderId: activeOrderId,
+      });
+    }
 
     // Helper to count query items accurately
     const itemCount = activeOrder.items
@@ -129,8 +136,8 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
  * Phase 3.1: Fine Dining Table Management
  * Enables payment display for any table/order without needing it to be the active order.
  *
- * Uses the same logic as useActiveOrderTotals:
- * - Always uses frontend calculator for amount_due to correctly handle refunds
+ * Uses the same hybrid authority logic as useActiveOrderTotals:
+ * - Frontend calculator before first payment, backend amount_due after payments
  *
  * @param orderId - Local order ID (not db_order_id) to calculate totals for
  * @returns Order totals or null if order not found
@@ -150,9 +157,6 @@ export function useOrderTotals(
     const activeItems = order.items.filter((item) => !item.is_voided);
 
     // Calculate totals (uses TTL cache internally)
-    // Frontend calculator handles payment-level refunds correctly,
-    // so always use its result instead of backend amount_due which
-    // can be stale/incorrect after item changes on refunded orders.
     const totals = calculateOrderTotals({
       items: order.items,
       checkDiscount: order.checkDiscount ?? null,
@@ -165,19 +169,29 @@ export function useOrderTotals(
       .filter((p) => !p.isVoided)
       .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
 
-    const amountDue = totals.outstanding_total;
-    const cashAmountDue = totals.cash_outstanding_total;
-    // Check if any payments exist (excluding voided) - determines authority
+    // Backend values (authoritative after payments)
+    const backendAmountDue = order.amount_due;
+    const backendCashAmountDue = order.cash_amount_due;
     const hasPayments = (order.payments ?? []).some((p) => !p.isVoided);
 
-    // // Authority logic: frontend before first payment, backend after
-    // const amountDue = hasPayments
-    //   ? (backendAmountDue ?? totals.outstanding_total)
-    //   : totals.outstanding_total;
+    // Authority logic: frontend before first payment, backend after
+    const amountDue = hasPayments
+      ? (backendAmountDue ?? totals.outstanding_total)
+      : totals.outstanding_total;
 
-    // const cashAmountDue = hasPayments
-    //   ? (backendCashAmountDue ?? totals.cash_outstanding_total)
-    //   : totals.cash_outstanding_total;
+    const cashAmountDue = hasPayments
+      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      : totals.cash_outstanding_total;
+
+    // Diagnostic: warn when frontend and backend values diverge
+    if (hasPayments && backendAmountDue !== undefined &&
+        Math.abs(backendAmountDue - totals.outstanding_total) > 0.02) {
+      console.warn('[useOrderTotals] Frontend/backend mismatch:', {
+        frontend: totals.outstanding_total,
+        backend: backendAmountDue,
+        orderId,
+      });
+    }
 
     return {
       subtotal: totals.subtotal,

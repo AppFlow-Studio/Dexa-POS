@@ -584,7 +584,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
       (r) => r.original_payment_id === paymentId && r.status === 'completed'
     );
   }, [order?.reversals]);
-
+  console.log("paymentSummary", paymentSummary);
   return (
     <View className="flex-[6] bg-[#161616]">
       <ScrollView
