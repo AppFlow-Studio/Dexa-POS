@@ -68,6 +68,12 @@ BEGIN
       SELECT COALESCE(json_agg(row_to_json(osh.*) ORDER BY osh.changed_at), '[]'::json)
       FROM public.order_status_history osh
       WHERE osh.order_id = o.id
+    ),
+    'order_discounts', (
+      SELECT COALESCE(json_agg(row_to_json(od.*) ORDER BY od.applied_at), '[]'::json)
+      FROM public.order_discounts od
+      WHERE od.order_id = o.id
+        AND od.voided_at IS NULL
     )
   )
   INTO v_result

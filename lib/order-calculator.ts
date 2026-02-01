@@ -205,7 +205,7 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 // Use Decimal for modifier calculations too
 export function calculateItemEffectiveCardPrice(item: CartItem): number {
   let effectivePrice = new Decimal(item.baseCardPrice ?? item.unitPrice ?? 0);
-  
+  console.log('[calculateItemEffectiveCardPrice] Calculate Item Effective Card Price', effectivePrice)
   // Size modifier
   if (item.customizations?.size?.priceModifier) {
     effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier);
@@ -674,6 +674,8 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     isTaxExempt: boolean;
   }> = [];
 
+  console.log('[calculateOrderTotals] Calculate Order Totals', activeItems)
+
   for (const item of activeItems) {
     const effectiveCardPrice = calculateItemEffectiveCardPrice(item);
     const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
@@ -704,10 +706,9 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   
   if (checkDiscount) {
     if (checkDiscount.type === 'percentage') {
-      // ROUND(subtotal * (value / 100), 2) - matching PostgreSQL
+      // value is already a decimal fraction (e.g., 0.05 for 5%)
       totalDiscountAmount = grossCardSubtotal
         .times(checkDiscount.value)
-        .dividedBy(100)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     } else {
       // Fixed: can't exceed subtotal

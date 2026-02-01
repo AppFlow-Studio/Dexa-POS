@@ -71,6 +71,163 @@ function transformBroadcastModifiers(
 }
 
 /**
+ * Superset input interface for mapBackendItemToCartItem.
+ * Covers fields from both broadcast payloads and RPC (get_order_details) responses.
+ */
+export interface BackendItemInput {
+  // Core identifiers
+  id: string;
+  menu_item_id?: string | null;
+  item_name?: string;
+
+  // Quantity
+  quantity: number;
+  paid_quantity?: number | null;
+  refunded_quantity?: number | null;
+  refunded_amount?: number | null;
+
+  // Pricing — broadcast fields
+  unit_price?: number | null;
+  cash_price?: number | null;
+  subtotal?: number | null;
+  cash_subtotal?: number | null;
+  tax_amount?: number | null;
+  cash_tax_amount?: number | null;
+  tax_rate?: number | null;
+
+  // Base prices
+  base_card_price?: number | null;
+  base_cash_price?: number | null;
+
+  // RPC-specific pricing aliases
+  cash_unit_price?: number | null;
+
+  // Discount
+  discount_amount?: number | null;
+  discount_cash_amount?: number | null;
+
+  // Status
+  item_status?: string | null;
+  kitchen_status?: string | null;
+  course_number?: number | null;
+
+  // Flags
+  is_voided?: boolean | null;
+  is_open_item?: boolean | null;
+  open_item_name?: string | null;
+  open_item_price?: number | null;
+
+  // Category
+  category_name?: string | null;
+
+  // Customizations
+  special_instructions?: string | null;
+  selected_size_id?: string | null;
+  selected_size_name?: string | null;
+  size_price_modifier?: number | null;
+}
+
+/**
+ * Canonical function to map a single backend item to a CartItem.
+ * Used by both broadcast transforms and syncOrderFromBackendComplete.
+ *
+ * @param item - Backend item data (superset of broadcast + RPC fields)
+ * @param modifiers - Already-transformed modifiers in CartItem format
+ * @returns CartItem object
+ */
+export function mapBackendItemToCartItem(
+  item: BackendItemInput,
+  modifiers: CartItem["customizations"]["modifiers"],
+): CartItem {
+  const isOpenItem = item.is_open_item || false;
+
+  // Resolve price: open items use open_item_price, regular items use unit_price
+  const unitPrice = isOpenItem
+    ? item.open_item_price || 0
+    : item.unit_price || 0;
+
+  // Resolve cash price with multiple fallbacks
+  const cashPrice =
+    item.cash_price ||
+    item.cash_unit_price ||
+    (isOpenItem ? item.open_item_price : item.unit_price) ||
+    0;
+
+  return {
+    // Core identifiers
+    id: item.id,
+    db_order_item_id: item.id,
+    menuItemId: item.menu_item_id || "",
+
+    // Item name
+    name: isOpenItem
+      ? item.open_item_name || "Open Item"
+      : item.item_name || "Unknown Item",
+
+    // Quantity tracking
+    quantity: item.quantity,
+    paidQuantity: item.paid_quantity || 0,
+    refundedQuantity: item.refunded_quantity || 0,
+    refundedAmount: item.refunded_amount || 0,
+
+    // Pricing
+    price: unitPrice,
+    unitPrice: unitPrice,
+    cashPrice: cashPrice,
+    originalPrice: cashPrice,
+    subtotal: item.subtotal || unitPrice * item.quantity || 0,
+    cashSubtotal: item.cash_subtotal || cashPrice * item.quantity || 0,
+    taxAmount: item.tax_amount || 0,
+    cashTaxAmount: item.cash_tax_amount || 0,
+    taxRate: item.tax_rate || 0,
+
+    // Base prices
+    baseCardPrice: isOpenItem
+      ? item.open_item_price || 0
+      : item.base_card_price ?? item.unit_price ?? 0,
+    baseCashPrice:
+      item.base_cash_price ||
+      cashPrice,
+
+    // Discount distribution
+    discount_amount: item.discount_amount ?? 0,
+    discount_cash_amount:
+      item.discount_cash_amount ?? item.discount_amount ?? 0,
+
+    // Status tracking
+    item_status: (item.item_status || "pending") as CartItem["item_status"],
+    kitchen_status:
+      (item.kitchen_status as CartItem["kitchen_status"]) || undefined,
+    courseNumber: item.course_number || 1,
+
+    // Item flags
+    is_voided: item.is_voided || false,
+    is_open_item: isOpenItem,
+    open_item_name: item.open_item_name || undefined,
+    open_item_price: item.open_item_price || undefined,
+
+    // Category
+    category_name: item.category_name || "Uncategorized",
+
+    // Sync status - already synced since from DB
+    sync_status: "synced" as const,
+
+    // Customizations
+    customizations: {
+      size: item.selected_size_id
+        ? {
+            id: item.selected_size_id,
+            name: item.selected_size_name || "",
+            priceModifier: item.size_price_modifier || 0,
+          }
+        : undefined,
+      modifiers: modifiers,
+      notes: item.special_instructions || undefined,
+    },
+  };
+}
+
+/**
  * Transform backend order items to local CartItem format.
  *
  * @param items - Array of order items from broadcast payload
@@ -81,65 +238,17 @@ export function transformBroadcastItems(
 ): CartItem[] {
   if (!items || items.length === 0) return [];
 
-  return items.map((item) => ({
-    // Core identifiers
-    id: `remote_item_${item.id}`,
-    db_order_item_id: item.id,
-    menuItemId: item.menu_item_id || "",
-
-    // Item name (use open_item_name for open items)
-    name: item.is_open_item
-      ? item.open_item_name || "Open Item"
-      : item.item_name,
-
-    // Quantity tracking
-    quantity: item.quantity,
-    paidQuantity: item.paid_quantity || 0,
-    refundedQuantity: item.refunded_quantity || 0,
-    refundedAmount: item.refunded_amount || 0,
-
-    // Pricing
-    price: item.unit_price,
-    unitPrice: item.unit_price,
-    cashPrice: item.cash_price,
-    originalPrice: item.cash_price,
-    subtotal: item.subtotal,
-    cashSubtotal: item.cash_subtotal,
-    taxAmount: item.tax_amount,
-    cashTaxAmount: item.cash_tax_amount,
-    taxRate: 0, // Not included in broadcast
-
-    baseCardPrice: item.base_card_price,
-    baseCashPrice: item.base_cash_price,
-
-    // Discount distribution
-    discount_amount: item.discount_amount || 0,
-    discount_cash_amount: item.discount_amount || 0,
-
-    // Status tracking
-    item_status: item.item_status as CartItem["item_status"],
-    kitchen_status:
-      (item.kitchen_status as CartItem["kitchen_status"]) || undefined,
-    courseNumber: item.course_number || 1,
-
-    // Item flags
-    is_voided: item.is_voided || false,
-    is_open_item: item.is_open_item || false,
-    open_item_name: item.open_item_name || undefined,
-    open_item_price: item.open_item_price || undefined,
-
-    // Category
-    category_name: item.category_name || "Uncategorized",
-
-    // Sync status - already synced since from DB
-    sync_status: "synced" as const,
-
-    // Customizations - NOW includes modifiers (Phase 2.5)
-    customizations: {
-      notes: item.special_instructions || undefined,
-      modifiers: transformBroadcastModifiers(item.modifiers),
-    },
-  }));
+  return items.map((item) => {
+    const cartItem = mapBackendItemToCartItem(
+      item as unknown as BackendItemInput,
+      transformBroadcastModifiers(item.modifiers),
+    );
+    // Broadcast items use remote_ prefix for local ID
+    return {
+      ...cartItem,
+      id: `remote_item_${item.id}`,
+    };
+  });
 }
 
 /**

@@ -60,16 +60,16 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   }, [activeOrder?.payments]);
 
   // Close sheet and show warning if order has refunds
-  useEffect(() => {
-    if (hasRefunds && ref && "current" in ref && ref.current) {
-      show({
-        title: "Discounts Unavailable",
-        message: "Cannot add discounts to refunded orders.",
-        type: "warning",
-      });
-      ref.current.close();
-    }
-  }, [hasRefunds, ref, show]);
+  // useEffect(() => {
+  //   if (hasRefunds && ref && "current" in ref && ref.current) {
+  //     show({
+  //       title: "Discounts Unavailable",
+  //       message: "Cannot add discounts to refunded orders.",
+  //       type: "warning",
+  //     });
+  //     ref.current.close();
+  //   }
+  // }, [hasRefunds, ref, show]);
 
   const eligibilityResults = useMemo(() => {
     if (!activeOrder) return [];

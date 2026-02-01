@@ -3,6 +3,7 @@
 -- Actions: 'apply', 'void'
 -- Distributes discounts to order_items
 -- Recalculates order totals atomically
+
 -- ============================================
 CREATE OR REPLACE FUNCTION public.manage_order_discount(
     p_action TEXT,                              -- 'apply' or 'void'
@@ -26,9 +27,11 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+
 DECLARE
     v_order RECORD;
     v_discount RECORD;
+    v_is_preset_discount BOOLEAN := false;
     v_order_discount_id UUID;
     v_calculated_amount NUMERIC := 0;
     v_pre_discount_subtotal NUMERIC;
@@ -41,7 +44,6 @@ DECLARE
     v_is_stackable BOOLEAN := true;
     v_has_non_stackable BOOLEAN := false;
     
-    -- Item distribution
     v_item RECORD;
     v_item_discount_amount NUMERIC;
     v_item_proportion NUMERIC;
@@ -49,7 +51,6 @@ DECLARE
     v_last_item_id UUID;
     v_affected_item_ids UUID[] := '{}';
     
-    -- Order recalculation variables
     v_total_discount_amount NUMERIC := 0;
     v_new_card_subtotal NUMERIC;
     v_new_cash_subtotal NUMERIC;
@@ -61,16 +62,12 @@ DECLARE
     v_new_cash_amount_due NUMERIC;
     v_tax_rate NUMERIC;
     
-    -- Original (pre-discount) values from items
     v_original_card_subtotal NUMERIC;
     v_original_cash_subtotal NUMERIC;
     
-    -- Voiding variables
     v_voided_discount RECORD;
+    v_voided_calculated_amount NUMERIC := 0;
 BEGIN
-    -- ============================================
-    -- 1. Validate Order Access
-    -- ============================================
     SELECT * INTO v_order
     FROM public.orders
     WHERE id = p_order_id
@@ -78,72 +75,45 @@ BEGIN
       AND location_id = ANY(user_location_ids());
     
     IF NOT FOUND THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Order not found or access denied'
-        );
+        RETURN jsonb_build_object('success', false, 'error', 'Order not found or access denied');
     END IF;
     
     IF v_order.payment_status = 'paid' THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Cannot modify discounts on a paid order'
-        );
+        RETURN jsonb_build_object('success', false, 'error', 'Cannot modify discounts on a paid order');
     END IF;
     
     IF v_order.voided_at IS NOT NULL THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Cannot modify discounts on a voided order'
-        );
+        RETURN jsonb_build_object('success', false, 'error', 'Cannot modify discounts on a voided order');
     END IF;
     
-    -- Get original subtotals from items (before any discounts)
     SELECT 
         COALESCE(SUM(oi.quantity * oi.unit_price), 0),
         COALESCE(SUM(oi.quantity * COALESCE(oi.cash_price, oi.unit_price)), 0)
     INTO v_original_card_subtotal, v_original_cash_subtotal
     FROM public.order_items oi
-    WHERE oi.order_id = p_order_id
-      AND oi.is_voided = false;
+    WHERE oi.order_id = p_order_id AND oi.is_voided = false;
     
-    -- Calculate tax rate from order
     IF v_order.card_subtotal > 0 AND v_order.card_tax_amount > 0 THEN
         v_tax_rate := ROUND((v_order.card_tax_amount / v_order.card_subtotal) * 100, 4);
     ELSE
-        -- Fallback: get from first item
         SELECT COALESCE(tax_rate, 0) INTO v_tax_rate
         FROM public.order_items
         WHERE order_id = p_order_id AND is_voided = false
         LIMIT 1;
     END IF;
     
-    -- ============================================
-    -- 2. Handle Action
-    -- ============================================
     CASE p_action
     
-    -- ========================================
-    -- APPLY DISCOUNT
-    -- ========================================
     WHEN 'apply' THEN
         
-        -- Validate required params
         IF p_discount_name IS NULL OR p_discount_name = '' THEN
-            RETURN jsonb_build_object(
-                'success', false,
-                'error', 'discount_name is required'
-            );
+            RETURN jsonb_build_object('success', false, 'error', 'discount_name is required');
         END IF;
         
         IF p_discount_type IS NULL AND p_discount_id IS NULL THEN
-            RETURN jsonb_build_object(
-                'success', false,
-                'error', 'Either discount_id or discount_type must be provided'
-            );
+            RETURN jsonb_build_object('success', false, 'error', 'Either discount_id or discount_type must be provided');
         END IF;
         
-        -- Get discount details if preset
         IF p_discount_id IS NOT NULL THEN
             SELECT * INTO v_discount
             FROM public.discounts
@@ -152,11 +122,10 @@ BEGIN
               AND is_active = true;
             
             IF NOT FOUND THEN
-                RETURN jsonb_build_object(
-                    'success', false,
-                    'error', 'Discount not found or inactive'
-                );
+                RETURN jsonb_build_object('success', false, 'error', 'Discount not found or inactive');
             END IF;
+            
+            v_is_preset_discount := true;
             
             v_discount_type := v_discount.discount_type;
             v_discount_value := v_discount.discount_value;
@@ -165,11 +134,6 @@ BEGIN
             v_max_discount_amount := v_discount.max_discount_amount;
             v_is_stackable := COALESCE(v_discount.stackable, false);
             
-            -- ========================================
-            -- Preset Discount Validations
-            -- ========================================
-            
-            -- Date range
             IF v_discount.start_date IS NOT NULL AND v_discount.start_date > CURRENT_DATE THEN
                 RETURN jsonb_build_object('success', false, 'error', 'Discount has not started yet');
             END IF;
@@ -178,13 +142,11 @@ BEGIN
                 RETURN jsonb_build_object('success', false, 'error', 'Discount has expired');
             END IF;
             
-            -- Day of week
             IF v_discount.applicable_days IS NOT NULL AND 
                NOT (EXTRACT(DOW FROM CURRENT_TIMESTAMP)::integer = ANY(v_discount.applicable_days)) THEN
                 RETURN jsonb_build_object('success', false, 'error', 'Discount not valid today');
             END IF;
             
-            -- Time window
             IF v_discount.applicable_hours_start IS NOT NULL AND v_discount.applicable_hours_end IS NOT NULL THEN
                 DECLARE
                     v_current_time TIME := CURRENT_TIME;
@@ -209,7 +171,6 @@ BEGIN
                 END;
             END IF;
             
-            -- Order type scope
             IF v_discount.scope IS NOT NULL AND v_discount.scope::text <> 'both' THEN
                 IF v_discount.scope::text = 'dine_in' AND v_order.order_type::text NOT IN ('dine_in') THEN
                     RETURN jsonb_build_object('success', false, 'error', 'Discount only valid for dine-in orders');
@@ -219,22 +180,14 @@ BEGIN
                 END IF;
             END IF;
             
-            -- Manager approval
             IF v_requires_approval AND p_approved_by_staff_id IS NULL THEN
-                RETURN jsonb_build_object(
-                    'success', false,
-                    'error', 'This discount requires manager approval',
-                    'requires_approval', true
-                );
+                RETURN jsonb_build_object('success', false, 'error', 'This discount requires manager approval', 'requires_approval', true);
             END IF;
             
-            -- Stackability
             SELECT EXISTS(
                 SELECT 1 FROM public.order_discounts od
                 LEFT JOIN public.discounts d ON d.id = od.discount_id
-                WHERE od.order_id = p_order_id
-                  AND od.voided_at IS NULL
-                  AND COALESCE(d.stackable, false) = false
+                WHERE od.order_id = p_order_id AND od.voided_at IS NULL AND COALESCE(d.stackable, false) = false
             ) INTO v_has_non_stackable;
             
             IF v_has_non_stackable AND NOT v_is_stackable THEN
@@ -247,7 +200,6 @@ BEGIN
                 END IF;
             END IF;
             
-            -- Max uses per order
             IF v_discount.max_uses_per_order IS NOT NULL THEN
                 DECLARE v_current_uses INTEGER;
                 BEGIN
@@ -256,30 +208,21 @@ BEGIN
                     WHERE order_id = p_order_id AND discount_id = p_discount_id AND voided_at IS NULL;
                     
                     IF v_current_uses >= v_discount.max_uses_per_order THEN
-                        RETURN jsonb_build_object(
-                            'success', false,
-                            'error', format('Discount can only be used %s time(s) per order', v_discount.max_uses_per_order)
-                        );
+                        RETURN jsonb_build_object('success', false, 'error', format('Discount can only be used %s time(s) per order', v_discount.max_uses_per_order));
                     END IF;
                 END;
             END IF;
             
         ELSE
-            -- Custom discount
             v_discount_type := p_discount_type;
             v_discount_value := p_discount_value;
             v_discount_name := p_discount_name;
             
             IF p_approved_by_staff_id IS NULL THEN
-                RETURN jsonb_build_object(
-                    'success', false,
-                    'error', 'Custom discounts require manager approval',
-                    'requires_approval', true
-                );
+                RETURN jsonb_build_object('success', false, 'error', 'Custom discounts require manager approval', 'requires_approval', true);
             END IF;
         END IF;
         
-        -- Validate discount value
         IF v_discount_value IS NULL OR v_discount_value <= 0 THEN
             RETURN jsonb_build_object('success', false, 'error', 'Discount value must be greater than 0');
         END IF;
@@ -288,66 +231,44 @@ BEGIN
             RETURN jsonb_build_object('success', false, 'error', 'Percentage discount cannot exceed 100%');
         END IF;
         
-        -- ========================================
-        -- Calculate Applicable Subtotal
-        -- ========================================
         IF p_applied_to_item_ids IS NOT NULL AND array_length(p_applied_to_item_ids, 1) > 0 THEN
-            -- Item-specific discount
-            SELECT COALESCE(SUM(
-                (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
-            ), 0)
+            SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0)
             INTO v_applicable_subtotal
             FROM public.order_items oi
             WHERE oi.id = ANY(p_applied_to_item_ids)
-              AND oi.order_id = p_order_id
-              AND oi.is_voided = false
+              AND oi.order_id = p_order_id AND oi.is_voided = false
               AND oi.quantity > COALESCE(oi.paid_quantity, 0);
             
-            -- Store affected items
             SELECT array_agg(id) INTO v_affected_item_ids
             FROM public.order_items
-            WHERE id = ANY(p_applied_to_item_ids)
-              AND order_id = p_order_id
-              AND is_voided = false
-              AND quantity > COALESCE(paid_quantity, 0);
+            WHERE id = ANY(p_applied_to_item_ids) AND order_id = p_order_id
+              AND is_voided = false AND quantity > COALESCE(paid_quantity, 0);
         ELSE
-            -- Order-level discount: all unpaid, non-voided items
-            SELECT 
-                COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                array_agg(oi.id)
+            SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
             INTO v_applicable_subtotal, v_affected_item_ids
             FROM public.order_items oi
-            WHERE oi.order_id = p_order_id
-              AND oi.is_voided = false
+            WHERE oi.order_id = p_order_id AND oi.is_voided = false
               AND oi.quantity > COALESCE(oi.paid_quantity, 0);
         END IF;
         
-        -- Apply exclusions for preset discounts
-        IF v_discount IS NOT NULL THEN
-            -- Exclude alcohol
+        -- Apply exclusions for preset discounts only
+        IF v_is_preset_discount THEN
             IF COALESCE(v_discount.exclude_alcohol, false) THEN
-                SELECT 
-                    COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                    array_agg(oi.id)
+                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
                 INTO v_applicable_subtotal, v_affected_item_ids
                 FROM public.order_items oi
                 LEFT JOIN public.menu_items mi ON mi.id = oi.menu_item_id
-                WHERE oi.order_id = p_order_id
-                  AND oi.is_voided = false
+                WHERE oi.order_id = p_order_id AND oi.is_voided = false
                   AND oi.quantity > COALESCE(oi.paid_quantity, 0)
                   AND (p_applied_to_item_ids IS NULL OR oi.id = ANY(p_applied_to_item_ids))
                   AND COALESCE(mi.is_alcohol, false) = false;
             END IF;
             
-            -- Exclude categories
             IF v_discount.exclude_categories IS NOT NULL THEN
-                SELECT 
-                    COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                    array_agg(oi.id)
+                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
                 INTO v_applicable_subtotal, v_affected_item_ids
                 FROM public.order_items oi
-                WHERE oi.order_id = p_order_id
-                  AND oi.is_voided = false
+                WHERE oi.order_id = p_order_id AND oi.is_voided = false
                   AND oi.quantity > COALESCE(oi.paid_quantity, 0)
                   AND (p_applied_to_item_ids IS NULL OR oi.id = ANY(p_applied_to_item_ids))
                   AND NOT EXISTS (
@@ -357,16 +278,12 @@ BEGIN
                   );
             END IF;
             
-            -- Apply to specific categories only
             IF v_discount.applies_to_categories IS NOT NULL THEN
-                SELECT 
-                    COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0),
-                    array_agg(oi.id)
+                SELECT COALESCE(SUM((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price), 0), array_agg(oi.id)
                 INTO v_applicable_subtotal, v_affected_item_ids
                 FROM public.order_items oi
                 LEFT JOIN public.menu_items mi ON mi.id = oi.menu_item_id
-                WHERE oi.order_id = p_order_id
-                  AND oi.is_voided = false
+                WHERE oi.order_id = p_order_id AND oi.is_voided = false
                   AND oi.quantity > COALESCE(oi.paid_quantity, 0)
                   AND (p_applied_to_item_ids IS NULL OR oi.id = ANY(p_applied_to_item_ids))
                   AND mi.category_id = ANY(v_discount.applies_to_categories);
@@ -377,21 +294,17 @@ BEGIN
             RETURN jsonb_build_object('success', false, 'error', 'No applicable items for this discount');
         END IF;
         
-        -- Minimum purchase check
-        IF v_discount IS NOT NULL AND v_discount.min_purchase_amount IS NOT NULL THEN
-            IF v_applicable_subtotal < v_discount.min_purchase_amount THEN
-                RETURN jsonb_build_object(
-                    'success', false,
-                    'error', format('Minimum purchase of $%s required', ROUND(v_discount.min_purchase_amount, 2))
-                );
+        -- FIX: Use nested IF instead of AND to avoid accessing unassigned record
+        IF v_is_preset_discount THEN
+            IF v_discount.min_purchase_amount IS NOT NULL THEN
+                IF v_applicable_subtotal < v_discount.min_purchase_amount THEN
+                    RETURN jsonb_build_object('success', false, 'error', format('Minimum purchase of $%s required', ROUND(v_discount.min_purchase_amount, 2)));
+                END IF;
             END IF;
         END IF;
         
         v_pre_discount_subtotal := v_applicable_subtotal;
         
-        -- ========================================
-        -- Calculate Total Discount Amount
-        -- ========================================
         IF v_discount_type = 'percentage' THEN
             v_calculated_amount := ROUND(v_applicable_subtotal * (v_discount_value / 100), 2);
             IF v_max_discount_amount IS NOT NULL THEN
@@ -401,73 +314,36 @@ BEGIN
             v_calculated_amount := LEAST(v_discount_value, v_applicable_subtotal);
         END IF;
         
-        -- ========================================
-        -- Insert Order Discount Record
-        -- ========================================
         INSERT INTO public.order_discounts (
-            order_id,
-            discount_id,
-            discount_name,
-            discount_type,
-            discount_value,
-            source,
-            calculated_amount,
-            pre_discount_subtotal,
-            applied_by_staff_profiles_id,
-            approved_by_staff_profiles_id,
-            applied_at,
-            applied_to_item_ids,
-            reason
+            order_id, discount_id, discount_name, discount_type, discount_value, source,
+            calculated_amount, pre_discount_subtotal, applied_by_staff_profiles_id,
+            approved_by_staff_profiles_id, applied_at, applied_to_item_ids, reason
         ) VALUES (
-            p_order_id,
-            p_discount_id,
-            v_discount_name,
-            v_discount_type::discount_type,
-            v_discount_value,
-            p_source::discount_source,
-            v_calculated_amount,
-            v_pre_discount_subtotal,
-            p_staff_id,
-            p_approved_by_staff_id,
-            now(),
-            v_affected_item_ids,
-            p_reason
-        )
-        RETURNING id INTO v_order_discount_id;
+            p_order_id, p_discount_id, v_discount_name, v_discount_type::discount_type,
+            v_discount_value, p_source::discount_source, v_calculated_amount, v_pre_discount_subtotal,
+            p_staff_id, p_approved_by_staff_id, now(), v_affected_item_ids, p_reason
+        ) RETURNING id INTO v_order_discount_id;
         
-        -- ========================================
-        -- DISTRIBUTE DISCOUNT TO ORDER ITEMS
-        -- ========================================
         v_distributed_total := 0;
         v_last_item_id := NULL;
         
         FOR v_item IN
-            SELECT 
-                oi.id,
-                oi.quantity,
-                oi.paid_quantity,
-                oi.unit_price,
-                oi.cash_price,
-                oi.tax_rate,
-                ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) as item_subtotal
+            SELECT oi.id, oi.quantity, oi.paid_quantity, oi.unit_price, oi.cash_price, oi.tax_rate,
+                   ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) as item_subtotal
             FROM public.order_items oi
-            WHERE oi.id = ANY(v_affected_item_ids)
-              AND oi.is_voided = false
+            WHERE oi.id = ANY(v_affected_item_ids) AND oi.is_voided = false
             ORDER BY oi.created_at, oi.id
         LOOP
-            -- Calculate this item's proportion of the applicable subtotal
             IF v_applicable_subtotal > 0 THEN
                 v_item_proportion := v_item.item_subtotal / v_applicable_subtotal;
             ELSE
                 v_item_proportion := 0;
             END IF;
             
-            -- Calculate this item's share of the discount
             v_item_discount_amount := ROUND(v_calculated_amount * v_item_proportion, 2);
             v_distributed_total := v_distributed_total + v_item_discount_amount;
             v_last_item_id := v_item.id;
             
-            -- Update the order item with discount info
             UPDATE public.order_items
             SET
                 discount_id = p_discount_id,
@@ -477,61 +353,36 @@ BEGIN
                 discount_source = p_source::discount_source,
                 discount_applied_by = p_staff_id,
                 discount_approved_by = p_approved_by_staff_id,
-                pre_discount_subtotal = CASE 
-                    WHEN pre_discount_subtotal IS NULL 
-                    THEN v_item.item_subtotal 
-                    ELSE pre_discount_subtotal 
-                END,
-                -- Recalculate subtotal after discount
+                pre_discount_subtotal = CASE WHEN pre_discount_subtotal IS NULL THEN v_item.item_subtotal ELSE pre_discount_subtotal END,
                 subtotal = (quantity * unit_price) - (COALESCE(discount_amount, 0) + v_item_discount_amount),
                 cash_subtotal = (quantity * COALESCE(cash_price, unit_price)) - 
-                    ROUND((COALESCE(discount_amount, 0) + v_item_discount_amount) * 
-                        COALESCE(cash_price, unit_price) / NULLIF(unit_price, 0), 2),
-                -- Recalculate tax on discounted subtotal
-                tax_amount = ROUND(
-                    ((quantity * unit_price) - (COALESCE(discount_amount, 0) + v_item_discount_amount)) 
-                    * COALESCE(tax_rate, 0) / 100, 2
-                ),
-                cash_tax_amount = ROUND(
-                    ((quantity * COALESCE(cash_price, unit_price)) - 
-                        ROUND((COALESCE(discount_amount, 0) + v_item_discount_amount) * 
-                            COALESCE(cash_price, unit_price) / NULLIF(unit_price, 0), 2))
-                    * COALESCE(tax_rate, 0) / 100, 2
-                ),
+                    ROUND((COALESCE(discount_amount, 0) + v_item_discount_amount) * COALESCE(cash_price, unit_price) / NULLIF(unit_price, 0), 2),
+                tax_amount = ROUND(((quantity * unit_price) - (COALESCE(discount_amount, 0) + v_item_discount_amount)) * COALESCE(tax_rate, 0) / 100, 2),
+                cash_tax_amount = ROUND(((quantity * COALESCE(cash_price, unit_price)) - 
+                    ROUND((COALESCE(discount_amount, 0) + v_item_discount_amount) * COALESCE(cash_price, unit_price) / NULLIF(unit_price, 0), 2)) * COALESCE(tax_rate, 0) / 100, 2),
                 updated_at = now()
             WHERE id = v_item.id;
         END LOOP;
         
-        -- Handle rounding: assign any remainder to the last item
         IF v_last_item_id IS NOT NULL AND v_distributed_total <> v_calculated_amount THEN
-            DECLARE
-                v_rounding_adjustment NUMERIC := v_calculated_amount - v_distributed_total;
-            BEGIN
-                UPDATE public.order_items
-                SET
-                    discount_amount = discount_amount + v_rounding_adjustment,
-                    subtotal = subtotal - v_rounding_adjustment,
-                    tax_amount = ROUND(subtotal * COALESCE(tax_rate, 0) / 100, 2),
-                    updated_at = now()
-                WHERE id = v_last_item_id;
-            END;
+            UPDATE public.order_items
+            SET
+                discount_amount = discount_amount + (v_calculated_amount - v_distributed_total),
+                subtotal = subtotal - (v_calculated_amount - v_distributed_total),
+                tax_amount = ROUND(subtotal * COALESCE(tax_rate, 0) / 100, 2),
+                updated_at = now()
+            WHERE id = v_last_item_id;
         END IF;
     
-    -- ========================================
-    -- VOID DISCOUNT
-    -- ========================================
     WHEN 'void' THEN
         
         IF p_order_discount_id IS NULL THEN
             RETURN jsonb_build_object('success', false, 'error', 'order_discount_id is required for void action');
         END IF;
         
-        -- Get discount to void
         SELECT * INTO v_voided_discount
         FROM public.order_discounts
-        WHERE id = p_order_discount_id
-          AND order_id = p_order_id
-          AND voided_at IS NULL;
+        WHERE id = p_order_discount_id AND order_id = p_order_id AND voided_at IS NULL;
         
         IF NOT FOUND THEN
             RETURN jsonb_build_object('success', false, 'error', 'Discount not found or already voided');
@@ -539,201 +390,92 @@ BEGIN
         
         v_order_discount_id := p_order_discount_id;
         v_affected_item_ids := v_voided_discount.applied_to_item_ids;
-        
-        -- Mark order_discount as voided
+        v_calculated_amount := v_voided_discount.calculated_amount;
+
         UPDATE public.order_discounts
-        SET 
-            voided_at = now(),
-            voided_by = p_staff_id,
-            void_reason = p_void_reason
+        SET voided_at = now(), voided_by = p_staff_id, void_reason = p_void_reason
         WHERE id = p_order_discount_id;
         
-        -- ========================================
-        -- REMOVE DISCOUNT FROM ORDER ITEMS
-        -- ========================================
         IF v_affected_item_ids IS NOT NULL AND array_length(v_affected_item_ids, 1) > 0 THEN
-            -- Reset discount columns on affected items
             UPDATE public.order_items
             SET
-                discount_id = NULL,
-                discount_type = NULL,
-                discount_value = 0,
-                discount_amount = 0,
-                discount_source = NULL,
-                discount_applied_by = NULL,
-                discount_approved_by = NULL,
-                -- Restore original subtotals
+                discount_id = NULL, discount_type = NULL, discount_value = 0, discount_amount = 0,
+                discount_source = NULL, discount_applied_by = NULL, discount_approved_by = NULL,
                 subtotal = quantity * unit_price,
                 cash_subtotal = quantity * COALESCE(cash_price, unit_price),
-                -- Recalculate tax on original subtotal
                 tax_amount = ROUND((quantity * unit_price) * COALESCE(tax_rate, 0) / 100, 2),
                 cash_tax_amount = ROUND((quantity * COALESCE(cash_price, unit_price)) * COALESCE(tax_rate, 0) / 100, 2),
                 updated_at = now()
-            WHERE id = ANY(v_affected_item_ids)
-              AND order_id = p_order_id
-              AND is_voided = false;
+            WHERE id = ANY(v_affected_item_ids) AND order_id = p_order_id AND is_voided = false;
         END IF;
     
     ELSE
         RETURN jsonb_build_object('success', false, 'error', format('Unknown action: %s', p_action));
     END CASE;
     
-    -- ============================================
-    -- 3. Recalculate Order Totals FROM ITEMS
-    --    (Source of truth is now order_items)
-    -- ============================================
-    
-    -- Get totals from items
     SELECT 
-        COALESCE(SUM(oi.subtotal), 0),                           -- card subtotal (after discount)
-        COALESCE(SUM(oi.cash_subtotal), 0),                      -- cash subtotal (after discount)
-        COALESCE(SUM(oi.tax_amount), 0),                         -- card tax
-        COALESCE(SUM(oi.cash_tax_amount), 0),                    -- cash tax
-        COALESCE(SUM(oi.discount_amount), 0)                     -- total discount
-    INTO 
-        v_new_card_subtotal, 
-        v_new_cash_subtotal,
-        v_new_card_tax,
-        v_new_cash_tax,
-        v_total_discount_amount
-    FROM public.order_items oi
-    WHERE oi.order_id = p_order_id
-      AND oi.is_voided = false;
+        COALESCE(SUM(oi.subtotal), 0), COALESCE(SUM(oi.cash_subtotal), 0),
+        COALESCE(SUM(oi.tax_amount), 0), COALESCE(SUM(oi.cash_tax_amount), 0),
+        COALESCE(SUM(oi.discount_amount), 0)
+    INTO v_new_card_subtotal, v_new_cash_subtotal, v_new_card_tax, v_new_cash_tax, v_total_discount_amount
+    FROM public.order_items oi WHERE oi.order_id = p_order_id AND oi.is_voided = false;
     
-    -- Calculate totals
     v_new_card_total := v_new_card_subtotal + v_new_card_tax;
     v_new_cash_total := v_new_cash_subtotal + v_new_cash_tax;
     
-    -- Calculate amount due from UNPAID items (items where quantity > paid_quantity)
-    -- This is the correct formula for mixed payments (cash + card)
     SELECT 
-        COALESCE(SUM(
-            ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) +
-            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) * COALESCE(oi.tax_rate, 0) / 100, 2)
-        ), 0),
-        COALESCE(SUM(
-            ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) +
-            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) * COALESCE(oi.tax_rate, 0) / 100, 2)
-        ), 0)
+        COALESCE(SUM(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) +
+            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) * COALESCE(oi.tax_rate, 0) / 100, 2)), 0),
+        COALESCE(SUM(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) +
+            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) * COALESCE(oi.tax_rate, 0) / 100, 2)), 0)
     INTO v_new_amount_due, v_new_cash_amount_due
-    FROM public.order_items oi
-    WHERE oi.order_id = p_order_id 
-      AND oi.is_voided = false 
-      AND oi.quantity > COALESCE(oi.paid_quantity, 0);
+    FROM public.order_items oi WHERE oi.order_id = p_order_id AND oi.is_voided = false AND oi.quantity > COALESCE(oi.paid_quantity, 0);
     
-    -- ============================================
-    -- 4. Update Order
-    -- ============================================
-    UPDATE public.orders
-    SET
-        -- Original subtotals (before discount) - preserve these
-        card_subtotal = v_original_card_subtotal,
-        cash_subtotal = v_original_cash_subtotal,
-        
-        -- Discount amount
-        discount_amount = v_total_discount_amount,
-        
-        -- Effective values (after discount)
-        effective_subtotal = v_new_card_subtotal,
-        effective_tax_amount = v_new_card_tax,
-        effective_total = v_new_card_total,
-        
-        -- Tax amounts
-        card_tax_amount = v_new_card_tax,
-        cash_tax_amount = v_new_cash_tax,
-        
-        -- Totals (what's actually charged)
-        card_total = v_new_card_total,
-        cash_total = v_new_cash_total,
-        total_amount = v_new_card_total, -- Default to card total
-        
-        -- Amount due
-        amount_due = v_new_amount_due,
-        cash_amount_due = v_new_cash_amount_due,
-        
-        updated_at = now()
+    UPDATE public.orders SET
+        card_subtotal = v_original_card_subtotal, cash_subtotal = v_original_cash_subtotal,
+        discount_amount = v_total_discount_amount, effective_subtotal = v_new_card_subtotal,
+        effective_tax_amount = v_new_card_tax, effective_total = v_new_card_total,
+        card_tax_amount = v_new_card_tax, cash_tax_amount = v_new_cash_tax,
+        card_total = v_new_card_total, cash_total = v_new_cash_total, total_amount = v_new_card_total,
+        amount_due = v_new_amount_due, cash_amount_due = v_new_cash_amount_due, updated_at = now()
     WHERE id = p_order_id;
     
-    -- ============================================
-    -- 5. Return Updated State
-    -- ============================================
     RETURN jsonb_build_object(
-        'success', true,
-        'action', p_action,
-        'order_discount_id', v_order_discount_id,
-        'calculated_amount', CASE WHEN p_action = 'apply' THEN v_calculated_amount ELSE v_voided_discount.calculated_amount END,
-        
-        -- Discount details
+        'success', true, 'action', p_action, 'order_discount_id', v_order_discount_id, 'calculated_amount', v_calculated_amount,
         'discount', CASE WHEN p_action = 'apply' THEN jsonb_build_object(
-            'id', v_order_discount_id,
-            'discount_id', p_discount_id,
-            'discount_name', v_discount_name,
-            'discount_type', v_discount_type,
-            'discount_value', v_discount_value,
-            'source', p_source,
-            'calculated_amount', v_calculated_amount,
-            'applied_to_item_ids', v_affected_item_ids
+            'id', v_order_discount_id, 'discount_id', p_discount_id, 'discount_name', v_discount_name,
+            'discount_type', v_discount_type, 'discount_value', v_discount_value, 'source', p_source,
+            'calculated_amount', v_calculated_amount, 'applied_to_item_ids', v_affected_item_ids
         ) ELSE NULL END,
-        
-        -- Updated order state
         'order', jsonb_build_object(
-            'id', p_order_id,
-            'card_subtotal', v_original_card_subtotal,
-            'cash_subtotal', v_original_cash_subtotal,
-            'discount_amount', v_total_discount_amount,
-            'effective_subtotal', v_new_card_subtotal,
-            'effective_tax_amount', v_new_card_tax,
-            'effective_total', v_new_card_total,
-            'card_tax_amount', v_new_card_tax,
-            'cash_tax_amount', v_new_cash_tax,
-            'card_total', v_new_card_total,
-            'cash_total', v_new_cash_total,
-            'amount_due', v_new_amount_due,
-            'cash_amount_due', v_new_cash_amount_due,
-            'amount_paid', v_order.amount_paid
+            'id', p_order_id, 'card_subtotal', v_original_card_subtotal, 'cash_subtotal', v_original_cash_subtotal,
+            'discount_amount', v_total_discount_amount, 'effective_subtotal', v_new_card_subtotal,
+            'effective_tax_amount', v_new_card_tax, 'effective_total', v_new_card_total,
+            'card_tax_amount', v_new_card_tax, 'cash_tax_amount', v_new_cash_tax,
+            'card_total', v_new_card_total, 'cash_total', v_new_cash_total,
+            'amount_due', v_new_amount_due, 'cash_amount_due', v_new_cash_amount_due, 'amount_paid', v_order.amount_paid
         ),
-        
-        -- Affected items with their new values
         'affected_items', (
             SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                'id', oi.id,
-                'item_name', oi.item_name,
-                'quantity', oi.quantity,
-                'unit_price', oi.unit_price,
-                'cash_price', oi.cash_price,
-                'discount_amount', oi.discount_amount,
-                'subtotal', oi.subtotal,
-                'cash_subtotal', oi.cash_subtotal,
-                'tax_amount', oi.tax_amount,
-                'cash_tax_amount', oi.cash_tax_amount
+                'id', oi.id, 'item_name', oi.item_name, 'quantity', oi.quantity, 'unit_price', oi.unit_price,
+                'cash_price', oi.cash_price, 'discount_amount', oi.discount_amount, 'subtotal', oi.subtotal,
+                'cash_subtotal', oi.cash_subtotal, 'tax_amount', oi.tax_amount, 'cash_tax_amount', oi.cash_tax_amount
             ) ORDER BY oi.display_order, oi.created_at), '[]'::jsonb)
-            FROM public.order_items oi
-            WHERE oi.id = ANY(v_affected_item_ids)
-              AND oi.is_voided = false
+            FROM public.order_items oi WHERE oi.id = ANY(v_affected_item_ids) AND oi.is_voided = false
         ),
-        
-        -- All active discounts
         'active_discounts', (
             SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                'id', od.id,
-                'discount_id', od.discount_id,
-                'discount_name', od.discount_name,
-                'discount_type', od.discount_type,
-                'discount_value', od.discount_value,
-                'source', od.source,
-                'calculated_amount', od.calculated_amount,
-                'applied_to_item_ids', od.applied_to_item_ids,
-                'applied_at', od.applied_at,
-                'applied_by', od.applied_by_staff_profiles_id,
-                'approved_by', od.approved_by_staff_profiles_id,
-                'reason', od.reason
+                'id', od.id, 'discount_id', od.discount_id, 'discount_name', od.discount_name,
+                'discount_type', od.discount_type, 'discount_value', od.discount_value, 'source', od.source,
+                'calculated_amount', od.calculated_amount, 'applied_to_item_ids', od.applied_to_item_ids,
+                'applied_at', od.applied_at, 'applied_by', od.applied_by_staff_profiles_id,
+                'approved_by', od.approved_by_staff_profiles_id, 'reason', od.reason
             ) ORDER BY od.applied_at), '[]'::jsonb)
-            FROM public.order_discounts od
-            WHERE od.order_id = p_order_id
-              AND od.voided_at IS NULL
+            FROM public.order_discounts od WHERE od.order_id = p_order_id AND od.voided_at IS NULL
         )
     );
 END;
+
 $$;
 
 -- Grant permissions

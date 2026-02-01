@@ -52,12 +52,14 @@ import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 import {
+  mapBackendItemToCartItem,
   mapOrderType,
   mapPaymentStatus,
   normalizeFetchedOrder,
   transformBroadcastItems,
   transformBroadcastPaymentsToProfile,
   transformBroadcastToOrder,
+  type BackendItemInput,
   type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { useSyncStatusStore } from "./useSyncStatusStore";
@@ -152,6 +154,48 @@ function calculateOrderTotals(
 // ============================================================================
 // HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
 // ============================================================================
+
+/**
+ * Restore checkDiscount and applied_discounts from backend order_discounts data.
+ * Handles type conversions between DB format and local state format.
+ */
+function restoreDiscountsFromBackend(orderDiscounts: any[]): Partial<OrderProfile> {
+  if (!orderDiscounts || orderDiscounts.length === 0) {
+    return { checkDiscount: null, applied_discounts: [] };
+  }
+
+  // Build applied_discounts array
+  const applied_discounts: OrderAppliedDiscount[] = orderDiscounts.map((od: any) => ({
+    local_id: `synced_${od.id}`,
+    order_discount_id: od.id,
+    discount_id: od.discount_id || null,
+    discount_name: od.discount_name || 'Discount',
+    discount_type: od.discount_type === 'percentage' ? 'percentage' : 'fixed_amount' as const,
+    discount_value: od.discount_value,
+    source: od.source || 'preset' as const,
+    calculated_amount: od.calculated_amount || 0,
+    pre_discount_subtotal: od.pre_discount_subtotal || 0,
+    applied_by_staff_profiles_id: od.applied_by_staff_profiles_id || null,
+    approved_by_staff_profiles_id: od.approved_by_staff_profiles_id || null,
+    applied_at: od.applied_at || od.created_at,
+    applied_to_item_ids: od.applied_to_item_ids || [],
+    sync_status: 'synced' as const,
+  }));
+
+  // Build checkDiscount from the first active discount
+  // This is what the UI reads for the discount badge
+  const primary = orderDiscounts[0];
+  const checkDiscount: Discount = {
+    id: primary.discount_id || primary.id,
+    label: primary.discount_name || 'Discount',
+    value: primary.discount_type === 'percentage'
+      ? primary.discount_value / 100   // DB stores 5 for 5%, local needs 0.05
+      : primary.discount_value,
+    type: primary.discount_type === 'percentage' ? 'percentage' : 'fixed',
+  };
+
+  return { checkDiscount, applied_discounts };
+}
 
 /**
  * Transform backend OrderItemModifier[] to CartItem modifiers format.
@@ -1710,6 +1754,13 @@ const syncPaymentToBackend = async (
       }
 
       console.log("[OrderStore] Cache invalidated after payment sync");
+
+      // Post-payment verification: schedule a full sync to catch concurrent changes from other stations
+      if (order.db_order_id) {
+        setTimeout(() => {
+          useOrderStore.getState().syncOrderFromBackendComplete(order.id);
+        }, 1000);
+      }
     }
 
     return true;
@@ -2120,6 +2171,15 @@ const orderRefreshTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 const lastBroadcastTime: Record<string, number> = {};
 const BROADCAST_THROTTLE_MS = 50; // Max 1 update per 50ms per order
 
+// Queue-last throttle: instead of dropping throttled broadcasts, store the latest
+// payload and schedule re-invocation after the throttle window expires.
+const pendingThrottledBroadcast: Record<string, OrderBroadcastPayload> = {};
+const throttleTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+// Timeout for pending-items broadcast blocking (Step 4)
+const pendingItemsBlockStart: Record<string, number> = {};
+const PENDING_ITEMS_BLOCK_TIMEOUT_MS = 15000;
+
 const createDebouncedOrderRefresh = (get: () => OrderState) => {
   return (orderId: string) => {
     // Clear existing timeout for this order
@@ -2157,34 +2217,41 @@ function mergePayments(
   localPayments: OrderProfilePayment[],
   broadcastPayments: OrderProfilePayment[],
 ): OrderProfilePayment[] {
-  // Keep any local payments that are still pending sync (no db_payment_id)
-  const pendingLocalPayments = localPayments.filter(
-    (lp) =>
-      lp.sync_status === "pending" ||
-      (!lp.db_payment_id && !lp.id?.startsWith("payment_")),
+  // Build set of broadcast db_payment_ids for O(1) lookup
+  const broadcastDbIds = new Set(
+    broadcastPayments.map((bp) => bp.db_payment_id).filter(Boolean),
   );
 
-  // Deduplicate: remove pending local payments that already appear in broadcast.
-  // Race condition: broadcast can arrive before syncPaymentToBackend completes,
-  // so a payment may exist as both a broadcast entry and a pending local entry.
-  // Match by amount + method + close timestamp (within 60s) to detect duplicates.
-  const dedupedPendingPayments = pendingLocalPayments.filter((lp) => {
-    const hasBroadcastMatch = broadcastPayments.some(
-      (bp) =>
-        bp.amount === lp.amount &&
-        bp.method === lp.method &&
-        lp.timestamp &&
-        bp.timestamp &&
-        Math.abs(
-          new Date(bp.timestamp).getTime() - new Date(lp.timestamp).getTime(),
-        ) < 60000,
-    );
-    return !hasBroadcastMatch;
+  // Filter local payments to find truly pending ones not represented in broadcast
+  const pendingLocal = localPayments.filter((lp) => {
+    // Already in broadcast by DB ID? Skip — broadcast version is authoritative.
+    if (lp.db_payment_id && broadcastDbIds.has(lp.db_payment_id)) return false;
+
+    // Synced payment (has db_payment_id) NOT in broadcast? Skip — may have been voided server-side.
+    if (lp.sync_status !== "pending" && lp.db_payment_id) return false;
+
+    // Truly pending (no db_payment_id yet) — check heuristic match
+    // Race condition: broadcast can arrive before syncPaymentToBackend tags db_payment_id
+    if (!lp.db_payment_id) {
+      const hasHeuristicMatch = broadcastPayments.some(
+        (bp) =>
+          bp.amount === lp.amount &&
+          bp.method === lp.method &&
+          lp.timestamp &&
+          bp.timestamp &&
+          Math.abs(
+            new Date(bp.timestamp).getTime() - new Date(lp.timestamp).getTime(),
+          ) < 60000,
+      );
+      if (hasHeuristicMatch) return false;
+    }
+
+    return true;
   });
 
   // Use broadcast payments as the base (they have correct itemsCovered from covers_items)
   // Then append any truly pending local payments (not yet in broadcast)
-  return [...broadcastPayments, ...dedupedPendingPayments];
+  return [...broadcastPayments, ...pendingLocal];
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -2421,12 +2488,24 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // PERFORMANCE: Throttle broadcasts per-order to prevent rapid-fire updates
+            // Queue-last: if throttled, store the latest payload and schedule re-invocation
             const now = Date.now();
             if (
               lastBroadcastTime[dbOrderId] &&
               now - lastBroadcastTime[dbOrderId] < BROADCAST_THROTTLE_MS
             ) {
-              return; // Skip - too soon since last update for this order
+              pendingThrottledBroadcast[dbOrderId] = payload;
+              if (!throttleTimers[dbOrderId]) {
+                throttleTimers[dbOrderId] = setTimeout(() => {
+                  delete throttleTimers[dbOrderId];
+                  const queued = pendingThrottledBroadcast[dbOrderId];
+                  delete pendingThrottledBroadcast[dbOrderId];
+                  if (queued) {
+                    get()._handleOrderBroadcast(queued);
+                  }
+                }, BROADCAST_THROTTLE_MS);
+              }
+              return;
             }
             lastBroadcastTime[dbOrderId] = now;
 
@@ -2448,13 +2527,25 @@ export const useOrderStore = create<OrderState>()(
 
             // PERFORMANCE FIX: Skip broadcast processing while user has pending local changes
             // This prevents cascading re-renders during rapid item additions
+            // Timeout after 15s to prevent permanent blocking if item sync fails
             if (isOwnStationOrder && localOrder) {
               const hasPendingItems = localOrder.items.some(
                 (item) => !item.db_order_item_id && !item.isDraft,
               );
               if (hasPendingItems) {
-                // Let local sync complete first - broadcast will arrive again after sync
-                return;
+                if (!pendingItemsBlockStart[dbOrderId]) {
+                  pendingItemsBlockStart[dbOrderId] = Date.now();
+                }
+                if (Date.now() - pendingItemsBlockStart[dbOrderId] < PENDING_ITEMS_BLOCK_TIMEOUT_MS) {
+                  // Let local sync complete first - broadcast will arrive again after sync
+                  return;
+                }
+                // Timeout — allow broadcast through, trigger full sync to reconcile
+                console.warn("[OrderBroadcast] Pending items block timed out for order:", dbOrderId);
+                delete pendingItemsBlockStart[dbOrderId];
+                get()._debouncedOrderRefresh(dbOrderId);
+              } else {
+                delete pendingItemsBlockStart[dbOrderId];
               }
             }
 
@@ -2564,6 +2655,14 @@ export const useOrderStore = create<OrderState>()(
                       }
                     }
 
+                    // Version guard: skip stale broadcasts whose sync_version is older than local state
+                    const broadcastVersion = backendOrder.sync_version ?? 0;
+                    const localVersion = (localOrder as any).sync_version ?? 0;
+                    if (broadcastVersion > 0 && localVersion > 0 && broadcastVersion < localVersion) {
+                      console.log("[OrderBroadcast] Skipping stale broadcast", { broadcastVersion, localVersion });
+                      return;
+                    }
+
                     // Phase 2.5: Transform fresh items from broadcast (if available)
                     const broadcastItems = backendOrder.order_items
                       ? transformBroadcastItems(backendOrder.order_items)
@@ -2630,6 +2729,13 @@ export const useOrderStore = create<OrderState>()(
                       // Build updated order
                       const updatedOrder: OrderProfile = {
                         ...existingOrder,
+
+                        // Clear discount metadata if backend shows no discount
+                        ...(backendOrder.discount_amount === 0 && !hasPendingChanges
+                          ? { checkDiscount: null, applied_discounts: [] }
+                          : {}),
+                        // Update total_discount from broadcast
+                        total_discount: backendOrder.discount_amount,
 
                         // Always update payment-related fields (backend is source of truth)
                         amount_paid: backendOrder.amount_paid,
@@ -5167,6 +5273,13 @@ export const useOrderStore = create<OrderState>()(
                       "affected_items:",
                       result.affected_items?.length,
                     );
+
+                    // Post-discount verification: schedule a full sync to catch concurrent changes
+                    if (dbOrderId) {
+                      setTimeout(() => {
+                        useOrderStore.getState().syncOrderFromBackendComplete(orderId);
+                      }, 1000);
+                    }
                   } else if (result.requires_approval) {
                     console.warn(
                       "[applyDiscountToCheck] Discount requires manager approval",
@@ -8500,13 +8613,9 @@ export const useOrderStore = create<OrderState>()(
                 const normalized = normalizeFetchedOrder(
                   serverOrder as FetchedOrderData,
                 );
-                if( normalized.id == '67aa73f4-574c-4fc5-a033-05da770a2f74'){
-                  console.log('normalizeFetchedOrder', normalized);
-                }
+                
                 const orderProfile = transformBroadcastToOrder(normalized);
-                if( orderProfile.db_order_id == '67aa73f4-574c-4fc5-a033-05da770a2f74'){
-                  console.log('orderProfile', orderProfile);
-                }
+                
                 // Use DB UUID as the key
                 newOrders[serverOrder.id] = orderProfile;
                 if (!exists) {
@@ -8927,6 +9036,7 @@ export const useOrderStore = create<OrderState>()(
                   paymentsCount: data.payments?.length || 0,
                   reversalsCount: data.reversals?.length || 0,
                   refundItemsCount: data.order_refund_items?.length || 0,
+                  discountsCount: data.order_discounts?.length || 0,
                   stationName: data.station_name,
                   rawItemsData: data.items,
                 },
@@ -8938,6 +9048,7 @@ export const useOrderStore = create<OrderState>()(
               const paymentsData = data.payments || [];
               const reversalsData = data.reversals || [];
               const orderRefundItemsData = data.order_refund_items || [];
+              const orderDiscountsData = data.order_discounts || [];
               const stationName = data.station_name;
 
               if (!orderData) {
@@ -8954,6 +9065,7 @@ export const useOrderStore = create<OrderState>()(
               }
 
               // Transform items with nested modifiers to CartItem format
+              // Uses the shared mapBackendItemToCartItem for consistency with broadcast transforms
               const transformedItems: CartItem[] = itemsData.map(
                 (itemWrapper: any) => {
                   const item = itemWrapper.item;
@@ -8963,38 +9075,10 @@ export const useOrderStore = create<OrderState>()(
                   const transformedModifiers =
                     transformBackendModifiers(modifiers);
 
-                  return {
-                    id: item.id,
-                    db_order_item_id: item.id,
-                    menuItemId: item.menu_item_id || "",
-                    name: item.item_name,
-                    quantity: item.quantity,
-                    price: item.unit_price,
-                    cashPrice: item.cash_price || item.unit_price,
-                    paidQuantity: item.paid_quantity || 0,
-                    subtotal: item.subtotal,
-                    taxAmount: item.tax_amount || 0,
-                    discount_amount: item.discount_amount || 0,
-                    // Refund tracking fields
-                    refundedQuantity: item.refunded_quantity || 0,
-                    refundedAmount: item.refunded_amount || 0,
-                    customizations: {
-                      size: item.selected_size_id
-                        ? {
-                            id: item.selected_size_id,
-                            name: item.selected_size_name || "",
-                            priceModifier: item.size_price_modifier || 0,
-                          }
-                        : undefined,
-                      modifiers: transformedModifiers,
-                      notes: item.special_instructions || undefined,
-                    },
-                    item_status: item.item_status || "pending",
-                    kitchen_status: item.kitchen_status || undefined,
-                    // CRITICAL: Preserve course number from database to prevent items grouping under working course
-                    courseNumber: item.course_number || 1,
-                    sync_status: "synced" as const,
-                  };
+                  return mapBackendItemToCartItem(
+                    item as BackendItemInput,
+                    transformedModifiers,
+                  );
                 },
               );
 
@@ -9154,6 +9238,8 @@ export const useOrderStore = create<OrderState>()(
                   // Reversals and refund items from backend
                   reversals: reversalsData,
                   order_refund_items: orderRefundItemsData,
+                  // Restore discount metadata from backend order_discounts
+                  ...restoreDiscountsFromBackend(orderDiscountsData),
                   // Station name from backend
                   _sourceStationName: stationName || currentOrder._sourceStationName,
                   // Financial totals
