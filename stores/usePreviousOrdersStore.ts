@@ -187,6 +187,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         // Check management
         checkStatus: order.check_status || "Opened",
         db_order_id: order.db_order_id,
+        reversals: order.reversals,
+        order_refund_items: order.order_refund_items,
       };
 
       set((state) => ({
@@ -319,6 +321,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               station_name: profile._sourceStationName || undefined,
               checkStatus: profile.check_status || "Opened",
               db_order_id: profile.db_order_id,
+              reversals: profile.reversals,
+              order_refund_items: profile.order_refund_items,
             };
           },
         );

@@ -2749,11 +2749,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       _sourceStationName: previousOrder.station_name,
       notes: previousOrder.notes,
       payments: previousOrder.payments || [],
-      // Include fetched reversals/refund_items for previous orders
-      ...(fetchedDetails ? {
-        reversals: fetchedDetails.reversals,
-        order_refund_items: fetchedDetails.order_refund_items,
-      } : {}),
+      // Include reversals/refund_items: prefer fetched, fallback to cached on previousOrder
+      reversals: fetchedDetails?.reversals || previousOrder.reversals,
+      order_refund_items: fetchedDetails?.order_refund_items || previousOrder.order_refund_items,
     } as OrderProfile;
   }, [activeOrder, previousOrder, fetchedDetails]);
 
@@ -2772,6 +2770,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     // Skip if active order already has reversals loaded (e.g. from syncOrderFromBackendComplete)
     if (activeOrder?.reversals && activeOrder.reversals.length > 0) return;
 
+    // Skip if previous order already has cached reversals
+    if (previousOrder?.reversals && previousOrder.reversals.length > 0) return;
+
     let cancelled = false;
 
     const fetchDetails = async () => {
@@ -2789,6 +2790,17 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           reversals,
           order_refund_items: refundItems,
         });
+
+        // Cache fetched details back to previousOrders store for history orders
+        if (!activeOrder && (reversals.length > 0 || refundItems.length > 0)) {
+          usePreviousOrdersStore.setState((state) => ({
+            previousOrders: state.previousOrders.map((po) =>
+              (po.orderId === orderId || po.db_order_id === dbOrderId)
+                ? { ...po, reversals, order_refund_items: refundItems }
+                : po
+            ),
+          }));
+        }
 
         // Also update the active order in the store so future opens don't re-fetch
         if (activeOrder && (reversals.length > 0 || refundItems.length > 0)) {
@@ -2815,7 +2827,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     fetchDetails();
 
     return () => { cancelled = true; };
-  }, [isOpen, orderId, activeOrder?.db_order_id, previousOrder?.db_order_id, activeOrder?.reversals, supabase]);
+  }, [isOpen, orderId, activeOrder?.db_order_id, previousOrder?.db_order_id, activeOrder?.reversals, previousOrder?.reversals, supabase]);
 
   // Reset view when sheet opens (Modal is controlled by isOpen state directly)
   useEffect(() => {

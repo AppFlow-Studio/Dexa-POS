@@ -209,6 +209,8 @@ const PreviousOrdersSection = () => {
             // Extras
             notes: po.notes,
             payments: po.payments,
+            reversals: po.reversals,
+            order_refund_items: po.order_refund_items,
           }) as OrderProfile,
       );
 

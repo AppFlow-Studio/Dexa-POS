@@ -504,6 +504,8 @@ export interface PreviousOrder {
   // Check management
   checkStatus?: "Opened" | "Closed";
   db_order_id?: string; // For RPC calls
+  reversals?: ReversalRecord[];
+  order_refund_items?: OrderRefundItemRecord[];
 }
 
 export type InventoryItemStatus =
