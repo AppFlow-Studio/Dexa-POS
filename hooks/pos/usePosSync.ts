@@ -65,9 +65,19 @@ export const usePosSync = (locationId: string | null) => {
 export const useTriggerPosSync = () => {
   const queryClient = useQueryClient();
 
-  return (locationId: string) => {
-    return queryClient.invalidateQueries({
-      queryKey: ["pos_sync", locationId],
-    });
+  return (locationId: string, merchantId?: string) => {
+    const promises = [
+      queryClient.invalidateQueries({
+        queryKey: ["pos_sync", locationId],
+      }),
+    ];
+    if (merchantId) {
+      promises.push(
+        queryClient.invalidateQueries({
+          queryKey: ["standalone_sync", merchantId, locationId],
+        }),
+      );
+    }
+    return Promise.all(promises);
   };
 };

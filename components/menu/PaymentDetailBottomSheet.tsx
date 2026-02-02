@@ -2690,16 +2690,32 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     if (!orderId) return null;
     return state.ordersById[orderId] || null;
   });
-  
+
   // Fallback to previousOrders for history orders
   const previousOrder = usePreviousOrdersStore((state) => {
     if (!orderId || activeOrder) return null;
     return state.previousOrders.find((po) => po.orderId === orderId) || null;
   });
 
+  // Fetched order details (reversals, refund_items) loaded on-demand when sheet opens
+  const [fetchedDetails, setFetchedDetails] = useState<{
+    reversals: ReversalRecord[];
+    order_refund_items: OrderRefundItemRecord[];
+  } | null>(null);
+
   // Map previousOrder to OrderProfile format (same as PreviousOrdersSection)
   const order = useMemo((): OrderProfile | null => {
-    if (activeOrder) return activeOrder;
+    if (activeOrder) {
+      // Merge fetched details into active order if it's missing reversals
+      if (fetchedDetails && !activeOrder.reversals?.length) {
+        return {
+          ...activeOrder,
+          reversals: fetchedDetails.reversals,
+          order_refund_items: fetchedDetails.order_refund_items,
+        };
+      }
+      return activeOrder;
+    }
     if (!previousOrder) return null;
 
     return {
@@ -2733,8 +2749,73 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       _sourceStationName: previousOrder.station_name,
       notes: previousOrder.notes,
       payments: previousOrder.payments || [],
+      // Include fetched reversals/refund_items for previous orders
+      ...(fetchedDetails ? {
+        reversals: fetchedDetails.reversals,
+        order_refund_items: fetchedDetails.order_refund_items,
+      } : {}),
     } as OrderProfile;
-  }, [activeOrder, previousOrder]);
+  }, [activeOrder, previousOrder, fetchedDetails]);
+
+  // Fetch reversals and refund_items on-demand when sheet opens
+  // This ensures refund info is available for both active and previous orders
+  useEffect(() => {
+    if (!isOpen || !orderId) {
+      setFetchedDetails(null);
+      return;
+    }
+
+    // Determine the db_order_id to fetch details for
+    const dbOrderId = activeOrder?.db_order_id || previousOrder?.db_order_id;
+    if (!dbOrderId) return;
+
+    // Skip if active order already has reversals loaded (e.g. from syncOrderFromBackendComplete)
+    if (activeOrder?.reversals && activeOrder.reversals.length > 0) return;
+
+    let cancelled = false;
+
+    const fetchDetails = async () => {
+      try {
+        const { data, error } = await supabase.rpc("get_order_details", {
+          p_order_id: dbOrderId,
+        });
+
+        if (cancelled || error || !data) return;
+
+        const reversals = (data.reversals || []) as ReversalRecord[];
+        const refundItems = (data.order_refund_items || []) as OrderRefundItemRecord[];
+
+        setFetchedDetails({
+          reversals,
+          order_refund_items: refundItems,
+        });
+
+        // Also update the active order in the store so future opens don't re-fetch
+        if (activeOrder && (reversals.length > 0 || refundItems.length > 0)) {
+          useOrderStore.setState((state) => {
+            const current = state.ordersById[orderId];
+            if (!current) return state;
+            return {
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...current,
+                  reversals,
+                  order_refund_items: refundItems,
+                },
+              },
+            };
+          });
+        }
+      } catch (err) {
+        console.error("[PaymentDetail] Failed to fetch order details:", err);
+      }
+    };
+
+    fetchDetails();
+
+    return () => { cancelled = true; };
+  }, [isOpen, orderId, activeOrder?.db_order_id, previousOrder?.db_order_id, activeOrder?.reversals, supabase]);
 
   // Reset view when sheet opens (Modal is controlled by isOpen state directly)
   useEffect(() => {

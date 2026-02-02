@@ -3228,7 +3228,9 @@ export type Database = {
           name: string
           phone: string | null
           postal_code: string
+          pricing_strategy: string | null
           public_metadata: Json | null
+          dual_pricing_percentage: number | null
           state: string
           timezone: string
           updated_at: string
@@ -3253,7 +3255,9 @@ export type Database = {
           name: string
           phone?: string | null
           postal_code?: string
+          pricing_strategy?: string | null
           public_metadata?: Json | null
+          dual_pricing_percentage?: number | null
           state?: string
           timezone?: string
           updated_at?: string
@@ -3278,7 +3282,9 @@ export type Database = {
           name?: string
           phone?: string | null
           postal_code?: string
+          pricing_strategy?: string | null
           public_metadata?: Json | null
+          dual_pricing_percentage?: number | null
           state?: string
           timezone?: string
           updated_at?: string

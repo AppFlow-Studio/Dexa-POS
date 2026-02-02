@@ -12,6 +12,8 @@ export interface UpdateItemPriceParams {
   menuId?: string | null;
   locationId: string;
   price: number;
+  cashPrice?: number | null;
+  availability?: boolean;
 }
 
 export interface ResetItemPriceParams {
@@ -91,16 +93,26 @@ export class MenuService {
     client: SupabaseClient,
     params: UpdateItemPriceParams
   ): Promise<{ data: UpdateItemPriceResult | null; error: any }> {
-    const { menuItemId, categoryId, menuId, locationId, price } = params;
+    const { menuItemId, categoryId, menuId, locationId, price, cashPrice, availability } = params;
     console.log("this is working", params);
 
-    const { data, error } = await client.rpc("upsert_category_item_override", {
+    const rpcParams: Record<string, any> = {
       p_menu_item_id: menuItemId,
       p_category_id: categoryId || null,
       p_menu_id: menuId || null,
       p_location_id: locationId,
       p_custom_price: price,
-    });
+    };
+
+    if (cashPrice !== undefined) {
+      rpcParams.p_custom_cash_price = cashPrice;
+    }
+
+    if (availability !== undefined) {
+      rpcParams.p_is_available = availability;
+    }
+
+    const { data, error } = await client.rpc("upsert_category_item_override", rpcParams);
 
     if (error) {
       console.error("Failed to update item price:", error);

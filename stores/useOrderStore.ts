@@ -327,6 +327,18 @@ export const getOrderStoreSupabaseClient = () => _supabaseClient;
 // This ensures only ONE order creation happens even when multiple items are added simultaneously
 const pendingOrderCreations: Map<string, Promise<string | null>> = new Map();
 
+// Persistent mapping from local order IDs to backend db order IDs.
+// Survives the cleanup of pendingOrderCreations and prevents duplicate order
+// creation after the order has been re-keyed in ordersById.
+const localIdToDbOrderId = new Map<string, string>();
+
+// Resolve the canonical queue key for an order.
+// After re-keying, items queued under the old local ID should chain on the
+// same promise as items queued under the new db ID.
+const resolveQueueKey = (orderId: string): string => {
+  return localIdToDbOrderId.get(orderId) || orderId;
+};
+
 // Track creation timestamps for deduplication
 const orderCreationTimestamps: Map<string, number> = new Map();
 
@@ -377,8 +389,13 @@ const queueItemAddition = async (
   orderId: string,
   addFn: () => Promise<boolean>,
 ): Promise<boolean> => {
+  // Normalize the key so that items queued under the local ID and items
+  // queued after re-key (under the db ID) share the same serial chain.
+  const normalizedId = resolveQueueKey(orderId);
+
   // Chain this addition after any previous additions for this order
-  const previousChain = orderAdditionChains.get(orderId) ?? Promise.resolve();
+  const previousChain =
+    orderAdditionChains.get(normalizedId) ?? Promise.resolve();
 
   const chainedPromise = previousChain.then(async () => {
     try {
@@ -390,20 +407,20 @@ const queueItemAddition = async (
   });
 
   // Update the chain (so next addition waits for this one)
-  orderAdditionChains.set(orderId, chainedPromise);
+  orderAdditionChains.set(normalizedId, chainedPromise);
 
   // Track for sync barrier
-  pendingItemAdditions.set(orderId, chainedPromise);
+  pendingItemAdditions.set(normalizedId, chainedPromise);
 
   const result = await chainedPromise;
 
   // Clean up chain if this was the last link
-  if (orderAdditionChains.get(orderId) === chainedPromise) {
-    orderAdditionChains.delete(orderId);
+  if (orderAdditionChains.get(normalizedId) === chainedPromise) {
+    orderAdditionChains.delete(normalizedId);
   }
   // Clean up pending map
-  if (pendingItemAdditions.get(orderId) === chainedPromise) {
-    pendingItemAdditions.delete(orderId);
+  if (pendingItemAdditions.get(normalizedId) === chainedPromise) {
+    pendingItemAdditions.delete(normalizedId);
   }
 
   return result;
@@ -463,6 +480,20 @@ const ensureOrderCreated = async (
         `[ensureOrderCreated] Order ${order.id} was re-keyed, found at ${order.db_order_id}`,
       );
       return reKeyedOrder.db_order_id;
+    }
+  }
+
+  // Fallback: check persistent localId → dbOrderId mapping
+  // This catches the case where pendingOrderCreations was already cleaned up
+  // and the snapshot's db_order_id was captured before the re-key.
+  const knownDbId = localIdToDbOrderId.get(order.id);
+  if (knownDbId) {
+    const knownOrder = useOrderStore.getState().ordersById[knownDbId];
+    if (knownOrder?.db_order_id) {
+      console.log(
+        `[ensureOrderCreated] Order ${order.id} resolved via localIdToDbOrderId: ${knownDbId}`,
+      );
+      return knownOrder.db_order_id;
     }
   }
 
@@ -1068,16 +1099,25 @@ const addItemToBackend = async (
     // ========================================================================
     // MERGE CASE: Item already exists in backend, just update quantity
     // ========================================================================
-    if (isMerge && item.db_order_item_id) {
+    // Re-read item from store to get latest db_order_item_id.
+    // When items are added rapidly, the snapshot's db_order_item_id may still
+    // be null while a previous sync in the queue has already set it.
+    const orderKey = resolveOrderKey();
+    const freshOrder = useOrderStore.getState().ordersById[orderKey];
+    const freshItem = freshOrder?.items.find((i) => i.id === item.id);
+    const currentDbOrderItemId =
+      freshItem?.db_order_item_id || item.db_order_item_id;
+
+    if (isMerge && currentDbOrderItemId) {
       console.log(
-        `[addItemToBackend] MERGE MODE - Updating quantity for db_order_item_id: ${item.db_order_item_id}`,
+        `[addItemToBackend] MERGE MODE - Updating quantity for db_order_item_id: ${currentDbOrderItemId}`,
       );
       console.log(`[addItemToBackend] New total quantity: ${item.quantity}`);
 
       const { data: updateResult, error: updateError } =
         await OrderService.updateOrderItemQuantity(
           supabase,
-          item.db_order_item_id,
+          currentDbOrderItemId,
           item.quantity, // The new total quantity after merge
         );
 
@@ -1096,7 +1136,7 @@ const addItemToBackend = async (
           params: {
             localOrderId: order.id,
             localItemId: item.id,
-            orderItemId: item.db_order_item_id, // Backend UUID for resolved items
+            orderItemId: currentDbOrderItemId, // Backend UUID for resolved items
             quantity: item.quantity,
           },
           localOrderId: order.id,
@@ -4074,6 +4114,24 @@ export const useOrderStore = create<OrderState>()(
                       ),
                     };
                   });
+
+                  // Record persistent localId → dbOrderId mapping so that
+                  // ensureOrderCreated and resolveQueueKey can find the order
+                  // even after pendingOrderCreations is cleaned up.
+                  localIdToDbOrderId.set(orderId, dbOrderId);
+
+                  // Migrate the serial addition chain from the old local key
+                  // to the new db key so future items join the same chain.
+                  const existingChain = orderAdditionChains.get(orderId);
+                  if (existingChain) {
+                    orderAdditionChains.set(dbOrderId, existingChain);
+                    orderAdditionChains.delete(orderId);
+                  }
+                  const existingPending = pendingItemAdditions.get(orderId);
+                  if (existingPending) {
+                    pendingItemAdditions.set(dbOrderId, existingPending);
+                    pendingItemAdditions.delete(orderId);
+                  }
                 };
 
                 // Create and track the sync promise - wrapped in queue to serialize additions
@@ -4086,8 +4144,7 @@ export const useOrderStore = create<OrderState>()(
                     markItemFailedAction, // Changed from removeItemAction
                     undefined, // No need to recalculate - already done synchronously
                     {
-                      isMerge:
-                        isMergeOperation && !!itemToSync.db_order_item_id,
+                      isMerge: isMergeOperation,
                       addedQuantity: newItem.quantity,
                     },
                   ),
@@ -4921,6 +4978,9 @@ export const useOrderStore = create<OrderState>()(
                     },
                   },
                 }));
+
+                // Record persistent localId → dbOrderId mapping
+                localIdToDbOrderId.set(orderId, dbOrderId);
               };
 
               // Create and track the sync promise - wrapped in queue to serialize additions
@@ -7851,6 +7911,9 @@ export const useOrderStore = create<OrderState>()(
                     },
                   },
                 }));
+
+                // Record persistent localId → dbOrderId mapping
+                localIdToDbOrderId.set(id, dbOrderId);
               };
 
               // Wrapped in queue to serialize additions during retry

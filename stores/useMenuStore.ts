@@ -169,7 +169,12 @@ interface MenuState {
   updateItemPriceOptimistic: (
     itemId: string,
     newPrice: number,
-    context: { categoryId: string | null; menuId: string | null }
+    context: {
+      categoryId: string | null;
+      menuId: string | null;
+      cashPrice?: number | null;
+      availability?: boolean;
+    }
   ) => void;
 
   // Category schedule info helper
@@ -442,16 +447,8 @@ const transformMenuItemsFromSync = (
   menus.forEach((menu) => {
     menu.categories.forEach((cat) => {
       (cat.items || []).forEach((item) => {
-        if (!globalItemMap.has(item.id)) {
-          // Clone and strip context overrides for the "Base" item?
-          // No, we want the base price. `dbItem` has `price_levels.level_1_base`.
-          // Let's rely on the fact that mapSyncItem sets `price` to `effective_price`.
-          // For the GLOBAL item, we want Level 2 (Location Item) or Level 1 (Base).
-
-          // BETTER STRATEGY:
-          // The `mapSyncItem` returns an instance with specific price.
-          // We should find the "Base" version.
-          // `item.priceLevels.level_2_location_item` ?? `item.priceLevels.level_1_base`
+        const existing = globalItemMap.get(item.id);
+        if (!existing) {
           const basePrice =
             item.priceLevels?.level_2_location_item ??
             item.priceLevels?.level_1_base ??
@@ -459,10 +456,17 @@ const transformMenuItemsFromSync = (
 
           globalItemMap.set(item.id, {
             ...item,
-            price: basePrice, // Reset to base price for global view
+            price: basePrice,
+            category: [cat.name],
             menuPriceOverrides: undefined,
             categoryPriceOverrides: undefined,
           });
+        } else {
+          // Item already seen in another category — accumulate category name
+          const cats = Array.isArray(existing.category) ? existing.category : [];
+          if (!cats.includes(cat.name)) {
+            existing.category = [...cats, cat.name];
+          }
         }
       });
     });
@@ -1459,11 +1463,20 @@ export const useMenuStore = create<MenuState>((set, get) => {
         let updatedMenuItems = state.menuItems;
         const updatedMenuItemsById = { ...state.menuItemsById };
 
+        // Build partial update object
+        const itemUpdates: Partial<MenuItemType> = { price: newPrice };
+        if (context.cashPrice !== undefined) {
+          itemUpdates.cashPrice = context.cashPrice ?? undefined;
+        }
+        if (context.availability !== undefined) {
+          itemUpdates.availability = context.availability;
+        }
+
         // 1. Update Global Item (Library) if Level 2 (No Context)
         if (!context.menuId && !context.categoryId) {
           const item = state.menuItemsById[itemId];
           if (item) {
-            const updatedItem = { ...item, price: newPrice };
+            const updatedItem = { ...item, ...itemUpdates };
             // Also update base price / level_2
             if (updatedItem.priceLevels) {
               updatedItem.priceLevels = {
@@ -1489,7 +1502,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
             const updatedItems = cat.items.map((item) => {
               if (item.id === itemId) {
-                return { ...item, price: newPrice };
+                return { ...item, ...itemUpdates };
               }
               return item;
             });

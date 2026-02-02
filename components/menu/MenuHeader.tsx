@@ -1,13 +1,22 @@
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
-import { Plus, Search } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Plus, RefreshCw, Search } from "lucide-react-native";
+import React, { useEffect, useRef } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface MenuHeaderProps {
   title: string;
   onAddPress: () => void;
   addButtonLabel: string;
-  disabled?: boolean; // New prop to disable the Add button
+  disabled?: boolean;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 const MenuHeader: React.FC<MenuHeaderProps> = ({
@@ -15,16 +24,59 @@ const MenuHeader: React.FC<MenuHeaderProps> = ({
   onAddPress,
   addButtonLabel,
   disabled = false,
+  onRefresh,
+  isRefreshing = false,
 }) => {
-  // Get the action to open the search bottom sheet from the store
   const { openSearch } = useMenuManagementSearchStore();
+
+  const spinValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isRefreshing) {
+      const loop = Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      spinValue.setValue(0);
+    }
+  }, [isRefreshing]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
 
   return (
     <View className="flex-row items-center justify-between bg-[#212121] mb-4">
       <Text className="text-2xl font-bold text-white">{title}</Text>
       <View className="flex-row items-center gap-x-3">
+        {onRefresh && (
+          <TouchableOpacity
+            onPress={onRefresh}
+            disabled={isRefreshing}
+            className={`p-3 bg-[#303030] border border-gray-600 rounded-lg ${
+              isRefreshing ? "opacity-50" : ""
+            }`}
+          >
+            {isRefreshing ? (
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                <RefreshCw color="#9CA3AF" size={20} />
+              </Animated.View>
+            ) : (
+              <RefreshCw color="#9CA3AF" size={20} />
+            )}
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
-          onPress={openSearch} // This now opens the bottom sheet
+          onPress={openSearch}
           className="p-3 bg-[#303030] border border-gray-600 rounded-lg"
         >
           <Search color="#9CA3AF" size={20} />

@@ -22,6 +22,8 @@ export interface SelectedLocation {
   timezone: string;
   is_active: boolean;
   is_accepting_orders: boolean;
+  pricing_strategy?: string | null;
+  dual_pricing_percentage?: number | null;
   business_hours: Record<
     string,
     { open: string; close: string; is_closed: boolean }

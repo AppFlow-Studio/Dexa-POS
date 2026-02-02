@@ -234,6 +234,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     selectedStore?.id ?? null,
   );
 
+  // Keep a ref to standalone data so the posSyncData effect can re-merge
+  // without adding standaloneData as a dependency (which would cause extra runs)
+  const standaloneDataRef = useRef(standaloneData);
+  standaloneDataRef.current = standaloneData;
+
   // --- INVENTORY SYNC ---
   const { data: inventoryData } = useInventorySync(selectedStore?.id ?? null);
   const setInventoryData = useInventoryStore((state) => state.setInventoryData);
@@ -291,6 +296,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (posSyncData) {
       setMenuData(posSyncData);
+
+      // Re-merge standalone data so orphan items/categories aren't lost
+      // after setMenuData replaces the store with tree-only data
+      if (standaloneDataRef.current) {
+        useMenuStore.getState().mergeStandaloneData(standaloneDataRef.current);
+      }
 
       // Re-apply recipes if available (since setMenuData might reset them)
       applyRecipes(inventoryData);

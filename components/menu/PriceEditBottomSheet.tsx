@@ -1,3 +1,4 @@
+import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
   EditingLevel,
@@ -21,12 +22,20 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export interface PriceEditItem {
   id: string;
   name: string;
   currentPrice: number;
+  currentCashPrice?: number;
+  currentAvailability?: boolean;
 }
 
 export interface PriceEditContext {
@@ -44,12 +53,21 @@ interface PriceEditBottomSheetProps {
   onReset?: (itemId: string) => void;
 }
 
+const filterPriceInput = (text: string): string => {
+  const filtered = text.replace(/[^0-9.]/g, "");
+  const parts = filtered.split(".");
+  if (parts.length > 2) {
+    return parts[0] + "." + parts.slice(1).join("");
+  }
+  return filtered;
+};
+
 const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   PriceEditBottomSheetRef,
   PriceEditBottomSheetProps
 > = ({ onSave, onReset }, ref) => {
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
-  const snapPoints = useMemo(() => ["55%"], []);
+  const snapPoints = useMemo(() => ["80%"], []);
 
   const [item, setItem] = useState<PriceEditItem | null>(null);
   const [context, setContext] = useState<PriceEditContext>({
@@ -57,12 +75,25 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
     menuId: null,
   });
   const [priceValue, setPriceValue] = useState("");
+  const [cashPriceValue, setCashPriceValue] = useState("");
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [lastEditedField, setLastEditedField] = useState<
+    "card" | "cash" | null
+  >(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const supabase = useSupabaseClient();
+  const triggerPosSync = useTriggerPosSync();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const locationId = selectedStore?.id;
+  const pricingStrategy = selectedStore?.pricing_strategy;
+  const dualPricingPercentage = selectedStore?.dual_pricing_percentage;
+
+  const isDualPricing =
+    pricingStrategy === "dual" &&
+    typeof dualPricingPercentage === "number" &&
+    dualPricingPercentage > 0;
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -70,6 +101,13 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       setItem(newItem);
       setContext(newContext);
       setPriceValue(newItem.currentPrice.toFixed(2));
+      setCashPriceValue(
+        newItem.currentCashPrice != null
+          ? newItem.currentCashPrice.toFixed(2)
+          : ""
+      );
+      setIsAvailable(newItem.currentAvailability !== false);
+      setLastEditedField(null);
       setError(null);
       bottomSheetRef.current?.expand();
     },
@@ -87,6 +125,43 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   const resetDescription = MenuService.getResetDescription(editingLevel);
   const canReset = editingLevel > 2;
 
+  // Dual pricing auto-calculation
+  const handleCardPriceChange = useCallback(
+    (text: string) => {
+      const filtered = filterPriceInput(text);
+      setPriceValue(filtered);
+      setLastEditedField("card");
+
+      if (isDualPricing && filtered) {
+        const cardPrice = parseFloat(filtered);
+        if (!isNaN(cardPrice)) {
+          const calculatedCash =
+            cardPrice * (1 - dualPricingPercentage! / 100);
+          setCashPriceValue(calculatedCash.toFixed(2));
+        }
+      }
+    },
+    [isDualPricing, dualPricingPercentage]
+  );
+
+  const handleCashPriceChange = useCallback(
+    (text: string) => {
+      const filtered = filterPriceInput(text);
+      setCashPriceValue(filtered);
+      setLastEditedField("cash");
+
+      if (isDualPricing && filtered) {
+        const cashPrice = parseFloat(filtered);
+        if (!isNaN(cashPrice)) {
+          const calculatedCard =
+            cashPrice / (1 - dualPricingPercentage! / 100);
+          setPriceValue(calculatedCard.toFixed(2));
+        }
+      }
+    },
+    [isDualPricing, dualPricingPercentage]
+  );
+
   const handleClose = useCallback(() => {
     bottomSheetRef.current?.close();
   }, []);
@@ -99,8 +174,17 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
 
     const price = parseFloat(priceValue);
     if (isNaN(price) || price < 0) {
-      setError("Please enter a valid price");
+      setError("Please enter a valid card price");
       return;
+    }
+
+    let cashPrice: number | null = null;
+    if (cashPriceValue.trim() !== "") {
+      cashPrice = parseFloat(cashPriceValue);
+      if (isNaN(cashPrice) || cashPrice < 0) {
+        setError("Please enter a valid cash price");
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -115,6 +199,8 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           menuId: context.menuId,
           locationId,
           price,
+          cashPrice,
+          availability: isAvailable,
         }
       );
 
@@ -127,9 +213,12 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       useMenuStore.getState().updateItemPriceOptimistic(item.id, price, {
         categoryId: context.categoryId ?? null,
         menuId: context.menuId ?? null,
+        cashPrice,
+        availability: isAvailable,
       });
 
       onSave(item.id, price);
+      if (locationId) triggerPosSync(locationId);
       handleClose();
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred");
@@ -162,6 +251,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       }
 
       onReset?.(item.id);
+      if (locationId) triggerPosSync(locationId);
       handleClose();
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred");
@@ -231,24 +321,25 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           </Text>
         )}
 
-        {/* Price Input */}
-        <View className="mb-4">
-          <Text className="text-base text-gray-400 mb-2">New Price</Text>
+        {/* Dual Pricing Indicator */}
+        {isDualPricing && (
+          <View className="bg-purple-900/30 border border-purple-500 rounded-lg px-3 py-2 mb-4">
+            <Text className="text-purple-300 text-base font-medium">
+              Dual Pricing Active ({dualPricingPercentage}% cash discount)
+            </Text>
+          </View>
+        )}
+
+        {/* Card Price Input */}
+        <View className="mb-3">
+          <Text className="text-base text-gray-400 mb-2">
+            Card Price
+          </Text>
           <View className="flex-row items-center bg-[#212121] rounded-lg border border-gray-600 px-4 py-3">
             <Text className="text-2xl text-white mr-2">$</Text>
             <BottomSheetTextInput
               value={priceValue}
-              onChangeText={(text) => {
-                // Only allow digits and one decimal point
-                const filtered = text.replace(/[^0-9.]/g, "");
-                // Ensure only one decimal point
-                const parts = filtered.split(".");
-                if (parts.length > 2) {
-                  setPriceValue(parts[0] + "." + parts.slice(1).join(""));
-                } else {
-                  setPriceValue(filtered);
-                }
-              }}
+              onChangeText={handleCardPriceChange}
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor="#6B7280"
@@ -259,6 +350,42 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
               }}
             />
           </View>
+        </View>
+
+        {/* Cash Price Input */}
+        <View className="mb-3">
+          <Text className="text-base text-gray-400 mb-2">
+            Cash Price
+            {isDualPricing && lastEditedField === "card" && (
+              <Text className="text-purple-400"> (auto-calculated)</Text>
+            )}
+          </Text>
+          <View className="flex-row items-center bg-[#212121] rounded-lg border border-gray-600 px-4 py-3">
+            <Text className="text-2xl text-white mr-2">$</Text>
+            <BottomSheetTextInput
+              value={cashPriceValue}
+              onChangeText={handleCashPriceChange}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor="#6B7280"
+              style={{
+                flex: 1,
+                fontSize: 24,
+                color: "white",
+              }}
+            />
+          </View>
+        </View>
+
+        {/* Availability Toggle */}
+        <View className="flex-row items-center justify-between bg-[#212121] rounded-lg border border-gray-600 px-4 py-3 mb-4">
+          <Text className="text-lg text-white">Available</Text>
+          <Switch
+            value={isAvailable}
+            onValueChange={setIsAvailable}
+            trackColor={{ false: "#4B5563", true: "#10B981" }}
+            thumbColor="white"
+          />
         </View>
 
         {/* Error Message */}

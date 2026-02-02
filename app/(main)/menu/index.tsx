@@ -506,6 +506,18 @@ const MenuPage: React.FC = () => {
   const { activeTab, searchQuery } = useMenuLayout();
   const triggerPosSync = useTriggerPosSync();
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshMenu = async () => {
+    if (!selectedStore?.id || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await triggerPosSync(selectedStore.id, selectedStore.merchant_id);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(
     null
@@ -763,7 +775,7 @@ const MenuPage: React.FC = () => {
         type: "error",
       });
       // Revert would be nice but complex to implement here without full refresh
-      triggerPosSync(selectedStore?.id || "");
+      triggerPosSync(selectedStore?.id || "", selectedStore?.merchant_id);
     }
   };
 
@@ -807,7 +819,7 @@ const MenuPage: React.FC = () => {
       });
       // Revert? simpler to just sync.
       if (selectedStore?.id) {
-        triggerPosSync(selectedStore.id);
+        triggerPosSync(selectedStore.id, selectedStore.merchant_id);
       }
     }
     // We don't strictly need to sync on success IF the local store update was accurate.
@@ -841,6 +853,8 @@ const MenuPage: React.FC = () => {
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
         addButtonLabel="Add Menu"
+        onRefresh={handleRefreshMenu}
+        isRefreshing={isRefreshing}
       />
 
       <ScrollView className="flex-1" nestedScrollEnabled={true}>
@@ -867,7 +881,13 @@ const MenuPage: React.FC = () => {
               getItemsInCategory={getItemsInCategory}
               onItemPriceEdit={(item, categoryId, menuId) => {
                 priceEditRef.current?.open(
-                  { id: item.id, name: item.name, currentPrice: item.price },
+                  {
+                    id: item.id,
+                    name: item.name,
+                    currentPrice: item.price,
+                    currentCashPrice: item.cashPrice,
+                    currentAvailability: item.availability,
+                  },
                   { categoryId, menuId }
                 );
               }}
@@ -886,6 +906,8 @@ const MenuPage: React.FC = () => {
         title={`Categories (${storeCategories.length})`}
         onAddPress={handleAddCategory}
         addButtonLabel="Add Category"
+        onRefresh={handleRefreshMenu}
+        isRefreshing={isRefreshing}
       />
 
       <ScrollView className="flex-1">
@@ -1033,6 +1055,8 @@ const MenuPage: React.FC = () => {
                                     id: item.id,
                                     name: item.name,
                                     currentPrice: categoryPrice,
+                                    currentCashPrice: item.cashPrice,
+                                    currentAvailability: item.availability,
                                   },
                                   {
                                     categoryId: category?.id || null,
@@ -1091,6 +1115,8 @@ const MenuPage: React.FC = () => {
         title={`Menu Items (${filteredItems.length})`}
         onAddPress={handleAddItem}
         addButtonLabel="Add Item"
+        onRefresh={handleRefreshMenu}
+        isRefreshing={isRefreshing}
       />
 
       {filteredItems.length === 0 ? (
@@ -1112,13 +1138,13 @@ const MenuPage: React.FC = () => {
                     onDelete={handleDeleteItem}
                     onToggleAvailability={handleToggleAvailability}
                     onPriceEdit={(editItem) => {
-                      console.log("edititem", editItem);
-
                       priceEditRef.current?.open(
                         {
                           id: editItem.id,
                           name: editItem.name,
                           currentPrice: editItem.price,
+                          currentCashPrice: editItem.cashPrice,
+                          currentAvailability: editItem.availability,
                         },
                         { categoryId: null, menuId: null }
                       );
@@ -1142,6 +1168,8 @@ const MenuPage: React.FC = () => {
         title={`Modifier Groups (${uniqueModifierGroups.length})`}
         onAddPress={() => router.push("/menu/add-modifier")}
         addButtonLabel="Add Modifier"
+        onRefresh={handleRefreshMenu}
+        isRefreshing={isRefreshing}
       />
 
       <ScrollView className="flex-1">
