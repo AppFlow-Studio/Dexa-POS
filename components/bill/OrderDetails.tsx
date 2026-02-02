@@ -59,6 +59,31 @@ const OrderDetailsComponent: React.FC = () => {
     return order?.order_status || "draft";
   });
 
+  // Status badge data
+  const paidStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.paid_status || "Unpaid";
+  });
+  const checkStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.check_status || "Opened";
+  });
+  const hasRefunds = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return (order?.order_refund_items?.length ?? 0) > 0;
+  });
+  const isSplitPayment = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    const payments = order?.payments?.filter((p) => !p.isVoided) ?? [];
+    const hasCash = payments.some((p) => p.method === "Cash");
+    const hasCard = payments.some((p) => p.method === "Card");
+    return hasCash && hasCard;
+  });
+  const hasAnyPayments = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return (order?.payments?.filter((p) => !p.isVoided)?.length ?? 0) > 0;
+  });
+
   // Actions - stable function references
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,
@@ -327,6 +352,52 @@ const OrderDetailsComponent: React.FC = () => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Status Badge Row - skip for draft orders with no payments */}
+      {(orderStatus !== "draft" || hasAnyPayments) && (
+        <View className="flex-row flex-wrap gap-2 mt-2 mb-1 px-1">
+          {paidStatus === "Paid" && !hasRefunds && (
+            <View className="bg-green-600/30 px-2 py-0.5 rounded">
+              <Text className="text-green-400 text-xs font-bold">✓ PAID</Text>
+            </View>
+          )}
+          {paidStatus === "Paid" && hasRefunds && (
+            <View className="bg-amber-600/30 px-2 py-0.5 rounded">
+              <Text className="text-amber-400 text-xs font-bold">⚠ PAID (With Refunds)</Text>
+            </View>
+          )}
+          {paidStatus === "Partial" && (
+            <View className="bg-yellow-600/30 px-2 py-0.5 rounded">
+              <Text className="text-yellow-400 text-xs font-bold">PARTIAL</Text>
+            </View>
+          )}
+          {paidStatus === "Unpaid" && orderStatus !== "draft" && (
+            <View className="bg-red-600/30 px-2 py-0.5 rounded">
+              <Text className="text-red-400 text-xs font-bold">UNPAID</Text>
+            </View>
+          )}
+          {checkStatus === "Closed" && (
+            <View className="bg-gray-600/30 px-2 py-0.5 rounded">
+              <Text className="text-gray-400 text-xs font-bold">CHECK CLOSED</Text>
+            </View>
+          )}
+          {isSplitPayment && (
+            <View className="bg-blue-600/30 px-2 py-0.5 rounded">
+              <Text className="text-blue-400 text-xs font-bold">SPLIT PAYMENT</Text>
+            </View>
+          )}
+          {orderStatus === "preparing" && (
+            <View className="bg-blue-600/30 px-2 py-0.5 rounded">
+              <Text className="text-blue-400 text-xs font-bold">PREPARING</Text>
+            </View>
+          )}
+          {orderStatus === "ready" && (
+            <View className="bg-green-600/30 px-2 py-0.5 rounded">
+              <Text className="text-green-400 text-xs font-bold">READY</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Customer Name Modal */}
       <Dialog

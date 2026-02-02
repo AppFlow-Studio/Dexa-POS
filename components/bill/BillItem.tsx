@@ -8,7 +8,7 @@ import {
   useItemSyncError,
   useItemSyncStatus,
 } from "@/stores/useSyncStatusStore";
-import { AlertCircle, Trash2 } from "lucide-react-native";
+import { AlertCircle, Banknote, Trash2 } from "lucide-react-native";
 import React, {
   useCallback,
   useEffect,
@@ -122,6 +122,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const syncStatus = useItemSyncStatus(item.id);
   const syncError = useItemSyncError(item.id);
 
+  // Read active order for payment method awareness on badges
+  const activeOrder = useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
+  );
+
   // Ref for position tracking (attached modifier panel positioning)
   const itemRef = useRef<View>(null);
 
@@ -226,7 +231,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     // Capture position before opening modifier for attached panel positioning
     captureItemPosition();
 
-    if (isEditable) {
+    if (isEditable && !isKitchenItem) {
       // Use attached panel mode (not fullscreen) to show arrow pointing to bill item
       openToEdit(item, activeOrderId);
     } else {
@@ -297,17 +302,51 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       <Text className="text-white text-xs font-bold">VOID</Text>
                     </View>
                   )}
-                  {/* Paid/Refunded status badges - account for refunds */}
+                  {/* Paid/Refunded status badges - payment method aware */}
                   {(() => {
-                    const effectivePaidQty = (item.paidQuantity ?? 0) - (item.refundedQuantity ?? 0);
-                    const hasRefund = (item.refundedQuantity ?? 0) > 0;
-                    const isFullyPaid = effectivePaidQty >= item.quantity;
-                    const isPartiallyPaid = effectivePaidQty > 0 && effectivePaidQty < item.quantity;
-
                     if (isVoided) return null;
 
-                    // Fully refunded - no effective paid quantity
-                    if (hasRefund && effectivePaidQty <= 0) {
+                    // Compute coverage from order payments
+                    const payments = activeOrder?.payments ?? [];
+                    let coveredQty = 0;
+                    const methodQtyMap: Record<string, number> = {};
+
+                    for (const payment of payments) {
+                      if (payment.isVoided) continue;
+                      for (const covered of payment.itemsCovered ?? []) {
+                        if (covered.itemId === item.id || covered.itemId === item.db_order_item_id) {
+                          coveredQty += covered.quantity;
+                          const m = payment.method ?? "Unknown";
+                          methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity;
+                        }
+                      }
+                    }
+
+                    const refundedQty = item.refundedQuantity ?? 0;
+                    const netCoveredQty = coveredQty - refundedQty;
+                    const hasRefundHistory = refundedQty > 0;
+
+                    // Determine primary payment method (covers most quantity)
+                    let primaryMethod = "";
+                    let maxQty = 0;
+                    let methodCount = 0;
+                    for (const [method, qty] of Object.entries(methodQtyMap)) {
+                      methodCount++;
+                      if (qty > maxQty) {
+                        maxQty = qty;
+                        primaryMethod = method;
+                      }
+                    }
+                    const isSplitMethod = methodCount > 1;
+                    const methodLabel = isSplitMethod ? "SPLIT" : primaryMethod.toUpperCase();
+
+                    const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0;
+                    const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0;
+                    const isFullyPaid = netCoveredQty >= item.quantity;
+                    const isPartiallyPaid = netCoveredQty > 0 && netCoveredQty < item.quantity;
+
+                    // Fully refunded
+                    if (isFullyRefunded) {
                       return (
                         <View className="bg-red-600/20 px-2 py-0.5 rounded mr-2">
                           <Text className="text-red-400 text-xs font-bold">
@@ -317,23 +356,26 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       );
                     }
 
-                    // Partially refunded - some still paid
-                    if (hasRefund && effectivePaidQty > 0) {
+                    // Partially refunded
+                    if (isPartiallyRefunded && isFullyPaid) {
                       return (
                         <View className="bg-orange-600/20 px-2 py-0.5 rounded mr-2">
                           <Text className="text-orange-400 text-xs font-bold">
-                            {item.refundedQuantity} REFUNDED
+                            {refundedQty} REFUNDED
                           </Text>
                         </View>
                       );
                     }
 
-                    // Fully paid, no refunds
+                    // Fully paid with method info
                     if (isFullyPaid) {
                       return (
-                        <View className="bg-green-600/20 px-2 py-0.5 rounded mr-2">
+                        <View className="flex-row items-center bg-green-600/20 px-2 py-0.5 rounded mr-2">
+                          {primaryMethod === "Cash" && !isSplitMethod && (
+                            <Banknote size={12} color="#4ADE80" style={{ marginRight: 3 }} />
+                          )}
                           <Text className="text-green-400 text-xs font-bold">
-                            PAID
+                            PAID {methodLabel}
                           </Text>
                         </View>
                       );
@@ -344,7 +386,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       return (
                         <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
                           <Text className="text-yellow-400 text-xs font-bold">
-                            {effectivePaidQty}/{item.quantity} PAID
+                            {netCoveredQty}/{item.quantity} PAID
                           </Text>
                         </View>
                       );
@@ -386,6 +428,37 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     Reason: {item.void_reason}
                   </Text>
                 )}
+                {/* Refund-then-repay sub-text */}
+                {(() => {
+                  if (isVoided) return null;
+                  const refundedQty = item.refundedQuantity ?? 0;
+                  if (refundedQty <= 0) return null;
+
+                  const payments = activeOrder?.payments ?? [];
+                  let coveredQty = 0;
+                  const methodQtyMap: Record<string, number> = {};
+                  for (const payment of payments) {
+                    if (payment.isVoided) continue;
+                    for (const covered of payment.itemsCovered ?? []) {
+                      if (covered.itemId === item.id || covered.itemId === item.db_order_item_id) {
+                        coveredQty += covered.quantity;
+                        const m = payment.method ?? "Unknown";
+                        methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity;
+                      }
+                    }
+                  }
+                  const netCoveredQty = coveredQty - refundedQty;
+                  if (netCoveredQty < item.quantity) return null;
+
+                  // Item was refunded then re-paid
+                  const methods = Object.keys(methodQtyMap);
+                  const methodLabel = methods.length > 1 ? "Split" : (methods[0] ?? "");
+                  return (
+                    <Text className="text-gray-500 text-[10px] italic mt-0.5">
+                      Refunded → Re-paid {methodLabel}
+                    </Text>
+                  );
+                })()}
                 <View className="flex-row items-center">
                   {/* {!item.isDraft && (...)} */}
                 </View>

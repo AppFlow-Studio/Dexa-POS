@@ -814,6 +814,11 @@ export interface OrderProfilePayment {
   returnNumber?: string;
   returnReason?: string;
 
+  // Tip adjustment tracking
+  original_tip_amount?: number;
+  tip_adjusted_at?: string;
+  tip_adjusted_by?: string;
+
   // Sync status (for offline-first reliability)
   sync_status?: "synced" | "pending" | "failed";
   sync_error?: string;

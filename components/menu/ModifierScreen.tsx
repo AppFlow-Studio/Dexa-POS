@@ -1223,7 +1223,7 @@ const ModifierScreen = () => {
   // RENDER
   // ============================================================================
 
-  if (cartItem?.kitchen_status === "sent") {
+  if (cartItem?.kitchen_status === "sent" || cartItem?.kitchen_status === "ready" || cartItem?.kitchen_status === "served") {
     return (
       <View className="flex-1 bg-[#212121]">
         <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
@@ -1283,7 +1283,6 @@ const ModifierScreen = () => {
   const currentCategory = menuItemForModifiers?.modifiers?.find(
     (cat) => cat.id === state.activeCategory,
   );
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}

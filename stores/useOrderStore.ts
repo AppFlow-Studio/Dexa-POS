@@ -3268,6 +3268,7 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   ),
+                  order_payments (*),
                   stations(station_name),
                   created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)
                 `,
@@ -3355,7 +3356,8 @@ export const useOrderStore = create<OrderState>()(
                   order_items (
                     *,
                     order_item_modifiers (*)
-                  )
+                  ),
+                  order_payments (*)
                 `,
                 )
                 .eq("location_id", locationId)
@@ -3370,6 +3372,7 @@ export const useOrderStore = create<OrderState>()(
               );
 
               // Check for orphaned orders (on server but not locally)
+              // Also upsert existing orders to refresh stale rehydrated data
               for (const serverOrder of data ?? []) {
                 const existsLocally = get().ordersById[serverOrder.id];
 
@@ -3381,6 +3384,11 @@ export const useOrderStore = create<OrderState>()(
                   get()._createLocalOrderFromServer(
                     serverOrder as FetchedOrderData,
                   );
+                } else {
+                  // Existing order — update with fresh server data
+                  // upsertOrder's version check handles idempotency
+                  const normalized = normalizeFetchedOrder(serverOrder as FetchedOrderData);
+                  get().upsertOrder(normalized);
                 }
               }
             } catch (error) {
@@ -8325,9 +8333,9 @@ export const useOrderStore = create<OrderState>()(
                     return {
                       itemId,
                       itemName: item?.name || "Unknown Item",
-                      quantity: item?.paidQuantity || item?.quantity || 1,
+                      quantity: item?.quantity || 1,
                       unitPrice: item?.price || 0,
-                      subtotal: (item?.price || 0) * (item?.paidQuantity || item?.quantity || 1),
+                      subtotal: (item?.price || 0) * (item?.quantity || 1),
                     };
                   });
 
@@ -9123,9 +9131,9 @@ export const useOrderStore = create<OrderState>()(
                   return {
                     itemId,
                     itemName: item?.name || "Unknown Item",
-                    quantity: item?.paidQuantity || item?.quantity || 1,
+                    quantity: item?.quantity || 1,
                     unitPrice: item?.price || 0,
-                    subtotal: (item?.price || 0) * (item?.paidQuantity || item?.quantity || 1),
+                    subtotal: (item?.price || 0) * (item?.quantity || 1),
                   };
                 }),
                 
@@ -9142,6 +9150,11 @@ export const useOrderStore = create<OrderState>()(
                 refundedAmount: payment.refunded_amount || 0,
                 refundedAt: payment.refunded_at,
                 reference_id: payment.reference_number,
+
+                // Tip adjustment tracking
+                original_tip_amount: payment.original_tip_amount || undefined,
+                tip_adjusted_at: payment.tip_adjusted_at || undefined,
+                tip_adjusted_by: payment.tip_adjusted_by || undefined,
                 
                 // Return tracking fields
                 isReturned: payment.is_returned || false,
@@ -9424,7 +9437,15 @@ export const useOrderStore = create<OrderState>()(
             if (state?.activeOrderId) {
               // Small delay to ensure orders array is synced by subscription
               setTimeout(() => {
-                useOrderStore.getState().setActiveOrder(state.activeOrderId);
+                const store = useOrderStore.getState();
+                store.setActiveOrder(state.activeOrderId);
+                // Force-sync active order from backend to get fresh item_status and payments
+                const activeOrder = store.ordersById[state.activeOrderId!];
+                if (activeOrder?.db_order_id) {
+                  store.syncOrderFromBackendComplete(state.activeOrderId!).catch((err: any) => {
+                    console.warn("[Rehydrate] Active order sync failed:", err);
+                  });
+                }
               }, 100);
             }
           };

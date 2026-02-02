@@ -69,6 +69,10 @@ export interface BroadcastOrderPaymentData {
   // Portions
   subtotal_portion: number;
   tax_portion: number;
+  discount_portion?: number;
+
+  // Void timestamp
+  voided_at?: string | null;
 
   // Cash fields
   amount_tendered: number | null;

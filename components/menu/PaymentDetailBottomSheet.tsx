@@ -2,7 +2,7 @@ import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
-import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, ReversalRecord } from "@/lib/types";
+import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, OrderRefundItemRecord, ReversalRecord } from "@/lib/types";
 import { RefundService } from "@/services/refundService";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -85,6 +85,9 @@ interface PaymentRowData {
   originalPaymentIndex: number;
   referenceId?: string;
   refundedAmount?: number;
+  original_tip_amount?: number;
+  tip_adjusted_at?: string;
+  tip_adjusted_by?: string;
 }
 
 type RightPaneView = "summary" | "refund" | "tipAdjust";
@@ -344,6 +347,53 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   tax,
   total,
 }) => {
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+
+  // Build timeline entries for an item
+  const getItemTimeline = useCallback((item: CartItem) => {
+    const entries: { type: 'ordered' | 'paid' | 'refunded' | 'voided'; label: string; timestamp?: string }[] = [];
+
+    // Payment entries - match via itemsCovered
+    if (order?.payments) {
+      (order.payments as OrderProfilePayment[]).forEach((payment: OrderProfilePayment) => {
+        const covered = payment.itemsCovered?.find(
+          (c: OrderPaymentItemCoverage) => c.itemId === item.db_order_item_id
+        );
+        if (covered && !payment.isVoided) {
+          const method = payment.method?.toLowerCase() === 'card' ? 'Card' : 'Cash';
+          const last4 = payment.last4 || payment.transactionDetails?.dejavooTransaction?.cardLast4;
+          const desc = method === 'Card' && last4
+            ? `Paid — ${payment.cardBrand || 'Card'} ••••${last4}`
+            : `Paid — ${method}`;
+          entries.push({ type: 'paid', label: desc, timestamp: payment.timestamp });
+        }
+      });
+    }
+
+    // Refund entries
+    if (order?.order_refund_items) {
+      (order.order_refund_items as OrderRefundItemRecord[]).forEach((refundItem: OrderRefundItemRecord) => {
+        if (refundItem.order_item_id === item.db_order_item_id) {
+          // Find the linked reversal for reason
+          const reversal = (order.reversals as ReversalRecord[] || []).find(
+            (r: ReversalRecord) => r.id === refundItem.reversal_id
+          );
+          const reason = refundItem.refund_reason_detail || reversal?.reason_description || refundItem.refund_reason;
+          const desc = reason ? `Refunded — ${reason}` : 'Refunded';
+          entries.push({ type: 'refunded', label: desc, timestamp: refundItem.created_at });
+        }
+      });
+    }
+
+    // Void entry
+    if (item.is_voided) {
+      const desc = item.void_reason ? `Voided — ${item.void_reason}` : 'Voided';
+      entries.push({ type: 'voided', label: desc });
+    }
+
+    return entries;
+  }, [order]);
+
   // Get modifiers display for an item
   const getModifiersDisplay = (item: CartItem) => {
     if (
@@ -399,100 +449,211 @@ const LeftPane: React.FC<LeftPaneProps> = ({
         <View className="px-4 py-2">
           {order?.items?.map((item: CartItem, index: number) => {
             const isVoided = item.is_voided;
-            // Account for refunded quantities - refunded items need to be paid again
-            const effectivePaidQty = (item.paidQuantity || 0) - (item.refundedQuantity || 0);
-            const hasRefund = (item.refundedQuantity || 0) > 0;
-            const isPaid = effectivePaidQty >= item.quantity && !hasRefund;
-            const isPartialPaid = effectivePaidQty > 0 && effectivePaidQty < item.quantity;
-            const isFullyRefunded = hasRefund && effectivePaidQty <= 0;
-            const isPartiallyRefunded = hasRefund && effectivePaidQty > 0;
+
+            // Count currently-covered quantity from active payments
+            let coveredQty = 0;
+            if (order?.payments) {
+              (order.payments as OrderProfilePayment[]).forEach((payment: OrderProfilePayment) => {
+                if (payment.isVoided) return;
+                const covered = payment.itemsCovered?.find(
+                  (c: OrderPaymentItemCoverage) => c.itemId === item.db_order_item_id
+                );
+                if (covered) coveredQty += covered.quantity;
+              });
+            }
+            // Subtract refunded quantity to get net covered
+            let refundedQty = 0;
+            if (order?.order_refund_items) {
+              (order.order_refund_items as OrderRefundItemRecord[]).forEach((ri: OrderRefundItemRecord) => {
+                if (ri.order_item_id === item.db_order_item_id) refundedQty += ri.quantity_refunded;
+              });
+            }
+            const netCoveredQty = coveredQty - refundedQty;
+
+            const hasRefundHistory = refundedQty > 0;
+            const isPaid = netCoveredQty >= item.quantity;
+            const isPartialPaid = netCoveredQty > 0 && netCoveredQty < item.quantity;
+            const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0;
+            const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0 && netCoveredQty < item.quantity;
+
+            // Determine left border color based on item state
+            const borderColor = isVoided
+              ? '#EF4444'
+              : isFullyRefunded
+              ? '#EF4444'
+              : isPartiallyRefunded
+              ? '#F97316'
+              : isPaid
+              ? '#22C55E'
+              : isPartialPaid
+              ? '#F59E0B'
+              : '#3B82F6'; // unpaid / needs action
+
+            const isUnpaid = !isVoided && !isPaid && !isPartialPaid && !hasRefundHistory;
+            const itemKey = item.id || String(index);
+            const isExpanded = expandedItemId === itemKey;
+            const timeline = isExpanded ? getItemTimeline(item) : [];
 
             return (
-              <View
-                key={item.id || index}
-                className={`py-3 ${
-                  index < (order?.items?.length || 0) - 1
-                    ? "border-b border-gray-800/50"
-                    : ""
-                } ${isVoided ? "opacity-60" : ""}`}
+              <TouchableOpacity
+                key={itemKey}
+                activeOpacity={0.7}
+                onPress={() => setExpandedItemId(isExpanded ? null : itemKey)}
               >
-                <View className="flex-row items-start justify-between">
-                  {/* Item Info */}
-                  <View className="flex-1 pr-2">
-                    <View className="flex-row items-center">
-                      {isVoided && (
-                        <View className="bg-red-500/20 px-1.5 py-0.5 rounded mr-2">
-                          <Text className="text-[10px] font-bold text-red-400">
-                            VOID
-                          </Text>
-                        </View>
+                <View
+                  style={{ borderLeftWidth: 3, borderLeftColor: borderColor }}
+                  className={`py-3 pl-3 ${
+                    index < (order?.items?.length || 0) - 1
+                      ? "border-b border-gray-800/50"
+                      : ""
+                  } ${isVoided ? "opacity-60" : ""}`}
+                >
+                  <View className="flex-row items-start justify-between">
+                    {/* Item Info */}
+                    <View className="flex-1 pr-2">
+                      <View className="flex-row items-center">
+                        {isVoided && (
+                          <View className="bg-red-500/20 px-1.5 py-0.5 rounded mr-2">
+                            <Text className="text-[10px] font-bold text-red-400">
+                              VOID
+                            </Text>
+                          </View>
+                        )}
+                        {isFullyRefunded && !isVoided && (
+                          <View className="bg-red-500/20 px-1.5 py-0.5 rounded mr-2">
+                            <Text className="text-[10px] font-bold text-red-400">
+                              REFUNDED
+                            </Text>
+                          </View>
+                        )}
+                        {isPartiallyRefunded && !isVoided && (
+                          <View className="bg-orange-500/20 px-1.5 py-0.5 rounded mr-2">
+                            <Text className="text-[10px] font-bold text-orange-400">
+                              {item.refundedQuantity} REFUND
+                            </Text>
+                          </View>
+                        )}
+                        {isPaid && !isVoided && (
+                          <View className="bg-emerald-500/20 px-1.5 py-0.5 rounded mr-2">
+                            <Text className="text-[10px] font-bold text-emerald-400">
+                              PAID
+                            </Text>
+                          </View>
+                        )}
+                        {isPartialPaid && !isVoided && !hasRefundHistory && (
+                          <View className="bg-amber-500/20 px-1.5 py-0.5 rounded mr-2">
+                            <Text className="text-[10px] font-bold text-amber-400">
+                              {netCoveredQty}/{item.quantity}
+                            </Text>
+                          </View>
+                        )}
+                        <Text
+                          className={`text-sm font-medium ${
+                            isVoided
+                              ? "text-gray-500 line-through"
+                              : isFullyRefunded
+                              ? "text-gray-500 line-through"
+                              : isUnpaid
+                              ? "text-white font-bold"
+                              : "text-white"
+                          }`}
+                          numberOfLines={2}
+                        >
+                          {item.name}
+                        </Text>
+                      </View>
+                      {/* Modifiers */}
+                      {getModifiersDisplay(item)}
+                      {/* Notes */}
+                      {item.customizations.notes && (
+                        <Text className="text-xs text-gray-500 italic mt-1 ml-4">
+                          Note: {item.customizations.notes}
+                        </Text>
+                      )}
+                    </View>
+
+                    {/* Quantity & Price + Status Icon */}
+                    <View className="items-end flex-row">
+                      <View className="items-end mr-1">
+                        <Text
+                          className={`text-xs ${
+                            isVoided ? "text-gray-600" : "text-gray-400"
+                          }`}
+                        >
+                          {item.quantity}x
+                        </Text>
+                        <Text
+                          className={`text-sm font-semibold ${
+                            isVoided
+                              ? "text-gray-600 line-through"
+                              : isFullyRefunded
+                              ? "text-red-400 line-through"
+                              : "text-white"
+                          }`}
+                        >
+                          {isFullyRefunded && !isVoided ? '-' : ''}${((item.price || 0) * item.quantity)?.toFixed(2)}
+                        </Text>
+                      </View>
+                      {/* Status icon */}
+                      {isPaid && !isVoided && (
+                        <Check size={14} color="#22C55E" />
                       )}
                       {isFullyRefunded && !isVoided && (
-                        <View className="bg-red-500/20 px-1.5 py-0.5 rounded mr-2">
-                          <Text className="text-[10px] font-bold text-red-400">
-                            REFUNDED
-                          </Text>
-                        </View>
+                        <RotateCcw size={14} color="#EF4444" />
                       )}
                       {isPartiallyRefunded && !isVoided && (
-                        <View className="bg-orange-500/20 px-1.5 py-0.5 rounded mr-2">
-                          <Text className="text-[10px] font-bold text-orange-400">
-                            {item.refundedQuantity} REFUND
-                          </Text>
-                        </View>
+                        <RotateCcw size={12} color="#F97316" />
                       )}
-                      {isPaid && !isVoided && (
-                        <View className="bg-emerald-500/20 px-1.5 py-0.5 rounded mr-2">
-                          <Text className="text-[10px] font-bold text-emerald-400">
-                            PAID
-                          </Text>
-                        </View>
+                      {/* Expand/collapse chevron */}
+                      {isExpanded ? (
+                        <ChevronUp size={14} color="#6B7280" style={{ marginLeft: 2 }} />
+                      ) : (
+                        <ChevronDown size={14} color="#6B7280" style={{ marginLeft: 2 }} />
                       )}
-                      {isPartialPaid && !isVoided && !hasRefund && (
-                        <View className="bg-amber-500/20 px-1.5 py-0.5 rounded mr-2">
-                          <Text className="text-[10px] font-bold text-amber-400">
-                            {effectivePaidQty}/{item.quantity}
-                          </Text>
-                        </View>
-                      )}
-                      <Text
-                        className={`text-sm font-medium ${
-                          isVoided ? "text-gray-500 line-through" : "text-white"
-                        }`}
-                        numberOfLines={2}
-                      >
-                        {item.name}
-                      </Text>
                     </View>
-                    {/* Modifiers */}
-                    {getModifiersDisplay(item)}
-                    {/* Notes */}
-                    {item.customizations.notes && (
-                      <Text className="text-xs text-gray-500 italic mt-1 ml-4">
-                        Note: {item.customizations.notes}
-                      </Text>
-                    )}
                   </View>
 
-                  {/* Quantity & Price */}
-                  <View className="items-end">
-                    <Text
-                      className={`text-xs ${
-                        isVoided ? "text-gray-600" : "text-gray-400"
-                      }`}
-                    >
-                      {item.quantity}x
-                    </Text>
-                    <Text
-                      className={`text-sm font-semibold ${
-                        isVoided ? "text-gray-600 line-through" : "text-white"
-                      }`}
-                    >
-                      ${((item.price || 0) * item.quantity)?.toFixed(2)}
-                    </Text>
-                  </View>
+                  {/* Collapsible Timeline */}
+                  {isExpanded && timeline.length > 0 && (
+                    <View className="mt-2 ml-2" style={{ paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: '#374151' }}>
+                      {timeline.map((entry, tIdx) => {
+                        const dotColor = entry.type === 'paid'
+                          ? '#22C55E'
+                          : entry.type === 'refunded' || entry.type === 'voided'
+                          ? '#EF4444'
+                          : '#3B82F6';
+                        return (
+                          <View key={tIdx} className="flex-row items-start mb-1.5">
+                            <View
+                              style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: 4,
+                                backgroundColor: dotColor,
+                                marginTop: 3,
+                                marginLeft: -16,
+                              }}
+                            />
+                            <View className="ml-2 flex-1">
+                              <Text className="text-xs text-gray-300">{entry.label}</Text>
+                              {entry.timestamp && (
+                                <Text className="text-[10px] text-gray-500">
+                                  {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {isExpanded && timeline.length === 0 && (
+                    <View className="mt-2 ml-2">
+                      <Text className="text-[10px] text-gray-600 italic">No history available</Text>
+                    </View>
+                  )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
 
@@ -584,7 +745,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
       (r) => r.original_payment_id === paymentId && r.status === 'completed'
     );
   }, [order?.reversals]);
-  console.log("paymentSummary", paymentSummary);
+  console.log("paymentSummary", paymentSummary?.payments?.[0]?.itemsCovered);
   return (
     <View className="flex-[6] bg-[#161616]">
       <ScrollView
@@ -604,14 +765,18 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             />
             <SummaryCard
               amount={paymentSummary.refunds}
-              label="Refunds"
+              label={
+                ((order?.reversals as ReversalRecord[] || []).filter((r: ReversalRecord) => r.status === 'completed').length > 0)
+                  ? `Refunds (${(order?.reversals as ReversalRecord[] || []).filter((r: ReversalRecord) => r.status === 'completed').length})`
+                  : "Refunds"
+              }
               icon={<RefreshCcw size={14} color="#EF4444" />}
               isNegative
               accentColor="#EF4444"
             />
             <SummaryCard
-              amount={paymentSummary.collected}
-              label="Collected"
+              amount={paymentSummary.collected - paymentSummary.refunds}
+              label="Net Collected"
               icon={<CircleDollarSign size={16} color="#22C55E" />}
               accentColor="#22C55E"
             />
@@ -869,6 +1034,31 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       </Text>
                     </View>
                   ))}
+
+                  {/* Tip Adjustment Log */}
+                  {payment.tip_adjusted_at && (
+                    <View className="flex-row items-center py-2 pl-12 border-t border-gray-800/30">
+                      <View className="w-8 h-8 rounded-lg bg-blue-500/10 items-center justify-center mr-3">
+                        <CircleDollarSign size={14} color="#3B82F6" />
+                      </View>
+                      <View className="flex-1">
+                        <View className="flex-row items-center">
+                          <Text className="text-xs text-blue-400 font-medium">
+                            TIP ADJUSTED
+                          </Text>
+                          <Text className="text-xs text-gray-500 ml-2">
+                            • ${Number(payment.original_tip_amount || 0).toFixed(2)} → ${Number(payment.tipAmount).toFixed(2)}
+                          </Text>
+                        </View>
+                        <Text className="text-xs text-gray-500">
+                          {formatDistanceToNow(new Date(payment.tip_adjusted_at), { addSuffix: true })}
+                        </Text>
+                      </View>
+                      <Text className={`text-sm font-medium ${payment.tipAmount >= (payment.original_tip_amount || 0) ? 'text-blue-400' : 'text-red-400'}`}>
+                        {payment.tipAmount >= (payment.original_tip_amount || 0) ? '+' : '-'}${Math.abs(payment.tipAmount - (payment.original_tip_amount || 0)).toFixed(2)}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               );
             })
@@ -2500,7 +2690,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     if (!orderId) return null;
     return state.ordersById[orderId] || null;
   });
-
+  
   // Fallback to previousOrders for history orders
   const previousOrder = usePreviousOrdersStore((state) => {
     if (!orderId || activeOrder) return null;
@@ -2582,7 +2772,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     let totalRefunded = 0;
     let totalCollected = 0;
     const payments: PaymentRowData[] = [];
-    // console.log("order.payments", order.payments);
+    console.log("order.payments", order.payments?.[0]);
     if (order.payments && order.payments.length > 0) {
       order.payments.forEach((payment: OrderProfilePayment, index: number) => {
         const orderAmount = payment.amount || 0;
@@ -2646,6 +2836,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
             ? String(txDetails.referenceId)
             : undefined,
           refundedAmount: payment.refundedAmount || 0,
+          original_tip_amount: payment.original_tip_amount,
+          tip_adjusted_at: payment.tip_adjusted_at,
+          tip_adjusted_by: payment.tip_adjusted_by,
         });
       });
     }

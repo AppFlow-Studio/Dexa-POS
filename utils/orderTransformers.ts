@@ -377,6 +377,8 @@ function transformBroadcastPaymentToProfile(
     cashSavings,
     subtotal_portion: payment.subtotal_portion,
     tax_portion: payment.tax_portion,
+    discount_portion: payment.discount_portion ?? undefined,
+    voidedAt: payment.voided_at ?? undefined,
     splitInfo,
     itemsCovered,
     status,
@@ -396,13 +398,22 @@ function transformBroadcastPaymentToProfile(
     returnReferenceId: payment.return_reference_id ?? undefined,
     returnNumber: payment.return_number ?? undefined,
     returnReason: payment.return_reason ?? undefined,
-    transactionDetails: payment.payment_method === "card" ? {
+    transactionDetails: {
       terminalType: payment.terminal_type ?? undefined,
       authorizationCode: payment.authorization_code ?? payment.auth_code ?? undefined,
       cardType: payment.card_type ?? undefined,
       last4: payment.card_last_four ?? undefined,
       transactionId: payment.transaction_id ?? undefined,
-      dejavooTransaction: {
+      amountTendered: payment.amount_tendered ?? undefined,
+      changeGiven: payment.change_given > 0 ? payment.change_given : undefined,
+      isCashPriced: payment.is_cash_priced || undefined,
+      isCash: payment.payment_method === "cash",
+      rrn: payment.rrn ?? undefined,
+      batchNumber: payment.batch_number ?? payment.dejavoo_batch_number ?? undefined,
+      invoiceNumber: payment.dejavoo_invoice_number ?? undefined,
+      entryMode: payment.entry_mode ?? undefined,
+      referenceId: payment.reference_id ?? undefined,
+      dejavooTransaction: payment.payment_method === "card" ? {
         authCode: payment.auth_code ?? payment.authorization_code ?? undefined,
         batchNumber: payment.dejavoo_batch_number ?? payment.batch_number ?? undefined,
         invoiceNumber: payment.dejavoo_invoice_number ?? undefined,
@@ -413,8 +424,8 @@ function transformBroadcastPaymentToProfile(
         entryMode: payment.entry_mode ?? undefined,
         rrn: payment.rrn ?? undefined,
         resultCode: payment.result_code ?? undefined,
-      } as any,
-    } : undefined,
+      } as any : undefined,
+    },
     sync_status: "synced",
   };
 }
@@ -854,6 +865,8 @@ function normalizeFetchedPayment(
     status: normalizedStatus,
     subtotal_portion: payment.subtotal_portion ?? 0,
     tax_portion: payment.tax_portion ?? 0,
+    discount_portion: payment.discount_portion ?? 0,
+    voided_at: payment.voided_at ?? null,
     amount_tendered: payment.amount_tendered,
     change_given: payment.change_given ?? 0,
     is_cash_priced: payment.is_cash_priced ?? false,

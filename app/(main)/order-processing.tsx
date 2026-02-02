@@ -5,15 +5,18 @@ import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import OrderLineSection from "@/components/order/OrderLineSection";
 import {
-    Accordion,
-    AccordionContent,
-    AccordionItem,
-    AccordionTrigger,
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { OrderService } from "@/services/orderService";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, { useEffect, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
@@ -27,6 +30,8 @@ const OrderProcessing = () => {
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
+  const activeOrder = useOrderStore((s) => s.activeOrderId ? s.ordersById[s.activeOrderId] : null);
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
 
   // OPTIMIZED: Use shallow selector to filter orders inside the store selector.
   // This prevents the component from re-rendering unless the resulting list of filtered orders changes.
@@ -46,13 +51,16 @@ const OrderProcessing = () => {
           o.order_type !== "dine_in" &&
           // Condition 1: Any "preparing" order with items (Takeaway, Delivery only)
           ((o.order_status === "preparing" && o.items.length > 0) ||
-            // Condition 2: Unpaid orders that need payment
+            // Condition 2: Unpaid orders that need payment if not closed check
             ((o.paid_status === "Unpaid" ||
               o.paid_status === "Pending" ||
               o.paid_status === "Partial") &&
               o.order_status !== "completed" &&
               o.order_status !== "draft" &&
-              o.order_status !== "void")),
+              o.order_status !== "void")
+            && o.check_status !== "Closed"
+            ) 
+              ,
       );
 
       // 3. Return reversed list
@@ -146,7 +154,62 @@ const OrderProcessing = () => {
   };
 
   const { show } = useToast();
+  const { showLoading, hideLoading } = useLoading();
 
+  const handleCloseCheck = async () => {
+    if (!activeOrderId || !activeOrder) return;
+
+    // Validate order has backend ID
+    if (!activeOrder.db_order_id) {
+      show({
+        title: "Cannot Close Check",
+        message: "Order must be synced to close check",
+        type: "error",
+      });
+      return;
+    }
+
+    // Optimistic update — instant UI feedback
+    updateActiveOrderDetails({ check_status: "Closed" });
+    showLoading("Closing check...");
+
+    try {
+      const supabase = getOrderStoreSupabaseClient();
+      const { loggedInEmployee } = useEmployeeStore.getState();
+
+      if (!supabase) {
+        throw new Error("Database connection unavailable");
+      }
+
+      const result = await OrderService.closeCheck(
+        supabase,
+        activeOrder.db_order_id,
+        loggedInEmployee?.profileId || null,
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to close check");
+      }
+
+      hideLoading();
+      show({
+        title: "Check Closed",
+        message: "The check has been finalized. You can now clear the table.",
+        type: "success",
+      });
+    } catch (error: any) {
+      console.error("Failed to close check:", error);
+      // Rollback optimistic update
+      updateActiveOrderDetails({ check_status: "Opened" });
+      hideLoading();
+      show({
+        title: "Failed to Close Check",
+        message: error.message || "An error occurred",
+        type: "error",
+      });
+    }
+  };
+  
   // DEFERRED RENDERING: Wait for navigation transition to complete before rendering heavy components
   const [isReady, setIsReady] = useState(false);
   useEffect(() => {
@@ -250,6 +313,7 @@ const OrderProcessing = () => {
         discountSheetRef={
           discountSheetRef as React.RefObject<BottomSheetMethods>
         }
+        onCloseCheck={() => handleCloseCheck()}
       />
 
       <OrderLineItemsModal

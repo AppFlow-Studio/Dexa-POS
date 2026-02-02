@@ -52,8 +52,8 @@ const OrderLineSectionContent: React.FC = () => {
       // Show unpaid orders
       if (o.paid_status !== "Paid") return true;
       
-      // Show closed orders with outstanding balance (from refunds)
-      if (o.check_status === "Closed" && (o.amount_due ?? 0) > 0) return true;
+      // Dont Show Closed Orders 
+      // if (o.check_status === "Closed" && (o.amount_due ?? 0) > 0) return true;
       
       // Show fully refunded orders
       if (isOrderFullyRefunded(o)) return true;

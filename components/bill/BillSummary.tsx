@@ -68,11 +68,23 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
       <View className=" px-6 h-full">
         <View className="mb-1">
           <View className="flex-row items-center justify-between">
-            <Text className="text-gray-400 text-sm font-medium">
-              {activeOrder?.display_number ||
-                activeOrder?.order_number ||
-                "New Order"}
-            </Text>
+            <View className="flex-row items-center">
+              <Text className="text-gray-400 text-sm font-medium">
+                {activeOrder?.display_number ||
+                  activeOrder?.order_number ||
+                  "New Order"}
+              </Text>
+              {activeOrder?.paid_status === "Paid" && (
+                <View className="ml-2 bg-green-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-green-400 text-[10px] font-bold">PAID</Text>
+                </View>
+              )}
+              {activeOrder?.paid_status === "Partial" && (
+                <View className="ml-2 bg-yellow-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-yellow-400 text-[10px] font-bold">PARTIAL</Text>
+                </View>
+              )}
+            </View>
             <Text className="text-base text-blue-400 font-medium">
               {cart.length} {cart.length === 1 ? "Item" : "Items"}
             </Text>
