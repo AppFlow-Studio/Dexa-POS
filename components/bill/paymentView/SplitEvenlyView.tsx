@@ -1,4 +1,4 @@
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
   ArrowLeft,
@@ -13,19 +13,19 @@ import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const SplitEvenlyView = () => {
-  const { setView, splitEvenly, startSplitPaymentFlow, resetSplits } =
-    usePaymentStore();
-  const {
-    activeOrderOutstandingTotal,
-    activeOrderTotal,
-    activeOrderOutstandingCash,
-    activeOrderTotalCash,
-    // Tax breakdown for display
-    activeOrderOutstandingSubtotal,
-    activeOrderOutstandingTax,
-    activeOrderSubtotal,
-    activeOrderTax,
-  } = useOrderStore();
+  const setView = usePaymentStore((s) => s.setView);
+  const splitEvenly = usePaymentStore((s) => s.splitEvenly);
+  const startSplitPaymentFlow = usePaymentStore((s) => s.startSplitPaymentFlow);
+  const resetSplits = usePaymentStore((s) => s.resetSplits);
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
+  const activeOrderTotal = orderTotals?.total ?? 0;
+  const activeOrderOutstandingCash = orderTotals?.cashAmountDue ?? 0;
+  const activeOrderTotalCash = orderTotals?.cashTotal ?? 0;
+  const activeOrderOutstandingSubtotal = orderTotals?.outstandingSubtotal ?? 0;
+  const activeOrderOutstandingTax = orderTotals?.outstandingTax ?? 0;
+  const activeOrderSubtotal = orderTotals?.subtotal ?? 0;
+  const activeOrderTax = orderTotals?.tax ?? 0;
 
   const [numberOfPeople, setNumberOfPeople] = useState(2);
 

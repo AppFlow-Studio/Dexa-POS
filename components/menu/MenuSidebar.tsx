@@ -1,7 +1,7 @@
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router, usePathname } from "expo-router";
 import { ChevronRight, Plus } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 // Sidebar Tab Types
@@ -14,18 +14,16 @@ interface MenuSidebarProps {
   onTabChange?: (tab: SidebarTab) => void;
 }
 
-const MenuSidebar: React.FC<MenuSidebarProps> = ({
+const MenuSidebar = React.memo(({
   searchQuery: externalSearchQuery,
   onSearchChange,
   activeTab: externalActiveTab,
   onTabChange,
-}) => {
-  const {
-    menuItems,
-    categories: storeCategories,
-    menus: storeMenus,
-    modifierGroups,
-  } = useMenuStore();
+}: MenuSidebarProps) => {
+  const menuItems = useMenuStore((s) => s.menuItems);
+  const storeCategories = useMenuStore((s) => s.categories);
+  const storeMenus = useMenuStore((s) => s.menus);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const pathname = usePathname();
 
@@ -72,31 +70,29 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
   const activeTab =
     externalActiveTab !== undefined ? externalActiveTab : getActiveTab();
 
-  // Convert store menus to display format
-  const menus = storeMenus.map((storeMenu) => ({
-    ...storeMenu,
-    categories: (storeMenu.categories || []).map((categoryName) => {
-      const category = storeCategories.find((cat) => cat.name === categoryName);
-      return {
-        id: category?.id || `cat_${categoryName}`,
-        name: categoryName,
-        isActive: category?.isActive ?? true,
-        items: [],
-        schedules: [],
-        order: category?.order || 1,
-      };
-    }),
-    schedules: storeMenu.schedules || [],
-  }));
+  // Convert store menus to display format — categories are already full objects
+  const menus = useMemo(
+    () =>
+      storeMenus.map((storeMenu) => ({
+        ...storeMenu,
+        categories: storeMenu.categories || [],
+        schedules: storeMenu.schedules || [],
+      })),
+    [storeMenus]
+  );
 
   // Get unique categories from menu items
-  const categories = Array.from(
-    new Set(
-      menuItems.flatMap((item) =>
-        Array.isArray(item.category) ? item.category : [item.category]
-      )
-    )
-  ).sort();
+  const categories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          menuItems.flatMap((item) =>
+            Array.isArray(item.category) ? item.category : [item.category]
+          )
+        )
+      ).sort(),
+    [menuItems]
+  );
 
   const handleTabPress = (tab: SidebarTab) => {
     // If onTabChange is provided, use it (for main menu page)
@@ -250,6 +246,6 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
       </View>
     </View>
   );
-};
+});
 
 export default MenuSidebar;

@@ -73,13 +73,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   submitButtonLabel,
   onDelete,
 }) => {
-  const {
-    menuItems: allItems,
-    addCustomPricing,
-    updateCustomPricing,
-    deleteCustomPricing,
-    toggleCustomPricingActive,
-  } = useMenuStore();
+  const allItems = useMenuStore((s) => s.menuItems);
+  const addCustomPricing = useMenuStore((s) => s.addCustomPricing);
+  const updateCustomPricing = useMenuStore((s) => s.updateCustomPricing);
+  const deleteCustomPricing = useMenuStore((s) => s.deleteCustomPricing);
+  const toggleCustomPricingActive = useMenuStore((s) => s.toggleCustomPricingActive);
 
   const [name, setName] = useState(initialData?.name || "");
   const [isActive, setIsActive] = useState(initialData?.isActive ?? true);

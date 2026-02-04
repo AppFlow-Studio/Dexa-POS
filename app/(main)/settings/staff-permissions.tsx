@@ -28,14 +28,12 @@ const StaffPermissionsScreen = () => {
     setClockInSettings,
   } = useSettingsStore();
 
-  const {
-    isBreakAndSwitchEnabled,
-    setIsBreakAndSwitchEnabled,
-    ptoAccrualRate,
-    setPtoAccrualRate,
-    minimumPtoNoticeDays,
-    updateField,
-  } = useStoreSettingsStore();
+  const isBreakAndSwitchEnabled = useStoreSettingsStore((s) => s.isBreakAndSwitchEnabled);
+  const setIsBreakAndSwitchEnabled = useStoreSettingsStore((s) => s.setIsBreakAndSwitchEnabled);
+  const ptoAccrualRate = useStoreSettingsStore((s) => s.ptoAccrualRate);
+  const setPtoAccrualRate = useStoreSettingsStore((s) => s.setPtoAccrualRate);
+  const minimumPtoNoticeDays = useStoreSettingsStore((s) => s.minimumPtoNoticeDays);
+  const updateField = useStoreSettingsStore((s) => s.updateField);
 
   // Roles state (local for now)
   const [roles, setRoles] = useState<Role[]>([

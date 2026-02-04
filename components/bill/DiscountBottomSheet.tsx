@@ -35,14 +35,12 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   >("percentage");
   const [customDiscountValue, setCustomDiscountValue] = useState("");
 
-  const {
-    activeOrderId,
-    ordersById,
-    applyDiscountToCheck,
-    applyDiscountToItem,
-    removeDiscountFromItem,
-    removeCheckDiscount,
-  } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const applyDiscountToCheck = useOrderStore((s) => s.applyDiscountToCheck);
+  const applyDiscountToItem = useOrderStore((s) => s.applyDiscountToItem);
+  const removeDiscountFromItem = useOrderStore((s) => s.removeDiscountFromItem);
+  const removeCheckDiscount = useOrderStore((s) => s.removeCheckDiscount);
   const { show } = useToast();
 
   const { data: discounts = [] } = useDiscounts();

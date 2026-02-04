@@ -20,7 +20,7 @@ import React, {
     useState,
 } from "react";
 
-const DEBUG = true; // Set to true for terminal logs
+const DEBUG = __DEV__;
 
 export type CFDServerStatus =
   | "initializing" // Setting up, not ready yet
@@ -78,6 +78,9 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
   // Store settings
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const organizationLogoUrl = useStoreSettingsStore(
+    (s) => s.organizationLogoUrl
+  );
 
   // Order store selectors
   // Order store selectors - Individual selectors for stability
@@ -162,7 +165,7 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
       branding: {
         restaurantName: selectedStore.name,
         locationCode: selectedStore.code,
-        logoUrl: null,
+        logoUrl: organizationLogoUrl,
         primaryColor: "#10b981",
       },
       port: 8080,
@@ -215,7 +218,7 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     selectedStore?.id,
     selectedStore?.name,
     selectedStation?.station_name,
-    selectedStation?.station_name,
+    organizationLogoUrl,
   ]);
 
   // Fetch and Sync Carousel Images

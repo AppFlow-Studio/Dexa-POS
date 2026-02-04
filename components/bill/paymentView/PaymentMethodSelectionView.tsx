@@ -12,14 +12,12 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 type PaymentMethod = "Card Reader" | "Manual Key-in" | "Split" | "Cash";
 
 const PaymentMethodSelectionView: React.FC = () => {
-  const {
-    setView,
-    close,
-    markPaymentAsDirty,
-    activeSplitId,
-    splits,
-    splitSourceView,
-  } = usePaymentStore();
+  const setView = usePaymentStore((s) => s.setView);
+  const close = usePaymentStore((s) => s.close);
+  const markPaymentAsDirty = usePaymentStore((s) => s.markPaymentAsDirty);
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const splits = usePaymentStore((s) => s.splits);
+  const splitSourceView = usePaymentStore((s) => s.splitSourceView);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("Card Reader");
 
   // Determine if we are paying for a specific split

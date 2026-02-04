@@ -40,7 +40,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
   const { checkPtoConflict } = useScheduleStore();
   const { balances } = usePtoStore();
   const { show } = useToast();
-  const { minimumPtoNoticeDays } = useStoreSettingsStore();
+  const minimumPtoNoticeDays = useStoreSettingsStore((s) => s.minimumPtoNoticeDays);
 
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);

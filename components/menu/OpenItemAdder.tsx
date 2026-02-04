@@ -12,7 +12,9 @@ import {
 import { ScrollView } from "react-native-gesture-handler";
 
 const OpenItemAdder = () => {
-  const { activeOrderId, addItemToActiveOrder, orders } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
   const { show } = useToast();
 
   const [openItemName, setOpenItemName] = useState("");
@@ -98,7 +100,7 @@ const OpenItemAdder = () => {
     }
 
     // Check if the active order is closed
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     if (activeOrder?.order_status === "completed") {
       show({
         title: "Order Closed",

@@ -17,8 +17,9 @@ import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 const ItemCustomizationDialog: React.FC = () => {
   const { isOpen, mode, menuItem, cartItem, close } = useCustomizationStore();
-  const { addItemToActiveOrder, updateItemInActiveOrder, generateCartItemId } =
-    useOrderStore();
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+  const updateItemInActiveOrder = useOrderStore((s) => s.updateItemInActiveOrder);
+  const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
   const { show } = useToast();
 
   // Internal state for the form

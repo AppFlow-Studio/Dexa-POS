@@ -57,14 +57,13 @@ export interface ActiveOrderTotals {
  */
 export function useActiveOrderTotals(): ActiveOrderTotals | null {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
+  const activeOrder = useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+  );
   const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
 
   return useMemo(() => {
-    if (!activeOrderId) return null;
-
-    const activeOrder = ordersById[activeOrderId];
-    if (!activeOrder) return null;
+    if (!activeOrderId || !activeOrder) return null;
 
     const activeItems = activeOrder.items.filter((item) => !item.is_voided);
 
@@ -127,7 +126,7 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
     };
-  }, [activeOrderId, ordersById, taxRatesMap]);
+  }, [activeOrderId, activeOrder, taxRatesMap]);
 }
 
 /**
@@ -145,14 +144,11 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
 export function useOrderTotals(
   orderId: string | null,
 ): ActiveOrderTotals | null {
-  const ordersById = useOrderStore((s) => s.ordersById);
+  const order = useOrderStore((s) => orderId ? s.ordersById[orderId] : null);
   const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
 
   return useMemo(() => {
-    if (!orderId) return null;
-
-    const order = ordersById[orderId];
-    if (!order) return null;
+    if (!orderId || !order) return null;
 
     const activeItems = order.items.filter((item) => !item.is_voided);
 
@@ -208,7 +204,7 @@ export function useOrderTotals(
       cashSubtotal: totals.cash_subtotal,
       cashTotal: totals.cash_total_amount,
     };
-  }, [orderId, ordersById, taxRatesMap]);
+  }, [orderId, order, taxRatesMap]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

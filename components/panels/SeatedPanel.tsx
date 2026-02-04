@@ -18,8 +18,8 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 
 const SeatedPanel: React.FC = () => {
-  const { tables } = useFloorPlanStore();
-  const { orders } = useOrderStore();
+  const tables = useFloorPlanStore((s) => s.tables);
+  const ordersById = useOrderStore((s) => s.ordersById);
   const { activeEmployeeId } = useTimeclockStore();
   const { employees } = useEmployeeStore();
 
@@ -44,18 +44,27 @@ const SeatedPanel: React.FC = () => {
     Record<string, boolean>
   >({});
 
-  const toggleTableExpand = (tableId: string) => {
+  const toggleTableExpand = useCallback((tableId: string) => {
     setExpandedTableIds((prev) => ({ ...prev, [tableId]: !prev[tableId] }));
-  };
+  }, []);
+
+  // Pre-compute a lookup map from service_location_id to order for O(1) access
+  const ordersByLocationId = useMemo(() => {
+    const map: Record<string, (typeof ordersById)[string]> = {};
+    for (const order of Object.values(ordersById)) {
+      if (order.service_location_id && order.order_status !== "void") {
+        map[order.service_location_id] = order;
+      }
+    }
+    return map;
+  }, [ordersById]);
 
   const getTableOrderData = useCallback(
     (tableId: string) => {
       // Logic mirrors useTableData but simplified for sorting
       // Check if table is merged
       // We rely on service_location_id matching tableId for primary.
-      const order = orders.find(
-        (o) => o.service_location_id === tableId && o.order_status !== "void"
-      );
+      const order = ordersByLocationId[tableId];
 
       // If table is part of merge group, we might want aggregate.
       // But for sorting, primary order data is okay approximation.
@@ -71,7 +80,7 @@ const SeatedPanel: React.FC = () => {
           ) || 0,
       };
     },
-    [orders]
+    [ordersByLocationId]
   );
 
   const sortedSeatedTables = useMemo(() => {
@@ -118,7 +127,7 @@ const SeatedPanel: React.FC = () => {
   const serversWithTables = useMemo(() => {
     const serverTableMap: Record<string, FloorPlanObject[]> = {};
     sortedSeatedTables.forEach((table) => {
-      const order = orders.find((o) => o.service_location_id === table.id);
+      const order = ordersByLocationId[table.id];
       const serverName = order?.server_name || "Unassigned";
       if (!serverTableMap[serverName]) {
         serverTableMap[serverName] = [];
@@ -126,7 +135,7 @@ const SeatedPanel: React.FC = () => {
       serverTableMap[serverName].push(table);
     });
     return serverTableMap;
-  }, [sortedSeatedTables, orders]);
+  }, [sortedSeatedTables, ordersByLocationId]);
 
   const filteredSeatedTables = useMemo(() => {
     if (activeFilter === "All") {
@@ -136,16 +145,14 @@ const SeatedPanel: React.FC = () => {
       const currentUser = employees.find((e) => e.id === activeEmployeeId);
       if (!currentUser) return [];
 
-      const myOrders = orders.filter(
-        (o) => o.server_name === currentUser.fullName
-      );
-      const myTableIds = new Set(myOrders.map((o) => o.service_location_id));
-      // This strict check assumes order.service_location_id is the table ID (it is).
-      // Merged tables: secondary IDs might not have orders directly, but we only list PRIMARY tables or tables with orders here usually.
-      return sortedSeatedTables.filter((t) => myTableIds.has(t.id));
+      // Use the pre-computed lookup map instead of scanning all orders
+      return sortedSeatedTables.filter((t) => {
+        const order = ordersByLocationId[t.id];
+        return order?.server_name === currentUser.fullName;
+      });
     }
     return [];
-  }, [activeFilter, sortedSeatedTables, orders, activeEmployeeId, employees]);
+  }, [activeFilter, sortedSeatedTables, ordersByLocationId, activeEmployeeId, employees]);
 
   const toggleServerSection = (serverName: string) => {
     setExpandedServers((prev) => ({

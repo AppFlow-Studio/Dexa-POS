@@ -53,8 +53,9 @@ export const formatAddress = (address: string | null | undefined) => {
 const CustomerSheet: React.FC = () => {
   const sheetRef = useRef<BottomSheet>(null);
   const { isOpen, closeSheet } = useCustomerSheetStore();
-  const { activeOrderId, updateActiveOrderDetails, ordersById } =
-    useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const ordersById = useOrderStore((s) => s.ordersById);
   const order = ordersById[activeOrderId ?? ""];
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { show } = useToast();

@@ -7,7 +7,7 @@ import {
   useRouter,
 } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { NetworkStatusBadge } from "./NetworkStatusBadge";
 import SessionDock from "./SessionDock";
@@ -15,7 +15,7 @@ import SessionDock from "./SessionDock";
 const Header = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const { tables, tablesById } = useFloorPlanStore();
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
   const globalParams = useGlobalSearchParams();
 
   const showBackButton =
@@ -120,9 +120,9 @@ const Header = () => {
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
     return title;
-  }, [pathname, tables]);
+  }, [pathname, tablesById]);
 
-  const handleBackPress = () => {
+  const handleBackPress = useCallback(() => {
     // Check for explicit returnTo parameter first
     if (globalParams.returnTo && typeof globalParams.returnTo === "string") {
       router.push(globalParams.returnTo as Href);
@@ -177,7 +177,7 @@ const Header = () => {
     }
 
     router.back();
-  };
+  }, [globalParams.returnTo, cancelAndRemoveDraft, closeModifierSidebar, pathname, router]);
 
   return (
     <View className="flex-row justify-between items-center h-14">
@@ -212,4 +212,4 @@ const Header = () => {
   );
 };
 
-export default Header;
+export default React.memo(Header);

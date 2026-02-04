@@ -28,7 +28,7 @@ function Accordion({
         {...(props as AccordionPrimitive.RootProps)}
         asChild={Platform.OS !== "web"}
       >
-        <Animated.View layout={LinearTransition.duration(200)}>
+        <Animated.View layout={LinearTransition.duration(50)}>
           {children}
         </Animated.View>
       </AccordionPrimitive.Root>

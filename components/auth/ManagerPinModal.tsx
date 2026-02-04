@@ -16,7 +16,8 @@ import PinNumpad from "./PinNumpad";
 const ManagerPinModal = () => {
   const { isPinModalOpen, closePinModal, actionToPerform } =
     usePinOverrideStore();
-  const { addTemporaryMenuAccess, addTemporaryCategoryAccess } = useMenuStore();
+  const addTemporaryMenuAccess = useMenuStore((s) => s.addTemporaryMenuAccess);
+  const addTemporaryCategoryAccess = useMenuStore((s) => s.addTemporaryCategoryAccess);
   const { show } = useToast(); // Initialize useToast
   const [currentPin, setCurrentPin] = useState("");
 

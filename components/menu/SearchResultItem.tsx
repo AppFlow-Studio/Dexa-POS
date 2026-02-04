@@ -25,7 +25,8 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
 }) => {
   const openDialog = useCustomizationStore((state) => state.openToAdd);
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
-  const { activeOrderId, ordersById } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
   const { openFullscreen } = useModifierSidebarStore();
   const { show } = useToast();
 

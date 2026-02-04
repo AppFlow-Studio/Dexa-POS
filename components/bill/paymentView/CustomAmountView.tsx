@@ -1,4 +1,4 @@
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
   ArrowLeft,
@@ -20,15 +20,15 @@ import {
 } from "react-native";
 
 const CustomAmountView = () => {
-  const {
-    splits,
-    updateSplitAmount,
-    setView,
-    addSplit,
-    removeSplit,
-    startSplitPaymentFlow,
-  } = usePaymentStore();
-  const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
+  const splits = usePaymentStore((s) => s.splits);
+  const updateSplitAmount = usePaymentStore((s) => s.updateSplitAmount);
+  const setView = usePaymentStore((s) => s.setView);
+  const addSplit = usePaymentStore((s) => s.addSplit);
+  const removeSplit = usePaymentStore((s) => s.removeSplit);
+  const startSplitPaymentFlow = usePaymentStore((s) => s.startSplitPaymentFlow);
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
+  const activeOrderTotal = orderTotals?.total ?? 0;
 
   // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
   const effectiveTotal =

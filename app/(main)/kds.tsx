@@ -27,6 +27,7 @@ import React, {
 import {
     Animated,
     FlatList,
+    InteractionManager,
     ScrollView,
     Text,
     TouchableOpacity,
@@ -598,6 +599,16 @@ const KDSOrderCard = React.memo<KDSOrderCardProps>(
   },
 );
 
+// Module-level constants
+const INACTIVE_STATUSES = new Set([
+  "completed", "cancelled", "void", "voided", "refunded",
+]);
+
+// Hoisted icon constants — referentially stable across renders
+const PENDING_ICON = <Inbox size={18} color="#60a5fa" />;
+const COOKING_ICON = <Flame size={18} color="#fb923c" />;
+const READY_ICON = <Check size={18} color="#4ade80" />;
+
 // Column Component
 const MIN_CARD_HEIGHT = 140;
 const MAX_VISIBLE_ROWS = 4;
@@ -611,6 +622,7 @@ interface KDSColumnProps {
   cards: KDSCardData[];
   emptyMessage: string;
   isFocused: boolean;
+  isHidden: boolean;
   isLoading?: boolean;
   onHeaderPress: () => void;
   onStartCooking: (orderId: string, itemIds: string[]) => void;
@@ -618,7 +630,7 @@ interface KDSColumnProps {
   onMarkServed: (orderId: string, itemIds: string[]) => void;
 }
 
-const KDSColumn: React.FC<KDSColumnProps> = ({
+const KDSColumn: React.FC<KDSColumnProps> = React.memo(({
   title,
   count,
   icon,
@@ -627,6 +639,7 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
   cards,
   emptyMessage,
   isFocused,
+  isHidden,
   isLoading,
   onHeaderPress,
   onStartCooking,
@@ -635,47 +648,57 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
 }) => {
   const [containerHeight, setContainerHeight] = useState(0);
 
-  // Calculate card height based on number of cards and available space
-  const getCardStyle = () => {
+  // Dimension-aware card sizing
+  const cardStyle = useMemo(() => {
     if (cards.length === 0 || containerHeight === 0) return {};
-
     const availableHeight = containerHeight - 20; // Account for padding
 
-    if (cards.length < MAX_VISIBLE_ROWS) {
-      // Stretch cards to fill available space
-      const cardHeight = Math.max(
-        availableHeight / cards.length,
-        MIN_CARD_HEIGHT,
-      );
-      return { height: cardHeight };
-    } else {
-      // Fixed height when 4+ cards, allow scrolling
-      const cardHeight = Math.max(
-        availableHeight / MAX_VISIBLE_ROWS,
-        MIN_CARD_HEIGHT,
-      );
-      return { height: cardHeight };
+    if (isFocused) {
+      // In focused 4-grid mode, let cards fill rows naturally
+      // On 16.5" displays (~1200px height), target ~3 visible rows
+      const GRID_COLS = 4;
+      const targetRows = Math.min(Math.ceil(cards.length / GRID_COLS), 3);
+      const rowHeight = Math.max(availableHeight / targetRows, MIN_CARD_HEIGHT);
+      return { height: rowHeight };
     }
-  };
+
+    // Unfocused column mode — existing logic
+    const visibleRows = Math.min(cards.length, MAX_VISIBLE_ROWS);
+    const cardHeight = Math.max(availableHeight / visibleRows, MIN_CARD_HEIGHT);
+    return { height: cardHeight };
+  }, [cards.length, containerHeight, isFocused]);
+
+  // Stabilize action handlers to prevent re-renders
+  const handleStartCooking = useCallback((orderId: string, itemIds: string[]) => {
+    onStartCooking(orderId, itemIds);
+  }, [onStartCooking]);
+
+  const handleMarkReady = useCallback((orderId: string, itemIds: string[]) => {
+    onMarkReady(orderId, itemIds);
+  }, [onMarkReady]);
+
+  const handleMarkServed = useCallback((orderId: string, itemIds: string[]) => {
+    onMarkServed(orderId, itemIds);
+  }, [onMarkServed]);
 
   const renderCard = (card: KDSCardData) => (
     <KDSOrderCard
       key={card.id}
       data={card}
       onStartCooking={() =>
-        onStartCooking(
+        handleStartCooking(
           card.order.id,
           card.items.map((i) => i.id),
         )
       }
       onMarkReady={() =>
-        onMarkReady(
+        handleMarkReady(
           card.order.id,
           card.items.map((i) => i.id),
         )
       }
       onMarkServed={() =>
-        onMarkServed(
+        handleMarkServed(
           card.order.id,
           card.items.map((i) => i.id),
         )
@@ -683,13 +706,26 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
     />
   );
 
+  const renderItem = useCallback(({ item }: { item: KDSCardData }) => (
+    <View style={[{ flex: 1, marginBottom: 8, maxWidth: '25%' }, cardStyle]}>
+      <KDSOrderCard
+        key={item.id}
+        data={item}
+        onStartCooking={() => handleStartCooking(item.order.id, item.items.map(i => i.id))}
+        onMarkReady={() => handleMarkReady(item.order.id, item.items.map(i => i.id))}
+        onMarkServed={() => handleMarkServed(item.order.id, item.items.map(i => i.id))}
+      />
+    </View>
+  ), [handleStartCooking, handleMarkReady, handleMarkServed, cardStyle]);
+
   return (
     <View
       style={{
-        flex: 1,
+        flex: isHidden ? 0 : 1,
+        display: isHidden ? 'none' : 'flex',
         backgroundColor,
         borderRadius: 8,
-        margin: 4,
+        margin: isHidden ? 0 : 4,
         overflow: "hidden",
       }}
     >
@@ -750,23 +786,30 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
   function isActiveContent() {
     return isFocused ? (
       // Focused mode: 4-column grid using FlatList
-      <FlatList
-        data={cards}
-        keyExtractor={(item) => item.id}
-        numColumns={4}
-        contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
-        columnWrapperStyle={{ gap: 8 }}
-        renderItem={({ item }) => (
-          <View style={{ flex: 1, marginBottom: 8 }}>{renderCard(item)}</View>
-        )}
-        ListEmptyComponent={
-          <View className="flex-1 items-center justify-center py-8">
-            <Text className="text-gray-500 text-sm text-center">
-              {emptyMessage}
-            </Text>
-          </View>
-        }
-      />
+      <View
+        style={{ flex: 1 }}
+        onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
+      >
+        <FlatList
+          data={cards}
+          keyExtractor={(item) => item.id}
+          numColumns={4}
+          contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
+          columnWrapperStyle={{ gap: 8 }}
+          renderItem={renderItem}
+          initialNumToRender={16}
+          maxToRenderPerBatch={12}
+          windowSize={3}
+          removeClippedSubviews={true}
+          ListEmptyComponent={
+            <View className="flex-1 items-center justify-center py-8">
+              <Text className="text-gray-500 text-sm text-center">
+                {emptyMessage}
+              </Text>
+            </View>
+          }
+        />
+      </View>
     ) : (
       // Unfocused mode: Simple scrollable list
       <ScrollView
@@ -781,12 +824,12 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
             </Text>
           </View>
         ) : (
-          cards.map((card) => <View key={card.id}>{renderCard(card)}</View>)
+          cards.map((card) => <View key={card.id} style={cardStyle}>{renderCard(card)}</View>)
         )}
       </ScrollView>
     );
   }
-};
+});
 
 const KitchenDisplayScreen = () => {
   // OPTIMIZED: Granular selectors to prevent unnecessary re-renders
@@ -799,7 +842,7 @@ const KitchenDisplayScreen = () => {
     (s) => s.markCourseItemsAsServed,
   );
 
-  const { tables } = useFloorPlanStore();
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
   const { getItemCourse, loadFromServer, byOrderId } = useCoursingStore();
   const [refreshing, setRefreshing] = useState(false);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
@@ -807,29 +850,38 @@ const KitchenDisplayScreen = () => {
   // DEFERRED LOADING STATE
   const [isReady, setIsReady] = useState(false);
 
-  // Trigger deferred loading - 500ms to show skeleton visibly
+  // Trigger deferred loading after navigation animation completes
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
       setIsReady(true);
-    }, 500); // Allow navigation to complete and show skeletons
-    return () => clearTimeout(timer);
+    });
+    return () => handle.cancel();
   }, []);
 
-  // Load coursing data for all active orders
+  // Track which order IDs have already been loaded to avoid redundant fetches
+  const loadedOrderIds = useRef(new Set<string>());
+
+  // Load coursing data for all active orders (with smart caching)
   useEffect(() => {
-    Object.values(ordersById).forEach((order: OrderProfile) => {
-      loadFromServer(order.db_order_id || order.id || "");
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      Object.values(ordersById).forEach((order: OrderProfile) => {
+        const key = order.db_order_id || order.id || "";
+        if (key && !loadedOrderIds.current.has(key)) {
+          loadedOrderIds.current.add(key);
+          loadFromServer(key);
+        }
+      });
     });
+    return () => interaction.cancel();
   }, [ordersById, loadFromServer]);
 
-  // Helper to look up table name from service_location_id
+  // Helper to look up table name from service_location_id (O(1) lookup)
   const getTableName = useCallback(
     (serviceLocationId: string | null) => {
       if (!serviceLocationId) return null;
-      const table = tables.find((t) => t.id === serviceLocationId);
-      return table?.name || null;
+      return tablesById[serviceLocationId]?.name || null;
     },
-    [tables],
+    [tablesById],
   );
 
   // Transform orders to cards grouped by status
@@ -850,14 +902,7 @@ const KitchenDisplayScreen = () => {
     Object.values(ordersById).forEach((order: OrderProfile) => {
       // FILTER 1: Exclude orders with inactive statuses
       // These should NEVER appear in KDS regardless of item status
-      const inactiveStatuses = [
-        "completed",
-        "cancelled",
-        "void",
-        "voided",
-        "refunded",
-      ];
-      if (inactiveStatuses.includes(order.order_status)) {
+      if (INACTIVE_STATUSES.has(order.order_status)) {
         return; // Skip this order
       }
 
@@ -975,6 +1020,45 @@ const KitchenDisplayScreen = () => {
     [markCourseItemsAsServed],
   );
 
+  // Memoized header press handlers — stable forever (functional setter, no deps)
+  const handlePendingHeaderPress = useCallback(() => {
+    setFocusedColumn((prev) => (prev === "PENDING" ? null : "PENDING"));
+  }, []);
+
+  const handleCookingHeaderPress = useCallback(() => {
+    setFocusedColumn((prev) => (prev === "COOKING" ? null : "COOKING"));
+  }, []);
+
+  const handleReadyHeaderPress = useCallback(() => {
+    setFocusedColumn((prev) => (prev === "READY" ? null : "READY"));
+  }, []);
+
+  // Auto-fire: Pending → Cooking timer
+  const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
+  const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
+
+  useEffect(() => {
+    if (!kdsAutoFireEnabled || !isReady) return;
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const delayMs = kdsAutoFireDelayMinutes * 60 * 1000;
+
+      pendingCards.forEach((card) => {
+        if (!card.startTime) return;
+        const elapsed = now - new Date(card.startTime).getTime();
+        if (elapsed >= delayMs) {
+          markCourseItemsAsCooking(
+            card.order.id,
+            card.items.map((i) => i.id),
+          );
+        }
+      });
+    }, 15_000); // Check every 15 seconds
+
+    return () => clearInterval(intervalId);
+  }, [kdsAutoFireEnabled, kdsAutoFireDelayMinutes, pendingCards, isReady, markCourseItemsAsCooking]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -1034,103 +1118,54 @@ const KitchenDisplayScreen = () => {
 
       {/* Columns */}
       <View style={{ flex: 1, flexDirection: "row", padding: 4 }}>
-        {focusedColumn === "PENDING" ? (
-          <KDSColumn
-            title="PENDING"
-            count={counts.pending}
-            icon={<Inbox size={18} color="#60a5fa" />}
-            backgroundColor="#1a1f2e"
-            headerColor="#1e40af"
-            cards={pendingCards}
-            emptyMessage="No pending orders"
-            isFocused={true}
-            isLoading={!isReady}
-            onHeaderPress={() => setFocusedColumn(null)}
-            onStartCooking={handleStartCooking}
-            onMarkReady={handleMarkReady}
-            onMarkServed={handleMarkServed}
-          />
-        ) : focusedColumn === "COOKING" ? (
-          <KDSColumn
-            title="COOKING"
-            count={counts.cooking}
-            icon={<Flame size={18} color="#fb923c" />}
-            backgroundColor="#1f1a18"
-            headerColor="#c2410c"
-            cards={cookingCards}
-            emptyMessage="No orders cooking"
-            isFocused={true}
-            isLoading={!isReady}
-            onHeaderPress={() => setFocusedColumn(null)}
-            onStartCooking={handleStartCooking}
-            onMarkReady={handleMarkReady}
-            onMarkServed={handleMarkServed}
-          />
-        ) : focusedColumn === "READY" ? (
-          <KDSColumn
-            title="READY"
-            count={counts.ready}
-            icon={<Check size={18} color="#4ade80" />}
-            backgroundColor="#1a1f1a"
-            headerColor="#15803d"
-            cards={readyCards}
-            emptyMessage="No orders ready"
-            isFocused={true}
-            isLoading={!isReady}
-            onHeaderPress={() => setFocusedColumn(null)}
-            onStartCooking={handleStartCooking}
-            onMarkReady={handleMarkReady}
-            onMarkServed={handleMarkServed}
-          />
-        ) : (
-          <>
-            <KDSColumn
-              title="PENDING"
-              count={counts.pending}
-              icon={<Inbox size={18} color="#60a5fa" />}
-              backgroundColor="#1a1f2e"
-              headerColor="#1e40af"
-              cards={pendingCards}
-              emptyMessage="No pending orders"
-              isFocused={false}
-              isLoading={!isReady}
-              onHeaderPress={() => setFocusedColumn("PENDING")}
-              onStartCooking={handleStartCooking}
-              onMarkReady={handleMarkReady}
-              onMarkServed={handleMarkServed}
-            />
-            <KDSColumn
-              title="COOKING"
-              count={counts.cooking}
-              icon={<Flame size={18} color="#fb923c" />}
-              backgroundColor="#1f1a18"
-              headerColor="#c2410c"
-              cards={cookingCards}
-              emptyMessage="No orders cooking"
-              isFocused={false}
-              isLoading={!isReady}
-              onHeaderPress={() => setFocusedColumn("COOKING")}
-              onStartCooking={handleStartCooking}
-              onMarkReady={handleMarkReady}
-              onMarkServed={handleMarkServed}
-            />
-            <KDSColumn
-              title="READY"
-              count={counts.ready}
-              icon={<Check size={18} color="#4ade80" />}
-              backgroundColor="#1a1f1a"
-              headerColor="#15803d"
-              cards={readyCards}
-              emptyMessage="No orders ready"
-              isFocused={false}
-              isLoading={!isReady}
-              onHeaderPress={() => setFocusedColumn("READY")}
-              onStartCooking={handleStartCooking}
-              onMarkReady={handleMarkReady}
-              onMarkServed={handleMarkServed}
-            />
-          </>
-        )}
+        <KDSColumn
+          title="PENDING"
+          count={counts.pending}
+          icon={PENDING_ICON}
+          backgroundColor="#1a1f2e"
+          headerColor="#1e40af"
+          cards={pendingCards}
+          emptyMessage="No pending orders"
+          isFocused={focusedColumn === "PENDING"}
+          isHidden={focusedColumn !== null && focusedColumn !== "PENDING"}
+          isLoading={!isReady}
+          onHeaderPress={handlePendingHeaderPress}
+          onStartCooking={handleStartCooking}
+          onMarkReady={handleMarkReady}
+          onMarkServed={handleMarkServed}
+        />
+        <KDSColumn
+          title="COOKING"
+          count={counts.cooking}
+          icon={COOKING_ICON}
+          backgroundColor="#1f1a18"
+          headerColor="#c2410c"
+          cards={cookingCards}
+          emptyMessage="No orders cooking"
+          isFocused={focusedColumn === "COOKING"}
+          isHidden={focusedColumn !== null && focusedColumn !== "COOKING"}
+          isLoading={!isReady}
+          onHeaderPress={handleCookingHeaderPress}
+          onStartCooking={handleStartCooking}
+          onMarkReady={handleMarkReady}
+          onMarkServed={handleMarkServed}
+        />
+        <KDSColumn
+          title="READY"
+          count={counts.ready}
+          icon={READY_ICON}
+          backgroundColor="#1a1f1a"
+          headerColor="#15803d"
+          cards={readyCards}
+          emptyMessage="No orders ready"
+          isFocused={focusedColumn === "READY"}
+          isHidden={focusedColumn !== null && focusedColumn !== "READY"}
+          isLoading={!isReady}
+          onHeaderPress={handleReadyHeaderPress}
+          onStartCooking={handleStartCooking}
+          onMarkReady={handleMarkReady}
+          onMarkServed={handleMarkServed}
+        />
       </View>
     </View>
   );

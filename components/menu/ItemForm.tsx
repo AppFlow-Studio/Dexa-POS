@@ -70,7 +70,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
   title,
   submitButtonLabel,
 }) => {
-  const { categories, modifierGroups } = useMenuStore();
+  const categories = useMenuStore((s) => s.categories);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const { show } = useToast();
 
   const [formData, setFormData] = useState<MenuItemFormData>({
@@ -480,7 +481,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
   };
 
   // Get current store's location ID
-  const { selectedStore } = useStoreSettingsStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const currentLocationId = selectedStore?.id;
 
   // Filter to only show LOCAL categories (location_id matches current store)

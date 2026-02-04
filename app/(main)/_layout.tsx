@@ -24,7 +24,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 export default function MainLayout() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { selectedStore } = useStoreSettingsStore()
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore)
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentBottomSheetRef = useRef<BottomSheetMethods>(null);
@@ -37,14 +37,16 @@ export default function MainLayout() {
 
   // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
   useEffect(() => {
-    const orderStore = useOrderStore.getState();
-    console.log('🔧 [MainLayout Init] Station context:', {
-      hasStation: !!orderStore.currentStation,
-      stationId: orderStore.currentStationId,
-      viewScope: orderStore.currentStation?.view_scope,
-      stationName: orderStore.currentStation?.station_name,
-      timestamp: new Date().toISOString(),
-    });
+    if (__DEV__) {
+      const orderStore = useOrderStore.getState();
+      console.log('🔧 [MainLayout Init] Station context:', {
+        hasStation: !!orderStore.currentStation,
+        stationId: orderStore.currentStationId,
+        viewScope: orderStore.currentStation?.view_scope,
+        stationName: orderStore.currentStation?.station_name,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -69,28 +71,32 @@ export default function MainLayout() {
     // Backend sends OrderBroadcastPayload with full order data
     const broadcastPayload = payload as unknown as OrderBroadcastPayload;
 
-    // DEBUG: Log received broadcast
-    console.log('🔔 [MainLayout] Broadcast received:', {
-      operation: broadcastPayload.operation,
-      orderId: broadcastPayload.data?.order?.id,
-      orderNumber: broadcastPayload.data?.order?.order_number,
-      stationId: broadcastPayload.data?.order?.station_id,
-      stationName: broadcastPayload.data?.order?.station_name,
-    });
+    if (__DEV__) {
+      // DEBUG: Log received broadcast
+      console.log('🔔 [MainLayout] Broadcast received:', {
+        operation: broadcastPayload.operation,
+        orderId: broadcastPayload.data?.order?.id,
+        orderNumber: broadcastPayload.data?.order?.order_number,
+        stationId: broadcastPayload.data?.order?.station_id,
+        stationName: broadcastPayload.data?.order?.station_name,
+      });
 
-    // DEBUG: Log current station context
-    const orderStore = useOrderStore.getState();
-    console.log('📍 [MainLayout] Current station context:', {
-      currentStationId: orderStore.currentStationId,
-      stationName: orderStore.currentStation?.station_name,
-      viewScope: orderStore.currentStation?.view_scope,
-    });
+      // DEBUG: Log current station context
+      const orderStore = useOrderStore.getState();
+      console.log('📍 [MainLayout] Current station context:', {
+        currentStationId: orderStore.currentStationId,
+        stationName: orderStore.currentStation?.station_name,
+        viewScope: orderStore.currentStation?.view_scope,
+      });
+    }
 
-    orderStore._handleOrderBroadcast(broadcastPayload);
+    useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
   }, []);
 
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {
-    console.log('[MainLayout] Payment changed:', payload);
+    if (__DEV__) {
+      console.log('[MainLayout] Payment changed:', payload);
+    }
     // Payment changes are handled through order updates
     // The order store will receive an ORDER_UPDATE event with updated amount_paid
   }, []);

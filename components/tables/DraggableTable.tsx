@@ -65,9 +65,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   onPress,
   index = 0,
 }) => {
-  const { tables, tablesById, updateTablePosition, removeTable, saveSnapshot } =
-    useFloorPlanStore();
-  const { orders, ordersById } = useOrderStore();
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
+  const updateTablePosition = useFloorPlanStore((s) => s.updateTablePosition);
+  const removeTable = useFloorPlanStore((s) => s.removeTable);
+  const saveSnapshot = useFloorPlanStore((s) => s.saveSnapshot);
+  const ordersById = useOrderStore((s) => s.ordersById);
   const { defaultSittingTimeMinutes } = useSettingsStore();
 
   const [duration, setDuration] = useState("");
@@ -79,9 +81,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     TABLE_SHAPES["square-4"];
   const TableComponent = shapeDef?.component;
 
-  const activeOrderForThisTable = orders.find(
-    (o) => o.service_location_id === table.id && o.order_status !== "void",
-  );
+  const activeOrderForThisTable = useMemo(() =>
+    Object.values(ordersById).find(
+      (o) => o.service_location_id === table.id && o.order_status !== "void",
+    ), [ordersById, table.id]);
   // console.log('[DraggableTable] activeOrderForThisTable', activeOrderForThisTable)
 
   const orderForThisGroup = useMemo(() => {

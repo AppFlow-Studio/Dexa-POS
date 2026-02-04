@@ -1,7 +1,7 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { LinearGradient } from "expo-linear-gradient";
-import { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import ReadOnlyBillItem from "./ReadOnlyBillItem";
 
 // FIX: Update props to accept a specific orderId
@@ -67,9 +67,9 @@ const OrderLineItemsView = ({
 
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
-  const handleToggleExpand = (itemId: string) => {
-    setExpandedItemId(expandedItemId === itemId ? null : itemId);
-  };
+  const handleToggleExpand = useCallback((itemId: string) => {
+    setExpandedItemId((prev) => (prev === itemId ? null : itemId));
+  }, []);
 
   // Helper for status badge styling
   const getStatusBadgeStyle = (status: string) => {
@@ -174,20 +174,20 @@ const OrderLineItemsView = ({
         <Text className="text-sm text-gray-500 uppercase mb-2 font-medium">
           Order Items
         </Text>
-        <ScrollView
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
           className="max-h-[300px]"
-          contentContainerClassName="gap-y-2"
+          contentContainerStyle={{ gap: 8 }}
           showsVerticalScrollIndicator={false}
-        >
-          {items.map((item) => (
+          renderItem={({ item }) => (
             <ReadOnlyBillItem
-              key={item.id}
               item={item}
               expandedItemId={expandedItemId}
               onToggleExpand={handleToggleExpand}
             />
-          ))}
-        </ScrollView>
+          )}
+        />
 
         {/* Pricing Breakdown Section */}
         <View className="border-t border-dashed border-[#444] pt-4 mt-4 gap-y-2">

@@ -4,7 +4,6 @@ import PriceEditBottomSheet, {
   PriceEditBottomSheetRef,
 } from "@/components/menu/PriceEditBottomSheet";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -26,8 +25,8 @@ import {
   Trash2,
   Utensils,
 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { FlatList, Image, Text, TouchableOpacity, View } from "react-native";
 import {
   Gesture,
   GestureDetector,
@@ -173,7 +172,7 @@ const formatTimeDisplay = (timeStr: string) => {
   return timeStr;
 };
 
-const DraggableMenu: React.FC<DraggableMenuProps> = ({
+const DraggableMenu = React.memo(({
   menu,
   index,
   onReorder,
@@ -186,7 +185,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
   onItemPriceEdit,
   isEditable,
   onReorderItems,
-}) => {
+}: DraggableMenuProps) => {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const isDragging = useSharedValue(false);
@@ -320,7 +319,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
       </View>
     </Animated.View>
   );
-};
+});
 
 interface DraggableMenuCategoryProps {
   category: any;
@@ -342,7 +341,7 @@ interface DraggableMenuCategoryProps {
   isEditable: boolean;
 }
 
-const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
+const DraggableMenuCategory = React.memo(({
   category,
   menuId,
   index,
@@ -352,7 +351,7 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
   onItemPriceEdit,
   isEditable,
   onReorderItems,
-}) => {
+}: DraggableMenuCategoryProps) => {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const isDragging = useSharedValue(false);
@@ -478,31 +477,28 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
       )}
     </Animated.View>
   );
-};
+});
 
 const MenuPage: React.FC = () => {
-  const {
-    menuItems,
-    categories: storeCategories,
-    menus: storeMenus,
-    modifierGroups,
-    deleteMenuItem,
-    toggleItemAvailability,
-    getItemsInCategory,
-    getMenuItems,
-    toggleMenuActive,
-    toggleCategoryActive,
-    toggleMenuCategoryActive,
-    isMenuAvailableNow,
-    isCategoryAvailableNow,
-    isCategoryActiveForMenu,
-    updateMenu,
-    reorderMenus,
-    reorderCategoryItems,
-  } = useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const menuItems = useMenuStore((s) => s.menuItems);
+  const storeCategories = useMenuStore((s) => s.categories);
+  const storeMenus = useMenuStore((s) => s.menus);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
+  const deleteMenuItem = useMenuStore((s) => s.deleteMenuItem);
+  const toggleItemAvailability = useMenuStore((s) => s.toggleItemAvailability);
+  const getItemsInCategory = useMenuStore((s) => s.getItemsInCategory);
+  const getMenuItems = useMenuStore((s) => s.getMenuItems);
+  const toggleMenuActive = useMenuStore((s) => s.toggleMenuActive);
+  const toggleCategoryActive = useMenuStore((s) => s.toggleCategoryActive);
+  const toggleMenuCategoryActive = useMenuStore((s) => s.toggleMenuCategoryActive);
+  const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
+  const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
+  const isCategoryActiveForMenu = useMenuStore((s) => s.isCategoryActiveForMenu);
+  const updateMenu = useMenuStore((s) => s.updateMenu);
+  const reorderMenus = useMenuStore((s) => s.reorderMenus);
+  const reorderCategoryItems = useMenuStore((s) => s.reorderCategoryItems);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
-  const { showLoading, hideLoading } = useLoading();
   const { activeTab, searchQuery } = useMenuLayout();
   const triggerPosSync = useTriggerPosSync();
 
@@ -543,76 +539,74 @@ const MenuPage: React.FC = () => {
     name: string;
   } | null>(null);
 
-  // Periodic tick to refresh time-based availability
-  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
-  React.useEffect(() => {
-    const intervalId = setInterval(() => {
-      forceUpdate();
-    }, 60_000);
-    return () => clearInterval(intervalId);
-  }, []);
-
   // Convert store menus to display format
   // Since storeMenus now contains the full tree (Menu -> Category -> Item),
   // we just need to add computed availability for the top-level menu.
+  // Availability is calculated inline in DraggableMenu via checkAvailability(),
+  // so no need for a periodic forceUpdate here.
   const menus = useMemo(
     () =>
       storeMenus.map((storeMenu) => ({
         ...storeMenu,
-        // Add computed availability
         isAvailableNow: isMenuAvailableNow(storeMenu.id),
       })),
-    [storeMenus, isMenuAvailableNow, forceUpdate]
-  ); // forceUpdate triggers re-calc based on time
+    [storeMenus, isMenuAvailableNow]
+  );
+
+  // Pre-compute modifier → items mapping with O(N) instead of O(N*M)
+  const modifierToItemsMap = useMemo(() => {
+    const map = new Map<string, MenuItemType[]>();
+    menuItems.forEach((item) => {
+      item.modifierGroupIds?.forEach((groupId) => {
+        if (!map.has(groupId)) map.set(groupId, []);
+        map.get(groupId)!.push(item);
+      });
+    });
+    return map;
+  }, [menuItems]);
 
   const uniqueModifierGroups = useMemo(() => {
     return modifierGroups
       .map((group) => ({
         ...group,
-        items: menuItems.filter((item) =>
-          item.modifierGroupIds?.includes(group.id)
-        ),
+        items: modifierToItemsMap.get(group.id) || [],
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [menuItems, modifierGroups]);
+  }, [modifierGroups, modifierToItemsMap]);
 
-  // Filter menu items based on search
-  const filteredItems = menuItems.filter((item) => {
-    const matchesSearch =
-      !searchQuery ||
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+  // Filter menu items based on search — memoized to avoid O(N) on every render
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return menuItems;
+    const query = searchQuery.toLowerCase();
+    return menuItems.filter(
+      (item) =>
+        item.name.toLowerCase().includes(query) ||
+        item.description?.toLowerCase().includes(query)
+    );
+  }, [menuItems, searchQuery]);
 
-  const handleAddMenu = () => {
-    showLoading("Loading...");
+  const handleAddMenu = useCallback(() => {
     router.push("/menu/add-menu");
-    setTimeout(hideLoading, 500);
-  };
+  }, []);
 
-  const handleAddCategory = () => {
-    showLoading("Loading...");
+  const handleAddCategory = useCallback(() => {
     router.push("/menu/add-category");
-    setTimeout(hideLoading, 500);
-  };
+  }, []);
 
-  const handleAddItem = () => {
-    showLoading("Loading...");
+  const handleAddItem = useCallback(() => {
     router.push("/menu/add-item");
-    setTimeout(hideLoading, 500);
-  };
+  }, []);
 
-  const handleEditItem = (item: MenuItemType) => {
+  const handleEditItem = useCallback((item: MenuItemType) => {
     router.push(`/menu/edit-item?itemId=${item.id}`);
-  };
+  }, []);
 
-  const handleDeleteItem = (item: MenuItemType) => {
+  const handleDeleteItem = useCallback((item: MenuItemType) => {
     setItemToDelete({ id: item.id, name: item.name });
     setShowDeleteModal(true);
-  };
+  }, []);
 
-  const confirmDeleteItem = async () => {
+  const confirmDeleteItem = useCallback(async () => {
     if (!itemToDelete) return;
 
     // Delete from backend first
@@ -634,9 +628,9 @@ const MenuPage: React.FC = () => {
     deleteMenuItem(itemToDelete.id);
     setShowDeleteModal(false);
     setItemToDelete(null);
-  };
+  }, [itemToDelete, supabase, deleteMenuItem, showToast]);
 
-  const handleCategoryActive = async (id: string) => {
+  const handleCategoryActive = useCallback(async (id: string) => {
     // Get current state for rollback
     const category = storeCategories.find((c) => c.id === id);
     if (!category) return;
@@ -660,9 +654,9 @@ const MenuPage: React.FC = () => {
         message: "Failed to update category status",
       });
     }
-  };
+  }, [storeCategories, toggleCategoryActive, supabase, showToast]);
 
-  const handleToggleAvailability = async (id: string) => {
+  const handleToggleAvailability = useCallback(async (id: string) => {
     // Get current state for rollback
     const item = menuItems.find((i) => i.id === id);
     if (!item) return;
@@ -686,9 +680,9 @@ const MenuPage: React.FC = () => {
         message: "Failed to update item availability",
       });
     }
-  };
+  }, [menuItems, toggleItemAvailability, supabase, showToast]);
 
-  const handleToggleMenuActive = async (menuId: string) => {
+  const handleToggleMenuActive = useCallback(async (menuId: string) => {
     // Get current state for rollback
     const menu = menus.find((m) => m.id === menuId);
     if (!menu) return;
@@ -712,17 +706,16 @@ const MenuPage: React.FC = () => {
         message: "Failed to update menu status",
       });
     }
-  };
+  }, [menus, toggleMenuActive, supabase, showToast]);
 
-  const handleToggleCategoryActiveForMenu = (
+  const handleToggleCategoryActiveForMenu = useCallback((
     menuId: string,
     categoryId: string
   ) => {
     toggleMenuCategoryActive(menuId, categoryId);
-  };
+  }, [toggleMenuCategoryActive]);
 
-  // This function now calls the store action to update the state
-  const handleReorderMenus = async (fromIndex: number, toIndex: number) => {
+  const handleReorderMenus = useCallback(async (fromIndex: number, toIndex: number) => {
     reorderMenus(fromIndex, toIndex);
 
     // Persist to backend
@@ -743,9 +736,9 @@ const MenuPage: React.FC = () => {
     // Given the RPCs provided: reorder_menu_categories, reorder_category_items.
     // There is no reorder_menus RPC provided.
     // I will update the local state as before.
-  };
+  }, [reorderMenus]);
 
-  const handleReorderMenuCategories = async (
+  const handleReorderMenuCategories = useCallback(async (
     menuId: string,
     fromIndex: number,
     toIndex: number
@@ -777,9 +770,9 @@ const MenuPage: React.FC = () => {
       // Revert would be nice but complex to implement here without full refresh
       triggerPosSync(selectedStore?.id || "", selectedStore?.merchant_id);
     }
-  };
+  }, [storeMenus, updateMenu, supabase, showToast, triggerPosSync, selectedStore]);
 
-  const handleReorderCategoryItems = async (
+  const handleReorderCategoryItems = useCallback(async (
     categoryId: string,
     fromIndex: number,
     toIndex: number
@@ -830,14 +823,13 @@ const MenuPage: React.FC = () => {
     // It passes `items={getItemsInCategory(category.name)}`
     // THIS IS THE PROBLEM. `getItemsInCategory` derives from global `menuItems` which are NOT sorted by the specific menu/category order.
     // We MUST change DraggableMenu to use `category.items` which comes from the `menus` tree and IS sorted.
-  };
+  }, [storeCategories, reorderCategoryItems, getItemsInCategory, supabase, showToast, triggerPosSync, selectedStore]);
 
-  const isEntityEditable = (
+  const isEntityEditable = useCallback((
     entityLocationId: string | null | undefined,
     entityName?: string
   ) => {
     if (!selectedStore?.id) {
-      console.log("isEntityEditable[false]: No selected store id");
       return false;
     }
 
@@ -845,7 +837,7 @@ const MenuPage: React.FC = () => {
     if (entityLocationId) return entityLocationId === selectedStore.id;
     // If entity has NO location_id, it is global -> NOT editable
     return false;
-  };
+  }, [selectedStore?.id]);
 
   const renderMenusContent = () => (
     <View className="flex-1 p-4 bg-[#212121]">
@@ -910,14 +902,20 @@ const MenuPage: React.FC = () => {
         isRefreshing={isRefreshing}
       />
 
-      <ScrollView className="flex-1">
-        <View className="gap-3">
-          {storeCategories?.map((categoryName) => {
+      <FlatList
+        key="categories-list"
+        data={storeCategories}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ gap: 12 }}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        initialNumToRender={8}
+        renderItem={({ item: categoryName }) => {
             const categoryItems = getItemsInCategory(categoryName.name);
             const isExpanded = !!expandedCategories[categoryName.name];
             return (
               <View
-                key={categoryName.name}
                 className="bg-[#303030] rounded-lg border border-gray-700 p-4"
               >
                 <View className="flex-row justify-between items-center">
@@ -1103,9 +1101,8 @@ const MenuPage: React.FC = () => {
                 )}
               </View>
             );
-          })}
-        </View>
-      </ScrollView>
+          }}
+      />
     </View>
   );
 
@@ -1119,46 +1116,54 @@ const MenuPage: React.FC = () => {
         isRefreshing={isRefreshing}
       />
 
-      {filteredItems.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-xl text-gray-400 text-center">
-            No menu items found matching your criteria.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView className="flex-1">
-          <View className="gap-3 flex-row flex-wrap">
-            {filteredItems.map((item, index) => {
-              return (
-                <View className="w-[49%]" key={index}>
-                  <MenuItemCard
-                    key={item.id}
-                    item={item}
-                    onEdit={handleEditItem}
-                    onDelete={handleDeleteItem}
-                    onToggleAvailability={handleToggleAvailability}
-                    onPriceEdit={(editItem) => {
-                      priceEditRef.current?.open(
-                        {
-                          id: editItem.id,
-                          name: editItem.name,
-                          currentPrice: editItem.price,
-                          currentCashPrice: editItem.cashPrice,
-                          currentAvailability: editItem.availability,
-                        },
-                        { categoryId: null, menuId: null }
-                      );
-                    }}
-                    editDisabled={
-                      !isEntityEditable(item.location_id, item.name)
-                    }
-                  />
-                </View>
-              );
-            })}
+      <FlatList
+        key="items-list"
+        data={filteredItems}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        className="flex-1"
+        columnWrapperStyle={{
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        initialNumToRender={8}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View className="flex-1 items-center justify-center">
+            <Text className="text-xl text-gray-400 text-center">
+              No menu items found matching your criteria.
+            </Text>
           </View>
-        </ScrollView>
-      )}
+        }
+        renderItem={({ item }) => (
+          <View className="w-[49%]">
+            <MenuItemCard
+              item={item}
+              onEdit={handleEditItem}
+              onDelete={handleDeleteItem}
+              onToggleAvailability={handleToggleAvailability}
+              onPriceEdit={(editItem) => {
+                priceEditRef.current?.open(
+                  {
+                    id: editItem.id,
+                    name: editItem.name,
+                    currentPrice: editItem.price,
+                    currentCashPrice: editItem.cashPrice,
+                    currentAvailability: editItem.availability,
+                  },
+                  { categoryId: null, menuId: null }
+                );
+              }}
+              editDisabled={
+                !isEntityEditable(item.location_id, item.name)
+              }
+            />
+          </View>
+        )}
+      />
     </View>
   );
 
@@ -1172,11 +1177,17 @@ const MenuPage: React.FC = () => {
         isRefreshing={isRefreshing}
       />
 
-      <ScrollView className="flex-1">
-        <View className="gap-3">
-          {uniqueModifierGroups.map((modifierGroup) => (
+      <FlatList
+        key="modifiers-list"
+        data={uniqueModifierGroups}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ gap: 12 }}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        initialNumToRender={5}
+        renderItem={({ item: modifierGroup }) => (
             <View
-              key={modifierGroup.id}
               className="bg-[#303030] rounded-lg border border-gray-700 p-4"
             >
               <View className="flex-row items-center justify-between mb-3">
@@ -1370,9 +1381,8 @@ const MenuPage: React.FC = () => {
                 </View>
               </View>
             </View>
-          ))}
-        </View>
-      </ScrollView>
+          )}
+      />
     </View>
   );
 
@@ -1618,14 +1628,14 @@ interface MenuItemCardProps {
   editDisabled?: boolean;
 }
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({
+const MenuItemCard = React.memo(({
   item,
   onEdit,
   onDelete,
   onToggleAvailability,
   onPriceEdit,
   editDisabled = false,
-}) => {
+}: MenuItemCardProps) => {
   return (
     <TouchableOpacity
       onPress={() => onPriceEdit?.(item)}
@@ -1752,6 +1762,18 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
       </View>
     </TouchableOpacity>
   );
-};
+}, (prev, next) => (
+  prev.item.id === next.item.id &&
+  prev.item.price === next.item.price &&
+  prev.item.availability === next.item.availability &&
+  prev.item.name === next.item.name &&
+  prev.item.image === next.item.image &&
+  prev.item.customPricing === next.item.customPricing &&
+  prev.editDisabled === next.editDisabled &&
+  prev.onEdit === next.onEdit &&
+  prev.onDelete === next.onDelete &&
+  prev.onToggleAvailability === next.onToggleAvailability &&
+  prev.onPriceEdit === next.onPriceEdit
+));
 
 export default MenuPage;

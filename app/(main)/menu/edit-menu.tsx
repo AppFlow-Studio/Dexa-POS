@@ -11,8 +11,11 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 const EditMenuScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { menus, updateMenu, deleteMenu, categoriesByName } = useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const menus = useMenuStore((s) => s.menus);
+  const updateMenu = useMenuStore((s) => s.updateMenu);
+  const deleteMenu = useMenuStore((s) => s.deleteMenu);
+  const categoriesByName = useMenuStore((s) => s.categoriesByName);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
   const [isSaving, setIsSaving] = useState(false);

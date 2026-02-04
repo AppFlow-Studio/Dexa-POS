@@ -49,12 +49,10 @@ export function NetworkStatusBadge(): React.ReactElement {
   const syncOrderFromBackendComplete = useOrderStore((s) => s.syncOrderFromBackendComplete);
 
   // Payment offline status
-  const {
-    pendingPaymentsCount,
-    failedPayments,
-    refreshOfflinePaymentStatus,
-    retryFailedPayment,
-  } = usePaymentStore();
+  const pendingPaymentsCount = usePaymentStore((s) => s.pendingPaymentsCount);
+  const failedPayments = usePaymentStore((s) => s.failedPayments);
+  const refreshOfflinePaymentStatus = usePaymentStore((s) => s.refreshOfflinePaymentStatus);
+  const retryFailedPayment = usePaymentStore((s) => s.retryFailedPayment);
 
   // Refresh payment status when network status changes
   useEffect(() => {

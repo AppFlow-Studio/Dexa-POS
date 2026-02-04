@@ -495,7 +495,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     if (ref?.current) {
       // snapToIndex with the highest index (typically 2 for 100%)
       // This ensures the sheet expands to full height for payment input
-      ref.current.snapToIndex(3);
+      ref.current.snapToIndex(2);
     }
   },
 

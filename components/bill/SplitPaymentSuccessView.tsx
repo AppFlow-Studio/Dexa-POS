@@ -4,7 +4,9 @@ import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const SplitPaymentSuccessView = () => {
-  const { splits, activeSplitId, moveToNextSplit } = usePaymentStore();
+  const splits = usePaymentStore((s) => s.splits);
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const moveToNextSplit = usePaymentStore((s) => s.moveToNextSplit);
 
   // The split that just finished is the one currently set as 'activeSplitId'
   // (before we move to next) OR we can find the last paid one.

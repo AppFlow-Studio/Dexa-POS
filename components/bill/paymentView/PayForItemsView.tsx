@@ -172,7 +172,7 @@ interface PaymentRowProps {
     isVoiding?: boolean;
 }
 
-const PaymentRow: React.FC<PaymentRowProps> = ({
+const PaymentRow: React.FC<PaymentRowProps> = React.memo(({
     payment,
     index,
     onVoid,
@@ -242,7 +242,7 @@ const PaymentRow: React.FC<PaymentRowProps> = ({
             </View>
         </View>
     );
-};
+});
 
 // ============================================================================
 // MAIN COMPONENT
@@ -259,8 +259,10 @@ const PayForItemsView: React.FC = () => {
     const voidPayment = useOrderStore((state) => state.voidPayment);
     const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
-    const { setView, close, addSplit, resetSplits } =
-        usePaymentStore();
+    const setView = usePaymentStore((s) => s.setView);
+    const close = usePaymentStore((s) => s.close);
+    const addSplit = usePaymentStore((s) => s.addSplit);
+    const resetSplits = usePaymentStore((s) => s.resetSplits);
 
     // --- LOCAL STATE ---
     const [selectedItems, setSelectedItems] = useState<

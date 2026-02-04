@@ -30,9 +30,11 @@ interface OrderInfoHeaderProps {
 
 const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
-  const { tablesById } = useFloorPlanStore();
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
   const [numberOfGuests, setNumberOfGuests] = useState(1);
 
@@ -72,7 +74,7 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
     const session = table.session;
 
     if (session?.merged_tables && session.merged_tables.length > 0) {
-      const mergedNames = tables
+      const mergedNames = Object.values(tablesById)
         .filter((t) => session.merged_tables?.includes(t.id) && t.id !== table.id)
         .map((t) => t.name)
         .join(", ");

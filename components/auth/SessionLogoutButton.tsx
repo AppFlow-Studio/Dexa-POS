@@ -2,8 +2,8 @@ import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { toastService } from "@/lib/toastService";
-import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { clearLocationData, clearStationData } from "@/services/cacheService";
 import { PosStaffLogoutResponse } from "@/types/station";
 import { useClerk } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
@@ -32,8 +32,6 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
   const clearStationSession = useStoreSettingsStore(
     (state) => state.clearStationSession
   );
-  const clearWorkingSet = useOrderStore((state) => state.clearWorkingSet);
-
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -73,9 +71,9 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       // End session on server (don't clock out)
       await endStationSessionOnServer(false);
 
-      // Clear station from local storage and working set
+      // Clear station operational data but keep employees (location-scoped)
       clearStationSession();
-      clearWorkingSet();
+      clearStationData();
 
       toastService.show({
         title: "Session Ended",
@@ -105,10 +103,10 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       // End session on server (don't clock out - they can clock out separately)
       await endStationSessionOnServer(false);
 
-      // Clear all local state including working set
+      // Clear all local state including location-specific data
       clearStationSession();
       clearSelectedStore();
-      clearWorkingSet();
+      clearLocationData();
 
       // Sign out of Clerk
       await signOut();

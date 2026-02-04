@@ -86,6 +86,13 @@ export interface StoreSettings {
   // Selected store from database
   selectedStore: SelectedLocation | null;
 
+  // Organization branding
+  organizationLogoUrl: string | null;
+
+  // KDS Settings
+  kdsAutoFireEnabled: boolean;
+  kdsAutoFireDelayMinutes: number; // Minutes before auto-firing pending items
+
   // Station session management
   selectedStation: SelectedStation | null;
   stationSessionId: string | null;
@@ -94,6 +101,7 @@ export interface StoreSettings {
 
 interface StoreSettingsState extends StoreSettings {
   isDirty: boolean;
+  changedFields: Set<string>;
   initialState: StoreSettings; // To compare for changes
   updateField: <K extends keyof StoreSettings>(
     field: K,
@@ -116,6 +124,9 @@ interface StoreSettingsState extends StoreSettings {
   // Selected store actions
   setSelectedStore: (store: SelectedLocation) => void;
   clearSelectedStore: () => void;
+
+  // Organization branding
+  setOrganizationLogoUrl: (url: string | null) => void;
 
   // Tax rates actions
   setTaxRates: (rates: TaxRate[]) => void;
@@ -174,8 +185,15 @@ const initialData: StoreSettings = {
   preOrderMinAdvanceMinutes: 120, // 2 hours
   preOrderMaxDaily: 25,
 
+  // KDS Settings
+  kdsAutoFireEnabled: false,
+  kdsAutoFireDelayMinutes: 5,
+
   // No store selected initially
   selectedStore: null,
+
+  // Organization branding
+  organizationLogoUrl: null,
 
   // Station session defaults
   selectedStation: null,
@@ -189,92 +207,79 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       ...initialData,
       initialState: { ...initialData },
       isDirty: false,
+      changedFields: new Set<string>(),
 
       updateField: (field, value) => {
         set((state) => {
-          const newState = { ...state, [field]: value };
-          const isDirty =
-            JSON.stringify(newState.initialState) !==
-            JSON.stringify({
-              ...newState,
-              initialState: undefined, // Exclude these from comparison
-              isDirty: undefined,
-            });
-          return { ...newState, isDirty };
+          const changedFields = new Set(state.changedFields);
+          if (state.initialState && JSON.stringify(state.initialState[field]) === JSON.stringify(value)) {
+            changedFields.delete(field as string);
+          } else {
+            changedFields.add(field as string);
+          }
+          return { ...state, [field]: value, changedFields, isDirty: changedFields.size > 0 };
         });
       },
 
       setIsBreakAndSwitchEnabled: (isEnabled: boolean) => {
         set((state) => {
-          const newState = { ...state, isBreakAndSwitchEnabled: isEnabled };
-          const isDirty =
-            JSON.stringify(newState.initialState) !==
-            JSON.stringify({
-              ...newState,
-              initialState: undefined,
-              isDirty: undefined,
-            });
-          return { ...newState, isDirty };
+          const changedFields = new Set(state.changedFields);
+          if (state.initialState?.isBreakAndSwitchEnabled === isEnabled) {
+            changedFields.delete('isBreakAndSwitchEnabled');
+          } else {
+            changedFields.add('isBreakAndSwitchEnabled');
+          }
+          return { ...state, isBreakAndSwitchEnabled: isEnabled, changedFields, isDirty: changedFields.size > 0 };
         });
       },
 
       setPtoAccrualRate: (rate: number) => {
         set((state) => {
-          const newState = { ...state, ptoAccrualRate: rate };
-          const isDirty =
-            JSON.stringify(newState.initialState) !==
-            JSON.stringify({
-              ...newState,
-              initialState: undefined,
-              isDirty: undefined,
-            });
-          return { ...newState, isDirty };
+          const changedFields = new Set(state.changedFields);
+          if (state.initialState?.ptoAccrualRate === rate) {
+            changedFields.delete('ptoAccrualRate');
+          } else {
+            changedFields.add('ptoAccrualRate');
+          }
+          return { ...state, ptoAccrualRate: rate, changedFields, isDirty: changedFields.size > 0 };
         });
       },
 
       setTargetLaborPercent: (percent: number) => {
         set((state) => {
-          const newState = { ...state, targetLaborPercent: percent };
-          const isDirty =
-            JSON.stringify(newState.initialState) !==
-            JSON.stringify({
-              ...newState,
-              initialState: undefined,
-              isDirty: undefined,
-            });
-          return { ...newState, isDirty };
+          const changedFields = new Set(state.changedFields);
+          if (state.initialState?.targetLaborPercent === percent) {
+            changedFields.delete('targetLaborPercent');
+          } else {
+            changedFields.add('targetLaborPercent');
+          }
+          return { ...state, targetLaborPercent: percent, changedFields, isDirty: changedFields.size > 0 };
         });
       },
 
       setBreakDurationMinutes: (minutes: number) => {
         set((state) => {
-          const newState = { ...state, breakDurationMinutes: minutes };
-          const isDirty =
-            JSON.stringify(newState.initialState) !==
-            JSON.stringify({
-              ...newState,
-              initialState: undefined,
-              isDirty: undefined,
-            });
-          return { ...newState, isDirty };
+          const changedFields = new Set(state.changedFields);
+          if (state.initialState?.breakDurationMinutes === minutes) {
+            changedFields.delete('breakDurationMinutes');
+          } else {
+            changedFields.add('breakDurationMinutes');
+          }
+          return { ...state, breakDurationMinutes: minutes, changedFields, isDirty: changedFields.size > 0 };
         });
       },
 
       updatePrepAdjustment: (key, value) => {
         set((state) => {
           const newAdjustments = { ...state.prepTimeAdjustments, [key]: value };
-          const newState = { ...state, prepTimeAdjustments: newAdjustments };
-
-          // Calculate dirty state
-          const isDirty =
-            JSON.stringify(newState.initialState) !==
-            JSON.stringify({
-              ...newState,
-              initialState: undefined,
-              isDirty: undefined,
-            });
-
-          return { ...newState, isDirty };
+          const changedFields = new Set(state.changedFields);
+          const fieldKey = `prepTimeAdjustments.${key}`;
+          if (state.initialState?.prepTimeAdjustments[key] === value) {
+            changedFields.delete(fieldKey);
+          } else {
+            changedFields.add(fieldKey);
+          }
+          return { ...state, prepTimeAdjustments: newAdjustments, changedFields, isDirty: changedFields.size > 0 };
         });
       },
 
@@ -287,28 +292,18 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
           if (updates.conflictTypes) {
             newScheduling.conflictTypes = {
               ...state.scheduling.conflictTypes,
-              // We can just replace it or merge it. Since we pass the whole object from UI usually, replacing is fine,
-              // but let's be safe and merge if only partial is passed (though Partial<Scheduling> implies top level).
-              // Actually, let's treat conflictTypes as a replacement if present in updates, OR merging carefully.
-              // For simplicity in this specific store pattern, let's assume the UI sends the full object or we merge carefully.
-              // Wait, the updates param is Partial<Scheduling>.
-              // conflictTypes is optional in that partial.
-              // Let's do a merge:
               ...updates.conflictTypes,
             };
           }
 
-          const newState = { ...state, scheduling: newScheduling };
+          const changedFields = new Set(state.changedFields);
+          if (JSON.stringify(state.initialState?.scheduling) === JSON.stringify(newScheduling)) {
+            changedFields.delete('scheduling');
+          } else {
+            changedFields.add('scheduling');
+          }
 
-          const isDirty =
-            JSON.stringify(newState.initialState) !==
-            JSON.stringify({
-              ...newState,
-              initialState: undefined,
-              isDirty: undefined,
-            });
-
-          return { ...newState, isDirty };
+          return { ...state, scheduling: newScheduling, changedFields, isDirty: changedFields.size > 0 };
         });
       },
 
@@ -320,7 +315,7 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
 
         const newInitialState = { ...updatedState };
 
-        set({ initialState: newInitialState, isDirty: false });
+        set({ initialState: newInitialState, isDirty: false, changedFields: new Set<string>() });
 
         toastService.show({
           title: "Settings Saved",
@@ -331,7 +326,7 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
 
       discardChanges: () => {
         const { initialState } = get();
-        set({ ...initialState, isDirty: false });
+        set({ ...initialState, isDirty: false, changedFields: new Set<string>() });
       },
 
       // Selected store actions
@@ -340,7 +335,11 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       },
 
       clearSelectedStore: () => {
-        set({ selectedStore: null });
+        set({ selectedStore: null, organizationLogoUrl: null });
+      },
+
+      setOrganizationLogoUrl: (url: string | null) => {
+        set({ organizationLogoUrl: url });
       },
 
       // Tax rates action
@@ -401,6 +400,11 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         preOrderMaxDays: state.preOrderMaxDays,
         preOrderMinAdvanceMinutes: state.preOrderMinAdvanceMinutes,
         preOrderMaxDaily: state.preOrderMaxDaily,
+        // KDS Settings
+        kdsAutoFireEnabled: state.kdsAutoFireEnabled,
+        kdsAutoFireDelayMinutes: state.kdsAutoFireDelayMinutes,
+        // Organization branding
+        organizationLogoUrl: state.organizationLogoUrl,
         // Station session fields
         selectedStation: state.selectedStation,
         stationSessionId: state.stationSessionId,

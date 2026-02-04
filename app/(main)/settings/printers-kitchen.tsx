@@ -8,6 +8,8 @@ import {
   ChevronUp,
   Edit3,
   FileText,
+  Minus,
+  Monitor,
   Plus,
   Printer,
   Receipt,
@@ -17,6 +19,7 @@ import {
   X,
   XCircle
 } from "lucide-react-native";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import React, { useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -80,6 +83,11 @@ interface PrinterRoute {
 type ModalType = "add" | "edit" | "delete" | null;
 
 const PrintersKitchenScreen = () => {
+  // KDS settings from store
+  const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
+  const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
+  const updateField = useStoreSettingsStore((s) => s.updateField);
+
   // Printers state
   const [printers, setPrinters] = useState<PrinterDevice[]>([
     { id: "1", name: "Front Receipt Printer", type: "receipt", connectionType: "wifi", status: "online", ipAddress: "192.168.1.101", isEnabled: true },
@@ -587,6 +595,59 @@ const PrintersKitchenScreen = () => {
               </TouchableOpacity>
             </View>
           )}
+        </View>
+
+        {/* KDS Auto-Fire Section */}
+        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700">
+            <View className="flex-row items-center">
+              <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">
+                <Monitor size={20} color="#60a5fa" />
+              </View>
+              <Text className="text-white font-bold text-lg">Kitchen Display (KDS)</Text>
+            </View>
+          </View>
+          <View className="p-5">
+            <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
+              <View className="flex-1 pr-4">
+                <Text className="text-white font-medium">Auto-Fire Pending Courses</Text>
+                <Text className="text-gray-400 text-sm mt-1">
+                  Automatically move items from Pending to Cooking after a set time
+                </Text>
+              </View>
+              <Switch
+                checked={kdsAutoFireEnabled}
+                onCheckedChange={(v) => updateField("kdsAutoFireEnabled", v)}
+              />
+            </View>
+
+            {kdsAutoFireEnabled && (
+              <View className="mt-4 bg-black/20 p-4 rounded-lg border border-gray-700">
+                <View className="flex-row justify-between items-center mb-3">
+                  <Text className="text-gray-300 font-medium">Delay before auto-fire</Text>
+                  <Text className="text-blue-400 font-bold text-lg">
+                    {kdsAutoFireDelayMinutes} min
+                  </Text>
+                </View>
+                <View className="flex-row gap-2 justify-end">
+                  <TouchableOpacity
+                    onPress={() => updateField("kdsAutoFireDelayMinutes",
+                      Math.max(1, kdsAutoFireDelayMinutes - 1))}
+                    className="bg-gray-700 px-4 py-2 rounded-lg"
+                  >
+                    <Minus size={18} color="white" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => updateField("kdsAutoFireDelayMinutes",
+                      Math.min(30, kdsAutoFireDelayMinutes + 1))}
+                    className="bg-gray-700 px-4 py-2 rounded-lg"
+                  >
+                    <Plus size={18} color="white" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
         </View>
 
         <View className="h-6" />

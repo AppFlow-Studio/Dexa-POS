@@ -177,17 +177,15 @@ const SplitByItemView = () => {
   const ordersById = useOrderStore((state) => state.ordersById);
   const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
-  const {
-    splits,
-    addSplit,
-    removeSplit,
-    assignItemToSplit,
-    unassignItemFromSplit,
-    updateSplitCustomerName,
-    setView,
-    startSplitPaymentFlow,
-    resetSplits,
-  } = usePaymentStore();
+  const splits = usePaymentStore((s) => s.splits);
+  const addSplit = usePaymentStore((s) => s.addSplit);
+  const removeSplit = usePaymentStore((s) => s.removeSplit);
+  const assignItemToSplit = usePaymentStore((s) => s.assignItemToSplit);
+  const unassignItemFromSplit = usePaymentStore((s) => s.unassignItemFromSplit);
+  const updateSplitCustomerName = usePaymentStore((s) => s.updateSplitCustomerName);
+  const setView = usePaymentStore((s) => s.setView);
+  const startSplitPaymentFlow = usePaymentStore((s) => s.startSplitPaymentFlow);
+  const resetSplits = usePaymentStore((s) => s.resetSplits);
 
   const [activeSplitId, setActiveSplitId] = useState<string | null>(null);
 

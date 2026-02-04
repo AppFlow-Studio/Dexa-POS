@@ -14,8 +14,8 @@ interface BreakModalProps {
 
 const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
   const router = useRouter();
-  const { breakDurationMinutes, isBreakAndSwitchEnabled } =
-    useStoreSettingsStore();
+  const breakDurationMinutes = useStoreSettingsStore((s) => s.breakDurationMinutes);
+  const isBreakAndSwitchEnabled = useStoreSettingsStore((s) => s.isBreakAndSwitchEnabled);
   const BREAK_DURATION_MS = breakDurationMinutes * 60 * 1000;
   const [timeLeft, setTimeLeft] = useState(BREAK_DURATION_MS);
 

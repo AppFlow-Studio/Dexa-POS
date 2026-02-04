@@ -54,15 +54,13 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
   const [activeTab, setActiveTab] = useState<"check" | "items">("check");
   const translateY = useSharedValue(SCREEN_HEIGHT);
 
-  const {
-    activeOrderId,
-    orders,
-    applyDiscountToCheck,
-    applyDiscountToItem,
-    removeDiscountFromItem,
-  } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const applyDiscountToCheck = useOrderStore((s) => s.applyDiscountToCheck);
+  const applyDiscountToItem = useOrderStore((s) => s.applyDiscountToItem);
+  const removeDiscountFromItem = useOrderStore((s) => s.removeDiscountFromItem);
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const cartItems = activeOrder?.items || [];
 
   const animatedStyle = useAnimatedStyle(() => {

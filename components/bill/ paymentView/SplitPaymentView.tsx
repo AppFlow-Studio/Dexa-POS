@@ -33,7 +33,8 @@ interface Split {
 const SplitPaymentView = () => {
   const { activeOrderId, orders, activeOrderOutstandingTotal } =
     useOrderStore();
-  const { close, setView } = usePaymentStore();
+  const close = usePaymentStore((s) => s.close);
+  const setView = usePaymentStore((s) => s.setView);
   const { show } = useToast();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);

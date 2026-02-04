@@ -34,8 +34,12 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PaymentBottomSheetProps
 > = (props, ref) => {
-  const { view, close, isDirty, setIsDirty, handleSuccessClose, isTransactionProcessing } =
-    usePaymentStore();
+  const view = usePaymentStore((s) => s.view);
+  const close = usePaymentStore((s) => s.close);
+  const isDirty = usePaymentStore((s) => s.isDirty);
+  const setIsDirty = usePaymentStore((s) => s.setIsDirty);
+  const handleSuccessClose = usePaymentStore((s) => s.handleSuccessClose);
+  const isTransactionProcessing = usePaymentStore((s) => s.isTransactionProcessing);
   const [showConfirmation, setShowConfirmation] = useState(false);
   
   const internalRef = useRef<BottomSheetMethods>(null);

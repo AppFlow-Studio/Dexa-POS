@@ -6,7 +6,9 @@
  * Uses MMKV for blazing-fast synchronous storage operations.
  */
 
+import { queryClient } from "@/contexts/TanstackProvider";
 import { clearCacheData } from "@/lib/storage";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeClockStore } from "@/stores/useTimeClock";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -82,6 +84,54 @@ export function clearCache(): CacheClearResult {
     clearedKeys,
     errors,
   };
+}
+
+/**
+ * Clear station-specific operational data when switching stations
+ * within the same location. Keeps the employees array intact since
+ * employees are location-scoped, not station-scoped.
+ */
+export function clearStationData(): void {
+  useOrderStore.setState({
+    ordersById: {},
+    orderIds: [],
+    activeOrderId: null,
+    workingSetOrderIds: [],
+  });
+
+  // Clear active employee session but KEEP the employees array
+  useEmployeeStore.setState({
+    activeEmployeeId: null,
+    loggedInEmployee: null,
+  });
+
+  queryClient.clear();
+
+  console.log("[clearStationData] Cleared orders, active session, and query cache (kept employees)");
+}
+
+/**
+ * Clear location-specific data when switching stores/stations.
+ * Clears orders, employees, and React Query cache so stale data
+ * from the previous location does not persist in memory or on disk.
+ */
+export function clearLocationData(): void {
+  useOrderStore.setState({
+    ordersById: {},
+    orderIds: [],
+    activeOrderId: null,
+    workingSetOrderIds: [],
+  });
+
+  useEmployeeStore.setState({
+    employees: [],
+    activeEmployeeId: null,
+    loggedInEmployee: null,
+  });
+
+  queryClient.clear();
+
+  console.log("[clearLocationData] Cleared orders, employees, and query cache");
 }
 
 /**

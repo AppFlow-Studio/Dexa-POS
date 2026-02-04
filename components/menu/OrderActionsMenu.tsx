@@ -34,12 +34,10 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   onViewDetails,
   position,
 }) => {
-  const {
-    ordersById,
-    activeOrderId,
-    addItemToActiveOrder,
-    generateCartItemId,
-  } = useOrderStore();
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+  const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
   const { show } = useToast();
 
   // Get order (single index lookup - ordersById is keyed by DB UUID)

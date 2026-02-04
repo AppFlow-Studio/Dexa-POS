@@ -48,8 +48,8 @@ const QuickActionButton: React.FC<{
 };
 
 const useTableData = (table: TableType) => {
-  const { orders } = useOrderStore();
-  const { tables } = useFloorPlanStore();
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const tables = useFloorPlanStore((s) => s.tables);
 
   return useMemo(() => {
     const session = table.session;
@@ -76,7 +76,7 @@ const useTableData = (table: TableType) => {
     const isMerged = mergedTableIds.length > 0;
 
     if (!isMerged) {
-      const order = orders.find(
+      const order = Object.values(ordersById).find(
         (o) => o.service_location_id === table.id && o.order_status !== "void" && o.order_status !== "completed"
       );
       return {
@@ -93,7 +93,7 @@ const useTableData = (table: TableType) => {
     }
 
     const groupTables = tables.filter((t) => mergedTableIds.includes(t.id));
-    const groupOrders = orders.filter(
+    const groupOrders = Object.values(ordersById).filter(
       (o) => o.service_location_id && mergedTableIds.includes(o.service_location_id) && o.order_status !== "void" && o.order_status !== "completed"
     );
 
@@ -120,7 +120,7 @@ const useTableData = (table: TableType) => {
       server: serverDisplay,
       orders: groupOrders,
     };
-  }, [table, orders, tables]);
+  }, [table, ordersById, tables]);
 };
 
 interface ExpandedTableDetailsProps {
@@ -137,9 +137,12 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     return null;
   }
 
-  const { tables, updateSessionStatus } = useFloorPlanStore();
-  const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
-  const { menuItems } = useMenuStore();
+  const tables = useFloorPlanStore((s) => s.tables);
+  const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
+  const voidOrder = useOrderStore((s) => s.voidOrder);
+  const archiveOrder = useOrderStore((s) => s.archiveOrder);
+  const deleteOrder = useOrderStore((s) => s.deleteOrder);
+  const menuItems = useMenuStore((s) => s.menuItems);
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
 

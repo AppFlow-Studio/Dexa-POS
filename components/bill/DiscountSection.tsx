@@ -10,9 +10,11 @@ interface DiscountSectionProps {
 const DiscountSection: React.FC<DiscountSectionProps> = ({
   onOpenDiscounts,
 }) => {
-  const { activeOrderId, orders, removeCheckDiscount } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const removeCheckDiscount = useOrderStore((s) => s.removeCheckDiscount);
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const appliedDiscount = activeOrder?.checkDiscount;
 
   const handleRemoveDiscount = () => {

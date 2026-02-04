@@ -20,6 +20,7 @@ v_payment_refunded numeric;
 v_card_total_calc numeric;
 v_payment_based_due numeric;
 v_custom_refund_balance numeric;
+v_order record;
 BEGIN
 -- Get original (pre-discount) subtotals and discount amount
 SELECT 
@@ -40,12 +41,13 @@ INTO v_card_subtotal, v_cash_subtotal, v_card_tax, v_cash_tax
 FROM public.order_items
 WHERE order_id = p_order_id AND is_voided = false;
 
--- Get service charge and amount paid
-SELECT 
-    COALESCE(service_charge, 0),
-    COALESCE(amount_paid, 0)
-INTO v_service_charge, v_amount_paid
+-- Get full order record (need payment_status for fully-paid guard)
+SELECT *
+INTO v_order
 FROM public.orders WHERE id = p_order_id;
+
+v_service_charge := COALESCE(v_order.service_charge, 0);
+v_amount_paid := COALESCE(v_order.amount_paid, 0);
 
 -- Calculate amount_due from UNPAID items (item-level calculation)
 -- Account for refunded_quantity: refunded items need to be paid again
@@ -85,8 +87,17 @@ v_payment_based_due := GREATEST(v_card_total_calc - v_effective_paid, 0);
 -- Custom refund balance = payment-based due NOT covered by item-level unpaid amounts
 -- This is a flat monetary amount from custom refunds — same regardless of card/cash pricing
 v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0);
-v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
-v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+
+-- Guard: If order is marked as paid and all items are paid,
+-- the residual is a false positive from cash/card price difference.
+-- Don't inflate amount_due — keep it at 0.
+IF v_order.payment_status = 'paid' THEN
+    v_unpaid_card_total := 0;
+    v_unpaid_cash_total := 0;
+ELSE
+    v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
+    v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+END IF;
 
 -- Update order with totals
 UPDATE public.orders SET

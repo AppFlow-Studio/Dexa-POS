@@ -29,13 +29,11 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   currentOrderType,
 }) => {
   const router = useRouter();
-  const {
-    activeOrderId,
-    updateActiveOrderDetails,
-    assignOrderToTable,
-    startNewOrder,
-    setActiveOrder,
-  } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const assignOrderToTable = useOrderStore((s) => s.assignOrderToTable);
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const {
     addCustomer,
     findCustomerByPhone,
@@ -44,14 +42,16 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   } = useCustomerStore();
 
   // Use FloorPlanStore correctly
-  const { floorPlans, activeFloorPlanId, setActiveFloorPlan, tables } =
-    useFloorPlanStore();
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+  const tables = useFloorPlanStore((s) => s.tables);
   const { show } = useToast();
 
   const { selectedTable, setSelectedTable, clearSelectedTable } =
     useDineInStore();
   const activeOrder = useOrderStore((state) =>
-    state.orders.find((order) => order.id === activeOrderId),
+    activeOrderId ? state.ordersById[activeOrderId] : undefined,
   );
 
   const { openSheet } = useCustomerSheetStore();

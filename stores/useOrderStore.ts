@@ -2303,9 +2303,8 @@ export const useOrderStore = create<OrderState>()(
 
         // Helper function to sync order status based on item statuses
         const syncOrderStatus = (orderId: string) => {
-          const { orders } = get();
-          // console.log('[syncOrderStatus] orders', orders)
-          const order = orders.find((o) => o.id === orderId);
+          const { ordersById } = get();
+          const order = ordersById[orderId];
           if (!order || !order.items.length) return;
 
           // Only sync order status for orders that are assigned to tables or in kitchen workflow
@@ -2334,11 +2333,16 @@ export const useOrderStore = create<OrderState>()(
             }
 
             if (newOrderStatus !== order.order_status) {
-              set((state) => ({
-                orders: state.orders.map((o) =>
-                  o.id === orderId ? { ...o, order_status: newOrderStatus } : o,
-                ),
-              }));
+              set((state) => {
+                const existingOrder = state.ordersById[orderId];
+                if (!existingOrder) return {};
+                return {
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderId]: { ...existingOrder, order_status: newOrderStatus },
+                  },
+                };
+              });
             }
           }
           // For takeaway orders, the order status is managed manually (not based on item statuses)
@@ -5971,7 +5975,9 @@ export const useOrderStore = create<OrderState>()(
               // Default FIFO: Mark items as paid in order until amount is exhausted
               let remaining = amount;
               updatedItems = order.items.map((item) => {
-                const unitPrice = item.price;
+                const unitPrice = method === "Cash"
+                  ? (item.cashPrice ?? item.baseCashPrice ?? item.price)
+                  : item.price;
                 const unpaidQty = item.quantity - (item.paidQuantity || 0);
                 if (remaining <= 0 || unpaidQty <= 0) return item;
 
@@ -6006,7 +6012,9 @@ export const useOrderStore = create<OrderState>()(
             );
 
             // Determine if order is fully paid based on outstanding amount
-            const isFullyPaid = totals.outstanding_total <= 0.01; // Allow tiny rounding margin
+            const isFullyPaid = method === "Cash"
+              ? totals.cash_outstanding_total <= 0.01
+              : totals.outstanding_total <= 0.01; // Allow tiny rounding margin
 
             // Determine new order status:
             // - If order is in "draft" and payment is made, move to "preparing"
@@ -6071,6 +6079,10 @@ export const useOrderStore = create<OrderState>()(
                 // Optimistic update based on calculated outstanding
                 paid_status: isFullyPaid ? "Paid" : "Pending",
                 check_status: currentOrder.check_status || "Opened",
+                // Sync amount_paid/amount_due to prevent stale values
+                amount_paid: (currentOrder.amount_paid || 0) + amount,
+                amount_due: method === "Cash" ? totals.cash_outstanding_total : totals.outstanding_total,
+                cash_amount_due: totals.cash_outstanding_total,
               };
 
               const updates: Partial<OrderState> = {

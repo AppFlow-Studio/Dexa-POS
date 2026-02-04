@@ -9,7 +9,7 @@ import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const CardPaymentOptions = () => {
-  const { setView } = usePaymentStore();
+  const setView = usePaymentStore((s) => s.setView);
 
   const handleUseCardReader = () => {
     setView("card");

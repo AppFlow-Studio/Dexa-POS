@@ -28,7 +28,7 @@ const PtoMetrics: React.FC<PtoMetricsProps> = ({ employeeId }) => {
   const balances = usePtoStore((state) => state.balances);
   const ptoRequests = useScheduleStore((state) => state.ptoRequests);
   const { schedulePeriods, weeklySchedules } = useScheduleStore();
-  const { ptoAccrualRate } = useStoreSettingsStore();
+  const ptoAccrualRate = useStoreSettingsStore((s) => s.ptoAccrualRate);
   const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
 
   const employeeBalance = balances[employeeId] || {

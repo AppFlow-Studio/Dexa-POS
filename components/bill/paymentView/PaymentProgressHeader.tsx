@@ -1,4 +1,4 @@
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useEffect, useMemo } from "react";
 import { Text, View } from "react-native";
@@ -9,8 +9,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 const PaymentProgressHeader: React.FC = () => {
-  const { view, activeSplitId, splits } = usePaymentStore();
-  const { activeOrderTotal, activeOrderOutstandingTotal } = useOrderStore();
+  const view = usePaymentStore((s) => s.view);
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const splits = usePaymentStore((s) => s.splits);
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderTotal = orderTotals?.total ?? 0;
+  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
 
   const progressWidth = useSharedValue(0);
 

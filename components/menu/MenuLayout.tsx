@@ -19,7 +19,10 @@ interface MenuLayoutProps {
 const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
   const pathname = usePathname();
   const router = useRouter();
-  const { menuItems, categories, menus, modifierGroups } = useMenuStore();
+  const menuItems = useMenuStore((s) => s.menuItems);
+  const categories = useMenuStore((s) => s.categories);
+  const menus = useMenuStore((s) => s.menus);
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const [searchQuery, setSearchQuery] = useState("");
 
   const getItemCount = (itemId: string): number => {

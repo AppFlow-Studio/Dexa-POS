@@ -18,7 +18,6 @@ import { Search } from "lucide-react-native";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Animated,
   DimensionValue,
   FlatList,
   KeyboardAvoidingView,
@@ -27,6 +26,13 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
 const columns: { label: string; width: DimensionValue }[] = [
   { label: "# Serial No", width: "8%" },
@@ -55,7 +61,7 @@ const HeaderCell = ({
   </View>
 );
 
-// Simple Skeleton Bar Component - uses inline styles for reliability
+// Simple Skeleton Bar Component - uses Reanimated for UI-thread animations
 const SkeletonBar = ({
   width,
   height,
@@ -65,26 +71,21 @@ const SkeletonBar = ({
   height: number;
   style?: any;
 }) => {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+  const opacity = useSharedValue(0.3);
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 0.7,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.7, { duration: 800 }),
+        withTiming(0.3, { duration: 800 }),
+      ),
+      -1,
     );
-    animation.start();
-    return () => animation.stop();
   }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
 
   return (
     <Animated.View
@@ -94,8 +95,8 @@ const SkeletonBar = ({
           height,
           backgroundColor: "#4B5563",
           borderRadius: 4,
-          opacity,
         },
+        animatedStyle,
         style,
       ]}
     />
@@ -159,7 +160,7 @@ const PreviousOrdersScreen = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  const { selectedStore } = useStoreSettingsStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const [selectedOrderItems, setSelectedOrderItems] = useState<CartItem[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(null);
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] =
@@ -328,6 +329,39 @@ const PreviousOrdersScreen = () => {
     orderDetailsSheetRef.current?.snapToIndex?.(0);
   }, []);
 
+  const renderItem = useCallback(
+    ({ item }: { item: OrderProfile }) => (
+      <PreviousOrderRow
+        order={item}
+        onViewNotes={handleOpenNotes}
+        onDelete={handleOpenDelete}
+        onPrint={handleOpenPrint}
+        onCloseCheck={handleCloseCheck}
+        onReopenCheck={handleReopenCheck}
+        onRefund={handleRefund}
+        onDoublePress={handleDoublePress}
+      />
+    ),
+    [
+      handleOpenNotes,
+      handleOpenDelete,
+      handleOpenPrint,
+      handleCloseCheck,
+      handleReopenCheck,
+      handleRefund,
+      handleDoublePress,
+    ],
+  );
+
+  const getItemLayout = useCallback(
+    (_data: any, index: number) => ({
+      length: 72,
+      offset: 72 * index,
+      index,
+    }),
+    [],
+  );
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -391,18 +425,8 @@ const PreviousOrdersScreen = () => {
             <FlatList
               data={filteredOrders}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <PreviousOrderRow
-                  order={item}
-                  onViewNotes={handleOpenNotes}
-                  onDelete={handleOpenDelete}
-                  onPrint={handleOpenPrint}
-                  onCloseCheck={handleCloseCheck}
-                  onReopenCheck={handleReopenCheck}
-                  onRefund={handleRefund}
-                  onDoublePress={handleDoublePress}
-                />
-              )}
+              renderItem={renderItem}
+              getItemLayout={getItemLayout}
               ListEmptyComponent={
                 <View className="items-center justify-center py-8">
                   <Text className="text-xl text-gray-500">

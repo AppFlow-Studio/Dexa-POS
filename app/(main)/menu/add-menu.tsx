@@ -8,8 +8,9 @@ import React, { useState } from "react";
 import { Alert, View } from "react-native";
 
 const AddMenuScreen: React.FC = () => {
-  const { addMenu, categories } = useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const addMenu = useMenuStore((s) => s.addMenu);
+  const categories = useMenuStore((s) => s.categories);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const { show } = useToast();
   const supabase = useSupabaseClient();
   const [isSaving, setIsSaving] = useState(false);

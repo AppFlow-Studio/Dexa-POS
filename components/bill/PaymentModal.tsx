@@ -10,7 +10,9 @@ import CardPaymentOptions from "./paymentView/CardPaymentOptions";
 import ManualCardEntryView from "./paymentView/ManualCardEntryView";
 
 const PaymentModal: React.FC = () => {
-  const { isOpen, view, close } = usePaymentStore();
+  const isOpen = usePaymentStore((s) => s.isOpen);
+  const view = usePaymentStore((s) => s.view);
+  const close = usePaymentStore((s) => s.close);
 
   const renderContent = () => {
     switch (view) {

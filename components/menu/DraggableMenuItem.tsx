@@ -27,7 +27,7 @@ interface DraggableMenuItemProps {
   isEditable: boolean;
 }
 
-const DraggableMenuItem: React.FC<DraggableMenuItemProps> = ({
+const DraggableMenuItem = React.memo(({
   item,
   index,
   categoryId,
@@ -35,7 +35,7 @@ const DraggableMenuItem: React.FC<DraggableMenuItemProps> = ({
   onReorder,
   onItemPriceEdit,
   isEditable,
-}) => {
+}: DraggableMenuItemProps) => {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const isDragging = useSharedValue(false);
@@ -107,6 +107,6 @@ const DraggableMenuItem: React.FC<DraggableMenuItemProps> = ({
       </View>
     </Animated.View>
   );
-};
+});
 
 export default DraggableMenuItem;

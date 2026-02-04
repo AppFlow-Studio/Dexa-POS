@@ -19,7 +19,7 @@ interface Payment {
   voidReason?: string;
 }
 
-const PaymentCard: React.FC<{ payment: Payment; index: number; isLast: boolean }> = ({
+const PaymentCard: React.FC<{ payment: Payment; index: number; isLast: boolean }> = React.memo(({
   payment,
   index,
   isLast,
@@ -115,7 +115,7 @@ const PaymentCard: React.FC<{ payment: Payment; index: number; isLast: boolean }
       </View>
     </View>
   );
-};
+});
 
 const PaymentTimelineSection: React.FC<PaymentTimelineSectionProps> = ({ order }) => {
   // Sort payments by timestamp (most recent first)

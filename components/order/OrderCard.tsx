@@ -22,7 +22,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
   onMarkDone,
   onReopenCheck,
 }) => {
-  const { tablesById } = useFloorPlanStore();
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
 
   // Look up table name from service_location_id
   const tableName = useMemo(() => {

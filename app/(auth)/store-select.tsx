@@ -1,5 +1,5 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { createSupabaseClient } from "@/lib/supabase";
+import { clearLocationData } from "@/services/cacheService";
 import {
   SelectedLocation,
   useStoreSettingsStore,
@@ -82,18 +82,21 @@ const StoreSelectScreen = () => {
   const setSelectedStore = useStoreSettingsStore(
     (state) => state.setSelectedStore
   );
+  const setOrganizationLogoUrl = useStoreSettingsStore(
+    (state) => state.setOrganizationLogoUrl
+  );
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
 
   // Fetch locations using same approach as website:
   // users → members → organizations → merchants → locations
   const {
-    data: locations,
+    data: queryResult,
     isLoading,
     error,
   } = useQuery({
     queryKey: ["locations", userId],
-    queryFn: async () => {
-      if (!userId) return [];
+    queryFn: async (): Promise<{ locations: Location[]; orgLogoUrl: string | null }> => {
+      if (!userId) return { locations: [], orgLogoUrl: null };
 
       console.log("Fetching locations for user:", userId);
 
@@ -108,7 +111,8 @@ const StoreSelectScreen = () => {
             *,
             organizations(
               id,
-              name
+              name,
+              imageURL
             )
           )
         `
@@ -123,13 +127,15 @@ const StoreSelectScreen = () => {
 
       console.log("User data:", JSON.stringify(userData, null, 2));
 
+      // Extract organization logo URL
+      const orgLogoUrl = userData?.members?.[0]?.organizations?.imageURL ?? null;
       // Step 2: Get organization ID - this IS the clerk_org_id
       // The organizations.id from Clerk is stored as clerk_org_id in merchants table
       const clerkOrgId = userData?.members?.[0]?.organizations?.id;
 
       if (!clerkOrgId) {
         console.log("No organization found for user");
-        return [];
+        return { locations: [], orgLogoUrl };
       }
 
       console.log("Found clerkOrgId (organizations.id):", clerkOrgId);
@@ -148,7 +154,7 @@ const StoreSelectScreen = () => {
 
       if (!merchant) {
         console.log("No merchant found for org:", clerkOrgId);
-        return [];
+        return { locations: [], orgLogoUrl };
       }
 
       console.log("Found merchant:", merchant.id);
@@ -167,10 +173,16 @@ const StoreSelectScreen = () => {
 
       console.log("Found locations:", locationsData[0]);
 
-      return (locationsData as Location[]) || [];
+      return {
+        locations: (locationsData as Location[]) || [],
+        orgLogoUrl,
+      };
     },
     enabled: !!userId,
   });
+
+  const locations = queryResult?.locations;
+  const orgLogoUrl = queryResult?.orgLogoUrl ?? null;
 
   // Auto-select first location
   useEffect(() => {
@@ -180,8 +192,15 @@ const StoreSelectScreen = () => {
     }
   }, [locations, selectedStoreId]);
 
+  const currentStoreId = useStoreSettingsStore((s) => s.selectedStore?.id);
+
   const handleContinue = () => {
     if (!selectedStoreId || !locations) return;
+
+    // Clear location-specific data if switching to a different store
+    if (currentStoreId && currentStoreId !== selectedStoreId) {
+      clearLocationData();
+    }
 
     // Find the full location object
     const storeToSave = locations.find((l) => l.id === selectedStoreId);
@@ -189,6 +208,9 @@ const StoreSelectScreen = () => {
       // Save to store (persisted to MMKV)
       setSelectedStore(storeToSave as SelectedLocation);
     }
+
+    // Persist organization logo URL if available
+    setOrganizationLogoUrl(orgLogoUrl);
 
     // Navigate to station select instead of pin-login
     router.replace("/station-select");

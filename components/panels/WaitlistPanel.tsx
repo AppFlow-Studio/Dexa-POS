@@ -200,7 +200,7 @@ const TablePickerModal: React.FC<{
   onSelectTable: (table: FloorPlanObject) => void;
   waitlistEntry: DBWaitlistEntry | null;
 }> = ({ isOpen, onClose, onSelectTable, waitlistEntry }) => {
-  const { tables } = useFloorPlanStore();
+  const tables = useFloorPlanStore((s) => s.tables);
   const availableTables = useMemo(
     () =>
       tables.filter(
@@ -412,9 +412,10 @@ const WaitlistPanel: React.FC = () => {
     seatFromWaitlistAsync,
     removeWaitlistEntry,
   } = useWaitlistStore();
-  const { startNewOrder, setActiveOrder } = useOrderStore();
-  const { tables } = useFloorPlanStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+  const tables = useFloorPlanStore((s) => s.tables);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const router = useRouter();
 
   const [isAddModalOpen, setAddModalOpen] = useState(false);

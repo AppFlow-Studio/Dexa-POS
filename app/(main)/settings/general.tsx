@@ -114,7 +114,9 @@ const formatTo24Hour = (time: string) => {
 
 const GeneralSettingsScreen = () => {
   // Zustand Store - only selectedStore for business info, tax rates synced from backend
-  const { taxRates, saveChanges, selectedStore } = useStoreSettingsStore();
+  const taxRates = useStoreSettingsStore((s) => s.taxRates);
+  const saveChanges = useStoreSettingsStore((s) => s.saveChanges);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
   // Business info from selectedStore only
   const displayStoreName = selectedStore?.name || "No store selected";

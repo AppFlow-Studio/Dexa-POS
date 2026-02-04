@@ -87,8 +87,8 @@ const QuickActionButton: React.FC<{
 
 const useTableData = (table: FloorPlanObject) => {
   // console.log(`[TableListItem] useTableData ${table.name}`, table)
-  const { orders, ordersById } = useOrderStore();
-  const { tables } = useFloorPlanStore();
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const tables = useFloorPlanStore((s) => s.tables);
 
   // Get session order ID for payment calculations
   const sessionOrderId = table.session?.order_id || null;
@@ -274,8 +274,10 @@ const ExpandedView: React.FC<{
   onToggleExpand: () => void;
   table: FloorPlanObject; // Need table obj to get IDs
 }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
-  const { updateSessionStatus } = useFloorPlanStore(); // Use updateSessionStatus instead of updateTableStatus
-  const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
+  const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
+  const voidOrder = useOrderStore((s) => s.voidOrder);
+  const archiveOrder = useOrderStore((s) => s.archiveOrder);
+  const deleteOrder = useOrderStore((s) => s.deleteOrder);
   const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
@@ -645,4 +647,4 @@ const TableListItem: React.FC<{
   );
 };
 
-export default TableListItem;
+export default React.memo(TableListItem);

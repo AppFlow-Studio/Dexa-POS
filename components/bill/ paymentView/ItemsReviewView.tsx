@@ -1,3 +1,4 @@
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useState } from "react";
@@ -5,16 +6,16 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
 const ItemsReviewView = () => {
-  // OPTIMIZED: Use ordersById O(1) lookup instead of deprecated orders array
-  const {
-    activeOrderId,
-    ordersById,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderDiscount,
-    activeOrderTotal,
-  } = useOrderStore();
-  const { close, setView, paymentMethod } = usePaymentStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderSubtotal = orderTotals?.subtotal ?? 0;
+  const activeOrderTax = orderTotals?.tax ?? 0;
+  const activeOrderDiscount = orderTotals?.discount ?? 0;
+  const activeOrderTotal = orderTotals?.total ?? 0;
+  const close = usePaymentStore((s) => s.close);
+  const setView = usePaymentStore((s) => s.setView);
+  const paymentMethod = usePaymentStore((s) => s.paymentMethod);
 
   const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const items = activeOrder?.items || [];

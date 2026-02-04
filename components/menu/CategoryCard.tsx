@@ -17,7 +17,8 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   onToggleExpand,
   onEdit,
 }) => {
-  const { getItemsInCategory, categories } = useMenuStore();
+  const getItemsInCategory = useMenuStore((s) => s.getItemsInCategory);
+  const categories = useMenuStore((s) => s.categories);
   const categoryItems = getItemsInCategory(categoryName);
   const categoryDetails = categories.find((c) => c.name === categoryName);
 

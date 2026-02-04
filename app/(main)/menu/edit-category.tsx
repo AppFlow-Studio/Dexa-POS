@@ -11,15 +11,13 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 const EditCategoryScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const {
-    categories,
-    menuItems,
-    updateCategory,
-    deleteCategory,
-    addItemToCategory,
-    removeItemFromCategory,
-  } = useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const categories = useMenuStore((s) => s.categories);
+  const menuItems = useMenuStore((s) => s.menuItems);
+  const updateCategory = useMenuStore((s) => s.updateCategory);
+  const deleteCategory = useMenuStore((s) => s.deleteCategory);
+  const addItemToCategory = useMenuStore((s) => s.addItemToCategory);
+  const removeItemFromCategory = useMenuStore((s) => s.removeItemFromCategory);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
   const [isSaving, setIsSaving] = useState(false);

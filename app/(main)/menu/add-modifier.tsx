@@ -38,8 +38,8 @@ interface FormErrors {
 }
 
 const AddModifierScreen: React.FC = () => {
-  const { addModifierGroup } = useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const addModifierGroup = useMenuStore((s) => s.addModifierGroup);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
 

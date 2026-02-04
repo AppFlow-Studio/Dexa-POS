@@ -43,7 +43,7 @@ const HistoryCard = ({
 
 const HistoryPanel = () => {
   const { previousOrders } = usePreviousOrdersStore();
-  const { tablesById } = useFloorPlanStore();
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
 
   const getTableName = (tableId: string | undefined) => {
     if (!tableId) return "N/A";

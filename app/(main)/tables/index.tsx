@@ -20,6 +20,7 @@ import { Href, useRouter } from "expo-router";
 import { GitMerge, Search, X } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
+  InteractionManager,
   KeyboardAvoidingView,
   Platform,
   Text,
@@ -30,37 +31,37 @@ import {
 
 const TablesScreen = () => {
   const router = useRouter();
-  const {
-    floorPlans,
-    activeFloorPlanId,
-    setActiveFloorPlan,
-    tables,
-    selectedTableIds,
-    toggleTableSelection,
-    clearSelection,
-    mergeTable,
-    unmergeTable,
-    isLoading: floorPlanLoading,
-    // realtimeStatus,
-    // realtimeChannel,
-    // realtimeError,
-    // manualReconnect,
-  } = useFloorPlanStore();
-  const { selectedStation } = useStoreSettingsStore();
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+  const tables = useFloorPlanStore((s) => s.tables);
+  const selectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
+  const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
+  const clearSelection = useFloorPlanStore((s) => s.clearSelection);
+  const mergeTable = useFloorPlanStore((s) => s.mergeTable);
+  const unmergeTable = useFloorPlanStore((s) => s.unmergeTable);
+  const floorPlanLoading = useFloorPlanStore((s) => s.isLoading);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const device_id = getDeviceId();
-  const {
-    startNewOrder,
-    setActiveOrder,
-    ordersById,
-    getOrderByDbId,
-    getOrder,
-  } = useOrderStore();
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+  const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
+  const getOrder = useOrderStore((s) => s.getOrder);
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
   const [searchText, setSearchText] = useState("");
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
   const [isMergeMode, setMergeMode] = useState(false);
+
+  // DEFERRED RENDERING: Wait for navigation transition to complete
+  const [isReady, setIsReady] = useState(false);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setIsReady(true);
+    });
+    return () => handle.cancel();
+  }, []);
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
   const { loggedInEmployee } = useEmployeeStore();
@@ -170,9 +171,9 @@ const TablesScreen = () => {
     const sessionOrderId = selectedTables[0]?.session?.order_id;
     if (!sessionOrderId) return true;
 
-    // Find the order - OPTIMIZED: Use O(1) lookups
-    let order: (typeof ordersById)[string] | undefined =
-      ordersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
+    // Find the order - OPTIMIZED: Use getState() to avoid subscription
+    const currentOrdersById = useOrderStore.getState().ordersById;
+    let order = currentOrdersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
     if (!order) return true;
 
     // Check for pending items
@@ -421,7 +422,7 @@ const TablesScreen = () => {
 
           {/* Map Container */}
           <View className="bg-[#212121] border border-gray-700 rounded-xl flex-1 relative">
-            {floorPlanLoading && tables.length === 0 ? (
+            {!isReady || (floorPlanLoading && tables.length === 0) ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView

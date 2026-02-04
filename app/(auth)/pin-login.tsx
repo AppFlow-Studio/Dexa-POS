@@ -7,6 +7,7 @@ import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDeviceName } from "@/lib/deviceName";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
+import { MerchantRole } from "@/lib/types";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { PosStaffLoginResponse } from "@/types/station";
@@ -56,6 +57,9 @@ const PinLoginScreen = () => {
   const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
   const [pin, setPin] = useState("");
   const [deviceId, setDeviceId] = useState<string>("");
+  const [cachedDeviceInfo, setCachedDeviceInfo] = useState<Awaited<
+    ReturnType<typeof getDeviceInfo>
+  > | null>(null);
   const supabase = useSupabaseClient();
 
   // Clear PIN when screen comes into focus
@@ -70,6 +74,7 @@ const PinLoginScreen = () => {
     findEmployeeByPin,
     getEmployeeByStaffId,
     setActiveSession,
+    setEmployees,
     clockIn: employeeClockIn,
     employees,
   } = useEmployeeStore();
@@ -101,6 +106,11 @@ const PinLoginScreen = () => {
   useEffect(() => {
     console.log("getDeviceId", getDeviceId());
     setDeviceId(getDeviceId());
+  }, []);
+
+  // Eagerly cache device info (IP lookup) in background while user enters PIN
+  useEffect(() => {
+    getDeviceInfo().then(setCachedDeviceInfo);
   }, []);
 
   // Redirect to station select if no station is selected
@@ -156,7 +166,7 @@ const PinLoginScreen = () => {
 
     try {
       const deviceName = getDeviceName();
-      const info = await getDeviceInfo();
+      const info = cachedDeviceInfo ?? await getDeviceInfo();
 
       console.log("Calling pos_staff_login for TAKEOVER with:", {
         p_location_id: selectedStore.id,
@@ -216,6 +226,42 @@ const PinLoginScreen = () => {
       if (response.staff?.staff_profile_id) {
         employee =
           getEmployeeByStaffId(response.staff.staff_profile_id) || null;
+      }
+
+      // If not found locally, re-sync employees and retry
+      if (!employee && response.staff?.staff_profile_id && selectedStore?.id) {
+        console.log("Employee not found locally (takeover), re-syncing...");
+        const { data } = await supabase
+          .from("location_members")
+          .select(`
+            id, pin_code, role_code, staff_profile_id,
+            staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
+          `)
+          .eq("location_id", selectedStore.id)
+          .eq("is_active", true);
+
+        if (data?.length) {
+          const mappedEmployees: EmployeeProfile[] = data.map((row: any) => {
+            const profile = row.staff_profiles;
+            const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+            return {
+              id: row.id,
+              profileId: profile?.id || "",
+              fullName: fullName || "Unknown Staff",
+              displayName: profile?.display_name || fullName || "Unknown",
+              role: row.role_code as MerchantRole,
+              profilePictureUrl: profile?.avatar_url || undefined,
+              pinHash: row.pin_code,
+              email: profile?.email,
+              phone: profile?.phone,
+              shiftStatus: "clocked_out" as const,
+            };
+          });
+          setEmployees(mappedEmployees);
+          employee = mappedEmployees.find(
+            (e) => e.profileId === response.staff?.staff_profile_id
+          ) || null;
+        }
       }
 
       if (employee) {
@@ -289,7 +335,7 @@ const PinLoginScreen = () => {
 
     try {
       const deviceName = getDeviceName();
-      const info = await getDeviceInfo();
+      const info = cachedDeviceInfo ?? await getDeviceInfo();
 
       // Call the new combined RPC for station + clock in
       console.log("Calling pos_staff_login with:", {
@@ -376,6 +422,42 @@ const PinLoginScreen = () => {
       if (response.staff?.staff_profile_id) {
         employee =
           getEmployeeByStaffId(response.staff.staff_profile_id) || null;
+      }
+
+      // If not found locally, re-sync employees and retry
+      if (!employee && response.staff?.staff_profile_id && selectedStore?.id) {
+        console.log("Employee not found locally, re-syncing...");
+        const { data } = await supabase
+          .from("location_members")
+          .select(`
+            id, pin_code, role_code, staff_profile_id,
+            staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
+          `)
+          .eq("location_id", selectedStore.id)
+          .eq("is_active", true);
+
+        if (data?.length) {
+          const mappedEmployees: EmployeeProfile[] = data.map((row: any) => {
+            const profile = row.staff_profiles;
+            const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+            return {
+              id: row.id,
+              profileId: profile?.id || "",
+              fullName: fullName || "Unknown Staff",
+              displayName: profile?.display_name || fullName || "Unknown",
+              role: row.role_code as MerchantRole,
+              profilePictureUrl: profile?.avatar_url || undefined,
+              pinHash: row.pin_code,
+              email: profile?.email,
+              phone: profile?.phone,
+              shiftStatus: "clocked_out" as const,
+            };
+          });
+          setEmployees(mappedEmployees);
+          employee = mappedEmployees.find(
+            (e) => e.profileId === response.staff?.staff_profile_id
+          ) || null;
+        }
       }
 
       if (employee) {
@@ -555,9 +637,15 @@ const PinLoginScreen = () => {
   return (
     <>
       <Animated.View style={shakeStyle} className="w-full m-auto">
-        <Text className="text-3xl font-semibold text-white text-center mb-8">
+        <Text className="text-3xl font-semibold text-white text-center mb-2">
           Enter Your PIN
         </Text>
+        {selectedStation && selectedStore && (
+          <Text className="text-base text-gray-400 text-center mb-6">
+            {selectedStation.station_name} | {selectedStore.name}
+          </Text>
+        )}
+        {(!selectedStation || !selectedStore) && <View className="mb-6" />}
 
         <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 

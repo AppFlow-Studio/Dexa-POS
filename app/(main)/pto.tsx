@@ -23,7 +23,7 @@ const PTOPage = () => {
   const activeEmployeeId = useEmployeeStore((state) => state.activeEmployeeId);
   const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
   const { schedulePeriods, weeklySchedules } = useScheduleStore();
-  const { ptoAccrualRate } = useStoreSettingsStore();
+  const ptoAccrualRate = useStoreSettingsStore((s) => s.ptoAccrualRate);
   const [showRequestForm, setShowRequestForm] = useState(false);
 
   const nextAccrualInfo = useMemo(() => {

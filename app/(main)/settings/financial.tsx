@@ -80,7 +80,8 @@ const FinancialReportsScreen = () => {
   const salesData = useAnalyticsStore((state) => state.salesData);
   const shiftHistory = useTimeclockStore((state) => state.shiftHistory);
   const employees = useEmployeeStore((state) => state.employees);
-  const { targetLaborPercent, setTargetLaborPercent } = useStoreSettingsStore();
+  const targetLaborPercent = useStoreSettingsStore((s) => s.targetLaborPercent);
+  const setTargetLaborPercent = useStoreSettingsStore((s) => s.setTargetLaborPercent);
 
   // State
   const [generateMenuEngineering, setGenerateMenuEngineering] = useState(true);

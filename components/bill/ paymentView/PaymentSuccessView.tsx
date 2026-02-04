@@ -1,6 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { Check, Mail, Printer } from "lucide-react-native";
@@ -9,17 +8,14 @@ import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
 const PaymentSuccessView = () => {
-  const { close, paymentMethod, activeTableId } = usePaymentStore();
-  const { updateSessionStatus } = useFloorPlanStore();
+  const close = usePaymentStore((s) => s.close);
+  const paymentMethod = usePaymentStore((s) => s.paymentMethod);
+  const activeTableId = usePaymentStore((s) => s.activeTableId);
+  const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
   const { show } = useToast();
 
-  const {
-    activeOrderId,
-    ordersById,
-    activeOrderTotal,
-    activeOrderOutstandingTotal,
-  } = useOrderStore();
-  const { menuItems } = useMenuStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
   // const { addSaleEvent, forceRefresh } = useAnalyticsStore();
   // NOTE: Payment was already processed by handlePaymentCompletion
   // before navigating to this view. No need to call addPaymentToOrder again.

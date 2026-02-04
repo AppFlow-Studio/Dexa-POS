@@ -4,7 +4,7 @@ import {
     validateCardNumber,
     validateExpiry,
 } from "@/lib/card-validation";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import {
@@ -111,10 +111,15 @@ const ErrorText = ({ error }: { error?: string }) => {
 };
 
 const ManualCardEntryView = () => {
-  const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
+  const activeOrderTotal = orderTotals?.total ?? 0;
   // 1. Get Split Data from Store
-  const { setView, processManualCardPayment, activeSplitId, splits, expandSheetToFull } =
-    usePaymentStore();
+  const setView = usePaymentStore((s) => s.setView);
+  const processManualCardPayment = usePaymentStore((s) => s.processManualCardPayment);
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const splits = usePaymentStore((s) => s.splits);
+  const expandSheetToFull = usePaymentStore((s) => s.expandSheetToFull);
 
   // Expand bottom sheet to full height when entering manual card entry view
   useEffect(() => {

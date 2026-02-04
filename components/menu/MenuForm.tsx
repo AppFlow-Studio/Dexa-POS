@@ -65,7 +65,8 @@ const MenuForm: React.FC<MenuFormProps> = ({
   submitButtonLabel,
   onDelete,
 }) => {
-  const { categories, getItemsInCategory } = useMenuStore();
+  const categories = useMenuStore((s) => s.categories);
+  const getItemsInCategory = useMenuStore((s) => s.getItemsInCategory);
 
   const [name, setName] = useState(initialData?.name || "");
   const [description, setDescription] = useState(

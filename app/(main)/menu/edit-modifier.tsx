@@ -41,9 +41,10 @@ interface FormErrors {
 
 const EditModifierScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { modifierGroups, updateModifierGroup, deleteModifierGroup } =
-    useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const modifierGroups = useMenuStore((s) => s.modifierGroups);
+  const updateModifierGroup = useMenuStore((s) => s.updateModifierGroup);
+  const deleteModifierGroup = useMenuStore((s) => s.deleteModifierGroup);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
 

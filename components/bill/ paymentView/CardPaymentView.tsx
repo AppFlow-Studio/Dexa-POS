@@ -8,6 +8,7 @@ import {
 } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -27,18 +28,21 @@ const CardPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
   // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
   const supabase = useSupabaseClient();
-  const {
-    activeOrderDiscount,
-    activeOrderOutstandingSubtotal,
-    activeOrderOutstandingTax,
-    activeOrderOutstandingTotal,
-    activeOrderTotal,
-    activeOrderId,
-    ordersById,
-  } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderTotals = useActiveOrderTotals();
+  const activeOrderDiscount = orderTotals?.discount ?? 0;
+  const activeOrderOutstandingSubtotal = orderTotals?.outstandingSubtotal ?? 0;
+  const activeOrderOutstandingTax = orderTotals?.outstandingTax ?? 0;
+  const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
+  const activeOrderTotal = orderTotals?.total ?? 0;
 
-  const { close, handlePaymentCompletion, activeSplitId, splits, expandSheetToFull, setTransactionProcessing } =
-    usePaymentStore();
+  const close = usePaymentStore((s) => s.close);
+  const handlePaymentCompletion = usePaymentStore((s) => s.handlePaymentCompletion);
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const splits = usePaymentStore((s) => s.splits);
+  const expandSheetToFull = usePaymentStore((s) => s.expandSheetToFull);
+  const setTransactionProcessing = usePaymentStore((s) => s.setTransactionProcessing);
 
   // Expand bottom sheet to full height when entering card payment view
   useEffect(() => {
@@ -69,7 +73,8 @@ const CardPaymentView = () => {
     clearTipResponse,
   } = useCFD();
 
-  const { selectedStation, selectedStore } = useStoreSettingsStore();
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   // console.log('selectedStation', selectedStation);
 
   // Check terminal status on mount

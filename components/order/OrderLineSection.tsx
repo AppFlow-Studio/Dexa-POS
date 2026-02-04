@@ -7,7 +7,6 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import OrderCard from "./OrderCard";
 import OrderLineItemsModal from "./OrderLineItemsModal";
 import OrderTabs from "./OrderTabs";
@@ -143,9 +142,7 @@ const OrderLineSectionContent: React.FC = () => {
   }, [filteredOrders]);
 
   return (
-    <Animated.View
-      entering={FadeIn.duration(200)}
-      exiting={FadeOut.duration(200)}
+    <View
     >
       <View className="flex-row justify-between items-center">
         <OrderTabs onTabChange={handleTabChange} counts={orderCounts} />
@@ -206,7 +203,7 @@ const OrderLineSectionContent: React.FC = () => {
         onClose={() => setItemsModalOpen(false)}
         orderId={selectedOrderId}
       />
-    </Animated.View>
+    </View>
   );
 };
 

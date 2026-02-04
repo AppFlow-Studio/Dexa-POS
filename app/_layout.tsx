@@ -126,8 +126,10 @@ export default function RootLayout() {
     );
   }
 
-  console.log("Clerk Key:", publishableKey?.substring(0, 20));
-  console.log("TokenCache:", typeof tokenCache);
+  if (__DEV__) {
+    console.log("Clerk Key:", publishableKey?.substring(0, 20));
+    console.log("TokenCache:", typeof tokenCache);
+  }
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>

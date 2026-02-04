@@ -11,8 +11,10 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 const EditMenuItemScreen: React.FC = () => {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
-  const { menuItems, updateMenuItem, categories } = useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const menuItems = useMenuStore((s) => s.menuItems);
+  const updateMenuItem = useMenuStore((s) => s.updateMenuItem);
+  const categories = useMenuStore((s) => s.categories);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
   const router = useRouter();

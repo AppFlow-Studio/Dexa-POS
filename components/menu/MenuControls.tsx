@@ -35,15 +35,13 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   activeCategory,
   onCategoryChange,
 }) => {
-  const {
-    menus,
-    categories: storeCategories,
-    isMenuAvailableNow,
-    isCategoryAvailableNow,
-    isCategoryActiveForMenu,
-    getCategoryScheduleInfo,
-    temporaryActiveCategories,
-  } = useMenuStore();
+  const menus = useMenuStore((s) => s.menus);
+  const storeCategories = useMenuStore((s) => s.categories);
+  const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
+  const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
+  const isCategoryActiveForMenu = useMenuStore((s) => s.isCategoryActiveForMenu);
+  const getCategoryScheduleInfo = useMenuStore((s) => s.getCategoryScheduleInfo);
+  const temporaryActiveCategories = useMenuStore((s) => s.temporaryActiveCategories);
   const { requestPinOverride } = usePinOverrideStore();
   const visibleMenus = menus.filter(
     (m) => m.isActive && isMenuAvailableNow(m.id)

@@ -8,6 +8,7 @@ import {
 } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
@@ -26,22 +27,25 @@ const CashPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
   // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
 
-  const {
-    activeOrderOutstandingCash,
-    activeOrderTotalCash,
-    activeOrderId,
-    ordersById,
-  } = useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const orderTotals = useActiveOrderTotals();
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
-  const { close, setView, activeSplitId, splits, handlePaymentCompletion, expandSheetToFull, setTransactionProcessing } =
-    usePaymentStore();
+  const close = usePaymentStore((s) => s.close);
+  const setView = usePaymentStore((s) => s.setView);
+  const activeSplitId = usePaymentStore((s) => s.activeSplitId);
+  const splits = usePaymentStore((s) => s.splits);
+  const handlePaymentCompletion = usePaymentStore((s) => s.handlePaymentCompletion);
+  const expandSheetToFull = usePaymentStore((s) => s.expandSheetToFull);
+  const setTransactionProcessing = usePaymentStore((s) => s.setTransactionProcessing);
 
   // Expand bottom sheet to full height when entering cash payment view
   useEffect(() => {
     expandSheetToFull();
   }, [expandSheetToFull]);
 
-  const { selectedStation, selectedStore } = useStoreSettingsStore();
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   // console.log('selectedStation', selectedStation);
   // Dejavoo integration
   const supabase = useSupabaseClient();
@@ -89,8 +93,9 @@ const CashPaymentView = () => {
   // --- LOGIC: DETERMINE AMOUNT TO PAY (CASH PRICING) ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
   // For cash payments, use cash outstanding total (unpaid items at cash prices)
-  // Priority: local store outstanding cash (has discounts) > backend cash_amount_due > full cash total
-  // Local store has the most up-to-date discount calculations
+  // Priority: derived selector cash outstanding > backend cash_amount_due > full cash total
+  const activeOrderOutstandingCash = orderTotals?.cashAmountDue ?? 0;
+  const activeOrderTotalCash = orderTotals?.cashTotal ?? 0;
   const effectiveOutstandingCash =
     activeOrderOutstandingCash > 0
       ? activeOrderOutstandingCash

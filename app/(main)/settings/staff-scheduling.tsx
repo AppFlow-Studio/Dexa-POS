@@ -38,7 +38,8 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 const StaffSchedulingScreen = () => {
   const router = useRouter();
   const { templates, activeTemplateIds, actions } = useScheduleTemplateStore();
-  const { scheduling, updateSchedulingSettings } = useStoreSettingsStore();
+  const scheduling = useStoreSettingsStore((s) => s.scheduling);
+  const updateSchedulingSettings = useStoreSettingsStore((s) => s.updateSchedulingSettings);
   const { addWeeklySchedule, addSchedulePeriod } = useScheduleStore(); // Get actions
   const { loggedInEmployee } = useEmployeeStore();
 

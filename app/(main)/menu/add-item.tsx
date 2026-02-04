@@ -10,8 +10,9 @@ import React, { useState } from "react";
 import { Alert, View } from "react-native";
 
 const AddMenuItemScreen: React.FC = () => {
-  const { addMenuItem, categories } = useMenuStore();
-  const { selectedStore } = useStoreSettingsStore();
+  const addMenuItem = useMenuStore((s) => s.addMenuItem);
+  const categories = useMenuStore((s) => s.categories);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const supabase = useSupabaseClient();
   const { show } = useToast();
   const router = useRouter();

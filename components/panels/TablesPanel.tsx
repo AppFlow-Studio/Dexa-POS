@@ -57,7 +57,9 @@ const Section: React.FC<SectionProps> = ({
 
 const TablesPanel: React.FC = () => {
   // Use floorPlans and tables (for active plan only)
-  const { floorPlans, tables, activeFloorPlanId } = useFloorPlanStore();
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const tables = useFloorPlanStore((s) => s.tables);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
   const [sections, setSections] = useState<{ [key: string]: boolean }>({});
 
   const activePlanName = useMemo(() => {

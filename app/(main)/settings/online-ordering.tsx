@@ -106,22 +106,20 @@ const OnlineOrderingScreen = () => {
   const insets = useSafeAreaInsets();
 
   // Store Connection
-  const {
-    onlineOrderingEnabled,
-    updateField,
-    onlinePauseReason,
-    autoAcceptOrders,
-    largeOrderApprovalThreshold,
-    rejectWhenBusyThreshold,
-    dynamicPrepTimeEnabled,
-    basePrepTime,
-    prepTimeAdjustments,
-    updatePrepAdjustment,
-    preOrderingEnabled,
-    preOrderMaxDays,
-    preOrderMinAdvanceMinutes,
-    preOrderMaxDaily,
-  } = useStoreSettingsStore();
+  const onlineOrderingEnabled = useStoreSettingsStore((s) => s.onlineOrderingEnabled);
+  const updateField = useStoreSettingsStore((s) => s.updateField);
+  const onlinePauseReason = useStoreSettingsStore((s) => s.onlinePauseReason);
+  const autoAcceptOrders = useStoreSettingsStore((s) => s.autoAcceptOrders);
+  const largeOrderApprovalThreshold = useStoreSettingsStore((s) => s.largeOrderApprovalThreshold);
+  const rejectWhenBusyThreshold = useStoreSettingsStore((s) => s.rejectWhenBusyThreshold);
+  const dynamicPrepTimeEnabled = useStoreSettingsStore((s) => s.dynamicPrepTimeEnabled);
+  const basePrepTime = useStoreSettingsStore((s) => s.basePrepTime);
+  const prepTimeAdjustments = useStoreSettingsStore((s) => s.prepTimeAdjustments);
+  const updatePrepAdjustment = useStoreSettingsStore((s) => s.updatePrepAdjustment);
+  const preOrderingEnabled = useStoreSettingsStore((s) => s.preOrderingEnabled);
+  const preOrderMaxDays = useStoreSettingsStore((s) => s.preOrderMaxDays);
+  const preOrderMinAdvanceMinutes = useStoreSettingsStore((s) => s.preOrderMinAdvanceMinutes);
+  const preOrderMaxDaily = useStoreSettingsStore((s) => s.preOrderMaxDaily);
 
   const { isMenuSchedulingEnabled, setMenuSchedulingEnabled, menus } =
     useMenuStore();

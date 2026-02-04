@@ -90,7 +90,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const { sessions, activeEmployeeId, endBreak, startBreak } =
     useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
-  const { isBreakAndSwitchEnabled } = useStoreSettingsStore();
+  const isBreakAndSwitchEnabled = useStoreSettingsStore((s) => s.isBreakAndSwitchEnabled);
   const { markAllAsRead } = useNotificationStore();
   const router = useRouter();
   const { show } = useToast();

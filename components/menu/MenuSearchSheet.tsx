@@ -25,16 +25,14 @@ interface MenuSearchSheetProps {
 const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
   ({ activeTab }, ref) => {
     const { closeSearch } = useMenuManagementSearchStore();
-    const {
-      menuItems,
-      categories: storeCategories,
-      menus: storeMenus,
-      modifierGroups,
-      deleteMenuItem,
-      toggleItemAvailability,
-      toggleMenuActive,
-      isMenuAvailableNow,
-    } = useMenuStore();
+    const menuItems = useMenuStore((s) => s.menuItems);
+    const storeCategories = useMenuStore((s) => s.categories);
+    const storeMenus = useMenuStore((s) => s.menus);
+    const modifierGroups = useMenuStore((s) => s.modifierGroups);
+    const deleteMenuItem = useMenuStore((s) => s.deleteMenuItem);
+    const toggleItemAvailability = useMenuStore((s) => s.toggleItemAvailability);
+    const toggleMenuActive = useMenuStore((s) => s.toggleMenuActive);
+    const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
     const [searchQuery, setSearchQuery] = useState("");
 
     const searchResults = useMemo(() => {

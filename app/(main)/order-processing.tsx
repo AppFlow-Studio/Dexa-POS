@@ -19,7 +19,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, { useEffect, useRef, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { FlatList, InteractionManager, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 
 const OrderProcessing = () => {
@@ -213,24 +213,27 @@ const OrderProcessing = () => {
   // DEFERRED RENDERING: Wait for navigation transition to complete before rendering heavy components
   const [isReady, setIsReady] = useState(false);
   useEffect(() => {
-    // Small delay to allow screen transition to finish
-    const timer = setTimeout(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
       setIsReady(true);
-    }, 100);
-    return () => clearTimeout(timer);
+    });
+    return () => handle.cancel();
   }, []);
 
   return (
     <View className="flex-1 flex-col bg-[#212121]">
       <View className="flex-1 flex-row">
-        <BillSection
-          moreOptionsSheetRef={
-            moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
-          }
-          discountSheetRef={
-            discountSheetRef as React.RefObject<BottomSheetMethods>
-          }
-        />
+        {isReady ? (
+          <BillSection
+            moreOptionsSheetRef={
+              moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
+            }
+            discountSheetRef={
+              discountSheetRef as React.RefObject<BottomSheetMethods>
+            }
+          />
+        ) : (
+          <View className="w-[380px] bg-[#212121]" />
+        )}
 
         <View className="flex-1 py-4 px-2 pt-0 bg-[#323232] rounded-tl-3xl ">
           <Accordion

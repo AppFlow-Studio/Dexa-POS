@@ -129,4 +129,4 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
   );
 };
 
-export default ReadOnlyBillItem;
+export default React.memo(ReadOnlyBillItem);

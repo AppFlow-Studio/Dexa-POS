@@ -27,7 +27,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { AlertTriangle, ChevronLeft } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { InteractionManager, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
   const { defaultSittingTimeMinutes } = useSettingsStore();
@@ -69,36 +69,26 @@ const UpdateTableScreen = () => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  const {
-    // tables,
-    updateSessionStatus,
-    loadFloorPlanStatus,
-    // unmergeTable,
-    getTableById,
-    clearTableSession,
-  } = useFloorPlanStore();
+  const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
+  const loadFloorPlanStatus = useFloorPlanStore((s) => s.loadFloorPlanStatus);
+  const getTableById = useFloorPlanStore((s) => s.getTableById);
+  const clearTableSession = useFloorPlanStore((s) => s.clearTableSession);
 
-  const {
-    // OPTIMIZED: Removed deprecated `orders` array - use ordersById selectors instead
-    setActiveOrder,
-    startNewOrder,
-    assignOrderToTable,
-    updateOrderStatus,
-    updateActiveOrderDetails,
-    updateItemStatusInActiveOrder,
-    syncOrderStatus,
-    archiveOrder,
-    // syncOrderFromBackend,
-    syncOrderFromBackendComplete,
-    syncOrderFromDatabase, // Phase 12.1: For restoring table orders
-  } = useOrderStore();
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const assignOrderToTable = useOrderStore((s) => s.assignOrderToTable);
+  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus);
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const updateItemStatusInActiveOrder = useOrderStore((s) => s.updateItemStatusInActiveOrder);
+  const syncOrderStatus = useOrderStore((s) => s.syncOrderStatus);
+  const archiveOrder = useOrderStore((s) => s.archiveOrder);
+  const syncOrderFromBackendComplete = useOrderStore((s) => s.syncOrderFromBackendComplete);
+  const syncOrderFromDatabase = useOrderStore((s) => s.syncOrderFromDatabase);
 
-  const {
-    setActiveTableId,
-    clearActiveTableId,
-    open: openPaymentSheet,
-    isOpen: isPaymentSheetOpen,
-  } = usePaymentStore();
+  const setActiveTableId = usePaymentStore((s) => s.setActiveTableId);
+  const clearActiveTableId = usePaymentStore((s) => s.clearActiveTableId);
+  const openPaymentSheet = usePaymentStore((s) => s.open);
+  const isPaymentSheetOpen = usePaymentStore((s) => s.isOpen);
 
   const currentTableId = typeof tableId === "string" ? tableId : "";
   // OPTIMIZED: Use O(1) lookup instead of .find()
@@ -227,11 +217,11 @@ const UpdateTableScreen = () => {
   // Mark initialization complete when table and order are ready
   useEffect(() => {
     if (table && (activeOrder || tableStatus === "available")) {
-      // Small delay to ensure smooth transition
-      const timer = setTimeout(() => {
+      // Defer until animations/interactions complete for smooth transition
+      const interaction = InteractionManager.runAfterInteractions(() => {
         setIsInitializing(false);
-      }, 100);
-      return () => clearTimeout(timer);
+      });
+      return () => interaction.cancel();
     }
   }, [table, activeOrder, tableStatus]);
 
@@ -292,6 +282,10 @@ const UpdateTableScreen = () => {
     }
 
     const handleAutoCreateSession = async () => {
+      // Wait for navigation animations to complete before heavy work
+      await new Promise<void>((resolve) => {
+        InteractionManager.runAfterInteractions(() => resolve());
+      });
       // Double-check navigation guard (async timing)
       if (isNavigatingAwayRef.current) {
         console.log("[AutoSession] Skipping async - navigating away");
@@ -736,20 +730,24 @@ const UpdateTableScreen = () => {
     // Pass db_order_id for backend RPC calls (use UUID, not local ID)
     coursing.initializeForOrder(orderId, activeOrder?.db_order_id);
 
-    // Wait for server data to load before marking as initialized
-    // This ensures dbIdToCourseMap is populated before sync effect runs
-    coursing
-      .loadFromServer(orderId)
-      .then(() => {
-        setCoursingInitialized(true);
-      })
-      .catch((error) => {
-        console.error("[Coursing] Failed to load from server:", error);
-        // Still mark as initialized so UI doesn't block forever
-        setCoursingInitialized(true);
-      });
+    // Defer server load until after interactions complete for smooth transition
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      // Wait for server data to load before marking as initialized
+      // This ensures dbIdToCourseMap is populated before sync effect runs
+      coursing
+        .loadFromServer(orderId)
+        .then(() => {
+          setCoursingInitialized(true);
+        })
+        .catch((error) => {
+          console.error("[Coursing] Failed to load from server:", error);
+          // Still mark as initialized so UI doesn't block forever
+          setCoursingInitialized(true);
+        });
+    });
 
     return () => {
+      interaction.cancel();
       setCoursingInitialized(false);
     };
   }, [orderId, activeOrder?.db_order_id]);
