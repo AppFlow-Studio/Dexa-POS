@@ -1941,6 +1941,10 @@ interface OrderState {
   isLoadingPreviousOrders: boolean;
   lastReconciliationAt: string | null;
 
+  // === WORKSPACE CACHING ===
+  currentLocationId: string | null;
+  unsyncedOrderIds: string[]; // local IDs of orders without backend confirmation
+
   // === WORKING SET (Phase 5) ===
   // Orders the user is actively working on - persists across restarts, clears on logout
   workingSetOrderIds: string[]; // db_order_ids in working set
@@ -1957,6 +1961,9 @@ interface OrderState {
   removeFromWorkingSet: (dbOrderId: string) => void;
   clearWorkingSet: () => void;
   isInWorkingSet: (dbOrderId: string) => boolean;
+
+  // --- WORKSPACE GC ---
+  clearInactiveOrders: () => void;
 
   // --- ACTIONS ---
   setActiveOrder: (orderId: string | null) => void;
@@ -2442,6 +2449,10 @@ export const useOrderStore = create<OrderState>()(
           remoteOrdersEnabled: false,
           isLoadingPreviousOrders: false,
           lastReconciliationAt: null,
+
+          // === WORKSPACE CACHING ===
+          currentLocationId: null,
+          unsyncedOrderIds: [],
 
           // === WORKING SET (Phase 5) ===
           workingSetOrderIds: [],
@@ -3840,6 +3851,7 @@ export const useOrderStore = create<OrderState>()(
             set((state) => ({
               ordersById: { ...state.ordersById, [newOrder.id]: newOrder },
               orderIds: [...state.orderIds, newOrder.id],
+              unsyncedOrderIds: [...state.unsyncedOrderIds, newOrder.id],
             }));
             return newOrder;
           },
@@ -6346,6 +6358,9 @@ export const useOrderStore = create<OrderState>()(
               };
             });
 
+            // GC: remove inactive orders after archiving
+            get().clearInactiveOrders();
+
             return tableId;
           },
 
@@ -6397,6 +6412,52 @@ export const useOrderStore = create<OrderState>()(
                 `[cleanupAbandonedDrafts] Removed ${idsToRemove.length} abandoned draft(s)`,
               );
             }
+          },
+
+          /**
+           * GC: Remove completed/voided/cancelled orders from memory,
+           * keeping only active, unsynced, working-set, and own-station orders.
+           */
+          clearInactiveOrders: () => {
+            const state = get();
+            const keepSet = new Set<string>();
+
+            if (state.activeOrderId) keepSet.add(state.activeOrderId);
+            for (const id of state.workingSetOrderIds) keepSet.add(id);
+            for (const id of state.unsyncedOrderIds) keepSet.add(id);
+
+            // Keep orders with pending items
+            for (const id of state.orderIds) {
+              const order = state.ordersById[id];
+              if (order?.items.some(item => !item.db_order_item_id && !item.isDraft)) {
+                keepSet.add(id);
+              }
+            }
+
+            // Keep non-completed own-station orders
+            const inactiveStatuses = new Set(["completed", "voided", "cancelled", "void"]);
+            for (const id of state.orderIds) {
+              const order = state.ordersById[id];
+              if (order && order.station_id === state.currentStationId
+                  && !inactiveStatuses.has(order.order_status ?? "")) {
+                keepSet.add(id);
+              }
+            }
+
+            const removedCount = state.orderIds.length - keepSet.size;
+            if (removedCount <= 0) return;
+
+            const newOrdersById: Record<string, OrderProfile> = {};
+            const newOrderIds: string[] = [];
+            for (const id of keepSet) {
+              if (state.ordersById[id]) {
+                newOrdersById[id] = state.ordersById[id];
+                newOrderIds.push(id);
+              }
+            }
+
+            set({ ordersById: newOrdersById, orderIds: newOrderIds });
+            console.log(`[clearInactiveOrders] Removed ${removedCount}, kept ${keepSet.size}`);
           },
 
           /**
@@ -7645,6 +7706,7 @@ export const useOrderStore = create<OrderState>()(
                 ),
                 activeOrderId:
                   state.activeOrderId === tempId ? dbUuid : state.activeOrderId,
+                unsyncedOrderIds: state.unsyncedOrderIds.filter(id => id !== tempId),
               };
             });
             console.log(`[rekeyOrder] Rekeyed order ${tempId} -> ${dbUuid}`);
@@ -7678,6 +7740,7 @@ export const useOrderStore = create<OrderState>()(
                   ...state.ordersById,
                   [localOrderId]: updatedOrder,
                 },
+                unsyncedOrderIds: state.unsyncedOrderIds.filter(id => id !== localOrderId),
               };
             });
             console.log(
@@ -8645,7 +8708,7 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
-            set({ isInitializing: true });
+            set({ isInitializing: true, currentLocationId: locationId });
             console.log(
               `[initializeOrders] Fetching active orders for location: ${locationId} (Force: ${forceRefresh})`,
             );
@@ -8706,11 +8769,36 @@ export const useOrderStore = create<OrderState>()(
                 }
               }
 
-              // Merge into store
-              set((state) => ({
-                ordersById: { ...state.ordersById, ...newOrders },
-                orderIds: [...state.orderIds, ...newOrderIds],
-              }));
+              // Replacement strategy: preserve unsynced + pending-items orders, server wins for the rest
+              set((state) => {
+                const preserved: Record<string, OrderProfile> = {};
+                const preservedIds: string[] = [];
+
+                // Preserve unsynced orders
+                for (const id of state.unsyncedOrderIds) {
+                  if (state.ordersById[id]) {
+                    preserved[id] = state.ordersById[id];
+                    preservedIds.push(id);
+                  }
+                }
+
+                // Preserve orders with un-synced items
+                for (const id of state.orderIds) {
+                  if (preserved[id]) continue;
+                  const order = state.ordersById[id];
+                  if (order?.items.some(item => !item.db_order_item_id && !item.isDraft)) {
+                    preserved[id] = order;
+                    preservedIds.push(id);
+                  }
+                }
+
+                // Server wins, preserved orders fill gaps
+                return {
+                  ordersById: { ...preserved, ...newOrders },
+                  orderIds: [...new Set([...preservedIds, ...newOrderIds])],
+                  currentLocationId: locationId,
+                };
+              });
 
               console.log(
                 `[initializeOrders] Loaded ${newOrderIds.length} orders`,
@@ -9493,19 +9581,67 @@ export const useOrderStore = create<OrderState>()(
       {
         name: "order-store-storage",
         storage: createJSONStorage(() => mmkvStorage),
-        partialize: (state: OrderState) => ({
-          // Persist the optimized structure
-          ordersById: state.ordersById,
-          orderIds: state.orderIds,
-          activeOrderId: state.activeOrderId,
-          // Persist working set (Phase 5)
-          workingSetOrderIds: state.workingSetOrderIds,
-        }),
+        partialize: (state: OrderState) => {
+          const persistSet = new Set<string>();
+
+          // 1. Unsynced orders (MUST survive restart)
+          for (const id of state.unsyncedOrderIds) persistSet.add(id);
+
+          // 2. Working set orders
+          for (const id of state.workingSetOrderIds) persistSet.add(id);
+
+          // 3. Active order
+          if (state.activeOrderId) persistSet.add(state.activeOrderId);
+
+          // 4. Orders with un-synced items (no db_order_item_id)
+          for (const id of state.orderIds) {
+            const order = state.ordersById[id];
+            if (order?.items.some(item => !item.db_order_item_id && !item.isDraft)) {
+              persistSet.add(id);
+            }
+          }
+
+          // Build filtered maps
+          const filteredOrdersById: Record<string, OrderProfile> = {};
+          const filteredOrderIds: string[] = [];
+          for (const id of persistSet) {
+            if (state.ordersById[id]) {
+              filteredOrdersById[id] = state.ordersById[id];
+              filteredOrderIds.push(id);
+            }
+          }
+
+          return {
+            ordersById: filteredOrdersById,
+            orderIds: filteredOrderIds,
+            activeOrderId: state.activeOrderId,
+            workingSetOrderIds: state.workingSetOrderIds,
+            unsyncedOrderIds: state.unsyncedOrderIds,
+            currentLocationId: state.currentLocationId,
+          };
+        },
         onRehydrateStorage: () => {
           return (state, error) => {
             if (error) {
               console.error("Error rehydrating order store:", error);
               return;
+            }
+
+            if (state) {
+              // Migration: infer unsyncedOrderIds from orders missing db_order_id
+              if (!state.unsyncedOrderIds) {
+                const inferred: string[] = [];
+                for (const id of state.orderIds || []) {
+                  const order = state.ordersById?.[id];
+                  if (order && !order.db_order_id) inferred.push(id);
+                }
+                useOrderStore.setState({ unsyncedOrderIds: inferred });
+              }
+              // Migration: infer currentLocationId
+              if (state.currentLocationId === undefined) {
+                const locId = useStoreSettingsStore.getState().selectedStore?.id ?? null;
+                useOrderStore.setState({ currentLocationId: locId });
+              }
             }
 
             // After hydration, recalculate totals for the active order
@@ -9626,6 +9762,25 @@ useStoreSettingsStore.subscribe((state) => {
       });
       console.log("[OrderStore] Station context cleared");
     }
+  }
+});
+
+// ============================================================================
+// LOCATION CONTEXT: Auto-sync currentLocationId from useStoreSettingsStore
+// ============================================================================
+
+// Initial sync
+const initialStore = useStoreSettingsStore.getState().selectedStore;
+if (initialStore) {
+  useOrderStore.setState({ currentLocationId: initialStore.id });
+}
+
+// Subscribe to changes
+useStoreSettingsStore.subscribe((state, prev) => {
+  const newLocId = state.selectedStore?.id ?? null;
+  const oldLocId = prev.selectedStore?.id ?? null;
+  if (newLocId !== oldLocId) {
+    useOrderStore.setState({ currentLocationId: newLocId });
   }
 });
 

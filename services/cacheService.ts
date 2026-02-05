@@ -53,6 +53,9 @@ export function clearCache(): CacheClearResult {
       orders: [],
       isOnline: true,
       pendingSyncCount: 0,
+      workingSetOrderIds: [],
+      unsyncedOrderIds: [],
+      currentLocationId: null,
     });
     clearedKeys.push("orderStore (memory)");
   } catch (error) {
@@ -92,11 +95,24 @@ export function clearCache(): CacheClearResult {
  * employees are location-scoped, not station-scoped.
  */
 export function clearStationData(): void {
+  const orderState = useOrderStore.getState();
+
+  // Preserve unsynced orders across station switch
+  const preserved: Record<string, any> = {};
+  const preservedIds: string[] = [];
+  for (const id of orderState.unsyncedOrderIds) {
+    if (orderState.ordersById[id]) {
+      preserved[id] = orderState.ordersById[id];
+      preservedIds.push(id);
+    }
+  }
+
   useOrderStore.setState({
-    ordersById: {},
-    orderIds: [],
+    ordersById: preserved,
+    orderIds: preservedIds,
     activeOrderId: null,
     workingSetOrderIds: [],
+    unsyncedOrderIds: preservedIds,
   });
 
   // Clear active employee session but KEEP the employees array
@@ -107,7 +123,7 @@ export function clearStationData(): void {
 
   queryClient.clear();
 
-  console.log("[clearStationData] Cleared orders, active session, and query cache (kept employees)");
+  console.log("[clearStationData] Cleared orders, active session, and query cache (kept employees, preserved unsynced)");
 }
 
 /**
@@ -116,11 +132,25 @@ export function clearStationData(): void {
  * from the previous location does not persist in memory or on disk.
  */
 export function clearLocationData(): void {
+  const orderState = useOrderStore.getState();
+
+  // Preserve unsynced orders across location switch
+  const preserved: Record<string, any> = {};
+  const preservedIds: string[] = [];
+  for (const id of orderState.unsyncedOrderIds) {
+    if (orderState.ordersById[id]) {
+      preserved[id] = orderState.ordersById[id];
+      preservedIds.push(id);
+    }
+  }
+
   useOrderStore.setState({
-    ordersById: {},
-    orderIds: [],
+    ordersById: preserved,
+    orderIds: preservedIds,
     activeOrderId: null,
     workingSetOrderIds: [],
+    unsyncedOrderIds: preservedIds,
+    currentLocationId: null,
   });
 
   useEmployeeStore.setState({
@@ -131,7 +161,7 @@ export function clearLocationData(): void {
 
   queryClient.clear();
 
-  console.log("[clearLocationData] Cleared orders, employees, and query cache");
+  console.log("[clearLocationData] Cleared orders, employees, and query cache (preserved unsynced)");
 }
 
 /**

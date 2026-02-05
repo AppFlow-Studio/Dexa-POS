@@ -1,7 +1,9 @@
 import { useInventorySync } from "@/hooks/pos/useInventorySync";
+import { useOrdersQuery, orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { queryClient } from "@/contexts/TanstackProvider";
 import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
 import {
@@ -44,6 +46,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
   const offlineSyncInitialized = useRef(false);
+
+  // Archive layer: TanStack Query fetches orders and hydrates workspace
+  useOrdersQuery({
+    locationId: selectedStore?.id ?? null,
+    enabled: !!selectedStore?.id,
+  });
 
   // Register Supabase client with order store, floor plan store, coursing store, and offline sync
   useEffect(() => {
@@ -416,9 +424,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       syncFloorPlans(selectedStore.id);
       syncTaxRates(selectedStore.id);
 
-      // Phase 11.1: Initialize orders in background (non-blocking)
-      // This populates ordersById with active orders for the location
-      useOrderStore.getState().initializeOrders(selectedStore.id, true);
+      // Orders are now initialized via useOrdersQuery hook (archive layer)
+      // which auto-fetches when locationId changes
     }
   }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
 
@@ -438,12 +445,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Refresh stale floor plan data
         floorPlanStore.loadFloorPlanStatusIfStale();
 
-        // Phase 11.2: Refresh orders when app resumes from background
-        // This ensures orders are up-to-date after tablet sleep/wake
+        // Refresh orders when app resumes via query invalidation
         if (storeSettings.selectedStore?.id) {
-          useOrderStore
-            .getState()
-            .initializeOrders(storeSettings.selectedStore.id, true);
+          queryClient.invalidateQueries({
+            queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+          });
         }
       }
     };
