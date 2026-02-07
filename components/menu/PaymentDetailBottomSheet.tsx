@@ -88,6 +88,8 @@ interface PaymentRowData {
   original_tip_amount?: number;
   tip_adjusted_at?: string;
   tip_adjusted_by?: string;
+  amountTendered?: number;
+  changeGiven?: number;
 }
 
 type RightPaneView = "summary" | "refund" | "tipAdjust";
@@ -390,6 +392,13 @@ const LeftPane: React.FC<LeftPaneProps> = ({
       const desc = item.void_reason ? `Voided — ${item.void_reason}` : 'Voided';
       entries.push({ type: 'voided', label: desc });
     }
+
+    // Sort chronologically so events appear in the order they occurred
+    entries.sort((a, b) => {
+      if (!a.timestamp) return 1;
+      if (!b.timestamp) return -1;
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
 
     return entries;
   }, [order]);
@@ -921,31 +930,59 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       {hasCardInfo && (
                         <View className={hasItemsCovered ? "mb-3" : ""}>
                           <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
-                            <CreditCard size={12} color="#6B7280" />
+                            {payment.method === "Cash" ? (
+                              <Banknote size={12} color="#6B7280" />
+                            ) : (
+                              <CreditCard size={12} color="#6B7280" />
+                            )}
                             <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase">
-                              Card Details
+                              {payment.method === "Cash" ? "Cash Payment Details" : "Card Details"}
                             </Text>
                           </View>
-                          <View className="flex-row items-center justify-between">
-                            <View className="flex-row items-center">
-                              {payment.cardInfo?.brand && (
-                                <CardBrandBadge brand={payment.cardInfo.brand} />
-                              )}
-                              {payment.cardInfo?.last4 && (
-                                <Text className="text-sm text-gray-300 ml-2">
-                                  •••• {payment.cardInfo.last4}
+                          {/* Card brand/last4 — only for card payments */}
+                          {payment.method !== "Cash" && (
+                            <View className="flex-row items-center justify-between">
+                              <View className="flex-row items-center">
+                                {payment.cardInfo?.brand && (
+                                  <CardBrandBadge brand={payment.cardInfo.brand} />
+                                )}
+                                {payment.cardInfo?.last4 && (
+                                  <Text className="text-sm text-gray-300 ml-2">
+                                    •••• {payment.cardInfo.last4}
+                                  </Text>
+                                )}
+                              </View>
+                              {payment.cardInfo?.entryMode && (
+                                <Text className="text-xs text-gray-500">
+                                  Entry: {payment.cardInfo.entryMode}
                                 </Text>
                               )}
                             </View>
-                            {payment.cardInfo?.entryMode && (
-                              <Text className="text-xs text-gray-500">
-                                Entry: {payment.cardInfo.entryMode}
-                              </Text>
-                            )}
-                          </View>
+                          )}
+                          {/* Cash-specific: Amount Tendered & Change Given */}
+                          {payment.method === "Cash" && (
+                            <View className="flex-row flex-wrap mt-1">
+                              {payment.amountTendered != null && (
+                                <CardInfoItem label="Amount Tendered" value={`$${payment.amountTendered.toFixed(2)}`} />
+                              )}
+                              {payment.changeGiven != null && payment.changeGiven > 0 && (
+                                <CardInfoItem label="Change Given" value={`$${payment.changeGiven.toFixed(2)}`} />
+                              )}
+                            </View>
+                          )}
                           <View className="flex-row flex-wrap mt-3">
-                            <CardInfoItem label="Auth Code" value={payment.cardInfo?.authCode} />
-                            <CardInfoItem label="RRN" value={payment.cardInfo?.rrn} />
+                            {/* Card-only fields */}
+                            {payment.method !== "Cash" && (
+                              <>
+                                <CardInfoItem label="Auth Code" value={payment.cardInfo?.authCode} />
+                                <CardInfoItem label="RRN" value={payment.cardInfo?.rrn} />
+                                <CardInfoItem
+                                  label="Invoice"
+                                  value={payment.cardInfo?.invoiceNumber}
+                                />
+                              </>
+                            )}
+                            {/* Shared fields */}
                             <CardInfoItem
                               label="Txn #"
                               value={payment.cardInfo?.transactionNumber}
@@ -954,15 +991,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                               label="Ref ID"
                               value={payment.cardInfo?.referenceId}
                             />
-                            <CardInfoItem
-                              label="Invoice"
-                              value={payment.cardInfo?.invoiceNumber}
-                            />
                           </View>
                         </View>
                       )}
 
-                      {hasItemsCovered && (
+                      {hasItemsCovered && (() => {
+                        const isCash = payment.isCashPriced || payment.method === "Cash";
+                        let totalTax = 0;
+                        return (
                         <View>
                           <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
                             <Package size={12} color="#6B7280" />
@@ -970,32 +1006,69 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                               Items Covered
                             </Text>
                           </View>
-                          {payment.itemsCovered!.map((item, itemIndex) => (
+                          {payment.itemsCovered!.map((coveredItem, itemIndex) => {
+                            // Cross-reference with order items for tax/cash price info
+                            const cartItem = order?.items?.find(
+                              (ci: CartItem) => ci.db_order_item_id === coveredItem.itemId
+                            );
+                            const displaySubtotal = isCash && cartItem?.cashSubtotal != null
+                              ? (cartItem.cashSubtotal / cartItem.quantity) * coveredItem.quantity
+                              : coveredItem.subtotal;
+                            const displayUnitPrice = isCash && cartItem?.cashPrice != null
+                              ? cartItem.cashPrice
+                              : coveredItem.unitPrice;
+                            const itemTax = cartItem
+                              ? (isCash && cartItem.cashTaxAmount != null
+                                  ? (cartItem.cashTaxAmount / cartItem.quantity) * coveredItem.quantity
+                                  : (cartItem.taxAmount / cartItem.quantity) * coveredItem.quantity)
+                              : 0;
+                            totalTax += itemTax;
+                            return (
                             <View
-                              key={item.itemId || itemIndex}
-                              className={`flex-row items-center justify-between py-2 ${
+                              key={coveredItem.itemId || itemIndex}
+                              className={`py-2 ${
                                 itemIndex < payment.itemsCovered!.length - 1
                                   ? "border-b border-gray-800/50"
                                   : ""
                               }`}
                             >
-                              <View className="flex-row items-center flex-1">
-                                <View className="w-6 h-6 rounded bg-gray-800 items-center justify-center mr-2">
-                                  <Text className="text-xs font-bold text-gray-400">
-                                    {item.quantity}x
+                              <View className="flex-row items-center justify-between">
+                                <View className="flex-row items-center flex-1">
+                                  <View className="w-6 h-6 rounded bg-gray-800 items-center justify-center mr-2">
+                                    <Text className="text-xs font-bold text-gray-400">
+                                      {coveredItem.quantity}x
+                                    </Text>
+                                  </View>
+                                  <Text className="text-sm text-gray-300" numberOfLines={1}>
+                                    {coveredItem.itemName}
                                   </Text>
                                 </View>
-                                <Text className="text-sm text-gray-300" numberOfLines={1}>
-                                  {item.itemName}
-                                </Text>
+                                <View className="items-end">
+                                  <Text className="text-sm font-medium text-white">
+                                    ${displaySubtotal?.toFixed(2)}
+                                  </Text>
+                                  {isCash && (
+                                    <Text className="text-[10px] text-emerald-400">Cash Price</Text>
+                                  )}
+                                </View>
                               </View>
-                              <Text className="text-sm font-medium text-white">
-                                ${item.subtotal?.toFixed(2)}
-                              </Text>
+                              {cartItem && cartItem.taxRate > 0 && (
+                                <Text className="text-[11px] text-gray-500 ml-8 mt-0.5">
+                                  Tax: ${itemTax.toFixed(2)} ({(cartItem.taxRate)}%)
+                                </Text>
+                              )}
                             </View>
-                          ))}
+                            );
+                          })}
+                          {totalTax > 0 && (
+                            <View className="flex-row items-center justify-between pt-2 mt-1 border-t border-gray-700">
+                              <Text className="text-xs font-semibold text-gray-400">Total Tax</Text>
+                              <Text className="text-xs font-semibold text-gray-300">${totalTax.toFixed(2)}</Text>
+                            </View>
+                          )}
                         </View>
-                      )}
+                        );
+                      })()}
                     </View>
                   )}
 
@@ -2932,6 +3005,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           original_tip_amount: payment.original_tip_amount,
           tip_adjusted_at: payment.tip_adjusted_at,
           tip_adjusted_by: payment.tip_adjusted_by,
+          amountTendered: payment.transactionDetails?.amountTendered,
+          changeGiven: payment.transactionDetails?.changeGiven,
         });
       });
     }
@@ -3111,17 +3186,17 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           
           // CRITICAL: Sync order from backend to ensure local state is updated
           // This is necessary because broadcast may be delayed or disconnected
-          const dbOrderId = order?.db_order_id;
-          if (dbOrderId) {
+          // Use orderId (store key) not db_order_id — syncOrderFromBackendComplete looks up by store key
+          if (orderId) {
             try {
-              await useOrderStore.getState().syncOrderFromBackendComplete(dbOrderId);
-              console.log('[Refund] Post-refund sync completed for order:', dbOrderId);
+              await useOrderStore.getState().syncOrderFromBackendComplete(orderId);
+              console.log('[Refund] Post-refund sync completed for order:', orderId);
             } catch (syncError) {
               console.warn('[Refund] Post-refund sync failed:', syncError);
               // Non-blocking - refund succeeded, sync can be retried via broadcast
             }
           }
-          
+
           // Show success with optional warning for DB issues or offline status
           if (result.error) {
             // Refund succeeded but had DB update issues
@@ -3212,11 +3287,11 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 
         // CRITICAL: Sync order from backend to ensure local state is updated
         // This is necessary because broadcast may be delayed or disconnected
-        const dbOrderId = order?.db_order_id;
-        if (dbOrderId) {
+        // Use orderId (store key) not db_order_id — syncOrderFromBackendComplete looks up by store key
+        if (orderId) {
           try {
-            await useOrderStore.getState().syncOrderFromBackendComplete(dbOrderId);
-            console.log('[Refund] Post-refund sync completed for order:', dbOrderId);
+            await useOrderStore.getState().syncOrderFromBackendComplete(orderId);
+            console.log('[Refund] Post-refund sync completed for order:', orderId);
           } catch (syncError) {
             console.warn('[Refund] Post-refund sync failed:', syncError);
             // Non-blocking - refund succeeded, sync can be retried via broadcast
@@ -3258,7 +3333,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         setRefundProcessing(false);
       }
     },
-    [order, supabase, loggedInEmployee?.profileId, show, selectedStation, ordersRealtime.isConnected]
+    [order, orderId, supabase, loggedInEmployee?.profileId, show, selectedStation, ordersRealtime.isConnected]
   );
 
   return (

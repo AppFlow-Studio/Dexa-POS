@@ -3,10 +3,13 @@ import { useCFD } from "@/contexts/CFDProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
+    categorizeError,
+    getErrorTitle,
     getTerminalErrorMessage,
     isTerminalConnectivityError,
 } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { PaymentErrorModal } from "@/components/bill/paymentView/PaymentErrorModal";
 import { toastService } from "@/lib/toastService";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -58,12 +61,17 @@ const CashPaymentView = () => {
   );
   const [isProcessing, setIsProcessing] = useState(false);
   const [dejavooError, setDejavooError] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: "",
+    message: "",
+  });
 
-  // Sync isTransactionProcessing with isProcessing
+  // Sync isTransactionProcessing with isProcessing and error modal
   useEffect(() => {
-    setTransactionProcessing(isProcessing);
+    setTransactionProcessing(isProcessing || errorModal.visible);
     return () => { setTransactionProcessing(false); };
-  }, [isProcessing, setTransactionProcessing]);
+  }, [isProcessing, errorModal.visible, setTransactionProcessing]);
 
   const {
     showTipSelection,
@@ -277,7 +285,18 @@ const CashPaymentView = () => {
         close(); // Immediate safe close
         return;
       }
-      //   // Success - Pass Dejavoo transaction details to payment handler
+      // Handle non-connectivity transaction errors (declined, timeout, etc.)
+      if (!result.success) {
+        const errorType = categorizeError(result);
+        setErrorModal({
+          visible: true,
+          title: getErrorTitle(errorType),
+          message: getTerminalErrorMessage(result),
+        });
+        return;
+      }
+
+      // Success - Pass Dejavoo transaction details to payment handler
       if (result.success) {
         const rawResponse = result.rawResponse as Record<string, any> | undefined;
         const generalResponse = rawResponse?.GeneralResponse;
@@ -355,17 +374,19 @@ const CashPaymentView = () => {
       console.error("[CashPayment] Error processing payment:", error);
       const errorMsg = error instanceof Error ? error.message : "Unknown error";
       setDejavooError(errorMsg);
-
-      //   // Show error toast
-      toastService.show({
-        title: "Payment Error",
+      setErrorModal({
+        visible: true,
+        title: "Payment Failed",
         message: errorMsg,
-        type: "error",
       });
-      close();
-    } finally {
-      setIsProcessing(false);
+      // Keep isProcessing true - modal dismiss handler will clear it
     }
+  };
+
+  const handleDismissErrorModal = () => {
+    setErrorModal({ visible: false, title: "", message: "" });
+    setDejavooError(null);
+    setIsProcessing(false);
   };
 
   const handleBack = () => {
@@ -554,19 +575,21 @@ const CashPaymentView = () => {
         </View>
       </ScrollView>
 
-      {/* Error Display */}
-      {dejavooError && (
-        <View className="absolute bottom-24 left-4 right-4 p-4 bg-red-900/20 border border-red-500 rounded-xl">
-          <Text className="text-red-400 font-medium">{dejavooError}</Text>
-        </View>
-      )}
+      {/* Payment Error Modal */}
+      <PaymentErrorModal
+        visible={errorModal.visible}
+        title={errorModal.title}
+        message={errorModal.message}
+        onDismiss={handleDismissErrorModal}
+      />
 
       {/* Footer Buttons */}
       <View className="absolute bottom-0 left-0 right-0 bg-[#212121] pt-2 pb-10 border-t border-[#333]">
         <View className="flex-row gap-4 px-4">
           <TouchableOpacity
             onPress={handleBack}
-            className="flex-1 py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333]"
+            disabled={isProcessing}
+            className={`flex-1 py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] ${isProcessing ? "opacity-50" : ""}`}
           >
             <ArrowLeft size={20} color="#D1D5DB" className="mr-2" />
             <Text className="text-gray-300 font-semibold text-lg">Back</Text>

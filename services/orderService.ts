@@ -721,6 +721,22 @@ export class OrderService {
     return { data, error };
   }
 
+  /**
+   * Fetch pre-grouped KDS tickets from the server (denormalized)
+   */
+  static async getKDSTickets(
+    client: SupabaseClient,
+    locationId: string,
+    statuses?: string[],
+  ): Promise<{ data: any; error: any }> {
+    const params: Record<string, any> = { p_location_id: locationId };
+    if (statuses) {
+      params.p_statuses = statuses;
+    }
+    const { data, error } = await client.rpc("get_kds_tickets", params);
+    return { data, error };
+  }
+
   // ============================================
   // Phase 6: Conflict Detection & Payment Locking
   // ============================================

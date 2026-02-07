@@ -3,10 +3,13 @@ import { useCFD } from "@/contexts/CFDProvider";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
+    categorizeError,
+    getErrorTitle,
     getTerminalErrorMessage,
     isTerminalConnectivityError,
 } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { PaymentErrorModal } from "@/components/bill/paymentView/PaymentErrorModal";
 import { toastService } from "@/lib/toastService";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -56,13 +59,19 @@ const CardPaymentView = () => {
     null,
   );
   const [dejavooError, setDejavooError] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; title: string; message: string }>({
+    visible: false,
+    title: "",
+    message: "",
+  });
   const currentRefIdRef = useRef<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
-  // Sync isTransactionProcessing with status
+  // Sync isTransactionProcessing with status and error modal
   useEffect(() => {
-    setTransactionProcessing(status === "processing");
+    setTransactionProcessing(status === "processing" || errorModal.visible);
     return () => { setTransactionProcessing(false); };
-  }, [status, setTransactionProcessing]);
+  }, [status, errorModal.visible, setTransactionProcessing]);
 
   const {
     showTipSelection,
@@ -273,8 +282,12 @@ const CardPaymentView = () => {
 
           // Handle all other transaction errors (declined, timeout, etc.)
           if (!result.success) {
-            setDejavooError(result.error || "Transaction failed");
-            setStatus("ready");
+            const errorType = categorizeError(result);
+            setErrorModal({
+              visible: true,
+              title: getErrorTitle(errorType),
+              message: getTerminalErrorMessage(result),
+            });
             return;
           }
 
@@ -362,14 +375,11 @@ const CardPaymentView = () => {
           console.error("[CardPayment] Error processing payment:", error);
           const errorMsg =
             error instanceof Error ? error.message : "Unknown error";
-          setDejavooError(errorMsg);
-          // Show error toast
-          toastService.show({
-            title: "Transaction Failed",
+          setErrorModal({
+            visible: true,
+            title: "Payment Failed",
             message: errorMsg,
-            type: "error",
           });
-          setStatus("ready");
           return;
         }
       };
@@ -385,6 +395,12 @@ const CardPaymentView = () => {
      
     }
   }, [status, activeOrderId, handlePaymentCompletion, tipAmount]);
+
+  const handleDismissErrorModal = () => {
+    setErrorModal({ visible: false, title: "", message: "" });
+    setDejavooError(null);
+    setStatus("ready");
+  };
 
   const handleChargeCard = () => {
     setStatus("processing");
@@ -535,12 +551,13 @@ const CardPaymentView = () => {
           )}
         </View>
 
-        {/* Error Display */}
-        {dejavooError && (
-          <View className="absolute bottom-24 left-4 right-4 p-4 bg-red-900/20 border border-red-500 rounded-xl">
-            <Text className="text-red-400 font-medium">{dejavooError}</Text>
-          </View>
-        )}
+        {/* Payment Error Modal */}
+        <PaymentErrorModal
+          visible={errorModal.visible}
+          title={errorModal.title}
+          message={errorModal.message}
+          onDismiss={handleDismissErrorModal}
+        />
         {/* Bottom Section: Receipt Details & Actions */}
         <Animated.View entering={FadeInDown.delay(200)} className="w-full">
           {/* Receipt Breakdown Card */}
@@ -614,9 +631,12 @@ const CardPaymentView = () => {
 
           {(status === "processing" || status === "ready") && (
             <TouchableOpacity
+              disabled={isCancelling}
               onPress={async () => {
+                if (isCancelling) return;
                 if (status === "processing" && currentRefIdRef.current) {
                   // Abort in-flight transaction on terminal
+                  setIsCancelling(true);
                   try {
                     const DejavooAPI = new DejavooSpinAPI(supabase);
                     await DejavooAPI.loadTerminal(
@@ -629,15 +649,16 @@ const CardPaymentView = () => {
                   } catch (err) {
                     console.error("[CardPayment] Abort failed:", err);
                   }
+                  setIsCancelling(false);
                   setStatus("ready");
                 } else {
                   close();
                 }
               }}
-              className="w-full py-4 bg-[#2A2A2A] border border-[#404040] rounded-xl active:bg-[#333]"
+              className={`w-full py-4 bg-[#2A2A2A] border border-[#404040] rounded-xl active:bg-[#333] ${isCancelling ? "opacity-50" : ""}`}
             >
               <Text className="text-lg font-bold text-gray-300 text-center">
-                Cancel Transaction
+                {isCancelling ? "Cancelling..." : "Cancel Transaction"}
               </Text>
             </TouchableOpacity>
           )}

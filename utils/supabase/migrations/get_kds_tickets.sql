@@ -1,0 +1,94 @@
+-- ============================================================================
+-- get_kds_tickets: Server-side denormalized KDS ticket aggregation
+-- Returns pre-grouped tickets (one per order+course) with items & modifiers
+-- Eliminates client-side order→ticket transformation
+-- ============================================================================
+
+-- Performance indexes for KDS queries
+CREATE INDEX IF NOT EXISTS idx_order_items_kitchen
+  ON order_items (order_id, kitchen_status)
+  WHERE NOT COALESCE(is_voided, false);
+
+CREATE INDEX IF NOT EXISTS idx_orders_location_status
+  ON orders (location_id, status)
+  WHERE status NOT IN ('completed', 'cancelled', 'void', 'voided', 'refunded');
+
+-- Main RPC function
+CREATE OR REPLACE FUNCTION get_kds_tickets(
+  p_location_id UUID,
+  p_statuses TEXT[] DEFAULT ARRAY['sent', 'preparing', 'ready']
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_result JSONB;
+BEGIN
+  SELECT COALESCE(jsonb_agg(ticket ORDER BY ticket->>'start_time' ASC NULLS LAST), '[]'::jsonb)
+  INTO v_result
+  FROM (
+    SELECT jsonb_build_object(
+      'ticket_id', o.id::text || '_c' || COALESCE(oi_grouped.course_number, 1)::text,
+      'order_id', o.id,
+      'db_order_id', o.id,
+      'order_number', o.order_number,
+      'display_number', o.display_number,
+      'course_number', COALESCE(oi_grouped.course_number, 1),
+      'status', CASE
+        WHEN oi_grouped.all_ready THEN 'ready'
+        WHEN oi_grouped.any_sent THEN 'pending'
+        ELSE 'cooking'
+      END,
+      'order_type', o.order_type,
+      'table_name', o.table_number,
+      'customer_name', o.customer_name,
+      'start_time', COALESCE(o.sent_to_kitchen_at, o.opened_at),
+      'item_count', oi_grouped.item_count,
+      'items', oi_grouped.items_json
+    ) AS ticket
+    FROM orders o
+    -- Join aggregated items grouped by course
+    INNER JOIN (
+      SELECT
+        oi.order_id,
+        COALESCE(oi.course_number, 1) AS course_number,
+        -- Status aggregation
+        bool_and(oi.kitchen_status = 'ready') AS all_ready,
+        bool_or(oi.kitchen_status = 'sent' OR oi.kitchen_status IS NULL) AS any_sent,
+        -- Item count (sum of quantities)
+        SUM(oi.quantity)::int AS item_count,
+        -- Items array with nested modifiers
+        jsonb_agg(
+          jsonb_build_object(
+            'id', oi.id,
+            'name', COALESCE(oi.open_item_name, oi.item_name),
+            'quantity', oi.quantity,
+            'kitchen_status', COALESCE(oi.kitchen_status, 'sent'),
+            'special_instructions', oi.special_instructions,
+            'modifiers', (
+              SELECT COALESCE(jsonb_agg(
+                jsonb_build_object(
+                  'modifier_name', oim.modifier_name,
+                  'modifier_group_name', oim.modifier_group_name,
+                  'price_modifier', oim.price_modifier
+                )
+              ), '[]'::jsonb)
+              FROM order_item_modifiers oim
+              WHERE oim.order_item_id = oi.id
+            )
+          )
+        ) AS items_json
+      FROM order_items oi
+      WHERE COALESCE(oi.is_voided, false) = false
+        AND (oi.kitchen_status = ANY(p_statuses) OR oi.kitchen_status IS NULL)
+      GROUP BY oi.order_id, COALESCE(oi.course_number, 1)
+    ) oi_grouped ON oi_grouped.order_id = o.id
+    WHERE o.location_id = p_location_id
+      AND o.status NOT IN ('completed', 'cancelled', 'void', 'voided', 'refunded')
+  ) sub;
+
+  RETURN v_result;
+END;
+$$;

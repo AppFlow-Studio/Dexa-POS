@@ -4,6 +4,7 @@ import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
+import { useKDSStore } from "@/stores/useKDSStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -91,6 +92,7 @@ export default function MainLayout() {
     }
 
     useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
+    useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
   }, []);
 
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {

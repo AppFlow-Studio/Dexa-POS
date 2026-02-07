@@ -9484,6 +9484,13 @@ export type Database = {
         }
         Returns: Json
       }
+      get_kds_tickets: {
+        Args: {
+          p_location_id: string
+          p_statuses?: string[]
+        }
+        Returns: Json
+      }
       calculate_item_totals: {
         Args: {
           p_cash_price: number

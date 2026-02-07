@@ -136,9 +136,15 @@ const OrderLineSectionContent: React.FC = () => {
     updateOrderCheckStatus(orderId, "Opened");
     setActiveOrder(orderId);
   }, [updateOrderCheckStatus, setActiveOrder]);
-  // Memoize the reversed array to verify referential integrity for FlatList
-  const reversedFilteredOrders = useMemo(() => {
-    return filteredOrders.slice().reverse();
+  // Sort orders by timestamp (newest first) for proper order display
+  const sortedFilteredOrders = useMemo(() => {
+    return filteredOrders.slice().sort((a, b) => {
+      // Use last_activity_at if available, otherwise fall back to opened_at
+      const timeA = a.last_activity_at || a.opened_at || '';
+      const timeB = b.last_activity_at || b.opened_at || '';
+      // Sort descending (newest first)
+      return new Date(timeB).getTime() - new Date(timeA).getTime();
+    });
   }, [filteredOrders]);
 
   return (
@@ -165,7 +171,7 @@ const OrderLineSectionContent: React.FC = () => {
 
       <FlatList
         ref={flatListRef}
-        data={reversedFilteredOrders}
+        data={sortedFilteredOrders}
         keyExtractor={(item) => item.id}
         horizontal
         showsHorizontalScrollIndicator={false}

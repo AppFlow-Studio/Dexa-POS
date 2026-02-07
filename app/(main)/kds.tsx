@@ -1,86 +1,59 @@
-import { CartItem, OrderProfile } from "@/lib/types";
-import { useCoursingStore } from "@/stores/useCoursingStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
-    ArrowLeft,
-    Check,
-    ChefHat,
-    ChevronDown,
-    ChevronUp,
-    Clock,
-    Flame,
-    Inbox,
-    RefreshCw,
-    ShoppingBag,
-    Truck,
-    UtensilsCrossed,
+  getBucketedElapsed,
+  getUrgencyLevel,
+  useKDSTimer,
+} from "@/hooks/useKDSTimer";
+import { useKDSStore } from "@/stores/useKDSStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { KDSTicket, KDSTicketItem } from "@/types/kds";
+import {
+  ChefHat,
+  Clock,
+  RefreshCw,
+  ShoppingBag,
+  Truck,
+  UtensilsCrossed,
 } from "lucide-react-native";
 import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    Animated,
-    FlatList,
-    InteractionManager,
-    ScrollView,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  FlatList,
+  InteractionManager,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
-// New Data Structure for Cards
-interface KDSCardData {
-  id: string;
-  order: OrderProfile;
-  courseNumber: number;
-  items: CartItem[];
-  status: "pending" | "cooking" | "ready";
-  startTime: string | null;
-  tableName: string | null; // Resolved table name from service_location_id
-}
+// ─── Status Tab Config ────────────────────────────────────────────
+type StatusFilter = "pending" | "cooking" | "ready";
+type OrderTypeFilter = "all" | "delivery" | "takeout" | "dine_in";
 
-// Time elapsed helper
-const getTimeElapsed = (timestamp: string | null): string => {
-  if (!timestamp) return "Now";
-  const now = new Date();
-  const opened = new Date(timestamp);
-  const diffMs = now.getTime() - opened.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
+const STATUS_TABS: { key: StatusFilter; label: string; color: string }[] = [
+  { key: "pending", label: "Pending", color: "#d97706" },
+  { key: "cooking", label: "Cooking", color: "#ea580c" },
+  { key: "ready", label: "Served", color: "#16a34a" },
+];
 
-  if (diffMins < 1) return "Now";
-  if (diffMins < 60) return `${diffMins}m`;
-  const hours = Math.floor(diffMins / 60);
-  const mins = diffMins % 60;
-  return `${hours}h${mins}m`;
-};
+const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "delivery", label: "Delivery" },
+  { key: "takeout", label: "To Go" },
+  { key: "dine_in", label: "Dine-In" },
+];
 
-// Get urgency color based on time elapsed
-const getUrgencyColor = (timestamp: string | null): string => {
-  if (!timestamp) return "#9ca3af";
-  const now = new Date();
-  const opened = new Date(timestamp);
-  const diffMins = Math.floor((now.getTime() - opened.getTime()) / 60000);
+// ─── Urgency border colors by level ──────────────────────────────
+const URGENCY_BORDER_COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
 
-  if (diffMins >= 15) return "#ef4444"; // Red
-  if (diffMins >= 10) return "#f97316"; // Orange
-  if (diffMins >= 5) return "#eab308"; // Yellow
-  return "#22c55e"; // Green
-};
+// ─── Fixed card height for getItemLayout optimization ───────────
+const CARD_HEIGHT = 260;
 
-interface KDSOrderCardProps {
-  data: KDSCardData;
-  onStartCooking: () => void;
-  onMarkReady: () => void;
-  onMarkServed: () => void;
-}
-
-// Simple Skeleton Bar Component - uses inline styles for reliability
+// ─── Skeleton ─────────────────────────────────────────────────────
 const SkeletonBar = ({
   width,
   height,
@@ -127,107 +100,113 @@ const SkeletonBar = ({
   );
 };
 
-const KDSSkeletonCard = () => {
-  return (
+const KDSSkeletonCard = () => (
+  <View
+    style={{
+      margin: 4,
+      borderRadius: 10,
+      overflow: "hidden",
+      backgroundColor: "#2a2a2e",
+      borderWidth: 2,
+      borderColor: "#444",
+      height: 180,
+    }}
+  >
     <View
       style={{
-        marginHorizontal: 6,
-        marginVertical: 4,
-        borderRadius: 10,
-        overflow: "hidden",
-        backgroundColor: "#2a2a2e",
-        borderWidth: 2,
-        borderColor: "#444",
-        height: 180,
+        backgroundColor: "#333338",
+        paddingHorizontal: 10,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: "#444",
+        flexDirection: "row",
+        justifyContent: "space-between",
       }}
     >
-      {/* Header Skeleton */}
-      <View
-        style={{
-          backgroundColor: "#333338",
-          paddingHorizontal: 10,
-          paddingVertical: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: "#444",
-          flexDirection: "row",
-          justifyContent: "space-between",
-        }}
-      >
-        <View>
-          <SkeletonBar width={80} height={18} style={{ marginBottom: 6 }} />
-          <SkeletonBar width={60} height={12} />
-        </View>
-        <View className="items-end">
-          <SkeletonBar width={40} height={14} style={{ marginBottom: 6 }} />
-          <SkeletonBar width={50} height={14} />
-        </View>
+      <View>
+        <SkeletonBar width={80} height={18} style={{ marginBottom: 6 }} />
+        <SkeletonBar width={60} height={12} />
       </View>
-
-      {/* Items Skeleton */}
-      <View style={{ padding: 12, flex: 1 }}>
-        <View className="flex-row items-center mb-3">
-          <SkeletonBar
-            width={24}
-            height={24}
-            style={{ marginRight: 8, borderRadius: 4 }}
-          />
-          <SkeletonBar width={120} height={16} />
-        </View>
-        <View className="flex-row items-center mb-3">
-          <SkeletonBar
-            width={24}
-            height={24}
-            style={{ marginRight: 8, borderRadius: 4 }}
-          />
-          <SkeletonBar width={100} height={16} />
-        </View>
-        <View className="flex-row items-center">
-          <SkeletonBar
-            width={24}
-            height={24}
-            style={{ marginRight: 8, borderRadius: 4 }}
-          />
-          <SkeletonBar width={140} height={16} />
-        </View>
-      </View>
-
-      {/* Button Skeleton */}
-      <View
-        style={{
-          height: 40,
-          backgroundColor: "#3f3f46",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <SkeletonBar width={60} height={14} />
+      <View style={{ alignItems: "flex-end" }}>
+        <SkeletonBar width={40} height={14} style={{ marginBottom: 6 }} />
+        <SkeletonBar width={50} height={14} />
       </View>
     </View>
-  );
-};
+    <View style={{ padding: 12, flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+        <SkeletonBar width={24} height={24} style={{ marginRight: 8, borderRadius: 4 }} />
+        <SkeletonBar width={120} height={16} />
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+        <SkeletonBar width={24} height={24} style={{ marginRight: 8, borderRadius: 4 }} />
+        <SkeletonBar width={100} height={16} />
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <SkeletonBar width={24} height={24} style={{ marginRight: 8, borderRadius: 4 }} />
+        <SkeletonBar width={140} height={16} />
+      </View>
+    </View>
+  </View>
+);
 
-// Memoized KDS Card for performance
-const KDSOrderCard = React.memo<KDSOrderCardProps>(
-  ({ data, onStartCooking, onMarkReady, onMarkServed }) => {
-    const { order, courseNumber, items, status, startTime, tableName } = data;
+// ─── Order Type Helpers ───────────────────────────────────────────
+function getOrderTypeLabel(type: string | null): string {
+  const t = (type || "").toLowerCase();
+  if (t === "delivery") return "DELIVERY";
+  if (t === "takeout" || t === "to_go" || t === "to go") return "TO GO";
+  return "DINE IN";
+}
 
-    const [timeElapsed, setTimeElapsed] = useState(getTimeElapsed(startTime));
-    const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+function getOrderTypeIcon(type: string | null) {
+  const t = (type || "").toLowerCase();
+  if (t === "delivery") return <Truck size={11} color="#22c55e" />;
+  if (t === "takeout" || t === "to_go" || t === "to go")
+    return <ShoppingBag size={11} color="#3b82f6" />;
+  return <UtensilsCrossed size={11} color="#d97706" />;
+}
 
-    // ... (keep existing logic)
-    // Re-write the internal logic to ensure it works with ReplaceFileContent or Paste full function content
-    // Since I can't partially match easily, I'll provide the FULL implementation of KDSOrderCard again but wrapped in React.memo
+function matchesTypeFilter(ticket: KDSTicket, filter: OrderTypeFilter): boolean {
+  if (filter === "all") return true;
+  const t = (ticket.order_type || "").toLowerCase();
+  if (filter === "delivery") return t === "delivery";
+  if (filter === "takeout") return t === "takeout" || t === "to_go" || t === "to go";
+  // dine_in
+  return t === "dine_in" || t === "dine in" || t === "" || !ticket.order_type;
+}
+
+// ─── Ticket Card ──────────────────────────────────────────────────
+interface KDSTicketCardProps {
+  ticket: KDSTicket;
+  onAdvance: (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => void;
+}
+
+const KDSTicketCard = React.memo<KDSTicketCardProps>(
+  ({ ticket, onAdvance }) => {
+    // Subscribe to timerTick via Zustand selector — only re-renders when bucketed string changes
+    const timeElapsed = useKDSStore(
+      useCallback(
+        (s) => {
+          void s.timerTick;
+          return getBucketedElapsed(ticket.start_time);
+        },
+        [ticket.start_time],
+      ),
+    );
 
     // Double-tap detection
     const lastTapRef = useRef<number>(0);
     const DOUBLE_TAP_DELAY = 350;
-    const firstTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-      null,
-    );
+    const firstTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Animations
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const opacityAnim = useRef(new Animated.Value(1)).current;
+
+    useEffect(() => {
+      return () => {
+        if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
+      };
+    }, []);
 
     const triggerFirstTapFeedback = () => {
       Animated.sequence([
@@ -256,7 +235,6 @@ const KDSOrderCard = React.memo<KDSOrderCardProps>(
     const triggerDoubleTapAnimation = () => {
       if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
       opacityAnim.setValue(1);
-
       Animated.sequence([
         Animated.timing(scaleAnim, {
           toValue: 0.96,
@@ -278,11 +256,12 @@ const KDSOrderCard = React.memo<KDSOrderCardProps>(
 
     const handleDoubleTap = () => {
       const now = Date.now();
+      const itemIds = ticket.items.map((i) => i.id);
       if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
         triggerDoubleTapAnimation();
-        if (status === "pending") onStartCooking();
-        else if (status === "cooking") onMarkReady();
-        else if (status === "ready") onMarkServed();
+        if (ticket.status === "pending") onAdvance(ticket.ticket_id, itemIds, "preparing");
+        else if (ticket.status === "cooking") onAdvance(ticket.ticket_id, itemIds, "ready");
+        else if (ticket.status === "ready") onAdvance(ticket.ticket_id, itemIds, "served");
         lastTapRef.current = 0;
       } else {
         triggerFirstTapFeedback();
@@ -290,567 +269,222 @@ const KDSOrderCard = React.memo<KDSOrderCardProps>(
       }
     };
 
-    useEffect(() => {
-      return () => {
-        if (firstTapTimeoutRef.current)
-          clearTimeout(firstTapTimeoutRef.current);
-      };
-    }, []);
-
-    useEffect(() => {
-      const interval = setInterval(() => {
-        setTimeElapsed(getTimeElapsed(startTime));
-      }, 30000);
-      return () => clearInterval(interval);
-    }, [startTime]);
-
-    const getOrderTypeConfig = () => {
-      const type = order.order_type?.toLowerCase() || "dine_in";
-      if (type === "dine_in" || type === "dine in") {
-        return {
-          icon: <UtensilsCrossed size={11} color="#d97706" />,
-          label: "DINE IN",
-        };
-      }
-      if (type === "delivery") {
-        return { icon: <Truck size={11} color="#22c55e" />, label: "DELIVERY" };
-      }
-      return {
-        icon: <ShoppingBag size={11} color="#3b82f6" />,
-        label: "TAKEOUT",
-      };
-    };
-
-    const orderTypeConfig = getOrderTypeConfig();
-    // const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
-
-    const getStatusColor = () => {
-      switch (status) {
-        case "pending":
-          return "#d97706";
-        case "cooking":
-          return "#ea580c";
-        case "ready":
-          return "#16a34a";
-        default:
-          return "#6b7280";
-      }
-    };
-
-    const getButtonConfig = () => {
-      switch (status) {
-        case "pending":
-          return { label: "START", color: "#d97706", onPress: onStartCooking };
-        case "cooking":
-          return { label: "READY", color: "#ea580c", onPress: onMarkReady };
-        case "ready":
-          return { label: "SERVE", color: "#16a34a", onPress: onMarkServed };
-        default:
-          return { label: "", color: "#6b7280", onPress: () => {} };
-      }
-    };
-
-    const buttonConfig = getButtonConfig();
-
-    const toggleItemExpanded = (itemId: string) => {
-      setExpandedItems((prev) => {
-        const next = new Set(prev);
-        if (next.has(itemId)) {
-          next.delete(itemId);
-        } else {
-          next.add(itemId);
-        }
-        return next;
-      });
-    };
-
-    const renderItemDetails = (item: CartItem) => {
-      const details: React.ReactNode[] = [];
-
-      // Size
-      if (item.customizations?.size) {
-        details.push(
-          <Text key="size" className="text-blue-400 text-xs ml-6 mt-1">
-            Size: {item.customizations.size.name}
-          </Text>,
-        );
-      }
-
-      // Modifiers
-      if (
-        item.customizations?.modifiers &&
-        item.customizations.modifiers.length > 0
-      ) {
-        item.customizations.modifiers.forEach((mod, modIndex) => {
-          const optionNames = mod.options.map((opt) => opt.name).join(", ");
-          details.push(
-            <View key={`mod-${modIndex}`} className="ml-6 mt-1">
-              <Text className="text-purple-400 text-xs">
-                • {mod.categoryName}: {optionNames}
-              </Text>
-            </View>,
-          );
-        });
-      }
-
-      // Add-ons
-      if (
-        item.customizations?.addOns &&
-        item.customizations.addOns.length > 0
-      ) {
-        item.customizations.addOns.forEach((addon, addonIndex) => {
-          details.push(
-            <Text
-              key={`addon-${addonIndex}`}
-              className="text-green-400 text-xs ml-6 mt-1"
-            >
-              + {addon.name} (+${addon.price.toFixed(2)})
-            </Text>,
-          );
-        });
-      }
-
-      // Notes
-      if (item.customizations?.notes) {
-        details.push(
-          <Text
-            key="notes"
-            className="text-yellow-500 text-xs italic ml-6 mt-1"
-            numberOfLines={2}
-          >
-            "{item.customizations.notes}"
-          </Text>,
-        );
-      }
-
-      return details.length > 0 ? (
-        details
-      ) : (
-        <Text className="text-gray-500 text-xs ml-6 mt-1 italic">
-          No special instructions
-        </Text>
-      );
-    };
+    const urgencyLevel = getUrgencyLevel(ticket.start_time);
+    const urgencyColor = URGENCY_BORDER_COLORS[urgencyLevel];
+    const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
+    const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
 
     return (
       <TouchableOpacity activeOpacity={1} onPress={handleDoubleTap}>
         <Animated.View
           style={{
-            marginHorizontal: 6,
-            marginVertical: 4,
+            margin: 4,
             borderRadius: 10,
             overflow: "hidden",
             backgroundColor: "#2a2a2e",
             borderWidth: 2,
-            borderColor: getStatusColor(),
-            shadowColor: getStatusColor(),
+            borderColor: urgencyColor,
+            shadowColor: urgencyColor,
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.3,
             shadowRadius: 6,
             elevation: 4,
+            height: CARD_HEIGHT - 8,
             transform: [{ scale: scaleAnim }],
             opacity: opacityAnim,
           }}
         >
-          {/* Header */}
+          {/* Top bar with urgency color */}
+          <View
+            style={{
+              backgroundColor: urgencyColor,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Clock size={12} color="#fff" />
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: "700",
+                  marginLeft: 4,
+                }}
+              >
+                {timeElapsed}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>
+                {ticket.item_count} items
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "rgba(0,0,0,0.2)",
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 4,
+                }}
+              >
+                {orderTypeIcon}
+                <Text style={{ color: "#fff", fontSize: 10, marginLeft: 3, fontWeight: "600" }}>
+                  {orderTypeLabel}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Order info */}
           <View
             style={{
               backgroundColor: "#333338",
               paddingHorizontal: 10,
-              paddingVertical: 8,
+              paddingVertical: 6,
               borderBottomWidth: 1,
               borderBottomColor: "#444",
             }}
           >
-            <View className="flex-row justify-between items-center">
-              <View className="flex-1">
-                <Text
-                  className="text-lg font-bold text-white"
-                  numberOfLines={1}
-                >
-                  {order.display_number ||
-                    order.order_number?.slice(-4) ||
-                    "----"}
-                  <Text className="text-amber-400"> C{courseNumber}</Text>
-                </Text>
-                {tableName && (
-                  <Text className="text-sm text-gray-400">{tableName}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
+                {ticket.display_number || ticket.order_number?.slice(-4) || "----"}
+                {ticket.course_number > 1 && (
+                  <Text style={{ color: "#fbbf24" }}> C{ticket.course_number}</Text>
                 )}
-                <Text className="text-white text-sm">
-                  {order.opened_at
-                    ? new Date(order.opened_at).toLocaleDateString("en-US")
-                    : ""}
-                </Text>
-              </View>
-              <View className="items-end">
-                <View className="flex-row items-center">
-                  <Clock size={10} color={getUrgencyColor(startTime)} />
-                  <Text
-                    style={{
-                      color: getUrgencyColor(startTime),
-                      fontSize: 11,
-                      fontWeight: "600",
-                      marginLeft: 3,
-                    }}
-                  >
-                    {timeElapsed}
-                  </Text>
-                </View>
-                <View className="flex-row items-center mt-1">
-                  {orderTypeConfig.icon}
-                  <Text className="text-gray-400 text-xs ml-1">
-                    {orderTypeConfig.label}
-                  </Text>
-                </View>
-              </View>
+              </Text>
+              {ticket.table_name && (
+                <Text style={{ color: "#9ca3af", fontSize: 12 }}>{ticket.table_name}</Text>
+              )}
             </View>
           </View>
 
-          {/* Items */}
+          {/* Items list */}
           <View style={{ padding: 8, backgroundColor: "#252528" }}>
-            {items.slice(0, 4).map((item, index) => {
-              const itemKey = `${item.id}_${index}`;
-              const isExpanded = expandedItems.has(itemKey);
-              const hasDetails =
-                item.customizations?.size ||
-                (item.customizations?.modifiers &&
-                  item.customizations.modifiers.length > 0) ||
-                (item.customizations?.addOns &&
-                  item.customizations.addOns.length > 0) ||
-                item.customizations?.notes;
-
-              return (
-                <View
-                  key={itemKey}
-                  className={
-                    index !== Math.min(items.length - 1, 3) ? "mb-2" : ""
-                  }
-                >
-                  <TouchableOpacity
-                    onPress={() => hasDetails && toggleItemExpanded(itemKey)}
-                    activeOpacity={hasDetails ? 0.7 : 1}
-                    className="flex-row items-start"
+            {ticket.items.slice(0, 6).map((item: KDSTicketItem, index: number) => (
+              <View
+                key={item.id}
+                style={index < Math.min(ticket.items.length - 1, 5) ? { marginBottom: 4 } : undefined}
+              >
+                <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                  <View
+                    style={{
+                      backgroundColor: "#3a3a40",
+                      width: 22,
+                      height: 22,
+                      borderRadius: 4,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: 6,
+                    }}
                   >
-                    <View
-                      style={{
-                        backgroundColor: "#3a3a40",
-                        width: 24,
-                        height: 24,
-                        borderRadius: 5,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginRight: 6,
-                      }}
-                    >
-                      <Text className="text-white text-sm font-bold">
-                        {item.quantity}
-                      </Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text
-                        className="text-white text-sm font-medium"
-                        numberOfLines={1}
-                      >
-                        {item.name}
-                      </Text>
-                    </View>
-                    {hasDetails && (
-                      <View style={{ paddingLeft: 4 }}>
-                        {isExpanded ? (
-                          <ChevronUp size={14} color="#9ca3af" />
-                        ) : (
-                          <ChevronDown size={14} color="#9ca3af" />
-                        )}
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                  {isExpanded && (
-                    <View style={{ paddingBottom: 4 }}>
-                      {renderItemDetails(item)}
-                    </View>
-                  )}
+                    <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+                      {item.quantity}
+                    </Text>
+                  </View>
+                  <Text
+                    style={{ color: "#fff", fontSize: 13, fontWeight: "500", flex: 1 }}
+                    numberOfLines={1}
+                  >
+                    {item.name}
+                  </Text>
                 </View>
-              );
-            })}
-            {items.length > 4 && (
-              <Text className="text-gray-500 text-xs text-center mt-1">
-                +{items.length - 4} more items
+                {/* Modifiers */}
+                {item.modifiers.length > 0 &&
+                  item.modifiers.map((mod, mi) => {
+                    const isRemoval =
+                      mod.modifier_group_name?.toLowerCase().includes("remove") ||
+                      mod.modifier_name?.toLowerCase().startsWith("no ");
+                    return (
+                      <Text
+                        key={`${item.id}_m${mi}`}
+                        style={{
+                          color: isRemoval ? "#ef4444" : "#4ade80",
+                          fontSize: 11,
+                          marginLeft: 28,
+                          marginTop: 1,
+                        }}
+                      >
+                        {isRemoval ? "- " : "+ "}
+                        {mod.modifier_name}
+                      </Text>
+                    );
+                  })}
+                {/* Special instructions */}
+                {item.special_instructions && (
+                  <Text
+                    style={{
+                      color: "#eab308",
+                      fontSize: 11,
+                      fontStyle: "italic",
+                      marginLeft: 28,
+                      marginTop: 1,
+                    }}
+                    numberOfLines={2}
+                  >
+                    "{item.special_instructions}"
+                  </Text>
+                )}
+              </View>
+            ))}
+            {ticket.items.length > 6 && (
+              <Text style={{ color: "#6b7280", fontSize: 11, textAlign: "center", marginTop: 4 }}>
+                +{ticket.items.length - 6} more items
               </Text>
             )}
           </View>
 
-          {/* Action Button */}
-          <TouchableOpacity
-            onPress={buttonConfig.onPress}
-            style={{
-              backgroundColor: buttonConfig.color,
-              paddingVertical: 10,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Text className="text-white font-bold text-sm">
-              {buttonConfig.label}
-            </Text>
-          </TouchableOpacity>
+          {/* Customer name footer */}
+          {ticket.customer_name && (
+            <View
+              style={{
+                backgroundColor: "#1f1f22",
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderTopWidth: 1,
+                borderTopColor: "#333",
+              }}
+            >
+              <Text style={{ color: "#9ca3af", fontSize: 11 }} numberOfLines={1}>
+                {ticket.customer_name}
+              </Text>
+            </View>
+          )}
         </Animated.View>
       </TouchableOpacity>
     );
   },
+  (prev, next) =>
+    prev.ticket === next.ticket && prev.onAdvance === next.onAdvance,
 );
 
-// Module-level constants
-const INACTIVE_STATUSES = new Set([
-  "completed", "cancelled", "void", "voided", "refunded",
-]);
-
-// Hoisted icon constants — referentially stable across renders
-const PENDING_ICON = <Inbox size={18} color="#60a5fa" />;
-const COOKING_ICON = <Flame size={18} color="#fb923c" />;
-const READY_ICON = <Check size={18} color="#4ade80" />;
-
-// Column Component
-const MIN_CARD_HEIGHT = 140;
-const MAX_VISIBLE_ROWS = 4;
-
-interface KDSColumnProps {
-  title: string;
-  count: number;
-  icon: React.ReactNode;
-  backgroundColor: string;
-  headerColor: string;
-  cards: KDSCardData[];
-  emptyMessage: string;
-  isFocused: boolean;
-  isHidden: boolean;
-  isLoading?: boolean;
-  onHeaderPress: () => void;
-  onStartCooking: (orderId: string, itemIds: string[]) => void;
-  onMarkReady: (orderId: string, itemIds: string[]) => void;
-  onMarkServed: (orderId: string, itemIds: string[]) => void;
-}
-
-const KDSColumn: React.FC<KDSColumnProps> = React.memo(({
-  title,
-  count,
-  icon,
-  backgroundColor,
-  headerColor,
-  cards,
-  emptyMessage,
-  isFocused,
-  isHidden,
-  isLoading,
-  onHeaderPress,
-  onStartCooking,
-  onMarkReady,
-  onMarkServed,
-}) => {
-  const [containerHeight, setContainerHeight] = useState(0);
-
-  // Dimension-aware card sizing
-  const cardStyle = useMemo(() => {
-    if (cards.length === 0 || containerHeight === 0) return {};
-    const availableHeight = containerHeight - 20; // Account for padding
-
-    if (isFocused) {
-      // In focused 4-grid mode, let cards fill rows naturally
-      // On 16.5" displays (~1200px height), target ~3 visible rows
-      const GRID_COLS = 4;
-      const targetRows = Math.min(Math.ceil(cards.length / GRID_COLS), 3);
-      const rowHeight = Math.max(availableHeight / targetRows, MIN_CARD_HEIGHT);
-      return { height: rowHeight };
-    }
-
-    // Unfocused column mode — existing logic
-    const visibleRows = Math.min(cards.length, MAX_VISIBLE_ROWS);
-    const cardHeight = Math.max(availableHeight / visibleRows, MIN_CARD_HEIGHT);
-    return { height: cardHeight };
-  }, [cards.length, containerHeight, isFocused]);
-
-  // Stabilize action handlers to prevent re-renders
-  const handleStartCooking = useCallback((orderId: string, itemIds: string[]) => {
-    onStartCooking(orderId, itemIds);
-  }, [onStartCooking]);
-
-  const handleMarkReady = useCallback((orderId: string, itemIds: string[]) => {
-    onMarkReady(orderId, itemIds);
-  }, [onMarkReady]);
-
-  const handleMarkServed = useCallback((orderId: string, itemIds: string[]) => {
-    onMarkServed(orderId, itemIds);
-  }, [onMarkServed]);
-
-  const renderCard = (card: KDSCardData) => (
-    <KDSOrderCard
-      key={card.id}
-      data={card}
-      onStartCooking={() =>
-        handleStartCooking(
-          card.order.id,
-          card.items.map((i) => i.id),
-        )
-      }
-      onMarkReady={() =>
-        handleMarkReady(
-          card.order.id,
-          card.items.map((i) => i.id),
-        )
-      }
-      onMarkServed={() =>
-        handleMarkServed(
-          card.order.id,
-          card.items.map((i) => i.id),
-        )
-      }
-    />
-  );
-
-  const renderItem = useCallback(({ item }: { item: KDSCardData }) => (
-    <View style={[{ flex: 1, marginBottom: 8, maxWidth: '25%' }, cardStyle]}>
-      <KDSOrderCard
-        key={item.id}
-        data={item}
-        onStartCooking={() => handleStartCooking(item.order.id, item.items.map(i => i.id))}
-        onMarkReady={() => handleMarkReady(item.order.id, item.items.map(i => i.id))}
-        onMarkServed={() => handleMarkServed(item.order.id, item.items.map(i => i.id))}
-      />
-    </View>
-  ), [handleStartCooking, handleMarkReady, handleMarkServed, cardStyle]);
-
-  return (
-    <View
-      style={{
-        flex: isHidden ? 0 : 1,
-        display: isHidden ? 'none' : 'flex',
-        backgroundColor,
-        borderRadius: 8,
-        margin: isHidden ? 0 : 4,
-        overflow: "hidden",
-      }}
-    >
-      {/* Column Header - Tappable */}
-      <TouchableOpacity
-        onPress={onHeaderPress}
-        activeOpacity={0.8}
-        style={{
-          backgroundColor: headerColor,
-          paddingVertical: 10,
-          paddingHorizontal: 12,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <View className="flex-row items-center">
-          {isFocused && (
-            <ArrowLeft size={18} color="white" style={{ marginRight: 8 }} />
-          )}
-          {icon}
-          <Text className="text-white font-bold text-base ml-2">{title}</Text>
-        </View>
-        <View
-          style={{
-            backgroundColor: "rgba(255,255,255,0.2)",
-            paddingHorizontal: 8,
-            paddingVertical: 2,
-            borderRadius: 10,
-          }}
-        >
-          <Text className="text-white font-bold text-sm">
-            {isLoading ? "-" : count}
-          </Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Skeletons or Cards */}
-      {isLoading ? (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {Array.from({ length: 6 }).map((_, i) => (
-            <View key={`skeleton-${i}`} className="mb-2">
-              <KDSSkeletonCard />
-            </View>
-          ))}
-        </ScrollView>
-      ) : (
-        /* Cards Container */
-        isActiveContent()
-      )}
-    </View>
-  );
-
-  function isActiveContent() {
-    return isFocused ? (
-      // Focused mode: 4-column grid using FlatList
-      <View
-        style={{ flex: 1 }}
-        onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
-      >
-        <FlatList
-          data={cards}
-          keyExtractor={(item) => item.id}
-          numColumns={4}
-          contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
-          columnWrapperStyle={{ gap: 8 }}
-          renderItem={renderItem}
-          initialNumToRender={16}
-          maxToRenderPerBatch={12}
-          windowSize={3}
-          removeClippedSubviews={true}
-          ListEmptyComponent={
-            <View className="flex-1 items-center justify-center py-8">
-              <Text className="text-gray-500 text-sm text-center">
-                {emptyMessage}
-              </Text>
-            </View>
-          }
-        />
-      </View>
-    ) : (
-      // Unfocused mode: Simple scrollable list
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
-        showsVerticalScrollIndicator={true}
-      >
-        {cards.length === 0 ? (
-          <View className="items-center justify-center py-8">
-            <Text className="text-gray-500 text-sm text-center">
-              {emptyMessage}
-            </Text>
-          </View>
-        ) : (
-          cards.map((card) => <View key={card.id} style={cardStyle}>{renderCard(card)}</View>)
-        )}
-      </ScrollView>
-    );
-  }
-});
-
+// ─── Main Screen ──────────────────────────────────────────────────
 const KitchenDisplayScreen = () => {
-  // OPTIMIZED: Granular selectors to prevent unnecessary re-renders
-  const ordersById = useOrderStore((s) => s.ordersById);
-  const markCourseItemsAsCooking = useOrderStore(
-    (s) => s.markCourseItemsAsCooking,
-  );
-  const markCourseItemsAsReady = useOrderStore((s) => s.markCourseItemsAsReady);
-  const markCourseItemsAsServed = useOrderStore(
-    (s) => s.markCourseItemsAsServed,
-  );
+  const locationId = useStoreSettingsStore((s) => s.selectedStore?.id);
+  const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
+  const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
 
-  const tablesById = useFloorPlanStore((s) => s.tablesById);
-  const { getItemCourse, loadFromServer, byOrderId } = useCoursingStore();
+  const tickets = useKDSStore((s) => s.tickets);
+  const ticketsByStatus = useKDSStore((s) => s.ticketsByStatus);
+  const counts = useKDSStore((s) => s.counts);
+  const isLoading = useKDSStore((s) => s.isLoading);
+  const fetchTickets = useKDSStore((s) => s.fetchTickets);
+  const advanceTicketStatus = useKDSStore((s) => s.advanceTicketStatus);
+  const scheduleRefetch = useKDSStore((s) => s.scheduleRefetch);
+
+  const [activeStatus, setActiveStatus] = useState<StatusFilter>("pending");
+  const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
-  const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
-
-  // DEFERRED LOADING STATE
   const [isReady, setIsReady] = useState(false);
 
-  // Trigger deferred loading after navigation animation completes
+  // Start the single global timer
+  useKDSTimer();
+
+  // Deferred loading after navigation animation
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
       setIsReady(true);
@@ -858,185 +492,20 @@ const KitchenDisplayScreen = () => {
     return () => handle.cancel();
   }, []);
 
-  // Track which order IDs have already been loaded to avoid redundant fetches
-  const loadedOrderIds = useRef(new Set<string>());
-
-  // Load coursing data for all active orders (with smart caching)
+  // Initial fetch + 120s polling fallback (realtime is now primary sync)
   useEffect(() => {
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      Object.values(ordersById).forEach((order: OrderProfile) => {
-        const key = order.db_order_id || order.id || "";
-        if (key && !loadedOrderIds.current.has(key)) {
-          loadedOrderIds.current.add(key);
-          loadFromServer(key);
-        }
-      });
-    });
-    return () => interaction.cancel();
-  }, [ordersById, loadFromServer]);
+    if (!isReady || !locationId) return;
 
-  // Helper to look up table name from service_location_id (O(1) lookup)
-  const getTableName = useCallback(
-    (serviceLocationId: string | null) => {
-      if (!serviceLocationId) return null;
-      return tablesById[serviceLocationId]?.name || null;
-    },
-    [tablesById],
-  );
+    fetchTickets(locationId);
 
-  // Transform orders to cards grouped by status
-  const { pendingCards, cookingCards, readyCards, counts } = useMemo(() => {
-    // OPTIMIZATION: Skip heavy calculation if not ready (showing skeletons)
-    if (!isReady) {
-      return {
-        pendingCards: [],
-        cookingCards: [],
-        readyCards: [],
-        counts: { pending: 0, cooking: 0, ready: 0 },
-      };
-    }
-    const pending: KDSCardData[] = [];
-    const cooking: KDSCardData[] = [];
-    const ready: KDSCardData[] = [];
+    const pollId = setInterval(() => {
+      fetchTickets(locationId);
+    }, 120_000);
 
-    Object.values(ordersById).forEach((order: OrderProfile) => {
-      // FILTER 1: Exclude orders with inactive statuses
-      // These should NEVER appear in KDS regardless of item status
-      if (INACTIVE_STATUSES.has(order.order_status)) {
-        return; // Skip this order
-      }
+    return () => clearInterval(pollId);
+  }, [isReady, locationId, fetchTickets]);
 
-      // FILTER 2: Exclude orders where all items are served
-      // Kitchen work is complete for these orders
-      const allItemsServed = order.items.every(
-        (item) => item.kitchen_status === "served",
-      );
-      if (allItemsServed) {
-        return; // Skip fully served orders
-      }
-
-      const relevantItems = order.items.filter(
-        (item) =>
-          !item.is_voided &&
-          (!item.kitchen_status || // Fallback: Treat missing status as sent/pending
-            item.kitchen_status === "sent" ||
-            item.kitchen_status === "preparing" ||
-            item.kitchen_status === "ready"),
-      );
-
-      if (relevantItems.length === 0) return;
-
-      const itemsByCourse: Record<number, CartItem[]> = {};
-      relevantItems.forEach((item) => {
-        // Get course number from coursing store
-        // Pass both item.id (local) and db_order_item_id (backend) for resilient lookup
-        const course = getItemCourse(order.id, item.id, item.db_order_item_id);
-        if (!itemsByCourse[course]) itemsByCourse[course] = [];
-        itemsByCourse[course].push(item);
-      });
-
-      // Get table name for this order
-      const tableName = getTableName(order.service_location_id);
-
-      Object.entries(itemsByCourse).forEach(([courseStr, courseItems]) => {
-        const courseNum = parseInt(courseStr);
-        const hasSent = courseItems.some((i) => i.kitchen_status === "sent");
-        const hasPreparing = courseItems.some(
-          (i) => i.kitchen_status === "preparing",
-        );
-        const allReady = courseItems.every((i) => i.kitchen_status === "ready");
-
-        let cardStatus: "pending" | "cooking" | "ready" = "pending";
-        if (allReady) cardStatus = "ready";
-        else if (hasSent) cardStatus = "pending";
-        else if (hasPreparing) cardStatus = "cooking";
-
-        const card: KDSCardData = {
-          id: `${order.id}_c${courseNum}`,
-          order,
-          courseNumber: courseNum,
-          items: courseItems,
-          status: cardStatus,
-          startTime: order.sent_to_kitchen_at || order.opened_at,
-          tableName,
-        };
-
-        if (cardStatus === "pending") pending.push(card);
-        else if (cardStatus === "cooking") cooking.push(card);
-        else if (cardStatus === "ready") ready.push(card);
-      });
-    });
-
-    // Sort by time (oldest first)
-    const sortByTime = (a: KDSCardData, b: KDSCardData) => {
-      const timeA = new Date(a.startTime || 0).getTime();
-      const timeB = new Date(b.startTime || 0).getTime();
-      return timeA - timeB;
-    };
-
-    pending.sort(sortByTime);
-    cooking.sort(sortByTime);
-    ready.sort(sortByTime);
-
-    return {
-      pendingCards: pending,
-      cookingCards: cooking,
-      readyCards: ready,
-      counts: {
-        pending: pending.reduce(
-          (sum, c) => sum + c.items.reduce((s, i) => s + i.quantity, 0),
-          0,
-        ),
-        cooking: cooking.reduce(
-          (sum, c) => sum + c.items.reduce((s, i) => s + i.quantity, 0),
-          0,
-        ),
-        ready: ready.reduce(
-          (sum, c) => sum + c.items.reduce((s, i) => s + i.quantity, 0),
-          0,
-        ),
-      },
-    };
-  }, [ordersById, byOrderId, isReady]);
-
-  const handleStartCooking = useCallback(
-    (orderId: string, itemIds: string[]) => {
-      markCourseItemsAsCooking(orderId, itemIds);
-    },
-    [markCourseItemsAsCooking],
-  );
-
-  const handleMarkReady = useCallback(
-    (orderId: string, itemIds: string[]) => {
-      markCourseItemsAsReady(orderId, itemIds);
-    },
-    [markCourseItemsAsReady],
-  );
-
-  const handleMarkServed = useCallback(
-    (orderId: string, itemIds: string[]) => {
-      markCourseItemsAsServed(orderId, itemIds);
-    },
-    [markCourseItemsAsServed],
-  );
-
-  // Memoized header press handlers — stable forever (functional setter, no deps)
-  const handlePendingHeaderPress = useCallback(() => {
-    setFocusedColumn((prev) => (prev === "PENDING" ? null : "PENDING"));
-  }, []);
-
-  const handleCookingHeaderPress = useCallback(() => {
-    setFocusedColumn((prev) => (prev === "COOKING" ? null : "COOKING"));
-  }, []);
-
-  const handleReadyHeaderPress = useCallback(() => {
-    setFocusedColumn((prev) => (prev === "READY" ? null : "READY"));
-  }, []);
-
-  // Auto-fire: Pending → Cooking timer
-  const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
-  const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
-
+  // Auto-fire: pending → cooking after configured delay
   useEffect(() => {
     if (!kdsAutoFireEnabled || !isReady) return;
 
@@ -1044,129 +513,281 @@ const KitchenDisplayScreen = () => {
       const now = Date.now();
       const delayMs = kdsAutoFireDelayMinutes * 60 * 1000;
 
-      pendingCards.forEach((card) => {
-        if (!card.startTime) return;
-        const elapsed = now - new Date(card.startTime).getTime();
+      ticketsByStatus.pending.forEach((ticket) => {
+        if (!ticket.start_time) return;
+        const elapsed = now - new Date(ticket.start_time).getTime();
         if (elapsed >= delayMs) {
-          markCourseItemsAsCooking(
-            card.order.id,
-            card.items.map((i) => i.id),
+          advanceTicketStatus(
+            ticket.ticket_id,
+            ticket.items.map((i) => i.id),
+            "preparing",
           );
         }
       });
-    }, 15_000); // Check every 15 seconds
+    }, 15_000);
 
     return () => clearInterval(intervalId);
-  }, [kdsAutoFireEnabled, kdsAutoFireDelayMinutes, pendingCards, isReady, markCourseItemsAsCooking]);
+  }, [kdsAutoFireEnabled, kdsAutoFireDelayMinutes, ticketsByStatus.pending, isReady, advanceTicketStatus]);
+
+  // Filter tickets by active status tab + order type
+  const filteredTickets = useMemo(() => {
+    const statusTickets = ticketsByStatus[activeStatus] || [];
+    if (activeType === "all") return statusTickets;
+    return statusTickets.filter((t) => matchesTypeFilter(t, activeType));
+  }, [ticketsByStatus, activeStatus, activeType]);
+
+  // Type counts for badge display
+  const typeCounts = useMemo(() => {
+    const statusTickets = ticketsByStatus[activeStatus] || [];
+    const result: Record<OrderTypeFilter, number> = {
+      all: statusTickets.length,
+      delivery: 0,
+      takeout: 0,
+      dine_in: 0,
+    };
+    for (const t of statusTickets) {
+      const ot = (t.order_type || "").toLowerCase();
+      if (ot === "delivery") result.delivery++;
+      else if (ot === "takeout" || ot === "to_go" || ot === "to go") result.takeout++;
+      else result.dine_in++;
+    }
+    return result;
+  }, [ticketsByStatus, activeStatus]);
+
+  const handleAdvance = useCallback(
+    (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => {
+      advanceTicketStatus(ticketId, itemIds, newStatus);
+      // Schedule a refetch to sync with server after optimistic update
+      if (locationId) {
+        scheduleRefetch(locationId);
+      }
+    },
+    [advanceTicketStatus, scheduleRefetch, locationId],
+  );
 
   const onRefresh = useCallback(async () => {
+    if (!locationId) return;
     setRefreshing(true);
     try {
-      const locationId = useStoreSettingsStore.getState().selectedStore?.id;
-      const { loadFloorPlanStatus } = useFloorPlanStore.getState();
-
-      // Refresh Floor Plan (for table names)
-      await loadFloorPlanStatus();
-
-      // Refresh Orders (Full sync with force=true)
-      if (locationId) {
-        await useOrderStore.getState().initializeOrders(locationId, true);
-      }
+      await fetchTickets(locationId);
     } catch (error) {
       console.error("KDS Refresh Failed:", error);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [locationId, fetchTickets]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: KDSTicket }) => (
+      <View style={{ width: "25%", paddingHorizontal: 2 }}>
+        <KDSTicketCard
+          ticket={item}
+          onAdvance={handleAdvance}
+        />
+      </View>
+    ),
+    [handleAdvance],
+  );
+
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: CARD_HEIGHT,
+      offset: CARD_HEIGHT * index,
+      index,
+    }),
+    [],
+  );
+
+  const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, []);
+
+  // Skeleton grid for loading state
+  const renderSkeletons = () => (
+    <View style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", padding: 4 }}>
+      {Array.from({ length: 16 }).map((_, i) => (
+        <View key={`skel-${i}`} style={{ width: "25%", paddingHorizontal: 2 }}>
+          <KDSSkeletonCard />
+        </View>
+      ))}
+    </View>
+  );
 
   return (
-    <View className="flex-1 bg-[#1a1a1a]">
-      {/* Header */}
+    <View style={{ flex: 1, backgroundColor: "#1a1a1a" }}>
+      {/* ─── Header ─── */}
       <View
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: 16,
-          paddingVertical: 12,
           backgroundColor: "#222225",
           borderBottomWidth: 1,
           borderBottomColor: "#333",
+          paddingHorizontal: 16,
+          paddingVertical: 10,
         }}
       >
-        <View className="flex-row items-center">
-          <ChefHat size={26} color="#3b82f6" />
-          <Text className="text-xl font-bold text-white ml-3">
-            Kitchen Display
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={onRefresh}
+        {/* Top row: title + refresh */}
+        <View
           style={{
-            padding: 8,
-            backgroundColor: "#333338",
-            borderRadius: 8,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 10,
           }}
         >
-          <RefreshCw
-            size={18}
-            color="#9CA3AF"
-            style={refreshing ? { opacity: 0.5 } : {}}
-          />
-        </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <ChefHat size={24} color="#3b82f6" />
+            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginLeft: 10 }}>
+              Kitchen Display
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={onRefresh}
+            style={{
+              padding: 8,
+              backgroundColor: "#333338",
+              borderRadius: 8,
+            }}
+          >
+            <RefreshCw
+              size={18}
+              color="#9CA3AF"
+              style={refreshing ? { opacity: 0.5 } : undefined}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Filter rows */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          {/* Status tabs */}
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {STATUS_TABS.map((tab) => {
+              const isActive = activeStatus === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setActiveStatus(tab.key)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 6,
+                    borderRadius: 20,
+                    backgroundColor: isActive ? tab.color : "#333338",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: isActive ? "#fff" : "#9ca3af",
+                      fontSize: 13,
+                      fontWeight: isActive ? "700" : "500",
+                    }}
+                  >
+                    {tab.label}
+                  </Text>
+                  <View
+                    style={{
+                      backgroundColor: isActive ? "rgba(255,255,255,0.25)" : "#444",
+                      paddingHorizontal: 6,
+                      paddingVertical: 1,
+                      borderRadius: 8,
+                      marginLeft: 6,
+                      minWidth: 22,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isActive ? "#fff" : "#9ca3af",
+                        fontSize: 11,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {isLoading ? "-" : counts[tab.key]}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Order type filters */}
+          <View style={{ flexDirection: "row", gap: 4 }}>
+            {TYPE_TABS.map((tab) => {
+              const isActive = activeType === tab.key;
+              const count = typeCounts[tab.key];
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setActiveType(tab.key)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 6,
+                    backgroundColor: isActive ? "#3b82f6" : "#2a2a2e",
+                    borderWidth: 1,
+                    borderColor: isActive ? "#3b82f6" : "#444",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: isActive ? "#fff" : "#9ca3af",
+                      fontSize: 12,
+                      fontWeight: isActive ? "600" : "400",
+                    }}
+                  >
+                    {tab.label}
+                  </Text>
+                  {tab.key !== "all" && count > 0 && (
+                    <View
+                      style={{
+                        backgroundColor: isActive ? "rgba(255,255,255,0.2)" : "#444",
+                        paddingHorizontal: 4,
+                        borderRadius: 6,
+                        marginLeft: 4,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 10, fontWeight: "600" }}>
+                        {count}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       </View>
 
-      {/* Columns */}
-      <View style={{ flex: 1, flexDirection: "row", padding: 4 }}>
-        <KDSColumn
-          title="PENDING"
-          count={counts.pending}
-          icon={PENDING_ICON}
-          backgroundColor="#1a1f2e"
-          headerColor="#1e40af"
-          cards={pendingCards}
-          emptyMessage="No pending orders"
-          isFocused={focusedColumn === "PENDING"}
-          isHidden={focusedColumn !== null && focusedColumn !== "PENDING"}
-          isLoading={!isReady}
-          onHeaderPress={handlePendingHeaderPress}
-          onStartCooking={handleStartCooking}
-          onMarkReady={handleMarkReady}
-          onMarkServed={handleMarkServed}
+      {/* ─── Grid ─── */}
+      {!isReady || (isLoading && tickets.length === 0) ? (
+        renderSkeletons()
+      ) : (
+        <FlatList
+          data={filteredTickets}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          getItemLayout={getItemLayout}
+          numColumns={4}
+          contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
+          initialNumToRender={16}
+          maxToRenderPerBatch={8}
+          windowSize={3}
+          removeClippedSubviews={true}
+          ListEmptyComponent={
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
+              <Text style={{ color: "#6b7280", fontSize: 14 }}>
+                No {activeStatus} tickets
+              </Text>
+            </View>
+          }
         />
-        <KDSColumn
-          title="COOKING"
-          count={counts.cooking}
-          icon={COOKING_ICON}
-          backgroundColor="#1f1a18"
-          headerColor="#c2410c"
-          cards={cookingCards}
-          emptyMessage="No orders cooking"
-          isFocused={focusedColumn === "COOKING"}
-          isHidden={focusedColumn !== null && focusedColumn !== "COOKING"}
-          isLoading={!isReady}
-          onHeaderPress={handleCookingHeaderPress}
-          onStartCooking={handleStartCooking}
-          onMarkReady={handleMarkReady}
-          onMarkServed={handleMarkServed}
-        />
-        <KDSColumn
-          title="READY"
-          count={counts.ready}
-          icon={READY_ICON}
-          backgroundColor="#1a1f1a"
-          headerColor="#15803d"
-          cards={readyCards}
-          emptyMessage="No orders ready"
-          isFocused={focusedColumn === "READY"}
-          isHidden={focusedColumn !== null && focusedColumn !== "READY"}
-          isLoading={!isReady}
-          onHeaderPress={handleReadyHeaderPress}
-          onStartCooking={handleStartCooking}
-          onMarkReady={handleMarkReady}
-          onMarkServed={handleMarkServed}
-        />
-      </View>
+      )}
     </View>
   );
 };

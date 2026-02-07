@@ -74,6 +74,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
   const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const { show } = useToast();
 
+  // Dual pricing detection (must be before useEffect that initializes form)
+  const selectedStoreForPricing = useStoreSettingsStore((s) => s.selectedStore);
+  const pricingStrategy = selectedStoreForPricing?.pricing_strategy;
+  const dualPricingPercentage = selectedStoreForPricing?.dual_pricing_percentage;
+  const isDualPricing = pricingStrategy === "dual"
+    && typeof dualPricingPercentage === "number"
+    && dualPricingPercentage > 0;
+
   const [formData, setFormData] = useState<MenuItemFormData>({
     name: "",
     description: "",
@@ -124,11 +132,19 @@ const ItemForm: React.FC<ItemFormProps> = ({
   // Initialize form data
   useEffect(() => {
     if (initialData) {
+      let cashPriceStr = initialData.cashPrice?.toString() || "";
+
+      // If dual pricing is active and we have a card price but no cash price, derive it
+      if (isDualPricing && dualPricingPercentage && !cashPriceStr && initialData.price > 0) {
+        const derivedCash = initialData.price / (1 + dualPricingPercentage / 100);
+        cashPriceStr = derivedCash.toFixed(2);
+      }
+
       const data: MenuItemFormData = {
         name: initialData.name,
         description: initialData.description || "",
         price: initialData.price.toString(),
-        cashPrice: initialData.cashPrice?.toString() || "",
+        cashPrice: cashPriceStr,
         categories: Array.isArray(initialData.category)
           ? initialData.category
           : [initialData.category],
@@ -141,7 +157,6 @@ const ItemForm: React.FC<ItemFormProps> = ({
       };
       setFormData(data);
       setInitialFormData(data);
-      // Initialize quantities map? Not strictly necessary as we fallback to .toString()
     } else {
       // Explicitly set initial form data for "Add" mode to track changes from empty
       setInitialFormData({
@@ -158,7 +173,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
         recipe: [],
       });
     }
-  }, [initialData]);
+  }, [initialData, isDualPricing, dualPricingPercentage]);
 
   // Track changes
   useEffect(() => {
@@ -186,7 +201,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
       newErrors.price = "Price must be a valid positive number";
     }
 
-    if (
+    if (isDualPricing && !formData.cashPrice.trim()) {
+      newErrors.cashPrice = "Cash price is required for dual pricing";
+    } else if (
       formData.cashPrice &&
       (isNaN(parseFloat(formData.cashPrice)) ||
         parseFloat(formData.cashPrice) < 0)
@@ -480,9 +497,27 @@ const ItemForm: React.FC<ItemFormProps> = ({
     return uuidRegex.test(id);
   };
 
-  // Get current store's location ID
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  // Get current store's location ID (reuse selectedStoreForPricing from above)
+  const selectedStore = selectedStoreForPricing;
   const currentLocationId = selectedStore?.id;
+
+  // Price change handlers for dual pricing
+  const handleCashPriceChange = (text: string) => {
+    setFormData((prev) => {
+      const updated = { ...prev, cashPrice: text };
+      if (isDualPricing && text) {
+        const cashVal = parseFloat(text);
+        if (!isNaN(cashVal) && cashVal >= 0) {
+          updated.price = (cashVal * (1 + dualPricingPercentage! / 100)).toFixed(2);
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleCardPriceChange = (text: string) => {
+    setFormData((prev) => ({ ...prev, price: text }));
+  };
 
   // Filter to only show LOCAL categories (location_id matches current store)
   const availableCategories = categories
@@ -615,41 +650,24 @@ const ItemForm: React.FC<ItemFormProps> = ({
               Pricing
             </Text>
 
-            <View className="mb-3">
-              <Text className="text-lg text-white font-medium mb-1.5">
-                Price *
-              </Text>
-              <View
-                className={`flex-row items-center bg-[#303030] border rounded-lg px-4 ${
-                  errors.price ? "border-red-500" : "border-gray-600"
-                }`}
-              >
-                <Text className="text-lg text-white">$</Text>
-                <TextInput
-                  className="flex-1 ml-2 text-lg h-16 text-white"
-                  placeholder="0.00"
-                  placeholderTextColor="#9CA3AF"
-                  value={formData.price}
-                  onChangeText={(text) =>
-                    setFormData((prev) => ({ ...prev, price: text }))
-                  }
-                  keyboardType="numeric"
-                />
-              </View>
-              {errors.price && (
-                <Text className="text-base text-red-400 mt-1">
-                  {errors.price}
+            {isDualPricing && (
+              <View className="bg-blue-900/20 border border-blue-500 rounded-lg px-3 py-2 mb-3">
+                <Text className="text-base text-blue-400 font-medium">
+                  Dual Pricing Active ({dualPricingPercentage}%)
                 </Text>
-              )}
-            </View>
+                <Text className="text-sm text-blue-300 mt-0.5">
+                  Edit Cash Price — Card Price is automatically {dualPricingPercentage}% higher
+                </Text>
+              </View>
+            )}
 
             <View className="mb-3">
               <Text className="text-lg text-white font-medium mb-1.5">
-                Cash Price (Optional)
+                {isDualPricing ? "Cash Price *" : "Cash Price (Optional)"}
               </Text>
               <View
                 className={`flex-row items-center bg-[#303030] border rounded-lg px-4 ${
-                  errors.cashPrice ? "border-red-500" : "border-gray-600"
+                  errors.cashPrice ? "border-red-500" : isDualPricing ? "border-blue-500" : "border-gray-600"
                 }`}
               >
                 <Text className="text-lg text-white">$</Text>
@@ -658,15 +676,40 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   placeholder="0.00"
                   placeholderTextColor="#9CA3AF"
                   value={formData.cashPrice}
-                  onChangeText={(text) =>
-                    setFormData((prev) => ({ ...prev, cashPrice: text }))
-                  }
+                  onChangeText={handleCashPriceChange}
                   keyboardType="numeric"
                 />
               </View>
               {errors.cashPrice && (
                 <Text className="text-base text-red-400 mt-1">
                   {errors.cashPrice}
+                </Text>
+              )}
+            </View>
+
+            <View className="mb-3">
+              <Text className="text-lg text-white font-medium mb-1.5">
+                {isDualPricing ? "Card Price (Auto-calculated)" : "Price *"}
+              </Text>
+              <View
+                className={`flex-row items-center border rounded-lg px-4 ${
+                  isDualPricing ? "bg-[#252525] border-gray-700" : "bg-[#303030]"
+                } ${errors.price ? "border-red-500" : isDualPricing ? "border-gray-700" : "border-gray-600"}`}
+              >
+                <Text className={`text-lg ${isDualPricing ? "text-gray-400" : "text-white"}`}>$</Text>
+                <TextInput
+                  className={`flex-1 ml-2 text-lg h-16 ${isDualPricing ? "text-gray-400" : "text-white"}`}
+                  placeholder="0.00"
+                  placeholderTextColor="#9CA3AF"
+                  value={formData.price}
+                  onChangeText={handleCardPriceChange}
+                  keyboardType="numeric"
+                  editable={!isDualPricing}
+                />
+              </View>
+              {errors.price && (
+                <Text className="text-base text-red-400 mt-1">
+                  {errors.price}
                 </Text>
               )}
             </View>

@@ -96,7 +96,6 @@ interface DraggableMenuProps {
   onToggleCategoryActive: (menuId: string, categoryId: string) => void;
   onSchedule: () => void;
   onEdit: () => void;
-  getItemsInCategory: (categoryName: string) => MenuItemType[];
   onItemPriceEdit: (
     item: MenuItemType,
     categoryId: string,
@@ -181,7 +180,6 @@ const DraggableMenu = React.memo(({
   onToggleCategoryActive,
   onSchedule,
   onEdit,
-  getItemsInCategory,
   onItemPriceEdit,
   isEditable,
   onReorderItems,
@@ -718,25 +716,26 @@ const MenuPage: React.FC = () => {
   const handleReorderMenus = useCallback(async (fromIndex: number, toIndex: number) => {
     reorderMenus(fromIndex, toIndex);
 
-    // Persist to backend
-    // Since we don't have a specific API for menu reordering in this plan (it says Items and Categories),
-    // but typically menus need reordering too.
-    // If there is no specific RPC, we might need to skip backend persistence here or use a generic one.
-    // However, the user request specifically asked for "reorder_menu_categories" and "reorder_category_items".
-    // I will assume Menu reordering is either not needed or handled differently.
-    // But since the UI allows it, I should probably leave it as local-only or check if there's a generic update.
-    // The plan didn't mention Menu Reordering persistence, only Items and Categories.
-    // I will leave it local for now to respect the strict plan, or ask?
-    // The prompt implies: "reorder_menu_categories for categories and reorder_category_items for items".
-    // So menus themselves might not be reorderable via RPC yet?
-    // Wait, the plan says "Currently, the application supports reordering of Menus and Categories."
-    // "Reordering changes made in the app are currently local-only. These must be persisted to the database."
-    // So YES, Menus should be persisted.
-    // I'll check if MenuService has an updateMenu endpoint that handles display_order or if I should iterate and update.
-    // Given the RPCs provided: reorder_menu_categories, reorder_category_items.
-    // There is no reorder_menus RPC provided.
-    // I will update the local state as before.
-  }, [reorderMenus]);
+    // Persist each menu's display_order to backend
+    const updatedMenus = useMenuStore.getState().menus;
+    const updates = updatedMenus.map((menu, idx) =>
+      MenuService.updateMenu(supabase, menu.id, { displayOrder: idx })
+    );
+
+    try {
+      const results = await Promise.all(updates);
+      if (results.some((r) => r.error)) {
+        showToast({
+          title: "Error",
+          message: "Failed to save menu order",
+          type: "error",
+        });
+        if (selectedStore?.id) triggerPosSync(selectedStore.id, selectedStore.merchant_id);
+      }
+    } catch {
+      if (selectedStore?.id) triggerPosSync(selectedStore.id, selectedStore.merchant_id);
+    }
+  }, [reorderMenus, supabase, showToast, triggerPosSync, selectedStore]);
 
   const handleReorderMenuCategories = useCallback(async (
     menuId: string,
@@ -754,11 +753,15 @@ const MenuPage: React.FC = () => {
     updateMenu(menuId, { categories: newCategories });
 
     // Persist
-    const categoryIds = newCategories.map((c) => c.id);
+    const categoryOrders = newCategories.map((c, idx) => ({
+      categoryId: c.id,
+      displayOrder: idx,
+    }));
     const { error } = await MenuService.reorderMenuCategories(
       supabase,
       menuId,
-      categoryIds
+      selectedStore!.id,
+      categoryOrders
     );
 
     if (error) {
@@ -777,53 +780,40 @@ const MenuPage: React.FC = () => {
     fromIndex: number,
     toIndex: number
   ) => {
-    const category = storeCategories.find((c) => c.id === categoryId);
-    // Since items are nested in categories in some views but we need the list...
-    // The `storeCategories` in `useMenuStore` are flat (without items) usually?
-    // Wait, `menus` (the derived state) has the full tree.
-    // Let's find the category items from the component's perspective or use `getItemsInCategory`.
-    const catObject = storeCategories.find((c) => c.id === categoryId);
-    if (!catObject) return;
-
     // Call store action for immediate UI update
     reorderCategoryItems(categoryId, fromIndex, toIndex);
 
-    // Get the new order logic to send to backend (fetch from store or reconstruct)
-    // Reconstructing locally for ID list
-    const currentItems = getItemsInCategory(catObject.name);
-    // Note: getItemsInCategory pulls from global menu items and sorts by... what?
-    if (!currentItems) return;
-    const newItems = [...currentItems];
-    const [movedItem] = newItems.splice(fromIndex, 1);
-    newItems.splice(toIndex, 0, movedItem);
+    // Read reordered items from the UPDATED store tree (not getItemsInCategory which ignores order)
+    const updatedMenus = useMenuStore.getState().menus;
+    let reorderedItems: MenuItemType[] | undefined;
+    for (const menu of updatedMenus) {
+      const cat = menu.categories.find((c: any) => c.id === categoryId);
+      if (cat?.items) { reorderedItems = cat.items; break; }
+    }
+    if (!reorderedItems?.length) return;
 
-    const itemIds = newItems.map((i) => i.id);
+    const itemOrders = reorderedItems.map((item, idx) => ({
+      menuItemId: item.id,
+      displayOrder: idx,
+    }));
     const { error } = await MenuService.reorderCategoryItems(
       supabase,
       categoryId,
-      itemIds
+      selectedStore!.id,
+      itemOrders
     );
 
     if (error) {
       showToast({
         title: "Error",
-        message: "Failed to reorder items",
+        message: "Failed to save item order",
         type: "error",
       });
-      // Revert? simpler to just sync.
       if (selectedStore?.id) {
         triggerPosSync(selectedStore.id, selectedStore.merchant_id);
       }
     }
-    // We don't strictly need to sync on success IF the local store update was accurate.
-    // But `reorderCategoryItems` only updates the `menus` tree.
-    // `getItemsInCategory` (used by DraggableMenuCategory? No, wait)
-
-    // Check DraggableMenu:
-    // It passes `items={getItemsInCategory(category.name)}`
-    // THIS IS THE PROBLEM. `getItemsInCategory` derives from global `menuItems` which are NOT sorted by the specific menu/category order.
-    // We MUST change DraggableMenu to use `category.items` which comes from the `menus` tree and IS sorted.
-  }, [storeCategories, reorderCategoryItems, getItemsInCategory, supabase, showToast, triggerPosSync, selectedStore]);
+  }, [reorderCategoryItems, supabase, showToast, triggerPosSync, selectedStore]);
 
   const isEntityEditable = useCallback((
     entityLocationId: string | null | undefined,
@@ -870,7 +860,6 @@ const MenuPage: React.FC = () => {
                 }
               }}
               onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
-              getItemsInCategory={getItemsInCategory}
               onItemPriceEdit={(item, categoryId, menuId) => {
                 priceEditRef.current?.open(
                   {

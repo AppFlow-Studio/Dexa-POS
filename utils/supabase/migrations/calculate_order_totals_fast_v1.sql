@@ -45,19 +45,19 @@ FROM public.orders WHERE id = p_order_id;
 -- Calculate amount_due from UNPAID items (item-level calculation)
 -- Account for refunded_quantity: refunded items need to be paid again
 -- Formula: unpaid_qty = quantity - paid_quantity + refunded_quantity
-SELECT 
+SELECT
     COALESCE(SUM(
-        ((quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) * unit_price) +
-        ROUND(((quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) * unit_price) * COALESCE(tax_rate, 0) / 100, 2)
+        ROUND(subtotal * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
+        ROUND(tax_amount * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
     ), 0),
     COALESCE(SUM(
-        ((quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) * COALESCE(cash_price, unit_price)) +
-        ROUND(((quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) * COALESCE(cash_price, unit_price)) * COALESCE(tax_rate, 0) / 100, 2)
+        ROUND(cash_subtotal * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2) +
+        ROUND(cash_tax_amount * (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0))::NUMERIC / NULLIF(quantity, 0), 2)
     ), 0)
 INTO v_unpaid_card_total, v_unpaid_cash_total
 FROM public.order_items
-WHERE order_id = p_order_id 
-    AND is_voided = false 
+WHERE order_id = p_order_id
+    AND is_voided = false
     AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
 
 -- Calculate effective amount paid from payments (payment-level calculation)

@@ -24,6 +24,7 @@ import {
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { TaxRate } from "@/types/menu";
 import React, { useCallback, useEffect, useRef } from "react";
@@ -62,6 +63,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setOfflineSyncSupabaseClient(supabase);
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
+      setKDSSupabaseClient(supabase);
 
       // Initialize offline sync service (only once)
       if (!offlineSyncInitialized.current) {

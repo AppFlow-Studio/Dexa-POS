@@ -368,10 +368,13 @@ BEGIN
 
         IF v_is_last_portion THEN
             -- Last portion: pay remainder to handle rounding
+            -- Use portion-based calculation instead of tracking paid amounts,
+            -- because v_total_cash/card_paid only counts payments of that type,
+            -- which breaks when splits use mixed payment methods (e.g. Cash + Card).
             IF v_is_cash THEN
-                v_payment_total := v_order.cash_total - v_total_cash_paid;
+                v_payment_total := v_order.cash_total - (v_split_cash_portion * (p_split_count - 1));
             ELSE
-                v_payment_total := v_order.card_total - v_total_card_paid;
+                v_payment_total := v_order.card_total - (v_split_card_portion * (p_split_count - 1));
             END IF;
             -- Ensure non-negative
             v_payment_total := GREATEST(v_payment_total, 0);

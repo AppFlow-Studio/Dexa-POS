@@ -931,11 +931,13 @@ export class MenuService {
   static async reorderMenuCategories(
     client: SupabaseClient,
     menuId: string,
-    categoryIds: string[]
+    locationId: string,
+    categoryOrders: Array<{ categoryId: string; displayOrder: number }>
   ): Promise<{ success: boolean; error: any }> {
     const { error } = await client.rpc("reorder_menu_categories", {
       p_menu_id: menuId,
-      p_category_ids: categoryIds,
+      p_location_id: locationId,
+      p_category_orders: categoryOrders,
     });
 
     if (error) {
@@ -952,11 +954,13 @@ export class MenuService {
   static async reorderCategoryItems(
     client: SupabaseClient,
     categoryId: string,
-    itemIds: string[]
+    locationId: string,
+    itemOrders: Array<{ menuItemId: string; displayOrder: number }>
   ): Promise<{ success: boolean; error: any }> {
     const { error } = await client.rpc("reorder_category_items", {
       p_category_id: categoryId,
-      p_item_ids: itemIds,
+      p_location_id: locationId,
+      p_item_orders: itemOrders,
     });
 
     if (error) {

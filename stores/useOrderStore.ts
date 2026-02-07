@@ -5748,6 +5748,7 @@ export const useOrderStore = create<OrderState>()(
 
           updateOrderCheckStatus: async (orderId, status) => {
             const order = get().ordersById[orderId]; // O(1) lookup
+            console.log("[updateOrderCheckStatus] updateOrderCheckStatus called", { orderId, status, order });
             if (!order) return;
 
             // 1. Optimistic local update first

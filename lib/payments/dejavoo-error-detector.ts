@@ -106,6 +106,25 @@ export function categorizeError(response: DejavooAPIResponse<any>): DejavooError
 }
 
 /**
+ * Returns a user-friendly title for payment error modals based on error category
+ */
+export function getErrorTitle(errorType: DejavooErrorType): string {
+  switch (errorType) {
+    case 'cancelled':
+      return 'Transaction Canceled';
+    case 'declined':
+      return 'Card Declined';
+    case 'timeout':
+      return 'Transaction Timed Out';
+    case 'connectivity':
+      return 'Terminal Disconnected';
+    case 'unknown':
+    default:
+      return 'Payment Failed';
+  }
+}
+
+/**
  * Checks if the error should trigger an immediate payment view close
  * Currently only terminal connectivity errors should close immediately
  *
