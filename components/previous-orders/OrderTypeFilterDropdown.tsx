@@ -42,7 +42,7 @@ export default function OrderTypeFilterDropdown({
         <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-[#303030] rounded-lg">
           <Filter size={18} color="#9ca3af" />
           <Text className="text-white text-base">
-            Type {selected.length > 0 && `(${selected.length})`}
+            {`Type${selected.length > 0 ? ` (${selected.length})` : ""}`}
           </Text>
         </TouchableOpacity>
       </DropdownMenuTrigger>

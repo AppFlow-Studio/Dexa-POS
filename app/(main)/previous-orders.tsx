@@ -35,17 +35,17 @@ import Animated, {
 } from "react-native-reanimated";
 
 const columns: { label: string; width: DimensionValue }[] = [
-  { label: "# Serial No", width: "8%" },
-  { label: "Order Date", width: "22%" },
+  { label: "# Serial No", width: "7%" },
+  { label: "Order Date", width: "18%" },
   // { label: "Order ID", width: "10%" },
   { label: "Customer", width: "12%" },
-  { label: "Payment Status", width: "10%" },
+  { label: "Payment Status", width: "14%" },
   { label: "Server/Cashier", width: "10%" },
-  { label: "Items", width: "7%" },
+  { label: "Items", width: "6%" },
   { label: "Type", width: "10%" },
   { label: "Total", width: "8%" },
   { label: "Notes", width: "8%" },
-  { label: "", width: "5%" },
+  { label: "", width: "7%" },
 ];
 
 const HeaderCell = ({
@@ -107,26 +107,26 @@ const SkeletonBar = ({
 const SkeletonRow = () => (
   <View
     className="flex-row items-center p-4 border-b border-gray-700"
-    style={{ height: 72 }}
+    style={{ height: 80 }}
   >
-    <View style={{ width: "8%" }} className="pr-2">
+    <View style={{ width: "7%" }} className="pr-2">
       <SkeletonBar width={48} height={16} />
     </View>
-    <View style={{ width: "22%" }} className="pr-2">
+    <View style={{ width: "18%" }} className="pr-2">
       <SkeletonBar width={120} height={16} style={{ marginBottom: 8 }} />
       <SkeletonBar width={80} height={12} />
     </View>
     <View style={{ width: "12%" }} className="pr-2">
       <SkeletonBar width={90} height={16} />
     </View>
-    <View style={{ width: "10%" }} className="pr-2">
+    <View style={{ width: "14%" }} className="pr-2">
       <SkeletonBar width={70} height={24} style={{ borderRadius: 12 }} />
     </View>
     <View style={{ width: "10%" }} className="pr-2">
       <SkeletonBar width={70} height={16} />
     </View>
-    <View style={{ width: "7%" }} className="pr-2">
-      <SkeletonBar width={50} height={24} style={{ borderRadius: 6 }} />
+    <View style={{ width: "6%" }} className="pr-2">
+      <SkeletonBar width={40} height={24} style={{ borderRadius: 12 }} />
     </View>
     <View style={{ width: "10%" }} className="pr-2">
       <SkeletonBar width={70} height={24} style={{ borderRadius: 12 }} />
@@ -137,7 +137,7 @@ const SkeletonRow = () => (
     <View style={{ width: "8%" }} className="pr-2">
       <SkeletonBar width={32} height={32} style={{ borderRadius: 6 }} />
     </View>
-    <View style={{ width: "5%" }} className="items-end">
+    <View style={{ width: "7%" }} className="items-end">
       <SkeletonBar width={32} height={32} style={{ borderRadius: 16 }} />
     </View>
   </View>
@@ -355,8 +355,8 @@ const PreviousOrdersScreen = () => {
 
   const getItemLayout = useCallback(
     (_data: any, index: number) => ({
-      length: 72,
-      offset: 72 * index,
+      length: 80,
+      offset: 80 * index,
       index,
     }),
     [],

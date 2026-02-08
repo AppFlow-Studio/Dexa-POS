@@ -4231,7 +4231,7 @@ export const useOrderStore = create<OrderState>()(
             );
 
             // Update items
-            const updatedItems = order.items.map((i) =>
+            let updatedItems = order.items.map((i) =>
               i.id === updatedItem.id ? updatedItem : i,
             );
             console.log(
@@ -4239,6 +4239,76 @@ export const useOrderStore = create<OrderState>()(
               updatedItems.length,
               updatedItems,
             );
+
+            // --- Merge detection: check if updated item now matches another cart item ---
+            const updatedItemKey = generateItemCompositeKey(
+              updatedItem.menuItemId,
+              updatedItem.customizations,
+            );
+            const coursingState = useCoursingStore.getState();
+            const updatedItemCourse =
+              coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
+                updatedItem.id
+              ] ?? 1;
+            const updatedItemKitchenStatus = updatedItem.kitchen_status;
+            const canUpdatedItemMerge =
+              !updatedItem.isDraft &&
+              (!updatedItemKitchenStatus || updatedItemKitchenStatus === "new");
+
+            let mergeTarget: CartItem | null = null;
+            if (canUpdatedItemMerge) {
+              mergeTarget =
+                updatedItems.find((cartItem) => {
+                  if (cartItem.id === updatedItem.id) return false;
+                  if (cartItem.isDraft) return false;
+                  if (
+                    cartItem.kitchen_status &&
+                    cartItem.kitchen_status !== "new"
+                  )
+                    return false;
+                  const cartItemCourse =
+                    coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
+                      cartItem.id
+                    ] ?? 1;
+                  if (cartItemCourse !== updatedItemCourse) return false;
+                  const cartItemKey = generateItemCompositeKey(
+                    cartItem.menuItemId,
+                    cartItem.customizations,
+                  );
+                  return cartItemKey === updatedItemKey;
+                }) ?? null;
+            }
+
+            if (mergeTarget) {
+              // Merge: add updated item's quantity to the merge target, remove updated item
+              const mergedQuantity =
+                mergeTarget.quantity + updatedItem.quantity;
+              const mergedPaidQuantity =
+                (mergeTarget.paidQuantity || 0) +
+                (updatedItem.paidQuantity || 0);
+              updatedItems = updatedItems
+                .map((item) => {
+                  if (item.id === mergeTarget!.id) {
+                    return {
+                      ...item,
+                      quantity: mergedQuantity,
+                      paidQuantity: mergedPaidQuantity,
+                      sync_status: "pending" as const,
+                    };
+                  }
+                  return item;
+                })
+                .filter((item) => item.id !== updatedItem.id);
+
+              console.log(
+                "[updateItemInActiveOrder] Merged item",
+                updatedItem.id,
+                "into",
+                mergeTarget.id,
+                "new quantity:",
+                mergedQuantity,
+              );
+            }
 
             // Calculate totals SYNCHRONOUSLY
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -4276,233 +4346,327 @@ export const useOrderStore = create<OrderState>()(
             }));
 
             // Background sync (fire-and-forget)
-            const dbOrderItemId =
-              updatedItem.db_order_item_id || originalItem?.db_order_item_id;
-            console.log("dbOrderItemId", dbOrderItemId);
-
-            if (dbOrderItemId && _supabaseClient) {
+            if (mergeTarget && _supabaseClient) {
+              // --- MERGE SYNC PATH ---
+              // 1. Update the surviving item's quantity on backend
+              const survivorDbId =
+                mergeTarget.db_order_item_id;
+              const removedDbId =
+                updatedItem.db_order_item_id ||
+                originalItem?.db_order_item_id;
               const orderId = activeOrderId;
-              console.log("syncing item update", updatedItem);
-              console.log("originalItem", originalItem);
-              console.log("updatedItem", updatedItem);
-              console.log("originalItem quantity", originalItem?.quantity);
-              console.log("updatedItem quantity", updatedItem.quantity);
-              console.log(
-                "originalItem quantity !== updatedItem quantity",
-                originalItem?.quantity !== updatedItem.quantity,
-              );
-              // 1. Sync quantity change (independent check)
-              if (
-                originalItem &&
-                updatedItem.quantity !== originalItem.quantity
-              ) {
+              const mergedQuantity =
+                mergeTarget.quantity + updatedItem.quantity;
+
+              if (survivorDbId) {
                 OrderService.updateOrderItemQuantity(
                   _supabaseClient,
-                  dbOrderItemId,
-                  updatedItem.quantity,
+                  survivorDbId,
+                  mergedQuantity,
                 )
                   .then((response) => {
                     if (response.data && response.data.success) {
-                      // SUCCESS: Apply backend-calculated data immediately
                       console.log(
-                        "[updateOrderItemQuantity] Sync succeeded, applying backend data",
+                        "[merge] Survivor quantity sync succeeded",
                       );
-
                       try {
-                        get().applyBackendItemData(updatedItem.id, {
+                        get().applyBackendItemData(mergeTarget!.id, {
                           quantity: response.data.quantity,
-
-                          // Card pricing
                           card_subtotal: response.data.card_subtotal,
                           card_tax_amount: response.data.card_tax_amount,
                           unit_price: response.data.unit_price,
-
-                          // Cash pricing
                           cash_unit_price: response.data.cash_unit_price,
                           cash_subtotal: response.data.cash_subtotal,
                           cash_tax_amount: response.data.cash_tax_amount,
-
-                          // Discounts
                           discount_amount: response.data.discount_amount,
                           discount_cash_amount:
                             response.data.discount_cash_amount,
-
                           sync_version: response.data.sync_version,
                         });
                       } catch (err) {
                         console.error(
-                          "[updateOrderItemQuantity] Failed to apply backend data:",
+                          "[merge] Failed to apply survivor backend data:",
                           err,
                         );
                       }
                     }
                   })
                   .catch(async (err) => {
-                    console.error("Failed to sync quantity:", err);
-                    // Queue for offline retry
+                    console.error(
+                      "[merge] Failed to sync survivor quantity:",
+                      err,
+                    );
                     await queueOperation({
                       type: "update_item_quantity",
                       params: {
-                        orderItemId: dbOrderItemId,
-                        quantity: updatedItem.quantity,
+                        orderItemId: survivorDbId,
+                        quantity: mergedQuantity,
                       },
                       localOrderId: orderId,
-                      localItemId: updatedItem.id,
+                      localItemId: mergeTarget!.id,
                     });
                   });
               }
 
-              // 2. Sync instructions change (independent check)
-              const originalNotes =
-                originalItem?.customizations?.notes?.trim() == undefined
-                  ? ""
-                  : originalItem?.customizations?.notes?.trim();
-              const instructionsChanged =
-                updatedItem.customizations?.notes?.trim() !== originalNotes;
-              if (instructionsChanged) {
-                OrderService.updateOrderItem(_supabaseClient, {
-                  p_order_item_id: dbOrderItemId,
-                  p_special_instructions:
-                    updatedItem.customizations?.notes || null,
-                })
-                  .then((response) => {
-                    if (response.data && response.data.success) {
-                      // SUCCESS: Apply backend data (instructions don't change pricing, but include for consistency)
-                      console.log("[updateOrderItem] Sync succeeded");
-
-                      try {
-                        get().applyBackendItemData(updatedItem.id, {
-                          // Include any pricing data returned (for consistency)
-                          card_subtotal: response.data.card_subtotal,
-                          cash_subtotal: response.data.cash_subtotal,
-                          card_tax_amount: response.data.card_tax_amount,
-                          cash_tax_amount: response.data.cash_tax_amount,
-                          sync_version: response.data.sync_version,
-                        });
-                      } catch (err) {
-                        console.error(
-                          "[updateOrderItem] Failed to apply backend data:",
-                          err,
-                        );
-                      }
-                    }
+              // 2. Remove the merged-away item from backend
+              if (removedDbId) {
+                OrderService.removeOrderItem(_supabaseClient, removedDbId)
+                  .then(() => {
+                    console.log(
+                      "[merge] Removed merged-away item from backend:",
+                      removedDbId,
+                    );
                   })
                   .catch(async (err) => {
-                    console.error("Failed to sync item update:", err);
-                    // Queue for offline retry
+                    console.error(
+                      "[merge] Failed to remove merged-away item:",
+                      err,
+                    );
                     await queueOperation({
-                      type: "update_item",
-                      params: {
-                        orderItemId: dbOrderItemId,
-                        specialInstructions:
-                          updatedItem.customizations?.notes || null,
-                      },
+                      type: "remove_item",
+                      params: { orderItemId: removedDbId },
                       localOrderId: orderId,
                       localItemId: updatedItem.id,
                     });
                   });
               }
+            } else {
+              // --- NORMAL SYNC PATH (no merge) ---
+              const dbOrderItemId =
+                updatedItem.db_order_item_id ||
+                originalItem?.db_order_item_id;
+              console.log("dbOrderItemId", dbOrderItemId);
 
-              // 3. Sync modifiers/add-ons change (independent check)
-              const originalMods = JSON.stringify({
-                mods: originalItem?.customizations?.modifiers,
-                addons: originalItem?.customizations?.addOns,
-              });
-              const newMods = JSON.stringify({
-                mods: updatedItem.customizations?.modifiers,
-                addons: updatedItem.customizations?.addOns,
-              });
+              if (dbOrderItemId && _supabaseClient) {
+                const orderId = activeOrderId;
+                console.log("syncing item update", updatedItem);
+                console.log("originalItem", originalItem);
+                console.log("updatedItem", updatedItem);
+                console.log(
+                  "originalItem quantity",
+                  originalItem?.quantity,
+                );
+                console.log(
+                  "updatedItem quantity",
+                  updatedItem.quantity,
+                );
+                console.log(
+                  "originalItem quantity !== updatedItem quantity",
+                  originalItem?.quantity !== updatedItem.quantity,
+                );
+                // 1. Sync quantity change (independent check)
+                if (
+                  originalItem &&
+                  updatedItem.quantity !== originalItem.quantity
+                ) {
+                  OrderService.updateOrderItemQuantity(
+                    _supabaseClient,
+                    dbOrderItemId,
+                    updatedItem.quantity,
+                  )
+                    .then((response) => {
+                      if (response.data && response.data.success) {
+                        // SUCCESS: Apply backend-calculated data immediately
+                        console.log(
+                          "[updateOrderItemQuantity] Sync succeeded, applying backend data",
+                        );
 
-              if (originalMods !== newMods) {
-                // Construct flat list of modifiers for the backend
-                const allModifiers: any[] = [];
+                        try {
+                          get().applyBackendItemData(updatedItem.id, {
+                            quantity: response.data.quantity,
 
-                // Add standard modifiers
-                updatedItem.customizations?.modifiers?.forEach((group) => {
-                  group.options.forEach((opt) => {
+                            // Card pricing
+                            card_subtotal: response.data.card_subtotal,
+                            card_tax_amount: response.data.card_tax_amount,
+                            unit_price: response.data.unit_price,
+
+                            // Cash pricing
+                            cash_unit_price: response.data.cash_unit_price,
+                            cash_subtotal: response.data.cash_subtotal,
+                            cash_tax_amount: response.data.cash_tax_amount,
+
+                            // Discounts
+                            discount_amount: response.data.discount_amount,
+                            discount_cash_amount:
+                              response.data.discount_cash_amount,
+
+                            sync_version: response.data.sync_version,
+                          });
+                        } catch (err) {
+                          console.error(
+                            "[updateOrderItemQuantity] Failed to apply backend data:",
+                            err,
+                          );
+                        }
+                      }
+                    })
+                    .catch(async (err) => {
+                      console.error("Failed to sync quantity:", err);
+                      // Queue for offline retry
+                      await queueOperation({
+                        type: "update_item_quantity",
+                        params: {
+                          orderItemId: dbOrderItemId,
+                          quantity: updatedItem.quantity,
+                        },
+                        localOrderId: orderId,
+                        localItemId: updatedItem.id,
+                      });
+                    });
+                }
+
+                // 2. Sync instructions change (independent check)
+                const originalNotes =
+                  originalItem?.customizations?.notes?.trim() == undefined
+                    ? ""
+                    : originalItem?.customizations?.notes?.trim();
+                const instructionsChanged =
+                  updatedItem.customizations?.notes?.trim() !== originalNotes;
+                if (instructionsChanged) {
+                  OrderService.updateOrderItem(_supabaseClient, {
+                    p_order_item_id: dbOrderItemId,
+                    p_special_instructions:
+                      updatedItem.customizations?.notes || null,
+                  })
+                    .then((response) => {
+                      if (response.data && response.data.success) {
+                        // SUCCESS: Apply backend data (instructions don't change pricing, but include for consistency)
+                        console.log("[updateOrderItem] Sync succeeded");
+
+                        try {
+                          get().applyBackendItemData(updatedItem.id, {
+                            // Include any pricing data returned (for consistency)
+                            card_subtotal: response.data.card_subtotal,
+                            cash_subtotal: response.data.cash_subtotal,
+                            card_tax_amount: response.data.card_tax_amount,
+                            cash_tax_amount: response.data.cash_tax_amount,
+                            sync_version: response.data.sync_version,
+                          });
+                        } catch (err) {
+                          console.error(
+                            "[updateOrderItem] Failed to apply backend data:",
+                            err,
+                          );
+                        }
+                      }
+                    })
+                    .catch(async (err) => {
+                      console.error("Failed to sync item update:", err);
+                      // Queue for offline retry
+                      await queueOperation({
+                        type: "update_item",
+                        params: {
+                          orderItemId: dbOrderItemId,
+                          specialInstructions:
+                            updatedItem.customizations?.notes || null,
+                        },
+                        localOrderId: orderId,
+                        localItemId: updatedItem.id,
+                      });
+                    });
+                }
+
+                // 3. Sync modifiers/add-ons change (independent check)
+                const originalMods = JSON.stringify({
+                  mods: originalItem?.customizations?.modifiers,
+                  addons: originalItem?.customizations?.addOns,
+                });
+                const newMods = JSON.stringify({
+                  mods: updatedItem.customizations?.modifiers,
+                  addons: updatedItem.customizations?.addOns,
+                });
+
+                if (originalMods !== newMods) {
+                  // Construct flat list of modifiers for the backend
+                  const allModifiers: any[] = [];
+
+                  // Add standard modifiers
+                  updatedItem.customizations?.modifiers?.forEach((group) => {
+                    group.options.forEach((opt) => {
+                      allModifiers.push({
+                        modifier_group_id: group.categoryId,
+                        modifier_item_id: opt.id,
+                        modifier_group_name: group.categoryName,
+                        modifier_name: opt.name,
+                        price_modifier: opt.price,
+                        quantity: 1,
+                      });
+                    });
+                  });
+
+                  // Add Add-ons (treated as modifiers in "Add-ons" group)
+                  updatedItem.customizations?.addOns?.forEach((addon) => {
                     allModifiers.push({
-                      modifier_group_id: group.categoryId,
-                      modifier_item_id: opt.id,
-                      modifier_group_name: group.categoryName,
-                      modifier_name: opt.name,
-                      price_modifier: opt.price,
+                      modifier_item_id: addon.id,
+                      modifier_group_name: "Add-ons",
+                      modifier_name: addon.name,
+                      price_modifier: addon.price,
                       quantity: 1,
                     });
                   });
-                });
 
-                // Add Add-ons (treated as modifiers in "Add-ons" group)
-                updatedItem.customizations?.addOns?.forEach((addon) => {
-                  allModifiers.push({
-                    modifier_item_id: addon.id,
-                    modifier_group_name: "Add-ons",
-                    modifier_name: addon.name,
-                    price_modifier: addon.price,
-                    quantity: 1,
-                  });
-                });
-
-                OrderService.replaceOrderItemModifiers(
-                  _supabaseClient,
-                  dbOrderItemId,
-                  allModifiers,
-                )
-                  .then((response) => {
-                    if (response.data && response.data.success) {
-                      // SUCCESS: Apply backend-calculated data immediately
-                      console.log(
-                        "[replaceOrderItemModifiers] Sync succeeded, applying backend data",
-                      );
-
-                      try {
-                        get().applyBackendItemData(updatedItem.id, {
-                          // Card pricing
-                          card_subtotal:
-                            response.data.card_subtotal ??
-                            response.data.new_subtotal,
-                          card_tax_amount:
-                            response.data.card_tax_amount ??
-                            response.data.tax_update,
-                          unit_price: response.data.new_unit_price,
-
-                          // Cash pricing
-                          cash_unit_price: response.data.cash_unit_price,
-                          cash_subtotal: response.data.cash_subtotal,
-                          cash_tax_amount: response.data.cash_tax_amount,
-
-                          // Discounts
-                          discount_amount: response.data.discount_amount,
-                          discount_cash_amount:
-                            response.data.discount_cash_amount,
-
-                          // Modifiers (full array from backend)
-                          modifiers: response.data.modifiers,
-
-                          // Sync version for conflict detection
-                          sync_version: response.data.sync_version,
-                        });
-                      } catch (err) {
-                        // Don't propagate - broadcast will catch it later
-                        console.error(
-                          "[replaceOrderItemModifiers] Failed to apply backend data:",
-                          err,
+                  OrderService.replaceOrderItemModifiers(
+                    _supabaseClient,
+                    dbOrderItemId,
+                    allModifiers,
+                  )
+                    .then((response) => {
+                      if (response.data && response.data.success) {
+                        // SUCCESS: Apply backend-calculated data immediately
+                        console.log(
+                          "[replaceOrderItemModifiers] Sync succeeded, applying backend data",
                         );
+
+                        try {
+                          get().applyBackendItemData(updatedItem.id, {
+                            // Card pricing
+                            card_subtotal:
+                              response.data.card_subtotal ??
+                              response.data.new_subtotal,
+                            card_tax_amount:
+                              response.data.card_tax_amount ??
+                              response.data.tax_update,
+                            unit_price: response.data.new_unit_price,
+
+                            // Cash pricing
+                            cash_unit_price: response.data.cash_unit_price,
+                            cash_subtotal: response.data.cash_subtotal,
+                            cash_tax_amount: response.data.cash_tax_amount,
+
+                            // Discounts
+                            discount_amount: response.data.discount_amount,
+                            discount_cash_amount:
+                              response.data.discount_cash_amount,
+
+                            // Modifiers (full array from backend)
+                            modifiers: response.data.modifiers,
+
+                            // Sync version for conflict detection
+                            sync_version: response.data.sync_version,
+                          });
+                        } catch (err) {
+                          // Don't propagate - broadcast will catch it later
+                          console.error(
+                            "[replaceOrderItemModifiers] Failed to apply backend data:",
+                            err,
+                          );
+                        }
                       }
-                    }
-                  })
-                  .catch(async (err) => {
-                    console.error("Failed to sync modifiers:", err);
-                    // Queue for offline retry
-                    await queueOperation({
-                      type: "replace_modifiers",
-                      params: {
-                        orderItemId: dbOrderItemId,
-                        modifiers: allModifiers,
-                      },
-                      localOrderId: orderId,
-                      localItemId: updatedItem.id,
+                    })
+                    .catch(async (err) => {
+                      console.error("Failed to sync modifiers:", err);
+                      // Queue for offline retry
+                      await queueOperation({
+                        type: "replace_modifiers",
+                        params: {
+                          orderItemId: dbOrderItemId,
+                          modifiers: allModifiers,
+                        },
+                        localOrderId: orderId,
+                        localItemId: updatedItem.id,
+                      });
                     });
-                  });
+                }
               }
             }
           },
@@ -6094,7 +6258,7 @@ export const useOrderStore = create<OrderState>()(
                 check_status: currentOrder.check_status || "Opened",
                 // Sync amount_paid/amount_due to prevent stale values
                 amount_paid: (currentOrder.amount_paid || 0) + amount,
-                amount_due: method === "Cash" ? totals.cash_outstanding_total : totals.outstanding_total,
+                amount_due: totals.outstanding_total,
                 cash_amount_due: totals.cash_outstanding_total,
               };
 

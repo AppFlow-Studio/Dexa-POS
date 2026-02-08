@@ -1217,6 +1217,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   const [tipAmounts, setTipAmounts] = useState<Record<number, string>>({});
   const [activeInput, setActiveInput] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [showHighTipConfirm, setShowHighTipConfirm] = useState(false);
 
   // Notify parent of processing state changes
   // useEffect(() => {
@@ -1344,6 +1345,14 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
       },
     }));
   }, [order.id, cardPayments, tipAmounts]);
+
+  // Check if any tip exceeds 30% of the payment amount
+  const highTipPayments = useMemo(() => {
+    return cardPayments.filter((p) => {
+      const newTip = parseFloat(tipAmounts[p.paymentIndex] || "0") || 0;
+      return newTip > 0 && p.orderAmount > 0 && newTip > p.orderAmount * 0.3;
+    });
+  }, [cardPayments, tipAmounts]);
 
   // Handle adjust tips
   const handleAdjustTips = async () => {
@@ -1473,6 +1482,15 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
     }
   };
 
+  // Entry point: check for high tips before proceeding
+  const handleAdjustTipsPress = () => {
+    if (highTipPayments.length > 0) {
+      setShowHighTipConfirm(true);
+    } else {
+      handleAdjustTips();
+    }
+  };
+
   const keypadKeys = [
     ["1", "2", "3"],
     ["4", "5", "6"],
@@ -1498,6 +1516,64 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           </View>
         </View>
       )}
+
+      {/* High Tip Confirmation Modal */}
+      <Modal
+        visible={showHighTipConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowHighTipConfirm(false)}
+      >
+        <View
+          className="flex-1 items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
+        >
+          <View className="bg-[#1f1f1f] rounded-2xl p-6 mx-8 border border-gray-700" style={{ maxWidth: 400, width: "90%" }}>
+            <Text className="text-xl font-bold text-yellow-400 text-center mb-2">
+              High Tip Warning
+            </Text>
+            <Text className="text-gray-300 text-center text-sm mb-4">
+              {highTipPayments.length === 1
+                ? `The tip entered is more than 30% of the payment amount.`
+                : `${highTipPayments.length} tips entered are more than 30% of their payment amounts.`}
+            </Text>
+            {highTipPayments.map((p) => {
+              const newTip = parseFloat(tipAmounts[p.paymentIndex] || "0") || 0;
+              const pct = p.orderAmount > 0 ? ((newTip / p.orderAmount) * 100).toFixed(0) : "0";
+              return (
+                <View key={p.paymentIndex} className="flex-row justify-between py-2 px-3 bg-gray-800/50 rounded-lg mb-2">
+                  <Text className="text-gray-300 text-sm">
+                    ••••{p.last4 || "????"} (${p.orderAmount?.toFixed(2)})
+                  </Text>
+                  <Text className="text-yellow-400 text-sm font-bold">
+                    ${newTip.toFixed(2)} ({pct}%)
+                  </Text>
+                </View>
+              );
+            })}
+            <Text className="text-gray-400 text-center text-xs mt-2 mb-5">
+              Are you sure you want to proceed?
+            </Text>
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                onPress={() => setShowHighTipConfirm(false)}
+                className="flex-1 py-3 rounded-xl bg-gray-800 border border-gray-600 items-center"
+              >
+                <Text className="text-base font-bold text-gray-300">CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowHighTipConfirm(false);
+                  handleAdjustTips();
+                }}
+                className="flex-1 py-3 rounded-xl bg-yellow-600 items-center"
+              >
+                <Text className="text-base font-bold text-white">CONFIRM</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Header */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-800">
@@ -1664,7 +1740,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             <Text className="text-base font-bold text-gray-300">CANCEL</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleAdjustTips}
+            onPress={handleAdjustTipsPress}
             disabled={!hasChanges || processing}
             className={`flex-[2] py-4 rounded-xl items-center justify-center ${
               hasChanges && !processing ? "bg-blue-600" : "bg-gray-700"

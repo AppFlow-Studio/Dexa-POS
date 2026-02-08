@@ -17,6 +17,7 @@ import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, { useEffect, useRef, useState } from "react";
 import { FlatList, InteractionManager, Text, View } from "react-native";
@@ -32,6 +33,7 @@ const OrderProcessing = () => {
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
   const activeOrder = useOrderStore((s) => s.activeOrderId ? s.ordersById[s.activeOrderId] : null);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
 
   // OPTIMIZED: Use shallow selector to filter orders inside the store selector.
   // This prevents the component from re-rendering unless the resulting list of filtered orders changes.
@@ -43,9 +45,17 @@ const OrderProcessing = () => {
         .map((id) => state.ordersById[id])
         .filter(Boolean);
 
+      // Date cutoff based on orderLineSettings.daysToShow
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
+      cutoffDate.setHours(0, 0, 0, 0);
+      const cutoffTime = cutoffDate.getTime();
+
       // 2. Filter kitchen orders
       const kitchenOrders = orders.filter(
         (o) =>
+          // Date filter: only show orders within configured day range
+          new Date(o.opened_at || 0).getTime() >= cutoffTime &&
           // Exclude Dine In orders entirely
           o.order_type !== "Dine In" &&
           o.order_type !== "dine_in" &&
@@ -59,7 +69,7 @@ const OrderProcessing = () => {
               o.order_status !== "draft" &&
               o.order_status !== "void")
             && o.check_status !== "Closed"
-            ) 
+            )
               ,
       );
 

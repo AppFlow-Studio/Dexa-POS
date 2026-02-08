@@ -96,6 +96,11 @@ interface DiningRoomSettings {
   balanceSectionLoad: boolean;
 }
 
+export interface OrderLineSettings {
+  /** Number of days of orders to show. 0 = today only, 1 = today + yesterday, etc. */
+  daysToShow: number;
+}
+
 interface SettingsState extends DiningRoomSettings, DeliverySettings {
   defaultSittingTimeMinutes: number;
 
@@ -115,8 +120,12 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   showPrepTimesToCustomers: boolean;
   autoAdjustPrepTimes: boolean;
 
+  // Order Line
+  orderLineSettings: OrderLineSettings;
+
   // Actions
   setDefaultSittingTimeMinutes: (minutes: number) => void;
+  setOrderLineSettings: (settings: Partial<OrderLineSettings>) => void;
   updateDiningSettings: (settings: Partial<Omit<SettingsState, "updateDiningSettings" | "setDefaultSittingTimeMinutes" | "updateDeliverySettings" | "toggleDeliveryPartnerStatus" | "setPermissions" | "togglePermission" | "setClockInSettings" | "setDualPricing" | "setSurcharging" | "setFunding" | "setThrottling" | "setPrepCategories" | "adjustPrepTime">>) => void;
   updateDeliverySettings: (settings: Partial<DeliverySettings>) => void;
   toggleDeliveryPartnerStatus: (partnerId: string) => void;
@@ -242,6 +251,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   showPrepTimesToCustomers: true,
   autoAdjustPrepTimes: true,
 
+  // Order Line
+  orderLineSettings: { daysToShow: 0 },
+
   setDefaultSittingTimeMinutes: (minutes) => set({ defaultSittingTimeMinutes: minutes }),
 
   updateDiningSettings: (settings) => set((state) => ({ ...state, ...settings })),
@@ -274,5 +286,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   adjustPrepTime: (id, delta) => set((state) => ({
     prepCategories: state.prepCategories.map((c) => c.id === id ? { ...c, minutes: Math.max(1, c.minutes + delta) } : c),
+  })),
+
+  setOrderLineSettings: (settings) => set((state) => ({
+    orderLineSettings: { ...state.orderLineSettings, ...settings },
   })),
 }));

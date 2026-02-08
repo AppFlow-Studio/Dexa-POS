@@ -62,8 +62,13 @@ WHERE order_id = p_order_id
 
 -- Calculate effective amount paid from payments (payment-level calculation)
 -- This handles custom amount refunds that aren't tied to specific items
-SELECT 
-    COALESCE(SUM(amount - COALESCE(refunded_amount, 0)), 0),
+-- Use original_amount (card-equivalent) to avoid phantom balance when cash payments
+-- are made at lower prices than card prices
+SELECT
+    COALESCE(SUM(
+        COALESCE(original_amount, amount)
+        - COALESCE(refunded_amount, 0) * COALESCE(original_amount, amount) / NULLIF(amount, 0)
+    ), 0),
     COALESCE(SUM(COALESCE(refunded_amount, 0)), 0)
 INTO v_effective_paid, v_payment_refunded
 FROM public.order_payments

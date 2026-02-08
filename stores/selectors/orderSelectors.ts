@@ -13,6 +13,7 @@ import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { OrderProfile } from "@/lib/types";
 import { useMemo } from "react";
 import { useOrderStore } from "../useOrderStore";
+import { useSettingsStore } from "../useSettingsStore";
 import { useStoreSettingsStore } from "../useStoreSettingsStore";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -241,6 +242,7 @@ export function useStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
+  const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
 
   return useMemo(() => {
     if (!currentStationId) return [];
@@ -253,6 +255,13 @@ export function useStationOrders(): OrderProfile[] {
     ]);
     const dineInTypes = new Set(["Dine In", "dine_in"]);
     const workingSet = new Set(workingSetOrderIds);
+
+    // Calculate the cutoff date based on daysToShow setting
+    // 0 = today only, 1 = today + yesterday, etc.
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
+    cutoffDate.setHours(0, 0, 0, 0);
+    const cutoffTime = cutoffDate.getTime();
 
     // Filter relevant orders directly
     return Object.values(ordersById)
@@ -269,6 +278,10 @@ export function useStationOrders(): OrderProfile[] {
         // Must not be draft status
         if (order.order_status === "draft") return false;
 
+        // Filter by date - only show orders within the configured day range
+        const orderTime = new Date(order.opened_at || 0).getTime();
+        if (orderTime < cutoffTime) return false;
+
         // Include if: in working set OR our station's order
         const isInWorkingSet =
           order.db_order_id && workingSet.has(order.db_order_id);
@@ -282,7 +295,7 @@ export function useStationOrders(): OrderProfile[] {
         const bTime = new Date(b.opened_at || 0).getTime();
         return bTime - aTime;
       });
-  }, [ordersById, currentStationId, workingSetOrderIds]);
+  }, [ordersById, currentStationId, workingSetOrderIds, daysToShow]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

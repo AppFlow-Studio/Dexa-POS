@@ -1,53 +1,101 @@
-import BillItem from "@/components/bill/BillItem";
-import AdvancedRefundModal, { AdvancedRefundModalRef } from "@/components/previous-orders/AdvancedRefundModal";
+import AdvancedRefundModal, {
+  AdvancedRefundModalRef,
+} from "@/components/previous-orders/AdvancedRefundModal";
+import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
+import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
+import ActionsPanel from "@/components/previous-orders/detail/ActionsPanel";
+import BillTab from "@/components/previous-orders/detail/BillTab";
+import OrderDetailHeader from "@/components/previous-orders/detail/OrderDetailHeader";
+import OrderDetailSkeleton from "@/components/previous-orders/detail/OrderDetailSkeleton";
+import OrderMetadata from "@/components/previous-orders/detail/OrderMetadata";
+import PaymentsTab from "@/components/previous-orders/detail/PaymentsTab";
+import RefundsTab from "@/components/previous-orders/detail/RefundsTab";
+import SummaryCards from "@/components/previous-orders/detail/SummaryCards";
+import TimelineTab from "@/components/previous-orders/detail/TimelineTab";
+import TipAdjustSheet, {
+  TipAdjustSheetRef,
+} from "@/components/previous-orders/detail/TipAdjustSheet";
+import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { previousOrderToOrderProfile } from "@/utils/previousOrderMapper";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Printer } from "lucide-react-native";
-import React, { useMemo, useRef } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Clock, CreditCard, Receipt, RotateCcw } from "lucide-react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  InteractionManager,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 
-const DetailRow = ({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) => (
-  <View className="flex-row justify-between py-1.5 border-b border-dashed border-gray-700">
-    <Text className="text-xl text-gray-400">{label}</Text>
-    <Text className="text-xl font-semibold text-white">{value}</Text>
-  </View>
-);
+type TabType = "bill" | "payments" | "refunds" | "timeline";
+
+const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
+  { key: "bill", label: "Bill", icon: Receipt },
+  { key: "payments", label: "Payments", icon: CreditCard },
+  { key: "refunds", label: "Refunds", icon: RotateCcw },
+  { key: "timeline", label: "Timeline", icon: Clock },
+];
 
 const OrderDetailsScreen = () => {
   const router = useRouter();
   const { orderId } = useLocalSearchParams();
-  const { getOrderById, previousOrders } = usePreviousOrdersStore();
+  const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore();
   const order = getOrderById(orderId as string);
+  const supabaseClient = useSupabaseClient();
+  const { show } = useToast();
+
+  const [activeTab, setActiveTab] = useState<TabType>("bill");
+  const [isReady, setIsReady] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+
   const refundModalRef = useRef<AdvancedRefundModalRef>(null);
+  const tipAdjustRef = useRef<TipAdjustSheetRef>(null);
 
-  const canStillRefund = useMemo(() => {
-    if (!order) return false;
-    if (order.paymentStatus === "Refunded") return false;
-    console.log("order", order);
+  const mappedOrder = useMemo(
+    () => (order ? previousOrderToOrderProfile(order) : null),
+    [order],
+  );
 
-    if (order.paymentStatus === "Partially Refunded") {
-      const refundableItems = order.items.filter(
-        (item) => (item.refundedQuantity || 0) < item.quantity
-      );
-      if (refundableItems.length === 0) return false;
+  // Deferred rendering for smooth navigation
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsReady(true);
+    });
+    return () => task.cancel();
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshPreviousOrders();
+    } finally {
+      setIsRefreshing(false);
     }
+  }, [refreshPreviousOrders]);
 
-    if (
-      order.paymentStatus === "Paid" ||
-      order.paymentStatus === "Partially Refunded"
-    ) {
-      return true;
-    }
+  const handleReopen = useCallback(() => {
+    show({ title: "Info", message: "Re-open order is not yet implemented" });
+  }, [show]);
 
-    return false;
-  }, [order]);
+  const handleAddToBill = useCallback(() => {
+    show({ title: "Info", message: "Add to current bill is not yet implemented" });
+  }, [show]);
 
+  // Not-found state
   if (!order) {
     return (
       <View className="flex-1 items-center justify-center p-4 bg-[#212121]">
@@ -67,105 +115,119 @@ const OrderDetailsScreen = () => {
     );
   }
 
-  // Calculate totals based on the actual items in the order
-  const subtotal = order.items.reduce(
-    (acc, item) => acc + item.price * item.quantity,
-    0
-  );
-  const tax = subtotal * 0.05; // Assuming a 5% tax rate for display
-  const total = subtotal + tax;
+  // Skeleton while waiting for interaction manager
+  if (!isReady) {
+    return <OrderDetailSkeleton />;
+  }
 
   return (
-    <View className="flex-1 bg-[#212121] p-4 justify-center items-center">
-      <View className="w-full max-w-3xl bg-[#303030] rounded-2xl border border-gray-700">
-        <ScrollView contentContainerStyle={{ padding: 24 }}>
-          <View className="text-center items-center relative mb-4">
-            <Text className="text-4xl font-extrabold text-white">
-              Order {order.orderId}
-            </Text>
-            <Text className="text-xl text-gray-400 mt-1">
-              Server: {order.server}
-            </Text>
+    <View className="flex-1 bg-[#212121]">
+      <OrderDetailHeader order={order} onBack={() => router.back()} />
+
+      <View className="flex-1 flex-row">
+        {/* Left Pane */}
+        <View className="flex-[3] border-r border-gray-700">
+          {/* Tab Bar */}
+          <View className="flex-row border-b border-gray-700 px-4">
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              const TabIcon = tab.icon;
+              return (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  className={`flex-row items-center gap-1.5 py-3 px-3 border-b-2 ${
+                    isActive ? "border-blue-500" : "border-transparent"
+                  }`}
+                >
+                  <TabIcon
+                    color={isActive ? "#3B82F6" : "#9CA3AF"}
+                    size={18}
+                  />
+                  <Text
+                    className={`text-sm font-semibold ${
+                      isActive ? "text-blue-500" : "text-gray-400"
+                    }`}
+                  >
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
-          <View className="my-4">
-            <Text className="text-2xl font-bold text-white mb-3">Items</Text>
-            <View className="gap-y-3">
-              {order.items.map((item) => (
-                <BillItem key={item.id} item={item} isEditable={false} />
-              ))}
-            </View>
-          </View>
-
-          <View className="gap-y-1.5">
-            <DetailRow label="Order ID" value={order.orderId} />
-            <DetailRow label="Order Type" value={order.type} />
-            <DetailRow label="Server/Cashier" value={order.server} />
-            <DetailRow label="Payment Status" value={order.paymentStatus} />
-            {order.refundedAmount != null && order.refundedAmount > 0 && (
-              <DetailRow
-                label="Refunded"
-                value={`$${order?.refundedAmount?.toFixed(2)}`}
+          {/* Tab Content */}
+          <ScrollView
+            className="flex-1"
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor="#3B82F6"
               />
-            )}
-            <DetailRow label="Subtotal" value={`$${subtotal?.toFixed(2)}`} />
-            <DetailRow label="Tax" value={`$${tax?.toFixed(2)}`} />
-            <View className="flex-row justify-between items-center pt-3 mt-1.5 border-t border-gray-600">
-              <Text className="text-2xl font-bold text-white">Total</Text>
-              <Text className="text-2xl font-bold text-white">
-                ${order?.total?.toFixed(2)}
-              </Text>
-            </View>
+            }
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View entering={FadeIn.duration(200)}>
+              {activeTab === "bill" && <BillTab order={order} />}
+              {activeTab === "payments" && <PaymentsTab order={order} />}
+              {activeTab === "refunds" && <RefundsTab order={order} />}
+              {activeTab === "timeline" && <TimelineTab order={order} />}
+            </Animated.View>
+          </ScrollView>
+        </View>
 
-            {order.payments && order.payments.length > 0 && (
-              <View className="mt-4">
-                <Text className="text-2xl font-bold text-white mb-3">
-                  Payments
-                </Text>
-                <View className="gap-y-1.5">
-                  {order.payments.map((payment, index) => (
-                    <DetailRow
-                      key={index}
-                      label={
-                        payment.cardBrand
-                          ? `Via ${payment.cardBrand}`
-                          : payment.method
-                      }
-                      value={
-                        payment.last4
-                          ? `•••• ${payment.last4}`
-                          : `$${payment.amount?.toFixed(2)}`
-                      }
-                    />
-                  ))}
-                </View>
-              </View>
-            )}
-          </View>
+        {/* Right Pane */}
+        <ScrollView
+          className="flex-[2]"
+          contentContainerStyle={{ padding: 16 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View entering={FadeIn.duration(300).delay(100)}>
+            <SummaryCards order={order} />
+          </Animated.View>
 
-          <View className="flex-row gap-3 mt-6 border-t border-gray-700 pt-4">
-            {canStillRefund && (
-              <TouchableOpacity
-                onPress={() => refundModalRef.current?.open()}
-                className="flex-1 py-3 border border-red-500 rounded-xl items-center bg-red-900/30"
-              >
-                <Text className="text-xl font-bold text-red-400">Refund</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 bg-blue-600 rounded-xl">
-              <Printer color="#FFFFFF" size={20} />
-              <Text className="text-xl font-bold text-white">
-                Print Receipt
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <Animated.View entering={FadeIn.duration(300).delay(200)}>
+            <OrderMetadata order={order} />
+          </Animated.View>
+
+          <Animated.View entering={FadeIn.duration(300).delay(300)}>
+            <ActionsPanel
+              order={order}
+              onRefund={() => refundModalRef.current?.open()}
+              onTipAdjust={() => tipAdjustRef.current?.open()}
+              onPrint={() => setShowPrintModal(true)}
+              onReopen={handleReopen}
+              onAddToBill={handleAddToBill}
+              onNotes={() => setShowNotesModal(true)}
+            />
+          </Animated.View>
         </ScrollView>
       </View>
 
+      {/* Modals */}
       <AdvancedRefundModal
         ref={refundModalRef}
         onClose={() => {}}
         order={order}
+      />
+
+      <TipAdjustSheet
+        ref={tipAdjustRef}
+        order={order}
+        supabaseClient={supabaseClient}
+      />
+
+      <PrintReceiptModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        order={order}
+      />
+
+      <OrderNotesModal
+        isOpen={showNotesModal}
+        onClose={() => setShowNotesModal(false)}
+        order={mappedOrder}
       />
     </View>
   );

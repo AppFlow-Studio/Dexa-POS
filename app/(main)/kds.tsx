@@ -1,16 +1,22 @@
+import { useToast } from "@/contexts/ToastContext";
 import {
   getBucketedElapsed,
   getUrgencyLevel,
   useKDSTimer,
 } from "@/hooks/useKDSTimer";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
+import PinInputModal from "@/components/timeclock/PinInputModal";
 import {
+  CheckSquare,
   ChefHat,
   Clock,
+  Layers,
   RefreshCw,
   ShoppingBag,
+  Square,
   Truck,
   UtensilsCrossed,
 } from "lucide-react-native";
@@ -52,6 +58,9 @@ const URGENCY_BORDER_COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
 
 // ─── Fixed card height for getItemLayout optimization ───────────
 const CARD_HEIGHT = 260;
+
+// ─── Manager roles for bulk operations ──────────────────────────
+const MANAGER_ROLES = ["merchant.manager", "merchant.admin", "merchant.owner"];
 
 // ─── Skeleton ─────────────────────────────────────────────────────
 const SkeletonBar = ({
@@ -178,16 +187,30 @@ function matchesTypeFilter(ticket: KDSTicket, filter: OrderTypeFilter): boolean 
 interface KDSTicketCardProps {
   ticket: KDSTicket;
   onAdvance: (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => void;
+  bulkMode: boolean;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
 }
 
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
-  ({ ticket, onAdvance }) => {
+  ({ ticket, onAdvance, bulkMode, isSelected, onToggleSelect }) => {
     // Subscribe to timerTick via Zustand selector — only re-renders when bucketed string changes
     const timeElapsed = useKDSStore(
       useCallback(
         (s) => {
           void s.timerTick;
           return getBucketedElapsed(ticket.start_time);
+        },
+        [ticket.start_time],
+      ),
+    );
+
+    // Urgency level — derived from timerTick, only changes at minute boundaries
+    const urgencyLevel = useKDSStore(
+      useCallback(
+        (s) => {
+          void s.timerTick;
+          return getUrgencyLevel(ticket.start_time);
         },
         [ticket.start_time],
       ),
@@ -254,7 +277,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       ]).start();
     };
 
-    const handleDoubleTap = () => {
+    const handlePress = () => {
+      if (bulkMode) {
+        onToggleSelect(ticket.ticket_id);
+        return;
+      }
+
+      // Double-tap detection
       const now = Date.now();
       const itemIds = ticket.items.map((i) => i.id);
       if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
@@ -269,13 +298,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       }
     };
 
-    const urgencyLevel = getUrgencyLevel(ticket.start_time);
     const urgencyColor = URGENCY_BORDER_COLORS[urgencyLevel];
+    const borderColor = bulkMode && isSelected ? "#3b82f6" : urgencyColor;
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
 
     return (
-      <TouchableOpacity activeOpacity={1} onPress={handleDoubleTap}>
+      <TouchableOpacity activeOpacity={1} onPress={handlePress}>
         <Animated.View
           style={{
             margin: 4,
@@ -283,8 +312,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             overflow: "hidden",
             backgroundColor: "#2a2a2e",
             borderWidth: 2,
-            borderColor: urgencyColor,
-            shadowColor: urgencyColor,
+            borderColor,
+            shadowColor: borderColor,
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.3,
             shadowRadius: 6,
@@ -294,6 +323,24 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             opacity: opacityAnim,
           }}
         >
+          {/* Bulk mode checkbox overlay */}
+          {bulkMode && (
+            <View
+              style={{
+                position: "absolute",
+                top: 6,
+                right: 6,
+                zIndex: 10,
+              }}
+            >
+              {isSelected ? (
+                <CheckSquare size={20} color="#3b82f6" fill="#3b82f6" />
+              ) : (
+                <Square size={20} color="#9ca3af" />
+              )}
+            </View>
+          )}
+
           {/* Top bar with urgency color */}
           <View
             style={{
@@ -459,7 +506,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     );
   },
   (prev, next) =>
-    prev.ticket === next.ticket && prev.onAdvance === next.onAdvance,
+    prev.ticket === next.ticket &&
+    prev.onAdvance === next.onAdvance &&
+    prev.bulkMode === next.bulkMode &&
+    prev.isSelected === next.isSelected &&
+    prev.onToggleSelect === next.onToggleSelect,
 );
 
 // ─── Main Screen ──────────────────────────────────────────────────
@@ -469,17 +520,38 @@ const KitchenDisplayScreen = () => {
   const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
 
   const tickets = useKDSStore((s) => s.tickets);
-  const ticketsByStatus = useKDSStore((s) => s.ticketsByStatus);
   const counts = useKDSStore((s) => s.counts);
   const isLoading = useKDSStore((s) => s.isLoading);
   const fetchTickets = useKDSStore((s) => s.fetchTickets);
   const advanceTicketStatus = useKDSStore((s) => s.advanceTicketStatus);
   const scheduleRefetch = useKDSStore((s) => s.scheduleRefetch);
 
+  // Bulk mode state from store
+  const bulkMode = useKDSStore((s) => s.bulkMode);
+  const selectedTicketIds = useKDSStore((s) => s.selectedTicketIds);
+  const toggleBulkMode = useKDSStore((s) => s.toggleBulkMode);
+  const toggleTicketSelection = useKDSStore((s) => s.toggleTicketSelection);
+  const selectAllVisible = useKDSStore((s) => s.selectAllVisible);
+  const clearSelection = useKDSStore((s) => s.clearSelection);
+  const bulkAdvanceTickets = useKDSStore((s) => s.bulkAdvanceTickets);
+
+  // Employee + toast for PIN verification
+  const findEmployeeByPin = useEmployeeStore((s) => s.findEmployeeByPin);
+  const toast = useToast();
+
   const [activeStatus, setActiveStatus] = useState<StatusFilter>("pending");
   const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(false);
+
+  // PIN modal state
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pendingBulkAction, setPendingBulkAction] = useState<"selected" | "all" | null>(null);
+
+  // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
+  const pendingTickets = useKDSStore((s) => s.ticketsByStatus.pending);
+  const cookingTickets = useKDSStore((s) => s.ticketsByStatus.cooking);
+  const readyTickets = useKDSStore((s) => s.ticketsByStatus.ready);
 
   // Start the single global timer
   useKDSTimer();
@@ -513,7 +585,7 @@ const KitchenDisplayScreen = () => {
       const now = Date.now();
       const delayMs = kdsAutoFireDelayMinutes * 60 * 1000;
 
-      ticketsByStatus.pending.forEach((ticket) => {
+      pendingTickets.forEach((ticket) => {
         if (!ticket.start_time) return;
         const elapsed = now - new Date(ticket.start_time).getTime();
         if (elapsed >= delayMs) {
@@ -527,37 +599,66 @@ const KitchenDisplayScreen = () => {
     }, 15_000);
 
     return () => clearInterval(intervalId);
-  }, [kdsAutoFireEnabled, kdsAutoFireDelayMinutes, ticketsByStatus.pending, isReady, advanceTicketStatus]);
+  }, [kdsAutoFireEnabled, kdsAutoFireDelayMinutes, pendingTickets, isReady, advanceTicketStatus]);
 
-  // Filter tickets by active status tab + order type
-  const filteredTickets = useMemo(() => {
-    const statusTickets = ticketsByStatus[activeStatus] || [];
-    if (activeType === "all") return statusTickets;
-    return statusTickets.filter((t) => matchesTypeFilter(t, activeType));
-  }, [ticketsByStatus, activeStatus, activeType]);
+  // Clear selection on tab switch
+  const handleSetActiveStatus = useCallback(
+    (status: StatusFilter) => {
+      setActiveStatus(status);
+      if (bulkMode) clearSelection();
+    },
+    [bulkMode, clearSelection],
+  );
 
-  // Type counts for badge display
+  // Pre-filter ALL 3 status arrays by order type (so all FlatLists stay current)
+  const filteredPending = useMemo(() => {
+    if (activeType === "all") return pendingTickets;
+    return pendingTickets.filter((t) => matchesTypeFilter(t, activeType));
+  }, [pendingTickets, activeType]);
+
+  const filteredCooking = useMemo(() => {
+    if (activeType === "all") return cookingTickets;
+    return cookingTickets.filter((t) => matchesTypeFilter(t, activeType));
+  }, [cookingTickets, activeType]);
+
+  const filteredReady = useMemo(() => {
+    if (activeType === "all") return readyTickets;
+    return readyTickets.filter((t) => matchesTypeFilter(t, activeType));
+  }, [readyTickets, activeType]);
+
+  const filteredByStatus: Record<StatusFilter, KDSTicket[]> = useMemo(
+    () => ({ pending: filteredPending, cooking: filteredCooking, ready: filteredReady }),
+    [filteredPending, filteredCooking, filteredReady],
+  );
+
+  // Active tab's filtered data — for bulk actions / select-all
+  const activeFilteredTickets = filteredByStatus[activeStatus];
+
+  // Type counts for badge display (active tab only)
+  const activeRawTickets =
+    activeStatus === "pending" ? pendingTickets
+    : activeStatus === "cooking" ? cookingTickets
+    : readyTickets;
+
   const typeCounts = useMemo(() => {
-    const statusTickets = ticketsByStatus[activeStatus] || [];
     const result: Record<OrderTypeFilter, number> = {
-      all: statusTickets.length,
+      all: activeRawTickets.length,
       delivery: 0,
       takeout: 0,
       dine_in: 0,
     };
-    for (const t of statusTickets) {
+    for (const t of activeRawTickets) {
       const ot = (t.order_type || "").toLowerCase();
       if (ot === "delivery") result.delivery++;
       else if (ot === "takeout" || ot === "to_go" || ot === "to go") result.takeout++;
       else result.dine_in++;
     }
     return result;
-  }, [ticketsByStatus, activeStatus]);
+  }, [activeRawTickets]);
 
   const handleAdvance = useCallback(
     (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => {
       advanceTicketStatus(ticketId, itemIds, newStatus);
-      // Schedule a refetch to sync with server after optimistic update
       if (locationId) {
         scheduleRefetch(locationId);
       }
@@ -577,16 +678,86 @@ const KitchenDisplayScreen = () => {
     }
   }, [locationId, fetchTickets]);
 
+  // ─── Bulk Action Handlers ───────────────────────────────────────
+  const handleBulkAction = useCallback((action: "selected" | "all") => {
+    setPendingBulkAction(action);
+    setShowPinModal(true);
+  }, []);
+
+  const handlePinConfirm = useCallback(
+    async (pin: string) => {
+      const employee = await findEmployeeByPin(pin);
+      if (!employee) {
+        toast.show({
+          title: "Invalid PIN",
+          message: "No employee found with that PIN.",
+          type: "error",
+        });
+        return;
+      }
+
+      if (!MANAGER_ROLES.includes(employee.role)) {
+        toast.show({
+          title: "Unauthorized",
+          message: "Only managers can perform bulk operations.",
+          type: "error",
+        });
+        return;
+      }
+
+      // PIN is valid and employee is a manager — execute bulk action
+      setShowPinModal(false);
+
+      const ticketIdsToAdvance =
+        pendingBulkAction === "all"
+          ? activeFilteredTickets.map((t) => t.ticket_id)
+          : Array.from(selectedTicketIds);
+
+      if (ticketIdsToAdvance.length === 0) {
+        toast.show({
+          title: "No Tickets",
+          message: "No tickets to advance.",
+          type: "warning",
+        });
+        setPendingBulkAction(null);
+        return;
+      }
+
+      bulkAdvanceTickets(ticketIdsToAdvance, locationId || "");
+
+      toast.show({
+        title: "Bulk Advance",
+        message: `${ticketIdsToAdvance.length} ticket(s) advanced by ${employee.fullName}.`,
+        type: "success",
+      });
+      setPendingBulkAction(null);
+    },
+    [findEmployeeByPin, pendingBulkAction, activeFilteredTickets, selectedTicketIds, bulkAdvanceTickets, locationId, toast],
+  );
+
+  const handlePinCancel = useCallback(() => {
+    setShowPinModal(false);
+    setPendingBulkAction(null);
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    selectAllVisible(activeFilteredTickets.map((t) => t.ticket_id));
+  }, [selectAllVisible, activeFilteredTickets]);
+
+  // ─── Render Helpers ─────────────────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
       <View style={{ width: "25%", paddingHorizontal: 2 }}>
         <KDSTicketCard
           ticket={item}
           onAdvance={handleAdvance}
+          bulkMode={bulkMode}
+          isSelected={selectedTicketIds.has(item.ticket_id)}
+          onToggleSelect={toggleTicketSelection}
         />
       </View>
     ),
-    [handleAdvance],
+    [handleAdvance, bulkMode, selectedTicketIds, toggleTicketSelection],
   );
 
   const getItemLayout = useCallback(
@@ -611,6 +782,8 @@ const KitchenDisplayScreen = () => {
     </View>
   );
 
+  const selectionCount = selectedTicketIds.size;
+
   return (
     <View style={{ flex: 1, backgroundColor: "#1a1a1a" }}>
       {/* ─── Header ─── */}
@@ -623,7 +796,7 @@ const KitchenDisplayScreen = () => {
           paddingVertical: 10,
         }}
       >
-        {/* Top row: title + refresh */}
+        {/* Top row: title + bulk toggle + refresh */}
         <View
           style={{
             flexDirection: "row",
@@ -638,20 +811,34 @@ const KitchenDisplayScreen = () => {
               Kitchen Display
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={onRefresh}
-            style={{
-              padding: 8,
-              backgroundColor: "#333338",
-              borderRadius: 8,
-            }}
-          >
-            <RefreshCw
-              size={18}
-              color="#9CA3AF"
-              style={refreshing ? { opacity: 0.5 } : undefined}
-            />
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* Bulk mode toggle */}
+            <TouchableOpacity
+              onPress={toggleBulkMode}
+              style={{
+                padding: 8,
+                backgroundColor: bulkMode ? "#3b82f6" : "#333338",
+                borderRadius: 8,
+              }}
+            >
+              <Layers size={18} color={bulkMode ? "#fff" : "#9CA3AF"} />
+            </TouchableOpacity>
+            {/* Refresh */}
+            <TouchableOpacity
+              onPress={onRefresh}
+              style={{
+                padding: 8,
+                backgroundColor: "#333338",
+                borderRadius: 8,
+              }}
+            >
+              <RefreshCw
+                size={18}
+                color="#9CA3AF"
+                style={refreshing ? { opacity: 0.5 } : undefined}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Filter rows */}
@@ -669,7 +856,7 @@ const KitchenDisplayScreen = () => {
               return (
                 <TouchableOpacity
                   key={tab.key}
-                  onPress={() => setActiveStatus(tab.key)}
+                  onPress={() => handleSetActiveStatus(tab.key)}
                   style={{
                     paddingHorizontal: 14,
                     paddingVertical: 6,
@@ -764,30 +951,137 @@ const KitchenDisplayScreen = () => {
         </View>
       </View>
 
-      {/* ─── Grid ─── */}
+      {/* ─── Bulk Action Bar ─── */}
+      {bulkMode && (
+        <View
+          style={{
+            backgroundColor: "#2a2a2e",
+            borderBottomWidth: 1,
+            borderBottomColor: "#444",
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Text style={{ color: "#9ca3af", fontSize: 13 }}>
+              {selectionCount} selected
+            </Text>
+            <TouchableOpacity
+              onPress={handleSelectAll}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                backgroundColor: "#333338",
+                borderRadius: 6,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Select All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={clearSelection}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                backgroundColor: "#333338",
+                borderRadius: 6,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => handleBulkAction("selected")}
+              disabled={selectionCount === 0}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: selectionCount > 0 ? "#3b82f6" : "#333338",
+                borderRadius: 6,
+                opacity: selectionCount > 0 ? 1 : 0.5,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+                Advance Selected
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleBulkAction("all")}
+              disabled={activeFilteredTickets.length === 0}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: activeFilteredTickets.length > 0 ? "#dc2626" : "#333338",
+                borderRadius: 6,
+                opacity: activeFilteredTickets.length > 0 ? 1 : 0.5,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+                Advance All in Tab
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* ─── Grid: 3 pre-mounted FlatLists stacked ─── */}
       {!isReady || (isLoading && tickets.length === 0) ? (
         renderSkeletons()
       ) : (
-        <FlatList
-          data={filteredTickets}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          getItemLayout={getItemLayout}
-          numColumns={4}
-          contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
-          initialNumToRender={16}
-          maxToRenderPerBatch={8}
-          windowSize={3}
-          removeClippedSubviews={true}
-          ListEmptyComponent={
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
-              <Text style={{ color: "#6b7280", fontSize: 14 }}>
-                No {activeStatus} tickets
-              </Text>
-            </View>
-          }
-        />
+        <View style={{ flex: 1, position: "relative" }}>
+          {(["pending", "cooking", "ready"] as const).map((status) => {
+            const isActive = activeStatus === status;
+            return (
+              <View
+                key={status}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  opacity: isActive ? 1 : 0,
+                  zIndex: isActive ? 1 : 0,
+                }}
+                pointerEvents={isActive ? "auto" : "none"}
+              >
+                <FlatList
+                  data={filteredByStatus[status]}
+                  keyExtractor={keyExtractor}
+                  renderItem={renderItem}
+                  getItemLayout={getItemLayout}
+                  numColumns={4}
+                  contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
+                  initialNumToRender={16}
+                  maxToRenderPerBatch={8}
+                  windowSize={3}
+                  removeClippedSubviews={true}
+                  extraData={bulkMode ? selectedTicketIds : undefined}
+                  ListEmptyComponent={
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
+                      <Text style={{ color: "#6b7280", fontSize: 14 }}>
+                        No {status} tickets
+                      </Text>
+                    </View>
+                  }
+                />
+              </View>
+            );
+          })}
+        </View>
       )}
+
+      {/* ─── PIN Modal ─── */}
+      <PinInputModal
+        isOpen={showPinModal}
+        title="Manager PIN Required"
+        subtitle="Enter a manager PIN to perform bulk operations"
+        onConfirm={handlePinConfirm}
+        onCancel={handlePinCancel}
+      />
     </View>
   );
 };

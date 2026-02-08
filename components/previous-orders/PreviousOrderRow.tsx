@@ -29,27 +29,34 @@ interface PreviousOrderRowProps {
   onDoublePress?: (order: OrderProfile) => void;
 }
 
-const statusClasses: Record<string, string> = {
-  Paid: "bg-green-100 text-green-800",
-  "In Progress": "bg-orange-100 text-orange-800",
-  Refunded: "bg-gray-200 text-gray-600",
-  "Partially Refunded": "bg-yellow-100 text-yellow-800",
-  Unpaid: "bg-red-100 text-red-800",
-  Pending: "bg-yellow-100 text-yellow-800",
+const statusConfig: Record<string, { bg: string; text: string }> = {
+  Paid:                 { bg: "bg-green-900/50",  text: "text-green-400" },
+  Partial:              { bg: "bg-yellow-900/50", text: "text-yellow-400" },
+  Pending:              { bg: "bg-orange-900/50", text: "text-orange-400" },
+  Unpaid:               { bg: "bg-red-900/50",    text: "text-red-400" },
+  "In Progress":        { bg: "bg-blue-900/50",   text: "text-blue-400" },
+  Refunded:             { bg: "bg-red-900/50",     text: "text-red-400" },
+  "Partially Refunded": { bg: "bg-yellow-900/50", text: "text-yellow-400" },
+};
+
+const orderTypeConfig: Record<string, { bg: string; text: string }> = {
+  "Dine In":  { bg: "bg-purple-900/50", text: "text-purple-400" },
+  Takeaway:   { bg: "bg-orange-900/50", text: "text-orange-400" },
+  Delivery:   { bg: "bg-cyan-900/50",   text: "text-cyan-400" },
 };
 
 const columnWidths: { [key: string]: DimensionValue } = {
-  serial: "8%",
-  date: "22%",
+  serial: "7%",
+  date: "18%",
   orderId: "10%",
   customer: "12%",
-  paymentStatus: "10%",
+  paymentStatus: "14%",
   server: "10%",
-  items: "7%",
+  items: "6%",
   type: "10%",
   total: "8%",
   notes: "8%",
-  actions: "5%",
+  actions: "7%",
 };
 
 const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
@@ -101,6 +108,12 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const isFullyRefunded = order.order_status === "refunded" ||
     (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0));
 
+  const status = order.paid_status || "Unpaid";
+  const statusStyle = statusConfig[status] || { bg: "bg-gray-700", text: "text-gray-300" };
+
+  const orderType = order.order_type || "Dine In";
+  const typeStyle = orderTypeConfig[orderType] || { bg: "bg-gray-700", text: "text-gray-300" };
+
   return (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -117,12 +130,6 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         <Text className="text-lg text-white font-semibold">{orderDate}</Text>
         <Text className="text-base text-gray-400">{orderTime}</Text>
       </View>
-      {/* <Text
-          style={{ width: columnWidths.orderId }}
-          className="text-base font-semibold text-gray-300 px-1.5"
-        >
-          {order.order_number || order.id}
-        </Text> */}
       <Text
         style={{ width: columnWidths.customer }}
         className="text-base font-semibold text-white px-1.5"
@@ -131,21 +138,17 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       </Text>
       <View style={{ width: columnWidths.paymentStatus }} className="px-1.5">
         <View
-          className={`px-3 py-1.5 rounded-md  self-start ${
-            statusClasses[order.paid_status || "Unpaid"]
-          }`}
+          className={`px-3 py-1.5 rounded-md self-start ${statusStyle.bg}`}
         >
           <Text
-            className={`font-bold text-base ${
-              statusClasses[order.paid_status || "Unpaid"]
-            }`}
+            className={`font-bold text-base ${statusStyle.text}`}
           >
-            {order.paid_status || "Unpaid"}
+            {status}
           </Text>
         </View>
         {totalRefunded > 0 && (
-          <View className={`px-2 py-1 rounded-md self-start mt-1 ${isFullyRefunded ? "bg-red-100" : "bg-yellow-100"}`}>
-            <Text className={`font-bold text-xs ${isFullyRefunded ? "text-red-800" : "text-yellow-800"}`}>
+          <View className={`px-2 py-1 rounded-md self-start mt-1 ${isFullyRefunded ? "bg-red-900/50" : "bg-yellow-900/50"}`}>
+            <Text className={`font-bold text-xs ${isFullyRefunded ? "text-red-400" : "text-yellow-400"}`}>
               {isFullyRefunded ? "Refunded" : "Partial Refund"}
             </Text>
           </View>
@@ -162,16 +165,19 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       >
         {order.server_name || "-"}
       </Text>
-      <Text
-        style={{ width: columnWidths.items }}
-        className="text-base font-semibold text-gray-300 text-center px-1.5"
-      >
-        {order.items?.length || 0}
-      </Text>
+      <View style={{ width: columnWidths.items }} className="px-1.5">
+        <View className="bg-gray-700 rounded-full px-2.5 py-0.5 self-start">
+          <Text className="text-sm font-semibold text-gray-300 text-center">
+            {order.items?.length || 0}
+          </Text>
+        </View>
+      </View>
       <View style={{ width: columnWidths.type }} className="px-1.5">
-        <Text className="text-base font-semibold text-gray-300">
-          {order.order_type || "Dine In"}
-        </Text>
+        <View className={`px-2.5 py-1 rounded-md self-start ${typeStyle.bg}`}>
+          <Text className={`text-base font-semibold ${typeStyle.text}`}>
+            {orderType}
+          </Text>
+        </View>
         {/* Show source station for orders from other stations */}
         {order._sourceStationName && (
           <View className="flex-row items-center mt-0.5">
@@ -184,16 +190,16 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       </View>
       <View style={{ width: columnWidths.total }}>
         <Text className="text-base font-bold text-white px-1.5">
-          ${order.total_amount?.toFixed(2) || "0.00"}
+          {`$${(order.total_amount ?? 0).toFixed(2)}`}
         </Text>
         {order.total_discount != null && order.total_discount > 0 && (
-          <Text className="text-base text-red-400">
-            -${order.total_discount?.toFixed(2)}
+          <Text className="text-base text-red-400 px-1.5">
+            {`-$${(order.total_discount ?? 0).toFixed(2)}`}
           </Text>
         )}
         {totalRefunded > 0 && (
           <Text className="text-sm font-medium text-red-400 px-1.5 mt-0.5">
-            {isFullyRefunded ? "Refunded" : "Partial"} ${totalRefunded.toFixed(2)}
+            {`${isFullyRefunded ? "Refunded" : "Partial"} $${totalRefunded.toFixed(2)}`}
           </Text>
         )}
       </View>
@@ -287,6 +293,8 @@ const PreviousOrderRow = React.memo(PreviousOrderRowContent, (prev, next) => {
     prev.order.order_status === next.order.order_status &&
     prev.order.order_type === next.order.order_type &&
     prev.order.total_amount === next.order.total_amount &&
+    prev.order.total_discount === next.order.total_discount &&
+    prev.order.notes === next.order.notes &&
     prev.order.check_status === next.order.check_status &&
     prev.order.payments === next.order.payments
   );
