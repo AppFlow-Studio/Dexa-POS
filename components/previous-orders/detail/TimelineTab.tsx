@@ -1,9 +1,17 @@
-import { PreviousOrder } from "@/lib/types";
+import { OrderProfile } from "@/lib/types";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import React, { useMemo } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 interface TimelineTabProps {
-  order: PreviousOrder;
+  order: OrderProfile;
+  statusHistory?: Array<{
+    id: string;
+    status: string;
+    changed_at: string;
+    changed_by?: string;
+    notes?: string;
+  }>;
 }
 
 interface TimelineEvent {
@@ -13,7 +21,10 @@ interface TimelineEvent {
   color: string;
 }
 
-function buildTimeline(order: PreviousOrder): TimelineEvent[] {
+function buildTimeline(
+  order: OrderProfile,
+  statusHistory?: TimelineTabProps["statusHistory"],
+): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
   // Order created
@@ -21,7 +32,7 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
     events.push({
       timestamp: order.opened_at,
       label: "Order Created",
-      color: "#3B82F6", // blue
+      color: "#3B82F6",
     });
   }
 
@@ -30,7 +41,38 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
     events.push({
       timestamp: order.sent_to_kitchen_at,
       label: "Sent to Kitchen",
-      color: "#F59E0B", // yellow
+      color: "#F59E0B",
+    });
+  }
+
+  // Status history events from backend (if available)
+  if (statusHistory && statusHistory.length > 0) {
+    statusHistory.forEach((entry) => {
+      const statusLabels: Record<string, string> = {
+        pending: "Order Pending",
+        preparing: "Preparing",
+        ready: "Ready for Pickup",
+        completed: "Completed",
+        cancelled: "Cancelled",
+        void: "Voided",
+        refunded: "Refunded",
+      };
+      const statusColors: Record<string, string> = {
+        pending: "#F59E0B",
+        preparing: "#3B82F6",
+        ready: "#22C55E",
+        completed: "#22C55E",
+        cancelled: "#EF4444",
+        void: "#EF4444",
+        refunded: "#EF4444",
+      };
+
+      events.push({
+        timestamp: entry.changed_at,
+        label: statusLabels[entry.status] || `Status: ${entry.status}`,
+        detail: entry.notes || (entry.changed_by ? `By: ${entry.changed_by}` : undefined),
+        color: statusColors[entry.status] || "#6B7280",
+      });
     });
   }
 
@@ -48,7 +90,7 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
         timestamp: payment.timestamp,
         label: `Payment #${idx + 1} (${methodLabel})`,
         detail: `$${payment.amount.toFixed(2)}${payment.tip_amount > 0 ? ` + $${payment.tip_amount.toFixed(2)} tip` : ""}`,
-        color: payment.isVoided ? "#EF4444" : "#22C55E", // red if voided, green otherwise
+        color: payment.isVoided ? "#EF4444" : "#22C55E",
       });
 
       // Tip adjustment
@@ -57,7 +99,7 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
           timestamp: payment.tip_adjusted_at,
           label: `Tip Adjusted on Payment #${idx + 1}`,
           detail: `New tip: $${payment.tip_amount.toFixed(2)}${payment.original_tip_amount != null ? ` (was $${payment.original_tip_amount.toFixed(2)})` : ""}`,
-          color: "#8B5CF6", // purple
+          color: "#8B5CF6",
         });
       }
 
@@ -67,7 +109,7 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
           timestamp: payment.voidedAt,
           label: `Payment #${idx + 1} Voided`,
           detail: payment.voidReason || undefined,
-          color: "#EF4444", // red
+          color: "#EF4444",
         });
       }
     });
@@ -90,7 +132,7 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
         timestamp: ts,
         label: `${typeLabel} Processed`,
         detail: `$${reversal.amount.toFixed(2)}${reversal.reason_description ? ` - ${reversal.reason_description}` : ""}`,
-        color: "#EF4444", // red
+        color: "#EF4444",
       });
     });
   }
@@ -100,7 +142,7 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
     events.push({
       timestamp: order.closed_at,
       label: "Order Closed",
-      color: "#6B7280", // gray
+      color: "#6B7280",
     });
   }
 
@@ -112,8 +154,11 @@ function buildTimeline(order: PreviousOrder): TimelineEvent[] {
   return events;
 }
 
-const TimelineTab: React.FC<TimelineTabProps> = ({ order }) => {
-  const events = useMemo(() => buildTimeline(order), [order]);
+const TimelineTab: React.FC<TimelineTabProps> = ({ order, statusHistory }) => {
+  const events = useMemo(
+    () => buildTimeline(order, statusHistory),
+    [order, statusHistory],
+  );
 
   if (events.length === 0) {
     return (
@@ -127,9 +172,9 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order }) => {
   }
 
   return (
-    <ScrollView
+    <BottomSheetScrollView
       className="flex-1"
-      contentContainerStyle={{ padding: 16 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       showsVerticalScrollIndicator={false}
     >
       {events.map((event, idx) => {
@@ -138,7 +183,6 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order }) => {
           <View key={`${event.timestamp}-${idx}`} className="flex-row">
             {/* Timeline column */}
             <View className="items-center mr-3" style={{ width: 20 }}>
-              {/* Dot */}
               <View
                 className="rounded-full"
                 style={{
@@ -148,7 +192,6 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order }) => {
                   marginTop: 4,
                 }}
               />
-              {/* Connecting line */}
               {!isLast && (
                 <View
                   className="flex-1"
@@ -180,7 +223,7 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order }) => {
       })}
 
       <View className="h-4" />
-    </ScrollView>
+    </BottomSheetScrollView>
   );
 };
 

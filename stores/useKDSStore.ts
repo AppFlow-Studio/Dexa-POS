@@ -321,7 +321,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     if (_refetchTimeout) clearTimeout(_refetchTimeout);
     _refetchTimeout = setTimeout(() => {
       get().fetchTickets(locationId);
-    }, 2000);
+    }, 5000);
   },
 
   // ─── Bulk Actions ───────────────────────────────────────────────

@@ -1,12 +1,14 @@
 import { useToast } from "@/contexts/ToastContext";
-import { OrderProfilePayment, PreviousOrder } from "@/lib/types";
+import { orderHistoryKeys } from "@/hooks/orders/useOrderHistory";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { useQueryClient } from "@tanstack/react-query";
 import { CreditCard } from "lucide-react-native";
 import React, {
   forwardRef,
@@ -17,11 +19,9 @@ import React, {
   useState,
 } from "react";
 import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { SupabaseClient } from "@supabase/supabase-js";
 
 interface TipAdjustSheetProps {
-  order: PreviousOrder | null;
-  supabaseClient: SupabaseClient | null;
+  order: OrderProfile | null;
 }
 
 export interface TipAdjustSheetRef {
@@ -32,7 +32,7 @@ export interface TipAdjustSheetRef {
 const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
   TipAdjustSheetRef,
   TipAdjustSheetProps
-> = ({ order, supabaseClient }, ref) => {
+> = ({ order }, ref) => {
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
   const snapPoints = useMemo(() => ["70%"], []);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
@@ -41,7 +41,8 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
   const [tipInput, setTipInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { show } = useToast();
-  const { refreshPreviousOrders } = usePreviousOrdersStore();
+  const supabaseClient = useSupabaseClient();
+  const queryClient = useQueryClient();
 
   useImperativeHandle(ref, () => ({
     open: () => {
@@ -63,8 +64,7 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
   }, [selectedPaymentId, cardPayments]);
 
   const handleSubmit = useCallback(async () => {
-    if (!order?.db_order_id || !selectedPayment?.db_payment_id || !supabaseClient)
-      return;
+    if (!order?.db_order_id || !selectedPayment?.db_payment_id) return;
 
     const newTip = parseFloat(tipInput);
     if (isNaN(newTip) || newTip < 0) {
@@ -86,15 +86,10 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
     }
 
     await submitTipAdjustment(newTip);
-  }, [order, selectedPayment, tipInput, supabaseClient]);
+  }, [order, selectedPayment, tipInput]);
 
   const submitTipAdjustment = async (newTip: number) => {
-    if (
-      !order?.db_order_id ||
-      !selectedPayment?.db_payment_id ||
-      !supabaseClient
-    )
-      return;
+    if (!order?.db_order_id || !selectedPayment?.db_payment_id) return;
 
     setIsSubmitting(true);
     try {
@@ -106,7 +101,7 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
       await adjustTips(supabaseClient, order.db_order_id, [adjustment]);
       show({ title: "Success", message: "Tip adjusted successfully", type: "success" });
       bottomSheetRef.current?.close();
-      await refreshPreviousOrders();
+      queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
     } catch (err: any) {
       show({ title: "Error", message: err?.message || "Failed to adjust tip", type: "error" });
     } finally {

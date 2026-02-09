@@ -28,13 +28,22 @@ import React, {
   useState,
 } from "react";
 import {
-  Animated,
-  FlatList,
+  Animated as RNAnimated,
   InteractionManager,
+  Pressable,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
 // ─── Status Tab Config ────────────────────────────────────────────
 type StatusFilter = "pending" | "cooking" | "ready";
@@ -56,11 +65,13 @@ const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
 // ─── Urgency border colors by level ──────────────────────────────
 const URGENCY_BORDER_COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
 
-// ─── Fixed card height for getItemLayout optimization ───────────
-const CARD_HEIGHT = 260;
-
 // ─── Manager roles for bulk operations ──────────────────────────
 const MANAGER_ROLES = ["merchant.manager", "merchant.admin", "merchant.owner"];
+
+// ─── Memoized animation configs (avoid re-allocation per render) ─
+const ENTER_ANIM = FadeIn.duration(200);
+const EXIT_ANIM = FadeOut.duration(150);
+const LAYOUT_ANIM = LinearTransition.duration(300);
 
 // ─── Skeleton ─────────────────────────────────────────────────────
 const SkeletonBar = ({
@@ -72,17 +83,17 @@ const SkeletonBar = ({
   height: number;
   style?: any;
 }) => {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+  const opacity = useRef(new RNAnimated.Value(0.3)).current;
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
+    const animation = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(opacity, {
           toValue: 0.7,
           duration: 800,
           useNativeDriver: true,
         }),
-        Animated.timing(opacity, {
+        RNAnimated.timing(opacity, {
           toValue: 0.3,
           duration: 800,
           useNativeDriver: true,
@@ -94,7 +105,7 @@ const SkeletonBar = ({
   }, []);
 
   return (
-    <Animated.View
+    <RNAnimated.View
       style={[
         {
           width: typeof width === "number" ? width : undefined,
@@ -188,12 +199,19 @@ interface KDSTicketCardProps {
   ticket: KDSTicket;
   onAdvance: (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => void;
   bulkMode: boolean;
-  isSelected: boolean;
   onToggleSelect: (id: string) => void;
 }
 
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
-  ({ ticket, onAdvance, bulkMode, isSelected, onToggleSelect }) => {
+  ({ ticket, onAdvance, bulkMode, onToggleSelect }) => {
+    // Subscribe to own selection state via Zustand selector — only the toggled card re-renders
+    const isSelected = useKDSStore(
+      useCallback(
+        (s) => s.selectedTicketIds.has(ticket.ticket_id),
+        [ticket.ticket_id],
+      ),
+    );
+
     // Subscribe to timerTick via Zustand selector — only re-renders when bucketed string changes
     const timeElapsed = useKDSStore(
       useCallback(
@@ -216,66 +234,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       ),
     );
 
-    // Double-tap detection
-    const lastTapRef = useRef<number>(0);
-    const DOUBLE_TAP_DELAY = 350;
-    const firstTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Animation (Reanimated — runs entirely on UI thread)
+    const scaleValue = useSharedValue(1);
 
-    // Animations
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-    const opacityAnim = useRef(new Animated.Value(1)).current;
-
-    useEffect(() => {
-      return () => {
-        if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
-      };
-    }, []);
-
-    const triggerFirstTapFeedback = () => {
-      Animated.sequence([
-        Animated.timing(opacityAnim, {
-          toValue: 0.7,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 0.85,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
-      firstTapTimeoutRef.current = setTimeout(() => {
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }).start();
-      }, 400);
-    };
-
-    const triggerDoubleTapAnimation = () => {
-      if (firstTapTimeoutRef.current) clearTimeout(firstTapTimeoutRef.current);
-      opacityAnim.setValue(1);
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 0.96,
-          duration: 60,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1.02,
-          duration: 60,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 80,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    };
+    const scaleStyle = useAnimatedStyle(() => ({
+      transform: [{ scale: scaleValue.value }],
+    }));
 
     const handlePress = () => {
       if (bulkMode) {
@@ -283,19 +247,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         return;
       }
 
-      // Double-tap detection
-      const now = Date.now();
+      // Single tap → advance immediately
       const itemIds = ticket.items.map((i) => i.id);
-      if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
-        triggerDoubleTapAnimation();
-        if (ticket.status === "pending") onAdvance(ticket.ticket_id, itemIds, "preparing");
-        else if (ticket.status === "cooking") onAdvance(ticket.ticket_id, itemIds, "ready");
-        else if (ticket.status === "ready") onAdvance(ticket.ticket_id, itemIds, "served");
-        lastTapRef.current = 0;
-      } else {
-        triggerFirstTapFeedback();
-        lastTapRef.current = now;
-      }
+      if (ticket.status === "pending") onAdvance(ticket.ticket_id, itemIds, "preparing");
+      else if (ticket.status === "cooking") onAdvance(ticket.ticket_id, itemIds, "ready");
+      else if (ticket.status === "ready") onAdvance(ticket.ticket_id, itemIds, "served");
+
+      // Brief scale pulse feedback
+      scaleValue.value = withSequence(
+        withTiming(0.95, { duration: 50 }),
+        withTiming(1, { duration: 70 }),
+      );
     };
 
     const urgencyColor = URGENCY_BORDER_COLORS[urgencyLevel];
@@ -304,24 +266,24 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
 
     return (
-      <TouchableOpacity activeOpacity={1} onPress={handlePress}>
+      <Pressable onPress={handlePress}>
         <Animated.View
-          style={{
-            margin: 4,
-            borderRadius: 10,
-            overflow: "hidden",
-            backgroundColor: "#2a2a2e",
-            borderWidth: 2,
-            borderColor,
-            shadowColor: borderColor,
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.3,
-            shadowRadius: 6,
-            elevation: 4,
-            height: CARD_HEIGHT - 8,
-            transform: [{ scale: scaleAnim }],
-            opacity: opacityAnim,
-          }}
+          style={[
+            {
+              margin: 4,
+              borderRadius: 10,
+              overflow: "hidden",
+              backgroundColor: "#2a2a2e",
+              borderWidth: 2,
+              borderColor,
+              shadowColor: borderColor,
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 4,
+            },
+            scaleStyle,
+          ]}
         >
           {/* Bulk mode checkbox overlay */}
           {bulkMode && (
@@ -412,10 +374,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
           {/* Items list */}
           <View style={{ padding: 8, backgroundColor: "#252528" }}>
-            {ticket.items.slice(0, 6).map((item: KDSTicketItem, index: number) => (
+            {ticket.items.map((item: KDSTicketItem, index: number) => (
               <View
                 key={item.id}
-                style={index < Math.min(ticket.items.length - 1, 5) ? { marginBottom: 4 } : undefined}
+                style={index < ticket.items.length - 1 ? { marginBottom: 4 } : undefined}
               >
                 <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
                   <View
@@ -478,11 +440,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 )}
               </View>
             ))}
-            {ticket.items.length > 6 && (
-              <Text style={{ color: "#6b7280", fontSize: 11, textAlign: "center", marginTop: 4 }}>
-                +{ticket.items.length - 6} more items
-              </Text>
-            )}
           </View>
 
           {/* Customer name footer */}
@@ -502,14 +459,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
         </Animated.View>
-      </TouchableOpacity>
+      </Pressable>
     );
   },
   (prev, next) =>
     prev.ticket === next.ticket &&
     prev.onAdvance === next.onAdvance &&
     prev.bulkMode === next.bulkMode &&
-    prev.isSelected === next.isSelected &&
     prev.onToggleSelect === next.onToggleSelect,
 );
 
@@ -524,8 +480,6 @@ const KitchenDisplayScreen = () => {
   const isLoading = useKDSStore((s) => s.isLoading);
   const fetchTickets = useKDSStore((s) => s.fetchTickets);
   const advanceTicketStatus = useKDSStore((s) => s.advanceTicketStatus);
-  const scheduleRefetch = useKDSStore((s) => s.scheduleRefetch);
-
   // Bulk mode state from store
   const bulkMode = useKDSStore((s) => s.bulkMode);
   const selectedTicketIds = useKDSStore((s) => s.selectedTicketIds);
@@ -656,16 +610,6 @@ const KitchenDisplayScreen = () => {
     return result;
   }, [activeRawTickets]);
 
-  const handleAdvance = useCallback(
-    (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => {
-      advanceTicketStatus(ticketId, itemIds, newStatus);
-      if (locationId) {
-        scheduleRefetch(locationId);
-      }
-    },
-    [advanceTicketStatus, scheduleRefetch, locationId],
-  );
-
   const onRefresh = useCallback(async () => {
     if (!locationId) return;
     setRefreshing(true);
@@ -747,26 +691,20 @@ const KitchenDisplayScreen = () => {
   // ─── Render Helpers ─────────────────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
-      <View style={{ width: "25%", paddingHorizontal: 2 }}>
+      <Animated.View
+        style={{ width: "25%", paddingHorizontal: 2 }}
+        entering={ENTER_ANIM}
+        exiting={EXIT_ANIM}
+      >
         <KDSTicketCard
           ticket={item}
-          onAdvance={handleAdvance}
+          onAdvance={advanceTicketStatus}
           bulkMode={bulkMode}
-          isSelected={selectedTicketIds.has(item.ticket_id)}
           onToggleSelect={toggleTicketSelection}
         />
-      </View>
+      </Animated.View>
     ),
-    [handleAdvance, bulkMode, selectedTicketIds, toggleTicketSelection],
-  );
-
-  const getItemLayout = useCallback(
-    (_: any, index: number) => ({
-      length: CARD_HEIGHT,
-      offset: CARD_HEIGHT * index,
-      index,
-    }),
-    [],
+    [advanceTicketStatus, bulkMode, toggleTicketSelection],
   );
 
   const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, []);
@@ -1048,18 +986,18 @@ const KitchenDisplayScreen = () => {
                 }}
                 pointerEvents={isActive ? "auto" : "none"}
               >
-                <FlatList
+                <Animated.FlatList
                   data={filteredByStatus[status]}
                   keyExtractor={keyExtractor}
                   renderItem={renderItem}
-                  getItemLayout={getItemLayout}
                   numColumns={4}
+                  itemLayoutAnimation={LAYOUT_ANIM}
                   contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
                   initialNumToRender={16}
                   maxToRenderPerBatch={8}
-                  windowSize={3}
-                  removeClippedSubviews={true}
-                  extraData={bulkMode ? selectedTicketIds : undefined}
+                  windowSize={5}
+                  removeClippedSubviews={false}
+                  extraData={bulkMode}
                   ListEmptyComponent={
                     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
                       <Text style={{ color: "#6b7280", fontSize: 14 }}>

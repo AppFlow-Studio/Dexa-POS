@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
-import { CartItem, PaymentType, PreviousOrder } from "@/lib/types";
+import { orderHistoryKeys } from "@/hooks/orders/useOrderHistory";
+import { CartItem, OrderProfile, PaymentType } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -10,13 +11,14 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { BottomSheetDefaultFooterProps } from "@gorhom/bottom-sheet/lib/typescript/components/bottomSheetFooter/types";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react-native";
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 interface AdvancedRefundModalProps {
   onClose: () => void;
-  order: PreviousOrder | null;
+  order: OrderProfile | null;
 }
 
 export interface AdvancedRefundModalRef {
@@ -34,12 +36,15 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
   AdvancedRefundModalRef,
   AdvancedRefundModalProps
 > = ({ onClose, order }, ref) => {
-  if (!order) return null;
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
   const snapPoints = useMemo(() => ["95%"], []);
 
   useImperativeHandle(ref, () => ({
-    open: () => bottomSheetRef.current?.snapToIndex(0),
+    open: () => {
+      // Ensure the previous orders store has data for the refund lookup
+      usePreviousOrdersStore.getState().refreshPreviousOrders();
+      bottomSheetRef.current?.snapToIndex(0);
+    },
     close: () => bottomSheetRef.current?.close(),
   }));
   const [refundType, setRefundType] = useState<"full" | "partial">("full");
@@ -47,30 +52,40 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
   const [selectedItems, setSelectedItems] = useState<RefundItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentType>("Card");
   const { show } = useToast();
+  const queryClient = useQueryClient();
 
   const { refundFullOrder, refundItems } = usePreviousOrdersStore();
+
+  // Derive fields from OrderProfile
+  const orderId = order?.id ?? "";
+  const orderTotal = order?.total_amount ?? 0;
+  const refundedAmount = useMemo(() => {
+    return (order?.payments || []).reduce(
+      (sum, p) => sum + (p.refundedAmount ?? 0),
+      0,
+    );
+  }, [order?.payments]);
 
   useEffect(() => {
     // When the order changes, reset the local state
     if (order) {
-      const canDoFull = (order.refundedAmount || 0) < 0.01;
+      const canDoFull = refundedAmount < 0.01;
       setRefundType(canDoFull ? "full" : "partial");
       setReason("");
       setSelectedItems([]);
       setPaymentMethod("Card");
     }
-  }, [order]);
-
-  // if (!order) return null;
+  }, [order, refundedAmount]);
 
   const refundableItems = useMemo(() => {
+    if (!order) return [];
     return order.items.filter(
       (item) => (item.refundedQuantity || 0) < item.quantity
     );
-  }, [order.items]);
+  }, [order?.items]);
 
   // 2. The Full Refund option should only be available if the order is not partially refunded.
-  const canDoFullRefund = (order.refundedAmount || 0) < 0.01;
+  const canDoFullRefund = refundedAmount < 0.01;
 
   // Reset refundType if full refund is not possible
   useEffect(() => {
@@ -79,7 +94,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     }
   }, [canDoFullRefund, refundType]);
 
-  const handleFullRefund = () => {
+  const handleFullRefund = async () => {
     if (!reason.trim()) {
       show({
         title: "Reason Required",
@@ -89,16 +104,17 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
       return;
     }
 
-    refundFullOrder(order.orderId, reason, "Cashier", paymentMethod);
+    await refundFullOrder(orderId, reason, "Cashier", paymentMethod);
     show({
       title: "Refund Successful",
       message: "The full refund has been processed successfully.",
       type: "success",
     });
+    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
     bottomSheetRef.current?.close();
   };
 
-  const handlePartialRefund = () => {
+  const handlePartialRefund = async () => {
     if (selectedItems.length === 0) {
       show({
         title: "No Items Selected",
@@ -119,12 +135,13 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
       return;
     }
 
-    refundItems(order.orderId, selectedItems, "Cashier", paymentMethod);
+    await refundItems(orderId, selectedItems, "Cashier", paymentMethod);
     show({
       title: "Refund Successful",
       message: "The partial refund has been processed successfully.",
       type: "success",
     });
+    queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
     bottomSheetRef.current?.close();
   };
 
@@ -175,7 +192,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
 
   const calculateRefundAmount = () => {
     if (refundType === "full") {
-      return order?.total;
+      return orderTotal;
     }
 
     return selectedItems.reduce((total, selectedItem) => {
@@ -231,6 +248,8 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     [refundType, handleFullRefund, handlePartialRefund]
   );
 
+  if (!order) return null;
+
   return (
     <BottomSheet
       ref={bottomSheetRef}
@@ -253,7 +272,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
             <View>
               <Text className="text-xl font-bold text-white">Process Refund</Text>
               <Text className="text-sm text-gray-400">
-                Order #{order?.orderId} • ${order?.total?.toFixed(2)}
+                Order #{order?.display_number || order?.order_number || orderId} • ${orderTotal.toFixed(2)}
               </Text>
             </View>
             <TouchableOpacity
@@ -289,7 +308,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                   Full Refund
                 </Text>
                 <Text className={`text-sm text-center mt-1 ${refundType === "full" ? "text-blue-300" : "text-gray-400"}`}>
-                  ${order?.total?.toFixed(2)}
+                  ${orderTotal.toFixed(2)}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -493,7 +512,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
               <View className="flex-row justify-between mb-1">
                 <Text className="text-sm text-gray-400">Original Total</Text>
                 <Text className="text-sm font-semibold text-white">
-                  ${order?.total?.toFixed(2)}
+                  ${orderTotal.toFixed(2)}
                 </Text>
               </View>
               <View className="flex-row justify-between mb-2">
@@ -506,7 +525,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
               <View className="flex-row justify-between">
                 <Text className="text-base text-white font-bold">New Total</Text>
                 <Text className="font-bold text-white text-lg">
-                  ${(order?.total - calculateRefundAmount())?.toFixed(2)}
+                  ${(orderTotal - (calculateRefundAmount() ?? 0)).toFixed(2)}
                 </Text>
               </View>
             </View>

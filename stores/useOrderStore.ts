@@ -5528,6 +5528,30 @@ export const useOrderStore = create<OrderState>()(
                         useOrderStore.getState().syncOrderFromBackendComplete(orderId);
                       }, 1000);
                     }
+
+                    // Check if discount was removed while apply was in flight
+                    const currentOrder = useOrderStore.getState().ordersById[orderId];
+                    const wasRemoved = !currentOrder?.checkDiscount &&
+                      !currentOrder?.applied_discounts?.some((d) => d.local_id === applied.local_id);
+
+                    if (wasRemoved && result.order_discount_id) {
+                      console.warn("[applyDiscountToCheck] Discount removed during apply, voiding immediately");
+                      OrderDiscountService.voidDiscount(supabase, {
+                        order_id: dbOrderId,
+                        staff_id: staffId,
+                        order_discount_id: result.order_discount_id,
+                        void_reason: null,
+                      }).then((voidResult) => {
+                        if (voidResult.success) {
+                          console.log("[applyDiscountToCheck] Auto-voided stale discount:", result.order_discount_id);
+                          if (dbOrderId) {
+                            setTimeout(() => {
+                              useOrderStore.getState().syncOrderFromBackendComplete(orderId);
+                            }, 1000);
+                          }
+                        }
+                      }).catch((err) => console.error("[applyDiscountToCheck] Auto-void error:", err));
+                    }
                   } else if (result.requires_approval) {
                     console.warn(
                       "[applyDiscountToCheck] Discount requires manager approval",
@@ -5580,10 +5604,21 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId];
             if (!order) return;
 
-            // Get applied discounts that need to be voided
+            // Get applied discounts that need to be voided (any synced discount, regardless of source)
             const discountsToVoid = (order.applied_discounts || []).filter(
-              (d) => d.source === "preset" && d.order_discount_id,
+              (d) => d.order_discount_id,
             );
+
+            // Warn about unsynced discounts that can't be voided on backend
+            const unsyncedDiscounts = (order.applied_discounts || []).filter(
+              (d) => !d.order_discount_id && d.sync_status === "pending",
+            );
+            if (unsyncedDiscounts.length > 0) {
+              console.warn(
+                "[removeCheckDiscount] Discounts not yet synced, cannot void on backend:",
+                unsyncedDiscounts.map((d) => d.local_id),
+              );
+            }
 
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
@@ -5593,12 +5628,16 @@ export const useOrderStore = create<OrderState>()(
               taxRatesMap,
             );
 
+            // Clear item-level discounts optimistically (mirrors applyDiscountToCheck)
+            const itemsWithClearedDiscount = distributeDiscountToItems(order.items, 0);
+
             // Update state optimistically
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [orderId]: {
                   ...state.ordersById[orderId],
+                  items: itemsWithClearedDiscount,
                   checkDiscount: null,
                   applied_discounts: [],
                   total_amount: totals.total_amount,
@@ -5658,6 +5697,70 @@ export const useOrderStore = create<OrderState>()(
                           "[removeCheckDiscount] Successfully voided discount:",
                           discount.order_discount_id,
                         );
+
+                        // Merge affected_items into local state (mirrors applyDiscountToCheck)
+                        set((state) => {
+                          const existingOrder = state.ordersById[orderId];
+                          if (!existingOrder) return state;
+
+                          interface AffectedItemFromBackend {
+                            id: string;
+                            discount_amount: number;
+                            subtotal: number;
+                            cash_subtotal: number;
+                            tax_amount: number;
+                            cash_tax_amount: number;
+                          }
+
+                          const affectedMap = new Map<
+                            string,
+                            AffectedItemFromBackend
+                          >(
+                            (result.affected_items || []).map(
+                              (ai: AffectedItemFromBackend) => [ai.id, ai],
+                            ),
+                          );
+
+                          const updatedItems = existingOrder.items.map(
+                            (item) => {
+                              const affected = affectedMap.get(
+                                item.db_order_item_id || "",
+                              );
+                              if (affected) {
+                                return {
+                                  ...item,
+                                  discount_amount: affected.discount_amount,
+                                  discount_cash_amount:
+                                    affected.discount_amount,
+                                  subtotal: affected.subtotal,
+                                  cashSubtotal: affected.cash_subtotal,
+                                  taxAmount: affected.tax_amount,
+                                  cashTaxAmount: affected.cash_tax_amount,
+                                };
+                              }
+                              return item;
+                            },
+                          );
+
+                          return {
+                            ordersById: {
+                              ...state.ordersById,
+                              [orderId]: {
+                                ...existingOrder,
+                                items: updatedItems,
+                              },
+                            },
+                          };
+                        });
+
+                        // Schedule full sync for consistency
+                        if (dbOrderId) {
+                          setTimeout(() => {
+                            useOrderStore
+                              .getState()
+                              .syncOrderFromBackendComplete(orderId);
+                          }, 1000);
+                        }
                       }
                     })
                     .catch((err) => {

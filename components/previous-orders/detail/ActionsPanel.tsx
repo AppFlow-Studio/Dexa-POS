@@ -1,23 +1,29 @@
-import { PreviousOrder } from "@/lib/types";
+import { OrderProfile } from "@/lib/types";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import {
+  CheckCircle,
   CreditCard,
   FileText,
   Printer,
   RefreshCcw,
   RotateCcw,
-  ShoppingCart,
+  XCircle,
 } from "lucide-react-native";
-import React, { useMemo } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 
 interface ActionsPanelProps {
-  order: PreviousOrder;
+  order: OrderProfile;
   onRefund: () => void;
   onTipAdjust: () => void;
   onPrint: () => void;
   onReopen: () => void;
-  onAddToBill: () => void;
+  onCloseCheck: () => void;
+  onVoidOrder: () => void;
   onNotes: () => void;
+  isClosingCheck?: boolean;
+  isReopeningCheck?: boolean;
+  isVoiding?: boolean;
 }
 
 const ActionsPanel: React.FC<ActionsPanelProps> = ({
@@ -26,21 +32,23 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   onTipAdjust,
   onPrint,
   onReopen,
-  onAddToBill,
+  onCloseCheck,
+  onVoidOrder,
   onNotes,
+  isClosingCheck = false,
+  isReopeningCheck = false,
+  isVoiding = false,
 }) => {
+  const [confirmAction, setConfirmAction] = useState<"void" | "close" | null>(null);
+
   const canRefund = useMemo(() => {
-    if (order.paymentStatus === "Refunded") return false;
-    if (order.paymentStatus === "Partially Refunded") {
-      const refundableItems = order.items.filter(
-        (item) => (item.refundedQuantity || 0) < item.quantity,
-      );
-      if (refundableItems.length === 0) return false;
-    }
-    return (
-      order.paymentStatus === "Paid" ||
-      order.paymentStatus === "Partially Refunded"
+    if (order.order_status === "refunded") return false;
+    const totalRefunded = (order.payments || []).reduce(
+      (sum, p) => sum + (p.refundedAmount ?? 0),
+      0,
     );
+    if (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0)) return false;
+    return order.paid_status === "Paid" || order.paid_status === "Partial";
   }, [order]);
 
   const hasCardPayments = useMemo(() => {
@@ -48,7 +56,11 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
     return order.payments.some((p) => p.method !== "Cash" && !p.isVoided);
   }, [order.payments]);
 
-  const isClosed = order.checkStatus === "Closed";
+  const isClosed = order.check_status === "Closed";
+  const canCloseCheck =
+    order.paid_status === "Paid" && order.check_status !== "Closed";
+  const isVoided = order.order_status === "void";
+  const anyLoading = isClosingCheck || isReopeningCheck || isVoiding;
 
   return (
     <View className="mt-4 gap-2.5">
@@ -58,6 +70,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         label="Print Receipt"
         onPress={onPrint}
         variant="primary"
+        disabled={anyLoading}
       />
 
       {/* Refund */}
@@ -67,6 +80,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
           label="Refund"
           onPress={onRefund}
           variant="danger"
+          disabled={anyLoading}
         />
       )}
 
@@ -77,26 +91,43 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
           label="Tip Adjust"
           onPress={onTipAdjust}
           variant="purple"
+          disabled={anyLoading}
+        />
+      )}
+
+      {/* Close Check */}
+      {canCloseCheck && (
+        <ActionButton
+          icon={
+            isClosingCheck ? (
+              <ActivityIndicator size="small" color="#4ade80" />
+            ) : (
+              <CheckCircle color="#4ade80" size={18} />
+            )
+          }
+          label={isClosingCheck ? "Closing..." : "Close Check"}
+          onPress={() => setConfirmAction("close")}
+          variant="success"
+          disabled={anyLoading}
         />
       )}
 
       {/* Re-open Order */}
       {isClosed && (
         <ActionButton
-          icon={<RefreshCcw color="#F59E0B" size={18} />}
-          label="Re-open Order"
+          icon={
+            isReopeningCheck ? (
+              <ActivityIndicator size="small" color="#F59E0B" />
+            ) : (
+              <RefreshCcw color="#F59E0B" size={18} />
+            )
+          }
+          label={isReopeningCheck ? "Reopening..." : "Re-open Order"}
           onPress={onReopen}
           variant="warning"
+          disabled={anyLoading}
         />
       )}
-
-      {/* Add to Current Bill */}
-      <ActionButton
-        icon={<ShoppingCart color="#9CA3AF" size={18} />}
-        label="Add to Current Bill"
-        onPress={onAddToBill}
-        variant="default"
-      />
 
       {/* Order Notes */}
       {order.notes && (
@@ -105,8 +136,53 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
           label="Order Notes"
           onPress={onNotes}
           variant="default"
+          disabled={anyLoading}
         />
       )}
+
+      {/* Void Order */}
+      {!isVoided && (
+        <ActionButton
+          icon={
+            isVoiding ? (
+              <ActivityIndicator size="small" color="#EF4444" />
+            ) : (
+              <XCircle color="#EF4444" size={18} />
+            )
+          }
+          label={isVoiding ? "Voiding..." : "Void Order"}
+          onPress={() => setConfirmAction("void")}
+          variant="danger"
+          disabled={anyLoading}
+        />
+      )}
+
+      {/* Confirmation Modals */}
+      <ConfirmationModal
+        isOpen={confirmAction === "void"}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => {
+          setConfirmAction(null);
+          onVoidOrder();
+        }}
+        title="Void Order"
+        description="This will void the entire order including all items and payments. This action cannot be undone."
+        confirmText="Void Order"
+        variant="destructive"
+      />
+
+      <ConfirmationModal
+        isOpen={confirmAction === "close"}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => {
+          setConfirmAction(null);
+          onCloseCheck();
+        }}
+        title="Close Check"
+        description="This will close the check for this order. The order will be marked as finalized."
+        confirmText="Close Check"
+        variant="destructive"
+      />
     </View>
   );
 };
@@ -116,6 +192,7 @@ const variantStyles: Record<string, { border: string; bg: string }> = {
   danger: { border: "border-red-500", bg: "bg-red-900/30" },
   purple: { border: "border-purple-500", bg: "bg-purple-900/30" },
   warning: { border: "border-yellow-500", bg: "bg-yellow-900/30" },
+  success: { border: "border-green-500", bg: "bg-green-900/30" },
   default: { border: "border-gray-600", bg: "bg-[#303030]" },
 };
 
@@ -124,11 +201,13 @@ const ActionButton = ({
   label,
   onPress,
   variant,
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
   variant: keyof typeof variantStyles;
+  disabled?: boolean;
 }) => {
   const style = variantStyles[variant];
   const isPrimary = variant === "primary";
@@ -137,7 +216,8 @@ const ActionButton = ({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      className={`flex-row items-center justify-center gap-2 py-3 rounded-xl border ${style.border} ${style.bg}`}
+      disabled={disabled}
+      className={`flex-row items-center justify-center gap-2 py-3 rounded-xl border ${style.border} ${style.bg} ${disabled ? "opacity-50" : ""}`}
     >
       {icon}
       <Text

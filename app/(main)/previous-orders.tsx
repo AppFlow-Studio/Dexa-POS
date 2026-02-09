@@ -1,29 +1,42 @@
-import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
+import AdvancedRefundModal, { AdvancedRefundModalRef } from "@/components/previous-orders/AdvancedRefundModal";
 import OrderDetailsBottomSheet from "@/components/previous-orders/OrderDetailsBottomSheet";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
-import OrderTypeFilterDropdown from "@/components/previous-orders/OrderTypeFilterDropdown";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
-import SortControls from "@/components/previous-orders/SortControls";
-import StatusFilterDropdown from "@/components/previous-orders/StatusFilterDropdown";
+import TipAdjustSheet, { TipAdjustSheetRef } from "@/components/previous-orders/detail/TipAdjustSheet";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
-import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { CartItem, OrderProfile, OrderType, PaymentStatus } from "@/lib/types";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useOrderHistory } from "@/hooks/orders/useOrderHistory";
+import {
+  useCloseCheck,
+  useReopenCheck,
+  useVoidOrder,
+} from "@/hooks/orders/useOrderActions";
+import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { filterPreviousOrders } from "@/utils/orderUtils";
 import type { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Search } from "lucide-react-native";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  RotateCcw,
+  Search,
+  ShoppingBag,
+  Truck,
+  Utensils,
+} from "lucide-react-native";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  DimensionValue,
+  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Platform,
+  RefreshControl,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import Animated, {
@@ -34,34 +47,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-const columns: { label: string; width: DimensionValue }[] = [
-  { label: "# Serial No", width: "7%" },
-  { label: "Order Date", width: "18%" },
-  // { label: "Order ID", width: "10%" },
-  { label: "Customer", width: "12%" },
-  { label: "Payment Status", width: "14%" },
-  { label: "Server/Cashier", width: "10%" },
-  { label: "Items", width: "6%" },
-  { label: "Type", width: "10%" },
-  { label: "Total", width: "8%" },
-  { label: "Notes", width: "8%" },
-  { label: "", width: "7%" },
-];
-
-const HeaderCell = ({
-  label,
-  width,
-}: {
-  label: string;
-  width: DimensionValue;
-}) => (
-  <View style={{ width }} className="flex-row items-center justify-start pr-2">
-    <Text className="font-bold text-base text-gray-400">{label}</Text>
-    {label && <View className="w-px h-4 bg-gray-600 ml-auto" />}
-  </View>
-);
-
-// Simple Skeleton Bar Component - uses Reanimated for UI-thread animations
+// ─── Skeleton Loading ───────────────────────────────────────
 const SkeletonBar = ({
   width,
   height,
@@ -94,7 +80,7 @@ const SkeletonBar = ({
           width: typeof width === "number" ? width : undefined,
           height,
           backgroundColor: "#4B5563",
-          borderRadius: 4,
+          borderRadius: 8,
         },
         animatedStyle,
         style,
@@ -103,273 +89,315 @@ const SkeletonBar = ({
   );
 };
 
-// Skeleton Row Component
 const SkeletonRow = () => (
-  <View
-    className="flex-row items-center p-4 border-b border-gray-700"
-    style={{ height: 80 }}
-  >
-    <View style={{ width: "7%" }} className="pr-2">
-      <SkeletonBar width={48} height={16} />
-    </View>
-    <View style={{ width: "18%" }} className="pr-2">
-      <SkeletonBar width={120} height={16} style={{ marginBottom: 8 }} />
-      <SkeletonBar width={80} height={12} />
-    </View>
-    <View style={{ width: "12%" }} className="pr-2">
-      <SkeletonBar width={90} height={16} />
-    </View>
-    <View style={{ width: "14%" }} className="pr-2">
-      <SkeletonBar width={70} height={24} style={{ borderRadius: 12 }} />
-    </View>
-    <View style={{ width: "10%" }} className="pr-2">
-      <SkeletonBar width={70} height={16} />
-    </View>
-    <View style={{ width: "6%" }} className="pr-2">
-      <SkeletonBar width={40} height={24} style={{ borderRadius: 12 }} />
-    </View>
-    <View style={{ width: "10%" }} className="pr-2">
-      <SkeletonBar width={70} height={24} style={{ borderRadius: 12 }} />
-    </View>
-    <View style={{ width: "8%" }} className="pr-2">
-      <SkeletonBar width={60} height={16} />
-    </View>
-    <View style={{ width: "8%" }} className="pr-2">
-      <SkeletonBar width={32} height={32} style={{ borderRadius: 6 }} />
-    </View>
-    <View style={{ width: "7%" }} className="items-end">
+  <View className="bg-[#303030] rounded-xl mx-2 mb-2 p-4">
+    <View className="flex-row items-center gap-3">
+      <SkeletonBar width={70} height={20} />
+      <SkeletonBar width={50} height={14} />
+      <View className="flex-1" />
+      <SkeletonBar width={60} height={24} style={{ borderRadius: 6 }} />
       <SkeletonBar width={32} height={32} style={{ borderRadius: 16 }} />
+      <SkeletonBar width={40} height={20} style={{ borderRadius: 10 }} />
+      <SkeletonBar width={70} height={20} />
     </View>
+    <SkeletonBar width={180} height={12} style={{ marginTop: 6 }} />
   </View>
 );
 
+// ─── Filter Pill Component ──────────────────────────────────
+interface FilterPillProps {
+  label: string;
+  isActive: boolean;
+  onPress: () => void;
+  icon?: React.ReactNode;
+  count?: number;
+  activeBg?: string;
+}
+
+const FilterPill = ({
+  label,
+  isActive,
+  onPress,
+  icon,
+  count,
+  activeBg = "bg-blue-600",
+}: FilterPillProps) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.7}
+    className={`flex-row items-center gap-1.5 px-3 py-2 rounded-full border ${
+      isActive
+        ? `${activeBg} border-transparent`
+        : "bg-[#303030] border-gray-600"
+    }`}
+  >
+    {icon}
+    <Text
+      className={`text-sm font-semibold ${isActive ? "text-white" : "text-gray-400"}`}
+    >
+      {label}
+    </Text>
+    {count != null && count > 0 && (
+      <View
+        className={`rounded-full px-1.5 min-w-[20px] items-center ${isActive ? "bg-white/20" : "bg-gray-600"}`}
+      >
+        <Text
+          className={`text-xs font-bold ${isActive ? "text-white" : "text-gray-300"}`}
+        >
+          {count}
+        </Text>
+      </View>
+    )}
+  </TouchableOpacity>
+);
+
+// ─── Sort Button ────────────────────────────────────────────
+const SortButton = ({
+  label,
+  isActive,
+  sortOrder,
+  onPress,
+}: {
+  label: string;
+  isActive: boolean;
+  sortOrder: "asc" | "desc";
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.7}
+    className="flex-row items-center gap-1"
+  >
+    <Text
+      className={`text-sm ${isActive ? "font-bold text-white" : "text-gray-500"}`}
+    >
+      {label}
+    </Text>
+    {isActive &&
+      (sortOrder === "desc" ? (
+        <ArrowDown color="#FFFFFF" size={12} />
+      ) : (
+        <ArrowUp color="#FFFFFF" size={12} />
+      ))}
+  </TouchableOpacity>
+);
+
+// ─── Main Screen ────────────────────────────────────────────
 const PreviousOrdersScreen = () => {
-  // State for the notes modal
-  const [activeModal, setActiveModal] = useState<
-    "notes" | "print" | "delete" | "modifiers" | "refund" | null
-  >(null);
-
-  // DEFERRED LOADING STATE
-  const [isReady, setIsReady] = useState(false);
-
-  // Trigger deferred loading - 500ms to show skeleton visibly
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsReady(true);
-    }, 500); // 500ms delay so user sees the skeleton loader
-    return () => clearTimeout(timer);
-  }, []);
-
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const [selectedOrderItems, setSelectedOrderItems] = useState<CartItem[]>([]);
+  // Modal state
+  const [activeModal, setActiveModal] = useState<"notes" | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(null);
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] =
     useState<OrderProfile | null>(null);
   const [selectedOrderForDetails, setSelectedOrderForDetails] =
     useState<OrderProfile | null>(null);
   const orderDetailsSheetRef = useRef<BottomSheetMethods>(null);
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: new Date(),
-    to: new Date(),
-  });
+  const refundModalRef = useRef<AdvancedRefundModalRef>(null);
+  const tipAdjustRef = useRef<TipAdjustSheetRef>(null);
+  const [selectedOrderForRefund, setSelectedOrderForRefund] =
+    useState<OrderProfile | null>(null);
+  const [selectedOrderForTip, setSelectedOrderForTip] =
+    useState<OrderProfile | null>(null);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
-  // Enhanced filtering and sorting state
+  // Expand/collapse state
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  // Filter & sort state
   const [searchText, setSearchText] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "total" | "status">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [statusFilter, setStatusFilter] = useState<PaymentStatus[]>([]);
-  const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType[]>([]);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
 
-  // CRITICAL FIX: Use proper selector instead of destructuring entire store
-  const ordersById = useOrderStore((s) => s.ordersById);
-
-  // Process orders: deduplicate, filter, and apply search/sort
-  // OPTIMIZED: Only calculate when isReady is true to prevent blocking navigation
-  const filteredOrders = useMemo(() => {
-    if (!isReady) return []; // Return empty during initial render
-
-    // Filter to show only relevant orders
-    let filtered = filterPreviousOrders(Object.values(ordersById));
-
-    // Step 3: Apply search filter
-    if (searchText.trim()) {
-      const lowerQuery = searchText.toLowerCase();
-      filtered = filtered.filter(
-        (order) =>
-          (order.display_number || order.order_number || order.id)
-            .toLowerCase()
-            .includes(lowerQuery) ||
-          (order.customer_name || "walk-in").toLowerCase().includes(lowerQuery),
-      );
+  // Derive filter props from active filter pills
+  const statusFilter = useMemo(() => {
+    const statuses: string[] = [];
+    if (activeFilters.has("refunded")) {
+      statuses.push("Refunded", "Partially Refunded");
     }
+    return statuses;
+  }, [activeFilters]);
 
-    // Step 4: Apply status filter
-    if (statusFilter.length > 0) {
-      filtered = filtered.filter((o) =>
-        statusFilter.includes(o.paid_status as PaymentStatus),
-      );
-    }
+  const orderTypeFilter = useMemo(() => {
+    const types: string[] = [];
+    if (activeFilters.has("dine-in")) types.push("Dine In");
+    if (activeFilters.has("takeaway")) types.push("Takeaway");
+    if (activeFilters.has("delivery")) types.push("Delivery");
+    return types;
+  }, [activeFilters]);
 
-    // Step 5: Apply order type filter
-    if (orderTypeFilter.length > 0) {
-      filtered = filtered.filter((o) =>
-        orderTypeFilter.includes(o.order_type as OrderType),
-      );
-    }
-
-    // Step 6: Sort orders
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case "date":
-          const aTime = a.opened_at ? new Date(a.opened_at).getTime() : 0;
-          const bTime = b.opened_at ? new Date(b.opened_at).getTime() : 0;
-          comparison = bTime - aTime;
-          break;
-        case "total":
-          comparison = (b.total_amount || 0) - (a.total_amount || 0);
-          break;
-        case "status":
-          comparison = (a.paid_status || "").localeCompare(b.paid_status || "");
-          break;
-      }
-      return sortOrder === "asc" ? -comparison : comparison;
-    });
-
-    return filtered;
-  }, [
-    ordersById,
+  // Data layer
+  const {
+    orders,
+    needsAttentionCount,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+    isRefetching,
+  } = useOrderHistory({
     searchText,
     statusFilter,
     orderTypeFilter,
     sortBy,
     sortOrder,
-    isReady, // Add isReady dep
-  ]);
+    needsAttention: activeFilters.has("needs-attention"),
+    refundedOnly: activeFilters.has("refunded"),
+  });
 
-  // Wrappers for callbacks (no changes needed)
+  // Mutation hooks
+  const closeCheckMutation = useCloseCheck();
+  const reopenCheckMutation = useReopenCheck();
+  const voidOrderMutation = useVoidOrder();
+
+  // ─── Filter toggle ──────────────────────────────────────
+  const toggleFilter = useCallback((filter: string) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(filter)) {
+        next.delete(filter);
+      } else {
+        next.add(filter);
+      }
+      return next;
+    });
+  }, []);
+
+  // ─── Sort toggle ────────────────────────────────────────
+  const handleSortChange = useCallback(
+    (field: "date" | "total" | "status") => {
+      if (sortBy === field) {
+        setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+      } else {
+        setSortBy(field);
+        setSortOrder("desc");
+      }
+    },
+    [sortBy],
+  );
+
+  // ─── Row callbacks ──────────────────────────────────────
+  const handlePress = useCallback((order: OrderProfile) => {
+    setExpandedOrderId((prev) => (prev === order.id ? null : order.id));
+  }, []);
+
+  const handleDoublePress = useCallback((order: OrderProfile) => {
+    // Ensure the order is in the order store so PaymentDetailBottomSheet can find it
+    const existing = useOrderStore.getState().ordersById[order.id];
+    if (!existing) {
+      useOrderStore.setState((state) => ({
+        ordersById: { ...state.ordersById, [order.id]: order },
+      }));
+    }
+    usePaymentDetailSheetStore.getState().open(order.id);
+  }, []);
+
   const handleOpenNotes = useCallback((order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("notes");
-  }, []);
-
-  const handleOpenDelete = useCallback((order: OrderProfile) => {
-    setSelectedOrder(order);
-    setActiveModal("delete");
   }, []);
 
   const handleOpenPrint = useCallback((order: OrderProfile) => {
     setSelectedOrderForReceipt(order);
   }, []);
 
-  // ... (keep handleConfirmDelete, handleCloseCheck, handleReopenCheck, handleRefund, handleDoublePress as is)
-  const handleConfirmDelete = () => {
-    if (selectedOrderItems) {
-      // This needs to be implemented with actual state management for MOCK_PREVIOUS_ORDERS
-      console.log("Deleting order:", selectedOrder?.id);
-    }
-    setActiveModal(null); // Close the modal
-  };
-
-  const handleCloseCheck = useCallback(async (order: OrderProfile) => {
-    if (!order.db_order_id) {
-      console.warn("Cannot close check - no db_order_id");
-      return;
-    }
-
-    try {
-      const supabase = useSupabaseClient();
-      const { loggedInEmployee } = useEmployeeStore.getState();
-      console.log("loggedInEmployee", loggedInEmployee);
-      const { data, error } = await supabase?.rpc("close_check", {
-        p_order_id: order.db_order_id,
-        p_staff_id: loggedInEmployee?.profileId ?? null,
-      });
-
-      if (error) throw error;
-
-      console.log("Check closed successfully");
-      // The store will update automatically via realtime sync
-    } catch (err) {
-      console.error("Failed to close check:", err);
-    }
-  }, []);
-
-  const handleReopenCheck = useCallback(async (order: OrderProfile) => {
-    if (!order.db_order_id) {
-      console.warn("Cannot reopen check - no db_order_id");
-      return;
-    }
-
-    try {
-      const supabase = useSupabaseClient();
-      const { activeEmployeeId } = useEmployeeStore.getState();
-
-      const { data, error } = await supabase?.rpc("reopen_check", {
-        p_order_id: order.db_order_id,
-        p_staff_id: activeEmployeeId,
-      });
-
-      if (error) throw error;
-
-      console.log("Check reopened successfully");
-      // The store will update automatically via realtime sync
-    } catch (err) {
-      console.error("Failed to reopen check:", err);
-    }
-  }, []);
-
-  const handleRefund = useCallback((order: OrderProfile) => {
-    setSelectedOrder(order);
-    setActiveModal("refund");
-  }, []);
-
-  const handleDoublePress = useCallback((order: OrderProfile) => {
+  const handleViewTimeline = useCallback((order: OrderProfile) => {
     setSelectedOrderForDetails(order);
     orderDetailsSheetRef.current?.snapToIndex?.(0);
   }, []);
 
+  const handleTipAdjust = useCallback((order: OrderProfile) => {
+    setSelectedOrderForTip(order);
+    tipAdjustRef.current?.open();
+  }, []);
+
+  const handleCloseCheck = useCallback(
+    (order: OrderProfile) => {
+      if (!order.db_order_id) return;
+      closeCheckMutation.mutate(order.db_order_id);
+    },
+    [closeCheckMutation],
+  );
+
+  const handleReopenCheck = useCallback(
+    (order: OrderProfile) => {
+      if (!order.db_order_id) return;
+      reopenCheckMutation.mutate({ dbOrderId: order.db_order_id });
+    },
+    [reopenCheckMutation],
+  );
+
+  const handleRefund = useCallback((order: OrderProfile) => {
+    setSelectedOrderForRefund(order);
+    refundModalRef.current?.open();
+  }, []);
+
+  const handleVoidOrder = useCallback(
+    (order: OrderProfile) => {
+      if (!order.db_order_id) return;
+      voidOrderMutation.mutate({ dbOrderId: order.db_order_id });
+    },
+    [voidOrderMutation],
+  );
+
+  // ─── FlatList render ────────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: OrderProfile }) => (
       <PreviousOrderRow
         order={item}
-        onViewNotes={handleOpenNotes}
-        onDelete={handleOpenDelete}
+        isExpanded={item.id === expandedOrderId}
+        onPress={handlePress}
+        onDoublePress={handleDoublePress}
         onPrint={handleOpenPrint}
+        onViewTimeline={handleViewTimeline}
+        onTipAdjust={handleTipAdjust}
+        onViewNotes={handleOpenNotes}
         onCloseCheck={handleCloseCheck}
         onReopenCheck={handleReopenCheck}
         onRefund={handleRefund}
-        onDoublePress={handleDoublePress}
+        onVoid={handleVoidOrder}
       />
     ),
     [
-      handleOpenNotes,
-      handleOpenDelete,
+      expandedOrderId,
+      handlePress,
+      handleDoublePress,
       handleOpenPrint,
+      handleViewTimeline,
+      handleTipAdjust,
+      handleOpenNotes,
       handleCloseCheck,
       handleReopenCheck,
       handleRefund,
-      handleDoublePress,
+      handleVoidOrder,
     ],
   );
 
-  const getItemLayout = useCallback(
-    (_data: any, index: number) => ({
-      length: 80,
-      offset: 80 * index,
-      index,
-    }),
-    [],
-  );
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const renderFooter = useCallback(() => {
+    if (!isFetchingNextPage) return null;
+    return (
+      <View className="py-4 items-center">
+        <ActivityIndicator size="small" color="#3B82F6" />
+      </View>
+    );
+  }, [isFetchingNextPage]);
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1" // Ensure it takes full height
+      className="flex-1"
     >
       <View className="flex-1 p-4 bg-[#212121]">
-        {/* Toolbar */}
+        {/* ─── Toolbar ─────────────────────────────────── */}
         <View className="mb-4 gap-3">
+          {/* Search bar */}
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-3 w-[450px]">
               <Search color="#9CA3AF" size={20} />
@@ -381,60 +409,144 @@ const PreviousOrdersScreen = () => {
                 className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
               />
             </View>
-            <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
           </View>
 
-          {/* Filters and Sort Controls */}
-          <View className="flex-row items-center gap-3">
-            <StatusFilterDropdown
-              selected={statusFilter}
-              onChange={setStatusFilter}
+          {/* ─── Filter Pills + Sort ───────────────────── */}
+          <View className="flex-row items-center gap-2 flex-wrap">
+            <FilterPill
+              label="Needs Attention"
+              isActive={activeFilters.has("needs-attention")}
+              onPress={() => toggleFilter("needs-attention")}
+              icon={
+                <AlertTriangle
+                  color={
+                    activeFilters.has("needs-attention")
+                      ? "#FFFFFF"
+                      : "#EAB308"
+                  }
+                  size={14}
+                />
+              }
+              count={needsAttentionCount}
+              activeBg="bg-yellow-600"
             />
-            <OrderTypeFilterDropdown
-              selected={orderTypeFilter}
-              onChange={setOrderTypeFilter}
+            <FilterPill
+              label="Refunded"
+              isActive={activeFilters.has("refunded")}
+              onPress={() => toggleFilter("refunded")}
+              icon={
+                <RotateCcw
+                  color={
+                    activeFilters.has("refunded") ? "#FFFFFF" : "#EF4444"
+                  }
+                  size={14}
+                />
+              }
+              activeBg="bg-red-600"
             />
-            <SortControls
-              sortBy={sortBy}
-              sortOrder={sortOrder}
-              onSortByChange={setSortBy}
-              onSortOrderChange={setSortOrder}
+            <FilterPill
+              label="Dine-In"
+              isActive={activeFilters.has("dine-in")}
+              onPress={() => toggleFilter("dine-in")}
+              icon={
+                <Utensils
+                  color={
+                    activeFilters.has("dine-in") ? "#FFFFFF" : "#A78BFA"
+                  }
+                  size={14}
+                />
+              }
+              activeBg="bg-purple-600"
             />
+            <FilterPill
+              label="Takeaway"
+              isActive={activeFilters.has("takeaway")}
+              onPress={() => toggleFilter("takeaway")}
+              icon={
+                <ShoppingBag
+                  color={
+                    activeFilters.has("takeaway") ? "#FFFFFF" : "#FB923C"
+                  }
+                  size={14}
+                />
+              }
+              activeBg="bg-orange-600"
+            />
+            <FilterPill
+              label="Delivery"
+              isActive={activeFilters.has("delivery")}
+              onPress={() => toggleFilter("delivery")}
+              icon={
+                <Truck
+                  color={
+                    activeFilters.has("delivery") ? "#FFFFFF" : "#22D3EE"
+                  }
+                  size={14}
+                />
+              }
+              activeBg="bg-cyan-600"
+            />
+
+            {/* Sort controls */}
+            <View className="ml-auto flex-row items-center gap-3">
+              <Text className="text-xs text-gray-500">Sort:</Text>
+              <SortButton
+                label="Date"
+                isActive={sortBy === "date"}
+                sortOrder={sortOrder}
+                onPress={() => handleSortChange("date")}
+              />
+              <SortButton
+                label="Amount"
+                isActive={sortBy === "total"}
+                sortOrder={sortOrder}
+                onPress={() => handleSortChange("total")}
+              />
+              <SortButton
+                label="Status"
+                isActive={sortBy === "status"}
+                sortOrder={sortOrder}
+                onPress={() => handleSortChange("status")}
+              />
+            </View>
           </View>
         </View>
 
-        {/* Table */}
-        <View className="flex-1 bg-[#303030] rounded-xl border border-gray-700">
-          {/* Table Header */}
-          <View className="flex-row p-4 border-b border-gray-700">
-            {columns.map((col) => (
-              <HeaderCell key={col.label} label={col.label} width={col.width} />
-            ))}
-          </View>
-
-          {/* Table Body */}
-          {/* Conditional Rendering: Skeletons vs Data */}
-          {!isReady ? (
-            <View className="flex-1">
-              {/* Render 10 skeleton rows */}
-              {Array.from({ length: 12 }).map((_, index) => (
+        {/* ─── Order List ──────────────────────────────── */}
+        <View className="flex-1 rounded-xl overflow-hidden">
+          {isLoading ? (
+            <View className="flex-1 pt-2">
+              {Array.from({ length: 10 }).map((_, index) => (
                 <SkeletonRow key={`skeleton-${index}`} />
               ))}
             </View>
           ) : (
             <FlatList
-              data={filteredOrders}
+              data={orders}
               keyExtractor={(item) => item.id}
               renderItem={renderItem}
-              getItemLayout={getItemLayout}
+              onEndReached={handleEndReached}
+              onEndReachedThreshold={0.3}
+              ListFooterComponent={renderFooter}
               ListEmptyComponent={
-                <View className="items-center justify-center py-8">
+                <View className="items-center justify-center py-16">
                   <Text className="text-xl text-gray-500">
-                    No orders found for this date.
+                    No orders found
+                  </Text>
+                  <Text className="text-sm text-gray-600 mt-2">
+                    Try adjusting your filters or search
                   </Text>
                 </View>
               }
-              // Performance optimizations
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefetching}
+                  onRefresh={refetch}
+                  tintColor="#3B82F6"
+                  colors={["#3B82F6"]}
+                />
+              }
+              contentContainerStyle={{ paddingTop: 4, paddingBottom: 16 }}
               initialNumToRender={10}
               maxToRenderPerBatch={10}
               windowSize={5}
@@ -443,32 +555,12 @@ const PreviousOrdersScreen = () => {
           )}
         </View>
 
+        {/* ─── Modals ──────────────────────────────────── */}
         <OrderNotesModal
           isOpen={activeModal === "notes"}
           onClose={() => setActiveModal(null)}
           order={selectedOrder}
         />
-        <ConfirmationModal
-          isOpen={activeModal === "delete"}
-          onClose={() => setActiveModal(null)}
-          onConfirm={handleConfirmDelete}
-          title="Delete Order"
-          description="This will remove the order from the list and delete the data."
-          confirmText="Delete"
-          variant="destructive"
-        />
-
-        {/* <PrintReceiptModal
-          isOpen={activeModal === "print"}
-          onClose={() => setActiveModal(null)}
-          order={selectedOrder}
-        />
-
-        <AdvancedRefundModal
-          isOpen={activeModal === "refund"}
-          onClose={() => setActiveModal(null)}
-          order={selectedOrder}
-        /> */}
 
         <OrderDetailsBottomSheet
           ref={orderDetailsSheetRef}
@@ -483,6 +575,17 @@ const PreviousOrdersScreen = () => {
           onClose={() => setSelectedOrderForReceipt(null)}
           order={selectedOrderForReceipt}
           location={selectedStore}
+        />
+
+        <AdvancedRefundModal
+          ref={refundModalRef}
+          order={selectedOrderForRefund}
+          onClose={() => setSelectedOrderForRefund(null)}
+        />
+
+        <TipAdjustSheet
+          ref={tipAdjustRef}
+          order={selectedOrderForTip}
         />
       </View>
     </KeyboardAvoidingView>

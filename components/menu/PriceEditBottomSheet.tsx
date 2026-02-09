@@ -340,6 +340,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
             <BottomSheetTextInput
               value={priceValue}
               onChangeText={handleCardPriceChange}
+              editable={!isDualPricing}
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor="#6B7280"
@@ -347,6 +348,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
                 flex: 1,
                 fontSize: 24,
                 color: "white",
+                opacity: isDualPricing ? 0.5 : 1,
               }}
             />
           </View>
