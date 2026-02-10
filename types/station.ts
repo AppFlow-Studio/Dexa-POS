@@ -52,6 +52,19 @@ export interface Station {
   is_online?: boolean;
   last_heartbeat_at?: string | null;
 
+  // Device hardware fields
+  hardware_model?: string | null;
+  device_manufacturer?: string | null;
+  device_model?: string | null;
+  network_type?: string | null;
+  battery_level?: number | null;
+  has_builtin_printer?: boolean | null;
+  has_builtin_cfd?: boolean | null;
+  has_cash_drawer_port?: boolean | null;
+  has_nfc?: boolean | null;
+  app_version?: string | null;
+  os_version?: string | null;
+
   // Payment terminal linked to this station (non-sensitive metadata only)
   payment_terminal?: StationPaymentTerminal | null;
 }

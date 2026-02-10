@@ -12,9 +12,12 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
+  Cpu,
   Monitor,
+  Printer,
   RefreshCw,
   Shield,
+  Smartphone,
   User,
   Wifi,
   WifiOff,
@@ -69,7 +72,7 @@ const StationsDevicesScreen = () => {
     },
     enabled: !!selectedStore?.id,
     staleTime: 30000,
-    refetchInterval: 60000,
+    refetchInterval: 30000,
   });
 
   const renderSectionHeader = (
@@ -281,6 +284,83 @@ const StationsDevicesScreen = () => {
             )}
           </View>
         </View>
+
+        {/* Device Health Section */}
+        {(station.device_manufacturer || station.hardware_model || station.last_heartbeat_at) && (
+          <View className="border-t border-gray-700 pt-3 mb-3">
+            <View className="flex-row items-center mb-2">
+              <Smartphone size={16} color="#9ca3af" />
+              <Text className="text-gray-400 text-sm font-medium ml-2">
+                Device Health
+              </Text>
+            </View>
+            <View className="bg-[#353535] p-3 rounded-lg">
+              {station.hardware_model && (
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-gray-400 text-sm">Hardware</Text>
+                  <Text className="text-white text-sm">
+                    {station.device_manufacturer && `${station.device_manufacturer} `}
+                    {station.hardware_model || station.device_model}
+                  </Text>
+                </View>
+              )}
+              {station.last_heartbeat_at && (
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-gray-400 text-sm">Last Heartbeat</Text>
+                  <Text className="text-white text-sm">
+                    {formatDistanceToNow(new Date(station.last_heartbeat_at), {
+                      addSuffix: true,
+                    })}
+                  </Text>
+                </View>
+              )}
+              {station.network_type && (
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-gray-400 text-sm">Network</Text>
+                  <View className="flex-row items-center">
+                    <Wifi size={12} color="#9ca3af" />
+                    <Text className="text-white text-sm ml-1">
+                      {station.network_type}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              {station.app_version && (
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-gray-400 text-sm">App Version</Text>
+                  <Text className="text-white text-sm">v{station.app_version}</Text>
+                </View>
+              )}
+              {/* Hardware capability badges */}
+              <View className="flex-row flex-wrap gap-2 mt-1">
+                {station.has_builtin_printer && (
+                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
+                    <Printer size={10} color="#34d399" />
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">Printer</Text>
+                  </View>
+                )}
+                {station.has_builtin_cfd && (
+                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
+                    <Monitor size={10} color="#34d399" />
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">CFD</Text>
+                  </View>
+                )}
+                {station.has_nfc && (
+                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
+                    <Cpu size={10} color="#34d399" />
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">NFC</Text>
+                  </View>
+                )}
+                {station.has_cash_drawer_port && (
+                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
+                    <CreditCard size={10} color="#34d399" />
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">Cash Drawer</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
 
         {station.payment_terminal && (
           <View className="border-t border-gray-700 pt-3">

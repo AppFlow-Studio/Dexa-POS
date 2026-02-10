@@ -17,6 +17,7 @@ import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
 import com.temurappflowstudios.dexapos.tcpserver.TcpServerPackage
+import com.temurappflowstudios.dexapos.hardware.HardwareDetectionPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -28,6 +29,7 @@ class MainApplication : Application(), ReactApplication {
             // Packages that cannot be autolinked yet can be added manually here, for example:
             // packages.add(MyReactNativePackage())
             packages.add(TcpServerPackage())
+            packages.add(HardwareDetectionPackage())
             return packages
           }
 

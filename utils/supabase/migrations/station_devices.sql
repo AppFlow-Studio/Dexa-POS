@@ -781,7 +781,7 @@ BEGIN
     WHERE s.location_id = p_location_id
       AND s.is_active = TRUE
       AND s.is_online = TRUE
-      AND s.last_heartbeat_at > NOW() - INTERVAL '2 minutes'
+      AND s.last_heartbeat_at > NOW() - INTERVAL '3 minutes'
   );
 END;
 $$;
@@ -799,7 +799,7 @@ BEGIN
   UPDATE stations
   SET is_online = FALSE
   WHERE is_online = TRUE
-    AND last_heartbeat_at < NOW() - INTERVAL '2 minutes';
+    AND last_heartbeat_at < NOW() - INTERVAL '3 minutes';
   
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;

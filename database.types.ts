@@ -1074,6 +1074,86 @@ export type Database = {
           },
         ]
       }
+      device_heartbeats: {
+        Row: {
+          app_version: string | null
+          battery_level: number | null
+          cfd_connected: boolean | null
+          cpu_usage: number | null
+          heartbeat_at: string
+          id: string
+          is_online: boolean
+          location_id: string
+          metadata: Json | null
+          network_type: string | null
+          printer_status: string | null
+          ram_free_mb: number | null
+          station_id: string
+          storage_free_mb: number | null
+        }
+        Insert: {
+          app_version?: string | null
+          battery_level?: number | null
+          cfd_connected?: boolean | null
+          cpu_usage?: number | null
+          heartbeat_at?: string
+          id?: string
+          is_online?: boolean
+          location_id: string
+          metadata?: Json | null
+          network_type?: string | null
+          printer_status?: string | null
+          ram_free_mb?: number | null
+          station_id: string
+          storage_free_mb?: number | null
+        }
+        Update: {
+          app_version?: string | null
+          battery_level?: number | null
+          cfd_connected?: boolean | null
+          cpu_usage?: number | null
+          heartbeat_at?: string
+          id?: string
+          is_online?: boolean
+          location_id?: string
+          metadata?: Json | null
+          network_type?: string | null
+          printer_status?: string | null
+          ram_free_mb?: number | null
+          station_id?: string
+          storage_free_mb?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_heartbeats_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "location_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_heartbeats_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_heartbeats_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "v_location_menu_items"
+            referencedColumns: ["location_id"]
+          },
+          {
+            foreignKeyName: "device_heartbeats_station_id_fkey"
+            columns: ["station_id"]
+            isOneToOne: false
+            referencedRelation: "stations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       discount_usage_log: {
         Row: {
           applied_at: string
@@ -3218,6 +3298,7 @@ export type Database = {
           country: string
           created_at: string | null
           description: string | null
+          dual_pricing_percentage: number
           email: string | null
           id: string
           is_accepting_orders: boolean
@@ -3228,9 +3309,8 @@ export type Database = {
           name: string
           phone: string | null
           postal_code: string
-          pricing_strategy: string | null
+          pricing_strategy: string
           public_metadata: Json | null
-          dual_pricing_percentage: number | null
           state: string
           timezone: string
           updated_at: string
@@ -3245,6 +3325,7 @@ export type Database = {
           country?: string
           created_at?: string | null
           description?: string | null
+          dual_pricing_percentage?: number
           email?: string | null
           id?: string
           is_accepting_orders?: boolean
@@ -3255,9 +3336,8 @@ export type Database = {
           name: string
           phone?: string | null
           postal_code?: string
-          pricing_strategy?: string | null
+          pricing_strategy?: string
           public_metadata?: Json | null
-          dual_pricing_percentage?: number | null
           state?: string
           timezone?: string
           updated_at?: string
@@ -3272,6 +3352,7 @@ export type Database = {
           country?: string
           created_at?: string | null
           description?: string | null
+          dual_pricing_percentage?: number
           email?: string | null
           id?: string
           is_accepting_orders?: boolean
@@ -3282,9 +3363,8 @@ export type Database = {
           name?: string
           phone?: string | null
           postal_code?: string
-          pricing_strategy?: string | null
+          pricing_strategy?: string
           public_metadata?: Json | null
-          dual_pricing_percentage?: number | null
           state?: string
           timezone?: string
           updated_at?: string
@@ -6728,6 +6808,7 @@ export type Database = {
           approved_by: string | null
           completed_at: string | null
           emv_data: Json | null
+          failed_at: string | null
           id: string
           initiated_by: string | null
           location_id: string
@@ -6745,12 +6826,14 @@ export type Database = {
           reversal_reference_id: string
           reversal_type: string
           status: string
+          terminal_response: Json | null
         }
         Insert: {
           amount: number
           approved_by?: string | null
           completed_at?: string | null
           emv_data?: Json | null
+          failed_at?: string | null
           id?: string
           initiated_by?: string | null
           location_id: string
@@ -6768,12 +6851,14 @@ export type Database = {
           reversal_reference_id: string
           reversal_type: string
           status?: string
+          terminal_response?: Json | null
         }
         Update: {
           amount?: number
           approved_by?: string | null
           completed_at?: string | null
           emv_data?: Json | null
+          failed_at?: string | null
           id?: string
           initiated_by?: string | null
           location_id?: string
@@ -6791,6 +6876,7 @@ export type Database = {
           reversal_reference_id?: string
           reversal_type?: string
           status?: string
+          terminal_response?: Json | null
         }
         Relationships: [
           {
@@ -8005,7 +8091,9 @@ export type Database = {
       }
       stations: {
         Row: {
+          android_sdk_version: number | null
           app_version: string | null
+          battery_level: number | null
           can_apply_discounts: boolean | null
           can_create_orders: boolean | null
           can_process_payments: boolean | null
@@ -8015,28 +8103,44 @@ export type Database = {
           deactivated_at: string | null
           deactivated_by: string | null
           device_id: string | null
+          device_manufacturer: string | null
+          device_model: string | null
           device_name: string | null
           hardware_model: string | null
+          has_builtin_cfd: boolean | null
+          has_builtin_printer: boolean | null
+          has_cash_drawer_port: boolean | null
+          has_nfc: boolean | null
           id: string
           ip_address: unknown
           is_active: boolean | null
           is_online: boolean | null
           last_heartbeat_at: string | null
           last_sync_at: string | null
+          local_ip_address: unknown
           location_id: string
           mac_address: string | null
           merchant_id: string
+          network_ssid: string | null
+          network_type: string | null
           os_version: string | null
+          ram_free_mb: number | null
+          screen_density: number | null
+          screen_height: number | null
+          screen_width: number | null
           station_code: string | null
           station_name: string
           station_number: number | null
           station_type: string
+          storage_free_mb: number | null
           sync_role: string | null
           updated_at: string | null
           view_scope: string | null
         }
         Insert: {
+          android_sdk_version?: number | null
           app_version?: string | null
+          battery_level?: number | null
           can_apply_discounts?: boolean | null
           can_create_orders?: boolean | null
           can_process_payments?: boolean | null
@@ -8046,28 +8150,44 @@ export type Database = {
           deactivated_at?: string | null
           deactivated_by?: string | null
           device_id?: string | null
+          device_manufacturer?: string | null
+          device_model?: string | null
           device_name?: string | null
           hardware_model?: string | null
+          has_builtin_cfd?: boolean | null
+          has_builtin_printer?: boolean | null
+          has_cash_drawer_port?: boolean | null
+          has_nfc?: boolean | null
           id?: string
           ip_address?: unknown
           is_active?: boolean | null
           is_online?: boolean | null
           last_heartbeat_at?: string | null
           last_sync_at?: string | null
+          local_ip_address?: unknown
           location_id: string
           mac_address?: string | null
           merchant_id: string
+          network_ssid?: string | null
+          network_type?: string | null
           os_version?: string | null
+          ram_free_mb?: number | null
+          screen_density?: number | null
+          screen_height?: number | null
+          screen_width?: number | null
           station_code?: string | null
           station_name: string
           station_number?: number | null
           station_type?: string
+          storage_free_mb?: number | null
           sync_role?: string | null
           updated_at?: string | null
           view_scope?: string | null
         }
         Update: {
+          android_sdk_version?: number | null
           app_version?: string | null
+          battery_level?: number | null
           can_apply_discounts?: boolean | null
           can_create_orders?: boolean | null
           can_process_payments?: boolean | null
@@ -8077,22 +8197,36 @@ export type Database = {
           deactivated_at?: string | null
           deactivated_by?: string | null
           device_id?: string | null
+          device_manufacturer?: string | null
+          device_model?: string | null
           device_name?: string | null
           hardware_model?: string | null
+          has_builtin_cfd?: boolean | null
+          has_builtin_printer?: boolean | null
+          has_cash_drawer_port?: boolean | null
+          has_nfc?: boolean | null
           id?: string
           ip_address?: unknown
           is_active?: boolean | null
           is_online?: boolean | null
           last_heartbeat_at?: string | null
           last_sync_at?: string | null
+          local_ip_address?: unknown
           location_id?: string
           mac_address?: string | null
           merchant_id?: string
+          network_ssid?: string | null
+          network_type?: string | null
           os_version?: string | null
+          ram_free_mb?: number | null
+          screen_density?: number | null
+          screen_height?: number | null
+          screen_width?: number | null
           station_code?: string | null
           station_name?: string
           station_number?: number | null
           station_type?: string
+          storage_free_mb?: number | null
           sync_role?: string | null
           updated_at?: string | null
           view_scope?: string | null
@@ -9374,6 +9508,14 @@ export type Database = {
         Args: { p_adjustments: Json; p_order_id: string; p_staff_id?: string }
         Returns: Json
       }
+      admin_bulk_reset_pins: {
+        Args: { p_location_id?: string; p_merchant_id: string }
+        Returns: {
+          new_pin: string
+          staff_name: string
+          staff_profile_id: string
+        }[]
+      }
       admin_get_unified_staff_view: {
         Args: { p_location_id?: string; p_merchant_id: string }
         Returns: {
@@ -9396,6 +9538,31 @@ export type Database = {
           staff_profile_id: string
           total_locations: number
           user_id: string
+        }[]
+      }
+      admin_reset_staff_pin: {
+        Args: {
+          p_custom_pin?: string
+          p_location_id: string
+          p_staff_profile_id: string
+        }
+        Returns: {
+          error_message: string
+          new_pin: string
+          staff_name: string
+          success: boolean
+        }[]
+      }
+      admin_toggle_staff_status: {
+        Args: {
+          p_location_id: string
+          p_new_status: boolean
+          p_staff_profile_id: string
+        }
+        Returns: {
+          error_message: string
+          staff_name: string
+          success: boolean
         }[]
       }
       advance_course:
@@ -9462,8 +9629,14 @@ export type Database = {
       }
       apply_refund_to_payment: {
         Args: {
+          p_initiated_by?: string
           p_payment_id: string
           p_refund_amount: number
+          p_return_auth_code?: string
+          p_return_number?: string
+          p_return_reason?: string
+          p_return_reference_id?: string
+          p_return_rrn?: string
           p_reversal_type: Database["public"]["Enums"]["reversal_type"]
         }
         Returns: undefined
@@ -9481,13 +9654,6 @@ export type Database = {
           p_order_item_ids: string[]
           p_staff_id?: string
           p_status: string
-        }
-        Returns: Json
-      }
-      get_kds_tickets: {
-        Args: {
-          p_location_id: string
-          p_statuses?: string[]
         }
         Returns: Json
       }
@@ -9664,6 +9830,7 @@ export type Database = {
           approved_by: string | null
           completed_at: string | null
           emv_data: Json | null
+          failed_at: string | null
           id: string
           initiated_by: string | null
           location_id: string
@@ -9681,6 +9848,7 @@ export type Database = {
           reversal_reference_id: string
           reversal_type: string
           status: string
+          terminal_response: Json | null
         }
         SetofOptions: {
           from: "*"
@@ -9870,6 +10038,10 @@ export type Database = {
       }
       get_items_for_location_library: {
         Args: { p_location_id?: string; p_merchant_id: string }
+        Returns: Json
+      }
+      get_kds_tickets: {
+        Args: { p_location_id: string; p_statuses?: string[] }
         Returns: Json
       }
       get_location_floor_plans: {
@@ -10558,15 +10730,28 @@ export type Database = {
         }
         Returns: Json
       }
-      update_reversal_status: {
-        Args: {
-          p_emv_data?: Json
-          p_reversal_id: string
-          p_status: Database["public"]["Enums"]["reversal_status_type"]
-          p_terminal_response?: Json
-        }
-        Returns: undefined
-      }
+      update_reversal_status:
+        | {
+            Args: {
+              p_emv_data?: Json
+              p_reversal_id: string
+              p_status: Database["public"]["Enums"]["reversal_status_type"]
+              p_terminal_response?: Json
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_emv_data?: Json
+              p_response_message?: string
+              p_result_code?: string
+              p_reversal_id: string
+              p_reversal_psp_reference?: string
+              p_status: Database["public"]["Enums"]["reversal_status_type"]
+              p_terminal_response?: Json
+            }
+            Returns: undefined
+          }
       update_session_staff: {
         Args: {
           p_session_id: string

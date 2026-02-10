@@ -26,6 +26,11 @@ import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
+import {
+  detectAndStoreCapabilities,
+  startHeartbeat,
+  stopHeartbeat,
+} from "@/services/hardware";
 import { TaxRate } from "@/types/menu";
 import React, { useCallback, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
@@ -43,6 +48,9 @@ const DEBUG_EMPLOYEES_URL = __DEV__
 export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // POS Sync Integration - Centralized sync for the entire app
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const selectedStation = useStoreSettingsStore(
+    (state) => state.selectedStation,
+  );
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
@@ -83,6 +91,20 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     //   setCoursingSupabaseClient(null);
     // };
   }, [supabase]);
+
+  // Device detection & heartbeat lifecycle
+  useEffect(() => {
+    if (supabase && selectedStation?.id && selectedStore?.id) {
+      detectAndStoreCapabilities(supabase, selectedStation.id).catch((e) =>
+        console.warn("[PosSyncProvider] Device detection failed:", e),
+      );
+      startHeartbeat(supabase, selectedStation.id, selectedStore.id);
+    }
+
+    return () => {
+      stopHeartbeat();
+    };
+  }, [supabase, selectedStation?.id, selectedStore?.id]);
 
   // Sync employees from location_members
   const syncEmployees = useCallback(

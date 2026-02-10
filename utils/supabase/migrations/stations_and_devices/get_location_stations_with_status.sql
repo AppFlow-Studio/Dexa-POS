@@ -26,6 +26,18 @@ BEGIN
         s.can_update_kitchen_status,
         s.is_online,
         s.last_heartbeat_at,
+        -- Device hardware fields
+        s.hardware_model,
+        s.device_manufacturer,
+        s.device_model,
+        s.network_type,
+        s.battery_level,
+        s.has_builtin_printer,
+        s.has_builtin_cfd,
+        s.has_cash_drawer_port,
+        s.has_nfc,
+        s.app_version,
+        s.os_version,
         -- Payment terminal data (non-sensitive metadata only)
         CASE WHEN pt.id IS NOT NULL THEN json_build_object(
           'id', pt.id,
