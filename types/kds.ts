@@ -11,6 +11,10 @@ export interface KDSTicketItem {
   kitchen_status: string;
   special_instructions: string | null;
   modifiers: KDSTicketModifier[];
+  category_name?: string;
+  category_id?: string;
+  menu_name?: string;
+  menu_id?: string;
 }
 
 export interface KDSTicket {

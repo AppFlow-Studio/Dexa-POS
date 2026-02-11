@@ -16,6 +16,7 @@ import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePtoStore } from "@/stores/usePtoStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -100,12 +101,15 @@ export default function RootLayout() {
     useOrderStore.getState().startDraftCleanup();
     // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
     useOrderStore.getState().cleanupDraftDuplicates();
+    // Start print queue processing
+    PrinterService.startProcessing();
   }, []);
 
-  // Cleanup draft cleanup interval on unmount
+  // Cleanup intervals on unmount
   React.useEffect(() => {
     return () => {
       useOrderStore.getState().stopDraftCleanup();
+      PrinterService.stopProcessing();
     };
   }, []);
 

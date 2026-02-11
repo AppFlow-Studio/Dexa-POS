@@ -1,21 +1,12 @@
-import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, OrderRefundItemRecord, ReversalRecord } from "@/lib/types";
-import { RefundService } from "@/services/refundService";
-import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
-// import type {
-//     CartItem,
-//     OrderPaymentItemCoverage,
-//     OrderProfile,
-// } from "@/lib/types";
+import { useRefundMutation, type PerPaymentRefundDetail } from "@/hooks/orders/useRefundMutation";
+import { useTipAdjustMutation } from "@/hooks/orders/useTipAdjustMutation";
+import { useOrderDetailsFetch } from "@/hooks/orders/useOrderDetailsFetch";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import type { RefundReasonType, RefundRequest } from "@/types/refunds";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "expo-router";
@@ -109,37 +100,6 @@ interface TipAdjustPaymentRow {
   isCard: boolean;
 }
 type RefundType = "full" | "items" | "payments";
-
-const toRefundReasonType = (reason: string): RefundReasonType => {
-  switch (reason) {
-    case "customer_request":
-    case "item_quality":
-    case "wrong_item":
-    case "never_received":
-    case "duplicate_charge":
-    case "price_adjustment":
-    case "order_cancelled":
-    case "kitchen_error":
-    case "manager_comp":
-    case "other":
-      return reason;
-    default:
-      return "other";
-  }
-};
-
-interface PerPaymentRefundDetail {
-  paymentIndex: number;
-  originalPaymentId?: string;
-  dbPaymentId?: string;
-  method: string;
-  orderAmountToRefund: number;
-  tipAmountToRefund: number;
-  totalRefund: number;
-  referenceId?: string;
-  last4?: string;
-  cardBrand?: string;
-}
 
 // ============================================================================
 // REUSABLE COMPONENTS
@@ -718,6 +678,7 @@ interface RightPaneSummaryProps {
     payments: PaymentRowData[];
   };
   onReopenOrder: () => void;
+  onCloseOrder: () => void;
   onContinueCharging: () => void;
   onIssueReceipt: () => void;
   onTipAdjust: () => void;
@@ -729,6 +690,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   order,
   paymentSummary,
   onReopenOrder,
+  onCloseOrder,
   onContinueCharging,
   onIssueReceipt,
   onTipAdjust,
@@ -1150,6 +1112,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               variant="warning"
             />
           )}
+          {isOpen && (
+            <ActionButton
+              icon={<Check size={16} color="#22C55E" />}
+              label="Close"
+              onPress={onCloseOrder}
+              variant="success"
+            />
+          )}
           {isOpen && hasBalanceDue && (
             <ActionButton
               icon={<DollarSign size={16} color="#3B82F6" />}
@@ -1208,21 +1178,17 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
   onTipAdjusted,
   onProcessingChange,
 }) => {
-  const { show } = useToast();
-  const supabase = useSupabaseClient();
-  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
-  const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
-  const { orders: ordersRealtime } = useLocationRealtime();
+  const tipAdjustMutation = useTipAdjustMutation();
+  const processing = tipAdjustMutation.isPending;
   console.log('PaymentDetailBottomSheet Payment Summary', paymentSummary);
   const [tipAmounts, setTipAmounts] = useState<Record<number, string>>({});
   const [activeInput, setActiveInput] = useState<number | null>(null);
-  const [processing, setProcessing] = useState(false);
   const [showHighTipConfirm, setShowHighTipConfirm] = useState(false);
 
   // Notify parent of processing state changes
-  // useEffect(() => {
-  //   onProcessingChange?.(processing);
-  // }, [processing, onProcessingChange]);
+  useEffect(() => {
+    onProcessingChange?.(processing);
+  }, [processing, onProcessingChange]);
 
   // Filter card payments that are not voided
   const cardPayments: TipAdjustPaymentRow[] = useMemo(() => {
@@ -1316,36 +1282,6 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
     [activeInput]
   );
 
-  // Update local order store with new tip amounts
-  const updateLocalTipState = useCallback(() => {
-    const storeState = useOrderStore.getState();
-    const currentOrder = storeState.ordersById[order.id];
-    if (!currentOrder?.payments) return;
-
-    const updatedPayments = currentOrder.payments.map((p) => {
-      // Find matching card payment by index
-      const match = cardPayments.find((cp) => cp.paymentIndex === currentOrder.payments!.indexOf(p));
-      if (!match) return p;
-      const newTip = parseFloat(tipAmounts[match.paymentIndex] || "0") || 0;
-      if (Math.abs(newTip - (p.tip_amount || 0)) < 0.001) return p;
-      return {
-        ...p,
-        tip_amount: newTip,
-        total_collected: p.amount + newTip,
-      };
-    });
-
-    useOrderStore.setState((state) => ({
-      ordersById: {
-        ...state.ordersById,
-        [order.id]: {
-          ...currentOrder,
-          payments: updatedPayments,
-        },
-      },
-    }));
-  }, [order.id, cardPayments, tipAmounts]);
-
   // Check if any tip exceeds 30% of the payment amount
   const highTipPayments = useMemo(() => {
     return cardPayments.filter((p) => {
@@ -1354,131 +1290,24 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
     });
   }, [cardPayments, tipAmounts]);
 
-  // Handle adjust tips
+  // Handle adjust tips via mutation
   const handleAdjustTips = async () => {
-    setProcessing(true);
     try {
-      if (!selectedStation?.payment_terminal) {
-        show({ title: "Terminal Error", message: "No payment terminal configured.", type: "error" });
-        setProcessing(false);
-        return;
-      }
-
-      const api = new DejavooSpinAPI(supabase);
-      const loaded = await api.loadTerminal(
-        selectedStation.payment_terminal.id,
-        selectedStation.payment_terminal
-      );
-
-      if (!loaded) {
-        show({ title: "Terminal Error", message: "Failed to connect to terminal.", type: "error" });
-        setProcessing(false);
-        return;
-      }
-
-      for (const payment of cardPayments) {
-        console.log('PaymentDetailBottomSheet', payment);
-        const newTip = parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0;
-        if (Math.abs(newTip - payment.currentTip) < 0.001) continue; // skip unchanged
-
-        if (!payment.referenceId) {
-          show({
-            title: "Warning",
-            message: `Cannot adjust tip for payment without reference ID (••••${payment.last4 || "????"}).`,
-            type: "warning",
-          });
-          continue;
-        }
-        console.log('PaymentDetailBottomSheet', payment.referenceId);
-        const result = await api
-          .tipAdjust()
-          .amount(payment.orderAmount)
-          .tipAmount(newTip)
-          .referenceId(payment.referenceId)
-          .execute();
-
-        if (!result.success) {
-          show({
-            title: "Tip Adjust Failed",
-            message: result.error || "Unknown error",
-            type: "error",
-          });
-          setProcessing(false);
-          return;
-        }
-      }
-
-      // Persist tip adjustments to database
-      const dbAdjustments: TipAdjustment[] = cardPayments
-        .filter((payment) => {
-          const newTip = parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0;
-          return payment.dbPaymentId && Math.abs(newTip - payment.currentTip) > 0.001;
-        })
-        .map((payment) => ({
-          payment_id: payment.dbPaymentId!,
-          new_tip_amount: parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0,
-        }));
-
-      console.log('PaymentDetailBottomSheet DB Adjustments', dbAdjustments);
-
-      if (dbAdjustments.length > 0 && order.db_order_id) {
-        try {
-          await adjustTips(
-            supabase,
-            order.db_order_id,
-            dbAdjustments,
-            loggedInEmployee?.profileId,
-          );
-        } catch (dbError) {
-          console.error("Failed to persist tip adjustments to database:", dbError);
-          show({
-            title: "Tip Adjust Failed",
-            message: "Tips adjusted on terminal but failed to save to database. Please contact support.",
-            type: "error",
-          });
-          setProcessing(false);
-          onProcessingChange?.(false);
-          return;
-        }
-        finally {
-          setProcessing(false);
-          onProcessingChange?.(false);
-        }
-      }
-
-      // CRITICAL: Sync order from backend to ensure local state is updated
-      // This replaces the weak updateLocalTipState() which used index-based matching
-      // syncOrderFromBackendComplete fetches all order data including updated payment tips
-      const dbOrderId = order.db_order_id;
-      if (dbOrderId) {
-        try {
-          await useOrderStore.getState().syncOrderFromBackendComplete(dbOrderId);
-          console.log('[TipAdjust] Post-adjustment sync completed for order:', dbOrderId);
-        } catch (syncError) {
-          console.warn('[TipAdjust] Post-adjustment sync failed:', syncError);
-          // Non-blocking - tip adjustment succeeded, sync can be retried via broadcast
-        }
-      }
-
-      // Show success toast with realtime awareness
-      if (!ordersRealtime.isConnected) {
-        show({
-          title: "Tips Adjusted",
-          message: "Tip adjustments saved. Real-time sync offline - data refreshed manually.",
-          type: "warning",
-        });
-      } else {
-        show({
-          title: "Tips Adjusted",
-          message: "Tip adjustments processed successfully.",
-          type: "success",
-        });
-      }
+      await tipAdjustMutation.mutateAsync({
+        dbOrderId: order.db_order_id || order.id,
+        payments: cardPayments.map((payment) => ({
+          paymentIndex: payment.paymentIndex,
+          dbPaymentId: payment.dbPaymentId,
+          orderAmount: payment.orderAmount,
+          currentTip: payment.currentTip,
+          newTip: parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0,
+          referenceId: payment.referenceId,
+          last4: payment.last4,
+        })),
+      });
       onTipAdjusted();
-    } catch (error) {
-      show({ title: "Error", message: String(error), type: "error" });
-    } finally {
-      setProcessing(false);
+    } catch {
+      // Error handling is done by the mutation's onError callback
     }
   };
 
@@ -2653,8 +2482,8 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             onChangeText={setRefundReason}
             placeholder="Enter reason for refund..."
             placeholderTextColor="#4B5563"
-            multiline
-            numberOfLines={3}
+            multiline={false}
+            numberOfLines={1}
             className="bg-[#1a1a1a] rounded-xl p-4 border border-gray-800 text-white text-sm"
             style={{ textAlignVertical: "top", minHeight: 80 }}
           />
@@ -2819,15 +2648,11 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   const { show } = useToast();
   const router = useRouter();
   const internalRef = useRef<BottomSheetMethods>(null);
-  const supabase = useSupabaseClient();
-  const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
-  const [refundProcessing, setRefundProcessing] = useState(false);
-  const refundProcessingRef = useRef(false);
   const [tipProcessing, setTipProcessing] = useState(false);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
-  
-  // Get realtime connection status for post-refund sync awareness
-  const { orders: ordersRealtime } = useLocationRealtime();
+
+  // Mutation hooks
+  const refundMutation = useRefundMutation();
 
   const { isOpen, orderId, close } = usePaymentDetailSheetStore();
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
@@ -2846,21 +2671,31 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     return state.previousOrders.find((po) => po.orderId === orderId) || null;
   });
 
-  // Fetched order details (reversals, refund_items) loaded on-demand when sheet opens
-  const [fetchedDetails, setFetchedDetails] = useState<{
-    reversals: ReversalRecord[];
-    order_refund_items: OrderRefundItemRecord[];
-  } | null>(null);
+  // Fetch reversals and refund_items via TanStack Query
+  const dbOrderId = activeOrder?.db_order_id || previousOrder?.db_order_id;
+  const hasExistingReversals = !!(
+    (activeOrder?.reversals && activeOrder.reversals.length > 0) ||
+    (previousOrder?.reversals && previousOrder.reversals.length > 0)
+  );
+
+  const { reversals: fetchedReversals, orderRefundItems: fetchedRefundItems } =
+    useOrderDetailsFetch({
+      dbOrderId,
+      localOrderId: orderId,
+      isActiveOrder: !!activeOrder,
+      hasExistingReversals,
+      enabled: isOpen && !!orderId,
+    });
 
   // Map previousOrder to OrderProfile format (same as PreviousOrdersSection)
   const order = useMemo((): OrderProfile | null => {
     if (activeOrder) {
       // Merge fetched details into active order if it's missing reversals
-      if (fetchedDetails && !activeOrder.reversals?.length) {
+      if (fetchedReversals.length > 0 && !activeOrder.reversals?.length) {
         return {
           ...activeOrder,
-          reversals: fetchedDetails.reversals,
-          order_refund_items: fetchedDetails.order_refund_items,
+          reversals: fetchedReversals,
+          order_refund_items: fetchedRefundItems,
         };
       }
       return activeOrder;
@@ -2899,84 +2734,10 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       notes: previousOrder.notes,
       payments: previousOrder.payments || [],
       // Include reversals/refund_items: prefer fetched, fallback to cached on previousOrder
-      reversals: fetchedDetails?.reversals || previousOrder.reversals,
-      order_refund_items: fetchedDetails?.order_refund_items || previousOrder.order_refund_items,
+      reversals: fetchedReversals.length > 0 ? fetchedReversals : previousOrder.reversals,
+      order_refund_items: fetchedRefundItems.length > 0 ? fetchedRefundItems : previousOrder.order_refund_items,
     } as OrderProfile;
-  }, [activeOrder, previousOrder, fetchedDetails]);
-
-  // Fetch reversals and refund_items on-demand when sheet opens
-  // This ensures refund info is available for both active and previous orders
-  useEffect(() => {
-    if (!isOpen || !orderId) {
-      setFetchedDetails(null);
-      return;
-    }
-
-    // Determine the db_order_id to fetch details for
-    const dbOrderId = activeOrder?.db_order_id || previousOrder?.db_order_id;
-    if (!dbOrderId) return;
-
-    // Skip if active order already has reversals loaded (e.g. from syncOrderFromBackendComplete)
-    if (activeOrder?.reversals && activeOrder.reversals.length > 0) return;
-
-    // Skip if previous order already has cached reversals
-    if (previousOrder?.reversals && previousOrder.reversals.length > 0) return;
-
-    let cancelled = false;
-
-    const fetchDetails = async () => {
-      try {
-        const { data, error } = await supabase.rpc("get_order_details", {
-          p_order_id: dbOrderId,
-        });
-
-        if (cancelled || error || !data) return;
-
-        const reversals = (data.reversals || []) as ReversalRecord[];
-        const refundItems = (data.order_refund_items || []) as OrderRefundItemRecord[];
-
-        setFetchedDetails({
-          reversals,
-          order_refund_items: refundItems,
-        });
-
-        // Cache fetched details back to previousOrders store for history orders
-        if (!activeOrder && (reversals.length > 0 || refundItems.length > 0)) {
-          usePreviousOrdersStore.setState((state) => ({
-            previousOrders: state.previousOrders.map((po) =>
-              (po.orderId === orderId || po.db_order_id === dbOrderId)
-                ? { ...po, reversals, order_refund_items: refundItems }
-                : po
-            ),
-          }));
-        }
-
-        // Also update the active order in the store so future opens don't re-fetch
-        if (activeOrder && (reversals.length > 0 || refundItems.length > 0)) {
-          useOrderStore.setState((state) => {
-            const current = state.ordersById[orderId];
-            if (!current) return state;
-            return {
-              ordersById: {
-                ...state.ordersById,
-                [orderId]: {
-                  ...current,
-                  reversals,
-                  order_refund_items: refundItems,
-                },
-              },
-            };
-          });
-        }
-      } catch (err) {
-        console.error("[PaymentDetail] Failed to fetch order details:", err);
-      }
-    };
-
-    fetchDetails();
-
-    return () => { cancelled = true; };
-  }, [isOpen, orderId, activeOrder?.db_order_id, previousOrder?.db_order_id, activeOrder?.reversals, previousOrder?.reversals, supabase]);
+  }, [activeOrder, previousOrder, fetchedReversals, fetchedRefundItems]);
 
   // Reset view when sheet opens (Modal is controlled by isOpen state directly)
   useEffect(() => {
@@ -3142,6 +2903,16 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     });
   }, [orderId, updateOrderCheckStatus, show]);
 
+  const handleCloseOrder = useCallback(() => {
+    if (!orderId) return;
+    updateOrderCheckStatus(orderId, "Closed");
+    show({
+      title: "Order Closed",
+      message: "This order has been closed.",
+      type: "success",
+    });
+  }, [orderId, updateOrderCheckStatus, show]);
+
   const handleContinueCharging = useCallback(() => {
     if (!orderId) return;
     useOrderStore.getState().setActiveOrder(orderId);
@@ -3178,238 +2949,48 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       perPaymentDetails: PerPaymentRefundDetail[],
       selectedItems?: { itemId: string; quantity: number; paymentIndex?: number }[]
     ): Promise<boolean> => {
-      console.log("[RefundProcess] handleProcessRefund called", {
-        type,
-        totalAmount,
-        reason,
-        perPaymentDetailsCount: perPaymentDetails.length,
-        selectedItemsCount: selectedItems?.length,
-        terminalId: selectedStation?.payment_terminal?.id,
-      });
-
-      if (refundProcessingRef.current) {
-        show({
-          title: "Refund Failed",
-          message: 'Refund already in progress.',
-          type: "error",
-        });
-        return false;
-      }
-      
       if (!order) {
         show({ title: "Refund Failed", message: "Order not found.", type: "error" });
         return false;
       }
-      if (!supabase) {
-        show({ title: "Refund Failed", message: "Supabase unavailable.", type: "error" });
-        return false;
-      }
-      if (!loggedInEmployee?.profileId) {
-        show({
-          title: "Refund Failed",
-          message: "Staff profile missing. Please re-authenticate.",
-          type: "error",
-        });
-        return false;
-      }
 
-      const orderIdForRefund = order.db_order_id || order.id;
-      console.log('Order ID for Refund', orderIdForRefund);
-      const refundService = new RefundService(supabase);
-      const reasonType = toRefundReasonType(reason);
+      const orderDbId = order.db_order_id || order.id;
 
-      refundProcessingRef.current = true;
-      setRefundProcessing(true);
       try {
         if (type === "items") {
-          if (!selectedItems || selectedItems.length === 0) {
-            show({
-              title: "Refund Failed",
-              message: "Select items to refund.",
-              type: "error",
-            });
-            return false;
-          }
-          console.log('[Refund] Selected items', selectedItems);
-          const refundRequest: RefundRequest = {
-            orderId: orderIdForRefund,
-            payment_terminal_id: selectedStation?.payment_terminal?.id || "",
-            payment_terminal: selectedStation?.payment_terminal || undefined,
+          await refundMutation.mutateAsync({
+            type: "items",
+            totalAmount,
+            reason,
+            perPaymentDetails,
+            selectedItems: selectedItems || [],
+            orderId: orderId!,
+            dbOrderId: orderDbId,
+            paymentTerminalId: selectedStation?.payment_terminal?.id || "",
+            paymentTerminal: selectedStation?.payment_terminal || undefined,
             stationId: selectedStation?.id,
-            refundType: {
-              type: "item_return",
-              items: selectedItems.map((item) => ({
-                orderItemId: item.itemId,
-                quantityToRefund: item.quantity,
-                reason: reasonType,
-                reasonDetail: reason,
-              })),
-            },
-            reason: reasonType,
-            reasonDetail: reason,
-            initiatedBy: loggedInEmployee.profileId,
-          };
-
-          const result = await refundService.processRefund(refundRequest);
-          if (!result.success) {
-            show({
-              title: "Refund Failed",
-              message: result.error || "Refund failed.",
-              type: "error",
-            });
-            return false;
-          }
-          
-          // CRITICAL: Sync order from backend to ensure local state is updated
-          // This is necessary because broadcast may be delayed or disconnected
-          // Use orderId (store key) not db_order_id — syncOrderFromBackendComplete looks up by store key
-          if (orderId) {
-            try {
-              await useOrderStore.getState().syncOrderFromBackendComplete(orderId);
-              console.log('[Refund] Post-refund sync completed for order:', orderId);
-            } catch (syncError) {
-              console.warn('[Refund] Post-refund sync failed:', syncError);
-              // Non-blocking - refund succeeded, sync can be retried via broadcast
-            }
-          }
-
-          // Show success with optional warning for DB issues or offline status
-          if (result.error) {
-            // Refund succeeded but had DB update issues
-            show({
-              title: "Refund Processed (with warnings)",
-              message: `$${totalAmount?.toFixed(2)} refunded. ${result.error}`,
-              type: "warning",
-            });
-          } else if (!ordersRealtime.isConnected) {
-            // Refund succeeded but realtime is offline - data was synced manually
-            show({
-              title: "Refund Processed",
-              message: `$${totalAmount?.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
-              type: "warning",
-            });
-          } else {
-            show({
-              title: "Refund Processed",
-              message: `$${totalAmount?.toFixed(2)} refund processed successfully.`,
-              type: "success",
-            });
-          }
-          setRightPaneView("summary");
-          return true;
-        }
-
-        if (perPaymentDetails.length === 0) {
-          show({
-            title: "Refund Failed",
-            message: "No refundable payments selected.",
-            type: "error",
-          });
-          return false;
-        }
-
-        const errors: string[] = [];
-        const warnings: string[] = [];
-        for (let i = 0; i < perPaymentDetails.length; i++) {
-          const detail = perPaymentDetails[i];
-          
-          // Add delay before subsequent refunds to allow terminal to reset
-          // This prevents "Service Busy" errors when processing multiple payments
-          if (i > 0) {
-            console.log('[Refund] Waiting for terminal to be ready before next refund...');
-            await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
-          }
-          
-          if (!detail.dbPaymentId) {
-            errors.push("Missing payment reference for refund.");
-            continue;
-          }
-
-          const refundType =
-            type === "full"
-              ? { type: "full_payment" as const }
-              : { type: "partial_amount" as const, amount: detail.totalRefund };
-
-          const refundRequest: RefundRequest = {
-            orderId: orderIdForRefund,
-            paymentId: detail.dbPaymentId,
-            refundType,
-            reason: reasonType,
-            reasonDetail: reason,
-            initiatedBy: loggedInEmployee.profileId,
-            referenceId: detail.referenceId,
-            payment_terminal_id: selectedStation?.payment_terminal?.id || "",
-            payment_terminal: selectedStation?.payment_terminal || undefined,
-            stationId: selectedStation?.id,
-          };
-
-          const result = await refundService.processRefund(refundRequest);
-          if (!result.success) {
-            errors.push(result.error || "Refund failed.");
-          } else if (result.error) {
-            // Refund succeeded but had warnings (DB update issues)
-            warnings.push(result.error);
-          }
-        }
-
-        if (errors.length > 0) {
-          show({
-            title: "Refund Failed",
-            message: errors.join(" "),
-            type: "error",
-          });
-          return false;
-        }
-
-        // CRITICAL: Sync order from backend to ensure local state is updated
-        // This is necessary because broadcast may be delayed or disconnected
-        // Use orderId (store key) not db_order_id — syncOrderFromBackendComplete looks up by store key
-        if (orderId) {
-          try {
-            await useOrderStore.getState().syncOrderFromBackendComplete(orderId);
-            console.log('[Refund] Post-refund sync completed for order:', orderId);
-          } catch (syncError) {
-            console.warn('[Refund] Post-refund sync failed:', syncError);
-            // Non-blocking - refund succeeded, sync can be retried via broadcast
-          }
-        }
-
-        // Show success with optional warnings or offline status
-        if (warnings.length > 0) {
-          show({
-            title: "Refund Processed (with warnings)",
-            message: `$${totalAmount?.toFixed(2)} refunded. ${warnings.join("; ")}`,
-            type: "warning",
-          });
-        } else if (!ordersRealtime.isConnected) {
-          // Refund succeeded but realtime is offline - data was synced manually
-          show({
-            title: "Refund Processed",
-            message: `$${totalAmount?.toFixed(2)} refunded. Real-time sync offline - data refreshed manually.`,
-            type: "warning",
           });
         } else {
-          show({
-            title: "Refund Processed",
-            message: `$${totalAmount?.toFixed(2)} refund processed successfully.`,
-            type: "success",
+          await refundMutation.mutateAsync({
+            type,
+            totalAmount,
+            reason,
+            perPaymentDetails,
+            orderId: orderId!,
+            dbOrderId: orderDbId,
+            paymentTerminalId: selectedStation?.payment_terminal?.id || "",
+            paymentTerminal: selectedStation?.payment_terminal || undefined,
+            stationId: selectedStation?.id,
           });
         }
         setRightPaneView("summary");
         return true;
-      } catch (error) {
-        show({
-          title: "Refund Failed",
-          message: String(error),
-          type: "error",
-        });
+      } catch {
+        // Error handling is done by the mutation's onError callback
         return false;
-      } finally {
-        refundProcessingRef.current = false;
-        setRefundProcessing(false);
       }
     },
-    [order, orderId, supabase, loggedInEmployee?.profileId, show, selectedStation, ordersRealtime.isConnected]
+    [order, orderId, show, selectedStation, refundMutation]
   );
 
   return (
@@ -3418,7 +2999,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       animationType="slide"
       transparent={true}
       onRequestClose={() => {
-        if (refundProcessing || tipProcessing) return;
+        if (refundMutation.isPending || tipProcessing) return;
         close();
       }}
       statusBarTranslucent
@@ -3489,9 +3070,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   {/* Close Button */}
                   <TouchableOpacity
                     onPress={close}
-                    disabled={refundProcessing || tipProcessing}
+                    disabled={refundMutation.isPending || tipProcessing}
                     className="px-4 py-2 rounded-lg bg-gray-800 items-center justify-center"
-                    style={{ opacity: (refundProcessing || tipProcessing) ? 0.3 : 1 }}
+                    style={{ opacity: (refundMutation.isPending || tipProcessing) ? 0.3 : 1 }}
                   >
                     <Text className="text-sm font-semibold text-gray-300">
                       CLOSE
@@ -3517,6 +3098,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     order={order}
                     paymentSummary={paymentSummary}
                     onReopenOrder={handleReopenOrder}
+                    onCloseOrder={handleCloseOrder}
                     onContinueCharging={handleContinueCharging}
                     onIssueReceipt={handleIssueReceipt}
                     onTipAdjust={handleTipAdjust}
@@ -3529,7 +3111,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     paymentSummary={paymentSummary}
                     onBack={() => setRightPaneView("summary")}
                     onProcessRefund={handleProcessRefund}
-                    refundProcessing={refundProcessing}
+                    refundProcessing={refundMutation.isPending}
                   />
                 ) : (
                   <RightPaneTipAdjust

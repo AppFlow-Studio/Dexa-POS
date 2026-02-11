@@ -225,7 +225,22 @@ class HardwareDetectionModule(private val reactContext: ReactApplicationContext)
             false
         }
 
-        return hasPrinterClass || hasKnownPrinter || hasSerialPrinter
+        // 4. Known devices with built-in printers (OmniDriver/proprietary SDK)
+        val hasBuiltinPrinter = isKnownBuiltinPrinterDevice()
+
+        return hasPrinterClass || hasKnownPrinter || hasSerialPrinter || hasBuiltinPrinter
+    }
+
+    private fun isKnownBuiltinPrinterDevice(): Boolean {
+        val manufacturer = Build.MANUFACTURER.uppercase()
+        val model = Build.MODEL.uppercase()
+
+        // Landi C-series POS devices have built-in thermal printers (via OmniDriver SDK)
+        if (manufacturer == "LANDI" && model.startsWith("C")) {
+            return true
+        }
+
+        return false
     }
 
     // ==================== SECONDARY DISPLAY DETECTION ====================

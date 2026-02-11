@@ -18,6 +18,7 @@ import expo.modules.ReactNativeHostWrapper
 
 import com.temurappflowstudios.dexapos.tcpserver.TcpServerPackage
 import com.temurappflowstudios.dexapos.hardware.HardwareDetectionPackage
+import com.temurappflowstudios.dexapos.printer.LandiPrinterPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -30,6 +31,7 @@ class MainApplication : Application(), ReactApplication {
             // packages.add(MyReactNativePackage())
             packages.add(TcpServerPackage())
             packages.add(HardwareDetectionPackage())
+            packages.add(LandiPrinterPackage())
             return packages
           }
 

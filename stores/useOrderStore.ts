@@ -11,6 +11,7 @@ import {
   PaymentType,
 } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
+import { useMenuStore } from "@/stores/useMenuStore";
 import type {
   AddOrderItemParams,
   CreateOrderParams,
@@ -1228,6 +1229,13 @@ const addItemToBackend = async (
       // Kitchen/Coursing
       p_course_number:
         useCoursingStore.getState().getWorkingCourse(order.id) || 1, // Use working course or default to 1
+
+      // Menu/Category context
+      p_menu_id: item.addedFromMenuId || undefined,
+      p_menu_name: item.addedFromMenuId
+        ? useMenuStore.getState().getMenuById(item.addedFromMenuId)?.name
+        : undefined,
+      p_category_id: item.addedFromCategoryId || undefined,
     };
 
     // console.log(
@@ -6014,16 +6022,29 @@ export const useOrderStore = create<OrderState>()(
           },
 
           updateOrderCheckStatus: async (orderId, status) => {
-            const order = get().ordersById[orderId]; // O(1) lookup
-            console.log("[updateOrderCheckStatus] updateOrderCheckStatus called", { orderId, status, order });
+            // Resolve order with fallback by db_order_id
+            let order = get().ordersById[orderId];
+            let storeKey = orderId;
+
+            if (!order) {
+              const entry = Object.entries(get().ordersById).find(
+                ([, o]) => o.db_order_id === orderId,
+              );
+              if (entry) {
+                storeKey = entry[0];
+                order = entry[1];
+              }
+            }
+
+            console.log("[updateOrderCheckStatus] called", { orderId, storeKey, status, found: !!order });
             if (!order) return;
 
             // 1. Optimistic local update first
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
-                [orderId]: {
-                  ...state.ordersById[orderId],
+                [storeKey]: {
+                  ...state.ordersById[storeKey],
                   check_status: status,
                 },
               },
@@ -6047,7 +6068,7 @@ export const useOrderStore = create<OrderState>()(
                   p_order_id: order.db_order_id,
                   p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || null,
                 },
-                localOrderId: orderId,
+                localOrderId: storeKey,
               });
               return;
             }
@@ -6066,8 +6087,8 @@ export const useOrderStore = create<OrderState>()(
                   set((state) => ({
                     ordersById: {
                       ...state.ordersById,
-                      [orderId]: {
-                        ...state.ordersById[orderId],
+                      [storeKey]: {
+                        ...state.ordersById[storeKey],
                         check_status: "Opened", // Rollback
                       },
                     },
@@ -6086,8 +6107,8 @@ export const useOrderStore = create<OrderState>()(
                   set((state) => ({
                     ordersById: {
                       ...state.ordersById,
-                      [orderId]: {
-                        ...state.ordersById[orderId],
+                      [storeKey]: {
+                        ...state.ordersById[storeKey],
                         check_status: "Closed", // Rollback
                       },
                     },
@@ -6100,8 +6121,8 @@ export const useOrderStore = create<OrderState>()(
               set((state) => ({
                 ordersById: {
                   ...state.ordersById,
-                  [orderId]: {
-                    ...state.ordersById[orderId],
+                  [storeKey]: {
+                    ...state.ordersById[storeKey],
                     check_status: status === "Closed" ? "Opened" : "Closed", // Rollback
                   },
                 },

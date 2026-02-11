@@ -20,7 +20,9 @@ CREATE OR REPLACE FUNCTION add_order_item_v2(
     p_modifiers jsonb DEFAULT NULL,
     p_special_instructions text DEFAULT NULL,
     p_course_number integer DEFAULT 1,
-
+    p_menu_id uuid DEFAULT NULL,
+    p_menu_name text DEFAULT NULL,
+    p_category_id uuid DEFAULT NULL
 )
 DECLARE
     v_location_id uuid;
@@ -164,7 +166,11 @@ BEGIN
         updated_at,
         -- Base Prices With no Modifiers
         base_card_price,
-        base_cash_price
+        base_cash_price,
+        -- Menu/Category context
+        menu_id,
+        menu_name,
+        category_id
     ) VALUES (
         p_order_id,
         p_menu_item_id,
@@ -196,7 +202,11 @@ BEGIN
         now(),
        -- Base Price with No Modifiers,
         p_unit_price,
-        p_cash_unit_price
+        p_cash_unit_price,
+        -- Menu/Category context
+        p_menu_id,
+        p_menu_name,
+        p_category_id
     )
     RETURNING id INTO v_item_id;
 

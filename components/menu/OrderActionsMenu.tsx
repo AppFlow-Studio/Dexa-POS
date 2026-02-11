@@ -1,5 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   DollarSign,
   Eye,
@@ -38,6 +40,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
   const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const { show } = useToast();
 
   // Get order (single index lookup - ordersById is keyed by DB UUID)
@@ -98,13 +101,26 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   };
 
   // Handle print receipt
-  const handlePrintReceipt = () => {
+  const handlePrintReceipt = async () => {
     onClose();
-    show({
-      title: "Print Receipt",
-      message: "Receipt printing coming soon",
-      type: "warning",
-    });
+
+    if (!order) {
+      show({ title: "Print Error", message: "No order data available.", type: "error" });
+      return;
+    }
+
+    if (!selectedStore) {
+      show({ title: "Print Error", message: "No store location selected.", type: "error" });
+      return;
+    }
+
+    const success = await PrinterService.printReceipt(order, selectedStore);
+
+    if (success) {
+      show({ title: "Receipt Sent", message: "Receipt sent to printer.", type: "success" });
+    } else {
+      show({ title: "No Printer", message: "No receipt printer configured for this location.", type: "warning" });
+    }
   };
 
   // Handle refund

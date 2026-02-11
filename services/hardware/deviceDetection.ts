@@ -8,6 +8,9 @@ import { Dimensions, PixelRatio, Platform } from "react-native";
 import { getJSON, setJSON } from "@/lib/storage";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { detectNativeHardware } from "@/native/HardwareDetection";
+import { StationPaymentTerminal } from "@/types/station";
+import { printerRowToConfig } from "@/types/printer";
+import { DejavooDriver } from "@/services/printing/drivers/DejavooDriver";
 
 // ============================================================================
 // TYPES
@@ -208,4 +211,242 @@ export async function detectAndStoreCapabilities(
   const capabilities = await detectDeviceCapabilities();
   await updateStationCapabilities(supabase, stationId, capabilities);
   return capabilities;
+}
+
+// ============================================================================
+// BUILTIN PRINTER AUTO-PROVISIONING
+// ============================================================================
+
+/**
+ * Ensures a `printers` row exists for devices with a built-in printer.
+ * Called once after hardware detection — if a matching row already exists,
+ * this is a no-op.
+ */
+export async function ensureBuiltinPrinterProvisioned(
+  supabase: SupabaseClient,
+  stationId: string,
+  locationId: string,
+  merchantId: string,
+  capabilities: DeviceCapabilities,
+): Promise<void> {
+  if (!capabilities.hasBuiltinPrinter) return;
+
+  // Check if a builtin printer row already exists for this station
+  const { data: existing, error: fetchError } = await supabase
+    .from("printers")
+    .select("id")
+    .eq("station_id", stationId)
+    .eq("printer_type", "builtin_landi")
+    .limit(1);
+
+  if (fetchError) {
+    console.error("[DeviceDetection] Failed to check existing printer:", fetchError.message);
+    return;
+  }
+
+  if (existing && existing.length > 0) {
+    console.log("[DeviceDetection] Builtin printer already provisioned:", existing[0].id);
+    return;
+  }
+
+  // Auto-provision a printer entry for the Landi built-in thermal printer
+  const { data: inserted, error: insertError } = await supabase
+    .from("printers")
+    .insert({
+      printer_name: `${capabilities.model} Built-in Printer`,
+      printer_model: capabilities.model,
+      printer_type: "builtin_landi",
+      printer_role: "receipt",
+      connection_type: "builtin",
+      paper_width: 58,
+      max_chars_per_line: 32,
+      supports_auto_cut: true,
+      supports_cash_drawer_kick: true,
+      supports_qr_code: true,
+      supports_barcode: false,
+      supports_logo: false,
+      is_default_receipt: true,
+      is_active: true,
+      is_connected: false,
+      location_id: locationId,
+      merchant_id: merchantId,
+      station_id: stationId,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    console.error("[DeviceDetection] Failed to auto-provision builtin printer:", insertError.message);
+  } else {
+    console.log("[DeviceDetection] Auto-provisioned builtin printer:", inserted?.id);
+  }
+}
+
+// ============================================================================
+// DEJAVOO PRINTER AUTO-PROVISIONING
+// ============================================================================
+
+/**
+ * Ensures a `printers` row exists for a Dejavoo P18 terminal linked to this station.
+ * Idempotent — if a `dejavoo_spin_p` row already exists for the station, this is a no-op.
+ * Returns the printer ID if provisioned (or already existing), null on failure.
+ */
+export async function ensureDejavooPrinterProvisioned(
+  supabase: SupabaseClient,
+  stationId: string,
+  locationId: string,
+  merchantId: string,
+  paymentTerminal: StationPaymentTerminal,
+): Promise<string | null> {
+  // Check if a dejavoo printer row already exists for this station
+  const { data: existing, error: fetchError } = await supabase
+    .from("printers")
+    .select("id")
+    .eq("station_id", stationId)
+    .eq("printer_type", "dejavoo_spin_p")
+    .limit(1);
+
+  if (fetchError) {
+    console.error("[DeviceDetection] Failed to check existing Dejavoo printer:", fetchError.message);
+    return null;
+  }
+
+  if (existing && existing.length > 0) {
+    console.log("[DeviceDetection] Dejavoo printer already provisioned:", existing[0].id);
+    return existing[0].id;
+  }
+
+  console.log("[DeviceDetection] Fetching terminal credentials for:", paymentTerminal.id);
+
+  // Fetch credentials via RPC to get the base URL and auth key
+  const { data: creds, error: credsError } = await supabase.rpc("get_terminal_credentials", {
+    p_terminal_id: paymentTerminal.id,
+  });
+
+  if (credsError || !creds?.success) {
+    console.error(
+      "[DeviceDetection] Failed to fetch terminal credentials:",
+      credsError?.message || creds?.error,
+    );
+    return null;
+  }
+
+  // Insert printer row with Dejavoo credentials in metadata
+  const { data: inserted, error: insertError } = await supabase
+    .from("printers")
+    .insert({
+      printer_name: `${paymentTerminal.terminal_name || "Dejavoo P18"} Printer`,
+      printer_model: paymentTerminal.terminal_model || "Dejavoo P18",
+      printer_type: "dejavoo_spin_p",
+      printer_role: "receipt",
+      connection_type: "network",
+      paper_width: 58,
+      max_chars_per_line: 32,
+      supports_auto_cut: true,
+      supports_cash_drawer_kick: false,
+      supports_qr_code: true,
+      supports_barcode: false,
+      supports_logo: false,
+      is_default_receipt: false,
+      is_active: true,
+      is_connected: false,
+      location_id: locationId,
+      merchant_id: merchantId,
+      station_id: stationId,
+      metadata: {
+        dejavooAuthKey: creds.auth_key,
+        dejavooTpn: creds.tpn,
+        dejavooRegisterId: paymentTerminal.register_id,
+        dejavooBaseUrl: creds.api_base_url,
+        paymentTerminalId: paymentTerminal.id,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    console.error("[DeviceDetection] Failed to auto-provision Dejavoo printer:", insertError.message);
+    return null;
+  }
+
+  console.log("[DeviceDetection] Auto-provisioned Dejavoo printer:", inserted?.id);
+  return inserted?.id ?? null;
+}
+
+// ============================================================================
+// DEJAVOO PRINTER VERIFICATION
+// ============================================================================
+
+/**
+ * Verifies a Dejavoo printer by sending a test page.
+ * On success: updates DB with is_connected: true, last_status: "verified".
+ * On failure: updates DB with is_connected: false, last_status: "verification_failed: ..."
+ * but keeps is_active: true (terminal may come online later).
+ */
+export async function verifyDejavooPrinter(
+  supabase: SupabaseClient,
+  printerId: string,
+): Promise<boolean> {
+  // Fetch the printer row
+  const { data: row, error: fetchError } = await supabase
+    .from("printers")
+    .select("*")
+    .eq("id", printerId)
+    .single();
+
+  if (fetchError || !row) {
+    console.error("[DeviceDetection] Failed to fetch Dejavoo printer row:", fetchError?.message);
+    return false;
+  }
+
+  const config = printerRowToConfig(row);
+  const driver = new DejavooDriver();
+
+  try {
+    await driver.initialize(config);
+
+    // Send a test page
+    await driver.printDocument({
+      nodes: [
+        { type: "text_line", content: "DEXA POS", align: "center", format: { bold: true, doubleHeight: true } },
+        { type: "empty_line" },
+        { type: "text_line", content: "Printer Test Page", align: "center" },
+        { type: "text_line", content: "Terminal Connected!", align: "center" },
+        { type: "empty_line" },
+        { type: "text_line", content: new Date().toLocaleString(), align: "center", format: { condensed: true } },
+        { type: "divider", style: "solid", lineWidth: 32 },
+        { type: "feed", lines: 3 },
+        { type: "cut" },
+      ],
+      maxCharsPerLine: 32,
+    });
+
+    // Update DB: verified
+    await supabase
+      .from("printers")
+      .update({
+        is_connected: true,
+        last_status: "verified",
+        last_status_at: new Date().toISOString(),
+      })
+      .eq("id", printerId);
+
+    console.log("[DeviceDetection] Dejavoo printer verified:", printerId);
+    return true;
+  } catch (e: any) {
+    // Update DB: verification failed, but keep active
+    await supabase
+      .from("printers")
+      .update({
+        is_connected: false,
+        last_status: `verification_failed: ${e.message}`,
+        last_status_at: new Date().toISOString(),
+      })
+      .eq("id", printerId);
+
+    console.warn("[DeviceDetection] Dejavoo printer verification failed:", e.message);
+    return false;
+  } finally {
+    await driver.disconnect();
+  }
 }

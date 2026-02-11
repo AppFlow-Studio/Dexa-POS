@@ -79,6 +79,9 @@ export interface OrderItem {
   item_name: string;
   item_description?: string;
   category_name?: string;
+  category_id?: string;
+  menu_id?: string;
+  menu_name?: string;
   quantity: number;
   unit_price: number;
   cash_price?: number;
@@ -214,6 +217,11 @@ export interface AddOrderItemParams {
 
   // Kitchen/Coursing
   p_course_number?: number;
+
+  // Menu/Category context
+  p_menu_id?: string;
+  p_menu_name?: string;
+  p_category_id?: string;
 }
 
 // Result from add_order_item RPC

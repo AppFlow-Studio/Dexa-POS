@@ -1,5 +1,6 @@
 import { calculateItemEffectiveCardPrice, calculateItemEffectiveCashPrice } from "@/lib/order-calculator";
 import { CartItem, OrderProfile } from "@/lib/types";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { SelectedLocation } from "@/stores/useStoreSettingsStore";
 import { Printer, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -497,9 +498,12 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const handlePrint = () => {
     if (onPrint) {
       onPrint();
-    } else {
-      // Default print behavior - could integrate with expo-print or a thermal printer SDK
-      console.log("Print receipt for order:", order?.id);
+    } else if (order && location) {
+      PrinterService.printReceipt(order, location).then((success) => {
+        if (!success) {
+          console.warn("[ReceiptModal] No receipt printer configured");
+        }
+      });
     }
   };
 

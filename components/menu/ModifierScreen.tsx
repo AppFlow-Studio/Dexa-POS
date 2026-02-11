@@ -1099,6 +1099,14 @@ const ModifierScreen = () => {
         return true;
       });
 
+      // Resolve category and menu names from IDs
+      const categoryName = catId
+        ? useMenuStore.getState().getCategoryById(catId)?.name
+        : undefined;
+      const menuName = mId
+        ? useMenuStore.getState().getMenuById(mId)?.name
+        : undefined;
+
       if (existingItem) {
         const draftItems = activeOrder?.items.filter(
           (i) => i.isDraft && i.menuItemId === baseItem.id,
@@ -1138,6 +1146,7 @@ const ModifierScreen = () => {
           isDraft: false,
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
+          category_name: categoryName || undefined,
           baseCardPrice: baseItem.price,
           baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };
@@ -1170,6 +1179,7 @@ const ModifierScreen = () => {
           isDraft: false,
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
+          category_name: categoryName || undefined,
           baseCardPrice: baseItem.price,
           baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };

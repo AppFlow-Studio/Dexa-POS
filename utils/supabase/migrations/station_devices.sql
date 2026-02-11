@@ -260,7 +260,7 @@ BEGIN
   -- Get encryption key from vault or config
   -- In production, use Supabase Vault: SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'terminal_encryption_key'
   v_encryption_key := current_setting('app.terminal_encryption_key', true);
-  IF v_encryption_key IS NULL THEN
+  IF v_encryption_key IS NULL OR v_encryption_key = '' THEN
     v_encryption_key := 'dexa-pos-terminal-key-change-in-production';
   END IF;
   
@@ -345,53 +345,62 @@ END;
 $$;
 
 -- Get decrypted terminal credentials (for API calls)
-CREATE OR REPLACE FUNCTION get_terminal_credentials(
-  p_terminal_id UUID
-)
+CREATE OR REPLACE FUNCTION get_terminal_credentials(p_terminal_id UUID)
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, extensions
 AS $$
 DECLARE
-  v_terminal RECORD;
-  v_encryption_key TEXT;
-  v_auth_key TEXT;
+  v_tpn TEXT;
+  v_auth_key TEXT;        -- Now storing plain text key
+  v_register_id TEXT;     -- Added register_id
+  v_api_environment TEXT;
+  v_spin_proxy_timeout INTEGER;
 BEGIN
-  -- Get encryption key
-  v_encryption_key := current_setting('app.terminal_encryption_key', true);
-  IF v_encryption_key IS NULL THEN
-    v_encryption_key := 'dexa-pos-terminal-key-change-in-production';
-  END IF;
-  
-  -- Verify user has access to this terminal
+  -- Direct select of plain text columns
   SELECT 
-    pt.*,
-    pgp_sym_decrypt(pt.auth_key_encrypted, v_encryption_key) as decrypted_auth_key
-  INTO v_terminal
+    pt.tpn, 
+    pt.auth_key, 
+    pt.register_id,
+    pt.api_environment, 
+    pt.spin_proxy_timeout
+  INTO 
+    v_tpn, 
+    v_auth_key, 
+    v_register_id,
+    v_api_environment, 
+    v_spin_proxy_timeout
   FROM payment_terminals pt
-  WHERE pt.id = p_terminal_id
+  WHERE 
+    -- We cast both sides to text to prevent "operator does not exist: uuid = text" errors
+    pt.id::text = p_terminal_id::text
     AND pt.merchant_id IN (
-      SELECT merchant_id FROM staff_profiles WHERE user_id = auth.uid()
+      SELECT sp.merchant_id 
+      FROM staff_profiles sp 
+      -- We cast the claim to text just in case user_id is text/uuid mismatch
+      WHERE sp.user_id::text = get_my_claim('sub')::text
     );
-  
+
   IF NOT FOUND THEN
     RETURN json_build_object(
       'success', false,
       'error', 'Terminal not found or access denied'
     );
   END IF;
-  
+
   RETURN json_build_object(
     'success', true,
-    'tpn', v_terminal.tpn,
-    'auth_key', v_terminal.decrypted_auth_key,
-    'api_environment', v_terminal.api_environment,
-    'api_base_url', CASE 
-      WHEN v_terminal.api_environment = 'production' 
+    'tpn', v_tpn,
+    'auth_key', v_auth_key,         -- Returning raw key
+    'register_id', v_register_id,   -- Returning register_id
+    'api_environment', v_api_environment,
+    'api_base_url', CASE
+      WHEN v_api_environment = 'production'
       THEN 'https://api.spinpos.net'
       ELSE 'https://test.spinpos.net/spin'
     END,
-    'spin_proxy_timeout', v_terminal.spin_proxy_timeout
+    'spin_proxy_timeout', v_spin_proxy_timeout
   );
 END;
 $$;

@@ -44,7 +44,7 @@ BEGIN
       'order_type', o.order_type,
       'table_name', o.table_number,
       'customer_name', o.customer_name,
-      'start_time', COALESCE(o.sent_to_kitchen_at, o.opened_at),
+      'start_time', COALESCE(o.sent_to_kitchen_at, o.created_at),
       'item_count', oi_grouped.item_count,
       'items', oi_grouped.items_json
     ) AS ticket
@@ -67,6 +67,10 @@ BEGIN
             'quantity', oi.quantity,
             'kitchen_status', COALESCE(oi.kitchen_status, 'sent'),
             'special_instructions', oi.special_instructions,
+            'category_name', oi.category_name,
+            'category_id', oi.category_id,
+            'menu_name', oi.menu_name,
+            'menu_id', oi.menu_id,
             'modifiers', (
               SELECT COALESCE(jsonb_agg(
                 jsonb_build_object(
@@ -86,7 +90,7 @@ BEGIN
       GROUP BY oi.order_id, COALESCE(oi.course_number, 1)
     ) oi_grouped ON oi_grouped.order_id = o.id
     WHERE o.location_id = p_location_id
-      AND o.status NOT IN ('completed', 'cancelled', 'void', 'voided', 'refunded')
+      AND o.status NOT IN ('completed', 'cancelled', 'void', 'refunded')
   ) sub;
 
   RETURN v_result;

@@ -6,30 +6,50 @@ import {
   ChefHat,
   ChevronDown,
   ChevronUp,
-  Edit3,
+  Cpu,
+  CreditCard,
   FileText,
   Minus,
   Monitor,
   Plus,
   Printer,
   Receipt,
+  RefreshCw,
   Settings2,
-  Trash2,
+  Smartphone,
+  Usb,
   Wifi,
-  X,
-  XCircle
+  XCircle,
+  Zap,
 } from "lucide-react-native";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { usePrinterStore } from "@/stores/usePrinterStore";
+import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import React, { useState } from "react";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
+  type PrinterConfig,
+  type PrinterConnectionType,
+  type PrinterDriverType,
+  type PrinterRole,
+} from "@/types/printer";
+import {
+  getCachedCapabilities,
+  detectDeviceCapabilities,
+  ensureDejavooPrinterProvisioned,
+  verifyDejavooPrinter,
+  type DeviceCapabilities,
+} from "@/services/hardware";
+import { formatDistanceToNow } from "date-fns";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import {
   Select,
@@ -40,16 +60,9 @@ import {
 } from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
 
-// Types
-interface PrinterDevice {
-  id: string;
-  name: string;
-  type: "receipt" | "kitchen" | "label";
-  connectionType: "wifi" | "bluetooth" | "usb";
-  status: "online" | "offline" | "paper_low";
-  ipAddress?: string;
-  isEnabled: boolean;
-}
+// ---------------------------------------------------------------------------
+// LOCAL TYPES (settings only — not printers)
+// ---------------------------------------------------------------------------
 
 interface ReceiptSettings {
   merchantCopies: number;
@@ -80,22 +93,141 @@ interface PrinterRoute {
   isEnabled: boolean;
 }
 
-type ModalType = "add" | "edit" | "delete" | null;
+// ---------------------------------------------------------------------------
+// STATUS HELPERS
+// ---------------------------------------------------------------------------
+
+function getPrinterStatusColor(printer: PrinterConfig): string {
+  if (printer.lastStatus === "verified") return "text-green-400";
+  if (printer.isConnected) return "text-green-400";
+  if (printer.lastStatus?.startsWith("verification_failed")) return "text-red-400";
+  if (printer.errorCount > 0) return "text-yellow-400";
+  return "text-gray-500";
+}
+
+function getPrinterStatusLabel(printer: PrinterConfig): string {
+  if (printer.lastStatus === "verified") return "Verified";
+  if (printer.isConnected) return "Online";
+  if (printer.lastStatus?.startsWith("verification_failed")) return "Verify Failed";
+  if (printer.errorCount > 0) return "Error";
+  return "Offline";
+}
+
+function getPrinterStatusIcon(printer: PrinterConfig): React.ReactNode {
+  if (printer.lastStatus === "verified" || printer.isConnected) {
+    return <CheckCircle2 size={14} color="#4ade80" />;
+  }
+  if (printer.lastStatus?.startsWith("verification_failed")) {
+    return <XCircle size={14} color="#f87171" />;
+  }
+  if (printer.errorCount > 0) {
+    return <AlertTriangle size={14} color="#facc15" />;
+  }
+  return <XCircle size={14} color="#6b7280" />;
+}
+
+function getConnectionIcon(connType: PrinterConnectionType): React.ReactNode {
+  switch (connType) {
+    case "network": return <Wifi size={12} color="#9ca3af" />;
+    case "bluetooth": return <Bluetooth size={12} color="#9ca3af" />;
+    case "usb": return <Usb size={12} color="#9ca3af" />;
+    case "builtin": return <Cpu size={12} color="#9ca3af" />;
+    default: return <Wifi size={12} color="#9ca3af" />;
+  }
+}
+
+function getRoleBadge(role: PrinterRole): { label: string; bgColor: string; textColor: string } {
+  switch (role) {
+    case "receipt": return { label: "Receipt", bgColor: "bg-blue-600/20", textColor: "text-blue-400" };
+    case "kitchen": return { label: "Kitchen", bgColor: "bg-orange-600/20", textColor: "text-orange-400" };
+    case "bar": return { label: "Bar", bgColor: "bg-purple-600/20", textColor: "text-purple-400" };
+    case "label": return { label: "Label", bgColor: "bg-teal-600/20", textColor: "text-teal-400" };
+    default: return { label: role, bgColor: "bg-gray-600/20", textColor: "text-gray-400" };
+  }
+}
+
+function getTypeBadge(type: PrinterDriverType): string {
+  switch (type) {
+    case "builtin_landi": return "Built-in";
+    case "dejavoo_spin_p": return "Dejavoo";
+    case "star_micronics": return "Star";
+    case "generic_escpos": return "ESC/POS";
+    default: return type;
+  }
+}
+
+function getRoleIcon(role: PrinterRole, color: string): React.ReactNode {
+  switch (role) {
+    case "receipt": return <Receipt size={20} color={color} />;
+    case "kitchen": return <ChefHat size={20} color={color} />;
+    case "bar": return <ChefHat size={20} color={color} />;
+    case "label": return <FileText size={20} color={color} />;
+    default: return <Printer size={20} color={color} />;
+  }
+}
+
+function getRelativeTime(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return formatDistanceToNow(new Date(iso), { addSuffix: true });
+  } catch {
+    return "—";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// COMPONENT
+// ---------------------------------------------------------------------------
 
 const PrintersKitchenScreen = () => {
+  const supabase = useSupabaseClient();
+
   // KDS settings from store
   const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
   const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
   const updateField = useStoreSettingsStore((s) => s.updateField);
 
-  // Printers state
-  const [printers, setPrinters] = useState<PrinterDevice[]>([
-    { id: "1", name: "Front Receipt Printer", type: "receipt", connectionType: "wifi", status: "online", ipAddress: "192.168.1.101", isEnabled: true },
-    { id: "2", name: "Kitchen Printer - Hot Line", type: "kitchen", connectionType: "wifi", status: "online", ipAddress: "192.168.1.102", isEnabled: true },
-    { id: "3", name: "Kitchen Printer - Cold Line", type: "kitchen", connectionType: "wifi", status: "paper_low", ipAddress: "192.168.1.103", isEnabled: true },
-    { id: "4", name: "Bar Printer", type: "kitchen", connectionType: "bluetooth", status: "offline", isEnabled: false },
-    { id: "5", name: "Label Printer", type: "label", connectionType: "usb", status: "online", isEnabled: true },
-  ]);
+  // Location & station
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+
+  // Printer store
+  const storedPrinters = usePrinterStore((s) => s.printers);
+  const fetchPrinters = usePrinterStore((s) => s.fetchPrinters);
+
+  // Print queue (reactive via selector on jobs array)
+  const jobs = usePrintQueueStore((s) => s.jobs);
+  const queuedJobCount = jobs.filter((j) => j.status === "queued" || j.status === "processing").length;
+  const failedJobCount = jobs.filter((j) => j.status === "failed").length;
+
+  // Device capabilities
+  const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(
+    getCachedCapabilities,
+  );
+  const [isRefreshingCapabilities, setIsRefreshingCapabilities] = useState(false);
+
+  // Dejavoo provisioning
+  const [isProvisioning, setIsProvisioning] = useState(false);
+  const [provisioningError, setProvisioningError] = useState<string | null>(null);
+
+  // Test print loading per printer
+  const [testPrintingId, setTestPrintingId] = useState<string | null>(null);
+
+  // Fetch real printers on mount
+  useEffect(() => {
+    if (selectedStore?.id) {
+      fetchPrinters(selectedStore.id);
+    }
+  }, [selectedStore?.id]);
+
+  // Derived
+  const paymentTerminal = selectedStation?.payment_terminal ?? null;
+  const hasDejavooPrinter = storedPrinters.some((p) => p.printerType === "dejavoo_spin_p");
+  const dejavooPrinter = storedPrinters.find((p) => p.printerType === "dejavoo_spin_p") ?? null;
+  const builtinPrinter = storedPrinters.find((p) => p.printerType === "builtin_landi") ?? null;
+  const kitchenPrinters = storedPrinters.filter(
+    (p) => p.printerRole === "kitchen" || p.printerRole === "bar",
+  );
 
   // Receipt settings state
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>({
@@ -122,35 +254,21 @@ const PrintersKitchenScreen = () => {
   });
 
   // Printer routing state
-  const [printerRoutes, setPrinterRoutes] = useState<PrinterRoute[]>([
-    { id: "1", category: "Main Course", printerId: "2", isEnabled: true },
-    { id: "2", category: "Appetizers", printerId: "3", isEnabled: true },
-    { id: "3", category: "Sides", printerId: "2", isEnabled: true },
-    { id: "4", category: "Drinks", printerId: "4", isEnabled: false },
-    { id: "5", category: "Desserts", printerId: "3", isEnabled: true },
-  ]);
+  const [printerRoutes, setPrinterRoutes] = useState<PrinterRoute[]>([]);
 
   // Categories from the app
   const categories = ["Main Course", "Appetizers", "Sides", "Drinks", "Desserts", "Specials"];
+  const availableCategories = categories.filter(
+    (c) => !printerRoutes.map((r) => r.category).includes(c),
+  );
 
   // Expanded sections state
   const [expandedSections, setExpandedSections] = useState({
+    devices: true,
     printers: true,
     receipt: true,
     kitchen: true,
     routing: true,
-  });
-
-  // Modal State
-  const [modalType, setModalType] = useState<ModalType>(null);
-  const [selectedPrinter, setSelectedPrinter] = useState<PrinterDevice | null>(null);
-  const [printerFormData, setPrinterFormData] = useState<Partial<PrinterDevice>>({
-    name: "",
-    type: "receipt",
-    connectionType: "wifi",
-    ipAddress: "",
-    isEnabled: true,
-    status: "online"
   });
 
   // Route Modal State
@@ -165,41 +283,6 @@ const PrintersKitchenScreen = () => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const getStatusColor = (status: PrinterDevice["status"]) => {
-    switch (status) {
-      case "online": return "text-green-400";
-      case "offline": return "text-gray-500";
-      case "paper_low": return "text-yellow-400";
-      default: return "text-gray-400";
-    }
-  };
-
-  const getStatusLabel = (status: PrinterDevice["status"]) => {
-    switch (status) {
-      case "online": return "Online";
-      case "offline": return "Offline";
-      case "paper_low": return "Paper Low";
-      default: return status;
-    }
-  };
-
-  const getStatusIcon = (status: PrinterDevice["status"]) => {
-    switch (status) {
-      case "online": return <CheckCircle2 size={14} color="#4ade80" />;
-      case "offline": return <XCircle size={14} color="#6b7280" />;
-      case "paper_low": return <AlertTriangle size={14} color="#facc15" />;
-      default: return null;
-    }
-  };
-
-  const togglePrinter = (id: string) => {
-    setPrinters((prev) => prev.map((p) => (p.id === id ? { ...p, isEnabled: !p.isEnabled } : p)));
-  };
-
-  const deletePrinter = (id: string) => {
-    setPrinters((prev) => prev.filter((p) => p.id !== id));
-  };
-
   const toggleRoute = (id: string) => {
     setPrinterRoutes((prev) => prev.map((r) => (r.id === id ? { ...r, isEnabled: !r.isEnabled } : r)));
   };
@@ -208,8 +291,68 @@ const PrintersKitchenScreen = () => {
     setPrinterRoutes((prev) => prev.map((r) => (r.id === routeId ? { ...r, printerId } : r)));
   };
 
-  const kitchenPrinters = printers.filter((p) => p.type === "kitchen");
-  const availableCategories = categories.filter(c => !printerRoutes.map(r => r.category).includes(c));
+  // ---------------------------------------------------------------------------
+  // HANDLERS
+  // ---------------------------------------------------------------------------
+
+  const handleRefreshCapabilities = async () => {
+    setIsRefreshingCapabilities(true);
+    try {
+      const caps = await detectDeviceCapabilities();
+      setDeviceCapabilities(caps);
+    } catch (e) {
+      console.warn("[PrintersKitchen] Failed to refresh capabilities:", e);
+    } finally {
+      setIsRefreshingCapabilities(false);
+    }
+  };
+
+  const handleProvisionDejavoo = async () => {
+    if (!paymentTerminal || !selectedStation || !selectedStore) return;
+    setIsProvisioning(true);
+    setProvisioningError(null);
+    try {
+      const printerId = await ensureDejavooPrinterProvisioned(
+        supabase,
+        selectedStation.id,
+        selectedStore.id,
+        selectedStore.merchant_id,
+        paymentTerminal,
+      );
+      if (printerId) {
+        const verified = await verifyDejavooPrinter(supabase, printerId);
+        await fetchPrinters(selectedStore.id);
+        if (verified) {
+          Alert.alert(
+            "Terminal Connected",
+            "The Dejavoo terminal printer has been successfully verified and is ready to use.",
+          );
+        } else {
+          Alert.alert(
+            "Verification Failed",
+            "The printer was provisioned but verification failed. The terminal may come online later.",
+          );
+        }
+      } else {
+        setProvisioningError("Failed to provision printer. Check terminal credentials.");
+      }
+    } catch (e: any) {
+      setProvisioningError(e.message || "Provisioning failed");
+    } finally {
+      setIsProvisioning(false);
+    }
+  };
+
+  const handleTestPrint = async (printer: PrinterConfig) => {
+    setTestPrintingId(printer.id);
+    try {
+      await PrinterService.printTestPage(printer);
+    } catch (e) {
+      console.warn("[PrintersKitchen] Test print failed:", e);
+    } finally {
+      setTestPrintingId(null);
+    }
+  };
 
   // Route Modal Helpers
   const openRouteModal = () => {
@@ -234,59 +377,13 @@ const PrintersKitchenScreen = () => {
       printerId: newRouteData.printerId,
       isEnabled: newRouteData.isEnabled,
     };
-    setPrinterRoutes(prev => [...prev, newRoute]);
+    setPrinterRoutes((prev) => [...prev, newRoute]);
     closeRouteModal();
   };
 
-  // Printer Modal Helpers
-  const openAddModal = () => {
-    setSelectedPrinter(null);
-    setPrinterFormData({ name: "", type: "receipt", connectionType: "wifi", ipAddress: "", isEnabled: true, status: "online" });
-    setModalType("add");
-  };
-
-  const openEditModal = (printer: PrinterDevice) => {
-    setSelectedPrinter(printer);
-    setPrinterFormData({ ...printer });
-    setModalType("edit");
-  };
-
-  const openDeleteModal = (printer: PrinterDevice) => {
-    setSelectedPrinter(printer);
-    setModalType("delete");
-  };
-
-  const closeModal = () => {
-    setModalType(null);
-    setSelectedPrinter(null);
-  };
-
-  const handleAddPrinter = () => {
-    if (!printerFormData.name) return;
-    const newPrinter: PrinterDevice = {
-      id: Date.now().toString(),
-      name: printerFormData.name,
-      type: printerFormData.type as PrinterDevice["type"],
-      connectionType: printerFormData.connectionType as PrinterDevice["connectionType"],
-      status: "online",
-      ipAddress: printerFormData.ipAddress,
-      isEnabled: true,
-    };
-    setPrinters(prev => [...prev, newPrinter]);
-    closeModal();
-  };
-
-  const handleEditPrinter = () => {
-    if (!selectedPrinter || !printerFormData.name) return;
-    setPrinters(prev => prev.map(p => p.id === selectedPrinter.id ? { ...p, ...printerFormData } as PrinterDevice : p));
-    closeModal();
-  };
-
-  const handleDeletePrinter = () => {
-    if (!selectedPrinter) return;
-    setPrinters(prev => prev.filter(p => p.id !== selectedPrinter.id));
-    closeModal();
-  };
+  // ---------------------------------------------------------------------------
+  // RENDER HELPERS
+  // ---------------------------------------------------------------------------
 
   const renderToggleRow = (label: string, description: string, value: boolean, onToggle: () => void) => (
     <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
@@ -298,298 +395,462 @@ const PrintersKitchenScreen = () => {
     </View>
   );
 
-  const renderPrinterCard = (printer: PrinterDevice) => (
-    <View key={printer.id} className={`bg-[#404040] p-4 rounded-xl border mb-3 ${printer.isEnabled ? "border-gray-600" : "border-gray-700 opacity-60"}`}>
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center flex-1">
-          <View className={`w-10 h-10 rounded-lg items-center justify-center mr-3 ${printer.type === "receipt" ? "bg-blue-600/20" : printer.type === "kitchen" ? "bg-orange-600/20" : "bg-purple-600/20"}`}>
-            {printer.type === "receipt" ? <Receipt size={20} color="#60a5fa" /> : printer.type === "kitchen" ? <ChefHat size={20} color="#f97316" /> : <FileText size={20} color="#a78bfa" />}
-          </View>
-          <View className="flex-1">
-            <Text className="text-white font-bold">{printer.name}</Text>
-            <View className="flex-row items-center mt-1">
-              {printer.connectionType === "wifi" ? <Wifi size={12} color="#9ca3af" /> : printer.connectionType === "bluetooth" ? <Bluetooth size={12} color="#9ca3af" /> : <ArrowRight size={12} color="#9ca3af" />}
-              <Text className="text-gray-400 text-xs ml-1">{printer.ipAddress || printer.connectionType.toUpperCase()}</Text>
-              <View className="flex-row items-center ml-3">
-                {getStatusIcon(printer.status)}
-                <Text className={`ml-1 text-xs ${getStatusColor(printer.status)}`}>{getStatusLabel(printer.status)}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-        <View className="flex-row items-center gap-2">
-          <Switch checked={printer.isEnabled} onCheckedChange={() => togglePrinter(printer.id)} />
-          <TouchableOpacity onPress={() => openEditModal(printer)} className="p-2 bg-[#505050] rounded-lg">
-            <Edit3 size={18} color="#9ca3af" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => openDeleteModal(printer)} className="p-2 bg-red-500/20 rounded-lg">
-            <Trash2 size={18} color="#f87171" />
-          </TouchableOpacity>
-        </View>
-      </View>
+  const renderCapBadge = (label: string, has: boolean) => (
+    <View
+      key={label}
+      className={`px-3 py-1.5 rounded-lg mr-2 mb-2 ${has ? "bg-green-600/20" : "bg-gray-700/40"}`}
+    >
+      <Text className={`text-xs font-medium ${has ? "text-green-400" : "text-gray-500"}`}>
+        {label}
+      </Text>
     </View>
   );
 
-  const renderPrinterModal = () => {
-    const isEdit = modalType === "edit";
+  const renderPrinterCard = (printer: PrinterConfig) => {
+    const role = getRoleBadge(printer.printerRole);
+    const roleIconColor =
+      printer.printerRole === "receipt"
+        ? "#60a5fa"
+        : printer.printerRole === "kitchen"
+          ? "#f97316"
+          : printer.printerRole === "bar"
+            ? "#a78bfa"
+            : "#2dd4bf";
+    const isTestPrinting = testPrintingId === printer.id;
+
     return (
-      <Modal visible={modalType === "add" || modalType === "edit"} transparent animationType="fade" onRequestClose={closeModal} statusBarTranslucent>
-        <View className="flex-1 justify-center items-center bg-black/60 px-6">
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="w-full max-w-[500px]">
-            <View className="bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden">
-              <View className="p-4 border-b border-gray-700 flex-row items-center justify-between">
-                <Text className="text-xl font-bold text-white">{isEdit ? "Edit Printer" : "Add Printer"}</Text>
-                <TouchableOpacity onPress={closeModal} className="p-2"><X size={24} color="#9ca3af" /></TouchableOpacity>
-              </View>
-              <View className="p-4 gap-y-4">
-                <View>
-                  <Text className="text-gray-300 font-medium mb-2">Printer Name</Text>
-                  <TextInput
-                    value={printerFormData.name}
-                    onChangeText={(text) => setPrinterFormData(prev => ({ ...prev, name: text }))}
-                    placeholder="Enter printer name"
-                    placeholderTextColor="#6b7280"
-                    className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white"
-                  />
-                </View>
-                <View>
-                  <Text className="text-gray-300 font-medium mb-2">Printer Type</Text>
-                  <View className="flex-row gap-2">
-                    {[{ value: 'receipt', label: 'Receipt' }, { value: 'kitchen', label: 'Kitchen' }, { value: 'label', label: 'Label' }].map(option => (
-                      <TouchableOpacity
-                        key={option.value}
-                        onPress={() => setPrinterFormData(prev => ({ ...prev, type: option.value as PrinterDevice['type'] }))}
-                        className={`flex-1 py-3 rounded-lg border ${printerFormData.type === option.value ? 'bg-blue-600 border-blue-500' : 'bg-[#404040] border-gray-600'}`}
-                      >
-                        <Text className={`text-center font-medium ${printerFormData.type === option.value ? 'text-white' : 'text-gray-400'}`}>{option.label}</Text>
-                      </TouchableOpacity>
-                    ))}
+      <View
+        key={printer.id}
+        className={`bg-[#404040] p-4 rounded-xl border mb-3 ${printer.isActive ? "border-gray-600" : "border-gray-700 opacity-60"}`}
+      >
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center flex-1">
+            <View className={`w-10 h-10 rounded-lg items-center justify-center mr-3 ${role.bgColor}`}>
+              {getRoleIcon(printer.printerRole, roleIconColor)}
+            </View>
+            <View className="flex-1">
+              <View className="flex-row items-center flex-wrap">
+                <Text className="text-white font-bold mr-2">{printer.printerName}</Text>
+                {printer.isDefaultReceipt && (
+                  <View className="bg-blue-600/30 px-2 py-0.5 rounded mr-1">
+                    <Text className="text-blue-300 text-[10px] font-medium">Default Receipt</Text>
                   </View>
-                </View>
-                <View>
-                  <Text className="text-gray-300 font-medium mb-2">Connection Type</Text>
-                  <View className="flex-row gap-2">
-                    {[{ value: 'wifi', label: 'WiFi' }, { value: 'bluetooth', label: 'Bluetooth' }, { value: 'usb', label: 'USB' }].map(option => (
-                      <TouchableOpacity
-                        key={option.value}
-                        onPress={() => setPrinterFormData(prev => ({ ...prev, connectionType: option.value as PrinterDevice['connectionType'] }))}
-                        className={`flex-1 py-3 rounded-lg border ${printerFormData.connectionType === option.value ? 'bg-green-600 border-green-500' : 'bg-[#404040] border-gray-600'}`}
-                      >
-                        <Text className={`text-center font-medium ${printerFormData.connectionType === option.value ? 'text-white' : 'text-gray-400'}`}>{option.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-                {printerFormData.connectionType === 'wifi' && (
-                  <View>
-                    <Text className="text-gray-300 font-medium mb-2">IP Address</Text>
-                    <TextInput
-                      value={printerFormData.ipAddress}
-                      onChangeText={(text) => setPrinterFormData(prev => ({ ...prev, ipAddress: text }))}
-                      placeholder="e.g. 192.168.1.100"
-                      placeholderTextColor="#6b7280"
-                      className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white"
-                      keyboardType="numeric"
-                    />
+                )}
+                {printer.isDefaultKitchen && (
+                  <View className="bg-orange-600/30 px-2 py-0.5 rounded mr-1">
+                    <Text className="text-orange-300 text-[10px] font-medium">Default Kitchen</Text>
                   </View>
                 )}
               </View>
-              <View className="p-4 border-t border-gray-700 flex-row gap-3">
-                <TouchableOpacity onPress={closeModal} className="flex-1 py-3 bg-[#404040] rounded-lg"><Text className="text-white font-medium text-center">Cancel</Text></TouchableOpacity>
-                <TouchableOpacity onPress={isEdit ? handleEditPrinter : handleAddPrinter} disabled={!printerFormData.name} className={`flex-1 py-3 rounded-lg ${printerFormData.name ? "bg-blue-600" : "bg-blue-600/50"}`}>
-                  <Text className="text-white font-medium text-center">{isEdit ? "Save Changes" : "Add Printer"}</Text>
-                </TouchableOpacity>
+              <View className="flex-row items-center mt-1 flex-wrap">
+                {getConnectionIcon(printer.connectionType)}
+                <Text className="text-gray-400 text-xs ml-1">
+                  {printer.networkAddress || printer.connectionType.toUpperCase()}
+                </Text>
+                <View className="flex-row items-center ml-3">
+                  {getPrinterStatusIcon(printer)}
+                  <Text className={`ml-1 text-xs ${getPrinterStatusColor(printer)}`}>
+                    {getPrinterStatusLabel(printer)}
+                  </Text>
+                </View>
+              </View>
+              <View className="flex-row items-center mt-1.5 flex-wrap">
+                <View className={`px-2 py-0.5 rounded mr-2 ${role.bgColor}`}>
+                  <Text className={`text-[10px] font-medium ${role.textColor}`}>{role.label}</Text>
+                </View>
+                <Text className="text-gray-500 text-[10px]">{getTypeBadge(printer.printerType)}</Text>
+                {printer.lastPrintAt && (
+                  <Text className="text-gray-500 text-[10px] ml-3">
+                    Last print: {getRelativeTime(printer.lastPrintAt)}
+                  </Text>
+                )}
+                {printer.errorCount > 0 && (
+                  <Text className="text-red-400 text-[10px] ml-3">
+                    {printer.errorCount} error{printer.errorCount > 1 ? "s" : ""}
+                  </Text>
+                )}
               </View>
             </View>
-          </KeyboardAvoidingView>
+          </View>
+          <TouchableOpacity
+            onPress={() => handleTestPrint(printer)}
+            disabled={isTestPrinting}
+            className="ml-3 p-2.5 bg-green-600/20 rounded-lg"
+          >
+            {isTestPrinting ? (
+              <ActivityIndicator size="small" color="#4ade80" />
+            ) : (
+              <Printer size={18} color="#4ade80" />
+            )}
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </View>
     );
   };
 
-  const renderDeleteModal = () => (
-    <Modal visible={modalType === "delete"} transparent animationType="fade" onRequestClose={closeModal} statusBarTranslucent>
-      <View className="flex-1 justify-center items-center bg-black/60 px-6">
-        <View className="w-full max-w-[450px] bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden">
-          <View className="p-6 items-center">
-            <View className="w-16 h-16 bg-red-500/20 rounded-full items-center justify-center mb-4"><AlertTriangle size={32} color="#f87171" /></View>
-            <Text className="text-xl font-bold text-white text-center mb-2">Remove Printer?</Text>
-            <Text className="text-gray-400 text-center">Are you sure you want to remove "{selectedPrinter?.name}"? This cannot be undone.</Text>
-          </View>
-          <View className="p-4 border-t border-gray-700 flex-row gap-3">
-            <TouchableOpacity onPress={closeModal} className="flex-1 py-3 bg-[#404040] rounded-lg"><Text className="text-white font-medium text-center">Cancel</Text></TouchableOpacity>
-            <TouchableOpacity onPress={handleDeletePrinter} className="flex-1 py-3 bg-red-600 rounded-lg"><Text className="text-white font-medium text-center">Remove</Text></TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const renderRouteModal = () => (
-    <Modal visible={routeModalVisible} transparent animationType="fade" onRequestClose={closeRouteModal} statusBarTranslucent>
-      <View className="flex-1 justify-center items-center bg-black/60 px-6">
-        <View className="w-full max-w-[450px] bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden">
-          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between">
-            <Text className="text-xl font-bold text-white">Add Category Route</Text>
-            <TouchableOpacity onPress={closeRouteModal} className="p-2"><X size={24} color="#9ca3af" /></TouchableOpacity>
-          </View>
-          <View className="p-4 gap-y-4">
-            {availableCategories.length === 0 ? (
-              <View className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-lg">
-                <Text className="text-yellow-400 text-center">All categories already have routes assigned.</Text>
-              </View>
-            ) : (
-              <>
-                <View>
-                  <Text className="text-gray-300 font-medium mb-2">Select Category</Text>
-                  <View className="flex-row flex-wrap gap-2">
-                    {availableCategories.map(cat => (
-                      <TouchableOpacity key={cat} onPress={() => setNewRouteData(prev => ({ ...prev, category: cat }))} className={`px-4 py-2 rounded-lg border ${newRouteData.category === cat ? 'bg-blue-600 border-blue-500' : 'bg-[#404040] border-gray-600'}`}>
-                        <Text className={`font-medium ${newRouteData.category === cat ? 'text-white' : 'text-gray-300'}`}>{cat}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-                <View>
-                  <Text className="text-gray-300 font-medium mb-2">Assign to Kitchen Printer</Text>
-                  {kitchenPrinters.length === 0 ? (
-                    <Text className="text-gray-500 text-sm">No kitchen printers available. Add one first.</Text>
-                  ) : (
-                    <View className="flex-row flex-wrap gap-2">
-                      {kitchenPrinters.map(printer => (
-                        <TouchableOpacity key={printer.id} onPress={() => setNewRouteData(prev => ({ ...prev, printerId: printer.id }))} className={`px-4 py-2 rounded-lg border ${newRouteData.printerId === printer.id ? 'bg-orange-600 border-orange-500' : 'bg-[#404040] border-gray-600'}`}>
-                          <Text className={`font-medium ${newRouteData.printerId === printer.id ? 'text-white' : 'text-gray-300'}`}>{printer.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-                <View className="flex-row items-center justify-between py-2">
-                  <Text className="text-white font-medium">Enable Route</Text>
-                  <Switch checked={newRouteData.isEnabled} onCheckedChange={(v) => setNewRouteData(prev => ({ ...prev, isEnabled: v }))} />
-                </View>
-              </>
-            )}
-          </View>
-          <View className="p-4 border-t border-gray-700 flex-row gap-3">
-            <TouchableOpacity onPress={closeRouteModal} className="flex-1 py-3 bg-[#404040] rounded-lg"><Text className="text-white font-medium text-center">Cancel</Text></TouchableOpacity>
-            <TouchableOpacity onPress={handleAddRoute} disabled={!newRouteData.category || !newRouteData.printerId || availableCategories.length === 0} className={`flex-1 py-3 rounded-lg ${newRouteData.category && newRouteData.printerId ? "bg-blue-600" : "bg-blue-600/50"}`}>
-              <Text className="text-white font-medium text-center">Add Route</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
   const renderSectionHeader = (title: string, icon: React.ReactNode, section: keyof typeof expandedSections) => (
-    <TouchableOpacity onPress={() => toggleSection(section)} className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700">
+    <TouchableOpacity
+      onPress={() => toggleSection(section)}
+      className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700"
+    >
       <View className="flex-row items-center">
         <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">{icon}</View>
         <Text className="text-white font-bold text-lg">{title}</Text>
       </View>
-      {expandedSections[section] ? <ChevronUp size={20} color="#9ca3af" /> : <ChevronDown size={20} color="#9ca3af" />}
+      {expandedSections[section] ? (
+        <ChevronUp size={20} color="#9ca3af" />
+      ) : (
+        <ChevronDown size={20} color="#9ca3af" />
+      )}
     </TouchableOpacity>
   );
 
+  // ---------------------------------------------------------------------------
+  // MAIN RENDER
+  // ---------------------------------------------------------------------------
+
   return (
     <View className="flex-1 bg-[#212121] p-6">
-      {renderPrinterModal()}
-      {renderDeleteModal()}
-      {renderRouteModal()}
-
+      {/* Page Header */}
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Printers & Kitchen</Text>
-        <Text className="text-gray-400 mt-2">Configure receipt printers, kitchen display systems, and ticket routing.</Text>
+        <Text className="text-gray-400 mt-2">
+          Configure receipt printers, kitchen display systems, and ticket routing.
+        </Text>
       </View>
 
       <View className="h-px w-full bg-gray-700 mb-6" />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Printer Management */}
+        {/* ================================================================ */}
+        {/* CONNECTED DEVICES SECTION                                        */}
+        {/* ================================================================ */}
+        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          {renderSectionHeader("Connected Devices", <Smartphone size={20} color="#60a5fa" />, "devices")}
+          {expandedSections.devices && (
+            <View className="p-5">
+              {/* Station Identity */}
+              <View className="flex-row items-center justify-between mb-4">
+                <View>
+                  <Text className="text-white font-bold text-base">
+                    {selectedStation?.station_name || "No Station"}
+                  </Text>
+                  <Text className="text-gray-400 text-sm">
+                    {selectedStation?.station_type
+                      ? selectedStation.station_type.charAt(0).toUpperCase() +
+                        selectedStation.station_type.slice(1)
+                      : "Not connected"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleRefreshCapabilities}
+                  disabled={isRefreshingCapabilities}
+                  className="p-2.5 bg-[#404040] rounded-lg"
+                >
+                  {isRefreshingCapabilities ? (
+                    <ActivityIndicator size="small" color="#60a5fa" />
+                  ) : (
+                    <RefreshCw size={18} color="#60a5fa" />
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Device Capabilities */}
+              {deviceCapabilities && (
+                <View className="bg-[#404040] p-4 rounded-xl border border-gray-600 mb-4">
+                  <Text className="text-gray-300 text-xs mb-2">
+                    {deviceCapabilities.manufacturer} {deviceCapabilities.model}
+                  </Text>
+                  <View className="flex-row flex-wrap">
+                    {renderCapBadge("Printer", deviceCapabilities.hasBuiltinPrinter)}
+                    {renderCapBadge("NFC", deviceCapabilities.hasNfc)}
+                    {renderCapBadge("Scanner", deviceCapabilities.hasBarcodeScanner)}
+                    {renderCapBadge("Cash Drawer", deviceCapabilities.hasCashDrawerPort)}
+                    {renderCapBadge("CFD", deviceCapabilities.hasBuiltinCfd)}
+                  </View>
+                </View>
+              )}
+
+              {/* Built-in Printer Card */}
+              {builtinPrinter && (
+                <View className="bg-[#404040] p-4 rounded-xl border border-gray-600 mb-4">
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-row items-center flex-1">
+                      <Cpu size={18} color="#4ade80" />
+                      <Text className="text-white font-medium ml-2">Built-in Printer</Text>
+                      <View className="flex-row items-center ml-3">
+                        {getPrinterStatusIcon(builtinPrinter)}
+                        <Text className={`ml-1 text-xs ${getPrinterStatusColor(builtinPrinter)}`}>
+                          {getPrinterStatusLabel(builtinPrinter)}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleTestPrint(builtinPrinter)}
+                      disabled={testPrintingId === builtinPrinter.id}
+                      className="p-2 bg-green-600/20 rounded-lg"
+                    >
+                      {testPrintingId === builtinPrinter.id ? (
+                        <ActivityIndicator size="small" color="#4ade80" />
+                      ) : (
+                        <Printer size={16} color="#4ade80" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {/* Payment Terminal Card */}
+              {paymentTerminal ? (
+                <View className="bg-[#404040] p-4 rounded-xl border border-gray-600">
+                  <View className="flex-row items-center mb-3">
+                    <CreditCard size={18} color="#a78bfa" />
+                    <Text className="text-white font-medium ml-2">
+                      {paymentTerminal.terminal_name}
+                    </Text>
+                    <View className={`ml-3 w-2 h-2 rounded-full ${paymentTerminal.is_connected ? "bg-green-400" : "bg-gray-500"}`} />
+                  </View>
+                  <View className="flex-row flex-wrap mb-2">
+                    <Text className="text-gray-400 text-xs mr-4">
+                      Type: {paymentTerminal.terminal_type}
+                    </Text>
+                    {paymentTerminal.terminal_model && (
+                      <Text className="text-gray-400 text-xs mr-4">
+                        Model: {paymentTerminal.terminal_model}
+                      </Text>
+                    )}
+                    <Text className="text-gray-400 text-xs">
+                      Status: {paymentTerminal.last_connection_status || "Unknown"}
+                    </Text>
+                  </View>
+
+                  {/* Dejavoo printer provisioning / status */}
+                  {paymentTerminal.terminal_type === "dejavoo" && !hasDejavooPrinter && (
+                    <View className="mt-3 pt-3 border-t border-gray-600">
+                      <Text className="text-gray-300 text-sm mb-2">
+                        This terminal has a built-in printer that hasn't been set up yet.
+                      </Text>
+                      <TouchableOpacity
+                        onPress={handleProvisionDejavoo}
+                        disabled={isProvisioning}
+                        className="bg-blue-600 px-4 py-2.5 rounded-lg flex-row items-center justify-center"
+                      >
+                        {isProvisioning ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <>
+                            <Plus size={16} color="white" />
+                            <Text className="text-white font-medium ml-2">Provision Printer</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                      {provisioningError && (
+                        <Text className="text-red-400 text-xs mt-2">{provisioningError}</Text>
+                      )}
+                    </View>
+                  )}
+
+                  {paymentTerminal.terminal_type === "dejavoo" && dejavooPrinter && (
+                    <View className="mt-3 pt-3 border-t border-gray-600">
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-row items-center">
+                          <Printer size={16} color="#a78bfa" />
+                          <Text className="text-gray-300 text-sm ml-2">Terminal Printer</Text>
+                          <View className="flex-row items-center ml-3">
+                            {getPrinterStatusIcon(dejavooPrinter)}
+                            <Text className={`ml-1 text-xs ${getPrinterStatusColor(dejavooPrinter)}`}>
+                              {getPrinterStatusLabel(dejavooPrinter)}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => handleTestPrint(dejavooPrinter)}
+                          disabled={testPrintingId === dejavooPrinter.id}
+                          className="p-2 bg-green-600/20 rounded-lg"
+                        >
+                          {testPrintingId === dejavooPrinter.id ? (
+                            <ActivityIndicator size="small" color="#4ade80" />
+                          ) : (
+                            <Printer size={16} color="#4ade80" />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View className="bg-[#404040] p-4 rounded-xl border border-dashed border-gray-600 items-center">
+                  <CreditCard size={24} color="#6b7280" />
+                  <Text className="text-gray-500 text-sm mt-2">No payment terminal linked</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* ================================================================ */}
+        {/* PRINTER MANAGEMENT SECTION                                       */}
+        {/* ================================================================ */}
         <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader("Printer Management", <Printer size={20} color="#60a5fa" />, "printers")}
           {expandedSections.printers && (
             <View className="p-5">
+              {/* Print Queue Banner */}
+              {(queuedJobCount > 0 || failedJobCount > 0) && (
+                <View className="flex-row items-center bg-[#404040] border border-gray-600 rounded-xl px-4 py-3 mb-4">
+                  <Zap size={16} color="#60a5fa" />
+                  <Text className="text-gray-300 ml-2 text-sm">Print Queue:</Text>
+                  {queuedJobCount > 0 && (
+                    <View className="flex-row items-center ml-3">
+                      <View className="w-2 h-2 rounded-full bg-blue-400 mr-1.5" />
+                      <Text className="text-blue-400 text-sm font-medium">{queuedJobCount} queued</Text>
+                    </View>
+                  )}
+                  {failedJobCount > 0 && (
+                    <View className="flex-row items-center ml-3">
+                      <View className="w-2 h-2 rounded-full bg-red-400 mr-1.5" />
+                      <Text className="text-red-400 text-sm font-medium">{failedJobCount} failed</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
               <View className="flex-row justify-between items-center mb-4">
-                <Text className="text-gray-400 text-sm">Manage connected printers and their settings.</Text>
-                <TouchableOpacity onPress={openAddModal} className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center">
-                  <Plus size={16} color="white" />
-                  <Text className="text-white font-medium ml-2">Add Printer</Text>
+                <Text className="text-gray-400 text-sm">
+                  {storedPrinters.length} printer{storedPrinters.length !== 1 ? "s" : ""} configured
+                </Text>
+                <TouchableOpacity
+                  onPress={() => PrinterService.printTestPage()}
+                  className="bg-green-600 px-4 py-2 rounded-lg flex-row items-center"
+                >
+                  <Printer size={16} color="white" />
+                  <Text className="text-white font-medium ml-2">Test Print</Text>
                 </TouchableOpacity>
               </View>
-              {printers.map(renderPrinterCard)}
+
+              {storedPrinters.length === 0 ? (
+                <View className="items-center py-8">
+                  <Printer size={40} color="#6b7280" />
+                  <Text className="text-gray-500 text-sm mt-3">No printers configured</Text>
+                  <Text className="text-gray-600 text-xs mt-1">
+                    Printers are auto-provisioned when hardware is detected
+                  </Text>
+                </View>
+              ) : (
+                storedPrinters.map(renderPrinterCard)
+              )}
             </View>
           )}
         </View>
 
-        {/* Receipt Settings */}
+        {/* ================================================================ */}
+        {/* RECEIPT SETTINGS                                                 */}
+        {/* ================================================================ */}
         <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader("Receipt Settings", <Receipt size={20} color="#4ade80" />, "receipt")}
           {expandedSections.receipt && (
             <View className="p-5">
-              {renderToggleRow("Show Tax Breakdown", "Display itemized tax on receipts", receiptSettings.showTaxBreakdown, () => setReceiptSettings(prev => ({ ...prev, showTaxBreakdown: !prev.showTaxBreakdown })))}
-              {renderToggleRow("Show Itemized List", "Display individual items on receipts", receiptSettings.showItemizedList, () => setReceiptSettings(prev => ({ ...prev, showItemizedList: !prev.showItemizedList })))}
-              {renderToggleRow("Show Tip Options", "Print suggested tip amounts", receiptSettings.showTips, () => setReceiptSettings(prev => ({ ...prev, showTips: !prev.showTips })))}
+              {renderToggleRow("Show Tax Breakdown", "Display itemized tax on receipts", receiptSettings.showTaxBreakdown, () => setReceiptSettings((prev) => ({ ...prev, showTaxBreakdown: !prev.showTaxBreakdown })))}
+              {renderToggleRow("Show Itemized List", "Display individual items on receipts", receiptSettings.showItemizedList, () => setReceiptSettings((prev) => ({ ...prev, showItemizedList: !prev.showItemizedList })))}
+              {renderToggleRow("Show Tip Options", "Print suggested tip amounts", receiptSettings.showTips, () => setReceiptSettings((prev) => ({ ...prev, showTips: !prev.showTips })))}
               <View className="mt-4">
                 <Text className="text-gray-300 font-medium mb-2">Footer Message</Text>
-                <TextInput value={receiptSettings.footerMessage} onChangeText={(t) => setReceiptSettings(prev => ({ ...prev, footerMessage: t }))} className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white" placeholder="Thank you message" placeholderTextColor="#6b7280" />
+                <TextInput
+                  value={receiptSettings.footerMessage}
+                  onChangeText={(t) => setReceiptSettings((prev) => ({ ...prev, footerMessage: t }))}
+                  className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white"
+                  placeholder="Thank you message"
+                  placeholderTextColor="#6b7280"
+                />
               </View>
             </View>
           )}
         </View>
 
-        {/* Kitchen Ticket Settings */}
+        {/* ================================================================ */}
+        {/* KITCHEN TICKET SETTINGS                                          */}
+        {/* ================================================================ */}
         <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader("Kitchen Ticket Settings", <ChefHat size={20} color="#f97316" />, "kitchen")}
           {expandedSections.kitchen && (
             <View className="p-5">
-              {renderToggleRow("Auto-Fire Tickets", "Automatically send to kitchen when order is placed", kitchenSettings.autoFire, () => setKitchenSettings(prev => ({ ...prev, autoFire: !prev.autoFire })))}
-              {renderToggleRow("Print Void Tickets", "Print ticket when items are voided", kitchenSettings.printVoidTickets, () => setKitchenSettings(prev => ({ ...prev, printVoidTickets: !prev.printVoidTickets })))}
-              {renderToggleRow("Show Guest Count", "Display number of guests on ticket", kitchenSettings.showGuestCount, () => setKitchenSettings(prev => ({ ...prev, showGuestCount: !prev.showGuestCount })))}
-              {renderToggleRow("Show Modifiers", "Display modifiers on kitchen tickets", kitchenSettings.showModifiers, () => setKitchenSettings(prev => ({ ...prev, showModifiers: !prev.showModifiers })))}
-              {renderToggleRow("Show Course Number", "Display course number on tickets", kitchenSettings.showCourseNumber, () => setKitchenSettings(prev => ({ ...prev, showCourseNumber: !prev.showCourseNumber })))}
-              {renderToggleRow("Show Server Name", "Display server name on tickets", kitchenSettings.showServerName, () => setKitchenSettings(prev => ({ ...prev, showServerName: !prev.showServerName })))}
-              {renderToggleRow("Large Font", "Use larger font size for better visibility", kitchenSettings.largeFont, () => setKitchenSettings(prev => ({ ...prev, largeFont: !prev.largeFont })))}
+              {renderToggleRow("Auto-Fire Tickets", "Automatically send to kitchen when order is placed", kitchenSettings.autoFire, () => setKitchenSettings((prev) => ({ ...prev, autoFire: !prev.autoFire })))}
+              {renderToggleRow("Print Void Tickets", "Print ticket when items are voided", kitchenSettings.printVoidTickets, () => setKitchenSettings((prev) => ({ ...prev, printVoidTickets: !prev.printVoidTickets })))}
+              {renderToggleRow("Show Guest Count", "Display number of guests on ticket", kitchenSettings.showGuestCount, () => setKitchenSettings((prev) => ({ ...prev, showGuestCount: !prev.showGuestCount })))}
+              {renderToggleRow("Show Modifiers", "Display modifiers on kitchen tickets", kitchenSettings.showModifiers, () => setKitchenSettings((prev) => ({ ...prev, showModifiers: !prev.showModifiers })))}
+              {renderToggleRow("Show Course Number", "Display course number on tickets", kitchenSettings.showCourseNumber, () => setKitchenSettings((prev) => ({ ...prev, showCourseNumber: !prev.showCourseNumber })))}
+              {renderToggleRow("Show Server Name", "Display server name on tickets", kitchenSettings.showServerName, () => setKitchenSettings((prev) => ({ ...prev, showServerName: !prev.showServerName })))}
+              {renderToggleRow("Large Font", "Use larger font size for better visibility", kitchenSettings.largeFont, () => setKitchenSettings((prev) => ({ ...prev, largeFont: !prev.largeFont })))}
             </View>
           )}
         </View>
 
-        {/* Printer Routing */}
+        {/* ================================================================ */}
+        {/* PRINTER ROUTING                                                  */}
+        {/* ================================================================ */}
         <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader("Printer Routing", <Settings2 size={20} color="#a78bfa" />, "routing")}
           {expandedSections.routing && (
             <View className="p-5">
-              <Text className="text-gray-400 text-sm mb-4">Route menu categories to specific kitchen printers.</Text>
+              <Text className="text-gray-400 text-sm mb-4">
+                Route menu categories to specific kitchen printers.
+              </Text>
               {printerRoutes.map((route) => {
-                const assignedPrinter = printers.find((p) => p.id === route.printerId);
+                const assignedPrinter = storedPrinters.find((p) => p.id === route.printerId);
                 return (
-                  <View key={route.id} className={`bg-[#404040] p-3 rounded-xl border border-gray-600 mb-2 ${!route.isEnabled ? "opacity-50" : ""}`}>
+                  <View
+                    key={route.id}
+                    className={`bg-[#404040] p-3 rounded-xl border border-gray-600 mb-2 ${!route.isEnabled ? "opacity-50" : ""}`}
+                  >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-row items-center flex-1">
                         <Switch checked={route.isEnabled} onCheckedChange={() => toggleRoute(route.id)} />
                         <Text className="text-white font-medium ml-3">{route.category}</Text>
                         <ArrowRight size={16} color="#6b7280" className="mx-2" />
                         <View className="flex-1 ml-2">
-                          <Select value={assignedPrinter ? { value: assignedPrinter.id, label: assignedPrinter.name } : undefined} onValueChange={(option) => updateRoutePrinter(route.id, option?.value || "")}>
-                            <SelectTrigger className="bg-[#505050] border-gray-600"><SelectValue placeholder="Select printer" className="text-white" /></SelectTrigger>
+                          <Select
+                            value={
+                              assignedPrinter
+                                ? { value: assignedPrinter.id, label: assignedPrinter.printerName }
+                                : undefined
+                            }
+                            onValueChange={(option) =>
+                              updateRoutePrinter(route.id, option?.value || "")
+                            }
+                          >
+                            <SelectTrigger className="bg-[#505050] border-gray-600">
+                              <SelectValue placeholder="Select printer" className="text-white" />
+                            </SelectTrigger>
                             <SelectContent className="bg-[#404040] border-gray-600">
-                              {kitchenPrinters.map((printer) => (<SelectItem key={printer.id} value={printer.id} label={printer.name}>{printer.name}</SelectItem>))}
+                              {kitchenPrinters.map((printer) => (
+                                <SelectItem
+                                  key={printer.id}
+                                  value={printer.id}
+                                  label={printer.printerName}
+                                >
+                                  {printer.printerName}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </View>
                       </View>
                       {assignedPrinter && (
                         <View className="flex-row items-center ml-2">
-                          {getStatusIcon(assignedPrinter.status)}
-                          <Text className={`ml-1 text-sm ${getStatusColor(assignedPrinter.status)}`}>{getStatusLabel(assignedPrinter.status)}</Text>
+                          {getPrinterStatusIcon(assignedPrinter)}
+                          <Text className={`ml-1 text-sm ${getPrinterStatusColor(assignedPrinter)}`}>
+                            {getPrinterStatusLabel(assignedPrinter)}
+                          </Text>
                         </View>
                       )}
                     </View>
                   </View>
                 );
               })}
-              <TouchableOpacity onPress={openRouteModal} className="bg-[#404040] p-4 rounded-xl border border-dashed border-gray-600 flex-row items-center justify-center">
+              <TouchableOpacity
+                onPress={openRouteModal}
+                className="bg-[#404040] p-4 rounded-xl border border-dashed border-gray-600 flex-row items-center justify-center"
+              >
                 <Plus size={20} color="#60a5fa" />
                 <Text className="text-blue-400 font-medium ml-2">Add Category Route</Text>
               </TouchableOpacity>
@@ -597,7 +858,9 @@ const PrintersKitchenScreen = () => {
           )}
         </View>
 
-        {/* KDS Auto-Fire Section */}
+        {/* ================================================================ */}
+        {/* KDS AUTO-FIRE SECTION                                            */}
+        {/* ================================================================ */}
         <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
           <View className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700">
             <View className="flex-row items-center">
@@ -631,15 +894,17 @@ const PrintersKitchenScreen = () => {
                 </View>
                 <View className="flex-row gap-2 justify-end">
                   <TouchableOpacity
-                    onPress={() => updateField("kdsAutoFireDelayMinutes",
-                      Math.max(1, kdsAutoFireDelayMinutes - 1))}
+                    onPress={() =>
+                      updateField("kdsAutoFireDelayMinutes", Math.max(1, kdsAutoFireDelayMinutes - 1))
+                    }
                     className="bg-gray-700 px-4 py-2 rounded-lg"
                   >
                     <Minus size={18} color="white" />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => updateField("kdsAutoFireDelayMinutes",
-                      Math.min(30, kdsAutoFireDelayMinutes + 1))}
+                    onPress={() =>
+                      updateField("kdsAutoFireDelayMinutes", Math.min(30, kdsAutoFireDelayMinutes + 1))
+                    }
                     className="bg-gray-700 px-4 py-2 rounded-lg"
                   >
                     <Plus size={18} color="white" />
