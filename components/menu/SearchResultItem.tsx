@@ -3,6 +3,7 @@ import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Plus } from "lucide-react-native";
 import React from "react";
@@ -26,11 +27,10 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
   const openDialog = useCustomizationStore((state) => state.openToAdd);
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const { openFullscreen } = useModifierSidebarStore();
   const { show } = useToast();
 
-  const activeOrder = ordersById[activeOrderId ?? ""];
+  const activeOrder = useActiveOrder();
 
   const handleAddToCart = () => {
     if (isDisabled) return;

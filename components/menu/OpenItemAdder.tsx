@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useState } from "react";
 import {
@@ -13,7 +14,6 @@ import { ScrollView } from "react-native-gesture-handler";
 
 const OpenItemAdder = () => {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
   const { show } = useToast();
 
@@ -100,7 +100,7 @@ const OpenItemAdder = () => {
     }
 
     // Check if the active order is closed
-    const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+    const activeOrder = useOrderStore.getState().ordersById[activeOrderId ?? ""];
     if (activeOrder?.order_status === "completed") {
       show({
         title: "Order Closed",

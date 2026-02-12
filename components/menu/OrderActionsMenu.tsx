@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -37,18 +38,14 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   onViewDetails,
   position,
 }) => {
-  const ordersById = useOrderStore((s) => s.ordersById);
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
   const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const { show } = useToast();
 
-  // Get order (single index lookup - ordersById is keyed by DB UUID)
-  const order = useMemo(() => {
-    if (!orderId) return null;
-    return ordersById[orderId] || null;
-  }, [orderId, ordersById]);
+  // Get order (single index lookup - benefits from immer structural sharing)
+  const order = useOrder(orderId);
 
   // Handle add to bill
   const handleAddToBill = () => {

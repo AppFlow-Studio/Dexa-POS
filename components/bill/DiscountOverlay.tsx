@@ -1,4 +1,5 @@
 import { CartItem, Discount } from "@/lib/types";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -55,12 +56,10 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
   const translateY = useSharedValue(SCREEN_HEIGHT);
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const applyDiscountToCheck = useOrderStore((s) => s.applyDiscountToCheck);
   const applyDiscountToItem = useOrderStore((s) => s.applyDiscountToItem);
   const removeDiscountFromItem = useOrderStore((s) => s.removeDiscountFromItem);
-
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  const activeOrder = useActiveOrder();
   const cartItems = activeOrder?.items || [];
 
   const animatedStyle = useAnimatedStyle(() => {

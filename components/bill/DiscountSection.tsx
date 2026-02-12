@@ -1,3 +1,4 @@
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Tag, X } from "lucide-react-native";
 import React from "react";
@@ -11,10 +12,8 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   onOpenDiscounts,
 }) => {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const removeCheckDiscount = useOrderStore((s) => s.removeCheckDiscount);
-
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  const activeOrder = useActiveOrder();
   const appliedDiscount = activeOrder?.checkDiscount;
 
   const handleRemoveDiscount = () => {

@@ -5,6 +5,7 @@ import {
   getEligibleDiscounts,
 } from "@/services/discountEligibility";
 import { getDailyUsageCounts } from "@/services/discountUsageTracker";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -36,7 +37,6 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   const [customDiscountValue, setCustomDiscountValue] = useState("");
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const applyDiscountToCheck = useOrderStore((s) => s.applyDiscountToCheck);
   const applyDiscountToItem = useOrderStore((s) => s.applyDiscountToItem);
   const removeDiscountFromItem = useOrderStore((s) => s.removeDiscountFromItem);
@@ -45,7 +45,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
 
   const { data: discounts = [] } = useDiscounts();
 
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  const activeOrder = useActiveOrder();
   const cartItems = activeOrder?.items || [];
   const itemsWithAvailableDiscounts = cartItems.filter(
     (item) => !!item.availableDiscount,

@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -19,7 +20,6 @@ const PaymentSuccessView = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
 
   const [isPrinting, setIsPrinting] = useState(false);
   // const { addSaleEvent, forceRefresh } = useAnalyticsStore();
@@ -31,7 +31,7 @@ const PaymentSuccessView = () => {
     usePaymentStore.getState().setPaymentClean();
   }, []);
 
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  const activeOrder = useActiveOrder();
   const items = activeOrder?.items || [];
   // console.log("[PaymentSuccessView] items", items);
   // console.log("[PaymentSuccessView] activeOrder", activeOrder);

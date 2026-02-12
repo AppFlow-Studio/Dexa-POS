@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { ChevronDown, Minus, Plus } from "lucide-react-native";
 
@@ -31,10 +32,9 @@ interface OrderInfoHeaderProps {
 const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const tablesById = useFloorPlanStore((s) => s.tablesById);
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  const activeOrder = useActiveOrder();
 
   const [numberOfGuests, setNumberOfGuests] = useState(1);
 

@@ -11,7 +11,7 @@ import {
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { PaymentErrorModal } from "@/components/bill/paymentView/PaymentErrorModal";
 import { toastService } from "@/lib/toastService";
-import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
+import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
@@ -31,7 +31,6 @@ const CashPaymentView = () => {
   // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const orderTotals = useActiveOrderTotals();
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const close = usePaymentStore((s) => s.close);
@@ -96,7 +95,7 @@ const CashPaymentView = () => {
   const TIP_PRESETS = [18, 20, 25];
 
   // Get the active order for backend cash_amount_due
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+  const activeOrder = useActiveOrder();
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY (CASH PRICING) ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);

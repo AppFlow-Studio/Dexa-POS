@@ -10,6 +10,7 @@ import {
     processCustomerQueue,
 } from "@/services/customer";
 import { getIsOnline } from "@/services/offlineSyncService";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -55,8 +56,7 @@ const CustomerSheet: React.FC = () => {
   const { isOpen, closeSheet } = useCustomerSheetStore();
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
-  const ordersById = useOrderStore((s) => s.ordersById);
-  const order = ordersById[activeOrderId ?? ""];
+  const order = useActiveOrder();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { show } = useToast();
   const supabase = useSupabaseClient();

@@ -514,6 +514,36 @@ export const useRemoteOrders = useOtherStationOrders;
 export const useRemoteOrderCount = useOtherStationOrderCount;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Single Order by ID (granular - benefits from immer structural sharing)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Subscribe to a specific order by its local ID.
+ * With immer middleware, this returns a referentially stable object
+ * for orders that haven't been mutated, preventing unnecessary re-renders.
+ */
+export function useOrder(orderId: string | null | undefined): OrderProfile | null {
+  return useOrderStore((s) =>
+    orderId ? s.ordersById[orderId] ?? null : null
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Active Order (granular - replaces ordersById[activeOrderId] pattern)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Subscribe to only the active order.
+ * Replaces the common pattern: `const ordersById = useOrderStore(s => s.ordersById); ordersById[activeOrderId]`
+ * With immer, only re-renders when the active order itself changes, not when other orders change.
+ */
+export function useActiveOrder(): OrderProfile | null {
+  return useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] ?? null : null
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Check if order is from current station
 // ═══════════════════════════════════════════════════════════════════════════
 

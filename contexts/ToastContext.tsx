@@ -1,26 +1,17 @@
 import ToastContainer from "@/components/ui/ToastContainer";
-import { toastService } from "@/lib/toastService"; // Import the toastService
+import { toastService } from "@/lib/toastService";
+import { useToastStore } from "@/stores/useToastStore";
+import type { ToastProps as StoreToastProps } from "@/stores/useToastStore";
 import React, {
   createContext,
   ReactNode,
-  useCallback,
   useContext,
-  useEffect, // Import useEffect
-  useState,
+  useEffect,
+  useMemo,
 } from "react";
 
-// Define a default duration for toasts if none is provided
-const DEFAULT_TOAST_DURATION = 4000; // 4 seconds
-let toastCounter = 0;
-
-export interface ToastProps {
-  id: string;
-  title: string;
-  message: string;
-  onUndo?: () => void;
-  duration?: number;
-  type?: "success" | "error" | "warning";
-}
+// Re-export ToastProps from the store for backward compatibility
+export type ToastProps = StoreToastProps;
 
 interface ToastContextType {
   show: (options: Omit<ToastProps, "id">) => void;
@@ -37,40 +28,30 @@ export const useToast = () => {
   return context;
 };
 
+// Standalone component that subscribes to toast store independently
+// This prevents children from re-rendering when toasts change
+const ToastRenderer = () => {
+  const toasts = useToastStore((s) => s.toasts);
+  return <ToastContainer toasts={toasts} />;
+};
+
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
-  const [toasts, setToasts] = useState<ToastProps[]>([]);
-
-  const hide = useCallback((id: string) => {
-    setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
-  }, []);
-
-  const show = useCallback(
-    (options: Omit<ToastProps, "id">) => {
-      const id = `toast-${Date.now()}-${++toastCounter}`;
-      const newToast: ToastProps = { id, ...options };
-      setToasts((prevToasts) => [newToast, ...prevToasts]);
-
-      // Determine the duration: use options.duration if provided, otherwise use default
-      const durationToUse = options.duration ?? DEFAULT_TOAST_DURATION;
-
-      if (durationToUse) {
-        setTimeout(() => {
-          hide(id);
-        }, durationToUse);
-      }
-    },
-    [hide]
-  ); // Added 'hide' to dependencies
+  // Stable references from the store (these never change)
+  const show = useToastStore((s) => s.show);
+  const hide = useToastStore((s) => s.hide);
 
   // Register the show function with the global toastService
   useEffect(() => {
     toastService.setToast(show);
-  }, [show]); // Re-register if 'show' function changes (though useCallback should keep it stable)
+  }, [show]);
+
+  // Stable context value - show/hide are store functions that never change
+  const contextValue = useMemo(() => ({ show, hide }), [show, hide]);
 
   return (
-    <ToastContext.Provider value={{ show, hide }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
-      <ToastContainer toasts={toasts} />
+      <ToastRenderer />
     </ToastContext.Provider>
   );
 };

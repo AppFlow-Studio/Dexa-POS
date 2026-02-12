@@ -1,4 +1,4 @@
-import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
+import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useState } from "react";
@@ -6,8 +6,6 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
 const ItemsReviewView = () => {
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const orderTotals = useActiveOrderTotals();
   const activeOrderSubtotal = orderTotals?.subtotal ?? 0;
   const activeOrderTax = orderTotals?.tax ?? 0;
@@ -17,7 +15,7 @@ const ItemsReviewView = () => {
   const setView = usePaymentStore((s) => s.setView);
   const paymentMethod = usePaymentStore((s) => s.paymentMethod);
 
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  const activeOrder = useActiveOrder();
   const items = activeOrder?.items || [];
 
   return (

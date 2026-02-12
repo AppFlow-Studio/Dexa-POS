@@ -1,4 +1,4 @@
-import { ToastProps } from '@/contexts/ToastContext';
+import type { ToastProps } from '@/stores/useToastStore';
 
 // Define the type for the show function, excluding 'id' as it's generated internally
 type ShowFunction = (options: Omit<ToastProps, 'id'>) => void;

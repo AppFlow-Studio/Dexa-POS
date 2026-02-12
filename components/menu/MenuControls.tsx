@@ -145,4 +145,4 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   );
 };
 
-export default MenuControls;
+export default React.memo(MenuControls);
