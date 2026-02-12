@@ -36,18 +36,18 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
     }
   }, [cart.length]);
 
-  // O(1) lookup with individual selector - only re-renders when activeOrderId or ordersById changes
-  const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const ordersById = useOrderStore((state) => state.ordersById);
+  // PERF: Subscribe to primitives only - prevents re-render on unrelated order mutations
+  const displayNumber = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.display_number ?? order?.order_number ?? null;
+  });
+  const paidStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.paid_status ?? null;
+  });
 
   // Track which item is being edited in modifier panel (for visual highlight)
   const activeEditingItemId = useModifierSidebarStore(selectActiveEditingItemId);
-
-  // O(1) lookup instead of O(n) find
-  const activeOrder = useMemo(
-    () => (activeOrderId ? ordersById[activeOrderId] : undefined),
-    [activeOrderId, ordersById]
-  );
 
   // OPTIMIZED: Pre-compute grouped courses outside render for O(1) lookup
   const groupedCourses = useMemo(() => {
@@ -70,16 +70,14 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center">
               <Text className="text-gray-400 text-sm font-medium">
-                {activeOrder?.display_number ||
-                  activeOrder?.order_number ||
-                  "New Order"}
+                {displayNumber || "New Order"}
               </Text>
-              {activeOrder?.paid_status === "Paid" && (
+              {paidStatus === "Paid" && (
                 <View className="ml-2 bg-green-600/30 px-1.5 py-0.5 rounded">
                   <Text className="text-green-400 text-[10px] font-bold">PAID</Text>
                 </View>
               )}
-              {activeOrder?.paid_status === "Partial" && (
+              {paidStatus === "Partial" && (
                 <View className="ml-2 bg-yellow-600/30 px-1.5 py-0.5 rounded">
                   <Text className="text-yellow-400 text-[10px] font-bold">PARTIAL</Text>
                 </View>

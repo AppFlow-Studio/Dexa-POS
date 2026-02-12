@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useShallow } from "zustand/react/shallow";
 import {
   Dialog,
   DialogContent,
@@ -29,60 +30,45 @@ type SelectOption = { label: string; value: string };
 const OrderDetailsComponent: React.FC = () => {
   const { show } = useToast();
 
-  // CRITICAL FIX: Only subscribe to primitives, not objects
-  // Subscribe to individual fields instead of entire order object
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const customerName = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.customer_name || null;
-  });
-  const customerPhone = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.customer_phone || null;
-  });
-  const orderType = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    const type = order?.order_type || "takeout";
-    const labels: Record<string, string> = {
-      dine_in: "Dine In",
-      takeout: "Takeaway",
-      delivery: "Delivery",
-    };
-    return labels[type] || type;
-  });
-  const serviceLocationId = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.service_location_id || null;
-  });
-  const orderStatus = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.order_status || "draft";
-  });
-
-  // Status badge data
-  const paidStatus = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.paid_status || "Unpaid";
-  });
-  const checkStatus = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.check_status || "Opened";
-  });
-  const hasRefunds = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return (order?.order_refund_items?.length ?? 0) > 0;
-  });
-  const isSplitPayment = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    const payments = order?.payments?.filter((p) => !p.isVoided) ?? [];
-    const hasCash = payments.some((p) => p.method === "Cash");
-    const hasCard = payments.some((p) => p.method === "Card");
-    return hasCash && hasCard;
-  });
-  const hasAnyPayments = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return (order?.payments?.filter((p) => !p.isVoided)?.length ?? 0) > 0;
-  });
+  // PERF: Single useShallow selector - runs 1 function instead of 11
+  // useShallow compares values shallowly, so primitive returns prevent unnecessary re-renders
+  const {
+    activeOrderId,
+    customerName,
+    customerPhone,
+    orderType,
+    serviceLocationId,
+    orderStatus,
+    paidStatus,
+    checkStatus,
+    hasRefunds,
+    isSplitPayment,
+    hasAnyPayments,
+  } = useOrderStore(
+    useShallow((s) => {
+      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+      const type = order?.order_type || "takeout";
+      const labels: Record<string, string> = {
+        dine_in: "Dine In",
+        takeout: "Takeaway",
+        delivery: "Delivery",
+      };
+      const activePayments = order?.payments?.filter((p) => !p.isVoided) ?? [];
+      return {
+        activeOrderId: s.activeOrderId,
+        customerName: order?.customer_name || null,
+        customerPhone: order?.customer_phone || null,
+        orderType: labels[type] || type,
+        serviceLocationId: order?.service_location_id || null,
+        orderStatus: order?.order_status || "draft",
+        paidStatus: order?.paid_status || "Unpaid",
+        checkStatus: order?.check_status || "Opened",
+        hasRefunds: (order?.order_refund_items?.length ?? 0) > 0,
+        isSplitPayment: activePayments.some((p) => p.method === "Cash") && activePayments.some((p) => p.method === "Card"),
+        hasAnyPayments: activePayments.length > 0,
+      };
+    })
+  );
 
   // Actions - stable function references
   const updateActiveOrderDetails = useOrderStore(

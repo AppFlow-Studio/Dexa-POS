@@ -2,9 +2,11 @@
 
 export {
   type DeviceCapabilities,
+  type DeviceChangeResult,
   detectDeviceCapabilities,
   detectAndStoreCapabilities,
   updateStationCapabilities,
+  handleDeviceChangeIfNeeded,
   ensureBuiltinPrinterProvisioned,
   ensureDejavooPrinterProvisioned,
   verifyDejavooPrinter,

@@ -18,6 +18,7 @@ import TipAdjustSheet, {
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { previousOrderToOrderProfile } from "@/utils/previousOrderMapper";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Clock, CreditCard, Receipt, RotateCcw } from "lucide-react-native";
@@ -54,6 +55,7 @@ const OrderDetailsScreen = () => {
   const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore();
   const order = getOrderById(orderId as string);
   const supabaseClient = useSupabaseClient();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const { show } = useToast();
 
   const [activeTab, setActiveTab] = useState<TabType>("bill");
@@ -221,7 +223,8 @@ const OrderDetailsScreen = () => {
       <PrintReceiptModal
         isOpen={showPrintModal}
         onClose={() => setShowPrintModal(false)}
-        order={order}
+        order={mappedOrder}
+        location={selectedStore}
       />
 
       <OrderNotesModal

@@ -212,6 +212,7 @@ const PrintersKitchenScreen = () => {
 
   // Test print loading per printer
   const [testPrintingId, setTestPrintingId] = useState<string | null>(null);
+  const [testPrintType, setTestPrintType] = useState<"test_page" | "receipt" | "kitchen">("test_page");
 
   // Fetch real printers on mount
   useEffect(() => {
@@ -346,7 +347,13 @@ const PrintersKitchenScreen = () => {
   const handleTestPrint = async (printer: PrinterConfig) => {
     setTestPrintingId(printer.id);
     try {
-      await PrinterService.printTestPage(printer);
+      if (testPrintType === "receipt") {
+        await PrinterService.printTestReceipt(printer);
+      } else if (testPrintType === "kitchen") {
+        await PrinterService.printTestKitchenTicket(printer);
+      } else {
+        await PrinterService.printTestPage(printer);
+      }
     } catch (e) {
       console.warn("[PrintersKitchen] Test print failed:", e);
     } finally {
@@ -726,6 +733,28 @@ const PrintersKitchenScreen = () => {
                   <Printer size={16} color="white" />
                   <Text className="text-white font-medium ml-2">Test Print</Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* Test Print Type Selector */}
+              <View className="mb-4">
+                <Text className="text-gray-400 text-xs mb-2">Test print type (per-printer buttons):</Text>
+                <View className="flex-row bg-[#404040] rounded-lg border border-gray-600 overflow-hidden">
+                  {([
+                    { key: "test_page" as const, label: "Test Page" },
+                    { key: "receipt" as const, label: "Receipt" },
+                    { key: "kitchen" as const, label: "Kitchen" },
+                  ]).map(({ key, label }) => (
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => setTestPrintType(key)}
+                      className={`flex-1 py-2.5 items-center ${testPrintType === key ? "bg-blue-600" : ""}`}
+                    >
+                      <Text className={`text-sm font-medium ${testPrintType === key ? "text-white" : "text-gray-400"}`}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
               {storedPrinters.length === 0 ? (

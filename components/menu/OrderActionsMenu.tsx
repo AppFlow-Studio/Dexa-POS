@@ -3,6 +3,7 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
+  ChefHat,
   DollarSign,
   Eye,
   Plus,
@@ -123,6 +124,35 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     }
   };
 
+  // Handle print kitchen ticket
+  const handlePrintKitchenTicket = async () => {
+    onClose();
+
+    if (!order) {
+      show({ title: "Print Error", message: "No order data available.", type: "error" });
+      return;
+    }
+
+    if (!selectedStore) {
+      show({ title: "Print Error", message: "No store location selected.", type: "error" });
+      return;
+    }
+
+    const nonVoidedItems = order.items.filter((item) => !item.is_voided);
+    if (nonVoidedItems.length === 0) {
+      show({ title: "No Items", message: "No items to print on kitchen ticket.", type: "warning" });
+      return;
+    }
+
+    const success = await PrinterService.printKitchenTickets(order, nonVoidedItems, selectedStore);
+
+    if (success) {
+      show({ title: "Kitchen Ticket Sent", message: "Kitchen ticket sent to printer.", type: "success" });
+    } else {
+      show({ title: "No Printer", message: "No kitchen printer configured for this location.", type: "warning" });
+    }
+  };
+
   // Handle refund
   const handleRefund = () => {
     onClose();
@@ -172,6 +202,12 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
       icon: <Printer size={18} color="#6B7280" />,
       label: "Print Receipt",
       onPress: handlePrintReceipt,
+    },
+    {
+      icon: <ChefHat size={18} color="#6B7280" />,
+      label: "Print Kitchen Ticket",
+      onPress: handlePrintKitchenTicket,
+      disabled: !order.items || order.items.filter((i) => !i.is_voided).length === 0,
     },
     {
       icon: <ReceiptText size={18} color="#EF4444" />,

@@ -6,6 +6,8 @@ import {
 import { PrintDocument } from "@/types/print-document";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
+import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import { DEFAULT_RECEIPT_TEMPLATE } from "@/types/receipt-template";
 import { SelectedLocation } from "@/stores/useStoreSettingsStore";
 import {
   DocumentPrintJob,
@@ -86,6 +88,7 @@ export const PrinterService = {
         printerItems,
         printer,
         false,
+        location,
       );
       const job = createJobForPrinter(
         printer,
@@ -124,6 +127,7 @@ export const PrinterService = {
         printerItems,
         printer,
         true,
+        location,
       );
       const job = createJobForPrinter(
         printer,
@@ -223,6 +227,106 @@ export const PrinterService = {
     };
 
     const job = createDocumentJob(printer.id, doc, "test_page", "normal");
+    usePrintQueueStore.getState().enqueue(job);
+    return true;
+  },
+
+  /**
+   * Print a sample receipt on the specified printer.
+   */
+  async printTestReceipt(targetPrinter: PrinterConfig): Promise<boolean> {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+    });
+    const timeStr = now.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    const sampleData: ReceiptTemplateData = {
+      storeName: "Dexa POS — Sample Store",
+      storeAddress: "123 Main St, Suite 100, Anytown, ST 12345",
+      storePhone: "(555) 123-4567",
+      orderNumber: "#TEST-001",
+      orderDate: dateStr,
+      orderTime: timeStr,
+      orderType: "Dine In",
+      tableName: "Table 5",
+      serverName: "Test Server",
+      items: [
+        { name: "Classic Burger", quantity: 2, price: 12.99, isVoided: false, modifiers: [{ name: "No Onions", price: 0 }] },
+        { name: "Caesar Salad", quantity: 1, price: 8.50, isVoided: false, modifiers: [] },
+        { name: "Iced Tea", quantity: 3, price: 3.25, isVoided: false, modifiers: [{ name: "Extra Lemon", price: 0 }] },
+      ],
+      subtotal: 44.23,
+      tax: 3.54,
+      discount: 0,
+      tip: 6.00,
+      total: 53.77,
+      payments: [{ method: "Card", amount: 53.77, last4: "4242" }],
+      footerMessage: "** TEST RECEIPT — NOT A REAL TRANSACTION **",
+      maxCharsPerLine: targetPrinter.maxCharsPerLine,
+      taxRate: 0.08,
+    };
+
+    const job = createJobForPrinter(
+      targetPrinter,
+      sampleData,
+      "test_page",
+      "normal",
+      undefined,
+      "receipt",
+    );
+    usePrintQueueStore.getState().enqueue(job);
+    return true;
+  },
+
+  /**
+   * Print a sample kitchen ticket on the specified printer.
+   */
+  async printTestKitchenTicket(targetPrinter: PrinterConfig): Promise<boolean> {
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const fullTimestamp =
+      now.toLocaleDateString("en-US", {
+        month: "2-digit",
+        day: "2-digit",
+        year: "numeric",
+      }) + " " + timestamp;
+
+    const sampleData: KitchenTicketData = {
+      orderNumber: "#TEST-001",
+      orderType: "Dine In",
+      tableName: "Table 5",
+      serverName: "Test Server",
+      timestamp,
+      fullTimestamp,
+      totalItemCount: 4,
+      items: [
+        { name: "Classic Burger", quantity: 2, modifiers: ["No Onions", "Well Done"], notes: "Allergy: gluten-free bun" },
+        { name: "Caesar Salad", quantity: 1, modifiers: ["Extra Dressing"] },
+        { name: "Fish & Chips", quantity: 1, modifiers: ["Tartar Sauce on Side"] },
+      ],
+      isVoidTicket: false,
+      maxCharsPerLine: targetPrinter.maxCharsPerLine,
+    };
+
+    const job = createJobForPrinter(
+      targetPrinter,
+      sampleData,
+      "test_page",
+      "normal",
+      undefined,
+      "kitchen",
+    );
     usePrintQueueStore.getState().enqueue(job);
     return true;
   },
@@ -411,6 +515,10 @@ function buildReceiptTemplateData(
   location: SelectedLocation,
   printer: PrinterConfig,
 ): ReceiptTemplateData {
+  const template = useReceiptTemplateStore
+    .getState()
+    .getReceiptTemplate(location.id);
+
   const nonVoidedItems = order.items.filter((item) => !item.is_voided);
 
   // Calculate totals (mirrors ReceiptModal.tsx logic)
@@ -534,8 +642,12 @@ function buildReceiptTemplateData(
     payments,
     amountPaid: order.amount_paid,
     amountDue: order.amount_due,
-    footerMessage: printer.receiptFooter ?? "We appreciate your business",
+    footerMessage:
+      template.footerText ?? printer.receiptFooter ?? "Thank you for your purchase!",
+    headerMessage: template.headerText ?? undefined,
     maxCharsPerLine: printer.maxCharsPerLine,
+    taxRate: subtotal > 0 ? tax / subtotal : 0,
+    templateConfig: template,
   };
 }
 
@@ -544,12 +656,23 @@ function buildKitchenTicketData(
   items: CartItem[],
   printer: PrinterConfig,
   isVoidTicket: boolean,
+  location?: SelectedLocation,
 ): KitchenTicketData {
-  const timestamp = new Date().toLocaleTimeString("en-US", {
+  const template = location
+    ? useReceiptTemplateStore.getState().getKitchenTemplate(location.id)
+    : { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "kitchen_ticket" };
+
+  const now = new Date();
+  const timestamp = now.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   });
+  const fullTimestamp = now.toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  }) + " " + timestamp;
 
   const kitchenItems: KitchenTicketItemData[] = items.map((item) => {
     const modifiers: string[] = [];
@@ -579,6 +702,8 @@ function buildKitchenTicketData(
     };
   });
 
+  const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
   return {
     orderNumber:
       order.display_number ||
@@ -588,9 +713,12 @@ function buildKitchenTicketData(
     tableName: order.service_location_name ?? undefined,
     serverName: order.server_name,
     timestamp,
+    fullTimestamp,
+    totalItemCount,
     items: kitchenItems,
     isVoidTicket,
     maxCharsPerLine: printer.maxCharsPerLine,
+    templateConfig: template,
   };
 }
 

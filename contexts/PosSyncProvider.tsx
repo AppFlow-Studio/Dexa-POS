@@ -28,11 +28,13 @@ import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import {
   detectAndStoreCapabilities,
+  handleDeviceChangeIfNeeded,
   ensureBuiltinPrinterProvisioned,
   startHeartbeat,
   stopHeartbeat,
 } from "@/services/hardware";
 import { usePrinterStore } from "@/stores/usePrinterStore";
+import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import { TaxRate } from "@/types/menu";
 import React, { useCallback, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
@@ -99,6 +101,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     if (supabase && selectedStation?.id && selectedStore?.id) {
       detectAndStoreCapabilities(supabase, selectedStation.id)
         .then(async (capabilities) => {
+          // Detect device swaps and migrate stale built-in printers
+          await handleDeviceChangeIfNeeded(supabase, selectedStation.id, selectedStore.id, capabilities);
+
           // Auto-provision a printer row for built-in printers (no-op if already exists)
           await ensureBuiltinPrinterProvisioned(
             supabase,
@@ -463,6 +468,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       syncEmployees(selectedStore.id);
       syncFloorPlans(selectedStore.id);
       syncTaxRates(selectedStore.id);
+      useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
 
       // Orders are now initialized via useOrdersQuery hook (archive layer)
       // which auto-fetches when locationId changes

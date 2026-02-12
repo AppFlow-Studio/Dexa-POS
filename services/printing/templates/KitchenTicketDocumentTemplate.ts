@@ -3,13 +3,14 @@ import { KitchenTicketData } from "@/types/printer";
 
 /**
  * Builds a PrintDocument for a kitchen ticket.
- * Mirrors the exact layout of KitchenTicketTemplate.ts but outputs PrintNode[] instead of ESC/POS bytes.
+ * Layout matches the kitchen ticket mockup with conditional flags from templateConfig.
  */
 export function buildKitchenTicketDocument(
   data: KitchenTicketData,
 ): PrintDocument {
   const w = data.maxCharsPerLine;
   const nodes: PrintNode[] = [];
+  const cfg = data.templateConfig;
 
   // ── Void header (if applicable) ──
   if (data.isVoidTicket) {
@@ -25,50 +26,67 @@ export function buildKitchenTicketDocument(
   // ── Order Header ──
   nodes.push({
     type: "text_line",
-    content: `Order ${data.orderNumber}`,
+    content: `ORDER #${data.orderNumber}`,
     align: "center",
     format: { bold: true, doubleHeight: true, doubleWidth: true },
   });
 
+  // Combined order type + table on one line
+  if (cfg?.showOrderType !== false) {
+    const typeLine = data.tableName
+      ? `${data.orderType.toUpperCase()} - ${data.tableName}`
+      : data.orderType.toUpperCase();
+    nodes.push({
+      type: "text_line",
+      content: typeLine,
+      align: "center",
+      format: { bold: true, doubleHeight: true },
+    });
+  }
+
+  // Server name
+  if (cfg?.showServerName !== false && data.serverName) {
+    nodes.push({
+      type: "text_line",
+      content: `Server: ${data.serverName}`,
+      align: "center",
+    });
+  }
+
+  // Full timestamp (date + time)
   nodes.push({
     type: "text_line",
-    content: data.orderType,
+    content: data.fullTimestamp ?? data.timestamp,
     align: "center",
-    format: { doubleHeight: true },
   });
 
   nodes.push({ type: "divider", style: "double", lineWidth: w });
 
-  // ── Order Info ──
-  if (data.tableName) {
-    nodes.push({
-      type: "text_line",
-      content: `Table: ${data.tableName}`,
-      format: { bold: true, doubleHeight: true },
-    });
-  }
-
-  if (data.serverName) {
-    nodes.push({ type: "two_column", left: "Server:", right: data.serverName, lineWidth: w });
-  }
-
-  nodes.push({ type: "two_column", left: "Time:", right: data.timestamp, lineWidth: w });
-  nodes.push({ type: "divider", style: "dotted", lineWidth: w });
-
   // ── Items ──
   for (const item of data.items) {
+    const useLargeText = cfg?.largeItemText !== false;
     const prefix = item.isVoided ? "VOID " : "";
-    const qtyStr = item.quantity > 1 ? `${item.quantity}x ` : "";
+    const qtyStr = `${item.quantity}x `;
 
     nodes.push({
       type: "text_line",
       content: `${prefix}${qtyStr}${item.name}`,
-      format: { bold: true, doubleHeight: true },
+      format: {
+        bold: true,
+        doubleHeight: useLargeText ? true : undefined,
+      },
     });
 
-    // Modifiers
-    for (const mod of item.modifiers) {
-      nodes.push({ type: "text_line", content: `  > ${mod}` });
+    // Modifiers (conditional)
+    if (cfg?.showItemModifiers !== false) {
+      const useModsLarge = cfg?.showModsLarge === true;
+      for (const mod of item.modifiers) {
+        nodes.push({
+          type: "text_line",
+          content: `  + ${mod}`,
+          format: useModsLarge ? { bold: true } : undefined,
+        });
+      }
     }
 
     // Special instructions (prominent)
@@ -85,8 +103,15 @@ export function buildKitchenTicketDocument(
 
   nodes.push({ type: "divider", style: "double", lineWidth: w });
 
-  // ── Timestamp footer ──
-  nodes.push({ type: "text_line", content: data.timestamp, align: "center" });
+  // ── Item count footer ──
+  if (data.totalItemCount !== undefined) {
+    nodes.push({
+      type: "text_line",
+      content: `${data.totalItemCount} items total`,
+      align: "center",
+    });
+  }
+
   nodes.push({ type: "cut" });
 
   return { nodes, maxCharsPerLine: w };

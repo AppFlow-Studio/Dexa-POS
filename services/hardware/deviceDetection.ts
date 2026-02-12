@@ -6,6 +6,7 @@ import * as Application from "expo-application";
 import NetInfo from "@react-native-community/netinfo";
 import { Dimensions, PixelRatio, Platform } from "react-native";
 import { getJSON, setJSON } from "@/lib/storage";
+import { getDeviceId } from "@/lib/deviceId";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { detectNativeHardware } from "@/native/HardwareDetection";
 import { StationPaymentTerminal } from "@/types/station";
@@ -174,6 +175,7 @@ export async function updateStationCapabilities(
   const { error } = await supabase
     .from("stations")
     .update({
+      device_id: getDeviceId(),
       device_manufacturer: capabilities.manufacturer,
       device_model: capabilities.model,
       hardware_model: capabilities.hardwareModel,
@@ -214,6 +216,176 @@ export async function detectAndStoreCapabilities(
 }
 
 // ============================================================================
+// DEVICE CHANGE DETECTION
+// ============================================================================
+
+export interface DeviceChangeResult {
+  deviceChanged: boolean;
+}
+
+/**
+ * Detects if a different physical device has logged into this station by
+ * comparing the current device model against active built-in printer rows.
+ * If a mismatch is found, migrates printers accordingly:
+ *   - Scenario A (both devices have builtin printers): update existing row in-place.
+ *   - Scenario B (old had builtin, new doesn't): deactivate stale rows and reassign defaults.
+ * Only touches `connection_type = 'builtin'` printers.
+ */
+export async function handleDeviceChangeIfNeeded(
+  supabase: SupabaseClient,
+  stationId: string,
+  locationId: string,
+  capabilities: DeviceCapabilities,
+): Promise<DeviceChangeResult> {
+  // 1. Query active built-in printers for this station
+  const { data: activeBuiltins, error: fetchError } = await supabase
+    .from("printers")
+    .select("id, printer_model, printer_name, is_default_receipt, is_default_kitchen")
+    .eq("station_id", stationId)
+    .eq("connection_type", "builtin")
+    .eq("is_active", true);
+
+  if (fetchError) {
+    console.error("[DeviceDetection] Failed to query builtin printers:", fetchError.message);
+    return { deviceChanged: false };
+  }
+
+  if (!activeBuiltins || activeBuiltins.length === 0) {
+    // No active builtins → nothing to migrate (first-time or device-without-builtin)
+    return { deviceChanged: false };
+  }
+
+  // 2. Filter for stale printers whose model doesn't match the current device
+  const stalePrinters = activeBuiltins.filter(
+    (p) => p.printer_model !== capabilities.model,
+  );
+
+  if (stalePrinters.length === 0) {
+    // Same device reconnecting → no-op
+    return { deviceChanged: false };
+  }
+
+  console.log(
+    `[DeviceDetection] Device change detected! Stale builtins: ${stalePrinters.map((p) => p.printer_model).join(", ")} → Current device: ${capabilities.model}`,
+  );
+
+  // 3. Handle scenarios
+  if (capabilities.hasBuiltinPrinter) {
+    // Scenario A: Both devices have built-in printers → update existing row in-place
+    // Update the first stale printer to match the new device, deactivate extras
+    const [primaryStale, ...extraStale] = stalePrinters;
+
+    const { error: updateError } = await supabase
+      .from("printers")
+      .update({
+        printer_name: `${capabilities.model} Built-in Printer`,
+        printer_model: capabilities.model,
+      })
+      .eq("id", primaryStale.id);
+
+    if (updateError) {
+      console.error("[DeviceDetection] Failed to update builtin printer row:", updateError.message);
+    } else {
+      console.log(`[DeviceDetection] Updated builtin printer ${primaryStale.id} → ${capabilities.model}`);
+    }
+
+    // Deactivate any extra stale builtins (unlikely but safe)
+    if (extraStale.length > 0) {
+      const extraIds = extraStale.map((p) => p.id);
+      await supabase
+        .from("printers")
+        .update({ is_active: false, is_connected: false })
+        .in("id", extraIds);
+      console.log(`[DeviceDetection] Deactivated ${extraIds.length} extra stale builtin(s)`);
+    }
+  } else {
+    // Scenario B: Old had builtin, new doesn't → deactivate all stale builtins
+    const staleIds = stalePrinters.map((p) => p.id);
+    const hadDefaultReceipt = stalePrinters.some((p) => p.is_default_receipt);
+    const hadDefaultKitchen = stalePrinters.some((p) => p.is_default_kitchen);
+
+    const { error: deactivateError } = await supabase
+      .from("printers")
+      .update({
+        is_active: false,
+        is_connected: false,
+        is_default_receipt: false,
+        is_default_kitchen: false,
+      })
+      .in("id", staleIds);
+
+    if (deactivateError) {
+      console.error("[DeviceDetection] Failed to deactivate stale builtins:", deactivateError.message);
+    } else {
+      console.log(`[DeviceDetection] Deactivated ${staleIds.length} stale builtin printer(s)`);
+    }
+
+    // Reassign defaults if any were lost
+    if (hadDefaultReceipt || hadDefaultKitchen) {
+      await reassignPrinterDefaults(supabase, stationId, locationId, hadDefaultReceipt, hadDefaultKitchen);
+    }
+  }
+
+  return { deviceChanged: true };
+}
+
+/**
+ * Tries to reassign default receipt/kitchen printer after built-in printers were deactivated.
+ * Looks for station-specific printers first, then falls back to location-level printers.
+ */
+async function reassignPrinterDefaults(
+  supabase: SupabaseClient,
+  stationId: string,
+  locationId: string,
+  needsReceiptDefault: boolean,
+  needsKitchenDefault: boolean,
+): Promise<void> {
+  // Look for active printers on this station (non-builtin) first, then location-level
+  const { data: candidates, error } = await supabase
+    .from("printers")
+    .select("id, station_id, printer_role, connection_type")
+    .eq("location_id", locationId)
+    .eq("is_active", true)
+    .neq("connection_type", "builtin")
+    .order("station_id", { ascending: true, nullsFirst: false });
+
+  if (error || !candidates || candidates.length === 0) {
+    console.warn("[DeviceDetection] No candidate printers for default reassignment. User must configure manually.");
+    return;
+  }
+
+  // Prefer station-specific printers over location-level ones
+  const stationPrinters = candidates.filter((p) => p.station_id === stationId);
+  const pool = stationPrinters.length > 0 ? stationPrinters : candidates;
+
+  if (needsReceiptDefault) {
+    const receiptCandidate = pool.find((p) => p.printer_role === "receipt") || pool[0];
+    if (receiptCandidate) {
+      await supabase
+        .from("printers")
+        .update({ is_default_receipt: true })
+        .eq("id", receiptCandidate.id);
+      console.log(`[DeviceDetection] Reassigned default receipt printer → ${receiptCandidate.id}`);
+    } else {
+      console.warn("[DeviceDetection] No candidate for default receipt printer. User must configure manually.");
+    }
+  }
+
+  if (needsKitchenDefault) {
+    const kitchenCandidate = pool.find((p) => p.printer_role === "kitchen");
+    if (kitchenCandidate) {
+      await supabase
+        .from("printers")
+        .update({ is_default_kitchen: true })
+        .eq("id", kitchenCandidate.id);
+      console.log(`[DeviceDetection] Reassigned default kitchen printer → ${kitchenCandidate.id}`);
+    } else {
+      console.warn("[DeviceDetection] No candidate for default kitchen printer. User must configure manually.");
+    }
+  }
+}
+
+// ============================================================================
 // BUILTIN PRINTER AUTO-PROVISIONING
 // ============================================================================
 
@@ -237,6 +409,7 @@ export async function ensureBuiltinPrinterProvisioned(
     .select("id")
     .eq("station_id", stationId)
     .eq("printer_type", "builtin_landi")
+    .eq("is_active", true)
     .limit(1);
 
   if (fetchError) {

@@ -1,5 +1,6 @@
 import { Database } from "@/database.types";
 import { PrintDocument } from "@/types/print-document";
+import { ReceiptTemplateConfig } from "@/types/receipt-template";
 
 // ============================================================================
 // DATABASE ROW TYPE
@@ -197,9 +198,12 @@ export interface ReceiptTemplateData {
 
   // Footer
   footerMessage?: string;
+  headerMessage?: string;
 
   // Config
   maxCharsPerLine: number;
+  taxRate?: number;
+  templateConfig?: ReceiptTemplateConfig;
 }
 
 export interface ReceiptItemData {
@@ -224,9 +228,12 @@ export interface KitchenTicketData {
   tableName?: string;
   serverName?: string;
   timestamp: string;
+  fullTimestamp?: string;
+  totalItemCount?: number;
   items: KitchenTicketItemData[];
   isVoidTicket: boolean;
   maxCharsPerLine: number;
+  templateConfig?: ReceiptTemplateConfig;
 }
 
 export interface KitchenTicketItemData {

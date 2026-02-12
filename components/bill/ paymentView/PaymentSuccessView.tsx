@@ -1,10 +1,12 @@
 import { useToast } from "@/contexts/ToastContext";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Check, Mail, Printer } from "lucide-react-native";
-import { useEffect } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
 const PaymentSuccessView = () => {
@@ -14,8 +16,12 @@ const PaymentSuccessView = () => {
   const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
   const { show } = useToast();
 
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const ordersById = useOrderStore((s) => s.ordersById);
+
+  const [isPrinting, setIsPrinting] = useState(false);
   // const { addSaleEvent, forceRefresh } = useAnalyticsStore();
   // NOTE: Payment was already processed by handlePaymentCompletion
   // before navigating to this view. No need to call addPaymentToOrder again.
@@ -97,12 +103,25 @@ const PaymentSuccessView = () => {
     close();
   };
 
-  const handlePrint = () => {
-    show({
-      title: "Printing Receipt",
-      message: "Sent to printer.",
-      type: "success",
-    });
+  const handlePrint = async () => {
+    if (!activeOrder || !selectedStore) {
+      show({ title: "Print Error", message: "No order or store available.", type: "error" });
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      const success = await PrinterService.printReceipt(activeOrder, selectedStore);
+      if (success) {
+        show({ title: "Printing Receipt", message: "Sent to printer.", type: "success" });
+      } else {
+        show({ title: "No Printer", message: "No receipt printer configured for this location.", type: "warning" });
+      }
+    } catch (e) {
+      console.warn("[PaymentSuccessView] Print failed:", e);
+      show({ title: "Print Error", message: "Failed to send to printer.", type: "error" });
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   const handleEmail = () => {
@@ -236,10 +255,17 @@ const PaymentSuccessView = () => {
           <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={handlePrint}
-              className="flex-1 py-3 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] gap-2"
+              disabled={isPrinting}
+              className={`flex-1 py-3 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] gap-2 ${isPrinting ? "opacity-60" : ""}`}
             >
-              <Printer size={18} color="#9CA3AF" className="mr-2" />
-              <Text className="text-gray-300 font-semibold">Print Receipt</Text>
+              {isPrinting ? (
+                <ActivityIndicator size="small" color="#9CA3AF" />
+              ) : (
+                <Printer size={18} color="#9CA3AF" className="mr-2" />
+              )}
+              <Text className="text-gray-300 font-semibold">
+                {isPrinting ? "Printing..." : "Print Receipt"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity

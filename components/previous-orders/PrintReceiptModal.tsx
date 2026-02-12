@@ -1,7 +1,10 @@
-import { PreviousOrder } from "@/lib/types";
+import { OrderProfile } from "@/lib/types";
+import { PrinterService } from "@/services/printing/PrinterService";
+import { SelectedLocation } from "@/stores/useStoreSettingsStore";
 import { Printer, X } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   PanResponder,
@@ -15,7 +18,8 @@ import {
 interface PrintReceiptModalProps {
   isOpen: boolean;
   onClose: () => void;
-  order: PreviousOrder | null;
+  order: OrderProfile | null;
+  location: SelectedLocation | null;
 }
 
 const ReceiptRow = ({
@@ -44,6 +48,7 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
   isOpen,
   onClose,
   order,
+  location,
 }) => {
   const slideAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
@@ -51,6 +56,7 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
   const dragY = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
   const [closeButtonPressed, setCloseButtonPressed] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // Pan responder for drag gesture
   const panResponder = useRef(
@@ -130,7 +136,8 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
   if (!isVisible || !order) return null;
 
   // Create a simplified summary for the receipt
-  const receiptSummary = order.items.reduce(
+  const nonVoidedItems = (order.items || []).filter((item) => !item.is_voided);
+  const receiptSummary = nonVoidedItems.reduce(
     (acc, item) => {
       const existing = acc.find((i) => i.name === item.name);
       if (existing) {
@@ -147,6 +154,21 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
     },
     [] as { name: string; quantity: number; totalPrice: number }[]
   );
+
+  const handlePrintReceipt = async () => {
+    if (!order || !location) return;
+    setIsPrinting(true);
+    try {
+      const success = await PrinterService.printReceipt(order, location);
+      if (success) {
+        onClose();
+      }
+    } catch (e) {
+      console.warn("[PrintReceiptModal] Print failed:", e);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   return (
     <View className="absolute inset-0 z-[1000]">
@@ -211,36 +233,37 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
         >
           {/* Receipt Card */}
           <View className="bg-[#252525] rounded-xl p-4 border border-[#3f3f3f]">
-            <ReceiptRow label="No. Transaction" value={order.orderId} />
+            <ReceiptRow label="Order #" value={order.display_number || order.order_number || `#${order.id.slice(-4)}`} />
             <ReceiptRow
               label="Table"
-              value={order.service_location_id || "N/A"}
+              value={order.service_location_name || "N/A"}
             />
-            <ReceiptRow label="Payment" value="Cash" />
-            <ReceiptRow label="Payment Terminal Id" value="Terminal-a-457678" />
+            <ReceiptRow label="Type" value={order.order_type || "Dine In"} />
 
             <View className="h-4 border-b border-gray-600" />
 
-            <ReceiptRow label="Total Items" value={`${order.itemCount} Items`} />
+            <ReceiptRow label="Total Items" value={`${nonVoidedItems.length} Items`} />
             {receiptSummary.map((item) => (
               <ReceiptRow
                 key={item.name}
-                label={item.name}
+                label={`${item.quantity}x ${item.name}`}
                 value={`$${item.totalPrice.toFixed(2)}`}
               />
             ))}
 
             <View className="h-4 border-b border-gray-600" />
 
-            <ReceiptRow label="Subtotal" value={`$${order.total.toFixed(2)}`} />
-            <ReceiptRow label="Tax" value="$1.50" />
-            <ReceiptRow label="Tips" value="$2.00" />
+            <ReceiptRow label="Subtotal" value={`$${receiptSummary.reduce((sum, i) => sum + i.totalPrice, 0).toFixed(2)}`} />
+            <ReceiptRow label="Tax" value={`$${(order.total_tax || 0).toFixed(2)}`} />
+            {(order.total_discount ?? 0) > 0 && (
+              <ReceiptRow label="Discount" value={`-$${(order.total_discount || 0).toFixed(2)}`} />
+            )}
 
             <View className="h-px bg-gray-600 my-3" />
             <View className="flex-row justify-between items-center">
               <Text className="text-xl font-bold text-white">Total</Text>
               <Text className="text-xl font-bold text-green-500">
-                ${(order.total + 1.5 + 2.0).toFixed(2)}
+                ${(order.total_amount || 0).toFixed(2)}
               </Text>
             </View>
           </View>
@@ -255,11 +278,18 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
             <Text className="text-base font-semibold text-red-500">Close</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 flex-row justify-center items-center gap-2 py-3.5 bg-blue-500 rounded-lg"
-            onPress={() => alert("Printing...")}
+            className={`flex-1 flex-row justify-center items-center gap-2 py-3.5 bg-blue-500 rounded-lg ${isPrinting ? "opacity-60" : ""}`}
+            onPress={handlePrintReceipt}
+            disabled={isPrinting || !location}
           >
-            <Printer color="#FFFFFF" size={20} />
-            <Text className="text-base font-bold text-white">Print Receipt</Text>
+            {isPrinting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Printer color="#FFFFFF" size={20} />
+            )}
+            <Text className="text-base font-bold text-white">
+              {isPrinting ? "Printing..." : "Print Receipt"}
+            </Text>
           </TouchableOpacity>
         </View>
       </Animated.View>

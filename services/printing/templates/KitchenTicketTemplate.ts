@@ -3,13 +3,14 @@ import { EscPosBuilder } from "../escpos/EscPosBuilder";
 
 /**
  * Builds ESC/POS commands for a kitchen ticket.
- * Uses large bold text for readability. No prices.
+ * Layout matches the kitchen ticket mockup with conditional flags from templateConfig.
  */
 export function buildKitchenTicketCommands(
   data: KitchenTicketData,
 ): Uint8Array {
   const w = data.maxCharsPerLine;
   const b = new EscPosBuilder();
+  const cfg = data.templateConfig;
 
   b.initialize();
 
@@ -29,48 +30,64 @@ export function buildKitchenTicketCommands(
   b.alignCenter();
   b.bold(true);
   b.doubleSize(true);
-  b.textLine(`Order ${data.orderNumber}`);
+  b.textLine(`ORDER #${data.orderNumber}`);
   b.doubleSize(false);
+
+  // Combined order type + table on one line
+  if (cfg?.showOrderType !== false) {
+    const typeLine = data.tableName
+      ? `${data.orderType.toUpperCase()} - ${data.tableName}`
+      : data.orderType.toUpperCase();
+    b.doubleHeight(true);
+    b.textLine(typeLine);
+    b.doubleHeight(false);
+  }
+
   b.bold(false);
 
-  b.doubleHeight(true);
-  b.textLine(data.orderType);
-  b.doubleHeight(false);
+  // Server name
+  if (cfg?.showServerName !== false && data.serverName) {
+    b.textLine(`Server: ${data.serverName}`);
+  }
+
+  // Full timestamp (date + time)
+  b.textLine(data.fullTimestamp ?? data.timestamp);
 
   b.alignLeft();
   b.doubleLine(w);
 
-  // ── Order Info ──
-  if (data.tableName) {
-    b.bold(true);
-    b.doubleHeight(true);
-    b.textLine(`Table: ${data.tableName}`);
-    b.doubleHeight(false);
-    b.bold(false);
-  }
-
-  if (data.serverName) {
-    b.twoColumnRow("Server:", data.serverName, w);
-  }
-
-  b.twoColumnRow("Time:", data.timestamp, w);
-  b.dottedLine(w);
-
   // ── Items ──
   for (const item of data.items) {
+    const useLargeText = cfg?.largeItemText !== false;
+
     b.bold(true);
-    b.doubleHeight(true);
+    if (useLargeText) {
+      b.doubleHeight(true);
+    }
 
     const prefix = item.isVoided ? "VOID " : "";
-    const qtyStr = item.quantity > 1 ? `${item.quantity}x ` : "";
+    const qtyStr = `${item.quantity}x `;
     b.textLine(`${prefix}${qtyStr}${item.name}`);
 
-    b.doubleHeight(false);
+    if (useLargeText) {
+      b.doubleHeight(false);
+    }
     b.bold(false);
 
-    // Modifiers
-    for (const mod of item.modifiers) {
-      b.textLine(`  > ${mod}`);
+    // Modifiers (conditional)
+    if (cfg?.showItemModifiers !== false) {
+      const useModsLarge = cfg?.showModsLarge === true;
+      if (useModsLarge) {
+        b.bold(true);
+      }
+
+      for (const mod of item.modifiers) {
+        b.textLine(`  + ${mod}`);
+      }
+
+      if (useModsLarge) {
+        b.bold(false);
+      }
     }
 
     // Special instructions (prominent)
@@ -85,10 +102,12 @@ export function buildKitchenTicketCommands(
 
   b.doubleLine(w);
 
-  // ── Timestamp footer ──
-  b.alignCenter();
-  b.textLine(data.timestamp);
-  b.alignLeft();
+  // ── Item count footer ──
+  if (data.totalItemCount !== undefined) {
+    b.alignCenter();
+    b.textLine(`${data.totalItemCount} items total`);
+    b.alignLeft();
+  }
 
   b.cut();
 

@@ -64,10 +64,28 @@ const BillSectionContent = ({
   // O(1) lookups with individual selectors - only re-renders when specific values change
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
 
-  // FIXED: Only subscribe to the active order, not the entire ordersById object
-  const activeOrder = useOrderStore((state) =>
-    state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined,
-  );
+  // PERF: Narrow subscriptions to specific fields instead of entire activeOrder object
+  // items/payments are array refs that stay stable when other fields change
+  const activeOrderItems = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.items ?? null;
+  });
+  const activeOrderPayments = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.payments ?? null;
+  });
+  const activeOrderPaidStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.paid_status ?? null;
+  });
+  const activeOrderType = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.order_type ?? null;
+  });
+  const activeOrderServiceLocation = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.service_location_id ?? null;
+  });
 
   // Phase 7: Use derived selector instead of 3 individual store selectors
   const orderTotals = useActiveOrderTotals();
@@ -91,7 +109,7 @@ const BillSectionContent = ({
   const { show } = useToast();
 
   // Memoize computed values to prevent unnecessary recalculations
-  const cart = useMemo(() => activeOrder?.items || [], [activeOrder?.items]);
+  const cart = useMemo(() => activeOrderItems || [], [activeOrderItems]);
   const hasDraftItems = useMemo(
     () => cart.some((item) => item.isDraft),
     [cart],
@@ -124,23 +142,26 @@ const BillSectionContent = ({
   // Poll for auto-retry status when there are failed syncs
   useEffect(() => {
     if (!hasFailedSyncs && !hasPendingSyncs) {
-      setAutoRetryState({ isRetrying: false, count: 0 });
+      setAutoRetryState((prev) =>
+        prev.isRetrying || prev.count !== 0 ? { isRetrying: false, count: 0 } : prev
+      );
       return;
     }
 
     // Check auto-retry status periodically
     const checkAutoRetry = () => {
-      setAutoRetryState({
-        isRetrying: isAutoRetryInProgress(),
-        count: getAutoRetryCount(),
-      });
+      const isRetrying = isAutoRetryInProgress();
+      const count = getAutoRetryCount();
+      setAutoRetryState((prev) =>
+        prev.isRetrying === isRetrying && prev.count === count ? prev : { isRetrying, count }
+      );
     };
 
     checkAutoRetry();
-    const interval = setInterval(checkAutoRetry, 2000); // Check every 2 seconds
+    const interval = setInterval(checkAutoRetry, 5000); // PERF: 5s - informational, not action-critical
 
     return () => clearInterval(interval);
-  }, [hasFailedSyncs, hasPendingSyncs, syncStatus]);
+  }, [hasFailedSyncs, hasPendingSyncs]);
 
   // Calculate the amount to display on the Pay button
   // Phase 7: Now uses derived selector which already prioritizes backend values
@@ -149,19 +170,19 @@ const BillSectionContent = ({
 
     // Derived selector's amountDue already prioritizes backend amount_due
     // For new orders without payments, use total
-    if (!activeOrder?.payments?.length) {
+    if (!activeOrderPayments?.length) {
       return orderTotals.total;
     }
 
     return orderTotals.amountDue;
-  }, [orderTotals, activeOrder?.payments]);
+  }, [orderTotals, activeOrderPayments]);
 
   // Check if order is partially paid (has payments but not fully paid)
   const isPartiallyPaid = useMemo(() => {
-    const hasPayments = (activeOrder?.payments?.length ?? 0) > 0;
+    const hasPayments = (activeOrderPayments?.length ?? 0) > 0;
     const hasDue = (orderTotals?.amountDue ?? 0) > 0.01;
-    return hasPayments && (activeOrder?.paid_status !== "Paid" || hasDue);
-  }, [activeOrder?.payments, activeOrder?.paid_status, orderTotals?.amountDue]);
+    return hasPayments && (activeOrderPaidStatus !== "Paid" || hasDue);
+  }, [activeOrderPayments, activeOrderPaidStatus, orderTotals?.amountDue]);
 
   // Calculate cash savings for dual-price display
   // Phase 7: Now uses derived selector which already prioritizes backend values
@@ -196,16 +217,14 @@ const BillSectionContent = ({
   // Memoize pay button disabled state - prevents clicking when balance due is 0 or no items
   const isPayButtonDisabled = useMemo(
     () =>
-      !activeOrder ||
+      !activeOrderId ||
       cart.length === 0 ||
       displayBalanceDue <= 0 ||
       isProcessing,
     [
-      activeOrder,
+      activeOrderId,
       cart.length,
-      hasDraftItems,
       displayBalanceDue,
-      isPaymentSheetOpen,
       isProcessing,
     ],
   );
@@ -257,7 +276,7 @@ const BillSectionContent = ({
       show({
         title: "Invalid Amount",
         message:
-          activeOrder?.paid_status === "Paid"
+          activeOrderPaidStatus === "Paid"
             ? "This order is already fully paid."
             : "Cannot process payment for $0.00. Please add items to the order.",
         type: "error",
@@ -270,7 +289,7 @@ const BillSectionContent = ({
       .getState()
       .open(
         "Card",
-        activeOrder?.service_location_id || null,
+        activeOrderServiceLocation || null,
         "payment-method-selection",
       );
   };
@@ -290,7 +309,7 @@ const BillSectionContent = ({
       return;
     }
 
-    if (activeOrder?.order_type === "dine_in" && selectedTable) {
+    if (activeOrderType === "dine_in" && selectedTable) {
       assignOrderToTable(activeOrderId!, selectedTable.id);
       // Table session status updates are now handled through session-based APIs
       clearSelectedTable();
@@ -416,7 +435,7 @@ const BillSectionContent = ({
           {/* Pending Payment Syncs Banner (only when online and has pending payments) */}
           {isOnline &&
             !hasFailedSyncs &&
-            activeOrder?.payments?.some((p) => p.sync_status === "pending") && (
+            activeOrderPayments?.some((p) => p.sync_status === "pending") && (
               <View className="flex-row items-center justify-center bg-amber-600/70 px-3 py-2 rounded-lg">
                 <Clock size={16} color="#FFFFFF" />
                 <Text className="text-white text-sm font-medium ml-2">

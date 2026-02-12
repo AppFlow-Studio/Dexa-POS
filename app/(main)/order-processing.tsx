@@ -40,41 +40,34 @@ const OrderProcessing = () => {
   // We compute both the filtered list and its reverse here to avoid extra memos.
   const reversedFilteredOrders = useOrderStore(
     useShallow((state) => {
-      // 1. Get all orders
-      const orders = state.orderIds
-        .map((id) => state.ordersById[id])
-        .filter(Boolean);
-
       // Date cutoff based on orderLineSettings.daysToShow
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
       cutoffDate.setHours(0, 0, 0, 0);
       const cutoffTime = cutoffDate.getTime();
 
-      // 2. Filter kitchen orders
-      const kitchenOrders = orders.filter(
-        (o) =>
-          // Date filter: only show orders within configured day range
+      // PERF: Iterate orderIds in reverse directly, avoiding intermediate array + .reverse()
+      const result: typeof state.ordersById[string][] = [];
+      for (let i = state.orderIds.length - 1; i >= 0; i--) {
+        const o = state.ordersById[state.orderIds[i]];
+        if (!o) continue;
+        if (
           new Date(o.opened_at || 0).getTime() >= cutoffTime &&
-          // Exclude Dine In orders entirely
           o.order_type !== "Dine In" &&
           o.order_type !== "dine_in" &&
-          // Condition 1: Any "preparing" order with items (Takeaway, Delivery only)
           ((o.order_status === "preparing" && o.items.length > 0) ||
-            // Condition 2: Unpaid orders that need payment if not closed check
             ((o.paid_status === "Unpaid" ||
               o.paid_status === "Pending" ||
               o.paid_status === "Partial") &&
               o.order_status !== "completed" &&
               o.order_status !== "draft" &&
-              o.order_status !== "void")
-            && o.check_status !== "Closed"
-            )
-              ,
-      );
-
-      // 3. Return reversed list
-      return kitchenOrders.slice().reverse();
+              o.order_status !== "void" &&
+              o.check_status !== "Closed"))
+        ) {
+          result.push(o);
+        }
+      }
+      return result;
     }),
   );
 

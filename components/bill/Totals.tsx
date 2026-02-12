@@ -11,11 +11,11 @@ interface TotalsProps {
 const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
   // Phase 7: Use derived selector instead of 6 individual store selectors
   const totals = useActiveOrderTotals();
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
 
-  // Get the active order to check for partial payments
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  // PERF: Single selector for active order - avoids subscribing to entire ordersById
+  const activeOrder = useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
+  );
 
   // Calculate amount paid and balance due
   const paymentInfo = useMemo(() => {

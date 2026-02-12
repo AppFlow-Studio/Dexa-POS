@@ -122,10 +122,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   const syncStatus = useItemSyncStatus(item.id);
   const syncError = useItemSyncError(item.id);
 
-  // Read active order for payment method awareness on badges
-  const activeOrder = useOrderStore((s) =>
-    s.activeOrderId ? s.ordersById[s.activeOrderId] : undefined
-  );
+  // PERF: Only subscribe to payments array - prevents re-render when other order fields change
+  const payments = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.payments ?? null;
+  });
 
   // Ref for position tracking (attached modifier panel positioning)
   const itemRef = useRef<View>(null);
@@ -239,14 +240,91 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     }
   };
 
+  // Check if item is voided (moved before paymentCoverage useMemo)
+  const isVoided = item.is_voided === true;
+
+  // PERF: Single memoized computation for all payment coverage data
+  // Replaces two inline IIFEs that ran O(n*m) on every render
+  const paymentCoverage = useMemo(() => {
+    if (isVoided || !payments) {
+      return {
+        isFullyPaid: false,
+        isPartiallyPaid: false,
+        isFullyRefunded: false,
+        isPartiallyRefunded: false,
+        netCoveredQty: 0,
+        refundedQty: 0,
+        methodLabel: "",
+        primaryMethod: "",
+        isSplitMethod: false,
+        hasRefundHistory: false,
+        hasRepaid: false,
+        repaidMethodLabel: "",
+      };
+    }
+
+    let coveredQty = 0;
+    const methodQtyMap: Record<string, number> = {};
+
+    for (const payment of payments) {
+      if (payment.isVoided) continue;
+      for (const covered of payment.itemsCovered ?? []) {
+        if (covered.itemId === item.id || covered.itemId === item.db_order_item_id) {
+          coveredQty += covered.quantity;
+          const m = payment.method ?? "Unknown";
+          methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity;
+        }
+      }
+    }
+
+    const refundedQty = item.refundedQuantity ?? 0;
+    const netCoveredQty = coveredQty - refundedQty;
+    const hasRefundHistory = refundedQty > 0;
+
+    let primaryMethod = "";
+    let maxQty = 0;
+    let methodCount = 0;
+    for (const [method, qty] of Object.entries(methodQtyMap)) {
+      methodCount++;
+      if (qty > maxQty) {
+        maxQty = qty;
+        primaryMethod = method;
+      }
+    }
+    const isSplitMethod = methodCount > 1;
+    const methodLabel = isSplitMethod ? "SPLIT" : primaryMethod.toUpperCase();
+
+    const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0;
+    const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0;
+    const isFullyPaid = netCoveredQty >= item.quantity;
+    const isPartiallyPaid = netCoveredQty > 0 && netCoveredQty < item.quantity;
+
+    // Repaid after refund data
+    const methods = Object.keys(methodQtyMap);
+    const repaidMethodLabel = methods.length > 1 ? "Split" : (methods[0] ?? "");
+    const hasRepaid = hasRefundHistory && isFullyPaid;
+
+    return {
+      isFullyPaid,
+      isPartiallyPaid,
+      isFullyRefunded,
+      isPartiallyRefunded,
+      netCoveredQty,
+      refundedQty,
+      methodLabel,
+      primaryMethod,
+      isSplitMethod,
+      hasRefundHistory,
+      hasRepaid,
+      repaidMethodLabel,
+    };
+  }, [payments, item.id, item.db_order_item_id, item.quantity, item.refundedQuantity, isVoided]);
+
   // Check if item has any modifiers to show
   const hasModifiers =
     (item.customizations.modifiers &&
       item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
-
-  // Check if item is voided
-  const isVoided = item.is_voided === true;
 
   return (
     <View
@@ -302,98 +380,38 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       <Text className="text-white text-xs font-bold">VOID</Text>
                     </View>
                   )}
-                  {/* Paid/Refunded status badges - payment method aware */}
-                  {(() => {
-                    if (isVoided) return null;
-
-                    // Compute coverage from order payments
-                    const payments = activeOrder?.payments ?? [];
-                    let coveredQty = 0;
-                    const methodQtyMap: Record<string, number> = {};
-
-                    for (const payment of payments) {
-                      if (payment.isVoided) continue;
-                      for (const covered of payment.itemsCovered ?? []) {
-                        if (covered.itemId === item.id || covered.itemId === item.db_order_item_id) {
-                          coveredQty += covered.quantity;
-                          const m = payment.method ?? "Unknown";
-                          methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity;
-                        }
-                      }
-                    }
-
-                    const refundedQty = item.refundedQuantity ?? 0;
-                    const netCoveredQty = coveredQty - refundedQty;
-                    const hasRefundHistory = refundedQty > 0;
-
-                    // Determine primary payment method (covers most quantity)
-                    let primaryMethod = "";
-                    let maxQty = 0;
-                    let methodCount = 0;
-                    for (const [method, qty] of Object.entries(methodQtyMap)) {
-                      methodCount++;
-                      if (qty > maxQty) {
-                        maxQty = qty;
-                        primaryMethod = method;
-                      }
-                    }
-                    const isSplitMethod = methodCount > 1;
-                    const methodLabel = isSplitMethod ? "SPLIT" : primaryMethod.toUpperCase();
-
-                    const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0;
-                    const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0;
-                    const isFullyPaid = netCoveredQty >= item.quantity;
-                    const isPartiallyPaid = netCoveredQty > 0 && netCoveredQty < item.quantity;
-
-                    // Fully refunded
-                    if (isFullyRefunded) {
-                      return (
-                        <View className="bg-red-600/20 px-2 py-0.5 rounded mr-2">
-                          <Text className="text-red-400 text-xs font-bold">
-                            REFUNDED
-                          </Text>
-                        </View>
-                      );
-                    }
-
-                    // Partially refunded
-                    if (isPartiallyRefunded && isFullyPaid) {
-                      return (
-                        <View className="bg-orange-600/20 px-2 py-0.5 rounded mr-2">
-                          <Text className="text-orange-400 text-xs font-bold">
-                            {refundedQty} REFUNDED
-                          </Text>
-                        </View>
-                      );
-                    }
-
-                    // Fully paid with method info
-                    if (isFullyPaid) {
-                      return (
-                        <View className="flex-row items-center bg-green-600/20 px-2 py-0.5 rounded mr-2">
-                          {primaryMethod === "Cash" && !isSplitMethod && (
-                            <Banknote size={12} color="#4ADE80" style={{ marginRight: 3 }} />
-                          )}
-                          <Text className="text-green-400 text-xs font-bold">
-                            PAID {methodLabel}
-                          </Text>
-                        </View>
-                      );
-                    }
-
-                    // Partially paid
-                    if (isPartiallyPaid) {
-                      return (
-                        <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
-                          <Text className="text-yellow-400 text-xs font-bold">
-                            {netCoveredQty}/{item.quantity} PAID
-                          </Text>
-                        </View>
-                      );
-                    }
-
-                    return null;
-                  })()}
+                  {/* Paid/Refunded status badges - from memoized paymentCoverage */}
+                  {!isVoided && paymentCoverage.isFullyRefunded && (
+                    <View className="bg-red-600/20 px-2 py-0.5 rounded mr-2">
+                      <Text className="text-red-400 text-xs font-bold">
+                        REFUNDED
+                      </Text>
+                    </View>
+                  )}
+                  {!isVoided && paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid && (
+                    <View className="bg-orange-600/20 px-2 py-0.5 rounded mr-2">
+                      <Text className="text-orange-400 text-xs font-bold">
+                        {paymentCoverage.refundedQty} REFUNDED
+                      </Text>
+                    </View>
+                  )}
+                  {!isVoided && !paymentCoverage.isFullyRefunded && !(paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid) && paymentCoverage.isFullyPaid && (
+                    <View className="flex-row items-center bg-green-600/20 px-2 py-0.5 rounded mr-2">
+                      {paymentCoverage.primaryMethod === "Cash" && !paymentCoverage.isSplitMethod && (
+                        <Banknote size={12} color="#4ADE80" style={{ marginRight: 3 }} />
+                      )}
+                      <Text className="text-green-400 text-xs font-bold">
+                        PAID {paymentCoverage.methodLabel}
+                      </Text>
+                    </View>
+                  )}
+                  {!isVoided && paymentCoverage.isPartiallyPaid && (
+                    <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
+                      <Text className="text-yellow-400 text-xs font-bold">
+                        {paymentCoverage.netCoveredQty}/{item.quantity} PAID
+                      </Text>
+                    </View>
+                  )}
                   <Text
                     className={`font-semibold text-base ${
                       isVoided ? "text-gray-500 line-through" : "text-white"
@@ -428,37 +446,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                     Reason: {item.void_reason}
                   </Text>
                 )}
-                {/* Refund-then-repay sub-text */}
-                {(() => {
-                  if (isVoided) return null;
-                  const refundedQty = item.refundedQuantity ?? 0;
-                  if (refundedQty <= 0) return null;
-
-                  const payments = activeOrder?.payments ?? [];
-                  let coveredQty = 0;
-                  const methodQtyMap: Record<string, number> = {};
-                  for (const payment of payments) {
-                    if (payment.isVoided) continue;
-                    for (const covered of payment.itemsCovered ?? []) {
-                      if (covered.itemId === item.id || covered.itemId === item.db_order_item_id) {
-                        coveredQty += covered.quantity;
-                        const m = payment.method ?? "Unknown";
-                        methodQtyMap[m] = (methodQtyMap[m] ?? 0) + covered.quantity;
-                      }
-                    }
-                  }
-                  const netCoveredQty = coveredQty - refundedQty;
-                  if (netCoveredQty < item.quantity) return null;
-
-                  // Item was refunded then re-paid
-                  const methods = Object.keys(methodQtyMap);
-                  const methodLabel = methods.length > 1 ? "Split" : (methods[0] ?? "");
-                  return (
-                    <Text className="text-gray-500 text-[10px] italic mt-0.5">
-                      Refunded → Re-paid {methodLabel}
-                    </Text>
-                  );
-                })()}
+                {/* Refund-then-repay sub-text - from memoized paymentCoverage */}
+                {paymentCoverage.hasRepaid && (
+                  <Text className="text-gray-500 text-[10px] italic mt-0.5">
+                    Refunded → Re-paid {paymentCoverage.repaidMethodLabel}
+                  </Text>
+                )}
                 <View className="flex-row items-center">
                   {/* {!item.isDraft && (...)} */}
                 </View>

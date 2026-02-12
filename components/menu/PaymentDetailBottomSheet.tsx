@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, OrderRefundItemRecord, ReversalRecord } from "@/lib/types";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useRefundMutation, type PerPaymentRefundDetail } from "@/hooks/orders/useRefundMutation";
 import { useTipAdjustMutation } from "@/hooks/orders/useTipAdjustMutation";
 import { useOrderDetailsFetch } from "@/hooks/orders/useOrderDetailsFetch";
@@ -14,6 +15,7 @@ import {
     ArrowLeft,
     Banknote,
     Check,
+    ChefHat,
     ChevronDown,
     ChevronUp,
     CircleDollarSign,
@@ -681,6 +683,7 @@ interface RightPaneSummaryProps {
   onCloseOrder: () => void;
   onContinueCharging: () => void;
   onIssueReceipt: () => void;
+  onPrintKitchenTicket: () => void;
   onTipAdjust: () => void;
   onRefund: () => void;
   formatTimestamp: (timestamp: string) => string;
@@ -693,6 +696,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onCloseOrder,
   onContinueCharging,
   onIssueReceipt,
+  onPrintKitchenTicket,
   onTipAdjust,
   onRefund,
   formatTimestamp,
@@ -1133,6 +1137,12 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             label="Receipt"
             onPress={onIssueReceipt}
             variant="success"
+          />
+          <ActionButton
+            icon={<ChefHat size={16} color="#F97316" />}
+            label="Kitchen"
+            onPress={onPrintKitchenTicket}
+            variant="warning"
           />
           <ActionButton
             icon={<CircleDollarSign size={16} color="#3B82F6" />}
@@ -2650,6 +2660,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   const internalRef = useRef<BottomSheetMethods>(null);
   const [tipProcessing, setTipProcessing] = useState(false);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
   // Mutation hooks
   const refundMutation = useRefundMutation();
@@ -2920,13 +2931,36 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     // router.push("/order-processing");
   }, [orderId, close, router]);
 
-  const handleIssueReceipt = useCallback(() => {
-    show({
-      title: "Issue Receipt",
-      message: "Receipt printing functionality coming soon",
-      type: "warning",
-    });
-  }, [show]);
+  const handleIssueReceipt = useCallback(async () => {
+    if (!order || !selectedStore) {
+      show({ title: "Print Error", message: "No order or store available.", type: "error" });
+      return;
+    }
+    const success = await PrinterService.printReceipt(order, selectedStore);
+    if (success) {
+      show({ title: "Receipt Sent", message: "Receipt sent to printer.", type: "success" });
+    } else {
+      show({ title: "No Printer", message: "No receipt printer configured for this location.", type: "warning" });
+    }
+  }, [order, selectedStore, show]);
+
+  const handlePrintKitchenTicket = useCallback(async () => {
+    if (!order || !selectedStore) {
+      show({ title: "Print Error", message: "No order or store available.", type: "error" });
+      return;
+    }
+    const nonVoidedItems = order.items.filter((item) => !item.is_voided);
+    if (nonVoidedItems.length === 0) {
+      show({ title: "No Items", message: "No items to print on kitchen ticket.", type: "warning" });
+      return;
+    }
+    const success = await PrinterService.printKitchenTickets(order, nonVoidedItems, selectedStore);
+    if (success) {
+      show({ title: "Kitchen Ticket Sent", message: "Kitchen ticket sent to printer.", type: "success" });
+    } else {
+      show({ title: "No Printer", message: "No kitchen printer configured for this location.", type: "warning" });
+    }
+  }, [order, selectedStore, show]);
 
   const handleRefund = useCallback(() => {
     console.log("[PaymentDetail] Refund button pressed, navigating to refund view");
@@ -3101,6 +3135,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onCloseOrder={handleCloseOrder}
                     onContinueCharging={handleContinueCharging}
                     onIssueReceipt={handleIssueReceipt}
+                    onPrintKitchenTicket={handlePrintKitchenTicket}
                     onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
                     formatTimestamp={formatTimestamp}
