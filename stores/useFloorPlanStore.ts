@@ -389,7 +389,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                     is_vip: data.session.is_vip,
                     order_id: data.session.order_id,
                     session_number: data.session.session_number,
-                    table_ids: tableIds,
+                    merged_tables: tableIds.length > 1 ? tableIds : undefined,
                   },
                 };
               }

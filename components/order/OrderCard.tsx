@@ -1,6 +1,7 @@
 import { OrderProfile } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { formatOrderStatus } from "@/utils/orderStatusHelpers";
 import { ArrowUpRight, Archive, RefreshCcw, Repeat2 } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -50,10 +51,23 @@ const OrderCard: React.FC<OrderCardProps> = ({
   // Derive closed with balance status
   const isClosedWithBalance = order.check_status === "Closed" && (order.amount_due ?? 0) > 0;
 
-  const isReady =
-    order.order_status === "ready" || order.order_status === "completed";
-  const statusBg = isReady ? "bg-blue-100" : "bg-[#DC9F1E33]";
-  const statusText = isReady ? "text-blue-700" : "text-[#DC9F1E]";
+  const getStatusStyle = () => {
+    switch (order.order_status) {
+      case "sent_to_kitchen":
+        return { bg: "bg-indigo-500/20", text: "text-indigo-400" };
+      case "preparing":
+        return { bg: "bg-[#DC9F1E33]", text: "text-[#DC9F1E]" };
+      case "ready":
+      case "completed":
+        return { bg: "bg-blue-100", text: "text-blue-700" };
+      case "cancelled":
+      case "void":
+        return { bg: "bg-red-500/20", text: "text-red-400" };
+      default:
+        return { bg: "bg-gray-500/20", text: "text-gray-400" };
+    }
+  };
+  const { bg: statusBg, text: statusText } = getStatusStyle();
   
   // Adjust paid status colors based on refund status
   const paidBg = refundStatus.isFullyRefunded
@@ -86,7 +100,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
       <View className="flex-row items-center gap-2">
         <View className={`px-3 py-1 rounded-full self-start ${statusBg}`}>
           <Text className={`text-base font-bold ${statusText}`}>
-            {order.order_status}
+            {formatOrderStatus(order.order_status)}
           </Text>
         </View>
         <View className={`px-3 py-1 rounded-full self-start ${paidBg}`}>

@@ -1,5 +1,6 @@
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { images } from "@/lib/image";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { cn } from "@/lib/utils";
 import {
   BarChart3,
@@ -96,6 +97,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   const handleManualReconnect = () => {
     console.log("[Sidebar] Manual reconnect triggered");
     floor.reconnect();
+    // Refetch floor plan data to recover missed events during connection drop
+    useFloorPlanStore.getState().loadFloorPlanStatus();
   };
 
   useEffect(() => {

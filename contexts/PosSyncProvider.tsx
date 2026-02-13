@@ -55,15 +55,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const selectedStation = useStoreSettingsStore(
     (state) => state.selectedStation,
   );
+  const isKDS = selectedStation?.station_type === "kds";
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
   const offlineSyncInitialized = useRef(false);
 
-  // Archive layer: TanStack Query fetches orders and hydrates workspace
+  // Archive layer: TanStack Query fetches orders and hydrates workspace (skip for KDS)
   useOrdersQuery({
     locationId: selectedStore?.id ?? null,
-    enabled: !!selectedStore?.id,
+    enabled: !!selectedStore?.id && !isKDS,
   });
 
   // Register Supabase client with order store, floor plan store, coursing store, and offline sync
@@ -263,28 +264,31 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   );
 
   // Sync employees and floor plans when store is selected (parallel)
+  // KDS only needs employees (for PIN verification)
   useEffect(() => {
     if (selectedStore?.id) {
       syncEmployees(selectedStore.id);
-      syncFloorPlans(selectedStore.id);
-      syncTaxRates(selectedStore.id);
+      if (!isKDS) {
+        syncFloorPlans(selectedStore.id);
+        syncTaxRates(selectedStore.id);
+      }
     }
-  }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
+  }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
   const setMenuData = useMenuStore((state) => state.setMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
 
-  // Fetch menu data from API when store is selected
+  // Fetch menu data from API when store is selected (skip for KDS)
   const {
     data: posSyncData,
     isLoading: isSyncing,
     isError: isSyncError,
     error: syncError,
-  } = usePosSync(selectedStore?.id ?? null);
+  } = usePosSync(isKDS ? null : (selectedStore?.id ?? null));
 
-  // Fetch standalone entities (categories, items, modifiers not in menus)
+  // Fetch standalone entities (categories, items, modifiers not in menus) (skip for KDS)
   const { data: standaloneData } = useStandaloneSync(
-    selectedStore?.merchant_id ?? null,
-    selectedStore?.id ?? null,
+    isKDS ? null : (selectedStore?.merchant_id ?? null),
+    isKDS ? null : (selectedStore?.id ?? null),
   );
 
   // Keep a ref to standalone data so the posSyncData effect can re-merge
@@ -292,8 +296,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const standaloneDataRef = useRef(standaloneData);
   standaloneDataRef.current = standaloneData;
 
-  // --- INVENTORY SYNC ---
-  const { data: inventoryData } = useInventorySync(selectedStore?.id ?? null);
+  // --- INVENTORY SYNC --- (skip for KDS)
+  const { data: inventoryData } = useInventorySync(isKDS ? null : (selectedStore?.id ?? null));
   const setInventoryData = useInventoryStore((state) => state.setInventoryData);
   const setInventorySupabase = useInventoryStore(
     (state) => state.setSupabaseClient,
@@ -360,29 +364,29 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       applyRecipes(inventoryData);
 
       // Send menu data to debug server in development
-      const DEBUG_MENU_URL = __DEV__
-        ? "http://192.168.29.134:3456/debug/sync-data"
-        : null;
+      // const DEBUG_MENU_URL = __DEV__
+      //   ? "http://192.168.29.134:3456/debug/sync-data"
+      //   : null;
 
-      if (DEBUG_MENU_URL) {
-        fetch(DEBUG_MENU_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            menuData: posSyncData,
-            locationId: selectedStore?.id,
-          }),
-        })
-          .then((res) => res.json())
-          .then((result) => {
-            if (result.success) {
-              console.log("✅ Menu data sent to debug server:", result.path);
-            }
-          })
-          .catch((err) => {
-            console.log("Debug server not running (optional):", err.message);
-          });
-      }
+      // if (DEBUG_MENU_URL) {
+      //   fetch(DEBUG_MENU_URL, {
+      //     method: "POST",
+      //     headers: { "Content-Type": "application/json" },
+      //     body: JSON.stringify({
+      //       menuData: posSyncData,
+      //       locationId: selectedStore?.id,
+      //     }),
+      //   })
+      //     .then((res) => res.json())
+      //     .then((result) => {
+      //       if (result.success) {
+      //         console.log("✅ Menu data sent to debug server:", result.path);
+      //       }
+      //     })
+      //     .catch((err) => {
+      //       console.log("Debug server not running (optional):", err.message);
+      //     });
+      // }
     }
   }, [posSyncData, setMenuData, selectedStore?.id, inventoryData]);
 
@@ -459,43 +463,50 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (selectedStore?.id) {
-      // Clear potentially stale floor plan data before fresh sync
-      useFloorPlanStore.setState({
-        tables: [],
-        lastSyncAt: null,
-      });
-
       syncEmployees(selectedStore.id);
-      syncFloorPlans(selectedStore.id);
-      syncTaxRates(selectedStore.id);
-      useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
+
+      if (!isKDS) {
+        // Clear potentially stale floor plan data before fresh sync
+        useFloorPlanStore.setState({
+          tables: [],
+          lastSyncAt: null,
+        });
+
+        syncFloorPlans(selectedStore.id);
+        syncTaxRates(selectedStore.id);
+        useReceiptTemplateStore.getState().fetchTemplates(selectedStore.id);
+      }
 
       // Orders are now initialized via useOrdersQuery hook (archive layer)
       // which auto-fetches when locationId changes
     }
-  }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
+  }, [selectedStore?.id, isKDS, syncEmployees, syncFloorPlans, syncTaxRates]);
 
   // App state listener - reconnect realtime and refresh stale data when app becomes active
+  // KDS screen handles its own 120s polling fallback, so skip POS reconnect logic
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === "active") {
         console.log("[PosSyncProvider] App became active - refreshing data");
-        const floorPlanStore = useFloorPlanStore.getState();
-        const storeSettings = useStoreSettingsStore.getState();
 
-        // Reconnect realtime if disconnected or reconnecting
-        if (floorPlanStore.realtimeStatus !== "connected") {
-          floorPlanStore.manualReconnect();
-        }
+        if (!isKDS) {
+          const floorPlanStore = useFloorPlanStore.getState();
+          const storeSettings = useStoreSettingsStore.getState();
 
-        // Refresh stale floor plan data
-        floorPlanStore.loadFloorPlanStatusIfStale();
+          // Reconnect realtime if disconnected or reconnecting
+          if (floorPlanStore.realtimeStatus !== "connected") {
+            floorPlanStore.manualReconnect();
+          }
 
-        // Refresh orders when app resumes via query invalidation
-        if (storeSettings.selectedStore?.id) {
-          queryClient.invalidateQueries({
-            queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
-          });
+          // Refresh stale floor plan data
+          floorPlanStore.loadFloorPlanStatusIfStale();
+
+          // Refresh orders when app resumes via query invalidation
+          if (storeSettings.selectedStore?.id) {
+            queryClient.invalidateQueries({
+              queryKey: orderQueryKeys.active(storeSettings.selectedStore.id),
+            });
+          }
         }
       }
     };
@@ -508,7 +519,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [isKDS]);
 
   return <>{children}</>;
 }

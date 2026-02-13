@@ -2,6 +2,7 @@
 -- get_kds_tickets: Server-side denormalized KDS ticket aggregation
 -- Returns pre-grouped tickets (one per order+course) with items & modifiers
 -- Eliminates client-side order→ticket transformation
+-- Supports optional KDS display filtering via kds_item_status
 -- ============================================================================
 
 -- Performance indexes for KDS queries
@@ -14,9 +15,10 @@ CREATE INDEX IF NOT EXISTS idx_orders_location_status
   WHERE status NOT IN ('completed', 'cancelled', 'void', 'voided', 'refunded');
 
 -- Main RPC function
-CREATE OR REPLACE FUNCTION get_kds_tickets(
+CREATE OR REPLACE FUNCTION get_kds_tickets_v2(
   p_location_id UUID,
-  p_statuses TEXT[] DEFAULT ARRAY['sent', 'preparing', 'ready']
+  p_statuses TEXT[] DEFAULT ARRAY['sent', 'preparing', 'ready'],
+  p_kds_display_id UUID DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -71,6 +73,8 @@ BEGIN
             'category_id', oi.category_id,
             'menu_name', oi.menu_name,
             'menu_id', oi.menu_id,
+            'prep_station', oi.prep_station,
+            'rush', COALESCE(oi.rush, false),
             'modifiers', (
               SELECT COALESCE(jsonb_agg(
                 jsonb_build_object(
@@ -85,8 +89,15 @@ BEGIN
           )
         ) AS items_json
       FROM order_items oi
+      -- When p_kds_display_id is provided, only include items routed to that display
+      LEFT JOIN kds_item_status kis
+        ON kis.order_item_id = oi.id
+        AND kis.kds_display_id = p_kds_display_id
+        AND kis.status NOT IN ('cancelled', 'completed')
       WHERE COALESCE(oi.is_voided, false) = false
         AND (oi.kitchen_status = ANY(p_statuses) OR oi.kitchen_status IS NULL)
+        -- Filter: if display ID provided, only show routed items; otherwise show all
+        AND (p_kds_display_id IS NULL OR kis.id IS NOT NULL)
       GROUP BY oi.order_id, COALESCE(oi.course_number, 1)
     ) oi_grouped ON oi_grouped.order_id = o.id
     WHERE o.location_id = p_location_id

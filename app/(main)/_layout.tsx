@@ -15,6 +15,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Redirect, Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
@@ -23,9 +24,17 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+/** Side-effect component: keeps POS orders in sync when realtime drops */
+function OrderSyncRecoveryBridge({ locationId }: { locationId: string }) {
+  useOrderSyncRecovery(locationId);
+  return null;
+}
+
 export default function MainLayout() {
   const { isSignedIn, isLoaded } = useAuth();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore)
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const isKDS = selectedStation?.station_type === "kds";
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentBottomSheetRef = useRef<BottomSheetMethods>(null);
@@ -33,12 +42,14 @@ export default function MainLayout() {
   const { setSheetRef } = useNotificationSheetStore();
 
   useEffect(() => {
-    setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
-  }, [setSheetRef]);
+    if (!isKDS) {
+      setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
+    }
+  }, [setSheetRef, isKDS]);
 
   // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
   useEffect(() => {
-    if (__DEV__) {
+    if (__DEV__ && !isKDS) {
       const orderStore = useOrderStore.getState();
       console.log('🔧 [MainLayout Init] Station context:', {
         hasStation: !!orderStore.currentStation,
@@ -48,26 +59,36 @@ export default function MainLayout() {
         timestamp: new Date().toISOString(),
       });
     }
-  }, []);
+  }, [isKDS]);
 
   useEffect(() => {
-    usePaymentStore
-      .getState()
-      .setPaymentBottomSheetRef(
-        paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
-      );
-  }, [paymentBottomSheetRef]);
+    if (!isKDS) {
+      usePaymentStore
+        .getState()
+        .setPaymentBottomSheetRef(
+          paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
+        );
+    }
+  }, [paymentBottomSheetRef, isKDS]);
 
   // Register PaymentDetailBottomSheet ref with store
   useEffect(() => {
-    usePaymentDetailSheetStore
-      .getState()
-      .setBottomSheetRef(
-        paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
-      );
-  }, [paymentDetailSheetRef]);
+    if (!isKDS) {
+      usePaymentDetailSheetStore
+        .getState()
+        .setBottomSheetRef(
+          paymentDetailSheetRef as React.RefObject<BottomSheetMethods>
+        );
+    }
+  }, [paymentDetailSheetRef, isKDS]);
 
-  // Realtime order syncing callbacks
+  // KDS-only broadcast handler — only feeds useKDSStore, skips useOrderStore
+  const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {
+    const broadcastPayload = payload as unknown as OrderBroadcastPayload;
+    useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
+  }, []);
+
+  // Realtime order syncing callbacks (POS mode)
   const handleOrderChange = useCallback((payload: OrderPayload) => {
     // Backend sends OrderBroadcastPayload with full order data
     const broadcastPayload = payload as unknown as OrderBroadcastPayload;
@@ -121,6 +142,24 @@ export default function MainLayout() {
     return <Redirect href="/login" />;
   }
 
+  // KDS stations get a minimal layout — no Header, no Payment sheets
+  if (isKDS) {
+    return (
+      <LocationRealtimeProvider
+        locationId={selectedStore?.id}
+        callbacks={{
+          onOrderChange: handleOrderChangeKDS,
+          onPaymentChange: handlePaymentChange,
+        }}
+      >
+        <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "#1a1a1a" }}>
+          <StatusBar style="light" translucent />
+          <Slot />
+        </SafeAreaView>
+      </LocationRealtimeProvider>
+    );
+  }
+
   return (
     <LocationRealtimeProvider
       locationId={selectedStore?.id}
@@ -129,6 +168,7 @@ export default function MainLayout() {
         onPaymentChange: handlePaymentChange,
       }}
     >
+    <OrderSyncRecoveryBridge locationId={selectedStore.id} />
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"

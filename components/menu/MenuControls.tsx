@@ -2,7 +2,7 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import type { TriggerRef } from "@rn-primitives/select";
 import { Clock } from "lucide-react-native";
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import {
   Platform,
   ScrollView,
@@ -43,19 +43,29 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   const getCategoryScheduleInfo = useMenuStore((s) => s.getCategoryScheduleInfo);
   const temporaryActiveCategories = useMenuStore((s) => s.temporaryActiveCategories);
   const { requestPinOverride } = usePinOverrideStore();
-  const visibleMenus = menus.filter(
-    (m) => m.isActive && isMenuAvailableNow(m.id)
+
+  // OPTIMIZED: Collapsed visibleMenus + currentMenu into a single lookup (no intermediate array)
+  // Parent's availabilityTick timer already drives re-renders for availability updates
+  const currentMenu = useMemo(
+    () => menus.find((m) => m.isActive && isMenuAvailableNow(m.id) && m.name === activeMeal),
+    [menus, activeMeal, isMenuAvailableNow],
   );
-  // Trigger re-render every minute so availability updates as time passes
-  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      forceUpdate();
-    }, 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
-  const currentMenu = visibleMenus.find((menu) => menu.name === activeMeal);
   const categories = currentMenu?.categories;
+
+  // OPTIMIZED: Single stable handler extracted from .map() loop
+  const handleCategoryPress = useCallback(
+    (tab: string, isAvailable: boolean) => {
+      if (isAvailable) {
+        onCategoryChange(tab);
+      } else {
+        requestPinOverride({
+          type: "select_category",
+          payload: { categoryName: tab },
+        });
+      }
+    },
+    [onCategoryChange, requestPinOverride],
+  );
   const ref = React.useRef<TriggerRef>(null);
   const insets = useSafeAreaInsets();
   const contentInsets = {
@@ -91,21 +101,10 @@ const MenuControls: React.FC<MenuControlsProps> = ({
               const isAvailable = isNormallyAvailable || hasOverride;
               const dotColor = isAvailable ? "#10B981" : "#EF4444";
 
-              const handlePress = () => {
-                if (isAvailable) {
-                  onCategoryChange(tab);
-                } else {
-                  requestPinOverride({
-                    type: "select_category",
-                    payload: { categoryName: tab },
-                  });
-                }
-              };
-
               return (
                 <TouchableOpacity
                   key={cat.id || tab} // Use ID if available
-                  onPress={handlePress}
+                  onPress={() => handleCategoryPress(tab, isAvailable)}
                   className={`py-2 px-4 rounded-lg flex-row items-center gap-2 ${
                     activeCategory === tab
                       ? "bg-[#212121]"

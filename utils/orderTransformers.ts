@@ -559,6 +559,7 @@ export function transformBroadcastToOrder(
 
     // Sync status - already synced since from DB
     sync_status: "synced",
+    sync_version: backendOrder.sync_version ?? 0,
   };
 }
 

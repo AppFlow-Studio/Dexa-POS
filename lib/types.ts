@@ -853,6 +853,7 @@ export interface OrderProfile {
   order_status:
     | "draft"
     | "pending"
+    | "sent_to_kitchen"
     | "preparing"
     | "ready"
     | "completed"

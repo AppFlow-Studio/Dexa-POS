@@ -38,26 +38,20 @@ const OrderLineSectionContent: React.FC = () => {
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  // Filter station orders to show:
-  // 1. Orders that are preparing
-  // 2. Orders that are unpaid
-  // 3. Closed orders with outstanding balance (from refunds)
-  // 4. Fully refunded orders (need to be marked as done)
+  // Filter station orders: hide closed checks and ready+paid orders, show everything else
   const visibleOrders = useMemo(() => {
     return stationOrders.filter((o) => {
-      // Show preparing orders
-      if (o.order_status === "preparing") return true;
-      
-      // Show unpaid orders
-      if (o.paid_status !== "Paid") return true;
-      
-      // Dont Show Closed Orders 
-      // if (o.check_status === "Closed" && (o.amount_due ?? 0) > 0) return true;
-      
-      // Show fully refunded orders
-      if (isOrderFullyRefunded(o)) return true;
-      
-      return false;
+      // Hide closed checks
+      if (o.check_status === "Closed") return false;
+
+      // Hide orders that are ready/completed AND fully paid
+      if (
+        (o.order_status === "ready" || o.order_status === "completed") &&
+        o.paid_status === "Paid"
+      ) return false;
+
+      // Show everything else (sent_to_kitchen, preparing, unpaid, refunded, etc.)
+      return true;
     });
   }, [stationOrders]);
 

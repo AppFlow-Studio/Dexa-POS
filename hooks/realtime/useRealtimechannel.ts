@@ -1,6 +1,7 @@
 // hooks/useRealtimeChannel.ts
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { RealtimeChannel, REALTIME_SUBSCRIBE_STATES, SupabaseClient } from '@supabase/supabase-js';
 import type {
   RealtimeChannelTopic,
@@ -39,6 +40,8 @@ export function useRealtimeChannel<T>({
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const subscribeRef = useRef<() => void>(() => {});
+  const statusRef = useRef<ChannelState>('CLOSED');
 
   const [status, setStatus] = useState<ChannelStatus>({
     topic,
@@ -52,6 +55,9 @@ export function useRealtimeChannel<T>({
   const updateStatus = useCallback((updates: Partial<ChannelStatus>) => {
     setStatus(prev => {
       const newStatus = { ...prev, ...updates };
+      if (updates.state) {
+        statusRef.current = updates.state;
+      }
       onStatusChange?.(newStatus);
       return newStatus;
     });
@@ -123,6 +129,9 @@ export function useRealtimeChannel<T>({
 
     channelRef.current = channel;
   }, [supabaseClient, topic, events, onMessage, updateStatus]);
+
+  // Keep subscribeRef in sync for AppState effect
+  subscribeRef.current = subscribe;
 
   // Reconnection logic with exponential backoff
   const handleReconnect = useCallback(() => {
@@ -218,6 +227,52 @@ export function useRealtimeChannel<T>({
 
     return () => clearInterval(refreshInterval);
   }, [enabled, status.state, supabaseClient]);
+
+  // Reconnect channels when app returns to foreground
+  useEffect(() => {
+    if (!enabled) return;
+
+    let isMounted = true;
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState !== 'active') return;
+
+      // Reset reconnect budget - attempts were likely wasted while suspended
+      reconnectAttemptsRef.current = 0;
+
+      // Clear any stale reconnect timeout to prevent double-subscribe race
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      const currentState = statusRef.current;
+      const channel = channelRef.current;
+
+      if (!channel || currentState !== 'SUBSCRIBED') {
+        // Channel is dead or missing - full reconnect after short delay for network restoration
+        console.log(`[Realtime] App foregrounded, reconnecting ${topic} (state: ${currentState})`);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (isMounted) {
+            subscribeRef.current();
+          }
+        }, 1000);
+      } else {
+        // Channel appears healthy - proactively refresh auth token
+        console.log(`[Realtime] App foregrounded, ${topic} still SUBSCRIBED, refreshing auth`);
+        supabaseClient.realtime.setAuth().catch((error) => {
+          console.error(`[Realtime] Failed to refresh auth for ${topic} on foreground:`, error);
+        });
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      isMounted = false;
+      subscription.remove();
+    };
+  }, [enabled, supabaseClient, topic]);
 
   return { status, reconnect, disconnect };
 }

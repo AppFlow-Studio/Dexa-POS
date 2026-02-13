@@ -259,36 +259,36 @@ export const useStandaloneSync = (
       });
 
       // Debug: Send standalone data to debug server
-      const DEBUG_STANDALONE_URL = __DEV__
-        ? "http://192.168.29.134:3456/debug/sync-data"
-        : null;
+      // const DEBUG_STANDALONE_URL = __DEV__
+      //   ? "http://192.168.29.134:3456/debug/sync-data"
+      //   : null;
 
-      if (DEBUG_STANDALONE_URL) {
-        fetch(DEBUG_STANDALONE_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            standaloneData: {
-              items: itemsResult.data || [],
-            },
-            locationId,
-            merchantId,
-            timestamp: new Date().toISOString(),
-          }),
-        })
-          .then((res) => res.json())
-          .then((result) => {
-            if (result.success) {
-              console.log(
-                "✅ Standalone data sent to debug server:",
-                result.path
-              );
-            }
-          })
-          .catch((err) => {
-            console.log("Debug server not running (optional):", err.message);
-          });
-      }
+      // if (DEBUG_STANDALONE_URL) {
+      //   fetch(DEBUG_STANDALONE_URL, {
+      //     method: "POST",
+      //     headers: { "Content-Type": "application/json" },
+      //     body: JSON.stringify({
+      //       standaloneData: {
+      //         items: itemsResult.data || [],
+      //       },
+      //       locationId,
+      //       merchantId,
+      //       timestamp: new Date().toISOString(),
+      //     }),
+      //   })
+      //     .then((res) => res.json())
+      //     .then((result) => {
+      //       if (result.success) {
+      //         console.log(
+      //           "✅ Standalone data sent to debug server:",
+      //           result.path
+      //         );
+      //       }
+      //     })
+      //     .catch((err) => {
+      //       console.log("Debug server not running (optional):", err.message);
+      //     });
+      // }
 
       return {
         categories: (categoriesResult.data || []) as StandaloneCategory[],

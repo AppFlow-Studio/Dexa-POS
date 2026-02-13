@@ -16,6 +16,8 @@ import {
   UpdateOrderItemQuantityResult,
   UpdateOrderItemResult,
 } from "@/types/db-order-management-types";
+import { getDeviceId } from "@/lib/deviceId";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export type AddOpenItemParams = {
@@ -58,6 +60,66 @@ export type UpdateOpenItemResult = {
 
 export class OrderService {
   /**
+   * Validates that the current station session is still active.
+   * Returns true if valid, false if the session has been kicked/ended/expired.
+   * On failure, logs a warning so the caller can handle appropriately.
+   *
+   * This is a lightweight guard to prevent kicked devices from continuing
+   * to perform operations if all realtime kick channels failed.
+   */
+  static async ensureSessionValid(
+    client: SupabaseClient,
+  ): Promise<boolean> {
+    try {
+      const deviceId = getDeviceId();
+      const sessionId = useStoreSettingsStore.getState().stationSessionId;
+
+      if (!deviceId || !sessionId) {
+        // No active session - allow operation (might be during setup)
+        return true;
+      }
+
+      const { data, error } = await client.rpc(
+        "check_device_session_status",
+        {
+          p_device_id: deviceId,
+          p_session_id: sessionId,
+        },
+      );
+
+      if (error) {
+        // Don't block on RPC errors (network issues) - fail open
+        console.warn(
+          "[OrderService] Session validation RPC error (allowing operation):",
+          error.message,
+        );
+        return true;
+      }
+
+      const result = data as {
+        is_valid: boolean;
+        status: string;
+        kicked_by?: string;
+        kick_reason?: string;
+      };
+
+      if (!result.is_valid) {
+        console.error(
+          `[OrderService] SESSION INVALID - status: ${result.status}, ` +
+          `kicked_by: ${result.kicked_by}. Blocking operation.`,
+        );
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      // Fail open on unexpected errors
+      console.warn("[OrderService] Session guard error (allowing operation):", err);
+      return true;
+    }
+  }
+
+  /**
    * Create a new order
    * @param client - Supabase client
    * @param params - CreateOrderParams
@@ -68,11 +130,14 @@ export class OrderService {
     client: SupabaseClient,
     params: CreateOrderParams,
   ): Promise<{ data: Order | null; error: any }> {
-    // console.log(`[OrderService:createOrder] ====== CREATING ORDER ======`);
-    // console.log(
-    //   `[OrderService:createOrder] Params:`,
-    //   JSON.stringify(params, null, 2),
-    // );
+    // Session guard: prevent kicked devices from creating orders
+    const sessionValid = await OrderService.ensureSessionValid(client);
+    if (!sessionValid) {
+      return {
+        data: null,
+        error: { message: "Session has been kicked. Please log in again.", code: "SESSION_KICKED" },
+      };
+    }
 
     const { data, error } = await client.rpc("create_order_v2", params);
 
@@ -242,6 +307,15 @@ export class OrderService {
     client: SupabaseClient,
     params: ProcessPaymentV2Params,
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
+    // Session guard: prevent kicked devices from processing payments
+    const sessionValid = await OrderService.ensureSessionValid(client);
+    if (!sessionValid) {
+      return {
+        data: null,
+        error: { message: "Session has been kicked. Please log in again.", code: "SESSION_KICKED" },
+      };
+    }
+
     console.log(
       `[OrderService:processPayment] ====== CALLING process_payment_v5 ======`,
     );
@@ -421,6 +495,15 @@ export class OrderService {
     orderId: string,
     voidReason?: string,
   ): Promise<{ data: any; error: any }> {
+    // Session guard: prevent kicked devices from voiding orders
+    const sessionValid = await OrderService.ensureSessionValid(client);
+    if (!sessionValid) {
+      return {
+        data: null,
+        error: { message: "Session has been kicked. Please log in again.", code: "SESSION_KICKED" },
+      };
+    }
+
     const { data, error } = await client.rpc("void_order", {
       p_order_id: orderId,
       p_void_reason: voidReason || "Order cancelled",
@@ -728,12 +811,16 @@ export class OrderService {
     client: SupabaseClient,
     locationId: string,
     statuses?: string[],
+    kdsDisplayId?: string,
   ): Promise<{ data: any; error: any }> {
     const params: Record<string, any> = { p_location_id: locationId };
     if (statuses) {
       params.p_statuses = statuses;
     }
-    const { data, error } = await client.rpc("get_kds_tickets", params);
+    if (kdsDisplayId) {
+      params.p_kds_display_id = kdsDisplayId;
+    }
+    const { data, error } = await client.rpc("get_kds_tickets_v2", params);
     return { data, error };
   }
 

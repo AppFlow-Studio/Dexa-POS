@@ -35,7 +35,7 @@ export interface StationPaymentTerminal {
 export interface Station {
   id: string;
   station_name: string;
-  station_type: "register" | "terminal" | "kiosk" | "mobile";
+  station_type: "register" | "terminal" | "kiosk" | "mobile" | "kds";
   station_number: number;
   is_active: boolean;
   is_available: boolean;
@@ -113,6 +113,8 @@ export interface PosStaffLoginResponse {
     station_type: string;
     is_reconnect: boolean;
     kicked_previous: boolean;
+    /** Device ID of the session that was kicked (only set when kicked_previous is true) */
+    kicked_device_id?: string | null;
   };
   current_session?: StationCurrentSession;
   shift?: Record<string, unknown>;

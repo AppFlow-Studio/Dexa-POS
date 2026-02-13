@@ -2,7 +2,7 @@ import {
   selectIsFullscreen,
   useModifierSidebarStore
 } from "@/stores/useModifierSidebarStore";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { Animated, Dimensions, StyleSheet } from "react-native";
 import ModifierScreen from "./ModifierScreen";
 
@@ -34,18 +34,12 @@ const ModifierScreenOverlay: React.FC = () => {
   // OPTIMIZATION: Enable touch immediately when store says open, not when animation completes
   const isOpen = useModifierSidebarStore((s) => s.isOpen);
 
-  // Track if overlay has ever been shown (for lazy content loading)
-  const [hasBeenShown, setHasBeenShown] = useState(false);
-
   // Animation values for slide-down effect - START in hidden position
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (isFullscreen) {
-      // Track that overlay has been shown at least once
-      if (!hasBeenShown) setHasBeenShown(true);
-
       // OPTIMIZED: Faster spring for instant response
       Animated.parallel([
         Animated.spring(slideAnim, {
@@ -75,7 +69,7 @@ const ModifierScreenOverlay: React.FC = () => {
         }),
       ]).start();
     }
-  }, [isFullscreen, slideAnim, opacityAnim, hasBeenShown]);
+  }, [isFullscreen, slideAnim, opacityAnim]);
 
   // ALWAYS RENDER - visibility controlled by animation values
   return (
@@ -90,8 +84,7 @@ const ModifierScreenOverlay: React.FC = () => {
       // OPTIMIZATION: Enable touches as soon as store says open (not animation completion)
       pointerEvents={isOpen ? "auto" : "none"}
     >
-      {/* Only render ModifierScreen if overlay has been shown at least once */}
-      {hasBeenShown && <ModifierScreen />}
+      <ModifierScreen />
     </Animated.View>
   );
 };

@@ -1,6 +1,7 @@
 import { OrderProfile } from "@/lib/types";
 import { useWasOrderRecentlyUpdated } from "@/stores/useConflictStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { formatOrderStatus } from "@/utils/orderStatusHelpers";
 import {
   CheckCircle,
   CreditCard,
@@ -43,6 +44,9 @@ const getStatusColor = (status: string, paidStatus: string, refundState?: { isFu
     };
   }
   
+  if (status === "sent_to_kitchen") {
+    return { dot: "#6366f1", bg: "#eef2ff", border: "#818cf8", text: "#3730a3" };
+  }
   if (status === "preparing") {
     if (paidStatus === "Paid") {
       return {
@@ -255,7 +259,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
                     : "text-gray-300"
                 }`}
               >
-                {order.order_status}
+                {formatOrderStatus(order.order_status)}
               </Text>
             </View>
           </View>
@@ -466,11 +470,11 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     const name = order.customer_name
       ? order.customer_name
       : order.display_number || order.order_number || `#${order.id.slice(-4)}`;
-    const statusText = refundState.isFullyRefunded 
+    const statusText = refundState.isFullyRefunded
       ? "REFUNDED"
-      : refundState.isPartiallyRefunded 
-        ? "partial refund"
-        : order.order_status;
+      : refundState.isPartiallyRefunded
+        ? "Partial Refund"
+        : formatOrderStatus(order.order_status);
     return `${name} - ${statusText}`;
   }, [
     order.customer_name,

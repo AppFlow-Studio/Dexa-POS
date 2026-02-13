@@ -19,6 +19,7 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePtoStore } from "@/stores/usePtoStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
 import { ClerkLoaded, ClerkProvider, TokenCache } from "@clerk/clerk-expo";
@@ -80,6 +81,7 @@ export default function RootLayout() {
   const { colorScheme, isDarkColorScheme } = useColorScheme();
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false);
   const { isClockInWallOpen, hideClockInWall } = useTimeclockStore();
+  const isKDS = useStoreSettingsStore((s) => s.selectedStation?.station_type === "kds");
 
   useIsomorphicLayoutEffect(() => {
     if (hasMounted.current) {
@@ -93,25 +95,30 @@ export default function RootLayout() {
     setIsColorSchemeLoaded(true);
     hasMounted.current = true;
 
-    // Initialize timeclock history first
-    useTimeclockStore.getState().initializeHistory();
-    // Then initialize PTO history based on the timeclock history
-    usePtoStore.getState().initializePtoFromHistory();
-    // Start draft order cleanup
-    useOrderStore.getState().startDraftCleanup();
-    // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
-    useOrderStore.getState().cleanupDraftDuplicates();
-    // Start print queue processing
-    PrinterService.startProcessing();
+    // Skip POS-only initialization for KDS stations
+    if (!isKDS) {
+      // Initialize timeclock history first
+      useTimeclockStore.getState().initializeHistory();
+      // Then initialize PTO history based on the timeclock history
+      usePtoStore.getState().initializePtoFromHistory();
+      // Start draft order cleanup
+      useOrderStore.getState().startDraftCleanup();
+      // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
+      useOrderStore.getState().cleanupDraftDuplicates();
+      // Start print queue processing
+      PrinterService.startProcessing();
+    }
   }, []);
 
   // Cleanup intervals on unmount
   React.useEffect(() => {
     return () => {
-      useOrderStore.getState().stopDraftCleanup();
-      PrinterService.stopProcessing();
+      if (!isKDS) {
+        useOrderStore.getState().stopDraftCleanup();
+        PrinterService.stopProcessing();
+      }
     };
-  }, []);
+  }, [isKDS]);
 
   if (!isColorSchemeLoaded) {
     return null;
@@ -154,14 +161,16 @@ export default function RootLayout() {
                             <StatusBar style={"dark"} translucent />
                             <Stack screenOptions={{ headerShown: false }} />
                             <PortalHost />
-                            <SearchBottomSheet />
-                            <ItemCustomizationDialog />
-                            <ClockInWallModal
-                              isOpen={isClockInWallOpen}
-                              onClose={hideClockInWall}
-                            />
-                            <ManagerPinModal />
-                            <CustomerSheet />
+                            {!isKDS && <SearchBottomSheet />}
+                            {!isKDS && <ItemCustomizationDialog />}
+                            {!isKDS && (
+                              <ClockInWallModal
+                                isOpen={isClockInWallOpen}
+                                onClose={hideClockInWall}
+                              />
+                            )}
+                            {!isKDS && <ManagerPinModal />}
+                            {!isKDS && <CustomerSheet />}
                             <Toasts
                               defaultStyle={{
                                 view: {

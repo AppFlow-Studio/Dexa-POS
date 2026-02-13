@@ -220,6 +220,33 @@ const PinLoginScreen = () => {
         setStationSessionId(response.session.session_id);
       }
 
+      // Send broadcast kick notification to the kicked device
+      // This is Layer 1 of the kick system - instant, no RLS dependency
+      if (response.session?.kicked_previous && response.session?.kicked_device_id) {
+        const kickedDeviceId = response.session.kicked_device_id;
+        console.log(`[Takeover] Broadcasting kick to device: ${kickedDeviceId}`);
+        try {
+          const kickChannel = supabase.channel(`station-kick:${kickedDeviceId}`);
+          await kickChannel.send({
+            type: "broadcast",
+            event: "kick",
+            payload: {
+              device_id: kickedDeviceId,
+              session_id: response.session.session_id,
+              kicked_by: response.staff?.display_name || "Unknown",
+              reason: "Taken over",
+              station_id: selectedStation.id,
+            },
+          });
+          // Clean up the temporary channel after sending
+          supabase.removeChannel(kickChannel);
+          console.log("[Takeover] Broadcast kick sent successfully");
+        } catch (broadcastErr) {
+          // Non-critical - other kick layers will catch it
+          console.warn("[Takeover] Broadcast kick failed (non-critical):", broadcastErr);
+        }
+      }
+
       let employee: EmployeeProfile | null = null;
 
       // Get employee from local store using staff profile ID
@@ -276,7 +303,8 @@ const PinLoginScreen = () => {
 
       hideLoading();
       setPendingTakeoverPin(null);
-      router.replace("/home");
+      const isKDS = selectedStation?.station_type === "kds";
+      router.replace(isKDS ? "/kds" : "/home");
     } catch (error: any) {
       console.error("Takeover error details:", {
         message: error?.message,
@@ -416,6 +444,30 @@ const PinLoginScreen = () => {
         setStationSessionId(response.session.session_id);
       }
 
+      // Send broadcast kick notification to the kicked device (Layer 1)
+      if (response.session?.kicked_previous && response.session?.kicked_device_id) {
+        const kickedDeviceId = response.session.kicked_device_id;
+        console.log(`[Login] Broadcasting kick to device: ${kickedDeviceId}`);
+        try {
+          const kickChannel = supabase.channel(`station-kick:${kickedDeviceId}`);
+          await kickChannel.send({
+            type: "broadcast",
+            event: "kick",
+            payload: {
+              device_id: kickedDeviceId,
+              session_id: response.session.session_id,
+              kicked_by: response.staff?.display_name || "Unknown",
+              reason: "Taken over",
+              station_id: selectedStation.id,
+            },
+          });
+          supabase.removeChannel(kickChannel);
+          console.log("[Login] Broadcast kick sent successfully");
+        } catch (broadcastErr) {
+          console.warn("[Login] Broadcast kick failed (non-critical):", broadcastErr);
+        }
+      }
+
       let employee: EmployeeProfile | null = null;
 
       // Get employee from local store using staff profile ID
@@ -481,7 +533,8 @@ const PinLoginScreen = () => {
       }
 
       setPin("");
-      router.replace("/home");
+      const isKDS = selectedStation?.station_type === "kds";
+      router.replace(isKDS ? "/kds" : "/home");
     } catch (error: any) {
       console.error("Login error details:", {
         message: error?.message,

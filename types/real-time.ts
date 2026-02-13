@@ -230,6 +230,7 @@ export type OrderStatus =
   | 'draft'
   | 'open'
   | 'sent'
+  | 'sent_to_kitchen'
   | 'preparing'
   | 'ready'
   | 'completed'

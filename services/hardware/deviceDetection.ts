@@ -361,6 +361,13 @@ async function reassignPrinterDefaults(
   if (needsReceiptDefault) {
     const receiptCandidate = pool.find((p) => p.printer_role === "receipt") || pool[0];
     if (receiptCandidate) {
+      // Clear any existing default receipt at this station first to avoid unique constraint violation
+      await supabase
+        .from("printers")
+        .update({ is_default_receipt: false })
+        .eq("station_id", stationId)
+        .eq("is_default_receipt", true);
+
       await supabase
         .from("printers")
         .update({ is_default_receipt: true })
@@ -422,7 +429,51 @@ export async function ensureBuiltinPrinterProvisioned(
     return;
   }
 
-  // Auto-provision a printer entry for the Landi built-in thermal printer
+  // Check if a deactivated builtin printer row exists (e.g., from a previous device swap)
+  // If so, reactivate it instead of inserting a duplicate row
+  const { data: deactivated } = await supabase
+    .from("printers")
+    .select("id")
+    .eq("station_id", stationId)
+    .eq("printer_type", "builtin_landi")
+    .eq("is_active", false)
+    .limit(1);
+
+  if (deactivated && deactivated.length > 0) {
+    // Clear existing default receipt so we don't violate the unique constraint
+    await supabase
+      .from("printers")
+      .update({ is_default_receipt: false })
+      .eq("station_id", stationId)
+      .eq("is_default_receipt", true);
+
+    const { error: reactivateError } = await supabase
+      .from("printers")
+      .update({
+        printer_name: `${capabilities.model} Built-in Printer`,
+        printer_model: capabilities.model,
+        is_active: true,
+        is_connected: false,
+        is_default_receipt: true,
+      })
+      .eq("id", deactivated[0].id);
+
+    if (reactivateError) {
+      console.error("[DeviceDetection] Failed to reactivate builtin printer:", reactivateError.message);
+    } else {
+      console.log("[DeviceDetection] Reactivated builtin printer:", deactivated[0].id, "→", capabilities.model);
+    }
+    return;
+  }
+
+  // Clear existing default receipt before inserting new default to avoid unique constraint violation
+  await supabase
+    .from("printers")
+    .update({ is_default_receipt: false })
+    .eq("station_id", stationId)
+    .eq("is_default_receipt", true);
+
+  // No existing row at all — auto-provision a fresh printer entry
   const { data: inserted, error: insertError } = await supabase
     .from("printers")
     .insert({

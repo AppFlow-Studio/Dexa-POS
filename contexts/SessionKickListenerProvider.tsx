@@ -1,6 +1,33 @@
 import { KickedOutModal } from "@/components/auth/KickedOutModal";
-import { useSessionKickListener } from "@/hooks/useSessionKickListener";
-import React from "react";
+import {
+  useSessionKickListener,
+  UseSessionKickListenerResult,
+} from "@/hooks/useSessionKickListener";
+import React, { createContext, useContext } from "react";
+
+// ============================================================================
+// Context for exposing validateSession to the rest of the app
+// ============================================================================
+
+interface SessionKickContextValue {
+  /** Check if the current session is still valid. Returns false if kicked. */
+  validateSession: () => Promise<boolean>;
+  /** Whether the device has been kicked from the station. */
+  isKicked: boolean;
+}
+
+const SessionKickContext = createContext<SessionKickContextValue>({
+  validateSession: async () => true,
+  isKicked: false,
+});
+
+/**
+ * Hook to access session validation from anywhere in the app.
+ * Useful for guarding critical operations like order creation.
+ */
+export function useSessionKick(): SessionKickContextValue {
+  return useContext(SessionKickContext);
+}
 
 /**
  * Provider component that wraps the app and listens for session kick notifications.
@@ -14,11 +41,17 @@ export function SessionKickListenerProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { isKicked, kickedBy, kickReason, countdown, acknowledgeKick } =
-    useSessionKickListener();
+  const {
+    isKicked,
+    kickedBy,
+    kickReason,
+    countdown,
+    acknowledgeKick,
+    validateSession,
+  } = useSessionKickListener();
 
   return (
-    <>
+    <SessionKickContext.Provider value={{ validateSession, isKicked }}>
       {children}
       <KickedOutModal
         visible={isKicked}
@@ -27,6 +60,6 @@ export function SessionKickListenerProvider({
         countdown={countdown}
         onAcknowledge={acknowledgeKick}
       />
-    </>
+    </SessionKickContext.Provider>
   );
 }

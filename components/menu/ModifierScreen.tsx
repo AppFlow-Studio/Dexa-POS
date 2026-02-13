@@ -25,11 +25,9 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
-  useState,
-  useTransition,
 } from "react";
+import { useImmerReducer } from "use-immer";
 import {
   Image,
   KeyboardAvoidingView,
@@ -41,7 +39,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import ModifierScreenSkeleton from "./ModifierScreenSkeleton";
 interface ModifierSelection {
   [categoryId: string]: {
     [optionId: string]: boolean;
@@ -62,10 +59,10 @@ const CategoryTab = memo(
     category: ModifierCategory;
     isActive: boolean;
     hasSelection: boolean;
-    onPress: () => void;
+    onPress: (categoryId: string) => void;
   }) => (
     <TouchableOpacity
-      onPressIn={onPress}
+      onPressIn={() => onPress(category.id)}
       className={`p-3 rounded-xl border-2 min-w-[140px] ${
         isActive
           ? "bg-blue-600 border-blue-400"
@@ -152,6 +149,7 @@ const ModifierOption = memo(
 type State = {
   quantity: number;
   modifierSelections: ModifierSelection;
+  selectionCounts: Record<string, number>;
   notes: string;
   activeCategory: string | null;
   isQuantityModalOpen: boolean;
@@ -176,67 +174,84 @@ type Action =
       };
     };
 
-const reducer = (state: State, action: Action): State => {
+// Helper: compute selection counts from a ModifierSelection object
+const computeSelectionCounts = (selections: ModifierSelection): Record<string, number> => {
+  const counts: Record<string, number> = {};
+  for (const catId in selections) {
+    let count = 0;
+    const catSelections = selections[catId];
+    for (const key in catSelections) {
+      if (catSelections[key]) count++;
+    }
+    counts[catId] = count;
+  }
+  return counts;
+};
+
+// OPTIMIZED: Immer-based reducer — mutative draft syntax eliminates O(keys) spreads
+const immerReducer = (state: State, action: Action): void => {
   switch (action.type) {
     case "SET_QUANTITY":
-      return { ...state, quantity: action.payload };
+      state.quantity = action.payload;
+      return;
     case "SET_MODIFIER_SELECTIONS":
-      return { ...state, modifierSelections: action.payload };
+      state.modifierSelections = action.payload;
+      state.selectionCounts = computeSelectionCounts(action.payload);
+      return;
     case "SET_NOTES":
-      return { ...state, notes: action.payload };
+      state.notes = action.payload;
+      return;
     case "SET_ACTIVE_CATEGORY":
-      return { ...state, activeCategory: action.payload };
+      state.activeCategory = action.payload;
+      return;
     case "OPEN_QUANTITY_MODAL":
-      return {
-        ...state,
-        isQuantityModalOpen: true,
-        quantityInput: action.payload,
-      };
+      state.isQuantityModalOpen = true;
+      state.quantityInput = action.payload;
+      return;
     case "CLOSE_QUANTITY_MODAL":
-      return {
-        ...state,
-        isQuantityModalOpen: false,
-        quantityInput: "",
-      };
+      state.isQuantityModalOpen = false;
+      state.quantityInput = "";
+      return;
     case "SET_QUANTITY_INPUT":
-      return { ...state, quantityInput: action.payload };
+      state.quantityInput = action.payload;
+      return;
     case "INITIALIZE":
-      return { ...state, ...action.payload };
+      Object.assign(state, action.payload);
+      if (action.payload.modifierSelections) {
+        state.selectionCounts = computeSelectionCounts(action.payload.modifierSelections);
+      }
+      return;
     case "TOGGLE_MODIFIER": {
       const { categoryId, optionId, category } = action.payload;
-      const newSelections = { ...state.modifierSelections };
-
-      if (!newSelections[categoryId]) {
-        newSelections[categoryId] = {};
+      if (!state.modifierSelections[categoryId]) {
+        state.modifierSelections[categoryId] = {};
       }
-
+      const currentCount = state.selectionCounts[categoryId] ?? 0;
       if (category.selectionType === "single") {
-        Object.keys(newSelections[categoryId]).forEach((key) => {
-          newSelections[categoryId][key] = false;
+        // Read before clearing
+        const wasSelected = !!state.modifierSelections[categoryId][optionId];
+        // Clear all, then toggle
+        Object.keys(state.modifierSelections[categoryId]).forEach((key) => {
+          state.modifierSelections[categoryId][key] = false;
         });
-        newSelections[categoryId][optionId] =
-          !newSelections[categoryId][optionId];
+        state.modifierSelections[categoryId][optionId] = !wasSelected;
+        state.selectionCounts[categoryId] = wasSelected ? 0 : 1;
       } else {
-        const currentSelected = Object.values(newSelections[categoryId]).filter(
-          Boolean,
-        ).length;
-        const isCurrentlySelected = newSelections[categoryId][optionId];
-
+        const isCurrentlySelected = state.modifierSelections[categoryId][optionId];
         if (
           !isCurrentlySelected &&
           category.maxSelections &&
-          currentSelected >= category.maxSelections
+          currentCount >= category.maxSelections
         ) {
-          return state;
+          return; // No change — Immer returns unchanged draft
         }
-
-        newSelections[categoryId][optionId] = !isCurrentlySelected;
+        state.modifierSelections[categoryId][optionId] = !isCurrentlySelected;
+        state.selectionCounts[categoryId] = isCurrentlySelected
+          ? currentCount - 1
+          : currentCount + 1;
       }
-
-      return { ...state, modifierSelections: newSelections };
+      return;
     }
-    default:
-      return state;
   }
 };
 
@@ -273,22 +288,6 @@ const ModifierScreen = () => {
   );
 
   // ============================================================================
-  // HYDRATION - Set immediately for instant content display
-  // Removed requestAnimationFrame delay (was adding 16-32ms perceived lag)
-  // ============================================================================
-  const [isHydrated, setIsHydrated] = useState(false);
-
-  useEffect(() => {
-    if (isOpen && !isHydrated) {
-      // Set immediately - no RAF delay needed since content is precomputed
-      setIsHydrated(true);
-    }
-    if (!isOpen && isHydrated) {
-      setIsHydrated(false);
-    }
-  }, [isOpen, isHydrated]);
-
-  // ============================================================================
   // OPTIMIZED: Use getState() directly instead of subscriptions
   // This eliminates subscription overhead - actions are stable and state reads
   // use getState() at call time for fresh data without re-render triggers
@@ -320,31 +319,29 @@ const ModifierScreen = () => {
     [],
   );
 
-  // Only subscribe to modifierGroups since it's used in memoized computation
-  const allModifierGroups = useMenuStore((s) => s.modifierGroups);
-
+  // OPTIMIZED: Removed allModifierGroups subscription - read via getState() in rare fallback path only
   const { show } = useToast();
 
-  // OPTIMIZED: Use reducer with lazy initializer - no useEffect delay
+  // OPTIMIZED: Use immer reducer with lazy initializer - no useEffect delay
   // This eliminates an extra render cycle by initializing state immediately
-  const [state, dispatch] = useReducer(
-    reducer,
-    { storeInitialSelections, precomputedActiveCategory, cartItem },
-    (init) => ({
-      quantity: init.cartItem?.quantity ?? 1,
-      notes: init.cartItem?.customizations?.notes ?? "",
-      modifierSelections: init.storeInitialSelections ?? {},
-      activeCategory: init.precomputedActiveCategory ?? null,
+  const initialSelections = storeInitialSelections ?? {};
+  const [state, dispatch] = useImmerReducer<State, Action>(
+    immerReducer,
+    {
+      quantity: cartItem?.quantity ?? 1,
+      notes: cartItem?.customizations?.notes ?? "",
+      modifierSelections: initialSelections,
+      selectionCounts: computeSelectionCounts(initialSelections),
+      activeCategory: precomputedActiveCategory ?? null,
       isQuantityModalOpen: false,
       quantityInput: "",
-    }),
+    },
   );
 
   const lastDraftMenuItemIdRef = useRef<string | null>(null);
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
   const isInitializedRef = useRef(false);
-  const [, startTransition] = useTransition();
 
   const isReadOnly = mode === "view";
   const currentItem =
@@ -406,23 +403,30 @@ const ModifierScreen = () => {
     [menuItem, cartItem, getMenuItemById],
   );
 
-  console.log(
-    "[ModifierScreen] baseMenuItem:",
-    baseMenuItem?.price,
-    baseMenuItem?.cashPrice,
-  );
+  // OPTIMIZED: Ref cache to stabilize object identity when inputs haven't changed
+  type MenuItemWithModifiers = typeof baseMenuItem & { modifiers: ModifierCategory[] };
+  const menuItemForModifiersRef = useRef<{ item: any; mods: any; result: MenuItemWithModifiers } | null>(null);
 
-  const menuItemForModifiers = useMemo(() => {
+  const menuItemForModifiers = useMemo((): MenuItemWithModifiers | null => {
     if (!baseMenuItem) return null;
     if (precomputedModifiers) {
-      return { ...baseMenuItem, modifiers: precomputedModifiers };
+      // Return cached object if inputs haven't changed (prevents downstream Map rebuilds)
+      const cached = menuItemForModifiersRef.current;
+      if (cached && cached.item === baseMenuItem && cached.mods === precomputedModifiers) {
+        return cached.result;
+      }
+      const result = { ...baseMenuItem, modifiers: precomputedModifiers } as MenuItemWithModifiers;
+      menuItemForModifiersRef.current = { item: baseMenuItem, mods: precomputedModifiers, result };
+      return result;
     }
+    // Fallback: read from store at compute time (rare path — no subscription)
     if (!baseMenuItem.modifierGroupIds) return null;
+    const allGroups = useMenuStore.getState().modifierGroups;
     const modifiers = baseMenuItem.modifierGroupIds
-      .map((id) => allModifierGroups.find((mg) => mg.id === id))
+      .map((id: string) => allGroups.find((mg: ModifierCategory) => mg.id === id))
       .filter((mg): mg is ModifierCategory => !!mg);
-    return { ...baseMenuItem, modifiers };
-  }, [baseMenuItem, precomputedModifiers, allModifierGroups]);
+    return { ...baseMenuItem, modifiers } as MenuItemWithModifiers;
+  }, [baseMenuItem, precomputedModifiers]);
 
   const { modifierCategoriesById, optionsById } = useMemo(() => {
     const categoriesMap = new Map<string, ModifierCategory>();
@@ -491,14 +495,8 @@ const ModifierScreen = () => {
         >,
         getPrice: (item: any) => number,
       ) => {
-        const { activeOrderId, ordersById, updateItemInActiveOrder } =
-          useOrderStore.getState();
-        const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-        const draftItem = activeOrder?.items.find(
-          (i) => i.id === draftItemIdRef.current,
-        );
-
-        if (!draftItem || !item) return;
+        const draftId = draftItemIdRef.current;
+        if (!draftId || !item) return;
 
         const selectedModifiers = modifiers
           ? Object.entries(modifierSelections).map(([catId, selections]) => {
@@ -529,18 +527,18 @@ const ModifierScreen = () => {
           });
         });
 
-        const updatedDraftItem = {
-          ...draftItem,
+        // OPTIMIZED: Use lightweight updateDraftItem — direct immer mutation,
+        // no merge detection, no calculateOrderTotals, no sync (<1ms)
+        useOrderStore.getState().updateDraftItem(draftId, {
           quantity,
           price: baseTotal,
           customizations: {
             modifiers: selectedModifiers,
             notes,
           },
-        };
-        updateItemInActiveOrder(updatedDraftItem);
+        });
       },
-      8, // Reduced from 50ms to 8ms (half a frame) for faster UI response
+      50, // 50ms debounce — still feels instant, reduces call frequency on rapid toggles
     );
 
     return () => {
@@ -882,6 +880,22 @@ const ModifierScreen = () => {
     dispatch({ type: "CLOSE_QUANTITY_MODAL" });
   }, []);
 
+  // OPTIMIZED: Stable handler for CategoryTab onPress (accepts categoryId, stable ref for memo)
+  const handleCategoryTabPress = useCallback((categoryId: string) => {
+    dispatch({ type: "SET_ACTIVE_CATEGORY", payload: categoryId });
+  }, []);
+
+  // OPTIMIZED: Stable quantity +/- handlers (read current state from ref)
+  const handleQuantityDecrement = useCallback(() => {
+    const { state: currentState } = latestStateRef.current;
+    dispatch({ type: "SET_QUANTITY", payload: Math.max(1, currentState.quantity - 1) });
+  }, []);
+
+  const handleQuantityIncrement = useCallback(() => {
+    const { state: currentState } = latestStateRef.current;
+    dispatch({ type: "SET_QUANTITY", payload: currentState.quantity + 1 });
+  }, []);
+
   // Stable handleSave - reads all values from refs, never recreates
   const handleSave = useCallback(() => {
     actionHandledRef.current = true;
@@ -941,7 +955,6 @@ const ModifierScreen = () => {
         isDraft: false,
       };
 
-      console.log("[handleSave] Updating open item:", updatedOpenItem);
       updateItemInActiveOrder(updatedOpenItem);
       showToast({
         title: "Item Updated",
@@ -980,9 +993,7 @@ const ModifierScreen = () => {
       const hasRequiredSelections = modifiersItem.modifiers.every(
         (category) => {
           if (category.type === "required") {
-            return Object.values(
-              currentState.modifierSelections[category.id] || {},
-            ).some(Boolean);
+            return (currentState.selectionCounts[category.id] ?? 0) > 0;
           }
           return true;
         },
@@ -997,6 +1008,14 @@ const ModifierScreen = () => {
         return;
       }
     }
+
+    // OPTIMIZED: Capture cash price before close (store gets cleared by closeModal)
+    const resolvedCashPrice = safeCashPrice ?? getCurrentItemCashPrice(baseItem);
+
+    // OPTIMIZED: Close modal immediately after validation passes.
+    // Native-driver animation starts on UI thread while save logic runs on JS thread.
+    // Safe because all needed state is already captured in latestStateRef/locals above.
+    closeModal();
 
     const selectedModifiers = modifiersItem?.modifiers
       ? Object.entries(currentState.modifierSelections)
@@ -1046,9 +1065,6 @@ const ModifierScreen = () => {
         cashTaxAmount: undefined,
       };
 
-      console.log("UpdatedItem [Modifier Screens]", updatedItem);
-
-      console.log("updatedItem [handleSave]", updatedItem);
       updateItemInActiveOrder(updatedItem);
       showToast({
         title: "Item Updated",
@@ -1118,9 +1134,7 @@ const ModifierScreen = () => {
           });
         }
 
-        // Use safeCashPrice if precomputed data was stale, otherwise use getCurrentItemCashPrice
-        const itemCashPrice =
-          safeCashPrice ?? getCurrentItemCashPrice(baseItem);
+        const itemCashPrice = resolvedCashPrice;
 
         const confirmedItem: Omit<
           CartItem,
@@ -1150,7 +1164,6 @@ const ModifierScreen = () => {
           baseCardPrice: baseItem.price,
           baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };
-        console.log("[confirmedItem] confirmedItem", confirmedItem);
         addItemToActiveOrder(confirmedItem);
         // showToast({
         //   title: "Item Added",
@@ -1158,9 +1171,7 @@ const ModifierScreen = () => {
         //   type: "success",
         // });
       } else {
-        // Use safeCashPrice if precomputed data was stale, otherwise use getCurrentItemCashPrice
-        const itemCashPrice =
-          safeCashPrice ?? getCurrentItemCashPrice(baseItem);
+        const itemCashPrice = resolvedCashPrice;
 
         const newItem = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
@@ -1183,7 +1194,6 @@ const ModifierScreen = () => {
           baseCardPrice: baseItem.price,
           baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };
-        console.log("[newItem] newItem", newItem);
         addItemToActiveOrder(newItem);
         // showToast({
         //   title: "Item Added",
@@ -1192,8 +1202,6 @@ const ModifierScreen = () => {
         // });
       }
     }
-
-    closeModal();
   }, []); // Empty deps = never recreates
 
   // Stable handleCancel - reads from refs
@@ -1284,12 +1292,6 @@ const ModifierScreen = () => {
 
   if (!isOpen || !currentItem) return null;
 
-  // PERFORMANCE: Show skeleton immediately while content hydrates
-  // This ensures <16ms visual response to user tap
-  if (!isHydrated) {
-    return <ModifierScreenSkeleton />;
-  }
-
   const currentCategory = menuItemForModifiers?.modifiers?.find(
     (cat) => cat.id === state.activeCategory,
   );
@@ -1356,9 +1358,7 @@ const ModifierScreen = () => {
               </Text>
               <View className="flex-row flex-wrap gap-3 mb-4">
                 {menuItemForModifiers.modifiers.map((category) => {
-                  const hasSelection = Object.values(
-                    state.modifierSelections[category.id] || {},
-                  ).some(Boolean);
+                  const hasSelection = (state.selectionCounts[category.id] ?? 0) > 0;
                   const isActive = state.activeCategory === category.id;
                   return (
                     <CategoryTab
@@ -1366,12 +1366,7 @@ const ModifierScreen = () => {
                       category={category}
                       isActive={isActive}
                       hasSelection={hasSelection}
-                      onPress={() =>
-                        dispatch({
-                          type: "SET_ACTIVE_CATEGORY",
-                          payload: category.id,
-                        })
-                      }
+                      onPress={handleCategoryTabPress}
                     />
                   );
                 })}
@@ -1426,12 +1421,7 @@ const ModifierScreen = () => {
           <View className="flex-row items-center justify-center">
             <TouchableOpacity
               disabled={isReadOnly}
-              onPressIn={() =>
-                dispatch({
-                  type: "SET_QUANTITY",
-                  payload: Math.max(1, state.quantity - 1),
-                })
-              }
+              onPressIn={handleQuantityDecrement}
               className="p-3 border border-gray-600 rounded-full bg-[#303030]"
             >
               <Minus color="#9CA3AF" size={20} />
@@ -1447,9 +1437,7 @@ const ModifierScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity
               disabled={isReadOnly}
-              onPressIn={() =>
-                dispatch({ type: "SET_QUANTITY", payload: state.quantity + 1 })
-              }
+              onPressIn={handleQuantityIncrement}
               className="p-3 bg-blue-500 rounded-full"
             >
               <Plus color="#FFFFFF" size={20} />
@@ -1550,4 +1538,4 @@ const ModifierScreen = () => {
   );
 };
 
-export default ModifierScreen;
+export default memo(ModifierScreen);

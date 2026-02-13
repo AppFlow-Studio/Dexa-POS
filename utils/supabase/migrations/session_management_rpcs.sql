@@ -1,16 +1,22 @@
 -- ============================================================
--- MIGRATION 9: Combined POS Login (Station + Clock In)
+-- MIGRATION 9: Combined POS Login V2 (Station + Clock In)
 -- Single call: Claim station → Verify PIN → Clock in
+-- V2 adds: ip_address, app_version, os_version, hardware_model
+-- and returns kicked_device_id for broadcast kick support
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION pos_staff_login(
+CREATE OR REPLACE FUNCTION pos_staff_login_v2(
   p_location_id UUID,
   p_pin_code TEXT,
   p_station_id UUID,
-  p_device_id UUID,
+  p_device_id TEXT,
   p_device_name TEXT DEFAULT NULL,
   p_auto_clock_in BOOLEAN DEFAULT TRUE,
-  p_force_takeover BOOLEAN DEFAULT FALSE
+  p_force_takeover BOOLEAN DEFAULT FALSE,
+  p_ip_address TEXT DEFAULT NULL,
+  p_app_version TEXT DEFAULT NULL,
+  p_os_version TEXT DEFAULT NULL,
+  p_hardware_model TEXT DEFAULT NULL
 )
 RETURNS JSON
 LANGUAGE plpgsql
@@ -24,10 +30,17 @@ DECLARE
   v_shift_result JSON;
   v_was_kicked BOOLEAN := FALSE;
   v_is_reconnect BOOLEAN := FALSE;
+  v_ip_address INET;
 BEGIN
   -- ========================================
-  -- STEP 1: VERIFY PIN (using your existing logic)
+  -- STEP 1: VERIFY PIN
   -- ========================================
+  IF p_ip_address IS NOT NULL AND p_ip_address <> '' THEN
+    v_ip_address := p_ip_address::INET;
+  ELSE
+    v_ip_address := NULL;
+  END IF;
+
   SELECT 
     sp.id as staff_profile_id,
     sp.first_name,
@@ -73,7 +86,7 @@ BEGIN
   
   -- End any session this device has at OTHER stations
   UPDATE station_sessions
-  SET session_status = 'ended', ended_at = NOW(), updated_at = NOW()
+  SET session_status = 'ended', ended_at = NOW()
   WHERE device_id = p_device_id
     AND session_status = 'active'
     AND station_id != p_station_id;
@@ -92,7 +105,10 @@ BEGIN
       SET 
         staff_profile_id = v_staff.staff_profile_id,
         staff_name = v_staff.first_name || ' ' || LEFT(v_staff.last_name, 1) || '.',
-        updated_at = NOW()
+        ip_address = COALESCE(v_ip_address, ip_address::INET),
+        app_version = COALESCE(NULLIF(p_app_version, ''), app_version),
+        os_version = COALESCE(NULLIF(p_os_version, ''), os_version),
+        hardware_model = COALESCE(NULLIF(p_hardware_model, ''), hardware_model)
       WHERE id = v_existing_session.id;
       
       v_session_id := v_existing_session.id;
@@ -123,8 +139,7 @@ BEGIN
         ended_at = NOW(),
         kicked_by_device_id = p_device_id,
         kicked_by_staff_name = v_staff.first_name || ' ' || LEFT(v_staff.last_name, 1) || '.',
-        kick_reason = 'Taken over',
-        updated_at = NOW()
+        kick_reason = 'Taken over'
       WHERE id = v_existing_session.id;
       
       INSERT INTO session_kick_notifications (session_id, device_id, kicked_by_staff_name, kick_reason)
@@ -141,31 +156,42 @@ BEGIN
       station_id, merchant_id, location_id,
       device_id, device_name,
       staff_profile_id, staff_name,
-      session_status
+      session_status,
+      ip_address, app_version, os_version, hardware_model
     ) VALUES (
       p_station_id, v_station.merchant_id, v_station.location_id,
       p_device_id, p_device_name,
       v_staff.staff_profile_id, 
       v_staff.first_name || ' ' || LEFT(v_staff.last_name, 1) || '.',
-      'active'
+      'active',
+      v_ip_address,
+      NULLIF(p_app_version, ''),
+      NULLIF(p_os_version, ''),
+      NULLIF(p_hardware_model, '')
     )
     RETURNING id INTO v_session_id;
     
-    UPDATE stations SET device_id = p_device_id, device_name = p_device_name, is_online = TRUE
+    -- Update station with device info
+    UPDATE stations SET 
+      device_id = p_device_id, 
+      device_name = p_device_name, 
+      is_online = TRUE,
+      ip_address = v_ip_address,
+      app_version = NULLIF(p_app_version, ''),
+      os_version = NULLIF(p_os_version, ''),
+      hardware_model = NULLIF(p_hardware_model, '')
     WHERE id = p_station_id;
   END IF;
 
   -- ========================================
-  -- STEP 3: AUTO CLOCK IN (using handle_time_clock logic)
+  -- STEP 3: AUTO CLOCK IN
   -- ========================================
   IF p_auto_clock_in THEN
-    -- Call existing sign_in logic inline
     v_shift_result := handle_time_clock(
-      p_location_id,
       p_pin_code,
-      'sign_in',
-      p_device_id,
-      p_station_id
+      p_location_id,
+      'sign_in'::TEXT,
+      p_device_id
     );
   END IF;
 
@@ -187,7 +213,8 @@ BEGIN
       'station_name', v_station.station_name,
       'station_type', v_station.station_type,
       'is_reconnect', v_is_reconnect,
-      'kicked_previous', v_was_kicked
+      'kicked_previous', v_was_kicked,
+      'kicked_device_id', CASE WHEN v_was_kicked THEN v_existing_session.device_id ELSE NULL END
     ),
     'shift', v_shift_result
   );
@@ -266,5 +293,3 @@ CREATE POLICY "Users can manage sessions for their merchant"
   USING (
     is_merchant_admin(merchant_id)
   );
-
-

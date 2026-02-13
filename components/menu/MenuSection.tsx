@@ -265,6 +265,22 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   ]);
   // ModifierScreen is now rendered via ModifierScreenOverlay - no subscription needed here
 
+  // OPTIMIZED: Stable callbacks for tab switching (avoid inline arrows)
+  const handleTabMenu = useCallback(() => setActiveTab("Menu"), []);
+  const handleTabOpenItem = useCallback(() => setActiveTab("Open Item"), []);
+  const handleTabOrders = useCallback(() => setActiveTab("Orders"), []);
+
+  // OPTIMIZED: Stable callback for meal change (avoid inline arrow in JSX)
+  const handleMealChange = useCallback((value: string) => {
+    setActiveMeal(value);
+    const menu = menus.find((m) => m.name === value);
+    setActiveCategory(menu?.categories[0]?.name || "");
+    // Persist selection
+    const menuStore = useMenuStore.getState();
+    const menuObj = menuStore.menus.find((m) => m.name === value);
+    if (menuObj) menuStore.setLastSelectedMenuId(menuObj.id);
+  }, [menus]);
+
   // State to hold the items that are actually displayed after filtering
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
     [],
@@ -426,7 +442,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             className={`flex-1 flex-row justify-end items-center gap-x-2 ${isTableOrder ? "px-3" : ""}`}
           >
             <TouchableOpacity
-              onPress={() => setActiveTab("Menu")}
+              onPress={handleTabMenu}
               className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
                 activeTab == "Menu"
                   ? "border-2 border-blue-400"
@@ -442,7 +458,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               <Search color="#9CA3AF" size={20} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setActiveTab("Open Item")}
+              onPress={handleTabOpenItem}
               className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
                 activeTab == "Open Item"
                   ? "border-2 border-blue-400"
@@ -463,7 +479,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
             {!isTableOrder && (
               <TouchableOpacity
-                onPress={() => setActiveTab("Orders")}
+                onPress={handleTabOrders}
                 className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${
                   activeTab == "Orders"
                     ? "border-2 border-blue-400"
@@ -588,13 +604,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             (activeMeal ? (
               <MenuControls
                 activeMeal={activeMeal}
-                onMealChange={(value) => {
-                  setActiveMeal(value);
-                  setActiveCategory(
-                    menus.find((menu) => menu.name === value)?.categories[0]
-                      ?.name || "",
-                  );
-                }}
+                onMealChange={handleMealChange}
                 activeCategory={activeCategory || ""}
                 onCategoryChange={setActiveCategory}
               />
@@ -619,7 +629,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   keyExtractor={keyExtractor}
                   numColumns={numColumns}
                   className="mt-4 h-[93%] pb-32"
-                  ItemSeparatorComponent={() => <SpacerItem />}
+                  ItemSeparatorComponent={SpacerItem}
                   getItemLayout={(item, index) => ({
                     length: 100,
                     offset: 100 * index,

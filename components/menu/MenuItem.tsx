@@ -152,41 +152,41 @@ const ModifierIcon = React.memo(() => <Settings color="#60A5FA" size={24} />);
 ModifierIcon.displayName = "ModifierIcon";
 
 // OPTIMIZED: Memoized stock status component
-const StockStatus = React.memo(
-  ({
-    stockQuantity,
-    availability,
-  }: {
-    stockQuantity?: number;
-    availability?: boolean;
-  }) => {
-    if (stockQuantity !== undefined && stockQuantity > 0) {
-      return (
-        <View style={styles.stockRow}>
-          <View style={styles.stockDotGreen} />
-          <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
-        </View>
-      );
-    }
+// const StockStatus = React.memo(
+//   ({
+//     stockQuantity,
+//     availability,
+//   }: {
+//     stockQuantity?: number;
+//     availability?: boolean;
+//   }) => {
+//     if (stockQuantity !== undefined && stockQuantity > 0) {
+//       return (
+//         <View style={styles.stockRow}>
+//           <View style={styles.stockDotGreen} />
+//           <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
+//         </View>
+//       );
+//     }
 
-    if (availability === false) {
-      return (
-        <View style={styles.stockRow}>
-          <View style={styles.stockDotRed} />
-          <Text style={styles.stockTextRed}>Out of Stock</Text>
-        </View>
-      );
-    }
+//     if (availability === false) {
+//       return (
+//         <View style={styles.stockRow}>
+//           <View style={styles.stockDotRed} />
+//           <Text style={styles.stockTextRed}>Out of Stock</Text>
+//         </View>
+//       );
+//     }
 
-    return (
-      <View style={styles.stockRow}>
-        <View style={styles.stockDotGreen} />
-        <Text style={styles.stockTextGreen}>In Stock</Text>
-      </View>
-    );
-  }
-);
-StockStatus.displayName = "StockStatus";
+//     return (
+//       <View style={styles.stockRow}>
+//         <View style={styles.stockDotGreen} />
+//         <Text style={styles.stockTextGreen}>In Stock</Text>
+//       </View>
+//     );
+//   }
+// );
+// StockStatus.displayName = "StockStatus";
 
 interface MenuItemProps {
   item: MenuItemType;
@@ -330,12 +330,12 @@ const MenuItem: React.FC<MenuItemProps> = ({
               </View>
             )}
           </View>
-          <View style={styles.stockContainer}>
+          {/* <View style={styles.stockContainer}>
             <StockStatus
               stockQuantity={item.stockQuantity}
               availability={item.availability}
             />
-          </View>
+          </View> */}
         </View>
       </View>
     </TouchableOpacity>

@@ -4,7 +4,13 @@ import type {
   OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
 import { OrderService } from "@/services/orderService";
-import { KDSTicket, KDSTicketItem } from "@/types/kds";
+import {
+  KDSDisplayConfig,
+  KDSEnrichedRoutingRule,
+  KDSRoutingRule,
+  KDSTicket,
+  KDSTicketItem,
+} from "@/types/kds";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 
@@ -33,11 +39,23 @@ interface KDSState {
   isLoading: boolean;
   timerTick: number;
 
+  // Display awareness
+  kdsDisplayId: string | null;
+  routingMode: string | null;
+  cachedRules: KDSRoutingRule[] | null;
+  kdsDisplayConfig: KDSDisplayConfig | null;
+  prepStations: Record<string, { name: string; color: string }>;
+  enrichedRules: KDSEnrichedRoutingRule[];
+
+  // Last fetched location (for error recovery refetches)
+  _lastLocationId: string | null;
+
   // Bulk mode
   bulkMode: boolean;
   selectedTicketIds: Set<string>;
 
   // Actions
+  fetchKDSDisplay: (stationId: string) => Promise<void>;
   fetchTickets: (locationId: string) => Promise<void>;
   advanceTicketStatus: (
     ticketId: string,
@@ -69,6 +87,35 @@ const TERMINAL_ORDER_STATUSES = new Set([
   "refunded",
   "void",
 ]);
+
+/** Shared predicate: should we apply display-based item filtering? */
+function shouldUseDisplayFilter(
+  kdsDisplayId: string | null,
+  routingMode: string | null,
+  cachedRules: KDSRoutingRule[] | null,
+): boolean {
+  return !!(kdsDisplayId && routingMode !== "all" && cachedRules && cachedRules.length > 0);
+}
+
+/** Check if an item matches routing rules for client-side filtering */
+function itemMatchesRules(
+  item: BroadcastOrderItemData,
+  rules: KDSRoutingRule[],
+  orderType: string | null,
+): boolean {
+  for (const rule of rules) {
+    if (rule.rule_type === "prep_station" && item.prep_station === rule.rule_value) {
+      return true;
+    }
+    if (rule.rule_type === "category" && item.category_name === rule.rule_value) {
+      return true;
+    }
+    if (rule.rule_type === "order_type" && orderType === rule.rule_value) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** Build KDS tickets from a broadcast order's items */
 function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
@@ -115,6 +162,8 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
         modifier_group_name: m.modifier_group_name,
         price_modifier: m.price_modifier,
       })),
+      prep_station: item.prep_station,
+      rush: item.rush,
     }));
 
     tickets.push({
@@ -194,18 +243,128 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   bulkMode: false,
   selectedTicketIds: new Set<string>(),
 
+  // Display awareness state
+  kdsDisplayId: null,
+  routingMode: null,
+  cachedRules: null,
+  kdsDisplayConfig: null,
+  prepStations: {},
+  enrichedRules: [],
+  _lastLocationId: null,
+
+  // ─── Fetch KDS Display Config ─────────────────────────────────
+  fetchKDSDisplay: async (stationId: string) => {
+    const client = getClient();
+    if (!client) return;
+
+    try {
+      // Query kds_displays by station_id (1:1 FK)
+      const { data: display, error: displayError } = await client
+        .from("kds_displays")
+        .select("*")
+        .eq("station_id", stationId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (displayError) {
+        console.error("[KDSStore] fetchKDSDisplay error:", displayError);
+        // Fall back to no display (show all items)
+        set({ kdsDisplayId: null, routingMode: null, cachedRules: null, kdsDisplayConfig: null, prepStations: {}, enrichedRules: [] });
+        return;
+      }
+
+      if (!display) {
+        // No display configured for this station - backward compat (show all)
+        set({ kdsDisplayId: null, routingMode: null, cachedRules: null, kdsDisplayConfig: null, prepStations: {}, enrichedRules: [] });
+        return;
+      }
+
+      // Fetch routing rules for this display
+      const { data: rules, error: rulesError } = await client
+        .from("kds_routing_rules")
+        .select("rule_type, rule_value")
+        .eq("kds_display_id", display.id);
+
+      if (rulesError) {
+        console.error("[KDSStore] fetchKDSDisplay rules error:", rulesError);
+      }
+
+      // Fetch prep stations for this location
+      const { data: prepStationsData, error: psError } = await client
+        .from("prep_stations")
+        .select("id, name, color")
+        .eq("location_id", display.location_id)
+        .eq("is_active", true);
+
+      if (psError) {
+        console.error("[KDSStore] fetchKDSDisplay prep_stations error:", psError);
+      }
+
+      // Build prep station map: name -> { name, color }
+      const prepStationsMap: Record<string, { name: string; color: string }> = {};
+      if (prepStationsData) {
+        for (const ps of prepStationsData) {
+          prepStationsMap[ps.name] = { name: ps.name, color: ps.color || "#6b7280" };
+        }
+      }
+
+      // Build enriched rules with human-readable labels
+      const typedRules = (rules as KDSRoutingRule[]) || [];
+      const enriched: KDSEnrichedRoutingRule[] = typedRules.map((rule) => {
+        let label = rule.rule_value;
+        if (rule.rule_type === "prep_station" && prepStationsMap[rule.rule_value]) {
+          label = prepStationsMap[rule.rule_value].name;
+        }
+        return { ...rule, label };
+      });
+
+      const config: KDSDisplayConfig = {
+        displayName: display.display_name || "Kitchen Display",
+        columns: display.columns ?? null,
+        alertMinutes: display.alert_minutes ?? null,
+        warningMinutes: display.warning_minutes ?? null,
+        autoBumpMinutes: display.auto_bump_minutes ?? null,
+        soundOnNewOrder: display.sound_on_new_order ?? null,
+        soundOnRush: display.sound_on_rush ?? null,
+        showAllergyFlags: display.show_allergy_flags ?? null,
+        showOrderNotes: display.show_order_notes ?? null,
+        showServerName: display.show_server_name ?? null,
+        fontScale: display.font_scale ?? null,
+      };
+
+      set({
+        kdsDisplayId: display.id,
+        routingMode: display.routing_mode || "all",
+        cachedRules: typedRules,
+        kdsDisplayConfig: config,
+        prepStations: prepStationsMap,
+        enrichedRules: enriched,
+      });
+    } catch (err) {
+      console.error("[KDSStore] fetchKDSDisplay exception:", err);
+      set({ kdsDisplayId: null, routingMode: null, cachedRules: null, kdsDisplayConfig: null, prepStations: {}, enrichedRules: [] });
+    }
+  },
+
+  // ─── Fetch Tickets ────────────────────────────────────────────
   fetchTickets: async (locationId: string) => {
     const client = getClient();
     if (!client) return;
 
-    set({ isLoading: true });
+    const { kdsDisplayId, routingMode, cachedRules } = get();
+
+    set({ isLoading: true, _lastLocationId: locationId });
     try {
-      const { data, error } = await OrderService.getKDSTickets(
-        client,
-        locationId,
-      );
+      // Build RPC params - only pass display ID when routing rules exist
+      const params: Record<string, any> = { p_location_id: locationId };
+      if (shouldUseDisplayFilter(kdsDisplayId, routingMode, cachedRules)) {
+        params.p_kds_display_id = kdsDisplayId;
+      }
+
+      const { data, error } = await client.rpc("get_kds_tickets_v2", params);
       if (error) {
         console.error("[KDSStore] fetchTickets error:", error);
+        set({ isLoading: false });
         return;
       }
 
@@ -257,7 +416,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus);
     set({ tickets: updatedTickets, ...bucketed });
 
-    // Backend sync — fire and forget
+    // Backend sync — refetch on failure to restore authoritative state
     const client = getClient();
     if (client && itemIds.length > 0) {
       OrderService.bulkUpdateOrderItemStatus(
@@ -269,6 +428,10 @@ export const useKDSStore = create<KDSState>((set, get) => ({
           `[KDSStore] Failed to sync status ${newStatus}:`,
           err,
         );
+        const lastLoc = get()._lastLocationId;
+        if (lastLoc) {
+          get().scheduleRefetch(lastLoc);
+        }
       });
     }
   },
@@ -278,12 +441,19 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     if (!order) return;
 
     // Gate: order must have been fired to kitchen
-    if (!order.sent_to_kitchen_at) return;
+    // Accept sent_to_kitchen_at OR status of sent_to_kitchen/preparing
+    if (
+      !order.sent_to_kitchen_at &&
+      order.status !== "sent_to_kitchen" &&
+      order.status !== "preparing"
+    ) {
+      return;
+    }
 
     // Skip if no items (payment-only broadcast)
     if (!order.order_items || order.order_items.length === 0) return;
 
-    const { tickets } = get();
+    const { tickets, kdsDisplayId, routingMode, cachedRules } = get();
 
     // Terminal statuses: remove all tickets for this order
     if (TERMINAL_ORDER_STATUSES.has(order.status)) {
@@ -295,8 +465,26 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       return;
     }
 
+    // Client-side display filtering for broadcast items
+    let filteredOrder = order;
+    if (shouldUseDisplayFilter(kdsDisplayId, routingMode, cachedRules)) {
+      const hasExistingTickets = tickets.some((t) => t.db_order_id === order.id);
+
+      if (!hasExistingTickets) {
+        // New order: apply client-side filtering (server refetch will correct if needed)
+        const filteredItems = order.order_items.filter((item) =>
+          itemMatchesRules(item, cachedRules!, order.order_type),
+        );
+        if (filteredItems.length === 0) {
+          return; // Skip — doesn't match this display
+        }
+        filteredOrder = { ...order, order_items: filteredItems };
+      }
+      // Existing tickets: trust server routing, process full broadcast
+    }
+
     // Build new tickets from broadcast
-    const newTickets = buildTicketsFromBroadcast(order);
+    const newTickets = buildTicketsFromBroadcast(filteredOrder);
 
     // Remove old tickets for this order, add new ones
     const otherTickets = tickets.filter((t) => t.db_order_id !== order.id);
@@ -311,6 +499,13 @@ export const useKDSStore = create<KDSState>((set, get) => ({
 
     const bucketed = smartBucketTickets(merged, get().ticketsByStatus);
     set({ tickets: merged, ...bucketed });
+
+    // Schedule a refetch for authoritative state (safe for all displays since
+    // fetchTickets now only passes display ID when routing rules exist)
+    const locationId = order.location_id;
+    if (locationId) {
+      get().scheduleRefetch(locationId);
+    }
   },
 
   incrementTimerTick: () => {

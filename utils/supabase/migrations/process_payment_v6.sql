@@ -550,7 +550,9 @@ BEGIN
         card_type,
         card_last_four,
         captured_at,
-        initiated_at
+        initiated_at,
+        merchant_id,
+        location_id
     ) VALUES (
         p_order_id,
         p_payment_method::payment_method,
@@ -583,7 +585,9 @@ BEGIN
         COALESCE(p_terminal_response->'dejavoo_transaction'->>'cardType', p_terminal_response->>'card_type'),
         v_dejavoo_last_four,
         now(),
-        now()
+        now(),
+        v_order.merchant_id,
+        v_order.location_id
     )
     RETURNING id INTO v_payment_id;
 

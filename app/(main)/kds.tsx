@@ -1,24 +1,35 @@
+import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import {
   getBucketedElapsed,
   getUrgencyLevel,
   useKDSTimer,
 } from "@/hooks/useKDSTimer";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { getDeviceId } from "@/lib/deviceId";
+import { clearStationData } from "@/services/cacheService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import PinInputModal from "@/components/timeclock/PinInputModal";
+import { useRouter } from "expo-router";
 import {
+  AlertTriangle,
   CheckSquare,
   ChefHat,
+  CircleDotDashed,
   Clock,
+  Flame,
   Layers,
+  LogOut,
   RefreshCw,
   ShoppingBag,
   Square,
   Truck,
   UtensilsCrossed,
+  Wifi,
+  WifiOff,
 } from "lucide-react-native";
 import React, {
   useCallback,
@@ -264,6 +275,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const borderColor = bulkMode && isSelected ? "#3b82f6" : urgencyColor;
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
+    const hasRush = ticket.items.some((item) => item.rush);
 
     return (
       <Pressable onPress={handlePress}>
@@ -303,6 +315,30 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
+          {/* Rush badge */}
+          {hasRush && (
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                backgroundColor: "#dc2626",
+                paddingVertical: 2,
+                zIndex: 5,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+              }}
+            >
+              <AlertTriangle size={10} color="#fff" />
+              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
+                RUSH
+              </Text>
+            </View>
+          )}
+
           {/* Top bar with urgency color */}
           <View
             style={{
@@ -312,6 +348,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
+              marginTop: hasRush ? 16 : 0,
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -471,7 +508,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
 // ─── Main Screen ──────────────────────────────────────────────────
 const KitchenDisplayScreen = () => {
-  const locationId = useStoreSettingsStore((s) => s.selectedStore?.id);
+  const router = useRouter();
+  const supabase = useSupabaseClient();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const locationId = selectedStore?.id;
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const stationSessionId = useStoreSettingsStore((s) => s.stationSessionId);
+  const clearStationSession = useStoreSettingsStore((s) => s.clearStationSession);
   const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
   const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
 
@@ -480,6 +523,11 @@ const KitchenDisplayScreen = () => {
   const isLoading = useKDSStore((s) => s.isLoading);
   const fetchTickets = useKDSStore((s) => s.fetchTickets);
   const advanceTicketStatus = useKDSStore((s) => s.advanceTicketStatus);
+  const fetchKDSDisplay = useKDSStore((s) => s.fetchKDSDisplay);
+  const kdsDisplayConfig = useKDSStore((s) => s.kdsDisplayConfig);
+  const enrichedRules = useKDSStore((s) => s.enrichedRules);
+  const routingMode = useKDSStore((s) => s.routingMode);
+  const displayName = useKDSStore((s) => s.kdsDisplayConfig?.displayName);
   // Bulk mode state from store
   const bulkMode = useKDSStore((s) => s.bulkMode);
   const selectedTicketIds = useKDSStore((s) => s.selectedTicketIds);
@@ -488,6 +536,10 @@ const KitchenDisplayScreen = () => {
   const selectAllVisible = useKDSStore((s) => s.selectAllVisible);
   const clearSelection = useKDSStore((s) => s.clearSelection);
   const bulkAdvanceTickets = useKDSStore((s) => s.bulkAdvanceTickets);
+
+  // Realtime connection status for adaptive polling
+  const { orders: ordersChannel } = useLocationRealtime();
+  const isRealtimeConnected = ordersChannel.isConnected;
 
   // Employee + toast for PIN verification
   const findEmployeeByPin = useEmployeeStore((s) => s.findEmployeeByPin);
@@ -502,6 +554,26 @@ const KitchenDisplayScreen = () => {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingBulkAction, setPendingBulkAction] = useState<"selected" | "all" | null>(null);
 
+  // KDS logout handler
+  const handleKDSLogout = useCallback(async () => {
+    if (stationSessionId && selectedStore?.id) {
+      try {
+        await supabase.rpc("pos_staff_logout", {
+          p_session_id: stationSessionId,
+          p_location_id: selectedStore.id,
+          p_pin_code: "",
+          p_device_id: getDeviceId(),
+          p_clock_out: false,
+        });
+      } catch (e) {
+        console.error("KDS logout RPC error:", e);
+      }
+    }
+    clearStationSession();
+    clearStationData();
+    router.replace("/pin-login");
+  }, [stationSessionId, selectedStore?.id, supabase, clearStationSession, router]);
+
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore((s) => s.ticketsByStatus.pending);
   const cookingTickets = useKDSStore((s) => s.ticketsByStatus.cooking);
@@ -509,6 +581,16 @@ const KitchenDisplayScreen = () => {
 
   // Start the single global timer
   useKDSTimer();
+
+  // Initialize KDS display config for this station
+  useEffect(() => {
+    if (selectedStation?.id) {
+      fetchKDSDisplay(selectedStation.id);
+    }
+  }, [selectedStation?.id, fetchKDSDisplay]);
+
+  // Dynamic column count from KDS display config
+  const columnCount = kdsDisplayConfig?.columns ?? 4;
 
   // Deferred loading after navigation animation
   useEffect(() => {
@@ -518,18 +600,19 @@ const KitchenDisplayScreen = () => {
     return () => handle.cancel();
   }, []);
 
-  // Initial fetch + 120s polling fallback (realtime is now primary sync)
+  // Initial fetch + adaptive polling (fast when realtime is down, slow when connected)
   useEffect(() => {
     if (!isReady || !locationId) return;
 
     fetchTickets(locationId);
 
+    const pollInterval = isRealtimeConnected ? 120_000 : 15_000;
     const pollId = setInterval(() => {
       fetchTickets(locationId);
-    }, 120_000);
+    }, pollInterval);
 
     return () => clearInterval(pollId);
-  }, [isReady, locationId, fetchTickets]);
+  }, [isReady, locationId, fetchTickets, isRealtimeConnected]);
 
   // Auto-fire: pending → cooking after configured delay
   useEffect(() => {
@@ -689,10 +772,11 @@ const KitchenDisplayScreen = () => {
   }, [selectAllVisible, activeFilteredTickets]);
 
   // ─── Render Helpers ─────────────────────────────────────────────
+  const columnWidthPct = `${100 / columnCount}%` as const;
   const renderItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
       <Animated.View
-        style={{ width: "25%", paddingHorizontal: 2 }}
+        style={{ width: columnWidthPct, paddingHorizontal: 2 }}
         entering={ENTER_ANIM}
         exiting={EXIT_ANIM}
       >
@@ -704,7 +788,7 @@ const KitchenDisplayScreen = () => {
         />
       </Animated.View>
     ),
-    [advanceTicketStatus, bulkMode, toggleTicketSelection],
+    [advanceTicketStatus, bulkMode, toggleTicketSelection, columnWidthPct],
   );
 
   const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, []);
@@ -712,8 +796,8 @@ const KitchenDisplayScreen = () => {
   // Skeleton grid for loading state
   const renderSkeletons = () => (
     <View style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", padding: 4 }}>
-      {Array.from({ length: 16 }).map((_, i) => (
-        <View key={`skel-${i}`} style={{ width: "25%", paddingHorizontal: 2 }}>
+      {Array.from({ length: columnCount * 4 }).map((_, i) => (
+        <View key={`skel-${i}`} style={{ width: columnWidthPct, paddingHorizontal: 2 }}>
           <KDSSkeletonCard />
         </View>
       ))}
@@ -748,6 +832,87 @@ const KitchenDisplayScreen = () => {
             <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginLeft: 10 }}>
               Kitchen Display
             </Text>
+            {isRealtimeConnected ? (
+              <Wifi size={14} color="#22c55e" style={{ marginLeft: 8 }} />
+            ) : (
+              <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
+                <WifiOff size={14} color="#ef4444" />
+                <Text style={{ color: "#ef4444", fontSize: 11, fontWeight: "600", marginLeft: 4 }}>
+                  Reconnecting...
+                </Text>
+              </View>
+            )}
+            {/* KDS Display Badge */}
+            {displayName && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "#333338",
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                  marginLeft: 12,
+                }}
+              >
+                <Flame size={13} color="#f97316" />
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: "600",
+                    marginLeft: 4,
+                  }}
+                  numberOfLines={1}
+                >
+                  {displayName}
+                </Text>
+                {routingMode === "all" ? (
+                  <>
+                    <View
+                      style={{
+                        width: 1,
+                        height: 14,
+                        backgroundColor: "#555",
+                        marginHorizontal: 8,
+                      }}
+                    />
+                    <Text
+                      style={{
+                        color: "#22c55e",
+                        fontSize: 11,
+                        fontWeight: "700",
+                      }}
+                    >
+                      EXPO
+                    </Text>
+                  </>
+                ) : enrichedRules.length > 0 ? (
+                  <>
+                    <View
+                      style={{
+                        width: 1,
+                        height: 14,
+                        backgroundColor: "#555",
+                        marginHorizontal: 8,
+                      }}
+                    />
+                    <CircleDotDashed size={12} color="#9ca3af" />
+                    <Text
+                      style={{
+                        color: "#9ca3af",
+                        fontSize: 11,
+                        fontWeight: "500",
+                        marginLeft: 4,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {enrichedRules.map((r) => r.label).join(", ")}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
+            )}
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             {/* Bulk mode toggle */}
@@ -775,6 +940,17 @@ const KitchenDisplayScreen = () => {
                 color="#9CA3AF"
                 style={refreshing ? { opacity: 0.5 } : undefined}
               />
+            </TouchableOpacity>
+            {/* Logout */}
+            <TouchableOpacity
+              onPress={handleKDSLogout}
+              style={{
+                padding: 8,
+                backgroundColor: "#333338",
+                borderRadius: 8,
+              }}
+            >
+              <LogOut size={18} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -987,10 +1163,11 @@ const KitchenDisplayScreen = () => {
                 pointerEvents={isActive ? "auto" : "none"}
               >
                 <Animated.FlatList
+                  key={columnCount}
                   data={filteredByStatus[status]}
                   keyExtractor={keyExtractor}
                   renderItem={renderItem}
-                  numColumns={4}
+                  numColumns={columnCount}
                   itemLayoutAnimation={LAYOUT_ANIM}
                   contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
                   initialNumToRender={16}

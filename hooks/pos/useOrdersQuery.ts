@@ -36,7 +36,7 @@ export function useOrdersQuery({
            created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
         )
         .eq("location_id", locationId)
-        .in("status", ["draft", "pending", "preparing", "ready"])
+        .in("status", ["draft", "pending", "sent_to_kitchen", "preparing", "ready"])
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []).map((o) => {

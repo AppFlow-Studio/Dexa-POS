@@ -49,6 +49,8 @@ export interface BroadcastOrderItemData {
   category_name: string | null;
   base_card_price: number;
   base_cash_price: number;
+  prep_station?: string | null;
+  rush?: boolean;
   // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
   modifiers?: BroadcastModifierData[];
 }
@@ -151,6 +153,7 @@ export interface BroadcastOrderData {
   status:
     | "draft"
     | "pending"
+    | "sent_to_kitchen"
     | "preparing"
     | "ready"
     | "completed"

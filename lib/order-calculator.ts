@@ -205,7 +205,7 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 // Use Decimal for modifier calculations too
 export function calculateItemEffectiveCardPrice(item: CartItem): number {
   let effectivePrice = new Decimal(item.baseCardPrice ?? item.unitPrice ?? 0);
-  console.log('[calculateItemEffectiveCardPrice] Calculate Item Effective Card Price', effectivePrice)
+  // Hot-path log removed for perf
   // Size modifier
   if (item.customizations?.size?.priceModifier) {
     effectivePrice = effectivePrice.plus(item.customizations.size.priceModifier);
@@ -297,15 +297,12 @@ export function distributeDiscountToItems(
   totalCashDiscount?: number
 ): CartItem[] {
   const cashDiscount = totalCashDiscount ?? totalCardDiscount;
- console.log('distributeDiscountToItems', totalCardDiscount, totalCashDiscount)
   // Calculate totals for proportion
   let orderCardSubtotal = 0;
   let orderCashSubtotal = 0;
   const activeItems = items.filter((item) => !item.is_voided);
 
   for (const item of activeItems) {
-    console.log('items', item.cashPrice)
-
     orderCardSubtotal += item.price * item.quantity;
     orderCashSubtotal += item.cashPrice * item.quantity;
   }
@@ -673,8 +670,6 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     taxRatePercent: number;
     isTaxExempt: boolean;
   }> = [];
-
-  console.log('[calculateOrderTotals] Calculate Order Totals', activeItems)
 
   for (const item of activeItems) {
     const effectiveCardPrice = calculateItemEffectiveCardPrice(item);

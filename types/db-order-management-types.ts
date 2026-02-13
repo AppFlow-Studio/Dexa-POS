@@ -2,6 +2,7 @@
 export type OrderStatus =
   | "draft"
   | "pending"
+  | "sent_to_kitchen"
   | "preparing"
   | "ready"
   | "completed"

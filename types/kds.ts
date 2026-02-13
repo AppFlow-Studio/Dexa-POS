@@ -15,6 +15,8 @@ export interface KDSTicketItem {
   category_id?: string;
   menu_name?: string;
   menu_id?: string;
+  prep_station?: string | null;
+  rush?: boolean;
 }
 
 export interface KDSTicket {
@@ -31,4 +33,27 @@ export interface KDSTicket {
   start_time: string | null;
   item_count: number;
   items: KDSTicketItem[];
+}
+
+export interface KDSDisplayConfig {
+  displayName: string;
+  columns: number | null;
+  alertMinutes: number | null;
+  warningMinutes: number | null;
+  autoBumpMinutes: number | null;
+  soundOnNewOrder: boolean | null;
+  soundOnRush: boolean | null;
+  showAllergyFlags: boolean | null;
+  showOrderNotes: boolean | null;
+  showServerName: boolean | null;
+  fontScale: number | null;
+}
+
+export interface KDSRoutingRule {
+  rule_type: "prep_station" | "category" | "order_type";
+  rule_value: string;
+}
+
+export interface KDSEnrichedRoutingRule extends KDSRoutingRule {
+  label: string;
 }

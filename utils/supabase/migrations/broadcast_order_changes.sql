@@ -74,6 +74,8 @@ BEGIN
         'open_item_price', oi.open_item_price,
         'special_instructions', oi.special_instructions,
         'category_name', oi.category_name,
+        'prep_station', oi.prep_station,
+        'rush', COALESCE(oi.rush, false),
         -- Phase 2.5: Include modifiers for this item
         'modifiers', (
           SELECT COALESCE(jsonb_agg(
@@ -96,6 +98,7 @@ BEGIN
       AND COALESCE(oi.is_voided, false) = false;
      
     -- Fetch order payments for this order
+    -- Split into two jsonb_build_object calls to stay under 100-arg limit
     SELECT COALESCE(jsonb_agg(
       jsonb_build_object(
         'id', op.id,
@@ -122,7 +125,8 @@ BEGIN
         'is_voided', COALESCE(op.is_voided, false),
         'void_reason', op.void_reason,
         'refunded_amount', COALESCE(op.refunded_amount, 0),
-        'refunded_at', op.refunded_at,
+        'refunded_at', op.refunded_at
+      ) || jsonb_build_object(
         'captured_at', op.captured_at,
         'authorization_code', op.authorization_code,
         'auth_code', op.auth_code,

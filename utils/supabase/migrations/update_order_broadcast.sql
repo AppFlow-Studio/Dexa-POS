@@ -86,6 +86,8 @@ BEGIN
         'open_item_price', oi.open_item_price,
         'special_instructions', oi.special_instructions,
         'category_name', oi.category_name,
+        'prep_station', oi.prep_station,
+        'rush', COALESCE(oi.rush, false),
         -- Phase 2.5: Include modifiers for this item
         'modifiers', (
           SELECT COALESCE(jsonb_agg(

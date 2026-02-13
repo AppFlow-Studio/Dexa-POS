@@ -706,7 +706,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   >(null);
 
   const isOpen = order?.check_status === "Opened";
-  const balanceDue = paymentSummary.orderTotal - paymentSummary.collected + (paymentSummary.refunds || 0);
+  const balanceDue = paymentSummary.orderTotal - (paymentSummary.collected - (paymentSummary.tips || 0)) + (paymentSummary.refunds || 0);
   const hasBalanceDue = balanceDue > 0.01;
   console.log("balanceDue", balanceDue?.toFixed(2));
   const hasCardPayments = paymentSummary.payments.some(
@@ -2779,12 +2779,14 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         orderCashTotal: 0,
         refunds: 0,
         collected: 0,
+        tips: 0,
         payments: [] as PaymentRowData[],
       };
     }
 
     let totalRefunded = 0;
     let totalCollected = 0;
+    let totalTips = 0;
     const payments: PaymentRowData[] = [];
     console.log("order.payments", order.payments?.[0]);
     if (order.payments && order.payments.length > 0) {
@@ -2822,6 +2824,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         // Voided payments were never collected, so they don't affect the refundable balance
         if (!isVoided) {
           totalCollected += collected;
+          totalTips += tipAmount;
           // Track actual refunds from this payment (not voided amounts)
           totalRefunded += payment.refundedAmount || 0;
         }
@@ -2864,6 +2867,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       orderCashTotal: order.total_cash_amount || 0,
       refunds: totalRefunded,
       collected: totalCollected,
+      tips: totalTips,
       payments,
     };
   }, [order]);
@@ -2924,12 +2928,24 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     });
   }, [orderId, updateOrderCheckStatus, show]);
 
-  const handleContinueCharging = useCallback(() => {
+  const handleContinueCharging = useCallback(async () => {
     if (!orderId) return;
-    useOrderStore.getState().setActiveOrder(orderId);
+
+    let activeId = orderId;
+
+    // If order not in local store, fetch from DB first
+    if (!useOrderStore.getState().ordersById[orderId]) {
+      const localId = await useOrderStore.getState().syncOrderFromDatabase(orderId);
+      if (!localId) {
+        show({ title: "Error", message: "Could not load order data.", type: "error" });
+        return;
+      }
+      activeId = localId;
+    }
+
+    useOrderStore.getState().setActiveOrder(activeId);
     close();
-    // router.push("/order-processing");
-  }, [orderId, close, router]);
+  }, [orderId, close, show]);
 
   const handleIssueReceipt = useCallback(async () => {
     if (!order || !selectedStore) {
@@ -2972,6 +2988,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   }, []);
 
   const handleTipAdjusted = useCallback(() => {
+    setTipProcessing(false);
     setRightPaneView("summary");
   }, []);
 
