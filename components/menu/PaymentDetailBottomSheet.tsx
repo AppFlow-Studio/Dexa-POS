@@ -447,18 +447,14 @@ const LeftPane: React.FC<LeftPaneProps> = ({
             const isFullyRefunded = hasRefundHistory && netCoveredQty <= 0;
             const isPartiallyRefunded = hasRefundHistory && netCoveredQty > 0 && netCoveredQty < item.quantity;
 
-            // Determine left border color based on item state
+            // Determine left border color based on kitchen status
             const borderColor = isVoided
               ? '#EF4444'
-              : isFullyRefunded
-              ? '#EF4444'
-              : isPartiallyRefunded
-              ? '#F97316'
-              : isPaid
-              ? '#22C55E'
-              : isPartialPaid
-              ? '#F59E0B'
-              : '#3B82F6'; // unpaid / needs action
+              : item.kitchen_status === "ready"     ? '#4ADE80'
+              : item.kitchen_status === "preparing" ? '#FB923C'
+              : item.kitchen_status === "sent"      ? '#F59E0B'
+              : item.kitchen_status === "served"    ? '#9CA3AF'
+              : '#6B7280';
 
             const isUnpaid = !isVoided && !isPaid && !isPartialPaid && !hasRefundHistory;
             const itemKey = item.id || String(index);

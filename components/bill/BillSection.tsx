@@ -413,18 +413,9 @@ const BillSectionContent = ({
                     </Text>
                   </>
                 )}
-                <AlertTriangle size={16} color="#FFFFFF" />
-                <Text className="text-white text-sm font-medium ml-2">
-                  {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""}{" "}
-                  failed to sync
-                </Text>
-              </View>
-              <View className="flex-row items-center">
-                <RefreshCw size={14} color="#FFFFFF" />
-                <Text className="text-white text-xs ml-1">Retry</Text>
               </View>
               {!autoRetryState.isRetrying && (
-                <View className="flex-row i tems-center">
+                <View className="flex-row items-center">
                   <RefreshCw size={14} color="#FFFFFF" />
                   <Text className="text-white text-xs ml-1">Retry Now</Text>
                 </View>

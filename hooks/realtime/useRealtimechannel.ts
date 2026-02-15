@@ -42,6 +42,7 @@ export function useRealtimeChannel<T>({
   const reconnectAttemptsRef = useRef(0);
   const subscribeRef = useRef<() => void>(() => {});
   const statusRef = useRef<ChannelState>('CLOSED');
+  const isIntentionalCloseRef = useRef(false);
 
   const [status, setStatus] = useState<ChannelStatus>({
     topic,
@@ -68,9 +69,11 @@ export function useRealtimeChannel<T>({
     // FIXED: Use prop instead of calling hook inside callback
     // Clean up existing channel
     if (channelRef.current) {
+      isIntentionalCloseRef.current = true;
       await supabaseClient.removeChannel(channelRef.current);
       channelRef.current = null;
     }
+    isIntentionalCloseRef.current = false;
 
     // Set auth token for Realtime Authorization
     await supabaseClient.realtime.setAuth();
@@ -115,6 +118,9 @@ export function useRealtimeChannel<T>({
 
         case REALTIME_SUBSCRIBE_STATES.CLOSED:
           updateStatus({ state: 'CLOSED' });
+          if (!isIntentionalCloseRef.current) {
+            handleReconnect();
+          }
           break;
 
         case REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR:
@@ -163,6 +169,7 @@ export function useRealtimeChannel<T>({
       // FIXED: Use prop instead of calling hook inside setTimeout
       // Unsubscribe first (Reddit pattern)
       if (channelRef.current) {
+        isIntentionalCloseRef.current = true;
         await supabaseClient.removeChannel(channelRef.current);
         channelRef.current = null;
       }
@@ -186,6 +193,7 @@ export function useRealtimeChannel<T>({
 
   // Disconnect
   const disconnect = useCallback(async () => {
+    isIntentionalCloseRef.current = true;
     // FIXED: Use prop instead of calling hook inside callback
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);

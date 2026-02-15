@@ -33,6 +33,16 @@ interface BillItemProps {
 
 const DELETE_BUTTON_WIDTH = 90;
 
+function getKitchenBorderColor(kitchenStatus?: string): string | undefined {
+  switch (kitchenStatus) {
+    case "sent":      return "#F59E0B";
+    case "preparing": return "#FB923C";
+    case "ready":     return "#4ADE80";
+    case "served":    return "#046c00";
+    default:          return undefined;
+  }
+}
+
 // Type for modifier structure
 interface ModifierDisplay {
   categoryId: string;
@@ -242,7 +252,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
   // Check if item is voided (moved before paymentCoverage useMemo)
   const isVoided = item.is_voided === true;
-
+  const kitchenBorderColor = isVoided ? undefined : getKitchenBorderColor(item.kitchen_status);
+ console.log(kitchenBorderColor)
   // PERF: Single memoized computation for all payment coverage data
   // Replaces two inline IIFEs that ran O(n*m) on every render
   const paymentCoverage = useMemo(() => {
@@ -334,9 +345,20 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           ? "border-2 border-blue-400 bg-blue-500/5"
           : isVoided
             ? "border bg-[#2a2020] border-red-900/50 opacity-60"
-            : "border bg-[#303030] border-gray-600"
+            : "bg-[#303030]"
       }`}
-      style={
+      style={[
+        !isActive && !isVoided
+          ? {
+              borderWidth: 1,
+              borderRightColor: '#4B5563',
+              borderTopColor : '#4B5563',
+              borderBottomColor : '#4B5563',
+              ...(kitchenBorderColor
+                ? { borderLeftWidth: 3, borderLeftColor: kitchenBorderColor }
+                : {}),
+            }
+          : undefined,
         isActive
           ? {
               shadowColor: "#3B82F6",
@@ -345,8 +367,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               shadowRadius: 8,
               elevation: 8,
             }
-          : undefined
-      }
+          : undefined,
+      ]}
     >
       {isEditable && !isVoided && (
         <Animated.View

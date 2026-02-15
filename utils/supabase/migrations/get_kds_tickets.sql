@@ -17,7 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_location_status
 -- Main RPC function
 CREATE OR REPLACE FUNCTION get_kds_tickets_v2(
   p_location_id UUID,
-  p_statuses TEXT[] DEFAULT ARRAY['sent', 'preparing', 'ready'],
+  p_statuses TEXT[] DEFAULT ARRAY['new', 'sent', 'preparing', 'ready'],
   p_kds_display_id UUID DEFAULT NULL
 )
 RETURNS JSONB
@@ -32,7 +32,8 @@ BEGIN
   INTO v_result
   FROM (
     SELECT jsonb_build_object(
-      'ticket_id', o.id::text || '_c' || COALESCE(oi_grouped.course_number, 1)::text,
+      'ticket_id', o.id::text || '_c' || COALESCE(oi_grouped.course_number, 1)::text
+        || '_f' || COALESCE(EXTRACT(EPOCH FROM oi_grouped.fire_time)::bigint::text, '0'),
       'order_id', o.id,
       'db_order_id', o.id,
       'order_number', o.order_number,
@@ -46,7 +47,7 @@ BEGIN
       'order_type', o.order_type,
       'table_name', o.table_number,
       'customer_name', o.customer_name,
-      'start_time', COALESCE(o.sent_to_kitchen_at, o.created_at),
+      'start_time', COALESCE(oi_grouped.fire_time, o.sent_to_kitchen_at, o.created_at),
       'item_count', oi_grouped.item_count,
       'items', oi_grouped.items_json
     ) AS ticket
@@ -61,6 +62,7 @@ BEGIN
         bool_or(oi.kitchen_status = 'sent' OR oi.kitchen_status IS NULL) AS any_sent,
         -- Item count (sum of quantities)
         SUM(oi.quantity)::int AS item_count,
+        oi.fire_time,
         -- Items array with nested modifiers
         jsonb_agg(
           jsonb_build_object(
@@ -75,6 +77,7 @@ BEGIN
             'menu_id', oi.menu_id,
             'prep_station', oi.prep_station,
             'rush', COALESCE(oi.rush, false),
+            'fire_time', oi.fire_time,
             'modifiers', (
               SELECT COALESCE(jsonb_agg(
                 jsonb_build_object(
@@ -98,7 +101,7 @@ BEGIN
         AND (oi.kitchen_status = ANY(p_statuses) OR oi.kitchen_status IS NULL)
         -- Filter: if display ID provided, only show routed items; otherwise show all
         AND (p_kds_display_id IS NULL OR kis.id IS NOT NULL)
-      GROUP BY oi.order_id, COALESCE(oi.course_number, 1)
+      GROUP BY oi.order_id, COALESCE(oi.course_number, 1), oi.fire_time
     ) oi_grouped ON oi_grouped.order_id = o.id
     WHERE o.location_id = p_location_id
       AND o.status NOT IN ('completed', 'cancelled', 'void', 'refunded')

@@ -207,7 +207,6 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
               clearInterval(countdownIntervalRef.current);
               countdownIntervalRef.current = null;
             }
-            performLogout();
             return 0;
           }
           return prev - 1;
@@ -222,6 +221,13 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
       };
     }
   }, [isKicked]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-logout when countdown expires
+  useEffect(() => {
+    if (isKicked && countdown === 0) {
+      performLogout();
+    }
+  }, [isKicked, countdown, performLogout]);
 
   // ============================================================================
   // Layer 1: Supabase Broadcast channel (primary - no RLS dependency)

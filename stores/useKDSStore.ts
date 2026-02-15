@@ -131,27 +131,33 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
   );
   if (kdsItems.length === 0) return [];
 
-  // Group by course_number
-  const byCourse = new Map<number, BroadcastOrderItemData[]>();
+  // Group by course_number + fire_time (round)
+  const byRound = new Map<string, BroadcastOrderItemData[]>();
   for (const item of kdsItems) {
     const course = item.course_number ?? 1;
-    const existing = byCourse.get(course);
+    const fireTime = item.fire_time ?? "0";
+    const key = `${course}|${fireTime}`;
+    const existing = byRound.get(key);
     if (existing) existing.push(item);
-    else byCourse.set(course, [item]);
+    else byRound.set(key, [item]);
   }
 
   const tickets: KDSTicket[] = [];
-  for (const [courseNumber, courseItems] of byCourse) {
+  for (const [key, roundItems] of byRound) {
+    const courseNumber = roundItems[0].course_number ?? 1;
+    const fireTime = roundItems[0].fire_time ?? null;
+    const fireTimeEpoch = fireTime ? Math.floor(new Date(fireTime).getTime() / 1000) : 0;
+
     // Derive ticket status (same logic as SQL: all ready → ready, any sent → pending, else cooking)
-    const allReady = courseItems.every((i) => i.kitchen_status === "ready");
-    const anySent = courseItems.some((i) => i.kitchen_status === "sent");
+    const allReady = roundItems.every((i) => i.kitchen_status === "ready");
+    const anySent = roundItems.some((i) => i.kitchen_status === "sent");
     const ticketStatus: KDSTicket["status"] = allReady
       ? "ready"
       : anySent
         ? "pending"
         : "cooking";
 
-    const ticketItems: KDSTicketItem[] = courseItems.map((item) => ({
+    const ticketItems: KDSTicketItem[] = roundItems.map((item) => ({
       id: item.id,
       name: item.item_name,
       quantity: item.quantity,
@@ -167,7 +173,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
     }));
 
     tickets.push({
-      ticket_id: `${order.id}_c${courseNumber}`,
+      ticket_id: `${order.id}_c${courseNumber}_f${fireTimeEpoch}`,
       order_id: order.id,
       db_order_id: order.id,
       order_number: order.order_number,
@@ -177,8 +183,8 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       order_type: order.order_type,
       table_name: order.table_number,
       customer_name: null,
-      start_time: order.sent_to_kitchen_at,
-      item_count: ticketItems.length,
+      start_time: fireTime ?? order.sent_to_kitchen_at,
+      item_count: ticketItems.reduce((sum, i) => sum + i.quantity, 0),
       items: ticketItems,
     });
   }

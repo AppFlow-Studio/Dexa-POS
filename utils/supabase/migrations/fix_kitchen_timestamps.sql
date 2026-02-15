@@ -117,6 +117,11 @@ BEGIN
   SET
     kitchen_status = p_status,
     updated_at = NOW(),
+    -- Set fire_time when status is 'sent' (for KDS round grouping)
+    fire_time = CASE
+      WHEN p_status = 'sent' THEN NOW()
+      ELSE fire_time
+    END,
     -- Set sent_to_kitchen_at when status is 'sent'
     sent_to_kitchen_at = CASE
       WHEN p_status = 'sent'

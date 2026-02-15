@@ -1238,6 +1238,15 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               `[OfflineSync:add_item] Synced order totals: card=${responseData.order_card_total}, cash=${responseData.order_cash_total}`,
             );
           }
+
+          // Retroactively send to kitchen if item was fired during offline sync
+          const latestStore = useOrderStore.getState();
+          const latestOrder = latestStore.ordersById[localOrderId];
+          const latestItem = latestOrder?.items.find((i) => i.id === localItemId);
+          if (latestItem?.kitchen_status === 'sent' && data.order_item_id) {
+            console.log(`[OfflineSync:add_item] Item was fired during sync, retroactively sending to kitchen`);
+            await OrderService.bulkUpdateOrderItemStatus(_supabaseClient, [data.order_item_id], 'sent');
+          }
         } else {
           console.log(
             `[OfflineSync:add_item] Completed but no order_item_id returned`,
@@ -1358,26 +1367,46 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         );
 
         try {
-          // 1. Update order status to "preparing"
+          // 1. Update order status FIRST
+          // The bulk_update_order_item_status RPC sets sent_to_kitchen_at on the parent order,
+          // which violates valid_status_transitions if the order is still in 'draft'.
+          // So we must transition the order out of 'draft' before updating items.
+          const currentOrder = Object.values(
+            useOrderStore.getState().ordersById,
+          ).find(
+            (o) => o.db_order_id === resolvedOrderId,
+          );
+          const backendStatus =
+            currentOrder?.order_status === "draft" || currentOrder?.order_status === "sent_to_kitchen"
+              ? "sent_to_kitchen"
+              : "preparing";
+
           const { error: statusError } = await OrderService.updateOrderStatus(
             _supabaseClient,
             resolvedOrderId,
-            "preparing",
+            backendStatus as any,
           );
 
           if (statusError) {
-            console.error(
-              "[OfflineSync:send_to_kitchen] Failed to update order status:",
-              statusError,
+            // P0001 or "already in" means the order is already in the target status - not an error
+            if (statusError.code === "P0001" || statusError.message?.includes("already in")) {
+              console.log(
+                `[OfflineSync:send_to_kitchen] Order already in target status, treating as success`,
+              );
+            } else {
+              console.error(
+                "[OfflineSync:send_to_kitchen] Failed to update order status:",
+                statusError,
+              );
+              return false;
+            }
+          } else {
+            console.log(
+              `[OfflineSync:send_to_kitchen] Order status updated to "${backendStatus}"`,
             );
-            return false;
           }
 
-          console.log(
-            `[OfflineSync:send_to_kitchen] Order status updated to "preparing"`,
-          );
-
-          // 2. Resolve and update item statuses
+          // 2. THEN resolve and update item statuses
           if (localItemIds && localItemIds.length > 0) {
             const resolvedItemIds = localItemIds
               .map((localItemId: string) =>
@@ -1398,16 +1427,19 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   "[OfflineSync:send_to_kitchen] Failed to update item statuses:",
                   itemError,
                 );
-                // Non-fatal - order status already updated
-              } else {
-                console.log(
-                  `[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items marked as "sent"`,
-                );
+                // Fatal - retry the whole operation so items get updated
+                return false;
               }
+
+              console.log(
+                `[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items marked as "sent"`,
+              );
             } else {
               console.log(
                 `[OfflineSync:send_to_kitchen] No items could be resolved (may not be synced yet)`,
               );
+              // Items not synced yet - retry later
+              return false;
             }
           }
 

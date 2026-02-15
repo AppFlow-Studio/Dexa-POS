@@ -51,6 +51,7 @@ export interface BroadcastOrderItemData {
   base_cash_price: number;
   prep_station?: string | null;
   rush?: boolean;
+  fire_time?: string | null;
   // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
   modifiers?: BroadcastModifierData[];
 }
