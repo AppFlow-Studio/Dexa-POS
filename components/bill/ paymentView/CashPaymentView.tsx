@@ -72,6 +72,12 @@ const CashPaymentView = () => {
     return () => { setTransactionProcessing(false); };
   }, [isProcessing, errorModal.visible, setTransactionProcessing]);
 
+  // Signal health check service to skip during active terminal interaction
+  useEffect(() => {
+    usePaymentTerminalStore.getState().setProcessingPayment(isProcessing);
+    return () => { usePaymentTerminalStore.getState().setProcessingPayment(false); };
+  }, [isProcessing]);
+
   const {
     showTipSelection,
     updateTip,

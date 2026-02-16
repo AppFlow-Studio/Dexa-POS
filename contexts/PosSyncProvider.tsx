@@ -32,6 +32,8 @@ import {
   ensureBuiltinPrinterProvisioned,
   startHeartbeat,
   stopHeartbeat,
+  startTerminalHealthCheck,
+  stopTerminalHealthCheck,
 } from "@/services/hardware";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
@@ -127,6 +129,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       stopHeartbeat();
     };
   }, [supabase, selectedStation?.id, selectedStore?.id]);
+
+  // Terminal health check lifecycle
+  useEffect(() => {
+    const terminal = selectedStation?.payment_terminal;
+    if (supabase && terminal?.id) {
+      startTerminalHealthCheck(supabase, terminal.id, terminal);
+    }
+    return () => {
+      stopTerminalHealthCheck();
+    };
+  }, [supabase, selectedStation?.payment_terminal?.id]);
 
   // Sync employees from location_members
   const syncEmployees = useCallback(

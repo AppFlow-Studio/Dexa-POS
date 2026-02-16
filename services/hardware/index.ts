@@ -22,6 +22,11 @@ export {
 } from "./heartbeat";
 
 export {
+  startTerminalHealthCheck,
+  stopTerminalHealthCheck,
+} from "./terminalHealthCheck";
+
+export {
   startListening,
   stopListening,
 } from "./hardwareEventListener";

@@ -13,6 +13,7 @@ import { PaymentErrorModal } from "@/components/bill/paymentView/PaymentErrorMod
 import { toastService } from "@/lib/toastService";
 import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
@@ -71,6 +72,13 @@ const CardPaymentView = () => {
     setTransactionProcessing(status === "processing" || errorModal.visible);
     return () => { setTransactionProcessing(false); };
   }, [status, errorModal.visible, setTransactionProcessing]);
+
+  // Signal health check service to skip during active terminal interaction
+  useEffect(() => {
+    const isActive = status === "processing";
+    usePaymentTerminalStore.getState().setProcessingPayment(isActive);
+    return () => { usePaymentTerminalStore.getState().setProcessingPayment(false); };
+  }, [status]);
 
   const {
     showTipSelection,

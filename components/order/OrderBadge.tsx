@@ -349,7 +349,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
 
         {/* Action Buttons with Dark Theme */}
         <View className="flex-col gap-y-1 p-2">
-          {order.order_status === "preparing" && (
+          {order.order_status === "preparing" || order.order_status === 'sent_to_kitchen' && (
             <TouchableOpacity
               onPress={() => {
                 onMarkReady();

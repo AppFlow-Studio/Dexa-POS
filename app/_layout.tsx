@@ -11,10 +11,12 @@ import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 import { CFDProvider } from "@/contexts/CFDProvider";
 import { LoadingProvider } from "@/contexts/LoadingContext";
 import { PosSyncProvider } from "@/contexts/PosSyncProvider";
+import { RemoteActionsProvider } from "@/contexts/RemoteActionsProvider";
 import { SessionKickListenerProvider } from "@/contexts/SessionKickListenerProvider";
 import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
+import { initLogCollector } from "@/lib/logCollector";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -41,6 +43,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
 WebBrowser.maybeCompleteAuthSession();
+
+// Initialize log collector to capture console output for remote log retrieval
+initLogCollector();
 
 export const tokenCache: TokenCache = {
   async getToken(key: string) {
@@ -157,6 +162,7 @@ export default function RootLayout() {
                     <ToastProvider>
                       <LoadingProvider>
                         <SessionKickListenerProvider>
+                          <RemoteActionsProvider>
                           <CFDProvider>
                             <StatusBar style={"dark"} translucent />
                             <Stack screenOptions={{ headerShown: false }} />
@@ -190,6 +196,7 @@ export default function RootLayout() {
                               }}
                             />
                           </CFDProvider>
+                          </RemoteActionsProvider>
                         </SessionKickListenerProvider>
                       </LoadingProvider>
                     </ToastProvider>

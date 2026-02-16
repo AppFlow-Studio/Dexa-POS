@@ -39,7 +39,7 @@ function getKitchenBorderColor(kitchenStatus?: string): string | undefined {
     case "preparing": return "#FB923C";
     case "ready":     return "#4ADE80";
     case "served":    return "#046c00";
-    default:          return undefined;
+    default:          return '#4B5563';
   }
 }
 
@@ -253,7 +253,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   // Check if item is voided (moved before paymentCoverage useMemo)
   const isVoided = item.is_voided === true;
   const kitchenBorderColor = isVoided ? undefined : getKitchenBorderColor(item.kitchen_status);
- console.log(kitchenBorderColor)
+//  console.log(kitchenBorderColor)
   // PERF: Single memoized computation for all payment coverage data
   // Replaces two inline IIFEs that ran O(n*m) on every render
   const paymentCoverage = useMemo(() => {
