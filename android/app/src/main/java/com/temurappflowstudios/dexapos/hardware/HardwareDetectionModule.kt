@@ -8,6 +8,8 @@ import android.hardware.display.DisplayManager
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Display
@@ -45,6 +47,13 @@ class HardwareDetectionModule(private val reactContext: ReactApplicationContext)
 
     private data class DisplayInfo(val width: Int, val height: Int, val displayId: Int)
 
+    private fun Display.toDisplayInfo(): DisplayInfo {
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        this.getRealMetrics(metrics)
+        return DisplayInfo(metrics.widthPixels, metrics.heightPixels, this.displayId)
+    }
+
     // ==================== USB HOTPLUG EVENTS ====================
 
     private val usbReceiver = object : BroadcastReceiver() {
@@ -61,8 +70,64 @@ class HardwareDetectionModule(private val reactContext: ReactApplicationContext)
 
     private var isReceiverRegistered = false
 
+    // Display hotplug listener + debounce
+    private val displayChangeHandler = Handler(Looper.getMainLooper())
+    private var pendingDisplayChange: Runnable? = null
+    private val DISPLAY_DEBOUNCE_MS = 500L
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {
+            if (displayId != Display.DEFAULT_DISPLAY) {
+                Log.d(TAG, "Display added: id=$displayId")
+                debounceDisplayChange()
+            }
+        }
+
+        override fun onDisplayRemoved(displayId: Int) {
+            if (displayId != Display.DEFAULT_DISPLAY) {
+                Log.d(TAG, "Display removed: id=$displayId")
+                debounceDisplayChange()
+            }
+        }
+
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId != Display.DEFAULT_DISPLAY) {
+                Log.d(TAG, "Display changed: id=$displayId")
+                debounceDisplayChange()
+            }
+        }
+    }
+
+    private var isDisplayListenerRegistered = false
+
+    private fun debounceDisplayChange() {
+        pendingDisplayChange?.let { displayChangeHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            try {
+                val result = detectHardwareSync()
+                sendEvent("onHardwareChanged", result)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling display event: ${e.message}")
+            }
+        }
+        pendingDisplayChange = runnable
+        displayChangeHandler.postDelayed(runnable, DISPLAY_DEBOUNCE_MS)
+    }
+
     init {
         registerUsbReceiver()
+        registerDisplayListener()
+    }
+
+    private fun registerDisplayListener() {
+        try {
+            val displayManager = reactContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+            displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+            isDisplayListenerRegistered = true
+            Log.d(TAG, "Display listener registered")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register display listener: ${e.message}")
+        }
     }
 
     private fun registerUsbReceiver() {
@@ -90,6 +155,18 @@ class HardwareDetectionModule(private val reactContext: ReactApplicationContext)
                 Log.e(TAG, "Failed to unregister USB receiver: ${e.message}")
             }
         }
+        if (isDisplayListenerRegistered) {
+            try {
+                val displayManager = reactContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+                displayManager?.unregisterDisplayListener(displayListener)
+                isDisplayListenerRegistered = false
+                Log.d(TAG, "Display listener unregistered")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to unregister display listener: ${e.message}")
+            }
+        }
+        pendingDisplayChange?.let { displayChangeHandler.removeCallbacks(it) }
+        pendingDisplayChange = null
     }
 
     // ==================== MAIN DETECTION ====================
@@ -196,7 +273,9 @@ class HardwareDetectionModule(private val reactContext: ReactApplicationContext)
         result.putString("model", Build.MODEL)
         result.putString("board", Build.BOARD)
 
-        Log.d(TAG, "Detection complete: printer=$hasPrinter, cfd=${result.getBoolean("hasSecondaryDisplay")}, nfc=${result.getBoolean("hasNfc")}")
+        val cfdWidth = result.getInt("secondaryDisplayWidth")
+        val cfdHeight = result.getInt("secondaryDisplayHeight")
+        Log.d(TAG, "Detection complete: printer=$hasPrinter, cfd=${result.getBoolean("hasSecondaryDisplay")} (${cfdWidth}x${cfdHeight}), nfc=${result.getBoolean("hasNfc")}, device=${Build.MANUFACTURER}/${Build.MODEL}")
 
         return result
     }
@@ -245,19 +324,72 @@ class HardwareDetectionModule(private val reactContext: ReactApplicationContext)
 
     // ==================== SECONDARY DISPLAY DETECTION ====================
 
-    private fun detectSecondaryDisplay(displayManager: DisplayManager): DisplayInfo? {
-        val displays = displayManager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
-        return displays.firstOrNull { display ->
-            display.displayId != Display.DEFAULT_DISPLAY &&
-            display.flags and Display.FLAG_PRESENTATION != 0 &&
-            display.flags and Display.FLAG_SECURE == 0 &&
-            display.state == Display.STATE_ON
-        }?.let { display ->
+    private fun logAllDisplays(displayManager: DisplayManager) {
+        val allDisplays = displayManager.displays
+        Log.d(TAG, "=== Display Enumeration === (${allDisplays.size} total)")
+        allDisplays.forEach { display ->
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
             display.getRealMetrics(metrics)
-            DisplayInfo(metrics.widthPixels, metrics.heightPixels, display.displayId)
+
+            val flags = mutableListOf<String>()
+            if (display.flags and Display.FLAG_PRESENTATION != 0) flags.add("PRESENTATION")
+            if (display.flags and Display.FLAG_SECURE != 0) flags.add("SECURE")
+            if (display.flags and Display.FLAG_PRIVATE != 0) flags.add("PRIVATE")
+            if (display.flags and Display.FLAG_ROUND != 0) flags.add("ROUND")
+
+            val stateStr = when (display.state) {
+                Display.STATE_ON -> "ON"
+                Display.STATE_OFF -> "OFF"
+                Display.STATE_DOZE -> "DOZE"
+                Display.STATE_DOZE_SUSPEND -> "DOZE_SUSPEND"
+                Display.STATE_UNKNOWN -> "UNKNOWN"
+                else -> "OTHER(${display.state})"
+            }
+
+            Log.d(TAG, "  Display id=${display.displayId} name=\"${display.name}\" " +
+                "${metrics.widthPixels}x${metrics.heightPixels} " +
+                "flags=[${flags.joinToString(",")}] state=$stateStr")
         }
+        Log.d(TAG, "=== End Display Enumeration ===")
+    }
+
+    private fun detectSecondaryDisplay(displayManager: DisplayManager): DisplayInfo? {
+        logAllDisplays(displayManager)
+
+        // Tier 1: Presentation category, relaxed filters (no FLAG_PRESENTATION or FLAG_SECURE check)
+        val presentationDisplays = displayManager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+        val tier1 = presentationDisplays.firstOrNull { display ->
+            display.displayId != Display.DEFAULT_DISPLAY &&
+            display.state != Display.STATE_OFF
+        }
+        if (tier1 != null) {
+            Log.d(TAG, "Secondary display found (Tier 1 - presentation category): id=${tier1.displayId}")
+            return tier1.toDisplayInfo()
+        }
+
+        // Tier 2: All displays, any non-default with state != OFF
+        val allDisplays = displayManager.displays
+        val tier2 = allDisplays.firstOrNull { display ->
+            display.displayId != Display.DEFAULT_DISPLAY &&
+            display.state != Display.STATE_OFF
+        }
+        if (tier2 != null) {
+            Log.d(TAG, "Secondary display found (Tier 2 - all displays, state!=OFF): id=${tier2.displayId}")
+            return tier2.toDisplayInfo()
+        }
+
+        // Tier 2 relaxed: All displays, ignore state entirely
+        val tier2Relaxed = allDisplays.firstOrNull { display ->
+            display.displayId != Display.DEFAULT_DISPLAY
+        }
+        if (tier2Relaxed != null) {
+            Log.d(TAG, "Secondary display found (Tier 2 relaxed - any non-default): id=${tier2Relaxed.displayId}")
+            return tier2Relaxed.toDisplayInfo()
+        }
+
+        Log.d(TAG, "No secondary display found")
+        return null
     }
 
     // ==================== BARCODE SCANNER DETECTION ====================

@@ -1,5 +1,12 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  updateSecondaryDisplay,
+  dismissSecondaryDisplay,
+} from "@/native/SecondaryDisplay";
+import type { SecondaryDisplayData } from "@/native/SecondaryDisplay";
+import { getCachedCapabilities } from "@/services/hardware/deviceDetection";
 import { CFDController } from "@/services/cfd/CFDController";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
@@ -9,6 +16,7 @@ import type {
     CFDScreenState,
     CFDTipResponse,
 } from "@/types/cfd.types";
+import type { CartItem } from "@/lib/types";
 import { usePathname } from "expo-router";
 import React, {
     createContext,
@@ -21,6 +29,29 @@ import React, {
 } from "react";
 
 const DEBUG = __DEV__;
+
+function Log(msg: string) {
+  if (DEBUG) console.log(msg);
+}
+
+function formatModifiersForBuiltinCfd(item: CartItem): string[] {
+  const mods: string[] = [];
+  if (item.customizations?.size) {
+    const price = item.customizations.size.priceModifier || 0;
+    mods.push(
+      `${item.customizations.size.name}${price ? ` (+$${price.toFixed(2)})` : ""}`,
+    );
+  }
+  item.customizations?.addOns?.forEach((a) => {
+    mods.push(`${a.name}${a.price ? ` (+$${a.price.toFixed(2)})` : ""}`);
+  });
+  item.customizations?.modifiers?.forEach((m) => {
+    m.options.forEach((o) => {
+      mods.push(`${o.name}${o.price ? ` (+$${o.price.toFixed(2)})` : ""}`);
+    });
+  });
+  return mods;
+}
 
 export type CFDServerStatus =
   | "initializing" // Setting up, not ready yet
@@ -313,6 +344,102 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     activeScreenState,
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
+  ]);
+
+  // ==================== BUILT-IN SECONDARY DISPLAY SYNC ====================
+
+  const orderTotals = useActiveOrderTotals();
+  const hasBuiltinCfdRef = useRef(false);
+
+  // Check for built-in CFD once on mount
+  useEffect(() => {
+    const caps = getCachedCapabilities();
+    hasBuiltinCfdRef.current = caps?.hasBuiltinCfd ?? false;
+    if (hasBuiltinCfdRef.current) {
+      Log("[Built-in CFD] Detected built-in secondary display");
+    }
+    return () => {
+      if (hasBuiltinCfdRef.current) {
+        dismissSecondaryDisplay();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasBuiltinCfdRef.current) return;
+
+    const restaurantName = selectedStore?.name ?? "";
+    const isSalesScreen = pathname.includes("order-processing");
+    const shouldShowOrderData =
+      !!activeScreenState || (isSalesScreen && !!activeOrder);
+
+    if (!shouldShowOrderData) {
+      updateSecondaryDisplay({
+        screenState: "idle",
+        restaurantName,
+        orderNumber: null,
+        orderType: null,
+        guestCount: null,
+        items: [],
+        cardSubtotal: 0,
+        cashSubtotal: 0,
+        discountAmount: 0,
+        cardTax: 0,
+        cashTax: 0,
+        cardTotal: 0,
+        cashTotal: 0,
+        amountPaid: 0,
+      });
+      return;
+    }
+
+    const screenState = activeScreenState || "ordering";
+
+    // Build items with dual pricing
+    const items = (activeOrder?.items ?? [])
+      .filter((item) => !item.is_voided && item.quantity > 0)
+      .map((item) => ({
+        name: item.is_open_item
+          ? (item.open_item_name ?? "Open Item")
+          : item.name,
+        quantity: item.quantity,
+        cardPrice: Math.round((item.unitPrice || item.price || 0) * 100),
+        cashPrice: Math.round(
+          (item.cashPrice || item.unitPrice || item.price || 0) * 100,
+        ),
+        cardLineTotal: Math.round((item.subtotal || 0) * 100),
+        cashLineTotal: Math.round(
+          (item.cashSubtotal || item.subtotal || 0) * 100,
+        ),
+        modifiers: formatModifiersForBuiltinCfd(item),
+        notes: item.customizations?.notes ?? null,
+      }));
+
+    const payload: SecondaryDisplayData = {
+      screenState,
+      restaurantName,
+      orderNumber:
+        activeOrder?.display_number ?? activeOrder?.order_number ?? null,
+      orderType: activeOrder?.order_type ?? null,
+      guestCount: activeOrder?.guest_count ?? null,
+      items,
+      cardSubtotal: Math.round((orderTotals?.subtotal ?? 0) * 100),
+      cashSubtotal: Math.round((orderTotals?.cashSubtotal ?? 0) * 100),
+      discountAmount: Math.round((orderTotals?.discount ?? 0) * 100),
+      cardTax: Math.round((orderTotals?.tax ?? 0) * 100),
+      cashTax: Math.round((orderTotals?.cashTax ?? 0) * 100),
+      cardTotal: Math.round((orderTotals?.total ?? 0) * 100),
+      cashTotal: Math.round((orderTotals?.cashTotal ?? 0) * 100),
+      amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+    };
+
+    updateSecondaryDisplay(payload);
+  }, [
+    activeOrder,
+    orderTotals,
+    activeScreenState,
+    pathname,
+    selectedStore?.name,
   ]);
 
   // ==================== EXPOSED METHODS ====================

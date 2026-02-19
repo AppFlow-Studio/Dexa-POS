@@ -10,6 +10,8 @@ export {
   ensureBuiltinPrinterProvisioned,
   ensureDejavooPrinterProvisioned,
   verifyDejavooPrinter,
+  provisionStarPrinter,
+  verifyStarPrinter,
   getCachedCapabilities,
   setCachedCapabilities,
   invalidateCache,

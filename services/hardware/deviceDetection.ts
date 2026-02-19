@@ -12,6 +12,8 @@ import { detectNativeHardware } from "@/native/HardwareDetection";
 import { StationPaymentTerminal } from "@/types/station";
 import { printerRowToConfig } from "@/types/printer";
 import { DejavooDriver } from "@/services/printing/drivers/DejavooDriver";
+import { StarMicronicsDriver } from "@/services/printing/drivers/StarMicronicsDriver";
+import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
 
 // ============================================================================
 // TYPES
@@ -669,6 +671,158 @@ export async function verifyDejavooPrinter(
       .eq("id", printerId);
 
     console.warn("[DeviceDetection] Dejavoo printer verification failed:", e.message);
+    return false;
+  } finally {
+    await driver.disconnect();
+  }
+}
+
+// ============================================================================
+// STAR MICRONICS PRINTER PROVISIONING
+// ============================================================================
+
+/**
+ * Provisions a Star Micronics printer into the `printers` table.
+ * Idempotent — if a star_micronics printer with the same network_address + location already exists, returns existing ID.
+ */
+export async function provisionStarPrinter(
+  supabase: SupabaseClient,
+  stationId: string,
+  locationId: string,
+  merchantId: string,
+  discovered: DiscoveredStarPrinter,
+  role: "receipt" | "kitchen",
+): Promise<string | null> {
+  // Check for existing row by network address + location + printer type
+  const { data: existing, error: fetchError } = await supabase
+    .from("printers")
+    .select("id")
+    .eq("network_address", discovered.ipAddress)
+    .eq("location_id", locationId)
+    .eq("printer_type", "star_micronics")
+    .limit(1);
+
+  if (fetchError) {
+    console.error("[DeviceDetection] Failed to check existing Star printer:", fetchError.message);
+    return null;
+  }
+
+  if (existing && existing.length > 0) {
+    console.log("[DeviceDetection] Star printer already provisioned:", existing[0].id);
+    return existing[0].id;
+  }
+
+  const caps = discovered.capabilities;
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("printers")
+    .insert({
+      printer_name: `${discovered.modelName} (${discovered.ipAddress})`,
+      printer_model: discovered.modelName,
+      printer_type: "star_micronics",
+      printer_role: role,
+      connection_type: "network",
+      network_address: discovered.ipAddress,
+      paper_width: caps.paperWidth,
+      max_chars_per_line: caps.maxCharsPerLine,
+      supports_auto_cut: caps.supportsAutoCut,
+      supports_cash_drawer_kick: false,
+      supports_qr_code: true,
+      supports_barcode: true,
+      supports_logo: false,
+      is_default_receipt: false,
+      is_default_kitchen: false,
+      is_active: true,
+      is_connected: false,
+      location_id: locationId,
+      merchant_id: merchantId,
+      station_id: stationId,
+      metadata: {
+        starModel: discovered.model,
+        macAddress: discovered.macAddress,
+        identifier: discovered.identifier,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    console.error("[DeviceDetection] Failed to provision Star printer:", insertError.message);
+    return null;
+  }
+
+  console.log("[DeviceDetection] Provisioned Star printer:", inserted?.id);
+  return inserted?.id ?? null;
+}
+
+// ============================================================================
+// STAR MICRONICS PRINTER VERIFICATION
+// ============================================================================
+
+/**
+ * Verifies a Star Micronics printer by sending a test page.
+ * On success: updates DB with is_connected: true, last_status: "verified".
+ * On failure: updates DB with is_connected: false but keeps is_active: true.
+ */
+export async function verifyStarPrinter(
+  supabase: SupabaseClient,
+  printerId: string,
+): Promise<boolean> {
+  const { data: row, error: fetchError } = await supabase
+    .from("printers")
+    .select("*")
+    .eq("id", printerId)
+    .single();
+
+  if (fetchError || !row) {
+    console.error("[DeviceDetection] Failed to fetch Star printer row:", fetchError?.message);
+    return false;
+  }
+
+  const config = printerRowToConfig(row);
+  const driver = new StarMicronicsDriver();
+
+  try {
+    await driver.initialize(config);
+
+    // Send a test page
+    await driver.printDocument({
+      nodes: [
+        { type: "text_line", content: "DEXA POS", align: "center", format: { bold: true, doubleHeight: true, doubleWidth: true } },
+        { type: "empty_line" },
+        { type: "text_line", content: "Star Printer Connected!", align: "center" },
+        { type: "text_line", content: config.printerName, align: "center" },
+        { type: "empty_line" },
+        { type: "text_line", content: new Date().toLocaleString(), align: "center" },
+        { type: "divider", style: "solid", lineWidth: config.maxCharsPerLine },
+        { type: "feed", lines: 2 },
+        { type: "cut" },
+      ],
+      maxCharsPerLine: config.maxCharsPerLine,
+    });
+
+    await supabase
+      .from("printers")
+      .update({
+        is_connected: true,
+        last_status: "verified",
+        last_status_at: new Date().toISOString(),
+      })
+      .eq("id", printerId);
+
+    console.log("[DeviceDetection] Star printer verified:", printerId);
+    return true;
+  } catch (e: any) {
+    await supabase
+      .from("printers")
+      .update({
+        is_connected: false,
+        last_status: `verification_failed: ${e.message}`,
+        last_status_at: new Date().toISOString(),
+      })
+      .eq("id", printerId);
+
+    console.warn("[DeviceDetection] Star printer verification failed:", e.message);
     return false;
   } finally {
     await driver.disconnect();

@@ -55,7 +55,7 @@ const OrderProcessing = () => {
           new Date(o.opened_at || 0).getTime() >= cutoffTime &&
           o.order_type !== "Dine In" &&
           o.order_type !== "dine_in" &&
-          ((o.order_status === "preparing" && o.items.length > 0) ||
+          (( (o.order_status === "preparing" || o.order_status === 'sent_to_kitchen') && o.items.length > 0) ||
             ((o.paid_status === "Unpaid" ||
               o.paid_status === "Pending" ||
               o.paid_status === "Partial") &&

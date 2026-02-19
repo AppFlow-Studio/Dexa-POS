@@ -441,9 +441,7 @@ function createJobForPrinter(
   orderId: string | undefined,
   templateType: "receipt" | "kitchen",
 ): PrintJob {
-  const usesRawPrint =
-    printer.printerType === "generic_escpos" ||
-    printer.printerType === "star_micronics";
+  const usesRawPrint = printer.printerType === "generic_escpos";
 
   if (usesRawPrint) {
     // ESC/POS printers get raw bytes

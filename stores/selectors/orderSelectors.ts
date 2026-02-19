@@ -36,6 +36,7 @@ export interface ActiveOrderTotals {
   outstandingSubtotal: number;
   outstandingTax: number;
   cashSubtotal: number;
+  cashTax: number;
   cashTotal: number;
 }
 

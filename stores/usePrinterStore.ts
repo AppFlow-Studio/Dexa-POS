@@ -1,6 +1,7 @@
 import { mmkvStorage } from "@/lib/storage";
 import {
   PrinterConfig,
+  type PrinterRole,
   PrinterRouteRule,
   printerRowToConfig,
 } from "@/types/printer";
@@ -27,6 +28,15 @@ interface PrinterStoreState {
     },
   ) => Promise<void>;
   getPrinterById: (id: string) => PrinterConfig | undefined;
+  updatePrinterConfig: (
+    printerId: string,
+    updates: {
+      printerRole?: PrinterRole;
+      isDefaultReceipt?: boolean;
+      isDefaultKitchen?: boolean;
+      isActive?: boolean;
+    },
+  ) => Promise<void>;
 }
 
 export const usePrinterStore = create<PrinterStoreState>()(
@@ -47,8 +57,7 @@ export const usePrinterStore = create<PrinterStoreState>()(
           const { data, error } = await supabase
             .from("printers")
             .select("*")
-            .eq("location_id", locationId)
-            .eq("is_active", true);
+            .eq("location_id", locationId);
 
           if (error) {
             console.error("[PrinterStore] Failed to fetch printers:", error);
@@ -112,6 +121,79 @@ export const usePrinterStore = create<PrinterStoreState>()(
 
       getPrinterById: (id) => {
         return get().printers.find((p) => p.id === id);
+      },
+
+      updatePrinterConfig: async (printerId, updates) => {
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) {
+          console.warn("[PrinterStore] No Supabase client available");
+          return;
+        }
+
+        const printer = get().printers.find((p) => p.id === printerId);
+        if (!printer) {
+          console.warn("[PrinterStore] Printer not found:", printerId);
+          return;
+        }
+
+        try {
+          // If setting as default receipt, clear other defaults at same location
+          if (updates.isDefaultReceipt === true) {
+            await supabase
+              .from("printers")
+              .update({ is_default_receipt: false })
+              .eq("location_id", printer.locationId)
+              .neq("id", printerId);
+          }
+
+          // If setting as default kitchen, clear other defaults at same location
+          if (updates.isDefaultKitchen === true) {
+            await supabase
+              .from("printers")
+              .update({ is_default_kitchen: false })
+              .eq("location_id", printer.locationId)
+              .neq("id", printerId);
+          }
+
+          // Map camelCase to snake_case DB columns
+          const dbUpdates: Record<string, unknown> = {};
+          if (updates.printerRole !== undefined) dbUpdates.printer_role = updates.printerRole;
+          if (updates.isDefaultReceipt !== undefined) dbUpdates.is_default_receipt = updates.isDefaultReceipt;
+          if (updates.isDefaultKitchen !== undefined) dbUpdates.is_default_kitchen = updates.isDefaultKitchen;
+          if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+
+          await supabase
+            .from("printers")
+            .update(dbUpdates)
+            .eq("id", printerId);
+
+          // Optimistic local update
+          set((state) => ({
+            printers: state.printers.map((p) => {
+              if (p.id !== printerId) {
+                // Clear default flags on other printers if we just claimed them
+                let updated = p;
+                if (updates.isDefaultReceipt === true && p.locationId === printer.locationId) {
+                  updated = { ...updated, isDefaultReceipt: false };
+                }
+                if (updates.isDefaultKitchen === true && p.locationId === printer.locationId) {
+                  updated = { ...updated, isDefaultKitchen: false };
+                }
+                return updated;
+              }
+              return {
+                ...p,
+                ...(updates.printerRole !== undefined && { printerRole: updates.printerRole }),
+                ...(updates.isDefaultReceipt !== undefined && { isDefaultReceipt: updates.isDefaultReceipt }),
+                ...(updates.isDefaultKitchen !== undefined && { isDefaultKitchen: updates.isDefaultKitchen }),
+                ...(updates.isActive !== undefined && { isActive: updates.isActive }),
+              };
+            }),
+          }));
+        } catch (e) {
+          console.error("[PrinterStore] Failed to update printer config:", e);
+          throw e;
+        }
       },
     }),
     {

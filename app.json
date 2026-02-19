@@ -33,6 +33,7 @@
         "expo-build-properties",
         {
           "android": {
+            "minSdkVersion": 29,
             "enableProguardInReleaseBuilds": true,
             "shrinkResources": true
           }

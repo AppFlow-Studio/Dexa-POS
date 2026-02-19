@@ -3,6 +3,7 @@ import { PrinterDriver } from "./drivers/PrinterDriver";
 import { LandiDriver } from "./drivers/LandiDriver";
 import { NetworkDriver } from "./drivers/NetworkDriver";
 import { DejavooDriver } from "./drivers/DejavooDriver";
+import { StarMicronicsDriver } from "./drivers/StarMicronicsDriver";
 
 const driverCache = new Map<string, PrinterDriver>();
 
@@ -22,6 +23,8 @@ export function getDriver(config: PrinterConfig): PrinterDriver {
       driver = new DejavooDriver();
       break;
     case "star_micronics":
+      driver = new StarMicronicsDriver();
+      break;
     case "generic_escpos":
       driver = new NetworkDriver();
       break;
