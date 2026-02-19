@@ -302,6 +302,13 @@ export const PrinterService = {
         year: "numeric",
       }) + " " + timestamp;
 
+    const readyBy = new Date(now.getTime() + 15 * 60 * 1000);
+    const readyByTime = readyBy.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
     const sampleData: KitchenTicketData = {
       orderNumber: "#TEST-001",
       orderType: "Dine In",
@@ -309,11 +316,12 @@ export const PrinterService = {
       serverName: "Test Server",
       timestamp,
       fullTimestamp,
+      readyByTime,
       totalItemCount: 4,
       items: [
-        { name: "Classic Burger", quantity: 2, modifiers: ["No Onions", "Well Done"], notes: "Allergy: gluten-free bun" },
-        { name: "Caesar Salad", quantity: 1, modifiers: ["Extra Dressing"] },
-        { name: "Fish & Chips", quantity: 1, modifiers: ["Tartar Sauce on Side"] },
+        { name: "Classic Burger", quantity: 2, modifiers: ["No Onions", "Well Done"], notes: "Allergy: gluten-free bun", station: "Grill", allergyAlert: "Allergy: gluten-free bun" },
+        { name: "Caesar Salad", quantity: 1, modifiers: ["Extra Dressing"], station: "Cold Prep" },
+        { name: "Fish & Chips", quantity: 1, modifiers: ["Tartar Sauce on Side"], station: "Grill" },
       ],
       isVoidTicket: false,
       maxCharsPerLine: targetPrinter.maxCharsPerLine,
@@ -646,6 +654,9 @@ function buildReceiptTemplateData(
     maxCharsPerLine: printer.maxCharsPerLine,
     taxRate: subtotal > 0 ? tax / subtotal : 0,
     templateConfig: template,
+    logoBase64: template.showLogo
+      ? useReceiptTemplateStore.getState().cachedLogoBase64 ?? undefined
+      : undefined,
   };
 }
 
@@ -658,7 +669,7 @@ function buildKitchenTicketData(
 ): KitchenTicketData {
   const template = location
     ? useReceiptTemplateStore.getState().getKitchenTemplate(location.id)
-    : { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "kitchen_ticket" };
+    : { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "kitchen" };
 
   const now = new Date();
   const timestamp = now.toLocaleTimeString("en-US", {
@@ -689,18 +700,35 @@ function buildKitchenTicketData(
       modifiers.push(addon.name);
     });
 
+    // Extract allergy info from notes if present
+    const notes = item.customizations?.notes;
+    let allergyAlert: string | undefined;
+    if (notes && /allergy/i.test(notes)) {
+      allergyAlert = notes;
+    }
+
     return {
       name: item.is_open_item
         ? item.open_item_name || item.name
         : item.name,
       quantity: item.quantity,
       modifiers,
-      notes: item.customizations?.notes,
+      notes,
       isVoided: item.is_voided,
+      station: item.category_name,
+      allergyAlert,
     };
   });
 
   const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Calculate ready-by time (current time + 15 minutes)
+  const readyBy = new Date(now.getTime() + 15 * 60 * 1000);
+  const readyByTime = readyBy.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 
   return {
     orderNumber:
@@ -717,6 +745,7 @@ function buildKitchenTicketData(
     isVoidTicket,
     maxCharsPerLine: printer.maxCharsPerLine,
     templateConfig: template,
+    readyByTime,
   };
 }
 

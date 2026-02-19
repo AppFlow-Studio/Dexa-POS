@@ -140,6 +140,10 @@ export interface BroadcastOrderData {
   merchant_id: string;
   location_id: string;
   customer_id: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  delivery_address: string | null;
   created_by_staff_id: string | null;
   created_by_user_id: string | null;
   assigned_server_id: string | null;

@@ -2,6 +2,8 @@ import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-documen
 import {
   StarXpandCommand,
 } from "react-native-star-io10";
+import * as FileSystem from "expo-file-system";
+import { TextBlock, renderTextBlocksToImage } from "./SkiaTicketRenderer";
 
 // ============================================================================
 // TYPES
@@ -10,7 +12,12 @@ import {
 export interface StarRenderOptions {
   supportsAutoCut: boolean;
   maxCharsPerLine: number;
+  graphicsOnly: boolean; // TSP100III etc. — must use actionPrintImage
 }
+
+// 80mm paper @ 203dpi = 576 dots printable width
+const PRINT_WIDTH_DOTS_80MM = 576;
+const PRINT_WIDTH_DOTS_58MM = 384;
 
 // ============================================================================
 // PUBLIC API
@@ -27,8 +34,18 @@ export async function renderDocumentToStarCommands(
   const w = options.maxCharsPerLine;
   const printerBuilder = new StarXpandCommand.PrinterBuilder();
 
-  for (const node of doc.nodes) {
-    renderNode(printerBuilder, node, w, options);
+  // Required encoding setup — without this some Star models produce blank output
+  printerBuilder.styleInternationalCharacter(
+    StarXpandCommand.Printer.InternationalCharacterType.Usa,
+  );
+  printerBuilder.styleCharacterSpace(0);
+
+  if (options.graphicsOnly) {
+    await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options);
+  } else {
+    for (const node of doc.nodes) {
+      await renderNode(printerBuilder, node, w, options);
+    }
   }
 
   const builder = new StarXpandCommand.StarXpandCommandBuilder();
@@ -36,19 +53,205 @@ export async function renderDocumentToStarCommands(
     new StarXpandCommand.DocumentBuilder().addPrinter(printerBuilder),
   );
 
-  return builder.getCommands();
+  const commands = await builder.getCommands();
+  console.log(
+    `[StarXpandRenderer] Commands generated (graphicsOnly=${options.graphicsOnly}): ${commands.length} chars, preview: ${commands.substring(0, 200)}`,
+  );
+  return commands;
 }
 
 // ============================================================================
-// NODE RENDERING
+// GRAPHICS-ONLY RENDERING (TSP100III, TSP100IIU+)
 // ============================================================================
 
-function renderNode(
+/**
+ * For graphics-only printers: collects consecutive text nodes into TextBlock
+ * buffers, renders them as PNG images via Skia, then sends via actionPrintImage.
+ * Non-text nodes (cut, feed, qr_code) are sent as native Star commands.
+ */
+async function renderNodesGraphicsOnly(
+  pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
+  nodes: PrintNode[],
+  lineWidth: number,
+  options: StarRenderOptions,
+): Promise<void> {
+  const printWidthDots = lineWidth >= 42
+    ? PRINT_WIDTH_DOTS_80MM
+    : PRINT_WIDTH_DOTS_58MM;
+
+  let textBuffer: TextBlock[] = [];
+
+  const flushTextBuffer = async () => {
+    if (textBuffer.length === 0) return;
+
+    const imageUri = await renderTextBlocksToImage(textBuffer, printWidthDots);
+    if (imageUri) {
+      pb.actionPrintImage(
+        new StarXpandCommand.Printer.ImageParameter(imageUri, printWidthDots),
+      );
+    }
+    textBuffer = [];
+  };
+
+  for (const node of nodes) {
+    switch (node.type) {
+      case "text": {
+        textBuffer.push({
+          text: node.content,
+          bold: !!node.format?.bold,
+          doubleHeight: !!node.format?.doubleHeight,
+          doubleWidth: !!node.format?.doubleWidth,
+          inverted: !!node.format?.inverted,
+          align: node.align ?? "left",
+        });
+        break;
+      }
+
+      case "text_line": {
+        textBuffer.push({
+          text: node.content,
+          bold: !!node.format?.bold,
+          doubleHeight: !!node.format?.doubleHeight,
+          doubleWidth: !!node.format?.doubleWidth,
+          inverted: !!node.format?.inverted,
+          align: node.align ?? "left",
+        });
+        break;
+      }
+
+      case "two_column": {
+        const line = padTwoColumn(node.left, node.right, node.lineWidth);
+        textBuffer.push({
+          text: line,
+          bold: !!node.format?.bold,
+          doubleHeight: !!node.format?.doubleHeight,
+          doubleWidth: !!node.format?.doubleWidth,
+          inverted: !!node.format?.inverted,
+          align: "left",
+        });
+        break;
+      }
+
+      case "divider": {
+        const w = node.lineWidth;
+        let line: string;
+        switch (node.style) {
+          case "solid":
+            line = "-".repeat(w);
+            break;
+          case "dotted":
+            line = "- ".repeat(Math.floor(w / 2)).substring(0, w);
+            break;
+          case "double":
+            line = "=".repeat(w);
+            break;
+        }
+        textBuffer.push({
+          text: line,
+          bold: false,
+          doubleHeight: false,
+          doubleWidth: false,
+          inverted: false,
+          align: "left",
+        });
+        break;
+      }
+
+      case "empty_line": {
+        textBuffer.push({
+          text: " ",
+          bold: false,
+          doubleHeight: false,
+          doubleWidth: false,
+          inverted: false,
+          align: "left",
+        });
+        break;
+      }
+
+      // Non-text nodes: flush buffer first, then emit native command
+      case "feed": {
+        await flushTextBuffer();
+        pb.actionFeedLine(node.lines);
+        break;
+      }
+
+      case "cut": {
+        await flushTextBuffer();
+        if (options.supportsAutoCut) {
+          pb.actionCut(StarXpandCommand.Printer.CutType.Partial);
+        } else {
+          pb.actionFeedLine(5);
+        }
+        break;
+      }
+
+      case "qr_code": {
+        await flushTextBuffer();
+        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+        pb.actionPrintQRCode(
+          new StarXpandCommand.Printer.QRCodeParameter(node.data)
+            .setCellSize(node.size ?? 4),
+        );
+        pb.actionFeedLine(1);
+        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+        break;
+      }
+
+      case "image": {
+        await flushTextBuffer();
+        if (node.base64Png) {
+          const tempUri = `${FileSystem.cacheDirectory}receipt-logo-${Date.now()}.png`;
+          await FileSystem.writeAsStringAsync(tempUri, node.base64Png, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+          pb.actionPrintImage(
+            new StarXpandCommand.Printer.ImageParameter(tempUri, printWidthDots / 2),
+          );
+          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+        }
+        break;
+      }
+
+      case "barcode": {
+        await flushTextBuffer();
+        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+        pb.actionPrintBarcode(
+          new StarXpandCommand.Printer.BarcodeParameter(
+            node.data,
+            StarXpandCommand.Printer.BarcodeSymbology.Code128,
+          )
+            .setBarDots(2)
+            .setHeight(node.height ?? 40)
+            .setPrintHri(true),
+        );
+        pb.actionFeedLine(1);
+        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+        break;
+      }
+
+      case "cash_drawer": {
+        await flushTextBuffer();
+        break;
+      }
+    }
+  }
+
+  // Flush any remaining text
+  await flushTextBuffer();
+}
+
+// ============================================================================
+// NODE RENDERING (text-based, for non-graphics-only printers)
+// ============================================================================
+
+async function renderNode(
   pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
   node: PrintNode,
   lineWidth: number,
   options: StarRenderOptions,
-): void {
+): Promise<void> {
   switch (node.type) {
     case "text": {
       applyAlignment(pb, node.align);
@@ -125,9 +328,45 @@ function renderNode(
       break;
     }
 
-    case "cash_drawer":
-    case "barcode":
     case "image": {
+      if (node.base64Png) {
+        const printWidthDots = lineWidth >= 42
+          ? PRINT_WIDTH_DOTS_80MM
+          : PRINT_WIDTH_DOTS_58MM;
+        const tempUri = `${FileSystem.cacheDirectory}receipt-logo-${Date.now()}.png`;
+        try {
+          await FileSystem.writeAsStringAsync(tempUri, node.base64Png, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+          pb.actionPrintImage(
+            new StarXpandCommand.Printer.ImageParameter(tempUri, printWidthDots / 2),
+          );
+          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+        } catch {
+          // Silently skip if file write fails
+        }
+      }
+      break;
+    }
+
+    case "barcode": {
+      applyAlignment(pb, "center");
+      pb.actionPrintBarcode(
+        new StarXpandCommand.Printer.BarcodeParameter(
+          node.data,
+          StarXpandCommand.Printer.BarcodeSymbology.Code128,
+        )
+          .setBarDots(2)
+          .setHeight(node.height ?? 40)
+          .setPrintHri(true),
+      );
+      pb.actionPrintText("\n");
+      applyAlignment(pb, "left");
+      break;
+    }
+
+    case "cash_drawer": {
       // Not yet supported — skip silently
       break;
     }

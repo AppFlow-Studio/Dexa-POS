@@ -1,19 +1,21 @@
 import { useToast } from "@/contexts/ToastContext";
 import { InventoryService } from "@/services/inventoryService";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import {
   getOrderStoreSupabaseClient,
   useOrderStore,
 } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { CheckCircle, Lock, Tag, Trash2, User, X } from "lucide-react-native";
+import { CheckCircle, Lock, Printer, Tag, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -48,7 +50,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [showRefundedDiscountDialog, setShowRefundedDiscountDialog] = useState(false);
+  const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
+  const [isPrintingKitchen, setIsPrintingKitchen] = useState(false);
   const { show } = useToast();
+
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -227,6 +233,54 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }, 250);
   };
 
+  const handlePrintReceipt = async () => {
+    if (!activeOrder || !selectedStore || !hasItems) return;
+    setIsPrintingReceipt(true);
+    try {
+      const success = await PrinterService.printReceipt(activeOrder, selectedStore);
+      if (success) {
+        show({ title: "Receipt Sent", message: "Receipt sent to printer.", type: "success" });
+      } else {
+        show({ title: "Print Failed", message: "No receipt printer configured.", type: "error" });
+      }
+    } catch (e: any) {
+      show({ title: "Print Error", message: e?.message || "Failed to print receipt.", type: "error" });
+    } finally {
+      setIsPrintingReceipt(false);
+    }
+    if (ref && "current" in ref && ref.current) {
+      ref.current.close();
+    }
+  };
+
+  const handlePrintKitchenTicket = async () => {
+    if (!activeOrder || !selectedStore || !hasItems) return;
+    setIsPrintingKitchen(true);
+    try {
+      const nonVoidedItems = (activeOrder.items || []).filter(
+        (item) => item.status !== "voided"
+      );
+      if (nonVoidedItems.length === 0) {
+        show({ title: "No Items", message: "No non-voided items to print.", type: "error" });
+        setIsPrintingKitchen(false);
+        return;
+      }
+      const success = await PrinterService.printKitchenTickets(activeOrder, nonVoidedItems, selectedStore);
+      if (success) {
+        show({ title: "Kitchen Ticket Sent", message: "Kitchen ticket sent to printer.", type: "success" });
+      } else {
+        show({ title: "Print Failed", message: "No kitchen printer configured.", type: "error" });
+      }
+    } catch (e: any) {
+      show({ title: "Print Error", message: e?.message || "Failed to print kitchen ticket.", type: "error" });
+    } finally {
+      setIsPrintingKitchen(false);
+    }
+    if (ref && "current" in ref && ref.current) {
+      ref.current.close();
+    }
+  };
+
   const renderBackdrop = useMemo(
     () => (props: any) => (
       <BottomSheetBackdrop
@@ -347,6 +401,57 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                   Void Order
                 </Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Print Section */}
+            <View className="p-4 border-b border-gray-700">
+              <Text className="text-xl font-semibold text-white mb-3">Print</Text>
+              <View className="flex-row gap-x-3">
+                <TouchableOpacity
+                  onPress={handlePrintReceipt}
+                  disabled={!hasItems || isPrintingReceipt}
+                  className={`flex-1 flex-row items-center justify-center gap-x-2 p-3 rounded-lg ${
+                    hasItems && !isPrintingReceipt
+                      ? "bg-[#303030] border border-blue-700"
+                      : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                  }`}
+                >
+                  {isPrintingReceipt ? (
+                    <ActivityIndicator size="small" color="#60a5fa" />
+                  ) : (
+                    <Printer color={hasItems ? "#60a5fa" : "#6B7280"} size={16} />
+                  )}
+                  <Text
+                    className={`text-base font-semibold ${
+                      hasItems ? "text-blue-400" : "text-gray-500"
+                    }`}
+                  >
+                    Print Receipt
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handlePrintKitchenTicket}
+                  disabled={!hasItems || isPrintingKitchen}
+                  className={`flex-1 flex-row items-center justify-center gap-x-2 p-3 rounded-lg ${
+                    hasItems && !isPrintingKitchen
+                      ? "bg-[#303030] border border-orange-700"
+                      : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                  }`}
+                >
+                  {isPrintingKitchen ? (
+                    <ActivityIndicator size="small" color="#fb923c" />
+                  ) : (
+                    <Printer color={hasItems ? "#fb923c" : "#6B7280"} size={16} />
+                  )}
+                  <Text
+                    className={`text-base font-semibold ${
+                      hasItems ? "text-orange-400" : "text-gray-500"
+                    }`}
+                  >
+                    Kitchen Ticket
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Close Check Section - Only show when balance is $0 */}

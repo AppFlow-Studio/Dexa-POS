@@ -32,10 +32,13 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
 }) => {
   // Logic derived from props
   const allItemsReady = itemsInSelectedCourse.every(
-    (item) => item.item_status === "ready"
+    (item) => item.item_status === "ready" || item.item_status === "served"
   );
   const anyItemsPreparing = itemsInSelectedCourse.some(
     (item) => item.item_status === "preparing"
+  );
+  const allItemsServed = itemsInSelectedCourse.every(
+    (item) => item.item_status === "served"
   );
 
   const handleMarkAllReady = () => {
@@ -50,6 +53,13 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
   // Helper to determine styling based on status
   const getItemStyle = (status: string | undefined) => {
     switch (status) {
+      case "served":
+        return {
+          bg: "bg-emerald-900/30",
+          border: "border-emerald-500/50",
+          text: "text-emerald-500",
+          icon: <CheckCircle2 size={12} color="#10b981" />,
+        };
       case "ready":
         return {
           bg: "bg-green-900/20",
@@ -125,9 +135,7 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
 
       {/* SECTION 3: Action Buttons (Fixed Right) */}
       <View className="flex-row gap-2">
-        {/* Send Button REMOVED */}
-
-        {/* Ready Button */}
+        {/* Ready Button — show when items are preparing but not all ready/served */}
         {!allItemsReady && anyItemsPreparing && (
           <TouchableOpacity
             onPress={handleMarkAllReady}
@@ -135,15 +143,28 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
             className={`flex-row items-center bg-green-600 px-4 py-2.5 rounded-lg active:opacity-80 ${isModifierSidebarOpen ? "opacity-50 bg-gray-400" : ""}`}
           >
             <CheckCheck size={18} color="white" strokeWidth={3} />
-            {/* Text hidden on very small screens if needed, but fits here */}
             <Text className="ml-2 font-bold text-white text-sm">Ready</Text>
           </TouchableOpacity>
         )}
 
-        {/* Empty State / Completed Placeholder */}
-        {isCourseSent && allItemsReady && (
-          <View className="px-2 py-2 rounded-lg border border-gray-700 bg-gray-800">
-            <Text className="text-gray-400 text-xs font-medium">Completed</Text>
+        {/* Served badge — all items served */}
+        {isCourseSent && allItemsServed && (
+          <View className="px-2 py-2 rounded-lg border border-emerald-700 bg-emerald-900/30">
+            <Text className="text-emerald-500 text-xs font-medium">Served</Text>
+          </View>
+        )}
+
+        {/* Ready badge — all ready (or served) but not all served */}
+        {isCourseSent && allItemsReady && !allItemsServed && (
+          <View className="px-2 py-2 rounded-lg border border-green-700 bg-green-900/30">
+            <Text className="text-green-400 text-xs font-medium">Ready</Text>
+          </View>
+        )}
+
+        {/* Sent indicator — course sent but items haven't started preparing yet */}
+        {isCourseSent && !anyItemsPreparing && !allItemsReady && (
+          <View className="px-2 py-2 rounded-lg border border-amber-700 bg-amber-900/30">
+            <Text className="text-amber-400 text-xs font-medium">Sent</Text>
           </View>
         )}
       </View>

@@ -11,7 +11,7 @@ const PaymentActions = () => {
   const [activeMethod, setActiveMethod] = useState<PaymentMethod>("Card");
   const openPaymentModal = usePaymentStore((state) => state.open);
   const activeOrder = useOrderStore((state) =>
-    state.orders.find((o) => o.id === state.activeOrderId)
+    state.activeOrderId ? state.ordersById[state.activeOrderId] : null
   );
   const pendingTableSelection = useOrderStore(
     (state) => state.pendingTableSelection

@@ -1,6 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { MenuItemType } from "@/lib/types";
-import { setMenuBlockedSync, useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import { isMenuBlockedSync, setMenuBlockedSync, useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Banknote, Settings, Utensils } from "lucide-react-native";
@@ -235,58 +235,61 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const isDisabled = item.availability === false;
 
-  // OPTIMIZED: Use getState() at call time to avoid re-renders on activeOrderId changes
-  const handlePress = useCallback(() => {
-    // CRITICAL: Block touches synchronously FIRST (same frame, before any React)
-    // This prevents race conditions where items can be tapped before modal is interactive
+  // ─── Phase 1: onPressIn ──────────────────────────────────────────────────
+  // Fires ~50-150ms before onPress. Do validation + pre-warm computation here.
+  // DO NOT open the modal — avoid triggering a React render while finger is down.
+  const handlePressIn = useCallback(() => {
+    // Synchronous block (same frame, before React)
     setMenuBlockedSync(true);
 
     if (!isClockedIn) {
-      setMenuBlockedSync(false); // Unblock on early return
+      setMenuBlockedSync(false);
       showClockInWall();
       return;
     }
 
-    if (onOrderClosedCheck && onOrderClosedCheck()) {
-      setMenuBlockedSync(false); // Unblock on early return
+    if (onOrderClosedCheck?.()) {
+      setMenuBlockedSync(false);
       return;
     }
 
-    // Read order state at call time instead of as a dependency
-    const { activeOrderId: currentOrderId, ordersById } = useOrderStore.getState();
-    const currentOrder = currentOrderId ? ordersById[currentOrderId] : undefined;
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
     if (!currentOrder?.order_type) {
-      setMenuBlockedSync(false); // Unblock on early return
+      setMenuBlockedSync(false);
       show({
         title: "Order Type Required",
-        message:
-          "Please select an order type (e.g., Dine-In) before adding items.",
+        message: "Please select an order type before adding items.",
         type: "warning",
       });
       return;
     }
 
-    // Use getState() to avoid subscribing to store changes
-    // Use openToAdd for attached panel mode (compact UI with arrow indicator)
-    // Note: openToAdd also calls setMenuBlockedSync(true), which is idempotent
+    // Pre-warm: compute modifier data NOW while finger is still down.
+    // By the time onPress fires, this is already cached.
+    useModifierSidebarStore.getState().preWarm(item, categoryId, menuId);
+  }, [item, categoryId, menuId, isClockedIn, onOrderClosedCheck, showClockInWall, show]);
+
+  // ─── Phase 2: onPress ──────────────────────────────────────────────────────
+  // Fires after finger lifts. Pre-warm is already done — just flip isOpen = true.
+  const handlePress = useCallback(() => {
+    // If validation failed in pressIn, menu was already unblocked — skip
+    if (!isMenuBlockedSync()) return;
+
+    const { activeOrderId } = useOrderStore.getState();
+
+    // openToAdd consumes the preWarm cache — no computation needed
     useModifierSidebarStore
       .getState()
-      .openToAdd(item, currentOrderId, categoryId, menuId);
-  }, [
-    item,
-    categoryId,
-    menuId,
-    isClockedIn,
-    onOrderClosedCheck,
-    showClockInWall,
-    show,
-  ]); // Removed activeOrderId and activeOrder?.order_type from deps
+      .openToAdd(item, activeOrderId, categoryId, menuId);
+  }, [item, categoryId, menuId]);
 
   return (
     <TouchableOpacity
       disabled={isDisabled}
-      onPressIn={handlePress}
+      onPressIn={handlePressIn}
+      onPress={handlePress}
       style={[styles.container, isDisabled && styles.containerDisabled]}
     >
       <View style={styles.innerContainer}>

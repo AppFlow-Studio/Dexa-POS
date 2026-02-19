@@ -540,6 +540,7 @@ const BillItem = React.memo(BillItemComponent, (prev, next) => {
     prev.item.paidQuantity !== next.item.paidQuantity ||
     prev.item.refundedQuantity !== next.item.refundedQuantity ||
     prev.item.kitchen_status !== next.item.kitchen_status ||
+    prev.item.item_status !== next.item.item_status ||
     prev.item.isDraft !== next.item.isDraft ||
     prev.item.customizations?.notes !== next.item.customizations?.notes ||
     prev.isEditable !== next.isEditable ||

@@ -11,6 +11,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
   getOrderStoreSupabaseClient,
+  registerPendingOrderCreation,
   useOrderStore,
 } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -269,94 +270,13 @@ const TablesScreen = () => {
   const handleGuestCountSubmit = async (guestCount: number) => {
     const primaryTableId = selectedTableIds[0];
     if (!primaryTableId) return;
-
-    // Use all selected tables if in merge mode, otherwise just the primary
     const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId];
 
-    showLoading("Creating session...");
+    // 1. Create local order immediately (synchronous — ~0ms)
+    const newOrder = startNewOrder({ tableId: primaryTableId, guestCount });
+    setActiveOrder(newOrder.id);
 
-    try {
-      // Create backend session with correct guest count
-      const { sessionId, orderId } = await useFloorPlanStore
-        .getState()
-        .seatGuests({
-          tableIds: tableIdsToSeat,
-          partySize: guestCount,
-          createOrder: true,
-          selected_station: selectedStation?.id,
-          device_id: device_id,
-        });
-
-      console.log(
-        "[GuestCountSubmit] Created session:",
-        sessionId,
-        "Order:",
-        orderId,
-      );
-
-      // Fetch full order details from backend and create local order
-      if (orderId) {
-        const supabase = getOrderStoreSupabaseClient();
-        if (supabase) {
-          const { data: backendOrder, error } =
-            await OrderService.fetchOrderById(supabase, orderId);
-
-          if (backendOrder && !error) {
-            console.log(
-              "[GuestCountSubmit] Fetched backend order:",
-              backendOrder.order_number,
-            );
-
-            // Create local OrderProfile with backend data
-            const localOrderId = `order_${Date.now()}`;
-            const newOrderProfile: OrderProfile = {
-              id: localOrderId,
-              db_order_id: backendOrder.id,
-              order_number: backendOrder.order_number,
-              display_number: backendOrder.display_number,
-              sync_status: "synced",
-              service_location_id: primaryTableId,
-              order_status: backendOrder.status || "draft",
-              check_status: "Opened",
-              paid_status: "Unpaid",
-              order_type: "Dine In",
-              items: [],
-              opened_at: backendOrder.created_at,
-              guest_count: guestCount,
-              server_name: loggedInEmployee?.fullName || "Unknown",
-            };
-
-            // Inject into store
-            useOrderStore.setState((state) => ({
-              ordersById: {
-                ...state.ordersById,
-                [localOrderId]: newOrderProfile,
-              },
-              orderIds: [...state.orderIds, localOrderId],
-            }));
-
-            setActiveOrder(localOrderId);
-          } else {
-            console.error(
-              "[GuestCountSubmit] Failed to fetch backend order:",
-              error,
-            );
-            // Fallback: use orderId directly (might not work for lookups)
-            setActiveOrder(orderId);
-          }
-        } else {
-          setActiveOrder(orderId);
-        }
-      }
-    } catch (err) {
-      console.error("[GuestCountSubmit] Failed to seat guests:", err);
-      // Fallback to local order creation if backend fails
-      const newOrder = startNewOrder({ guestCount, tableId: primaryTableId });
-      setActiveOrder(newOrder.id);
-    } finally {
-      hideLoading();
-    }
-
+    // 2. Navigate immediately — no loading spinner
     setGuestModalOpen(false);
     clearSelection();
     setMergeMode(false);
@@ -364,6 +284,53 @@ const TablesScreen = () => {
       pathname: "/tables/[tableId]",
       params: { tableId: primaryTableId },
     });
+
+    // 3. Register pending creation to prevent ensureOrderCreated from duplicating
+    let resolveCreation: (dbOrderId: string | null) => void;
+    const creationPromise = new Promise<string | null>((resolve) => {
+      resolveCreation = resolve;
+    });
+    registerPendingOrderCreation(newOrder.id, creationPromise);
+
+    // 4. Fire seatGuests in background — don't block navigation
+    try {
+      const { orderId } = await useFloorPlanStore.getState().seatGuests({
+        tableIds: tableIdsToSeat,
+        partySize: guestCount,
+        createOrder: true,
+        localOrderId: newOrder.id,
+        selected_station: selectedStation?.id,
+        device_id: device_id,
+      });
+
+      if (orderId && orderId !== newOrder.id) {
+        // seatGuests already called updateOrderDbId — resolve the pending promise
+        resolveCreation!(orderId);
+
+        // Background: fetch order_number and display_number
+        const supabase = getOrderStoreSupabaseClient();
+        if (supabase) {
+          try {
+            const { data } = await OrderService.fetchOrderById(supabase, orderId);
+            if (data) {
+              useOrderStore.getState().updateOrderFromSync(orderId, {
+                order_number: data.order_number,
+                display_number: data.display_number,
+                opened_at: data.created_at,
+              });
+            }
+          } catch {
+            /* non-critical, order still works without number */
+          }
+        }
+      } else {
+        resolveCreation!(null);
+      }
+    } catch (err) {
+      console.error("[GuestCountSubmit] Background seatGuests failed:", err);
+      resolveCreation!(null);
+      // Order still works locally — ensureOrderCreated will create backend order when first item is added
+    }
   };
 
   return (

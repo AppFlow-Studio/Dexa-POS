@@ -520,8 +520,10 @@ const KitchenDisplayScreen = () => {
 
   const tickets = useKDSStore((s) => s.tickets);
   const counts = useKDSStore((s) => s.counts);
-  const isLoading = useKDSStore((s) => s.isLoading);
+  const isInitialLoading = useKDSStore((s) => s.isInitialLoading);
+  const isFetching = useKDSStore((s) => s.isFetching);
   const fetchTickets = useKDSStore((s) => s.fetchTickets);
+  const backgroundFetchTickets = useKDSStore((s) => s._backgroundFetchTickets);
   const advanceTicketStatus = useKDSStore((s) => s.advanceTicketStatus);
   const fetchKDSDisplay = useKDSStore((s) => s.fetchKDSDisplay);
   const kdsDisplayConfig = useKDSStore((s) => s.kdsDisplayConfig);
@@ -549,6 +551,7 @@ const KitchenDisplayScreen = () => {
   const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [showDisconnected, setShowDisconnected] = useState(false);
 
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false);
@@ -600,19 +603,50 @@ const KitchenDisplayScreen = () => {
     return () => handle.cancel();
   }, []);
 
-  // Initial fetch + adaptive polling (fast when realtime is down, slow when connected)
+  // Track realtime connection in a ref to avoid polling teardown on flaps
+  const isRealtimeConnectedRef = useRef(isRealtimeConnected);
+  const prevRealtimeConnectedRef = useRef(isRealtimeConnected);
+  useEffect(() => {
+    isRealtimeConnectedRef.current = isRealtimeConnected;
+  }, [isRealtimeConnected]);
+
+  // Debounce disconnected indicator — only show after 2s of being disconnected
+  useEffect(() => {
+    if (isRealtimeConnected) {
+      setShowDisconnected(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowDisconnected(true), 2000);
+    return () => clearTimeout(timer);
+  }, [isRealtimeConnected]);
+
+  // Initial fetch + adaptive polling via setTimeout chain
   useEffect(() => {
     if (!isReady || !locationId) return;
 
     fetchTickets(locationId);
 
-    const pollInterval = isRealtimeConnected ? 120_000 : 15_000;
-    const pollId = setInterval(() => {
-      fetchTickets(locationId);
-    }, pollInterval);
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const schedulePoll = () => {
+      const interval = isRealtimeConnectedRef.current ? 120_000 : 15_000;
+      timeoutId = setTimeout(() => {
+        backgroundFetchTickets(locationId);
+        schedulePoll();
+      }, interval);
+    };
+    schedulePoll();
 
-    return () => clearInterval(pollId);
-  }, [isReady, locationId, fetchTickets, isRealtimeConnected]);
+    return () => clearTimeout(timeoutId);
+  }, [isReady, locationId, fetchTickets, backgroundFetchTickets]);
+
+  // On reconnection (false -> true), trigger a single background fetch
+  useEffect(() => {
+    const wasDisconnected = !prevRealtimeConnectedRef.current;
+    prevRealtimeConnectedRef.current = isRealtimeConnected;
+    if (isRealtimeConnected && wasDisconnected && isReady && locationId) {
+      backgroundFetchTickets(locationId);
+    }
+  }, [isRealtimeConnected, isReady, locationId, backgroundFetchTickets]);
 
   // Auto-fire: pending → cooking after configured delay
   useEffect(() => {
@@ -832,15 +866,15 @@ const KitchenDisplayScreen = () => {
             <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginLeft: 10 }}>
               Kitchen Display
             </Text>
-            {isRealtimeConnected ? (
-              <Wifi size={14} color="#22c55e" style={{ marginLeft: 8 }} />
-            ) : (
+            {showDisconnected ? (
               <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
                 <WifiOff size={14} color="#ef4444" />
                 <Text style={{ color: "#ef4444", fontSize: 11, fontWeight: "600", marginLeft: 4 }}>
                   Reconnecting...
                 </Text>
               </View>
+            ) : (
+              <Wifi size={14} color="#22c55e" style={{ marginLeft: 8 }} />
             )}
             {/* KDS Display Badge */}
             {displayName && (
@@ -937,7 +971,7 @@ const KitchenDisplayScreen = () => {
             >
               <RefreshCw
                 size={18}
-                color="#9CA3AF"
+                color={isFetching ? "#3b82f6" : "#9CA3AF"}
                 style={refreshing ? { opacity: 0.5 } : undefined}
               />
             </TouchableOpacity>
@@ -1005,9 +1039,10 @@ const KitchenDisplayScreen = () => {
                         color: isActive ? "#fff" : "#9ca3af",
                         fontSize: 11,
                         fontWeight: "700",
+                        opacity: isFetching ? 0.7 : 1,
                       }}
                     >
-                      {isLoading ? "-" : counts[tab.key]}
+                      {counts[tab.key]}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -1142,7 +1177,7 @@ const KitchenDisplayScreen = () => {
       )}
 
       {/* ─── Grid: 3 pre-mounted FlatLists stacked ─── */}
-      {!isReady || (isLoading && tickets.length === 0) ? (
+      {!isReady || isInitialLoading ? (
         renderSkeletons()
       ) : (
         <View style={{ flex: 1, position: "relative" }}>

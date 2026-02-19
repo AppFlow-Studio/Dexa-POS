@@ -69,6 +69,48 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
 // MAPPER
 // ============================================================================
 
+export type ReceiptTemplateInsert =
+  Database["public"]["Tables"]["receipt_templates"]["Insert"];
+
+/**
+ * Convert camelCase config back to snake_case DB row for upsert.
+ * Omits `id` when it equals "default" (new template — let DB generate UUID).
+ */
+export function receiptTemplateConfigToRow(
+  config: ReceiptTemplateConfig,
+): ReceiptTemplateInsert {
+  const row: ReceiptTemplateInsert = {
+    merchant_id: config.merchantId,
+    location_id: config.locationId,
+    template_name: config.templateName,
+    template_type: config.templateType,
+    is_active: config.isActive,
+    header_text: config.headerText,
+    footer_text: config.footerText,
+    logo_url: config.logoUrl,
+    show_logo: config.showLogo,
+    show_barcode: config.showBarcode,
+    show_qr_code: config.showQrCode,
+    show_order_type: config.showOrderType,
+    show_server_name: config.showServerName,
+    show_tax_breakdown: config.showTaxBreakdown,
+    show_tip_line: config.showTipLine,
+    show_item_modifiers: config.showItemModifiers,
+    show_allergy_alert: config.showAllergyAlert,
+    show_ready_by_time: config.showReadyByTime,
+    show_mods_large: config.showModsLarge,
+    large_item_text: config.largeItemText,
+    group_by_station: config.groupByStation,
+  };
+
+  // Only include id if it's a real UUID (not "default")
+  if (config.id !== "default") {
+    row.id = config.id;
+  }
+
+  return row;
+}
+
 export function receiptTemplateRowToConfig(
   row: ReceiptTemplateRow,
 ): ReceiptTemplateConfig {

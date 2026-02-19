@@ -36,7 +36,9 @@ interface KDSState {
     ready: KDSTicket[];
   };
   counts: { pending: number; cooking: number; ready: number };
-  isLoading: boolean;
+  isInitialLoading: boolean;
+  isFetching: boolean;
+  _hasHydrated: boolean;
   timerTick: number;
 
   // Display awareness
@@ -57,6 +59,7 @@ interface KDSState {
   // Actions
   fetchKDSDisplay: (stationId: string) => Promise<void>;
   fetchTickets: (locationId: string) => Promise<void>;
+  _backgroundFetchTickets: (locationId: string) => Promise<void>;
   advanceTicketStatus: (
     ticketId: string,
     itemIds: string[],
@@ -76,6 +79,36 @@ interface KDSState {
 
 // Debounce timer for scheduleRefetch
 let _refetchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// ─── Retry infrastructure for failed status updates ─────────────
+const RETRY_DELAYS = [2000, 5000, 10000]; // 3 retries with exponential backoff
+const MAX_RETRIES = RETRY_DELAYS.length;
+
+function retryBackendUpdate(
+  client: SupabaseClient,
+  itemIds: string[],
+  newStatus: "preparing" | "ready" | "served",
+  retryCount: number,
+  onFinalFailure: () => void,
+) {
+  OrderService.bulkUpdateOrderItemStatus(client, itemIds, newStatus).catch((err) => {
+    if (retryCount < MAX_RETRIES) {
+      const delay = RETRY_DELAYS[retryCount];
+      console.warn(
+        `[KDSStore] Retry ${retryCount + 1}/${MAX_RETRIES} for status ${newStatus} in ${delay}ms`,
+      );
+      setTimeout(() => {
+        retryBackendUpdate(client, itemIds, newStatus, retryCount + 1, onFinalFailure);
+      }, delay);
+    } else {
+      console.error(
+        `[KDSStore] All ${MAX_RETRIES} retries exhausted for status ${newStatus}:`,
+        err,
+      );
+      onFinalFailure();
+    }
+  });
+}
 
 /** KDS-relevant kitchen statuses */
 const KDS_STATUSES = new Set(["sent", "preparing", "ready"]);
@@ -244,7 +277,9 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   tickets: [],
   ticketsByStatus: { pending: [], cooking: [], ready: [] },
   counts: { pending: 0, cooking: 0, ready: 0 },
-  isLoading: false,
+  isInitialLoading: true,
+  isFetching: false,
+  _hasHydrated: false,
   timerTick: 0,
   bulkMode: false,
   selectedTicketIds: new Set<string>(),
@@ -357,9 +392,13 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     const client = getClient();
     if (!client) return;
 
-    const { kdsDisplayId, routingMode, cachedRules } = get();
+    const { kdsDisplayId, routingMode, cachedRules, _hasHydrated } = get();
 
-    set({ isLoading: true, _lastLocationId: locationId });
+    set({
+      isInitialLoading: !_hasHydrated,
+      isFetching: true,
+      _lastLocationId: locationId,
+    });
     try {
       // Build RPC params - only pass display ID when routing rules exist
       const params: Record<string, any> = { p_location_id: locationId };
@@ -370,7 +409,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       const { data, error } = await client.rpc("get_kds_tickets_v2", params);
       if (error) {
         console.error("[KDSStore] fetchTickets error:", error);
-        set({ isLoading: false });
+        set({ isInitialLoading: false, isFetching: false });
         return;
       }
 
@@ -380,11 +419,50 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       set({
         tickets,
         ...bucketed,
-        isLoading: false,
+        _hasHydrated: true,
+        isInitialLoading: false,
+        isFetching: false,
       });
     } catch (err) {
       console.error("[KDSStore] fetchTickets exception:", err);
-      set({ isLoading: false });
+      set({ isInitialLoading: false, isFetching: false });
+    }
+  },
+
+  // Background fetch — only sets isFetching, never isInitialLoading.
+  // Used by scheduleRefetch and polling to avoid skeleton flashes.
+  _backgroundFetchTickets: async (locationId: string) => {
+    const client = getClient();
+    if (!client) return;
+
+    const { kdsDisplayId, routingMode, cachedRules } = get();
+
+    set({ isFetching: true, _lastLocationId: locationId });
+    try {
+      const params: Record<string, any> = { p_location_id: locationId };
+      if (shouldUseDisplayFilter(kdsDisplayId, routingMode, cachedRules)) {
+        params.p_kds_display_id = kdsDisplayId;
+      }
+
+      const { data, error } = await client.rpc("get_kds_tickets_v2", params);
+      if (error) {
+        console.error("[KDSStore] _backgroundFetchTickets error:", error);
+        set({ isFetching: false });
+        return;
+      }
+
+      const tickets: KDSTicket[] = Array.isArray(data) ? data : data ?? [];
+      const bucketed = smartBucketTickets(tickets, get().ticketsByStatus);
+
+      set({
+        tickets,
+        ...bucketed,
+        _hasHydrated: true,
+        isFetching: false,
+      });
+    } catch (err) {
+      console.error("[KDSStore] _backgroundFetchTickets exception:", err);
+      set({ isFetching: false });
     }
   },
 
@@ -422,23 +500,21 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus);
     set({ tickets: updatedTickets, ...bucketed });
 
-    // Backend sync — refetch on failure to restore authoritative state
+    // Backend sync with retry — revert optimistic state only after all retries exhausted
     const client = getClient();
     if (client && itemIds.length > 0) {
-      OrderService.bulkUpdateOrderItemStatus(
+      retryBackendUpdate(
         client,
         itemIds,
         newStatus as "preparing" | "ready" | "served",
-      ).catch((err) => {
-        console.error(
-          `[KDSStore] Failed to sync status ${newStatus}:`,
-          err,
-        );
-        const lastLoc = get()._lastLocationId;
-        if (lastLoc) {
-          get().scheduleRefetch(lastLoc);
-        }
-      });
+        0,
+        () => {
+          const lastLoc = get()._lastLocationId;
+          if (lastLoc) {
+            get().scheduleRefetch(lastLoc);
+          }
+        },
+      );
     }
   },
 
@@ -521,7 +597,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   scheduleRefetch: (locationId: string) => {
     if (_refetchTimeout) clearTimeout(_refetchTimeout);
     _refetchTimeout = setTimeout(() => {
-      get().fetchTickets(locationId);
+      get()._backgroundFetchTickets(locationId);
     }, 5000);
   },
 
@@ -601,17 +677,17 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     const bucketed = smartBucketTickets(tickets, get().ticketsByStatus);
     set({ tickets, ...bucketed, selectedTicketIds: new Set<string>() });
 
-    // Fire-and-forget backend syncs
+    // Backend syncs with retry — revert optimistic state only after all retries exhausted
     const client = getClient();
     if (client) {
       for (const { itemIds, newStatus } of backendUpdates) {
-        OrderService.bulkUpdateOrderItemStatus(
-          client,
-          itemIds,
-          newStatus,
-        ).catch(console.error);
+        retryBackendUpdate(client, itemIds, newStatus, 0, () => {
+          const lastLoc = get()._lastLocationId;
+          if (lastLoc) {
+            get().scheduleRefetch(lastLoc);
+          }
+        });
       }
     }
-    if (locationId) get().scheduleRefetch(locationId);
   },
 }));

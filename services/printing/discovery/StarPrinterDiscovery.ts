@@ -3,6 +3,7 @@ import {
   StarDeviceDiscoveryManager,
   StarPrinter,
   StarPrinterModel,
+  StarConnectionSettings,
   InterfaceType,
 } from "react-native-star-io10";
 
@@ -21,6 +22,7 @@ export interface DiscoveredStarPrinter {
     paperWidth: number;
     maxCharsPerLine: number;
     suggestedRole: "receipt" | "kitchen";
+    graphicsOnly: boolean;
   };
 }
 
@@ -107,6 +109,71 @@ export async function stopDiscovery(): Promise<void> {
   }
 }
 
+/**
+ * Probes a Star printer at a known IP address by connecting directly.
+ * Opens the printer to read model info, verifies status, then cleans up.
+ * Throws on timeout, unreachable, or printer error.
+ */
+export async function probeStarPrinterByIp(
+  ipAddress: string,
+): Promise<DiscoveredStarPrinter> {
+  // Validate IPv4 format
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (!ipv4Regex.test(ipAddress)) {
+    throw new Error("Invalid IP address format. Expected format: 192.168.1.100");
+  }
+
+  const settings = new StarConnectionSettings();
+  settings.interfaceType = InterfaceType.Lan;
+  settings.identifier = ipAddress;
+
+  const printer = new StarPrinter(settings);
+  printer.openTimeout = 5000;
+  printer.getStatusTimeout = 5000;
+
+  try {
+    // Open populates printer.information.model from firmware
+    await printer.open();
+
+    const model = printer.information?.model ?? StarPrinterModel.Unknown;
+
+    // Verify the printer is functional
+    const status = await printer.getStatus();
+    if (status.hasError) {
+      const msg = status.paperEmpty
+        ? "Printer found but paper is empty"
+        : status.coverOpen
+          ? "Printer found but cover is open"
+          : "Printer found but has an error";
+      throw new Error(msg);
+    }
+
+    await printer.close();
+    await printer.dispose();
+
+    return {
+      identifier: ipAddress,
+      ipAddress,
+      macAddress: null,
+      model,
+      modelName: getModelDisplayName(model),
+      capabilities: inferCapabilities(model),
+    };
+  } catch (e: any) {
+    // Clean up on failure
+    try { await printer.close(); } catch {}
+    try { await printer.dispose(); } catch {}
+
+    // Re-throw with descriptive message if not already descriptive
+    if (e.message?.includes("Printer found")) {
+      throw e;
+    }
+    throw new Error(
+      `Could not connect to printer at ${ipAddress}. Verify the IP address and that the printer is powered on and connected to the network.`,
+    );
+  }
+}
+
 // ============================================================================
 // CAPABILITY INFERENCE
 // ============================================================================
@@ -115,6 +182,18 @@ export async function stopDiscovery(): Promise<void> {
  * Maps a Star printer model to default capabilities.
  */
 export function inferCapabilities(model: StarPrinterModel): DiscoveredStarPrinter["capabilities"] {
+  // Graphics-only printers (no actionPrintText support — must use actionPrintImage)
+  // See react-native-star-io10 SDK example: TSP100III and TSP100IIU+ are graphics-only.
+  const graphicsOnlyModels: StarPrinterModel[] = [
+    StarPrinterModel.TSP100IIILAN,
+    StarPrinterModel.TSP100IIIW,
+    StarPrinterModel.TSP100IIIBI,
+    StarPrinterModel.TSP100IIIU,
+    StarPrinterModel.TSP100IIU_Plus,
+  ];
+
+  const isGraphicsOnly = graphicsOnlyModels.includes(model);
+
   // Impact printers (kitchen / tear-off, no auto-cut)
   const impactModels: StarPrinterModel[] = [
     StarPrinterModel.SP700,
@@ -127,6 +206,7 @@ export function inferCapabilities(model: StarPrinterModel): DiscoveredStarPrinte
       paperWidth: 76,
       maxCharsPerLine: 42,
       suggestedRole: "kitchen",
+      graphicsOnly: false,
     };
   }
 
@@ -145,6 +225,7 @@ export function inferCapabilities(model: StarPrinterModel): DiscoveredStarPrinte
       paperWidth: 58,
       maxCharsPerLine: 32,
       suggestedRole: "receipt",
+      graphicsOnly: false,
     };
   }
 
@@ -154,6 +235,7 @@ export function inferCapabilities(model: StarPrinterModel): DiscoveredStarPrinte
     paperWidth: 80,
     maxCharsPerLine: 48,
     suggestedRole: "receipt",
+    graphicsOnly: isGraphicsOnly,
   };
 }
 

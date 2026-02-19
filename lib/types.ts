@@ -901,6 +901,7 @@ export interface OrderProfile {
   guest_count?: number;
   customer_name?: string;
   customer_phone?: string;
+  customer_email?: string;
   delivery_address?: string;
   server_name?: string;
   checkDiscount?: Discount | null;

@@ -184,6 +184,25 @@ BEGIN
   END IF;
 
   -- ========================================
+  -- LOG DEVICE CONNECTION
+  -- ========================================
+  INSERT INTO station_devices (
+    station_id, merchant_id, location_id,
+    device_type, device_name, device_model,
+    connection_type, device_id, staff_id, staff_name,
+    app_version, os_version, ip_address, session_id,
+    is_connected, last_seen_at
+  ) VALUES (
+    p_station_id, v_station.merchant_id, v_station.location_id,
+    'pos_device', p_device_name, NULLIF(p_hardware_model, ''),
+    'integrated', p_device_id, v_staff.staff_profile_id,
+    v_staff.first_name || ' ' || LEFT(v_staff.last_name, 1) || '.',
+    NULLIF(p_app_version, ''), NULLIF(p_os_version, ''),
+    v_ip_address, v_session_id,
+    TRUE, NOW()
+  );
+
+  -- ========================================
   -- STEP 3: AUTO CLOCK IN
   -- ========================================
   IF p_auto_clock_in THEN

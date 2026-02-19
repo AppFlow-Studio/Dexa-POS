@@ -111,10 +111,19 @@ export class StarMicronicsDriver implements PrinterDriver {
       throw new Error("Star Micronics driver not initialized");
     }
 
+    console.log(
+      `[StarMicronicsDriver] graphicsOnly=${this.config.graphicsOnly}, model=${this.config.printerModel}`,
+    );
+
     const commands = await renderDocumentToStarCommands(doc, {
       supportsAutoCut: this.config.supportsAutoCut,
       maxCharsPerLine: this.config.maxCharsPerLine,
+      graphicsOnly: this.config.graphicsOnly ?? false,
     });
+
+    console.log(
+      `[StarMicronicsDriver] Printing ${commands.length} chars to ${this.config.printerName}`,
+    );
 
     try {
       await this.printer.open();

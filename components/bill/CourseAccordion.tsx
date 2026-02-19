@@ -36,6 +36,28 @@ interface CourseGroupProps {
   onDoubleTap: (id: number) => void;
 }
 
+// --- Helpers ---
+type AggregateKitchenStatus = "sent" | "preparing" | "ready" | "served" | null;
+
+const BADGE_CONFIG: Record<
+  NonNullable<AggregateKitchenStatus>,
+  { bg: string; text: string; label: string }
+> = {
+  sent: { bg: "bg-amber-600/20", text: "text-amber-400", label: "Queued" },
+  preparing: { bg: "bg-orange-600/20", text: "text-orange-400", label: "Preparing" },
+  ready: { bg: "bg-green-600/20", text: "text-green-400", label: "Ready" },
+  served: { bg: "bg-emerald-900/30", text: "text-emerald-500", label: "Served" },
+};
+
+function deriveAggregateStatus(items: CartItem[]): AggregateKitchenStatus {
+  if (items.length === 0) return null;
+  if (items.every((i) => i.kitchen_status === "served")) return "served";
+  if (items.every((i) => i.kitchen_status === "ready" || i.kitchen_status === "served")) return "ready";
+  if (items.some((i) => i.kitchen_status === "preparing")) return "preparing";
+  if (items.some((i) => i.kitchen_status === "sent")) return "sent";
+  return null;
+}
+
 // --- Sub-Component: CourseGroup with Animations ---
 const CourseGroup: React.FC<CourseGroupProps> = ({
   courseId,
@@ -104,6 +126,11 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
 
   const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
+  const aggregateStatus = useMemo(
+    () => (isSent ? deriveAggregateStatus(items) : null),
+    [isSent, items],
+  );
+
   return (
     <Animated.View layout={LinearTransition.duration(200)} className="mb-2">
       {/* Header */}
@@ -125,6 +152,13 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
             </Text>
             {isSent && (
               <Text className="text-sm text-green-400 ml-2">✓ Sent</Text>
+            )}
+            {isSent && aggregateStatus && (
+              <View className={`ml-2 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}>
+                <Text className={`text-xs font-bold ${BADGE_CONFIG[aggregateStatus].text}`}>
+                  {BADGE_CONFIG[aggregateStatus].label}
+                </Text>
+              </View>
             )}
             <Text className="text-sm text-gray-400 ml-2">
               • {courseItemCount} item{courseItemCount !== 1 ? "s" : ""}

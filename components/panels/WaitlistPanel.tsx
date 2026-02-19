@@ -206,7 +206,7 @@ const TablePickerModal: React.FC<{
       tables.filter(
         (t) =>
           (t.session?.status || "available") === "available" &&
-          t.category === "table"
+          (t.category === "table" || t.category === "booth")
       ),
     [tables]
   );

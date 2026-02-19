@@ -14,6 +14,7 @@
  * - Memory-mapped files for instant access
  */
 
+import { debounce } from "lodash";
 import { createMMKV } from "react-native-mmkv";
 import { StateStorage } from "zustand/middleware";
 
@@ -53,6 +54,21 @@ export const syncStorage = createMMKV({
 // ============================================================================
 
 /**
+ * Debounced write to prevent redundant MMKV serialization during rapid mutations.
+ * Uses per-key debouncing so different stores don't interfere.
+ */
+const debouncedWriters: Record<string, ReturnType<typeof debounce>> = {};
+
+function debouncedSetItem(name: string, value: string): void {
+  if (!debouncedWriters[name]) {
+    debouncedWriters[name] = debounce((v: string) => {
+      storage.set(name, v);
+    }, 300);
+  }
+  debouncedWriters[name](value);
+}
+
+/**
  * Zustand-compatible storage adapter for general storage.
  * Use with: createJSONStorage(() => mmkvStorage)
  */
@@ -61,10 +77,11 @@ export const mmkvStorage: StateStorage = {
     const value = storage.getString(name);
     return value ?? null;
   },
-  setItem: (name: string, value: string): void => {
-    storage.set(name, value);
-  },
+  setItem: debouncedSetItem,
   removeItem: (name: string): void => {
+    // Flush any pending debounced write before removing
+    debouncedWriters[name]?.flush();
+    delete debouncedWriters[name];
     storage.remove(name);
   },
 };

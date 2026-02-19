@@ -3,6 +3,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import React, { useMemo, useState } from "react";
 import {
   RefreshControl,
@@ -77,6 +78,25 @@ const TablesPanel: React.FC = () => {
 
   const activeTables = tables; // These are already the tables for the active floor plan.
 
+  const isSeatable = (t: FloorPlanObject) =>
+    t.category === "table" || t.category === "booth";
+
+  // Deduplicate merged tables: when T1+T2 are merged, both have the same
+  // session — only show the first one encountered per session id.
+  const displayTables = useMemo(() => {
+    const seenSessionIds = new Set<string>();
+    return activeTables.filter((table) => {
+      if (!isSeatable(table)) return false;
+      // No merge — always show
+      if (!table.session?.merged_tables?.length) return true;
+      // For merged tables, only show first per session
+      const sid = table.session.id;
+      if (seenSessionIds.has(sid)) return false;
+      seenSessionIds.add(sid);
+      return true;
+    });
+  }, [activeTables]);
+
   const occupiedTables = useMemo(() => {
     // Active session statuses (Phase 4.1: Include paid but not closed tables)
     const activeSessionStatuses = [
@@ -87,21 +107,17 @@ const TablesPanel: React.FC = () => {
       "paid", // Include paid tables (not yet cleared/closed)
     ];
 
-    return activeTables.filter(
-      (table) =>
-        table.category === "table" &&
-        activeSessionStatuses.includes(
-          table.session?.status?.toLowerCase() || "",
-        ),
+    return displayTables.filter((table) =>
+      activeSessionStatuses.includes(
+        table.session?.status?.toLowerCase() || "",
+      ),
     );
-  }, [activeTables]);
+  }, [displayTables]);
 
   // Also include cleaning?
   // Previous logic: 'In Use' or 'Needs Cleaning'.
 
-  const totalTables = activeTables.filter(
-    (table) => table.category === "table",
-  ).length;
+  const totalTables = displayTables.length;
 
   const capacityPercentage = useMemo(
     () =>
@@ -177,10 +193,8 @@ const TablesPanel: React.FC = () => {
             }))
           }
         >
-          {activeTables.filter((t) => t.category === "table").length > 0 ? (
-            activeTables
-              .filter((t) => t.category === "table")
-              .map((table) => (
+          {displayTables.length > 0 ? (
+            displayTables.map((table) => (
                 <TableListItem
                   key={table.id}
                   table={table}

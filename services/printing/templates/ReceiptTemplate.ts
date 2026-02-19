@@ -16,9 +16,9 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   // ── Store Header ──
   b.alignCenter();
   b.bold(true);
-  b.doubleSize(true);
+  b.doubleHeight(true);
   b.textLine(data.storeName);
-  b.doubleSize(false);
+  b.doubleHeight(false);
   b.bold(false);
 
   if (data.storeAddress) {
@@ -28,16 +28,13 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     b.textLine(data.storePhone);
   }
 
-  b.alignLeft();
-  b.doubleLine(w);
-
   // ── Header message (from template) ──
   if (data.headerMessage) {
-    b.alignCenter();
     b.textLine(data.headerMessage);
-    b.alignLeft();
-    b.dottedLine(w);
   }
+
+  b.alignLeft();
+  b.doubleLine(w);
 
   // ── Order Info ──
   // Order # and date on same two-column line
@@ -65,10 +62,16 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     if (item.isVoided) continue;
 
     const qty = `${item.quantity}x `;
-    const itemName = `${qty}${item.name}`;
+    let itemName = `${qty}${item.name}`;
     const itemPrice = formatCurrency(item.price);
+    const maxNameLen = w - itemPrice.length - 1;
+    if (itemName.length > maxNameLen) {
+      itemName = itemName.slice(0, maxNameLen);
+    }
 
+    b.bold(true);
     b.twoColumnRow(itemName, itemPrice, w);
+    b.bold(false);
 
     // Modifiers (conditional)
     if (cfg?.showItemModifiers !== false) {
@@ -145,7 +148,9 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
   if (cfg?.showTipLine !== false) {
     b.dottedLine(w);
     b.twoColumnRow("Tip:", "________", w);
+    b.bold(true);
     b.twoColumnRow("Total w/ Tip:", "________", w);
+    b.bold(false);
   }
 
   // ── Payments ──
@@ -168,15 +173,13 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     }
   }
 
-  b.dottedLine(w);
-
   // ── Footer ──
-  b.alignCenter();
   if (data.footerMessage) {
+    b.dottedLine(w);
+    b.alignCenter();
     b.textLine(data.footerMessage);
+    b.alignLeft();
   }
-
-  b.alignLeft();
   b.cut();
 
   return b.build();

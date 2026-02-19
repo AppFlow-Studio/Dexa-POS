@@ -14,6 +14,7 @@ import {
   MapPin,
   Monitor,
   Printer,
+  Receipt,
   Settings,
   Smartphone,
   Truck,
@@ -45,6 +46,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: "Printers & Kitchen",
         icon: Printer,
         route: "/settings/printers-kitchen",
+      },
+      {
+        id: "receipt-templates",
+        label: "Receipt Templates",
+        icon: Receipt,
+        route: "/settings/receipt-templates",
       },
       {
         id: "terminal",

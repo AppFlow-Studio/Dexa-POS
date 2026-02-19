@@ -11,12 +11,18 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   const nodes: PrintNode[] = [];
   const cfg = data.templateConfig;
 
+  // ── Logo ──
+  if (cfg?.showLogo !== false && data.logoBase64) {
+    nodes.push({ type: "image", base64Png: data.logoBase64 });
+    nodes.push({ type: "empty_line" });
+  }
+
   // ── Store Header ──
   nodes.push({
     type: "text_line",
     content: data.storeName,
     align: "center",
-    format: { bold: true, doubleHeight: true, doubleWidth: true },
+    format: { bold: true, doubleHeight: true },
   });
 
   if (data.storeAddress) {
@@ -26,13 +32,12 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     nodes.push({ type: "text_line", content: data.storePhone, align: "center" });
   }
 
-  nodes.push({ type: "divider", style: "double", lineWidth: w });
-
   // ── Header message (from template) ──
   if (data.headerMessage) {
     nodes.push({ type: "text_line", content: data.headerMessage, align: "center" });
-    nodes.push({ type: "divider", style: "dotted", lineWidth: w });
   }
+
+  nodes.push({ type: "divider", style: "double", lineWidth: w });
 
   // ── Order Info ──
   // Order # and date on same two-column line
@@ -70,10 +75,14 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     if (item.isVoided) continue;
 
     const qty = `${item.quantity}x `;
-    const itemName = `${qty}${item.name}`;
+    let itemName = `${qty}${item.name}`;
     const itemPrice = formatCurrency(item.price);
+    const maxNameLen = w - itemPrice.length - 1;
+    if (itemName.length > maxNameLen) {
+      itemName = itemName.slice(0, maxNameLen);
+    }
 
-    nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w });
+    nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true } });
 
     // Modifiers (conditional)
     if (cfg?.showItemModifiers !== false) {
@@ -205,6 +214,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Total w/ Tip:",
       right: "________",
       lineWidth: w,
+      format: { bold: true },
     });
   }
 
@@ -246,11 +256,22 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     }
   }
 
-  nodes.push({ type: "divider", style: "dotted", lineWidth: w });
-
   // ── Footer ──
   if (data.footerMessage) {
+    nodes.push({ type: "divider", style: "dotted", lineWidth: w });
     nodes.push({ type: "text_line", content: data.footerMessage, align: "center" });
+  }
+
+  // ── Barcode ──
+  if (cfg?.showBarcode !== false && data.orderNumber) {
+    nodes.push({ type: "empty_line" });
+    nodes.push({ type: "barcode", data: data.orderNumber });
+  }
+
+  // ── QR Code ──
+  if (cfg?.showQrCode !== false && data.orderNumber) {
+    nodes.push({ type: "empty_line" });
+    nodes.push({ type: "qr_code", data: data.orderNumber, size: 6 });
   }
 
   nodes.push({ type: "cut" });

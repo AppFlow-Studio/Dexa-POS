@@ -3,18 +3,7 @@ import { CartItem, ModifierCategory } from "@/lib/types";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
-  selectActiveModifierCategory,
-  selectCartItem,
   selectClose,
-  selectInitialSelections,
-  selectIsOpen,
-  selectItemCashPrice,
-  selectItemPrice,
-  selectMenuId,
-  selectMenuItem,
-  selectMode,
-  selectPrecomputedForItemId,
-  selectPrecomputedModifiers,
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -39,6 +28,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useShallow } from "zustand/react/shallow";
 interface ModifierSelection {
   [categoryId: string]: {
     [optionId: string]: boolean;
@@ -261,31 +251,42 @@ const immerReducer = (state: State, action: Action): void => {
 
 const ModifierScreen = () => {
   // ============================================================================
-  // OPTIMIZED: Use granular selectors instead of full store subscription
-  // Each selector creates a separate subscription - React only re-renders when
-  // THAT specific value changes, not when ANY store value changes
+  // OPTIMIZED: Grouped selectors via useShallow — 4 subscriptions instead of 13
+  // useShallow does a shallow comparison of the returned object, so the component
+  // only re-renders when one of the selected values actually changes.
   // ============================================================================
-  const isOpen = useModifierSidebarStore(selectIsOpen);
-  const mode = useModifierSidebarStore(selectMode);
-  const menuItem = useModifierSidebarStore(selectMenuItem);
-  const cartItem = useModifierSidebarStore(selectCartItem);
-  const categoryId = useModifierSidebarStore((s) => s.categoryId);
-  const menuId = useModifierSidebarStore(selectMenuId);
+
+  // Group 1: Render control
+  const { isOpen, mode } = useModifierSidebarStore(
+    useShallow((s) => ({ isOpen: s.isOpen, mode: s.mode }))
+  );
+
+  // Group 2: Item data
+  const { menuItem, cartItem, categoryId, menuId, precomputedForItemId } =
+    useModifierSidebarStore(
+      useShallow((s) => ({
+        menuItem: s.menuItem,
+        cartItem: s.cartItem,
+        categoryId: s.categoryId,
+        menuId: s.menuId,
+        precomputedForItemId: s.precomputedForItemId,
+      }))
+    );
+
+  // Group 3: Precomputed data
+  const { precomputedModifiers, storeInitialSelections, precomputedItemPrice, precomputedCashPrice, precomputedActiveCategory } =
+    useModifierSidebarStore(
+      useShallow((s) => ({
+        precomputedModifiers: s.precomputedModifiers,
+        storeInitialSelections: s.initialSelections,
+        precomputedItemPrice: s.itemPrice,
+        precomputedCashPrice: s.itemCashPrice,
+        precomputedActiveCategory: s.activeModifierCategory,
+      }))
+    );
+
+  // Group 4: Stable action ref (single selector is fine)
   const close = useModifierSidebarStore(selectClose);
-  const precomputedModifiers = useModifierSidebarStore(
-    selectPrecomputedModifiers,
-  );
-  const storeInitialSelections = useModifierSidebarStore(
-    selectInitialSelections,
-  );
-  const precomputedItemPrice = useModifierSidebarStore(selectItemPrice);
-  const precomputedCashPrice = useModifierSidebarStore(selectItemCashPrice);
-  const precomputedActiveCategory = useModifierSidebarStore(
-    selectActiveModifierCategory,
-  );
-  const precomputedForItemId = useModifierSidebarStore(
-    selectPrecomputedForItemId,
-  );
 
   // ============================================================================
   // OPTIMIZED: Use getState() directly instead of subscriptions
@@ -322,19 +323,21 @@ const ModifierScreen = () => {
   // OPTIMIZED: Removed allModifierGroups subscription - read via getState() in rare fallback path only
   const { show } = useToast();
 
-  // OPTIMIZED: Use immer reducer with lazy initializer - no useEffect delay
-  // This eliminates an extra render cycle by initializing state immediately
-  const initialSelections = storeInitialSelections ?? {};
-  const [state, dispatch] = useImmerReducer<State, Action>(
+  // OPTIMIZED: Lazy initializer — computed only once on mount, not every render
+  const [state, dispatch] = useImmerReducer<State, Action, void>(
     immerReducer,
-    {
-      quantity: cartItem?.quantity ?? 1,
-      notes: cartItem?.customizations?.notes ?? "",
-      modifierSelections: initialSelections,
-      selectionCounts: computeSelectionCounts(initialSelections),
-      activeCategory: precomputedActiveCategory ?? null,
-      isQuantityModalOpen: false,
-      quantityInput: "",
+    undefined as void,
+    (): State => {
+      const selections = storeInitialSelections ?? {};
+      return {
+        quantity: cartItem?.quantity ?? 1,
+        notes: cartItem?.customizations?.notes ?? "",
+        modifierSelections: selections,
+        selectionCounts: computeSelectionCounts(selections),
+        activeCategory: precomputedActiveCategory ?? null,
+        isQuantityModalOpen: false,
+        quantityInput: "",
+      };
     },
   );
 
@@ -575,72 +578,40 @@ const ModifierScreen = () => {
   ]);
 
   // ============================================================================
-  // INITIALIZATION (OPTIMIZED - State initialized inline via reducer initializer)
-  // This effect only resets action tracking refs - no state dispatch needed
+  // INITIALIZATION (CONSOLIDATED - Single openKey-based effect replaces 3 effects)
+  // Tracks a composite key of the open session; dispatches INITIALIZE only when
+  // switching to a different item/mode.
   // ============================================================================
 
+  const prevOpenKeyRef = useRef<string | null>(null);
+  const openKey = isOpen ? `${cartItem?.id ?? ""}_${menuItem?.id ?? ""}_${mode}` : null;
+
   useEffect(() => {
-    if (!isOpen || !currentItem) return;
-    // Reset action tracking on each open
+    if (!isOpen || !openKey) return;
+
+    // Reset action tracking on every open (Effect 1 behavior)
     actionHandledRef.current = false;
     isInitializedRef.current = true;
+
+    // Dispatch INITIALIZE only when switching to a different item (Effects 2+3 behavior)
+    if (openKey !== prevOpenKeyRef.current) {
+      prevOpenKeyRef.current = openKey;
+      const selections = storeInitialSelections ?? {};
+      dispatch({
+        type: "INITIALIZE",
+        payload: {
+          quantity: cartItem?.quantity ?? 1,
+          notes: cartItem?.customizations?.notes ?? "",
+          modifierSelections: selections,
+          activeCategory: precomputedActiveCategory ?? null,
+        },
+      });
+    }
 
     return () => {
       isInitializedRef.current = false;
     };
-  }, [isOpen, currentItem?.id]);
-
-  // Reset state when a NEW item is opened (not edit mode)
-  // This ensures modifier selections don't persist between different menu items
-  const prevMenuItemIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!isOpen || !menuItem || mode === "edit") return;
-
-    // Only reset if this is a DIFFERENT menu item
-    if (
-      prevMenuItemIdRef.current !== null &&
-      prevMenuItemIdRef.current !== menuItem.id
-    ) {
-      // Reset to fresh defaults from store
-      dispatch({
-        type: "INITIALIZE",
-        payload: {
-          quantity: 1,
-          notes: "",
-          modifierSelections: storeInitialSelections ?? {},
-          activeCategory: precomputedActiveCategory ?? null,
-        },
-      });
-    }
-    prevMenuItemIdRef.current = menuItem.id;
-  }, [
-    isOpen,
-    menuItem?.id,
-    mode,
-    storeInitialSelections,
-    precomputedActiveCategory,
-  ]);
-
-  // Reset state when editing a DIFFERENT cart item (edit/fullscreen mode with cartItem)
-  // This ensures the existing modifiers from the cart item are properly restored
-  const prevCartItemIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!isOpen || !cartItem) return;
-
-    // Reset when opening or switching to a different cart item
-    if (prevCartItemIdRef.current !== cartItem.id) {
-      dispatch({
-        type: "INITIALIZE",
-        payload: {
-          quantity: cartItem.quantity ?? 1,
-          notes: cartItem.customizations?.notes ?? "",
-          modifierSelections: storeInitialSelections ?? {},
-          activeCategory: precomputedActiveCategory ?? null,
-        },
-      });
-      prevCartItemIdRef.current = cartItem.id;
-    }
-  }, [isOpen, cartItem?.id, storeInitialSelections, precomputedActiveCategory]);
+  }, [openKey, storeInitialSelections, precomputedActiveCategory]);
 
   // ============================================================================
   // DRAFT ITEM CREATION (Deferred via microtask for non-blocking UI)

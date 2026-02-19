@@ -1,4 +1,4 @@
-import { KitchenTicketData } from "@/types/printer";
+import { KitchenTicketData, KitchenTicketItemData } from "@/types/printer";
 import { EscPosBuilder } from "../escpos/EscPosBuilder";
 
 /**
@@ -53,51 +53,21 @@ export function buildKitchenTicketCommands(
   // Full timestamp (date + time)
   b.textLine(data.fullTimestamp ?? data.timestamp);
 
+  // Ready-by time
+  if (cfg?.showReadyByTime !== false && data.readyByTime) {
+    b.bold(true);
+    b.textLine(`Ready by: ${data.readyByTime}`);
+    b.bold(false);
+  }
+
   b.alignLeft();
   b.doubleLine(w);
 
   // ── Items ──
-  for (const item of data.items) {
-    const useLargeText = cfg?.largeItemText !== false;
-
-    b.bold(true);
-    if (useLargeText) {
-      b.doubleHeight(true);
-    }
-
-    const prefix = item.isVoided ? "VOID " : "";
-    const qtyStr = `${item.quantity}x `;
-    b.textLine(`${prefix}${qtyStr}${item.name}`);
-
-    if (useLargeText) {
-      b.doubleHeight(false);
-    }
-    b.bold(false);
-
-    // Modifiers (conditional)
-    if (cfg?.showItemModifiers !== false) {
-      const useModsLarge = cfg?.showModsLarge === true;
-      if (useModsLarge) {
-        b.bold(true);
-      }
-
-      for (const mod of item.modifiers) {
-        b.textLine(`  + ${mod}`);
-      }
-
-      if (useModsLarge) {
-        b.bold(false);
-      }
-    }
-
-    // Special instructions (prominent)
-    if (item.notes) {
-      b.bold(true);
-      b.textLine(`  *** ${item.notes} ***`);
-      b.bold(false);
-    }
-
-    b.emptyLine();
+  if (cfg?.groupByStation) {
+    renderItemsGroupedByStation(b, data.items, w, cfg);
+  } else {
+    renderItemsFlat(b, data.items, w, cfg);
   }
 
   b.doubleLine(w);
@@ -112,4 +82,106 @@ export function buildKitchenTicketCommands(
   b.cut();
 
   return b.build();
+}
+
+function renderItemsGroupedByStation(
+  b: EscPosBuilder,
+  items: KitchenTicketItemData[],
+  w: number,
+  cfg: KitchenTicketData["templateConfig"],
+): void {
+  const groups = new Map<string, KitchenTicketItemData[]>();
+  for (const item of items) {
+    const station = item.station || "GENERAL";
+    if (!groups.has(station)) {
+      groups.set(station, []);
+    }
+    groups.get(station)!.push(item);
+  }
+
+  let isFirst = true;
+  for (const [station, stationItems] of groups) {
+    if (!isFirst) {
+      b.emptyLine();
+    }
+    isFirst = false;
+
+    // Station header
+    b.alignCenter();
+    b.bold(true);
+    b.textLine(`-- ${station.toUpperCase()} --`);
+    b.bold(false);
+    b.alignLeft();
+    b.solidLine(w);
+
+    for (const item of stationItems) {
+      renderSingleItem(b, item, w, cfg);
+    }
+  }
+}
+
+function renderItemsFlat(
+  b: EscPosBuilder,
+  items: KitchenTicketItemData[],
+  w: number,
+  cfg: KitchenTicketData["templateConfig"],
+): void {
+  for (const item of items) {
+    renderSingleItem(b, item, w, cfg);
+  }
+}
+
+function renderSingleItem(
+  b: EscPosBuilder,
+  item: KitchenTicketItemData,
+  _w: number,
+  cfg: KitchenTicketData["templateConfig"],
+): void {
+  const useLargeText = cfg?.largeItemText !== false;
+
+  b.bold(true);
+  if (useLargeText) {
+    b.doubleHeight(true);
+  }
+
+  const prefix = item.isVoided ? "VOID " : "";
+  const qtyStr = `${item.quantity}x `;
+  b.textLine(`${prefix}${qtyStr}${item.name}`);
+
+  if (useLargeText) {
+    b.doubleHeight(false);
+  }
+  b.bold(false);
+
+  // Modifiers (conditional)
+  if (cfg?.showItemModifiers !== false) {
+    const useModsLarge = cfg?.showModsLarge === true;
+    if (useModsLarge) {
+      b.bold(true);
+    }
+
+    for (const mod of item.modifiers) {
+      b.textLine(`  + ${mod}`);
+    }
+
+    if (useModsLarge) {
+      b.bold(false);
+    }
+  }
+
+  // Allergy alert (prominent warning)
+  if (cfg?.showAllergyAlert !== false && item.allergyAlert) {
+    b.bold(true);
+    b.textLine(`  !! ALLERGY: ${item.allergyAlert} !!`);
+    b.bold(false);
+  }
+
+  // Special instructions (prominent)
+  if (item.notes) {
+    b.bold(true);
+    b.textLine(`  *** ${item.notes} ***`);
+    b.bold(false);
+  }
+
+  b.emptyLine();
 }

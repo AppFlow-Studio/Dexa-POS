@@ -45,6 +45,7 @@ import {
 import {
   discoverStarPrinters,
   stopDiscovery,
+  probeStarPrinterByIp,
   type DiscoveredStarPrinter,
 } from "@/services/printing/discovery/StarPrinterDiscovery";
 import { formatDistanceToNow } from "date-fns";
@@ -226,6 +227,12 @@ const PrintersKitchenScreen = () => {
 
   // Star role overrides (keyed by IP, user can switch before provisioning)
   const [starRoleOverrides, setStarRoleOverrides] = useState<Record<string, "receipt" | "kitchen">>({});
+
+  // Manual IP entry for Star printers
+  const [manualIp, setManualIp] = useState("");
+  const [manualIpRole, setManualIpRole] = useState<"receipt" | "kitchen">("receipt");
+  const [isProbing, setIsProbing] = useState(false);
+  const [manualIpError, setManualIpError] = useState<string | null>(null);
 
   // Edit panel state
   const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
@@ -419,6 +426,58 @@ const PrintersKitchenScreen = () => {
       Alert.alert("Error", e.message || "Provisioning failed");
     } finally {
       setProvisioningStarIp(null);
+    }
+  };
+
+  const handleManualIpAdd = async () => {
+    const ip = manualIp.trim();
+    if (!ip) return;
+    if (!selectedStation || !selectedStore) return;
+
+    // Check for duplicate
+    const alreadyExists = storedPrinters.some(
+      (p) => p.printerType === "star_micronics" && p.networkAddress === ip,
+    );
+    if (alreadyExists) {
+      setManualIpError("A printer with this IP address is already configured.");
+      return;
+    }
+
+    setIsProbing(true);
+    setManualIpError(null);
+    try {
+      const discovered = await probeStarPrinterByIp(ip);
+      const printerId = await provisionStarPrinter(
+        supabase,
+        selectedStation.id,
+        selectedStore.id,
+        selectedStore.merchant_id,
+        discovered,
+        manualIpRole,
+      );
+      if (printerId) {
+        const verified = await verifyStarPrinter(supabase, printerId);
+        await fetchPrinters(selectedStore.id);
+        setManualIp("");
+        setManualIpError(null);
+        if (verified) {
+          Alert.alert(
+            "Printer Connected",
+            `${discovered.modelName} at ${ip} has been verified and is ready to use.`,
+          );
+        } else {
+          Alert.alert(
+            "Verification Failed",
+            "The printer was added but verification failed. It may come online later.",
+          );
+        }
+      } else {
+        setManualIpError("Failed to provision printer.");
+      }
+    } catch (e: any) {
+      setManualIpError(e.message || "Failed to connect to printer");
+    } finally {
+      setIsProbing(false);
     }
   };
 
@@ -936,6 +995,71 @@ const PrintersKitchenScreen = () => {
               </View>
             )}
 
+            {/* Manual IP Entry Card */}
+            <View className="bg-[#404040] p-4 rounded-xl border border-gray-600 mb-4">
+              <View className="flex-row items-center mb-3">
+                <Plus size={16} color="#f59e0b" />
+                <Text className="text-white font-bold ml-2">Add Printer by IP Address</Text>
+              </View>
+              <Text className="text-gray-400 text-xs mb-3">
+                Enter the IP address from the printer's configuration receipt.
+              </Text>
+              <TextInput
+                value={manualIp}
+                onChangeText={(t) => {
+                  setManualIp(t);
+                  if (manualIpError) setManualIpError(null);
+                }}
+                placeholder="192.168.1.100"
+                placeholderTextColor="#6b7280"
+                keyboardType="numeric"
+                className="bg-[#505050] border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm mb-3"
+                editable={!isProbing}
+              />
+              {/* Role Toggle */}
+              <View className="flex-row rounded-lg overflow-hidden border border-gray-600 mb-3">
+                <TouchableOpacity
+                  onPress={() => setManualIpRole("receipt")}
+                  disabled={isProbing}
+                  className={`flex-1 py-2 items-center ${manualIpRole === "receipt" ? "bg-blue-600" : "bg-[#505050]"}`}
+                >
+                  <Text className={`text-sm font-medium ${manualIpRole === "receipt" ? "text-white" : "text-gray-400"}`}>
+                    Receipt
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setManualIpRole("kitchen")}
+                  disabled={isProbing}
+                  className={`flex-1 py-2 items-center ${manualIpRole === "kitchen" ? "bg-orange-600" : "bg-[#505050]"}`}
+                >
+                  <Text className={`text-sm font-medium ${manualIpRole === "kitchen" ? "text-white" : "text-gray-400"}`}>
+                    Kitchen
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {manualIpError && (
+                <View className="bg-red-600/10 border border-red-600/30 rounded-lg p-2.5 mb-3">
+                  <Text className="text-red-400 text-xs">{manualIpError}</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                onPress={handleManualIpAdd}
+                disabled={isProbing || !manualIp.trim()}
+                className={`py-2.5 rounded-lg flex-row items-center justify-center ${
+                  isProbing || !manualIp.trim() ? "bg-gray-600" : "bg-blue-600"
+                }`}
+              >
+                {isProbing ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <Wifi size={16} color="white" />
+                    <Text className="text-white font-medium ml-2 text-sm">Connect Printer</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
             {discoveredStarPrinters.map((dp) => {
               const alreadyAdded = storedPrinters.some(
                 (p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress,
@@ -981,6 +1105,13 @@ const PrintersKitchenScreen = () => {
                             {dp.capabilities.supportsAutoCut ? "Auto-cut" : "Tear-off"}
                           </Text>
                         </View>
+                        {dp.capabilities.graphicsOnly && (
+                          <View className="bg-amber-700/50 px-2 py-0.5 rounded mr-2 mb-1">
+                            <Text className="text-amber-400 text-[10px]">
+                              Graphics-only
+                            </Text>
+                          </View>
+                        )}
                         {/* Role toggle – pre-set to suggested, user can switch */}
                         {(() => {
                           const selectedRole = starRoleOverrides[dp.ipAddress] ?? dp.capabilities.suggestedRole;

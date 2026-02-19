@@ -55,7 +55,7 @@ const OrderStoreTest = () => {
     const ordersById = useOrderStore((state) => state.ordersById);
     const orderIds = useOrderStore((state) => state.orderIds);
     const activeOrderId = useOrderStore((state) => state.activeOrderId);
-    const orders = useOrderStore((state) => state.orders);
+    const orders = useOrderStore((state) => Object.values(state.ordersById));
     const isOnline = useOrderStore((state) => state.isOnline);
     const pendingSyncCount = useOrderStore((state) => state.pendingSyncCount);
     const activeOrderSubtotal = useOrderStore((state) => state.activeOrderSubtotal);

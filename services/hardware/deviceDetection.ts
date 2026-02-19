@@ -741,6 +741,7 @@ export async function provisionStarPrinter(
         starModel: discovered.model,
         macAddress: discovered.macAddress,
         identifier: discovered.identifier,
+        graphicsOnly: caps.graphicsOnly || false,
       },
     })
     .select("id")

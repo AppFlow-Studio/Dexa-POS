@@ -123,6 +123,18 @@ export interface PosStaffLoginResponse {
   shift?: Record<string, unknown>;
 }
 
+// === STATION DEVICE TYPES ===
+export type StationDeviceType =
+  | 'payment_terminal'
+  | 'receipt_printer'
+  | 'label_printer'
+  | 'kitchen_printer'
+  | 'cash_drawer'
+  | 'barcode_scanner'
+  | 'scale'
+  | 'customer_display'
+  | 'pos_device';
+
 // Response from pos_staff_logout RPC
 export interface PosStaffLogoutResponse {
   success: boolean;

@@ -91,6 +91,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       updateActiveOrderDetails({
         customer_name: customer.name,
         customer_phone: customer.phoneNumber,
+        customer_id: customer.id,
+        customer_email: customer.email || undefined,
         delivery_address:
           currentOrderType === "Delivery" ? customer.address : undefined,
       });

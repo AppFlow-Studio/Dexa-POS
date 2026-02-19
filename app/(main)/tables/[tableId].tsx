@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { InventoryService } from "@/services/inventoryService";
+import { queueFailedOperation } from "@/services/offlineSyncInit";
 import { OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -918,6 +919,11 @@ const UpdateTableScreen = () => {
       updateActiveOrderDetails({ opened_at: new Date().toISOString() });
     }
 
+    // Set sent_to_kitchen_at if not already set (required for KDS gate)
+    if (!activeOrder.sent_to_kitchen_at) {
+      updateActiveOrderDetails({ sent_to_kitchen_at: new Date().toISOString() });
+    }
+
     itemsInCourse.forEach((i) => {
       updateItemStatusInActiveOrder(i.id, "preparing");
     });
@@ -925,7 +931,54 @@ const UpdateTableScreen = () => {
     coursing.markCourseSent(activeOrder.id, course);
 
     if (activeOrder.order_status === "draft") {
-      updateOrderStatus(activeOrder.id, "preparing");
+      updateOrderStatus(activeOrder.id, "sent_to_kitchen");
+    }
+
+    // Sync item statuses to backend for KDS visibility
+    const supabase = getOrderStoreSupabaseClient();
+    if (supabase && activeOrder.db_order_id) {
+      const dbItemIds = itemsInCourse
+        .map((i) => i.db_order_item_id)
+        .filter((id): id is string => !!id);
+
+      if (dbItemIds.length === 0 && itemsInCourse.length > 0) {
+        // Items haven't synced to backend yet — queue for retry
+        console.log("[handleSendCourseToKitchen] Items not synced yet, queuing send_to_kitchen");
+        queueFailedOperation(
+          "send_to_kitchen",
+          {
+            localOrderId: activeOrder.id,
+            localItemIds: itemsInCourse.map((i) => i.id),
+          },
+          activeOrder.id,
+        );
+      } else if (dbItemIds.length > 0) {
+        OrderService.bulkUpdateOrderItemStatus(supabase, dbItemIds, "sent")
+          .then((result) => {
+            if (result?.error) {
+              console.error("[handleSendCourseToKitchen] Failed to update item statuses:", result.error);
+              queueFailedOperation(
+                "send_to_kitchen",
+                {
+                  localOrderId: activeOrder.id,
+                  localItemIds: itemsInCourse.map((i) => i.id),
+                },
+                activeOrder.id,
+              );
+            }
+          })
+          .catch((err) => {
+            console.error("[handleSendCourseToKitchen] Failed to sync course items:", err);
+            queueFailedOperation(
+              "send_to_kitchen",
+              {
+                localOrderId: activeOrder.id,
+                localItemIds: itemsInCourse.map((i) => i.id),
+              },
+              activeOrder.id,
+            );
+          });
+      }
     }
 
     // Update table session status to "ordered" via backend RPC
@@ -1255,7 +1308,7 @@ const UpdateTableScreen = () => {
       )}
       {/* --- Customer Info Section (Top) --- */}
       <View className="px-2 mt-2">
-        <OrderInfoHeader duration={duration} />
+        <OrderInfoHeader duration={duration} tableId={currentTableId} />
       </View>
 
       <View className="flex-1 flex-row ">
@@ -1373,6 +1426,7 @@ const UpdateTableScreen = () => {
         }
         onCloseCheck={handleCloseCheck}
       />
+      
       <DiscountBottomSheet
         ref={discountSheetRef}
         onClose={() => discountSheetRef.current?.close()}
@@ -1544,6 +1598,7 @@ const UpdateTableScreen = () => {
           </View>
         </AlertDialogContent>
       </AlertDialog>
+
       <AlertDialog
         open={isOrderClosedWarningOpen}
         onOpenChange={setOrderClosedWarningOpen}
@@ -1566,6 +1621,7 @@ const UpdateTableScreen = () => {
           </View>
         </AlertDialogContent>
       </AlertDialog>
+
       <AlertDialog
         open={courseToResend !== null}
         onOpenChange={(isOpen) => {

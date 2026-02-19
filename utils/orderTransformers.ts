@@ -526,7 +526,11 @@ export function transformBroadcastToOrder(
     service_location_name: backendOrder.table_number || undefined,
     server_name:
       backendOrder.server_name || backendOrder.assigned_server_id || undefined,
-    customer_name: "",
+    customer_name: backendOrder.customer_name || "",
+    customer_phone: backendOrder.customer_phone || undefined,
+    customer_email: backendOrder.customer_email || undefined,
+    customer_id: backendOrder.customer_id || undefined,
+    delivery_address: backendOrder.delivery_address || undefined,
 
     // Financial - use card pricing as default
     total_amount: backendOrder.card_total || backendOrder.total_amount,
@@ -583,6 +587,10 @@ export interface FetchedOrderData {
   merchant_id: string;
   location_id: string;
   customer_id?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
+  delivery_address?: string | null;
   created_by_staff_id?: string | null;
   created_by_user_id?: string | null;
   assigned_server_id?: string | null;
@@ -942,6 +950,10 @@ export function normalizeFetchedOrder(
     merchant_id: fetchedOrder.merchant_id,
     location_id: fetchedOrder.location_id,
     customer_id: fetchedOrder.customer_id ?? null,
+    customer_name: fetchedOrder.customer_name ?? null,
+    customer_phone: fetchedOrder.customer_phone ?? null,
+    customer_email: fetchedOrder.customer_email ?? null,
+    delivery_address: fetchedOrder.delivery_address ?? null,
     created_by_staff_id: fetchedOrder.created_by_staff_id ?? null,
     created_by_user_id: fetchedOrder.created_by_user_id ?? null,
     assigned_server_id: fetchedOrder.assigned_server_id ?? null,

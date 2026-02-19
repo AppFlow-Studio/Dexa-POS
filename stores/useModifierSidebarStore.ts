@@ -17,6 +17,11 @@ export const setMenuBlockedSync = (blocked: boolean) => {
 /** Check if menu is blocked synchronously (O(1), no React) */
 export const isMenuBlockedSync = () => menuBlockedSyncRef;
 
+// ============================================================================
+// PRE-WARM CACHE - Precompute modifier data ahead of store open()
+// ============================================================================
+const preWarmCache = new Map<string, ReturnType<typeof precomputeModifierData>>();
+
 // Pre-computed modifier selections for instant UI
 interface ModifierSelection {
   [categoryId: string]: {
@@ -56,6 +61,14 @@ interface ModifierSidebarState {
   activeModifierCategory: string | null;
   precomputedForItemId: string | null; // Track which item precomputed values are for (prevents race conditions)
 
+  preWarm: (item: MenuItemType, categoryId?: string, menuId?: string) => void;
+  open: (config: {
+    menuItem?: MenuItemType;
+    cartItem?: CartItem;
+    categoryId?: string;
+    menuId?: string;
+    includeMenuItemInState?: boolean;
+  }) => void;
   openToAdd: (
     item: MenuItemType,
     orderId: string | null,
@@ -90,7 +103,7 @@ function precomputeModifierData(
   categoryId: string | undefined,
   menuId: string | undefined,
   cartItem: CartItem | null = null,
-  setFn?: (partial: Partial<ModifierSidebarState>) => void
+  setFn?: ((partial: Partial<ModifierSidebarState>) => void) | null
 ): {
   modifiers: ModifierCategory[];
   initialSelections: ModifierSelection;
@@ -205,7 +218,7 @@ function precomputeModifierData(
   };
 }
 
-export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
+export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) => ({
   isOpen: false,
   mode: "add",
   menuItem: null,
@@ -226,212 +239,123 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   activeModifierCategory: null,
   precomputedForItemId: null,
 
-  openToAdd: (
-    item: MenuItemType,
-    orderId: string | null,
-    categoryId?: string,
-    menuId?: string
-  ) => {
-    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
-    setMenuBlockedSync(true);
-
-    // Pre-compute BEFORE setting isOpen for instant render
-    // Pass set function for deferred price updates
-    const precomputed = precomputeModifierData(item, categoryId, menuId, null, set);
-
-    set({
-      isOpen: true,
-      isMenuBlocked: true, // Block menu immediately
-      mode: "fullscreen",
-    
-      menuItem: item,
-      cartItem: null,
-      categoryId: categoryId || null,
-      menuId: menuId || null,
-      precomputedModifiers: precomputed.modifiers,
-      initialSelections: precomputed.initialSelections,
-      itemPrice: precomputed.itemPrice,
-      itemCashPrice: precomputed.itemCashPrice,
-      activeModifierCategory: precomputed.activeCategory,
-      precomputedForItemId: precomputed.forItemId,
-    });
+  preWarm: (item, categoryId, menuId) => {
+    if (preWarmCache.has(item.id)) return;
+    // Compute WITHOUT setFn — no deferred price update yet; open() will handle it
+    const result = precomputeModifierData(item, categoryId, menuId, null, null);
+    preWarmCache.set(item.id, result);
   },
 
-  openToEdit: (item: CartItem, orderId: string | null) => {
+  open: (config) => {
+    const { menuItem: menuItemParam, cartItem: cartItemParam, categoryId: catId, menuId: mId, includeMenuItemInState } = config;
+
     // CRITICAL: Block touches synchronously FIRST (same frame, before React)
     setMenuBlockedSync(true);
 
-    // Get the menu item for pre-computation
-    const { getMenuItemById } = useMenuStore.getState();
-    const menuItem = getMenuItemById(item.menuItemId);
+    // Resolve the source menu item
+    let sourceItem: MenuItemType | null = menuItemParam ?? null;
+    if (!sourceItem && cartItemParam) {
+      const { getMenuItemById } = useMenuStore.getState();
+      sourceItem = getMenuItemById(cartItemParam.menuItemId) ?? null;
+    }
 
-    if (menuItem) {
-      // Use the cart item's stored menu context for price lookup
-      // Pass set function for deferred price updates
-      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
+    if (sourceItem) {
+      // Resolve category/menu from cart item context if not provided directly
+      const resolvedCatId = catId || cartItemParam?.addedFromCategoryId || undefined;
+      const resolvedMenuId = mId || cartItemParam?.addedFromMenuId || undefined;
+
+      // Check preWarm cache first, fall back to precomputeModifierData
+      const cached = preWarmCache.get(sourceItem.id);
+      let precomputed: ReturnType<typeof precomputeModifierData>;
+
+      if (cached) {
+        precomputed = cached;
+        preWarmCache.delete(sourceItem.id);
+        // PreWarm skipped setFn, so schedule deferred price lookup if menuId exists
+        if (resolvedMenuId) {
+          const { menusById } = useMenuStore.getState();
+          const itemRef = sourceItem;
+          queueMicrotask(() => {
+            const menu = menusById[resolvedMenuId];
+            if (menu?.categories) {
+              for (const cat of menu.categories) {
+                const mi = cat.items?.find((i) => i.id === itemRef.id);
+                if (mi) {
+                  if (mi.price !== itemRef.price) {
+                    set({
+                      itemPrice: mi.price,
+                      itemCashPrice: mi.cashPrice ?? mi.price,
+                    });
+                  }
+                  break;
+                }
+              }
+            }
+          });
+        }
+      } else {
+        precomputed = precomputeModifierData(sourceItem, resolvedCatId, resolvedMenuId, cartItemParam ?? null, set);
+      }
+
+      // Determine menuItem field: include sourceItem in state if adding from menu or explicitly requested
+      const stateMenuItem = (menuItemParam || includeMenuItemInState) ? sourceItem : null;
+
+      set({
+        isOpen: true,
+        isMenuBlocked: true,
+        mode: "fullscreen",
+        menuItem: stateMenuItem,
+        cartItem: cartItemParam ?? null,
+        categoryId: resolvedCatId || null,
+        menuId: resolvedMenuId || null,
+        precomputedModifiers: precomputed.modifiers,
+        initialSelections: precomputed.initialSelections,
+        itemPrice: precomputed.itemPrice,
+        itemCashPrice: precomputed.itemCashPrice,
+        activeModifierCategory: precomputed.activeCategory,
+        precomputedForItemId: precomputed.forItemId,
+        activeEditingItemId: cartItemParam?.id ?? null,
+      });
+    } else if (cartItemParam) {
+      // Fallback: no menu item found, use cart item data directly
       set({
         isOpen: true,
         isMenuBlocked: true,
         mode: "fullscreen",
         menuItem: null,
-        cartItem: item,
-        categoryId: item.addedFromCategoryId || null,
-        menuId: item.addedFromMenuId || null,
-        precomputedModifiers: precomputed.modifiers,
-        initialSelections: precomputed.initialSelections,
-        itemPrice: precomputed.itemPrice,
-        itemCashPrice: precomputed.itemCashPrice,
-        activeModifierCategory: precomputed.activeCategory,
-        precomputedForItemId: precomputed.forItemId,
-        activeEditingItemId: item.id, // Track which cart item is being edited
-      });
-    } else {
-      set({
-        isOpen: true,
-        isMenuBlocked: true,
-        mode: "fullscreen",
-        menuItem: null,
-        cartItem: item,
-        categoryId: item.addedFromCategoryId || null,
-        menuId: item.addedFromMenuId || null,
+        cartItem: cartItemParam,
+        categoryId: cartItemParam.addedFromCategoryId || null,
+        menuId: cartItemParam.addedFromMenuId || null,
         precomputedModifiers: null,
         initialSelections: null,
-        itemPrice: item.price,
-        itemCashPrice: item.cashPrice ?? item.price,
+        itemPrice: cartItemParam.price,
+        itemCashPrice: cartItemParam.cashPrice ?? cartItemParam.price,
         activeModifierCategory: null,
-        precomputedForItemId: item.menuItemId,
-        activeEditingItemId: item.id, // Track which cart item is being edited
+        precomputedForItemId: cartItemParam.menuItemId,
+        activeEditingItemId: cartItemParam.id,
       });
     }
   },
 
-  openToView: (item: CartItem, orderId: string | null) => {
-    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
-    setMenuBlockedSync(true);
+  openToAdd: (item, _orderId, categoryId, menuId) =>
+    get().open({ menuItem: item, categoryId, menuId }),
 
-    // Get the menu item for pre-computation
-    const { getMenuItemById } = useMenuStore.getState();
-    const menuItem = getMenuItemById(item.menuItemId);
+  openToEdit: (item, _orderId) =>
+    get().open({ cartItem: item }),
 
-    if (menuItem) {
-      // Use the cart item's stored menu context for price lookup
-      // Pass set function for deferred price updates
-      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
-      set({
-        isOpen: true,
-        isMenuBlocked: true, // Block menu for consistent behavior
-        mode: "fullscreen",
-        menuItem: null,
-        cartItem: item,
-        categoryId: item.addedFromCategoryId || null,
-        menuId: item.addedFromMenuId || null,
-        precomputedModifiers: precomputed.modifiers,
-        initialSelections: precomputed.initialSelections,
-        itemPrice: precomputed.itemPrice,
-        itemCashPrice: precomputed.itemCashPrice,
-        activeModifierCategory: precomputed.activeCategory,
-        precomputedForItemId: precomputed.forItemId,
-        activeEditingItemId: item.id, // Track which cart item is being viewed
-      });
-    } else {
-      set({
-        isOpen: true,
-        isMenuBlocked: true, // Block menu for consistent behavior
-        mode: "fullscreen",
-        activeEditingItemId: item.id, // Track which cart item is being viewed
-        menuItem: null,
-        cartItem: item,
-        categoryId: item.addedFromCategoryId || null,
-        menuId: item.addedFromMenuId || null,
-        precomputedModifiers: null,
-        initialSelections: null,
-        itemPrice: item.price,
-        itemCashPrice: item.cashPrice ?? item.price,
-        activeModifierCategory: null,
-        precomputedForItemId: item.menuItemId,
-      });
-    }
-  },
+  openToView: (item, _orderId) =>
+    get().open({ cartItem: item }),
 
-  openFullscreen: (
-    item: MenuItemType,
-    orderId: string | null,
-    categoryId?: string,
-    menuId?: string
-  ) => {
-    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
-    setMenuBlockedSync(true);
+  openFullscreen: (item, _orderId, categoryId, menuId) =>
+    get().open({ menuItem: item, categoryId, menuId }),
 
-    // Pre-compute BEFORE setting isOpen for instant render
-    // Pass set function for deferred price updates
-    const precomputed = precomputeModifierData(item, categoryId, menuId, null, set);
-
-    set({
-      isOpen: true,
-      isMenuBlocked: true, // Block menu during fullscreen modifier editing
-      mode: "fullscreen",
-      menuItem: item,
-      cartItem: null,
-      categoryId: categoryId || null,
-      menuId: menuId || null,
-      precomputedModifiers: precomputed.modifiers,
-      initialSelections: precomputed.initialSelections,
-      itemPrice: precomputed.itemPrice,
-      itemCashPrice: precomputed.itemCashPrice,
-      activeModifierCategory: precomputed.activeCategory,
-      precomputedForItemId: precomputed.forItemId,
-    });
-  },
-
-  openFullscreenEdit: (item: CartItem, orderId: string | null) => {
-    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
-    setMenuBlockedSync(true);
-
-    // Use O(1) lookup instead of .find()
-    const { getMenuItemById } = useMenuStore.getState();
-    const menuItem = getMenuItemById(item.menuItemId);
-
-    if (menuItem) {
-      // Use the cart item's stored menu context for price lookup
-      // Pass set function for deferred price updates
-      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
-      set({
-        isOpen: true,
-        isMenuBlocked: true, // Block menu during fullscreen edit
-        mode: "fullscreen",
-        menuItem: menuItem,
-        cartItem: item,
-        categoryId: item.addedFromCategoryId || null,
-        menuId: item.addedFromMenuId || null,
-        precomputedModifiers: precomputed.modifiers,
-        initialSelections: precomputed.initialSelections,
-        itemPrice: precomputed.itemPrice,
-        itemCashPrice: precomputed.itemCashPrice,
-        activeModifierCategory: precomputed.activeCategory,
-        precomputedForItemId: precomputed.forItemId,
-        activeEditingItemId: item.id, // Track which cart item is being edited
-      });
-    } else {
-      set({
-        isOpen: true,
-        isMenuBlocked: true, // Block menu during fullscreen edit
-        mode: "fullscreen",
-        menuItem: null,
-        cartItem: item,
-        categoryId: item.addedFromCategoryId || null,
-        menuId: item.addedFromMenuId || null,
-        precomputedModifiers: null,
-        initialSelections: null,
-        itemPrice: item.price,
-        itemCashPrice: item.cashPrice ?? item.price,
-        activeModifierCategory: null,
-        precomputedForItemId: item.menuItemId,
-        activeEditingItemId: item.id, // Track which cart item is being edited
-      });
-    }
-  },
+  openFullscreenEdit: (item, _orderId) =>
+    get().open({ cartItem: item, includeMenuItemInState: true }),
 
   close: () => {
+    // Clear preWarm cache
+    preWarmCache.clear();
+
     // CRITICAL: Unblock touches synchronously FIRST (same frame)
     setMenuBlockedSync(false);
 
@@ -456,6 +380,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   },
 
   cancelAndRemoveDraft: () => {
+    // Clear preWarm cache
+    preWarmCache.clear();
+
     // CRITICAL: Unblock touches synchronously FIRST (same frame)
     setMenuBlockedSync(false);
 

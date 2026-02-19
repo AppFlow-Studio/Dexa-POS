@@ -111,6 +111,7 @@ interface FloorPlanState {
     createOrder?: boolean;
     selected_station?: string;
     device_id?: string;
+    localOrderId?: string; // Pre-created local order ID to use instead of generating one
   }) => Promise<{ sessionId: string; orderId?: string }>;
 
   updateSessionStatus: (
@@ -875,7 +876,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const localSessionId = `local_session_${Date.now()}_${Math.random()
             .toString(36)
             .substring(2, 9)}`;
-          const localOrderId = `local_order_${Date.now()}_${Math.random()
+          const localOrderId = params.localOrderId || `local_order_${Date.now()}_${Math.random()
             .toString(36)
             .substring(2, 9)}`;
 
@@ -931,7 +932,17 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               );
 
               if (!error && data) {
-                // Update local state with real backend IDs
+                // FIRST: Set db_order_id on the pre-created local order
+                // This must happen BEFORE updating the table session so that
+                // handleAutoCreateSession finds the order correctly
+                const { useOrderStore } = await import("./useOrderStore");
+                const orderStore = useOrderStore.getState();
+
+                if (params.localOrderId && data.order_id) {
+                  orderStore.updateOrderDbId(params.localOrderId, data.order_id);
+                }
+
+                // THEN: Update local table state with real backend IDs
                 set((state) => {
                   const newTables = state.tables.map((t) =>
                     t.session?.id === localSessionId
@@ -951,33 +962,22 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   };
                 });
 
-                // REMOVED (Phase 2.1): Full refresh - optimistic update already applied
-                // Realtime sync will handle any additional changes
-                // await get().loadFloorPlanStatus();
                 console.log(
                   "[SeatGuests] Data Link Order To Session Data",
                   data,
                 );
 
-                // PHASE 2: Safety check - ensure bidirectional order-session link
+                // Safety check - ensure bidirectional order-session link
                 if (data.order_id) {
-                  // Import useOrderStore dynamically to avoid circular dependency
-                  const { useOrderStore } = await import("./useOrderStore");
-                  const orderStore = useOrderStore.getState();
+                  // After rekey, the order is now keyed by data.order_id
+                  const order = orderStore.getOrder(data.order_id);
 
-                  // Find the order by backend UUID or local ID
-                  const order = Object.values(orderStore.ordersById).find(
-                    (o) =>
-                      o.db_order_id === data.order_id || o.id === localOrderId,
-                  );
-
-                  // If order exists and doesn't have session_id set, link them
                   console.log("[SeatGuests] Data Link Order To Session", data);
                   if (order && !order.session_id) {
                     console.log(
                       "[seatGuests] Order missing session_id, establishing bidirectional link",
                     );
-                    await orderStore.linkOrderToSession(
+                    await useOrderStore.getState().linkOrderToSession(
                       order.id,
                       data.session_id,
                     );

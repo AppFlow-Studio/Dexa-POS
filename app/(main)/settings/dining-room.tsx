@@ -47,13 +47,13 @@ const DiningRoomScreen = () => {
       available: allTables.filter(
         (t) =>
           (t.session?.status || "available") === "available" &&
-          t.category === "table",
+          (t.category === "table" || t.category === "booth"),
       ).length,
       inUse: allTables.filter(
         (t) =>
           (t.session?.status || "available") !== "available" &&
           t.session?.status !== "cleaning" &&
-          t.category === "table",
+          (t.category === "table" || t.category === "booth"),
       ).length,
       cleaning: allTables.filter((t) => t.session?.status === "cleaning")
         .length,

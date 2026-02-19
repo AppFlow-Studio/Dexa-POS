@@ -50,6 +50,7 @@ export interface PrinterConfig {
   supportsQrCode: boolean;
   supportsCashDrawerKick: boolean;
   supportsLogo: boolean;
+  graphicsOnly: boolean; // TSP100III etc. — no actionPrintText, must use actionPrintImage
 
   // Config
   paperWidth: number;
@@ -204,6 +205,9 @@ export interface ReceiptTemplateData {
   maxCharsPerLine: number;
   taxRate?: number;
   templateConfig?: ReceiptTemplateConfig;
+
+  // Logo
+  logoBase64?: string; // Pre-fetched logo image as base64 PNG for printing
 }
 
 export interface ReceiptItemData {
@@ -234,6 +238,7 @@ export interface KitchenTicketData {
   isVoidTicket: boolean;
   maxCharsPerLine: number;
   templateConfig?: ReceiptTemplateConfig;
+  readyByTime?: string;
 }
 
 export interface KitchenTicketItemData {
@@ -242,11 +247,20 @@ export interface KitchenTicketItemData {
   modifiers: string[];
   notes?: string;
   isVoided?: boolean;
+  station?: string;
+  allergyAlert?: string;
 }
 
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+/** Returns true for Star models that only support image printing (no actionPrintText). */
+function isGraphicsOnlyStarModel(printerModel: string | null): boolean {
+  if (!printerModel) return false;
+  const m = printerModel.toUpperCase();
+  return m.includes("TSP100III") || m.includes("TSP100IIU+");
+}
 
 export function printerRowToConfig(row: PrinterRow): PrinterConfig {
   return {
@@ -265,6 +279,8 @@ export function printerRowToConfig(row: PrinterRow): PrinterConfig {
     supportsQrCode: row.supports_qr_code ?? false,
     supportsCashDrawerKick: row.supports_cash_drawer_kick ?? false,
     supportsLogo: row.supports_logo ?? false,
+    graphicsOnly: !!(row.metadata as Record<string, unknown> | null)?.graphicsOnly
+      || isGraphicsOnlyStarModel(row.printer_model),
     paperWidth: row.paper_width ?? 80,
     maxCharsPerLine: row.max_chars_per_line ?? 48,
     printDensity: row.print_density ?? 8,

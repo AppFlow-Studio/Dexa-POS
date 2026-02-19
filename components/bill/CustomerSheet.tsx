@@ -156,6 +156,7 @@ const CustomerSheet: React.FC = () => {
     updateActiveOrderDetails({
       customer_name: customer.name || "",
       customer_phone: customer.phone ?? customer.phoneNumber ?? "",
+      customer_email: customer.email || "",
       delivery_address: displayAddress,
       customer_id: customer.id,
     });
