@@ -3,6 +3,7 @@
 import * as Device from "expo-device";
 import * as Network from "expo-network";
 import * as Application from "expo-application";
+import * as Battery from "expo-battery";
 import NetInfo from "@react-native-community/netinfo";
 import { Dimensions, PixelRatio, Platform } from "react-native";
 import { getJSON, setJSON } from "@/lib/storage";
@@ -132,6 +133,15 @@ export async function detectDeviceCapabilities(): Promise<DeviceCapabilities> {
     console.warn("[DeviceDetection] IP address error:", e);
   }
 
+  // Battery level
+  let batteryLevel: number | null = null;
+  try {
+    const level = await Battery.getBatteryLevelAsync();
+    batteryLevel = level >= 0 ? Math.round(level * 100) : null;
+  } catch (e) {
+    console.warn("[DeviceDetection] Battery level error:", e);
+  }
+
   const capabilities: DeviceCapabilities = {
     manufacturer,
     model,
@@ -147,7 +157,7 @@ export async function detectDeviceCapabilities(): Promise<DeviceCapabilities> {
     hasCashDrawerPort,
     hasNfc,
     hasBarcodeScanner,
-    batteryLevel: null,
+    batteryLevel,
     storageFreeBytes: null,
     ramFreeBytes: null,
     networkType,

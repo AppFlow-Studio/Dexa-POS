@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { toastService } from "@/lib/toastService";
 import { CacheStats, clearCache, getCacheStats } from "@/services/cacheService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useRouter } from "expo-router";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { format, parse } from "date-fns";
 import {
@@ -113,10 +114,14 @@ const formatTo24Hour = (time: string) => {
 };
 
 const GeneralSettingsScreen = () => {
+  const router = useRouter();
+
   // Zustand Store - only selectedStore for business info, tax rates synced from backend
   const taxRates = useStoreSettingsStore((s) => s.taxRates);
   const saveChanges = useStoreSettingsStore((s) => s.saveChanges);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const clearSelectedStation = useStoreSettingsStore((s) => s.clearSelectedStation);
+  const setStationSessionId = useStoreSettingsStore((s) => s.setStationSessionId);
 
   // Business info from selectedStore only
   const displayStoreName = selectedStore?.name || "No store selected";
@@ -209,31 +214,32 @@ const GeneralSettingsScreen = () => {
     setShowClearCacheModal(false);
 
     try {
-      const result = await clearCache();
+      const result = clearCache();
 
       if (result.success) {
         toastService.show({
           title: "Cache Cleared",
-          message: "All cached data has been cleared successfully.",
+          message: "All cached data has been cleared. Returning to station select.",
           type: "success",
         });
       } else {
         toastService.show({
           title: "Partial Clear",
-          message: `Cleared with ${result.errors.length} error(s).`,
+          message: `Cleared with ${result.errors.length} error(s). Returning to station select.`,
           type: "warning",
         });
       }
 
-      // Refresh cache stats
-      setCacheStats(getCacheStats());
+      // Navigate to station-select for clean re-initialization
+      clearSelectedStation();
+      setStationSessionId(null);
+      router.replace("/station-select");
     } catch (error) {
       toastService.show({
         title: "Error",
         message: "Failed to clear cache. Please try again.",
         type: "error",
       });
-    } finally {
       setIsClearing(false);
     }
   };

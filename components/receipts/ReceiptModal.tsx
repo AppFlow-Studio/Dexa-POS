@@ -331,7 +331,6 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   location,
   onPrint,
 }) => {
-  console.log('ReceiptModal', order);
   const slideAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;

@@ -3,6 +3,7 @@
 import { AppState, AppStateStatus } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import * as Application from "expo-application";
+import * as Battery from "expo-battery";
 import { getCachedCapabilities } from "./deviceDetection";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -11,8 +12,10 @@ import { SupabaseClient } from "@supabase/supabase-js";
 // ============================================================================
 
 const HEARTBEAT_INTERVAL_MS = 60_000; // 60 seconds
+const BACKGROUND_OFFLINE_DELAY_MS = 2 * 60_000; // 2 minutes before marking offline
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
+let backgroundTimerId: ReturnType<typeof setTimeout> | null = null;
 let appStateSubscription: ReturnType<
   typeof AppState.addEventListener
 > | null = null;
@@ -44,6 +47,12 @@ async function sendHeartbeat(): Promise<void> {
       networkType = netState.type || null;
     } catch {}
 
+    let batteryLevel: number | null = null;
+    try {
+      const level = await Battery.getBatteryLevelAsync();
+      batteryLevel = level >= 0 ? Math.round(level * 100) : null;
+    } catch {}
+
     const cached = getCachedCapabilities();
     const appVersion = Application.nativeApplicationVersion || null;
 
@@ -55,7 +64,7 @@ async function sendHeartbeat(): Promise<void> {
         location_id: currentLocationId,
         is_online: true,
         app_version: appVersion,
-        battery_level: null,
+        battery_level: batteryLevel,
         network_type: networkType,
         printer_status: cached?.hasBuiltinPrinter ? "available" : "none",
         cfd_connected: cached?.hasBuiltinCfd ?? false,
@@ -64,8 +73,37 @@ async function sendHeartbeat(): Promise<void> {
     if (insertError) {
       console.warn("[Heartbeat] Insert error:", insertError.message);
     }
+
+    // 4. Update battery level on stations table
+    if (batteryLevel !== null) {
+      const { error: batteryError } = await currentSupabase
+        .from("stations")
+        .update({ battery_level: batteryLevel })
+        .eq("id", currentStationId);
+
+      if (batteryError) {
+        console.warn("[Heartbeat] Battery update error:", batteryError.message);
+      }
+    }
   } catch (e) {
     console.warn("[Heartbeat] Failed:", e);
+  }
+}
+
+// ============================================================================
+// OFFLINE SIGNAL
+// ============================================================================
+
+async function sendGoingOffline(): Promise<void> {
+  if (!currentSupabase || !currentStationId) return;
+  try {
+    await currentSupabase
+      .from("stations")
+      .update({ is_online: false })
+      .eq("id", currentStationId);
+    console.log("[Heartbeat] Sent offline signal");
+  } catch (e) {
+    console.warn("[Heartbeat] Failed to send offline signal:", e);
   }
 }
 
@@ -75,6 +113,13 @@ async function sendHeartbeat(): Promise<void> {
 
 function handleAppState(nextState: AppStateStatus): void {
   if (nextState === "active") {
+    // Cancel pending offline timer if we came back quickly
+    if (backgroundTimerId) {
+      clearTimeout(backgroundTimerId);
+      backgroundTimerId = null;
+      console.log("[Heartbeat] Cancelled background offline timer");
+    }
+
     // Resume: send immediate heartbeat and restart interval
     if (!intervalId && currentStationId) {
       sendHeartbeat();
@@ -87,6 +132,15 @@ function handleAppState(nextState: AppStateStatus): void {
       clearInterval(intervalId);
       intervalId = null;
       console.log("[Heartbeat] Paused (app backgrounded)");
+    }
+
+    // Start a timer — if app stays backgrounded for 2 min, mark offline
+    if (!backgroundTimerId && currentStationId) {
+      backgroundTimerId = setTimeout(() => {
+        backgroundTimerId = null;
+        sendGoingOffline();
+      }, BACKGROUND_OFFLINE_DELAY_MS);
+      console.log("[Heartbeat] Started 2-min background offline timer");
     }
   }
 }
@@ -121,7 +175,12 @@ export function startHeartbeat(
   console.log(`[Heartbeat] Started for station ${stationId} (every 60s)`);
 }
 
-export function stopHeartbeat(): void {
+export async function stopHeartbeat(): Promise<void> {
+  if (backgroundTimerId) {
+    clearTimeout(backgroundTimerId);
+    backgroundTimerId = null;
+  }
+
   if (intervalId) {
     clearInterval(intervalId);
     intervalId = null;
@@ -131,6 +190,9 @@ export function stopHeartbeat(): void {
     appStateSubscription.remove();
     appStateSubscription = null;
   }
+
+  // Send immediate offline signal before clearing refs
+  await sendGoingOffline();
 
   currentSupabase = null;
   currentStationId = null;

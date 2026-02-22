@@ -93,6 +93,7 @@ export function useRemoteActionsListener() {
 
           case "clear_cache":
             handleClearCache();
+            performLogoutRef.current();
             break;
 
           case "force_logout":

@@ -809,11 +809,31 @@ BEGIN
   SET is_online = FALSE
   WHERE is_online = TRUE
     AND last_heartbeat_at < NOW() - INTERVAL '3 minutes';
-  
+
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END;
 $$;
+
+-- ============================================================
+-- IMPORTANT: Enable the cron job via Supabase Dashboard → SQL Editor
+-- ============================================================
+-- The pg_cron extension must be enabled in your Supabase project.
+-- Run the following SQL in the Supabase Dashboard SQL Editor to schedule
+-- the stale station cleanup every 2 minutes:
+--
+--   SELECT cron.schedule(
+--     'mark-stale-stations-offline',
+--     '*/2 * * * *',
+--     $$SELECT mark_stale_stations_offline()$$
+--   );
+--
+-- To verify the cron job is active:
+--   SELECT * FROM cron.job WHERE jobname = 'mark-stale-stations-offline';
+--
+-- To remove the cron job:
+--   SELECT cron.unschedule('mark-stale-stations-offline');
+-- ============================================================
 
 
 -- ============================================================

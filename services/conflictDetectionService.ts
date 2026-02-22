@@ -70,6 +70,8 @@ export function detectConflict(
     detectedAt: new Date().toISOString(),
     autoResolved: severity !== 'critical',
   };
+  
+  console.log('[ConflictDetected]', conflict)
 
   return conflict;
 }

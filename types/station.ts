@@ -135,6 +135,28 @@ export type StationDeviceType =
   | 'customer_display'
   | 'pos_device';
 
+// === DEVICE LOGIN HISTORY ===
+// Audit trail of all POS device logins/logouts
+export interface DeviceLoginHistory {
+  id: string;
+  station_id: string;
+  merchant_id: string;
+  location_id: string;
+  session_id: string | null;
+  device_id: string;
+  device_name: string | null;
+  device_model: string | null;
+  staff_id: string | null;
+  staff_name: string | null;
+  app_version: string | null;
+  os_version: string | null;
+  ip_address: string | null;
+  logged_in_at: string;
+  logged_out_at: string | null;
+  logout_reason: 'logout' | 'kicked' | 'ended' | 'expired' | null;
+  created_at: string;
+}
+
 // Response from pos_staff_logout RPC
 export interface PosStaffLogoutResponse {
   success: boolean;

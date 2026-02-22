@@ -184,7 +184,7 @@ BEGIN
   END IF;
 
   -- ========================================
-  -- LOG DEVICE CONNECTION
+  -- LOG DEVICE CONNECTION (UPSERT)
   -- ========================================
   INSERT INTO station_devices (
     station_id, merchant_id, location_id,
@@ -200,6 +200,36 @@ BEGIN
     NULLIF(p_app_version, ''), NULLIF(p_os_version, ''),
     v_ip_address, v_session_id,
     TRUE, NOW()
+  )
+  ON CONFLICT (station_id, device_id) WHERE device_type = 'pos_device'
+  DO UPDATE SET
+    device_name = EXCLUDED.device_name,
+    device_model = EXCLUDED.device_model,
+    staff_id = EXCLUDED.staff_id,
+    staff_name = EXCLUDED.staff_name,
+    app_version = EXCLUDED.app_version,
+    os_version = EXCLUDED.os_version,
+    ip_address = EXCLUDED.ip_address,
+    session_id = EXCLUDED.session_id,
+    is_connected = TRUE,
+    last_seen_at = NOW(),
+    updated_at = NOW();
+
+  -- Audit trail: record login in device_login_history
+  INSERT INTO device_login_history (
+    station_id, merchant_id, location_id, session_id,
+    device_id, device_name, device_model,
+    staff_id, staff_name,
+    app_version, os_version, ip_address,
+    logged_in_at
+  ) VALUES (
+    p_station_id, v_station.merchant_id, v_station.location_id, v_session_id,
+    p_device_id, p_device_name, NULLIF(p_hardware_model, ''),
+    v_staff.staff_profile_id,
+    v_staff.first_name || ' ' || LEFT(v_staff.last_name, 1) || '.',
+    NULLIF(p_app_version, ''), NULLIF(p_os_version, ''),
+    v_ip_address,
+    NOW()
   );
 
   -- ========================================
@@ -273,7 +303,17 @@ BEGIN
   -- Update station
   UPDATE stations SET is_online = FALSE
   WHERE id = v_session.station_id AND device_id = v_session.device_id;
-  
+
+  -- Mark device as disconnected
+  UPDATE station_devices
+  SET is_connected = FALSE, last_seen_at = NOW(), updated_at = NOW()
+  WHERE session_id = p_session_id AND device_type = 'pos_device';
+
+  -- Close login history entry
+  UPDATE device_login_history
+  SET logged_out_at = NOW(), logout_reason = 'logout'
+  WHERE session_id = p_session_id AND logged_out_at IS NULL;
+
   -- Clock out if requested
   IF p_clock_out THEN
     v_clock_result := handle_time_clock(
