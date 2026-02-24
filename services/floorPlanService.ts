@@ -7,14 +7,18 @@ import {
   CreateReservationParams,
   FloorPlan,
   FloorPlanObject,
+  LocationTableStatusRow,
   MergeTableParams,
   Reservation,
-  SeatGuestsParams,
   TransferTableSessionParams,
   UpdateFloorPlanObjectPositionParams,
   UpdateTableSessionStatusParams,
   WaitlistEntry,
 } from "@/types/db-floor-plan-types";
+import type {
+  SeatGuestsParams,
+  SeatGuestsResponse,
+} from "@/types/sessionRpcTypes";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export class FloorPlanService {
@@ -135,14 +139,29 @@ export class FloorPlanService {
 
   // --- SESSION OPERATIONS ---
 
+  static async getLocationTableStatus(
+    client: SupabaseClient,
+    locationId: string
+  ): Promise<{ data: LocationTableStatusRow[] | null; error: any }> {
+    const { data, error } = await client.rpc(
+      "get_location_table_status_v2",
+      { p_location_id: locationId }
+    );
+    return { data, error };
+  }
+
   static async seatGuests(
     client: SupabaseClient,
     params: SeatGuestsParams
   ): Promise<{
-    data: { session_id: string; order_id?: string } | null;
+    data: SeatGuestsResponse | null;
     error: any;
   }> {
-    const { data, error } = await client.rpc("seat_guests_v2", params);
+    const { data, error } = await client.rpc("seat_guests_v3", params);
+    // Handle JSONB error: RPC returns { success: false, error: "..." }
+    if (!error && data && data.success === false) {
+      return { data: null, error: { message: data.error || "seat_guests_v3 failed" } };
+    }
     return { data, error };
   }
 

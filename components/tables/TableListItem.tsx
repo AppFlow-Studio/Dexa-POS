@@ -7,6 +7,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -274,8 +275,8 @@ const ExpandedView: React.FC<{
   onToggleExpand: () => void;
   table: FloorPlanObject; // Need table obj to get IDs
 }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
-  const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
-  const voidOrder = useOrderStore((s) => s.voidOrder);
+  const updateSessionStatus = useTableSessionStore((s) => s.updateSessionStatus);
+  const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const deleteOrder = useOrderStore((s) => s.deleteOrder);
   const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
@@ -305,10 +306,6 @@ const ExpandedView: React.FC<{
   const handleCloseTable = async () => {
     if (!tableData) return;
 
-    // We update session status. Assuming we have session ID.
-    // tableData doesn't have session ID explicitly returned in my hook above?
-    // table object has it.
-
     if (!table.session?.id) {
       show({
         title: "Error",
@@ -320,12 +317,7 @@ const ExpandedView: React.FC<{
     const sessionId = table.session.id;
 
     if (tableData.orders.length === 0) {
-      // Just seated or empty. Free up.
-      await updateSessionStatus(sessionId, "available"); // or 'cleaning'?
-      // Actually DB might require 'available' to clear session?
-      // updateSessionStatus usually updates status field.
-      // If we want to CLEAR session (remove it), we might need `closeSession`.
-      // But let's assume 'available' or 'cleaning' is fine.
+      await updateSessionStatus(sessionId, "available");
       onToggleExpand();
       return;
     }
@@ -343,8 +335,14 @@ const ExpandedView: React.FC<{
       );
 
       if (allItemsInGroupAreReady) {
-        tableData.orders.forEach((order) => archiveOrder(order.id));
-        await updateSessionStatus(sessionId, "cleaning"); // Mark cleaning
+        // Use dispatch for CLEAR_TABLE — handles archive + cleaning transition
+        for (const order of tableData.orders) {
+          await dispatchAction({
+            type: "CLEAR_TABLE",
+            tableId: table.id,
+            orderId: order.id,
+          });
+        }
         show({
           title: "Tables Cleared",
           message: `Tables ${tableData.displayName} are now marked for cleaning.`,
@@ -372,8 +370,15 @@ const ExpandedView: React.FC<{
   const onConfirmVoid = async () => {
     if (!tableData || !table.session?.id) return;
 
-    tableData.orders.forEach((order) => voidOrder(order.id));
-    await updateSessionStatus(table.session.id, "available");
+    // Use dispatch for VOID_ORDER — includes inventory deduction (fixes bug)
+    for (const order of tableData.orders) {
+      await dispatchAction({
+        type: "VOID_ORDER",
+        tableId: table.id,
+        orderId: order.id,
+        dbOrderId: order.db_order_id,
+      });
+    }
     setVoidConfirmOpen(false);
     onToggleExpand();
   };

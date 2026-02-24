@@ -59,11 +59,10 @@ const TableBillSection = ({
   );
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  // O(1) lookup instead of O(n) find
+  // Prefer rekey-resilient prop (resolved via dbOrderIdIndex), fallback to store lookup
   const activeOrder = useMemo(
     () =>
-  
-      (activeOrderId ? ordersById[activeOrderId] : undefined),
+      passedActiveOrder ?? (activeOrderId ? ordersById[activeOrderId] : undefined),
     [passedActiveOrder, activeOrderId, ordersById]
   );
 

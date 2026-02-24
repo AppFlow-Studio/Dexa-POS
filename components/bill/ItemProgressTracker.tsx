@@ -1,3 +1,4 @@
+import { getEffectiveItemStatus } from "@/lib/kitchenStatusUtils";
 import { CartItem } from "@/lib/types";
 import {
   CheckCheck,
@@ -31,19 +32,20 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
   isCourseSent,
 }) => {
   // Logic derived from props
-  const allItemsReady = itemsInSelectedCourse.every(
-    (item) => item.item_status === "ready" || item.item_status === "served"
-  );
+  const allItemsReady = itemsInSelectedCourse.every((item) => {
+    const s = getEffectiveItemStatus(item);
+    return s === "ready" || s === "served";
+  });
   const anyItemsPreparing = itemsInSelectedCourse.some(
-    (item) => item.item_status === "preparing"
+    (item) => getEffectiveItemStatus(item) === "preparing"
   );
   const allItemsServed = itemsInSelectedCourse.every(
-    (item) => item.item_status === "served"
+    (item) => getEffectiveItemStatus(item) === "served"
   );
 
   const handleMarkAllReady = () => {
     const preparingItemIds = itemsInSelectedCourse
-      .filter((item) => item.item_status === "preparing")
+      .filter((item) => getEffectiveItemStatus(item) === "preparing")
       .map((item) => item.id);
     if (preparingItemIds.length > 0) {
       onMarkAllReady(preparingItemIds);
@@ -108,7 +110,7 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
       >
         {itemsInSelectedCourse.length > 0 ? (
           itemsInSelectedCourse.map((item) => {
-            const style = getItemStyle(item.item_status);
+            const style = getItemStyle(getEffectiveItemStatus(item));
             return (
               <View
                 key={item.id}

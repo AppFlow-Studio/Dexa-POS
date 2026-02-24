@@ -1,3 +1,4 @@
+import MergeActionBar from "@/components/tables/MergeActionBar";
 import { GuestCountModal } from "@/components/tables/GuestCountModal";
 import Sidebar from "@/components/tables/Sidebar";
 import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
@@ -6,20 +7,19 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { getDeviceId } from "@/lib/deviceId";
 import { OrderProfile } from "@/lib/types";
-import { OrderService } from "@/services/orderService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
-  getOrderStoreSupabaseClient,
   registerPendingOrderCreation,
   useOrderStore,
 } from "@/stores/useOrderStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
 import { GitMerge, Search, X } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   InteractionManager,
   KeyboardAvoidingView,
@@ -29,19 +29,30 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useShallow } from "zustand/react/shallow";
 
 const TablesScreen = () => {
   const router = useRouter();
-  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
-  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
-  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
-  const tables = useFloorPlanStore((s) => s.tables);
+  // Grouped data selectors (shallow compare — one re-render instead of 4)
+  const { floorPlans, activeFloorPlanId, tables, floorPlanLoading } =
+    useFloorPlanStore(
+      useShallow((s) => ({
+        floorPlans: s.floorPlans,
+        activeFloorPlanId: s.activeFloorPlanId,
+        tables: s.tables,
+        floorPlanLoading: s.isLoading,
+      })),
+    );
+
+  // Selection state — separate (changes on every tap in merge mode)
   const selectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
+
+  // Actions — stable refs, separate is fine
+  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
   const clearSelection = useFloorPlanStore((s) => s.clearSelection);
-  const mergeTable = useFloorPlanStore((s) => s.mergeTable);
-  const unmergeTable = useFloorPlanStore((s) => s.unmergeTable);
-  const floorPlanLoading = useFloorPlanStore((s) => s.isLoading);
+  const mergeTable = useTableSessionStore((s) => s.mergeTable);
+  const unmergeTable = useTableSessionStore((s) => s.unmergeTable);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const device_id = getDeviceId();
   const startNewOrder = useOrderStore((s) => s.startNewOrder);
@@ -51,9 +62,16 @@ const TablesScreen = () => {
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
+  const [searchInput, setSearchInput] = useState("");
   const [searchText, setSearchText] = useState("");
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
   const [isMergeMode, setMergeMode] = useState(false);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchText(searchInput), 200);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   // DEFERRED RENDERING: Wait for navigation transition to complete
   const [isReady, setIsReady] = useState(false);
@@ -83,7 +101,14 @@ const TablesScreen = () => {
     return session?.status === "clockedIn";
   }, [activeEmployeeId, getSession]);
 
-  const handleTablePress = (table: FloorPlanObject) => {
+  // Filter tables by search (uses debounced searchText)
+  const filteredTables = useMemo(() => {
+    if (!searchText.trim()) return tables;
+    const query = searchText.toLowerCase();
+    return tables.filter((t) => t.name?.toLowerCase().includes(query));
+  }, [tables, searchText]);
+
+  const handleTablePress = useCallback((table: FloorPlanObject) => {
     if (!isClockedIn) {
       showClockInWall();
       return;
@@ -131,7 +156,7 @@ const TablesScreen = () => {
       default:
         break;
     }
-  };
+  }, [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection, clearSelection, getOrder, setActiveOrder, router]);
 
   // OPTIMIZED: Use Set for O(1) membership tests instead of .includes() O(n)
   const selectedTableIdsSet = useMemo(
@@ -158,8 +183,7 @@ const TablesScreen = () => {
     inUseSelectedTables.length === 1 && availableSelectedTables.length >= 1;
   const canUnmerge =
     selectedTables.length === 1 &&
-    selectedTables[0]?.session?.merged_tables &&
-    selectedTables[0].session.merged_tables.length > 0;
+    (selectedTables[0]?.session?.merged_tables?.length ?? 0) > 0;
 
   // Check if unmerge is blocked due to pending items
   const checkUnmergeAllowed = (): boolean => {
@@ -188,7 +212,7 @@ const TablesScreen = () => {
     return !hasPendingItems;
   };
 
-  const handleMergeAndSeat = () => {
+  const handleMergeAndSeat = useCallback(() => {
     if (availableSelectedTables.length < 2) {
       show({
         title: "Select More Tables",
@@ -198,9 +222,9 @@ const TablesScreen = () => {
       return;
     }
     setGuestModalOpen(true);
-  };
+  }, [availableSelectedTables.length, show]);
 
-  const handleAddToSession = async () => {
+  const handleAddToSession = useCallback(async () => {
     if (inUseSelectedTables.length !== 1 || availableSelectedTables.length < 1)
       return;
 
@@ -226,9 +250,9 @@ const TablesScreen = () => {
         type: "error",
       });
     }
-  };
+  }, [inUseSelectedTables, availableSelectedTables, mergeTable, show, clearSelection]);
 
-  const handleUnmerge = async () => {
+  const handleUnmerge = useCallback(async () => {
     if (!canUnmerge) return;
 
     if (!checkUnmergeAllowed()) {
@@ -260,12 +284,12 @@ const TablesScreen = () => {
         type: "error",
       });
     }
-  };
+  }, [canUnmerge, checkUnmergeAllowed, selectedTables, unmergeTable, show, clearSelection]);
 
-  const handleCancelMerge = () => {
+  const handleCancelMerge = useCallback(() => {
     clearSelection();
     setMergeMode(false);
-  };
+  }, [clearSelection]);
 
   const handleGuestCountSubmit = async (guestCount: number) => {
     const primaryTableId = selectedTableIds[0];
@@ -294,7 +318,7 @@ const TablesScreen = () => {
 
     // 4. Fire seatGuests in background — don't block navigation
     try {
-      const { orderId } = await useFloorPlanStore.getState().seatGuests({
+      const { orderId } = await useTableSessionStore.getState().seatGuests({
         tableIds: tableIdsToSeat,
         partySize: guestCount,
         createOrder: true,
@@ -305,24 +329,8 @@ const TablesScreen = () => {
 
       if (orderId && orderId !== newOrder.id) {
         // seatGuests already called updateOrderDbId — resolve the pending promise
+        // hydrateOrderFromSeat already patched order_number/display_number from the RPC response
         resolveCreation!(orderId);
-
-        // Background: fetch order_number and display_number
-        const supabase = getOrderStoreSupabaseClient();
-        if (supabase) {
-          try {
-            const { data } = await OrderService.fetchOrderById(supabase, orderId);
-            if (data) {
-              useOrderStore.getState().updateOrderFromSync(orderId, {
-                order_number: data.order_number,
-                display_number: data.display_number,
-                opened_at: data.created_at,
-              });
-            }
-          } catch {
-            /* non-critical, order still works without number */
-          }
-        }
       } else {
         resolveCreation!(null);
       }
@@ -379,8 +387,8 @@ const TablesScreen = () => {
                 <TextInput
                   placeholder="Search table name..."
                   placeholderTextColor="#9CA3AF"
-                  value={searchText}
-                  onChangeText={setSearchText}
+                  value={searchInput}
+                  onChangeText={setSearchInput}
                   className="ml-2 text-lg h-12 flex-1 text-white"
                 />
               </KeyboardAvoidingView>
@@ -393,7 +401,7 @@ const TablesScreen = () => {
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
               <TableLayoutView
-                tables={tables || []}
+                tables={filteredTables || []}
                 isSelectionMode={true}
                 onTableSelect={handleTablePress}
                 showConnections={true}
@@ -441,54 +449,17 @@ const TablesScreen = () => {
             </View>
 
             {/* Merge Mode Action Bar */}
-            {isMergeMode && selectedTableIds.length > 0 && (
-              <View className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex-row items-center gap-3 p-3 rounded-xl bg-[#1c1c1c]/95 border border-gray-600">
-                {/* Selected Count */}
-                <View className="bg-gray-700 px-3 py-2 rounded-lg">
-                  <Text className="text-white font-semibold">
-                    {selectedTableIds.length} table
-                    {selectedTableIds.length !== 1 ? "s" : ""} selected
-                  </Text>
-                </View>
-
-                {/* Merge & Seat Button */}
-                {canMergeAndSeat && (
-                  <TouchableOpacity
-                    onPress={handleMergeAndSeat}
-                    className="py-2 px-4 bg-green-600 rounded-lg"
-                  >
-                    <Text className="text-white font-bold">Merge & Seat</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Add to Session Button */}
-                {canAddToSession && (
-                  <TouchableOpacity
-                    onPress={handleAddToSession}
-                    className="py-2 px-4 bg-blue-600 rounded-lg"
-                  >
-                    <Text className="text-white font-bold">Add to Session</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Unmerge Button */}
-                {canUnmerge && (
-                  <TouchableOpacity
-                    onPress={handleUnmerge}
-                    className="py-2 px-4 bg-red-600 rounded-lg"
-                  >
-                    <Text className="text-white font-bold">Unmerge</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Cancel Button */}
-                <TouchableOpacity
-                  onPress={handleCancelMerge}
-                  className="py-2 px-4 bg-gray-600 rounded-lg"
-                >
-                  <Text className="text-white font-bold">Cancel</Text>
-                </TouchableOpacity>
-              </View>
+            {isMergeMode && (
+              <MergeActionBar
+                selectedCount={selectedTableIds.length}
+                canMergeAndSeat={canMergeAndSeat}
+                canAddToSession={canAddToSession}
+                canUnmerge={canUnmerge}
+                onMerge={handleMergeAndSeat}
+                onAdd={handleAddToSession}
+                onUnmerge={handleUnmerge}
+                onCancel={handleCancelMerge}
+              />
             )}
 
             {/* Status Indicators (Bottom Left) */}

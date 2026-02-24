@@ -40,6 +40,9 @@ const ModifierScreenOverlay: React.FC = () => {
 
   useEffect(() => {
     if (isFullscreen) {
+      // Stop any in-flight animations before starting new ones
+      slideAnim.stopAnimation();
+      opacityAnim.stopAnimation();
       // OPTIMIZED: Faster spring for instant response
       Animated.parallel([
         Animated.spring(slideAnim, {
@@ -55,6 +58,9 @@ const ModifierScreenOverlay: React.FC = () => {
         }),
       ]).start();
     } else {
+      // Stop any in-flight animations before starting new ones
+      slideAnim.stopAnimation();
+      opacityAnim.stopAnimation();
       // OPTIMIZED: Faster close animation (80ms)
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -70,6 +76,17 @@ const ModifierScreenOverlay: React.FC = () => {
       ]).start();
     }
   }, [isFullscreen, slideAnim, opacityAnim]);
+
+  // Safety reset: force animation values to hidden state after close animation should have completed
+  useEffect(() => {
+    if (!isOpen) {
+      const timer = setTimeout(() => {
+        slideAnim.setValue(SCREEN_HEIGHT);
+        opacityAnim.setValue(0);
+      }, 120); // 120ms > 80ms close animation
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, slideAnim, opacityAnim]);
 
   // ALWAYS RENDER - visibility controlled by animation values
   return (

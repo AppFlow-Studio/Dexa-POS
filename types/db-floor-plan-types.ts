@@ -1,11 +1,15 @@
 export type TableStatus =
   | "available"
   | "reserved"
+  | "seating"
   | "seated"
+  | "ordering"
   | "ordered"
   | "served"
   | "check_presented"
+  | "paying"
   | "paid"
+  | "closing"
   | "cleaning"
   | "blocked"
   | "not_in_service";
@@ -177,6 +181,7 @@ export interface BatchUpdateObjectParams {
   }[];
 }
 
+/** @deprecated Use SeatGuestsV2Params instead */
 export interface SeatGuestsParams {
   p_table_ids: string[];
   p_party_size: number;
@@ -189,6 +194,52 @@ export interface SeatGuestsParams {
   p_staff_id?: string | null;
   p_device_id?: string | null;
   p_station_id?: string | null;
+}
+
+/** @deprecated Use SeatGuestsParams from @/types/sessionRpcTypes instead */
+export interface SeatGuestsV2Params {
+  p_table_id: string;
+  p_party_size: number;
+  p_server_staff_id?: string | null;
+  p_create_order?: boolean;
+  p_guest_name?: string | null;
+  p_guest_phone?: string | null;
+  p_reservation_id?: string | null;
+  p_waitlist_id?: string | null;
+}
+
+/** @deprecated Use SeatGuestsResponse from @/types/sessionRpcTypes instead */
+export interface SeatGuestsV2Response {
+  success: boolean;
+  session_id?: string;
+  order_id?: string;
+  session_number?: string;
+  table_name?: string;
+  error?: string;
+}
+
+export interface LocationTableStatusRow {
+  table_id: string;
+  table_name: string;
+  table_capacity: number;
+  table_category: string;
+  section_id: string | null;
+  session_id: string | null;
+  session_status: TableStatus | null;
+  order_id: string | null;
+  party_size: number | null;
+  server_staff_id: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  reservation_id: string | null;
+  waitlist_id: string | null;
+  session_number: string | null;
+  seated_at: string | null;
+  is_vip: boolean | null;
+  needs_attention: boolean | null;
+  current_course: number | null;
+  first_order_at: string | null;
+  food_served_at: string | null;
 }
 
 export interface UpdateTableSessionStatusParams {

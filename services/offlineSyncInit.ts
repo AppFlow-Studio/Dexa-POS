@@ -28,6 +28,7 @@ import {
   queueDependentOperation,
   queueOperation,
 } from "@/services/offlineSyncService";
+import { FloorPlanService } from "@/services/floorPlanService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
@@ -1010,7 +1011,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             await mapLocalToBackend(localOrderId, backendId);
 
             // Update local order with backend-generated data (order_number, display_number, etc.)
-            store.updateOrderFromSync(localOrderId, {
+            // Use backendId since updateOrderDbId already rekeyed the order from localOrderId -> backendId
+            store.updateOrderFromSync(backendId, {
               order_number: orderData.order_number,
               display_number:
                 orderData.display_number || `#${orderData.order_number}`,
@@ -1258,16 +1260,124 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       }
 
       case "seat_guests": {
-        const { tableIds, guestCount, serverId, localSessionId } = op.params;
-        // FloorPlanService would be called here - for now just log
-        console.log("[OfflineSync] seat_guests operation:", {
+        const {
           tableIds,
           guestCount,
-          serverId,
+          guestName,
+          guestPhone,
+          reservationId,
+          waitlistId,
+          createOrder,
           localSessionId,
-        });
-        // This will be implemented when FloorPlanService is available
-        // For now, return true to clear from queue as local state is already updated
+        } = op.params;
+
+        if (!_supabaseClient || !tableIds?.length) return true;
+
+        const primaryTableId = tableIds[0];
+        const additionalTableIds = tableIds.slice(1);
+
+        // Resolve staff/merchant context — prefer values stored in queued op,
+        // fall back to current store state for old queued ops missing new fields
+        const merchantId =
+          op.params.merchantId ||
+          useStoreSettingsStore.getState().selectedStore?.merchant_id ||
+          "";
+        const staffId =
+          op.params.staffId ??
+          useEmployeeStore.getState().loggedInEmployee?.profileId ??
+          null;
+        const serverStaffId = op.params.serverStaffId ?? staffId;
+        const deviceId = op.params.deviceId ?? null;
+        const stationId =
+          op.params.stationId ??
+          useStoreSettingsStore.getState().selectedStation?.id ??
+          null;
+
+        const { data, error } = await FloorPlanService.seatGuests(
+          _supabaseClient,
+          {
+            p_table_id: primaryTableId,
+            p_merchant_id: merchantId,
+            p_staff_id: staffId,
+            p_server_staff_id: serverStaffId,
+            p_party_size: guestCount,
+            p_guest_name: guestName || null,
+            p_guest_phone: guestPhone || null,
+            p_reservation_id: reservationId || null,
+            p_waitlist_id: waitlistId || null,
+            p_create_order: createOrder ?? true,
+            p_device_id: deviceId,
+            p_station_id: stationId,
+          },
+        );
+
+        if (error) {
+          console.error("[OfflineSync:seat_guests] Error:", error);
+          return false;
+        }
+
+        if (data) {
+          // Merge additional tables
+          for (const extraTableId of additionalTableIds) {
+            try {
+              await FloorPlanService.mergeTableToSession(_supabaseClient, {
+                p_session_id: data.session_id!,
+                p_table_id: extraTableId,
+              });
+            } catch (mergeErr) {
+              console.warn(
+                `[OfflineSync:seat_guests] Non-fatal merge error for ${extraTableId}:`,
+                mergeErr,
+              );
+            }
+          }
+
+          // Hydrate order from RPC response
+          if (data.order_id) {
+            const orderStore = useOrderStore.getState();
+            orderStore.hydrateOrderFromSeat({
+              localOrderId: op.localOrderId,
+              dbOrderId: data.order_id,
+              sessionId: data.session_id!,
+              orderNumber: data.order_number,
+              displayNumber: data.display_number,
+            });
+          }
+
+          // Dispatch SESSION_CREATED for all tables with this local session
+          const { useTableSessionStore } = await import(
+            "@/stores/useTableSessionStore"
+          );
+          const sessionStore = useTableSessionStore.getState();
+          const actions: Array<{
+            tableId: string;
+            action: { type: "SESSION_CREATED"; session: any };
+          }> = [];
+          for (const tableId of tableIds) {
+            const existing = sessionStore.sessions[tableId];
+            if (existing?.id === localSessionId) {
+              actions.push({
+                tableId,
+                action: {
+                  type: "SESSION_CREATED",
+                  session: {
+                    ...existing,
+                    id: data.session_id!,
+                    order_id: data.order_id,
+                    session_number:
+                      data.session_number ?? existing.session_number,
+                  },
+                },
+              });
+            }
+          }
+          if (actions.length > 0) {
+            sessionStore.batchDispatch(actions);
+          }
+
+          console.log("[OfflineSync:seat_guests] Completed successfully:", data);
+        }
+
         return true;
       }
 

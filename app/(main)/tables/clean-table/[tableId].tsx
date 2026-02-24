@@ -1,4 +1,5 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
 import { useMemo } from "react";
@@ -7,7 +8,8 @@ import { Text, TouchableOpacity, View } from "react-native";
 const CleanTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
-  const { tables, updateSessionStatus } = useFloorPlanStore();
+  const tables = useFloorPlanStore((s) => s.tables);
+  const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
 
   const { table, allTablesInGroup, displayNames, sessionId } = useMemo(() => {
     if (!tableId || typeof tableId !== "string")
@@ -57,18 +59,17 @@ const CleanTableScreen = () => {
   }, [tables, tableId]);
 
   const handleCleanTable = async () => {
-    if (sessionId) {
+    if (tableId && typeof tableId === "string") {
       try {
-        await updateSessionStatus(sessionId, "available");
+        await dispatchAction({
+          type: "FINISH_CLEANING",
+          tableId: tableId,
+        });
         router.replace("/tables");
       } catch (error) {
         console.error("Failed to clean table:", error);
       }
     } else if (table) {
-      // Fallback if no session but we want to mark it available?
-      // If there is no session, it's already available or we can't update session status.
-      // But if it's 'cleaning' it MUST have a session in the new model?
-      // Actually, 'cleaning' is a session status. So sessionId must exist.
       console.warn("No session found for table to clean");
       router.replace("/tables");
     }

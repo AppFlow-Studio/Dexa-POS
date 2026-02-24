@@ -3,6 +3,7 @@ import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useRouter } from "expo-router";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -48,8 +49,10 @@ const QuickActionButton: React.FC<{
 };
 
 const useTableData = (table: TableType) => {
+  const getOrder = useOrderStore((s) => s.getOrder);
   const ordersById = useOrderStore((s) => s.ordersById);
-  const tables = useFloorPlanStore((s) => s.tables);
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
+  const sessions = useTableSessionStore((s) => s.sessions);
 
   return useMemo(() => {
     const session = table.session;
@@ -76,51 +79,61 @@ const useTableData = (table: TableType) => {
     const isMerged = mergedTableIds.length > 0;
 
     if (!isMerged) {
-      const order = Object.values(ordersById).find(
-        (o) => o.service_location_id === table.id && o.order_status !== "void" && o.order_status !== "completed"
-      );
+      // O(1) lookup via session order_id instead of scanning all orders
+      const order = session?.order_id ? getOrder(session.order_id) : undefined;
+      const validOrder = order && order.order_status !== "void" && order.order_status !== "completed" ? order : undefined;
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
         status: sessionStatus,
-        guestCount: order?.guest_count || 0,
-        total: order?.items.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0,
-        seatedTime: order?.opened_at ? new Date(order.opened_at) : null,
-        server: order?.server_name || "N/A",
-        orders: order ? [order] : [],
+        guestCount: validOrder?.guest_count || 0,
+        total: validOrder?.items.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0,
+        seatedTime: validOrder?.opened_at ? new Date(validOrder.opened_at) : null,
+        server: validOrder?.server_name || "N/A",
+        orders: validOrder ? [validOrder] : [],
       };
     }
 
-    const groupTables = tables.filter((t) => mergedTableIds.includes(t.id));
-    const groupOrders = Object.values(ordersById).filter(
-      (o) => o.service_location_id && mergedTableIds.includes(o.service_location_id) && o.order_status !== "void" && o.order_status !== "completed"
-    );
+    // Merged tables: O(k) where k = merged table count, not O(n) over all orders
+    const groupTableNames: string[] = [];
+    const groupOrders: ReturnType<typeof getOrder>[] = [];
+    for (const tId of mergedTableIds) {
+      const t = tablesById[tId];
+      if (t) groupTableNames.push(t.name);
+      const sess = sessions[tId];
+      if (sess?.order_id) {
+        const o = getOrder(sess.order_id);
+        if (o && o.order_status !== "void" && o.order_status !== "completed") {
+          groupOrders.push(o);
+        }
+      }
+    }
 
     const earliestSeated = groupOrders.reduce((earliest, o) => {
-      if (!o.opened_at) return earliest;
+      if (!o?.opened_at) return earliest;
       const seated = new Date(o.opened_at).getTime();
       return seated < earliest ? seated : earliest;
     }, Infinity);
 
-    const servers = [...new Set(groupOrders.map((o) => o.server_name).filter(Boolean))];
+    const servers = [...new Set(groupOrders.map((o) => o?.server_name).filter(Boolean))];
     const serverDisplay = servers.length > 0 ? servers.join(", ") : "N/A";
 
     return {
       isMerged: true,
       primaryTableId: table.id,
-      displayName: groupTables.map((t) => t.name).sort().join(" + "),
+      displayName: groupTableNames.sort().join(" + "),
       status: sessionStatus,
-      guestCount: groupOrders.reduce((sum, o) => sum + (o.guest_count || 0), 0),
+      guestCount: groupOrders.reduce((sum, o) => sum + (o?.guest_count || 0), 0),
       total: groupOrders.reduce(
-        (sum, o) => sum + o.items.reduce((itemSum, i) => itemSum + i.price * i.quantity, 0),
+        (sum, o) => sum + (o?.items.reduce((itemSum, i) => itemSum + i.price * i.quantity, 0) || 0),
         0
       ),
       seatedTime: earliestSeated === Infinity ? null : new Date(earliestSeated),
       server: serverDisplay,
-      orders: groupOrders,
+      orders: groupOrders.filter((o): o is NonNullable<typeof o> => !!o),
     };
-  }, [table, ordersById, tables]);
+  }, [table, ordersById, tablesById, sessions]);
 };
 
 interface ExpandedTableDetailsProps {
@@ -137,9 +150,8 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     return null;
   }
 
-  const tables = useFloorPlanStore((s) => s.tables);
-  const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
-  const voidOrder = useOrderStore((s) => s.voidOrder);
+  const updateSessionStatus = useTableSessionStore((s) => s.updateSessionStatus);
+  const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const deleteOrder = useOrderStore((s) => s.deleteOrder);
   const menuItems = useMenuStore((s) => s.menuItems);
@@ -176,7 +188,7 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
 
     if (tableData.orders.length === 0) {
       await updateSessionStatus(table.session.id, "available");
-      return; 
+      return;
     }
 
     const allOrdersArePaid = tableData.orders.every(
@@ -192,8 +204,14 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
       );
 
       if (allItemsInGroupAreReady) {
-        tableData.orders.forEach((order) => archiveOrder(order.id));
-        await updateSessionStatus(table.session.id, "cleaning");
+        // Use dispatch for CLEAR_TABLE — handles archive + cleaning transition
+        for (const order of tableData.orders) {
+          await dispatchAction({
+            type: "CLEAR_TABLE",
+            tableId: table.id,
+            orderId: order.id,
+          });
+        }
         show({
           title: "Tables Cleared",
           message: `Tables ${tableData.displayName} are now marked for cleaning.`,
@@ -221,8 +239,15 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
   const onConfirmVoid = async () => {
     if (!tableData || !table.session?.id) return;
 
-    tableData.orders.forEach((order) => voidOrder(order.id));
-    await updateSessionStatus(table.session.id, "available");
+    // Use dispatch for VOID_ORDER — includes inventory deduction (fixes bug)
+    for (const order of tableData.orders) {
+      await dispatchAction({
+        type: "VOID_ORDER",
+        tableId: table.id,
+        orderId: order.id,
+        dbOrderId: order.db_order_id,
+      });
+    }
     setVoidConfirmOpen(false);
   };
 

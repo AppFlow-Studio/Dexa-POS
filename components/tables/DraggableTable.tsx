@@ -3,6 +3,7 @@ import {
   registerTablePosition,
   unregisterTablePosition,
 } from "@/lib/tablePositionRegistry";
+import { useTableTimerTick } from "@/hooks/useTableTimerTick";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -53,6 +54,11 @@ const STATUS_COLORS: Record<string, string> = {
   check_presented: "#3B82F6",
   Paid: "#10B981",
   paid: "#10B981",
+  // Local-only intermediate states
+  seating: "#60A5FA",
+  ordering: "#818CF8",
+  paying: "#F59E0B",
+  closing: "#F87171",
 };
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
@@ -72,8 +78,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const ordersById = useOrderStore((s) => s.ordersById);
   const { defaultSittingTimeMinutes } = useSettingsStore();
 
-  const [duration, setDuration] = useState("");
-  const [isOvertime, setIsOvertime] = useState(false);
+  const tick = useTableTimerTick();
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =
@@ -81,68 +86,51 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     TABLE_SHAPES["square-4"];
   const TableComponent = shapeDef?.component;
 
-  const activeOrderForThisTable = useMemo(() =>
-    Object.values(ordersById).find(
+  const getOrder = useOrderStore((s) => s.getOrder);
+
+  const activeOrderForThisTable = useMemo(() => {
+    // Only run the O(n) scan for tables without sessions (direct order assignment fallback)
+    if (table.session?.order_id) return undefined;
+    return Object.values(ordersById).find(
       (o) => o.service_location_id === table.id && o.order_status !== "void",
-    ), [ordersById, table.id]);
-  // console.log('[DraggableTable] activeOrderForThisTable', activeOrderForThisTable)
+    );
+  }, [ordersById, table.id, table.session?.order_id]);
 
   const orderForThisGroup = useMemo(() => {
     if (table.session?.order_id) {
-      // Try direct lookup first (if session.order_id matches local id)
-      let order: (typeof ordersById)[string] | undefined =
-        ordersById[table.session.order_id];
-      if (!order) {
-        // Fallback: search by db_order_id if session.order_id is the backend UUID
-        order = Object.values(ordersById).find(
-          (o) => o.db_order_id === table.session?.order_id,
-        );
-      }
-      return order;
+      // O(1) lookup via getOrder (checks both local ID and dbOrderIdIndex)
+      return getOrder(table.session.order_id);
     }
-  }, [table.session?.order_id, ordersById]);
-  // console.log(
-  //   `[DraggableTable] orderForThisGroup ${table.name}`,
-  //   orderForThisGroup
-  // );
+  }, [table.session?.order_id, getOrder, ordersById]);
 
-  useEffect(() => {
+  const { duration, isOvertime } = useMemo(() => {
     // Determine if table is effectively "in use" based on session or order
     const status = table.session?.status?.toLowerCase();
     const isInUse =
+      status === "seating" ||
       status === "seated" ||
+      status === "ordering" ||
       status === "ordered" ||
       status === "served" ||
       status === "check_presented" ||
+      status === "paying" ||
       status === "paid" ||
+      status === "closing" ||
       activeOrderForThisTable;
 
     if (!isInUse || !orderForThisGroup?.opened_at) {
-      setDuration("");
-      setIsOvertime(false);
-      return;
+      return { duration: "", isOvertime: false };
     }
 
-    const updateTimer = () => {
-      if (!orderForThisGroup?.opened_at) return;
+    const startTime = new Date(orderForThisGroup.opened_at).getTime();
+    const diffMins = Math.floor((Date.now() - startTime) / 60000);
 
-      const startTime = new Date(orderForThisGroup.opened_at);
-
-      const now = new Date();
-      const diffMs = now.getTime() - startTime.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-
-      setDuration(`${diffMins} min`);
-      setIsOvertime(
-        defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes,
-      );
+    return {
+      duration: `${diffMins} min`,
+      isOvertime: defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes,
     };
-
-    updateTimer(); // Initial run
-    const timer = setInterval(updateTimer, 1000);
-
-    return () => clearInterval(timer);
   }, [
+    tick,
     table.session,
     orderForThisGroup,
     defaultSittingTimeMinutes,
@@ -352,16 +340,26 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
             {isTableType &&
               (tableStatus === "seated" ||
+                tableStatus === "ordering" ||
                 tableStatus === "ordered" ||
                 tableStatus === "served" ||
-                tableStatus === "check_presented") && (
+                tableStatus === "check_presented" ||
+                tableStatus === "paying") && (
                 <>
-                  <Text className="text-white font-bold text-base">
-                    ${orderTotal.toFixed(2)}
-                  </Text>
-                  <Text className="text-white font-semibold text-base">
-                    {duration}
-                  </Text>
+                  {!orderForThisGroup && table.session ? (
+                    <Text className="text-white/60 font-semibold text-sm">
+                      Loading...
+                    </Text>
+                  ) : (
+                    <>
+                      <Text className="text-white font-bold text-base">
+                        ${orderTotal.toFixed(2)}
+                      </Text>
+                      <Text className="text-white font-semibold text-base">
+                        {duration}
+                      </Text>
+                    </>
+                  )}
                 </>
               )}
           </View>
@@ -387,4 +385,4 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   );
 };
 
-export default DraggableTable;
+export default React.memo(DraggableTable);

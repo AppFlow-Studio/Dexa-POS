@@ -30,7 +30,7 @@ export const useToast = () => {
 
 // Standalone component that subscribes to toast store independently
 // This prevents children from re-rendering when toasts change
-const ToastRenderer = () => {
+export const ToastRenderer = () => {
   const toasts = useToastStore((s) => s.toasts);
   return <ToastContainer toasts={toasts} />;
 };

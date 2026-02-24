@@ -5,6 +5,7 @@ import { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRealtimeChannel } from './useRealtimechannel';
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore';
+import { useTableSessionStore } from '@/stores/useTableSessionStore';
 import { useSupabaseClient } from '@/hooks/useSupabaseClient';
 import type {
   TableSessionPayload,
@@ -73,9 +74,12 @@ export function useFloorRealtime({
           // Session changes - invalidate queries and call callback
           const sessionPayload = payload as TableSessionPayload;
 
-          // UPDATE STORE STATE (NEW): This ensures UI gets real-time data
+          // UPDATE STORE STATE: This ensures UI gets real-time data
           const store = useFloorPlanStore.getState();
           store._handleSessionChange(sessionPayload);
+
+          // Propagate to session store so individual events don't lag
+          useTableSessionStore.getState()._handleSessionChange(sessionPayload);
 
           // Invalidate floor sessions list
           queryClient.invalidateQueries({

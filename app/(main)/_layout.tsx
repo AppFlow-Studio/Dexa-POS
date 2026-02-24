@@ -16,6 +16,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Redirect, Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
+import { useTableSessionInit } from "@/hooks/useTableSessionInit";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
@@ -81,6 +82,9 @@ export default function MainLayout() {
         );
     }
   }, [paymentDetailSheetRef, isKDS]);
+
+  // Initialize table order prefetch subscriber and session side effects (POS mode only)
+  useTableSessionInit({ skip: isKDS });
 
   // KDS-only broadcast handler — only feeds useKDSStore, skips useOrderStore
   const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {

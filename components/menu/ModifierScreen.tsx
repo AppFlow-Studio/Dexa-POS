@@ -741,6 +741,10 @@ const ModifierScreen = () => {
         removeItemFromActiveOrder(draftItemIdRef.current);
         draftItemIdRef.current = null;
       }
+      // Safety: close store if still open on unmount (e.g., navigation away)
+      if (useModifierSidebarStore.getState().isOpen) {
+        useModifierSidebarStore.getState().close();
+      }
     };
   }, []);
 

@@ -2108,6 +2108,14 @@ interface OrderState {
   syncPaymentStatus: (orderId: string) => Promise<void>;
   // Link an order to a table session bidirectionally (handles online/offline)
   linkOrderToSession: (orderId: string, sessionId: string) => Promise<boolean>;
+  // Hydrate order from seat_guests_v3 RPC response (update existing or create shell)
+  hydrateOrderFromSeat: (params: {
+    localOrderId?: string;
+    dbOrderId: string;
+    sessionId: string;
+    orderNumber?: string;
+    displayNumber?: string;
+  }) => void;
 
   // === NEW: Order Calculation Actions ===
   // Recalculate order totals and update state (call after any item/discount change)
@@ -3718,7 +3726,7 @@ export const useOrderStore = create<OrderState>()(
               order_type: details?.tableId ? "Dine In" : "Takeaway",
               items: [],
               payments: [],
-              opened_at: null,
+              opened_at: new Date().toISOString(),
               guest_count: details?.guestCount || 1,
               server_name: activeEmployee?.fullName || "Unknown",
 
@@ -5008,18 +5016,62 @@ export const useOrderStore = create<OrderState>()(
                 createdAt: string,
                 syncVersion?: number,
               ) => {
-                set((state) => {
-                  const order = state.ordersById[orderId];
-                  if (!order) return;
-                  order.db_order_id = dbOrderId;
-                  order.order_number = orderNumber;
-                  order.display_number = displayNumber;
-                  order.sync_status = "synced";
-                  order.sync_version = syncVersion ?? 1;
-                  order.opened_at = order.opened_at || createdAt;
-                  // Surgical dbOrderIdIndex maintenance
-                  state.dbOrderIdIndex[dbOrderId] = orderId;
-                });
+                if (orderId !== dbOrderId) {
+                  // Full rekey needed — replicate addItemToActiveOrder's logic
+                  set((state) => {
+                    const existingOrder = state.ordersById[orderId];
+                    if (!existingOrder) return;
+
+                    const snapshot = current(existingOrder);
+                    delete state.ordersById[orderId];
+                    state.ordersById[dbOrderId] = {
+                      ...snapshot,
+                      id: dbOrderId,
+                      db_order_id: dbOrderId,
+                      order_number: orderNumber,
+                      display_number: displayNumber,
+                      sync_status: "synced" as const,
+                      sync_version: syncVersion ?? 1,
+                      opened_at: snapshot.opened_at || createdAt,
+                    };
+
+                    const idx = state.orderIds.indexOf(orderId);
+                    if (idx !== -1) state.orderIds[idx] = dbOrderId;
+                    if (state.activeOrderId === orderId) state.activeOrderId = dbOrderId;
+                    const wsIdx = state.workingSetOrderIds.indexOf(orderId);
+                    if (wsIdx !== -1) state.workingSetOrderIds[wsIdx] = dbOrderId;
+                    state.dbOrderIdIndex[dbOrderId] = dbOrderId;
+                    delete state.dbOrderIdIndex[orderId];
+                    if (state.persistableOrderIds[orderId]) {
+                      delete state.persistableOrderIds[orderId];
+                      state.persistableOrderIds[dbOrderId] = true;
+                    }
+                  });
+
+                  // Migrate chain maps to new key
+                  const existingChain = orderAdditionChains.get(orderId);
+                  if (existingChain) {
+                    orderAdditionChains.set(dbOrderId, existingChain);
+                    orderAdditionChains.delete(orderId);
+                  }
+                  const existingPending = pendingItemAdditions.get(orderId);
+                  if (existingPending) {
+                    pendingItemAdditions.set(dbOrderId, existingPending);
+                    pendingItemAdditions.delete(orderId);
+                  }
+                } else {
+                  set((state) => {
+                    const order = state.ordersById[orderId];
+                    if (!order) return;
+                    order.db_order_id = dbOrderId;
+                    order.order_number = orderNumber;
+                    order.display_number = displayNumber;
+                    order.sync_status = "synced";
+                    order.sync_version = syncVersion ?? 1;
+                    order.opened_at = order.opened_at || createdAt;
+                    state.dbOrderIdIndex[dbOrderId] = orderId;
+                  });
+                }
 
                 // Record persistent localId → dbOrderId mapping
                 localIdToDbOrderId.set(orderId, dbOrderId);
@@ -7611,6 +7663,11 @@ export const useOrderStore = create<OrderState>()(
               )
                 .then(({ error }) => {
                   if (error) {
+                    // Skip rollback if already voided — desired state is achieved
+                    if (error.message?.toLowerCase().includes("already voided")) {
+                      console.log("[useOrderStore.voidOrder] Order already voided on backend, skipping rollback");
+                      return;
+                    }
                     console.error("[useOrderStore.voidOrder] DB error:", error);
                     // Rollback optimistic update on failure
                     set((state) => {
@@ -8099,18 +8156,62 @@ export const useOrderStore = create<OrderState>()(
                 createdAt: string,
                 syncVersion?: number,
               ) => {
-                set((state) => {
-                  const order = state.ordersById[id];
-                  if (!order) return;
-                  order.db_order_id = dbOrderId;
-                  order.order_number = orderNumber;
-                  order.display_number = displayNumber;
-                  order.sync_status = "synced";
-                  order.sync_version = syncVersion ?? 1;
-                  order.opened_at = order.opened_at || createdAt;
-                  // Surgical dbOrderIdIndex maintenance
-                  state.dbOrderIdIndex[dbOrderId] = id;
-                });
+                if (id !== dbOrderId) {
+                  // Full rekey needed
+                  set((state) => {
+                    const existingOrder = state.ordersById[id];
+                    if (!existingOrder) return;
+
+                    const snapshot = current(existingOrder);
+                    delete state.ordersById[id];
+                    state.ordersById[dbOrderId] = {
+                      ...snapshot,
+                      id: dbOrderId,
+                      db_order_id: dbOrderId,
+                      order_number: orderNumber,
+                      display_number: displayNumber,
+                      sync_status: "synced" as const,
+                      sync_version: syncVersion ?? 1,
+                      opened_at: snapshot.opened_at || createdAt,
+                    };
+
+                    const idx = state.orderIds.indexOf(id);
+                    if (idx !== -1) state.orderIds[idx] = dbOrderId;
+                    if (state.activeOrderId === id) state.activeOrderId = dbOrderId;
+                    const wsIdx = state.workingSetOrderIds.indexOf(id);
+                    if (wsIdx !== -1) state.workingSetOrderIds[wsIdx] = dbOrderId;
+                    state.dbOrderIdIndex[dbOrderId] = dbOrderId;
+                    delete state.dbOrderIdIndex[id];
+                    if (state.persistableOrderIds[id]) {
+                      delete state.persistableOrderIds[id];
+                      state.persistableOrderIds[dbOrderId] = true;
+                    }
+                  });
+
+                  // Migrate chain maps to new key
+                  const existingChain = orderAdditionChains.get(id);
+                  if (existingChain) {
+                    orderAdditionChains.set(dbOrderId, existingChain);
+                    orderAdditionChains.delete(id);
+                  }
+                  const existingPending = pendingItemAdditions.get(id);
+                  if (existingPending) {
+                    pendingItemAdditions.set(dbOrderId, existingPending);
+                    pendingItemAdditions.delete(id);
+                  }
+                } else {
+                  set((state) => {
+                    const order = state.ordersById[id];
+                    if (!order) return;
+                    order.db_order_id = dbOrderId;
+                    order.order_number = orderNumber;
+                    order.display_number = displayNumber;
+                    order.sync_status = "synced";
+                    order.sync_version = syncVersion ?? 1;
+                    order.opened_at = order.opened_at || createdAt;
+                    state.dbOrderIdIndex[dbOrderId] = id;
+                  });
+                }
 
                 // Record persistent localId → dbOrderId mapping
                 localIdToDbOrderId.set(id, dbOrderId);
@@ -8352,15 +8453,16 @@ export const useOrderStore = create<OrderState>()(
                       is_open_item: dbItem.is_open_item || false,
                       open_item_name: dbItem.open_item_name || undefined,
                       open_item_price: dbItem.open_item_price || undefined,
-                      // FIX: Set kitchen_status for DB items to prevent merging with new items
-                      // DB items are by definition 'sent' (or later state)
+                      // Use authoritative kitchen_status column (updated by KDS),
+                      // fall back to legacy item_status derivation
                       kitchen_status:
-                        dbItem.item_status === "Ready"
+                        (dbItem.kitchen_status as CartItem["kitchen_status"]) ||
+                        (dbItem.item_status === "Ready"
                           ? "ready"
                           : dbItem.item_status === "Served" ||
                               dbItem.item_status === "Completed"
                             ? "served"
-                            : "sent",
+                            : "sent"),
                       item_status: (dbItem.item_status as any) || "Preparing",
                       // Required CartItem financial fields
                       subtotal:
@@ -8484,6 +8586,11 @@ export const useOrderStore = create<OrderState>()(
 
                 state.ordersById[localOrderId] = updatedOrderProfile;
                 state.orderIds = newOrderIds;
+
+                // Surgical dbOrderIdIndex maintenance
+                state.dbOrderIdIndex[dbOrderId] = localOrderId;
+                // Ensure MMKV persistence
+                state.persistableOrderIds[localOrderId] = true;
 
                 // Update outstanding totals if this is the active order
                 if (localOrderId === state.activeOrderId) {
@@ -8790,6 +8897,88 @@ export const useOrderStore = create<OrderState>()(
             });
 
             return true;
+          },
+
+          // ============================================================================
+          // HYDRATE ORDER FROM SEAT — Update/create order from seat_guests_v3 response
+          // ============================================================================
+          hydrateOrderFromSeat: ({
+            localOrderId,
+            dbOrderId,
+            sessionId,
+            orderNumber,
+            displayNumber,
+          }) => {
+            if (localOrderId) {
+              // Path A: Update existing local order with backend data
+              const order = get().ordersById[localOrderId];
+              if (order) {
+                set((state) => {
+                  const existing = state.ordersById[localOrderId];
+                  if (!existing) return;
+
+                  existing.db_order_id = dbOrderId;
+                  existing.session_id = sessionId;
+                  existing.local_session_id = sessionId;
+                  existing.sync_status = "synced" as const;
+                  if (orderNumber) existing.order_number = orderNumber;
+                  if (displayNumber) existing.display_number = displayNumber;
+
+                  // Surgical dbOrderIdIndex maintenance
+                  state.dbOrderIdIndex[dbOrderId] = localOrderId;
+                  state.unsyncedOrderIds = state.unsyncedOrderIds.filter(id => id !== localOrderId);
+                });
+                console.log(
+                  `[hydrateOrderFromSeat] Updated local order ${localOrderId} → db ${dbOrderId}, session ${sessionId}`,
+                );
+                return;
+              }
+              // If localOrderId is a temp key, try rekeyOrder pattern
+              if (
+                localOrderId.startsWith("order_") ||
+                localOrderId.startsWith("temp_") ||
+                localOrderId.startsWith("local_order_")
+              ) {
+                get().rekeyOrder(localOrderId, dbOrderId);
+                // After rekey, patch in session data
+                set((state) => {
+                  const rekeyed = state.ordersById[dbOrderId];
+                  if (!rekeyed) return;
+                  rekeyed.session_id = sessionId;
+                  rekeyed.local_session_id = sessionId;
+                  if (orderNumber) rekeyed.order_number = orderNumber;
+                  if (displayNumber) rekeyed.display_number = displayNumber;
+                });
+                console.log(
+                  `[hydrateOrderFromSeat] Rekeyed ${localOrderId} → ${dbOrderId}, session ${sessionId}`,
+                );
+                return;
+              }
+            }
+
+            // Path B: No localOrderId — create minimal shell order keyed by dbOrderId
+            set((state) => {
+              if (state.ordersById[dbOrderId]) return; // already exists
+              state.ordersById[dbOrderId] = {
+                id: dbOrderId,
+                db_order_id: dbOrderId,
+                session_id: sessionId,
+                local_session_id: sessionId,
+                order_number: orderNumber,
+                display_number: displayNumber,
+                sync_status: "synced",
+                order_status: "draft",
+                check_status: "Opened",
+                paid_status: "Unpaid",
+                items: [],
+                opened_at: new Date().toISOString(),
+                service_location_id: null,
+              };
+              state.dbOrderIdIndex[dbOrderId] = dbOrderId;
+            });
+            console.log(
+              `[hydrateOrderFromSeat] Created shell order ${dbOrderId}, session ${sessionId}`,
+            );
           },
 
           /**

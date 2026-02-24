@@ -85,9 +85,9 @@ const PaymentSuccessView = () => {
     if (activeOrderId && activeOrder?.check_status !== "Closed") {
       setOpenedAt(activeOrderId, new Date().toISOString());
 
-      const currentOrder = useOrderStore
-        .getState()
-        .orders.find((o) => o.id === activeOrderId);
+      const currentOrder = activeOrderId
+        ? useOrderStore.getState().ordersById[activeOrderId]
+        : undefined;
 
       if (currentOrder?.order_status === "draft") {
         sendNewItemsToKitchenForOrder(activeOrderId);

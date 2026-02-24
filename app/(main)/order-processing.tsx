@@ -19,9 +19,11 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import React, { useEffect, useRef, useState } from "react";
-import { FlatList, InteractionManager, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { FlatList, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
+
+const EMPTY_ORDERS: OrderProfile[] = [];
 
 const OrderProcessing = () => {
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
@@ -31,7 +33,6 @@ const OrderProcessing = () => {
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
-  const activeOrder = useOrderStore((s) => s.activeOrderId ? s.ordersById[s.activeOrderId] : null);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
 
@@ -159,11 +160,15 @@ const OrderProcessing = () => {
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
-  const handleCloseCheck = async () => {
-    if (!activeOrderId || !activeOrder) return;
+  const handleCloseCheck = useCallback(async () => {
+    const state = useOrderStore.getState();
+    const currentActiveOrderId = state.activeOrderId;
+    const currentActiveOrder = currentActiveOrderId ? state.ordersById[currentActiveOrderId] : null;
+
+    if (!currentActiveOrderId || !currentActiveOrder) return;
 
     // Validate order has backend ID
-    if (!activeOrder.db_order_id) {
+    if (!currentActiveOrder.db_order_id) {
       show({
         title: "Cannot Close Check",
         message: "Order must be synced to close check",
@@ -186,7 +191,7 @@ const OrderProcessing = () => {
 
       const result = await OrderService.closeCheck(
         supabase,
-        activeOrder.db_order_id,
+        currentActiveOrder.db_order_id,
         loggedInEmployee?.profileId || null,
       );
 
@@ -211,21 +216,33 @@ const OrderProcessing = () => {
         type: "error",
       });
     }
-  };
+  }, [show, showLoading, hideLoading, updateActiveOrderDetails]);
   
-  // DEFERRED RENDERING: Wait for navigation transition to complete before rendering heavy components
-  const [isReady, setIsReady] = useState(false);
+  // DEFERRED RENDERING: Progressive staged rendering via double-rAF
+  // Stage 0: Skeleton placeholders (instant first paint)
+  // Stage 1: BillSection (lighter — user sees their order first)
+  // Stage 2: MenuSection + MoreOptionsBottomSheet + FlatList data (heavier)
+  const [renderStage, setRenderStage] = useState(0);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setIsReady(true);
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setRenderStage(1);
+        requestAnimationFrame(() => {
+          setRenderStage(2);
+        });
+      });
     });
-    return () => handle.cancel();
+    return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Defer FlatList data until stage 2 to avoid rendering OrderBadge components early
+  const displayOrders = renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS;
 
   return (
     <View className="flex-1 flex-col bg-[#212121]">
       <View className="flex-1 flex-row">
-        {isReady ? (
+        {/* Stage 1: BillSection (lighter — user sees their order first) */}
+        {renderStage >= 1 ? (
           <BillSection
             moreOptionsSheetRef={
               moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
@@ -235,7 +252,15 @@ const OrderProcessing = () => {
             }
           />
         ) : (
-          <View className="w-[380px] bg-[#212121]" />
+          // BillSection skeleton: matches the 380px sidebar layout
+          <View className="w-[380px] bg-[#212121] p-4">
+            <View className="h-10 w-48 bg-[#2a2a2a] rounded-lg mb-4" />
+            <View className="h-6 w-32 bg-[#2a2a2a] rounded-md mb-3" />
+            <View className="h-6 w-64 bg-[#2a2a2a] rounded-md mb-3" />
+            <View className="h-6 w-52 bg-[#2a2a2a] rounded-md mb-3" />
+            <View className="flex-1" />
+            <View className="h-14 bg-[#2a2a2a] rounded-xl" />
+          </View>
         )}
 
         <View className="flex-1 py-4 px-2 pt-0 bg-[#323232] rounded-tl-3xl ">
@@ -252,10 +277,10 @@ const OrderProcessing = () => {
                   <Text className="text-2xl font-bold text-white">
                     Order Line
                   </Text>
-                  {reversedFilteredOrders?.length > 0 && (
+                  {displayOrders?.length > 0 && (
                     <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-1 h-8 w-8">
                       <Text className="text-base font-bold text-white">
-                        {reversedFilteredOrders.length}
+                        {displayOrders.length}
                       </Text>
                     </Badge>
                   )}
@@ -263,7 +288,7 @@ const OrderProcessing = () => {
               </AccordionTrigger>
               <AccordionContent>
                 {/* Defer rendering of heavy list */}
-                {isReady ? (
+                {renderStage >= 2 ? (
                   <OrderLineSection />
                 ) : (
                   <View className="h-64 items-center justify-center">
@@ -276,19 +301,19 @@ const OrderProcessing = () => {
 
           <View
             className={
-              !isAccordionOpen && reversedFilteredOrders.length > 0
+              !isAccordionOpen && displayOrders.length > 0
                 ? "opacity-100"
                 : "opacity-0"
             }
             style={
-              !isAccordionOpen && reversedFilteredOrders.length > 0
+              !isAccordionOpen && displayOrders.length > 0
                 ? { height: "auto" }
                 : { height: 0 }
             }
           >
             <FlatList
               horizontal
-              data={reversedFilteredOrders}
+              data={displayOrders}
               keyExtractor={(item) => item.id}
               className="mt-2 max-h-16"
               contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
@@ -310,17 +335,37 @@ const OrderProcessing = () => {
             />
           </View>
 
-          {/* Defer MenuSection as well - it's very heavy */}
-          {isReady ? <MenuSection /> : <View className="flex-1" />}
+          {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
+          {renderStage >= 2 ? (
+            <MenuSection />
+          ) : (
+            // MenuSection skeleton: matches the grid layout
+            <View className="flex-1 pt-2">
+              <View className="flex-row gap-x-2 mb-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <View key={i} className="h-10 w-20 bg-[#2a2a2a] rounded-lg" />
+                ))}
+              </View>
+              <View className="flex-row flex-wrap gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <View key={i} className="h-24 w-28 bg-[#2a2a2a] rounded-xl" />
+                ))}
+              </View>
+            </View>
+          )}
         </View>
       </View>
-      <MoreOptionsBottomSheet
-        ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-        discountSheetRef={
-          discountSheetRef as React.RefObject<BottomSheetMethods>
-        }
-        onCloseCheck={() => handleCloseCheck()}
-      />
+
+      {/* Stage 2: Defer MoreOptionsBottomSheet — starts closed (index={-1}), safe to delay */}
+      {renderStage >= 2 && (
+        <MoreOptionsBottomSheet
+          ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+          discountSheetRef={
+            discountSheetRef as React.RefObject<BottomSheetMethods>
+          }
+          onCloseCheck={handleCloseCheck}
+        />
+      )}
 
       <OrderLineItemsModal
         isOpen={isItemsModalOpen}

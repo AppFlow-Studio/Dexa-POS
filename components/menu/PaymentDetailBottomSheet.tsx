@@ -1,4 +1,4 @@
-import { useToast } from "@/contexts/ToastContext";
+import { useToast, ToastRenderer } from "@/contexts/ToastContext";
 import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, OrderRefundItemRecord, ReversalRecord } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useRefundMutation, type PerPaymentRefundDetail } from "@/hooks/orders/useRefundMutation";
@@ -2904,24 +2904,44 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   }, [order]);
 
   // Handlers
-  const handleReopenOrder = useCallback(() => {
+  const handleReopenOrder = useCallback(async () => {
     if (!orderId) return;
-    updateOrderCheckStatus(orderId, "Opened");
-    show({
-      title: "Order Reopened",
-      message: "This order is now open for editing and payments.",
-      type: "success",
-    });
+    await updateOrderCheckStatus(orderId, "Opened");
+    const storeKey = useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId;
+    const current = useOrderStore.getState().ordersById[storeKey];
+    if (current?.check_status === "Opened") {
+      show({
+        title: "Order Reopened",
+        message: "This order is now open for editing and payments.",
+        type: "success",
+      });
+    } else {
+      show({
+        title: "Reopen Failed",
+        message: "Could not reopen this order. Please try again.",
+        type: "error",
+      });
+    }
   }, [orderId, updateOrderCheckStatus, show]);
 
-  const handleCloseOrder = useCallback(() => {
+  const handleCloseOrder = useCallback(async () => {
     if (!orderId) return;
-    updateOrderCheckStatus(orderId, "Closed");
-    show({
-      title: "Order Closed",
-      message: "This order has been closed.",
-      type: "success",
-    });
+    await updateOrderCheckStatus(orderId, "Closed");
+    const storeKey = useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId;
+    const current = useOrderStore.getState().ordersById[storeKey];
+    if (current?.check_status === "Closed") {
+      show({
+        title: "Order Closed",
+        message: "This order has been closed.",
+        type: "success",
+      });
+    } else {
+      show({
+        title: "Close Failed",
+        message: "Could not close this order. There may be an outstanding balance.",
+        type: "error",
+      });
+    }
   }, [orderId, updateOrderCheckStatus, show]);
 
   const handleContinueCharging = useCallback(async () => {
@@ -3175,6 +3195,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           )}
         </View>
       </View>
+      <ToastRenderer />
     </Modal>
   );
 };

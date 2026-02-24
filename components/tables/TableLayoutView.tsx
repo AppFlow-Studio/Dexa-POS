@@ -44,8 +44,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   selectedTableId, // Consuming the new prop
   activeOrderId,
 }) => {
-  const { toggleTableSelection, selectedTableIds: globallySelectedTableIds } =
-    useFloorPlanStore();
+  const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
+  const globallySelectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
 
   // Create O(1) lookup map for tables
   const tablesById = useMemo(() => {
@@ -61,6 +61,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const selectedTableIds = selectedTableId
     ? [selectedTableId]
     : globallySelectedTableIds;
+
+  // O(1) lookup Set for isSelected checks
+  const selectedTableIdsSet = useMemo(
+    () => new Set(selectedTableIds),
+    [selectedTableIds],
+  );
 
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
   const [contentDims, setContentDims] = useState({ width: 0, height: 0 });
@@ -263,7 +269,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
               table={table}
               layoutId={layoutId} // Retained but unused
               isEditMode={isEditMode}
-              isSelected={selectedTableIds.includes(table.id)}
+              isSelected={selectedTableIdsSet.has(table.id)}
               onSelect={
                 isSelectionMode
                   ? () => onTableSelect && onTableSelect(table)
@@ -285,4 +291,25 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   );
 };
 
-export default TableLayoutView;
+export default React.memo(TableLayoutView, (prev, next) => {
+  if (prev.layoutId !== next.layoutId) return false;
+  if (prev.isEditMode !== next.isEditMode) return false;
+  if (prev.isSelectionMode !== next.isSelectionMode) return false;
+  if (prev.showConnections !== next.showConnections) return false;
+  if (prev.selectedTableId !== next.selectedTableId) return false;
+  if (prev.activeOrderId !== next.activeOrderId) return false;
+  if (prev.onTableSelect !== next.onTableSelect) return false;
+  const pt = prev.tables,
+    nt = next.tables;
+  if (pt.length !== nt.length) return false;
+  for (let i = 0; i < pt.length; i++) {
+    if (
+      pt[i].id !== nt[i].id ||
+      pt[i].session?.status !== nt[i].session?.status ||
+      pt[i].session?.order_id !== nt[i].session?.order_id ||
+      pt[i].name !== nt[i].name
+    )
+      return false;
+  }
+  return true;
+});

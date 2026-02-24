@@ -1,11 +1,8 @@
 import { useToast } from "@/contexts/ToastContext";
-import { InventoryService } from "@/services/inventoryService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
-import {
-  getOrderStoreSupabaseClient,
-  useOrderStore,
-} from "@/stores/useOrderStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -111,28 +108,23 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
   const onConfirmVoid = async () => {
     if (activeOrderId && activeOrder) {
-      // Deduct inventory before voiding (items already consumed/wasted)
-      if (activeOrder.db_order_id) {
-        const supabase = getOrderStoreSupabaseClient();
-        if (supabase) {
-          const result = await InventoryService.processOrderInventoryDeduction(
-            supabase,
-            activeOrder.db_order_id
-          );
-          if (!result.success) {
-            console.warn(
-              "[onConfirmVoid] Inventory deduction failed, proceeding with void"
-            );
-          }
-        }
-      }
-      // Also update local inventory
-      if (activeOrder.items?.length > 0) {
-        const { useInventoryStore } = require("@/stores/useInventoryStore");
-        useInventoryStore.getState().decrementStockFromSale(activeOrder.items);
+      // Dispatch VOID_ORDER — the effect handles inventory deduction + void
+      const dispatchAction = useTableSessionStore.getState().dispatchAction;
+      // Find tableId from the order's service_location_id
+      const tableId = activeOrder.service_location_id || "";
+
+      if (tableId) {
+        await dispatchAction({
+          type: "VOID_ORDER",
+          tableId,
+          orderId: activeOrder.id,
+          dbOrderId: activeOrder.db_order_id,
+        });
+      } else {
+        // Fallback for non-table orders: use voidOrder directly
+        voidOrder(activeOrderId);
       }
 
-      voidOrder(activeOrderId);
       setVoidConfirmOpen(false);
       show({
         title: "Order Voided",
@@ -616,7 +608,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   );
 };
 
-const MoreOptionsBottomSheet = forwardRef(MoreOptionsComponent);
+const MoreOptionsBottomSheet = React.memo(forwardRef(MoreOptionsComponent));
 MoreOptionsBottomSheet.displayName = "MoreOptionsBottomSheet";
 
 export default MoreOptionsBottomSheet;
