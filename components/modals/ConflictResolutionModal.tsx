@@ -21,6 +21,7 @@ import {
   usePaymentConflicts,
 } from "@/stores/useConflictStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { colors } from "@/lib/theme";
 
 // ============================================================================
 // TYPES
@@ -122,24 +123,24 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
         onPress={handleDismiss}
       >
         <Pressable
-          className="bg-[#2A2A2A] rounded-2xl w-[90%] max-w-md overflow-hidden"
+          className="bg-surface rounded-2xl w-[90%] max-w-md overflow-hidden"
           onPress={(e) => e.stopPropagation()}
         >
           {/* Header */}
           <View className="bg-red-600/20 px-6 py-4 flex-row items-center border-b border-red-600/30">
-            <AlertTriangle color="#ef4444" size={28} />
+            <AlertTriangle color={colors.danger} size={28} />
             <Text className="text-red-500 text-xl font-bold ml-3 flex-1">
               Payment Conflict
             </Text>
             <TouchableOpacity onPress={handleDismiss} className="p-1">
-              <X color="#888" size={24} />
+              <X color={colors.muted} size={24} />
             </TouchableOpacity>
           </View>
 
           {/* Content */}
           <View className="px-6 py-5">
             {/* Order Info */}
-            <View className="bg-[#1E1E1E] rounded-xl p-4 mb-4">
+            <View className="bg-panel rounded-xl p-4 mb-4">
               <Text className="text-gray-400 text-sm mb-1">Order</Text>
               <Text className="text-white text-lg font-semibold">
                 {conflict.orderNumber || `#${conflict.orderId.slice(-6)}`}
@@ -156,7 +157,7 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
             </Text>
 
             {/* Changes Summary */}
-            <View className="bg-[#1E1E1E] rounded-xl p-4 mb-4">
+            <View className="bg-panel rounded-xl p-4 mb-4">
               <Text className="text-gray-400 text-sm mb-2">What Changed</Text>
 
               {conflict.conflictType === "payment" && (
@@ -198,14 +199,14 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
 
             {/* Version Info */}
             <View className="flex-row justify-between mb-4">
-              <View className="bg-[#1E1E1E] rounded-lg px-3 py-2">
+              <View className="bg-panel rounded-lg px-3 py-2">
                 <Text className="text-gray-500 text-xs">Your Version</Text>
                 <Text className="text-gray-300 text-sm">v{conflict.localVersion}</Text>
               </View>
               <View className="items-center justify-center">
-                <ArrowRight color="#666" size={20} />
+                <ArrowRight color={colors.muted} size={20} />
               </View>
-              <View className="bg-[#1E1E1E] rounded-lg px-3 py-2">
+              <View className="bg-panel rounded-lg px-3 py-2">
                 <Text className="text-gray-500 text-xs">Server Version</Text>
                 <Text className="text-green-400 text-sm">v{conflict.serverVersion}</Text>
               </View>
@@ -233,7 +234,7 @@ export const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = (
             {/* Secondary Action - Continue Anyway (Risky) */}
             <TouchableOpacity
               onPress={handleContinueAnyway}
-              className="bg-[#1E1E1E] border border-gray-700 rounded-xl py-3 flex-row items-center justify-center"
+              className="bg-panel border border-gray-700 rounded-xl py-3 flex-row items-center justify-center"
             >
               <Text className="text-gray-400 font-medium text-sm">
                 Continue Anyway

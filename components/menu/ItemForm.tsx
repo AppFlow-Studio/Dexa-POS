@@ -39,6 +39,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 // Form data interface
 export interface MenuItemFormData {
@@ -525,14 +526,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
     .sort((a, b) => a.order - b.order);
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-3 border-b border-gray-700 bg-[#303030]">
+      <View className="flex-row items-center justify-between p-3 border-b border-gray-700 bg-surface">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={20} color="#9CA3AF" />
+          <ArrowLeft size={20} color={colors.label} />
           <Text className="text-xl text-white font-medium ml-1.5">
             Back to Menu
           </Text>
@@ -561,7 +562,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
         className="flex-1 flex-row"
       >
         {/* Form Section - Left Side */}
-        <ScrollView className="flex-1 p-4 bg-[#212121]">
+        <ScrollView className="flex-1 p-4 bg-panel">
           <Text className="text-2xl font-bold text-white mb-4">{title}</Text>
 
           {/* Basic Information */}
@@ -576,11 +577,11 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 Name *
               </Text>
               <TextInput
-                className={`bg-[#303030] border rounded-lg px-4 py-3 text-lg h-16 text-white ${
+                className={`bg-surface border rounded-lg px-4 py-3 text-lg h-16 text-white ${
                   errors.name ? "border-red-500" : "border-gray-600"
                 }`}
                 placeholder="Enter item name"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 value={formData.name}
                 onChangeText={(text) =>
                   setFormData((prev) => ({ ...prev, name: text }))
@@ -599,9 +600,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 Description
               </Text>
               <TextInput
-                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 h-32 text-lg text-white"
+                className="bg-surface border border-gray-600 rounded-lg px-4 py-3 h-32 text-lg text-white"
                 placeholder="Enter item description"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 value={formData.description}
                 onChangeText={(text) =>
                   setFormData((prev) => ({ ...prev, description: text }))
@@ -634,9 +635,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
               <TouchableOpacity
                 onPress={pickImage}
-                className="flex-row items-center justify-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3"
+                className="flex-row items-center justify-center bg-surface border border-gray-600 rounded-lg px-4 py-3"
               >
-                <Camera size={20} color="#9CA3AF" />
+                <Camera size={20} color={colors.label} />
                 <Text className="text-lg text-white ml-2">
                   {getImageSource() ? "Change Image" : "Pick Image"}
                 </Text>
@@ -666,7 +667,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 {isDualPricing ? "Cash Price *" : "Cash Price (Optional)"}
               </Text>
               <View
-                className={`flex-row items-center bg-[#303030] border rounded-lg px-4 ${
+                className={`flex-row items-center bg-surface border rounded-lg px-4 ${
                   errors.cashPrice ? "border-red-500" : isDualPricing ? "border-blue-500" : "border-gray-600"
                 }`}
               >
@@ -674,7 +675,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 <TextInput
                   className="flex-1 ml-2 text-lg text-white h-16"
                   placeholder="0.00"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   value={formData.cashPrice}
                   onChangeText={handleCashPriceChange}
                   keyboardType="numeric"
@@ -693,14 +694,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
               </Text>
               <View
                 className={`flex-row items-center border rounded-lg px-4 ${
-                  isDualPricing ? "bg-[#252525] border-gray-700" : "bg-[#303030]"
+                  isDualPricing ? "bg-panel border-gray-700" : "bg-surface"
                 } ${errors.price ? "border-red-500" : isDualPricing ? "border-gray-700" : "border-gray-600"}`}
               >
                 <Text className={`text-lg ${isDualPricing ? "text-gray-400" : "text-white"}`}>$</Text>
                 <TextInput
                   className={`flex-1 ml-2 text-lg h-16 ${isDualPricing ? "text-gray-400" : "text-white"}`}
                   placeholder="0.00"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   value={formData.price}
                   onChangeText={handleCardPriceChange}
                   keyboardType="numeric"
@@ -733,7 +734,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </View>
 
             {availableCategories.length === 0 ? (
-              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+              <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
                 <Text className="text-xl text-gray-400 text-center mb-2">
                   No categories available. Create one to continue.
                 </Text>
@@ -757,7 +758,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       className={`px-4 py-3 rounded-lg border ${
                         formData.categories.includes(category.name)
                           ? "bg-blue-600 border-blue-500"
-                          : "bg-[#303030] border-gray-600"
+                          : "bg-surface border-gray-600"
                       }`}
                     >
                       <Text
@@ -791,7 +792,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                             onPress={() => toggleCategory(categoryName)}
                             className="ml-1.5"
                           >
-                            <X size={16} color="#60A5FA" />
+                            <X size={16} color={colors.info} />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -823,7 +824,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       value={modifierSearch}
                       onChangeText={setModifierSearch}
                       placeholder="Search..."
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={colors.label}
                       className="text-white h-10 w-[50%] text-sm 600 rounded-lg px-3 py-1.5"
                     />
                   </View>
@@ -858,7 +859,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     className={`rounded-lg border ${
                       selected
                         ? "bg-blue-600/10 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
+                        : "bg-surface border-gray-600"
                     }`}
                   >
                     <View className="flex-row items-center justify-between p-4">
@@ -896,9 +897,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         className="pl-3 py-1.5"
                       >
                         {expanded ? (
-                          <ChevronUp size={20} color="#9CA3AF" />
+                          <ChevronUp size={20} color={colors.label} />
                         ) : (
-                          <ChevronDown size={20} color="#9CA3AF" />
+                          <ChevronDown size={20} color={colors.label} />
                         )}
                       </TouchableOpacity>
                     </View>
@@ -908,7 +909,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                         {modifier.options.map((option: any) => (
                           <View
                             key={option.id}
-                            className="flex-row items-center justify-between border rounded-lg border-gray-600 bg-[#303030] p-2"
+                            className="flex-row items-center justify-between border rounded-lg border-gray-600 bg-surface p-2"
                           >
                             <Text className="text-base text-gray-400">
                               {option.name}{" "}
@@ -958,7 +959,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                           onPress={() => toggleModifier(modifierId)}
                           className="ml-1.5"
                         >
-                          <X size={16} color="#60A5FA" />
+                          <X size={16} color={colors.info} />
                         </TouchableOpacity>
                       </View>
                     );
@@ -1030,9 +1031,9 @@ const ItemForm: React.FC<ItemFormProps> = ({
                               updateRecipeItemQuantity(index, text)
                             }
                             keyboardType="numeric"
-                            className="bg-[#212121] border border-gray-600 text-white p-1.5 rounded text-center h-16 text-sm"
+                            className="bg-panel border border-gray-600 text-white p-1.5 rounded text-center h-16 text-sm"
                             placeholder="0"
-                            placeholderTextColor="#9CA3AF"
+                            placeholderTextColor={colors.label}
                           />
                           <Text className="text-gray-400 text-[10px] text-center mt-0.5">
                             Quantity
@@ -1054,7 +1055,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   onPress={openInventorySelection}
                   className="bg-gray-700 border-2 border-dashed border-gray-500 rounded-lg p-3 items-center"
                 >
-                  <Plus color="#9CA3AF" size={20} />
+                  <Plus color={colors.label} size={20} />
                   <Text className="text-gray-400 mt-1.5 font-semibold text-sm">
                     Add Recipe Item
                   </Text>
@@ -1100,11 +1101,11 @@ const ItemForm: React.FC<ItemFormProps> = ({
         </ScrollView>
 
         {/* Preview Section - Right Side */}
-        <View className="w-80 border-l border-gray-700 bg-[#303030] p-4">
+        <View className="w-80 border-l border-gray-700 bg-surface p-4">
           <Text className="text-xl font-semibold text-white mb-3">Preview</Text>
 
           <View className="items-center">
-            <View className="w-full rounded-2xl mb-2 bg-[#303030] border border-gray-600">
+            <View className="w-full rounded-2xl mb-2 bg-surface border border-gray-600">
               <View className="flex-col items-center gap-1.5 overflow-hidden rounded-lg">
                 {getImageSource() ? (
                   <Image
@@ -1113,7 +1114,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   />
                 ) : (
                   <View className="w-full h-40 rounded-xl items-center justify-center">
-                    <Utensils color="#9ca3af" size={36} />
+                    <Utensils color={colors.label} size={36} />
                   </View>
                 )}
                 <View className="w-full px-3 pb-3">
@@ -1140,7 +1141,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </View>
 
             <View className="w-full mt-3 gap-y-2">
-              <View className="bg-[#212121] p-3 rounded-lg">
+              <View className="bg-panel p-3 rounded-lg">
                 <Text className="text-lg text-gray-400">Categories</Text>
                 {formData.categories.length > 0 ? (
                   <View className="flex-row flex-wrap gap-1.5 mt-1">
@@ -1162,7 +1163,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 )}
               </View>
 
-              <View className="bg-[#212121] p-3 rounded-lg">
+              <View className="bg-panel p-3 rounded-lg">
                 <Text className="text-lg text-gray-400">Available For</Text>
                 <View className="flex-row flex-wrap gap-1.5 mt-1">
                   {formData.meal.map((meal, index) => (
@@ -1177,7 +1178,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
               </View>
 
               {formData.modifiers.length > 0 && (
-                <View className="bg-[#212121] p-3 rounded-lg">
+                <View className="bg-panel p-3 rounded-lg">
                   <Text className="text-lg text-gray-400">Modifiers</Text>
                   <View className="flex-row flex-wrap gap-1.5 mt-1">
                     {formData.modifiers.map((modifierId, index) => {
@@ -1200,7 +1201,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
               )}
 
               {formData.description && (
-                <View className="bg-[#212121] p-3 rounded-lg">
+                <View className="bg-panel p-3 rounded-lg">
                   <Text className="text-lg text-gray-400">Description</Text>
                   <Text className="text-xl text-white mt-1">
                     {formData.description}
@@ -1208,7 +1209,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 </View>
               )}
 
-              <View className="bg-[#212121] p-3 rounded-lg">
+              <View className="bg-panel p-3 rounded-lg">
                 <Text className="text-lg text-gray-400">Status</Text>
                 <Text
                   className={`text-xl font-medium ${
@@ -1230,10 +1231,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
         onRequestClose={() => setShowConfirmation(false)}
       >
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
-          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+          <View className="bg-surface rounded-2xl p-4 w-full max-w-md border border-gray-600">
             <View className="items-center mb-4">
               <View className="w-16 h-16 bg-blue-600/20 rounded-full items-center justify-center mb-3">
-                <Save size={32} color="#60A5FA" />
+                <Save size={32} color={colors.info} />
               </View>
               <Text className="text-2xl font-bold text-white text-center">
                 {title.includes("Edit") ? "Save Changes?" : "Save Menu Item?"}
@@ -1245,7 +1246,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
               </Text>
             </View>
 
-            <View className="bg-[#212121] rounded-lg p-4 mb-4">
+            <View className="bg-panel rounded-lg p-4 mb-4">
               <View className="flex-row items-center gap-3">
                 {getImageSource() ? (
                   <Image
@@ -1254,7 +1255,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   />
                 ) : (
                   <View className="w-14 h-14 rounded-lg bg-gray-600 items-center justify-center">
-                    <Utensils color="#9ca3af" size={20} />
+                    <Utensils color={colors.label} size={20} />
                   </View>
                 )}
                 <View className="flex-1">
@@ -1279,7 +1280,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setShowConfirmation(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
+                className="flex-1 bg-panel border border-gray-600 rounded-lg py-3 items-center"
               >
                 <Text className="text-xl text-gray-300 font-medium">
                   Cancel
@@ -1325,8 +1326,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
         index={-1}
         snapPoints={inventorySnapPoints}
         enablePanDownToClose={true}
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderInventoryBackdrop}
       >
         <View className="flex-1">
@@ -1349,17 +1349,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 inventorySelectionSheetRef.current?.close();
               }}
             >
-              <X color="#9CA3AF" size={20} />
+              <X color={colors.label} size={20} />
             </TouchableOpacity>
           </View>
 
           <View className="p-3 border-b border-gray-700">
-            <View className="flex-row items-center bg-[#212121] rounded-lg px-2.5 py-1.5">
+            <View className="flex-row items-center bg-panel rounded-lg px-2.5 py-1.5">
               <TextInput
                 value={inventorySearchQuery}
                 onChangeText={(text) => setInventorySearchQuery(text.trim())}
                 placeholder="Search inventory items..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 className="flex-1 text-white ml-2 h-16 text-base"
               />
             </View>

@@ -30,6 +30,7 @@ import React, {
     useState,
 } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 // Helper to format address for display (handles JSON or string)
 export const formatAddress = (address: string | null | undefined) => {
@@ -293,8 +294,7 @@ const CustomerSheet: React.FC = () => {
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={handleClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-      backgroundStyle={{ backgroundColor: "#212121" }}
+      {...bottomSheetTheme}
       backdropComponent={(props) => (
         <BottomSheetBackdrop
           {...props}
@@ -303,7 +303,7 @@ const CustomerSheet: React.FC = () => {
         />
       )}
     >
-      <BottomSheetView className="flex-1 bg-[#212121]">
+      <BottomSheetView className="flex-1 bg-panel">
         {/* Header */}
         <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
           <View className="flex-row items-center gap-x-3">
@@ -330,7 +330,7 @@ const CustomerSheet: React.FC = () => {
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={handleClose} className="p-2">
-              <X color="#9CA3AF" size={24} />
+              <X color={colors.label} size={24} />
             </TouchableOpacity>
           </View>
         </View>
@@ -339,18 +339,18 @@ const CustomerSheet: React.FC = () => {
           <View className="flex-1">
             {/* Unified Search Bar */}
             <View className="p-4">
-              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 h-14">
-                <Search size={22} color="#9CA3AF" />
+              <View className="flex-row items-center bg-surface border border-gray-600 rounded-lg px-3 h-14">
+                <Search size={22} color={colors.label} />
                 <BottomSheetTextInput
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   placeholder="Search by Name, Phone, or Address..."
-                  placeholderTextColor="#6B7280"
+                  placeholderTextColor={colors.muted}
                   className="flex-1 ml-3 text-white text-lg"
                 />
                 {searchQuery.length > 0 && (
                   <TouchableOpacity onPress={() => setSearchQuery("")}>
-                    <X size={20} color="#6B7280" />
+                    <X size={20} color={colors.muted} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -418,8 +418,8 @@ const CustomerSheet: React.FC = () => {
                   value={newName}
                   onChangeText={setNewName}
                   placeholder="e.g. John Doe"
-                  placeholderTextColor="#6B7280"
-                  className="bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
+                  placeholderTextColor={colors.muted}
+                  className="bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
                 />
               </View>
 
@@ -433,8 +433,8 @@ const CustomerSheet: React.FC = () => {
                   placeholder="(555) - 555 - 5555"
                   maxLength={20}
                   keyboardType="phone-pad"
-                  placeholderTextColor="#6B7280"
-                  className="bg-[#303030] border border-blue-500 rounded-lg h-14 px-4 text-white text-lg"
+                  placeholderTextColor={colors.muted}
+                  className="bg-surface border border-blue-500 rounded-lg h-14 px-4 text-white text-lg"
                 />
               </View>
 
@@ -447,8 +447,8 @@ const CustomerSheet: React.FC = () => {
                   value={street}
                   onChangeText={setStreet}
                   placeholder="Street Address"
-                  placeholderTextColor="#6B7280"
-                  className="bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg mb-3"
+                  placeholderTextColor={colors.muted}
+                  className="bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg mb-3"
                 />
 
                 <View className="flex-row gap-x-3 mb-3">
@@ -456,15 +456,15 @@ const CustomerSheet: React.FC = () => {
                     value={city}
                     onChangeText={setCity}
                     placeholder="City"
-                    placeholderTextColor="#6B7280"
-                    className="flex-[2] bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
+                    placeholderTextColor={colors.muted}
+                    className="flex-[2] bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
                   />
                   <BottomSheetTextInput
                     value={stateCode}
                     onChangeText={setStateCode}
                     placeholder="State"
-                    placeholderTextColor="#6B7280"
-                    className="flex-[1] bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
+                    placeholderTextColor={colors.muted}
+                    className="flex-[1] bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
                   />
                 </View>
 
@@ -473,8 +473,8 @@ const CustomerSheet: React.FC = () => {
                   onChangeText={setZip}
                   placeholder="Zip Code"
                   keyboardType="numeric"
-                  placeholderTextColor="#6B7280"
-                  className="w-1/2 bg-[#303030] border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
+                  placeholderTextColor={colors.muted}
+                  className="w-1/2 bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
                 />
               </View>
 

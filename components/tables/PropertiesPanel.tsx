@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import debounce from "lodash.debounce";
@@ -59,7 +60,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         onPress={clearSelection}
         className="absolute -top-2 -right-2 bg-zinc-900/80 rounded-full p-1.5 z-10"
       >
-        <X size={18} color="#E5E5E5" />
+        <X size={18} color={colors.heading} />
       </TouchableOpacity>
 
       <View className="flex-row justify-between items-center pb-3 border-b border-zinc-700">

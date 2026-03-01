@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import type { TriggerRef } from "@rn-primitives/select";
@@ -80,7 +81,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
   return (
     <View className="flex-row justify-between items-start gap-4">
-      <View className="bg-[#303030] w-full p-1.5 rounded-xl flex-shrink flex flex-row items-center justify-between">
+      <View className="bg-background w-full p-1.5 rounded-xl flex-shrink flex flex-row items-center justify-between">
         <View className="flex-1 flex-row items-center gap-2">
           <ScrollView
             horizontal
@@ -99,26 +100,26 @@ const MenuControls: React.FC<MenuControlsProps> = ({
               const hasOverride = temporaryActiveCategories.includes(tab);
 
               const isAvailable = isNormallyAvailable || hasOverride;
-              const dotColor = isAvailable ? "#10B981" : "#EF4444";
+              const dotColor = isAvailable ? colors.success : colors.danger;
 
               return (
                 <TouchableOpacity
                   key={cat.id || tab} // Use ID if available
                   onPress={() => handleCategoryPress(tab, isAvailable)}
-                  className={`py-2 px-4 rounded-lg flex-row items-center gap-2 ${
+                  className={`py-2 px-4 rounded-full flex-row items-center gap-2 ${
                     activeCategory === tab
-                      ? "bg-[#212121]"
+                      ? "bg-card font-semibold "
                       : !isAvailable
                       ? "bg-gray-700 opacity-60"
                       : "bg-transparent"
                   }`}
                 >
-                  <View
+                  {/* <View
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: dotColor }}
-                  />
+                  /> */}
                   <Text
-                    className={`font-semibold text-lg ${
+                    className={` text-lg ${
                       activeCategory === tab
                         ? "text-blue-400"
                         : !isAvailable
@@ -131,7 +132,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   {isScheduled && !isNormallyAvailable && (
                     <Clock
                       size={14}
-                      color={hasOverride ? "#60A5FA" : "#9CA3AF"}
+                      color={hasOverride ? colors.info : colors.label}
                     />
                   )}
                 </TouchableOpacity>

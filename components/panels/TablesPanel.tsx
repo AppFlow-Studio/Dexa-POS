@@ -2,6 +2,7 @@ import TableListItem from "@/components/tables/TableListItem";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { colors } from "@/lib/theme";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import React, { useMemo, useState } from "react";
@@ -38,9 +39,9 @@ const Section: React.FC<SectionProps> = ({
         className="flex-row items-center w-full p-2 text-sm font-semibold text-white hover:bg-gray-800 rounded-md"
       >
         {isOpen ? (
-          <ChevronDown size={16} color="#9CA3AF" className="mr-2" />
+          <ChevronDown size={16} color={colors.label} className="mr-2" />
         ) : (
-          <ChevronRight size={16} color="#9CA3AF" className="mr-2" />
+          <ChevronRight size={16} color={colors.label} className="mr-2" />
         )}
         <Text className="text-white text-base font-semibold">{title}</Text>
       </TouchableOpacity>
@@ -150,7 +151,7 @@ const TablesPanel: React.FC = () => {
   };
 
   return (
-    <View className="h-full flex-col bg-[#292929]">
+    <View className="h-full flex-col bg-panel">
       {/* Capacity Info */}
       <View className="p-4 border-b border-gray-700">
         <View className="flex-row items-center justify-between text-xs text-gray-400 font-medium">

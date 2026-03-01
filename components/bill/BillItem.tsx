@@ -1,4 +1,5 @@
 import { CartItem } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import {
   selectSetSelectedItemPosition,
   useModifierSidebarStore,
@@ -35,11 +36,11 @@ const DELETE_BUTTON_WIDTH = 90;
 
 function getKitchenBorderColor(kitchenStatus?: string): string | undefined {
   switch (kitchenStatus) {
-    case "sent":      return "#F59E0B";
-    case "preparing": return "#FB923C";
-    case "ready":     return "#4ADE80";
-    case "served":    return "#046c00";
-    default:          return '#4B5563';
+    case "sent":      return colors.orderPreparing;
+    case "preparing": return colors.paymentPartialRefund;
+    case "ready":     return colors.orderReady;
+    case "served":    return colors.success;
+    default:          return colors.muted;
   }
 }
 
@@ -345,15 +346,16 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           ? "border-2 border-blue-400 bg-blue-500/5"
           : isVoided
             ? "border bg-[#2a2020] border-red-900/50 opacity-60"
-            : "bg-[#303030]"
+            : ""
       }`}
       style={[
         !isActive && !isVoided
           ? {
+              backgroundColor: colors.card,
               borderWidth: 1,
-              borderRightColor: '#4B5563',
-              borderTopColor : '#4B5563',
-              borderBottomColor : '#4B5563',
+              borderRightColor: colors.border,
+              borderTopColor : colors.border,
+              borderBottomColor : colors.border,
               ...(kitchenBorderColor
                 ? { borderLeftWidth: 3, borderLeftColor: kitchenBorderColor }
                 : {}),
@@ -361,7 +363,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
           : undefined,
         isActive
           ? {
-              shadowColor: "#3B82F6",
+              shadowColor: colors.info,
               shadowOffset: { width: 0, height: 0 },
               shadowOpacity: 0.5,
               shadowRadius: 8,
@@ -386,8 +388,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
       <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
         <Animated.View
-          style={animatedStyle}
-          className={isVoided ? "bg-[#2a2020]" : "bg-[#303030] z-20"}
+          style={[animatedStyle, !isVoided ? { backgroundColor: colors.card } : undefined]}
+          className={isVoided ? "bg-[#2a2020]" : "z-20"}
         >
           <TouchableOpacity
             onPress={isVoided ? undefined : handleNotesPress}
@@ -420,7 +422,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   {!isVoided && !paymentCoverage.isFullyRefunded && !(paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid) && paymentCoverage.isFullyPaid && (
                     <View className="flex-row items-center bg-green-600/20 px-2 py-0.5 rounded mr-2">
                       {paymentCoverage.primaryMethod === "Cash" && !paymentCoverage.isSplitMethod && (
-                        <Banknote size={12} color="#4ADE80" style={{ marginRight: 3 }} />
+                        <Banknote size={12} color={colors.success} style={{ marginRight: 3 }} />
                       )}
                       <Text className="text-green-400 text-xs font-bold">
                         PAID {paymentCoverage.methodLabel}
@@ -434,6 +436,13 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                       </Text>
                     </View>
                   )}
+                   <Text
+                    className={`text-sm mr-2 rounded-md bg-gray-900 px-2 py-1 ${
+                      isVoided ? "text-gray-600 line-through" : "text-gray-300"
+                    }`}
+                  >
+                    {item.quantity}
+                  </Text>
                   <Text
                     className={`font-semibold text-base ${
                       isVoided ? "text-gray-500 line-through" : "text-white"
@@ -445,23 +454,16 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                   {syncStatus === "pending" || syncStatus === "syncing" ? (
                     <ActivityIndicator
                       size={10}
-                      color="#60A5FA"
+                      color={colors.info}
                       style={{ marginLeft: 12 }}
                     />
                   ) : syncStatus === "failed" ? (
                     <AlertCircle
                       size={16}
-                      color="#EF4444"
+                      color={colors.danger}
                       style={{ marginLeft: 6 }}
                     />
                   ) : null}
-                  <Text
-                    className={`text-sm ml-3 ${
-                      isVoided ? "text-gray-600 line-through" : "text-gray-300"
-                    }`}
-                  >
-                    {item.quantity} X
-                  </Text>
                 </View>
                 {isVoided && item.void_reason && (
                   <Text className="text-red-400/70 text-xs mt-1 italic">

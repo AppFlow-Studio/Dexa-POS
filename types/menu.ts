@@ -189,6 +189,7 @@ export interface MenuWithCategories {
   is_active: boolean;
   is_global: boolean; // location_id IS NULL
   is_location_owned: boolean; // location_id IS NOT NULL
+  display_order?: number | null;
 
   created_at: string;
   updated_at: string;

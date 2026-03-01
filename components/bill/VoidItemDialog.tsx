@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { X } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -89,12 +90,12 @@ const VoidItemDialog: React.FC<VoidItemDialogProps> = ({
             style={{ flex: 1 }}
             className="justify-center items-center bg-black/70 px-4"
           >
-            <View className="w-full max-w-md bg-[#2a2a2a] rounded-2xl overflow-hidden">
+            <View className="w-full max-w-md bg-surface rounded-2xl overflow-hidden">
               {/* Header */}
-              <View className="flex-row items-center justify-between p-4 border-b border-[#444]">
+              <View className="flex-row items-center justify-between p-4 border-b border-border">
                 <Text className="text-xl font-bold text-white">Void Item</Text>
                 <TouchableOpacity onPress={handleCancel} className="p-1">
-                  <X size={24} color="#999" />
+                  <X size={24} color={colors.muted} />
                 </TouchableOpacity>
               </View>
 
@@ -132,7 +133,7 @@ const VoidItemDialog: React.FC<VoidItemDialogProps> = ({
                         className={`px-4 py-2 rounded-full border ${
                           selectedReason === reason
                             ? "bg-red-600 border-red-500"
-                            : "bg-[#333] border-[#555]"
+                            : "bg-surface border-border"
                         }`}
                       >
                         <Text
@@ -153,7 +154,7 @@ const VoidItemDialog: React.FC<VoidItemDialogProps> = ({
                       className={`px-4 py-2 rounded-full border ${
                         isOtherSelected
                           ? "bg-red-600 border-red-500"
-                          : "bg-[#333] border-[#555]"
+                          : "bg-surface border-border"
                       }`}
                     >
                       <Text
@@ -171,9 +172,9 @@ const VoidItemDialog: React.FC<VoidItemDialogProps> = ({
                   {/* Custom reason input */}
                   {isOtherSelected && (
                     <TextInput
-                      className="bg-[#1a1a1a] border border-[#444] rounded-lg p-3 text-white text-base mb-4"
+                      className="bg-panel border border-border rounded-lg p-3 text-white text-base mb-4"
                       placeholder="Enter reason..."
-                      placeholderTextColor="#666"
+                      placeholderTextColor={colors.muted}
                       value={customReason}
                       onChangeText={setCustomReason}
                       autoFocus
@@ -186,10 +187,10 @@ const VoidItemDialog: React.FC<VoidItemDialogProps> = ({
               </ScrollView>
 
               {/* Actions */}
-              <View className="flex-row border-t border-[#444]">
+              <View className="flex-row border-t border-border">
                 <TouchableOpacity
                   onPress={handleCancel}
-                  className="flex-1 py-4 items-center border-r border-[#444]"
+                  className="flex-1 py-4 items-center border-r border-border"
                 >
                   <Text className="text-gray-400 text-base font-semibold">
                     Cancel

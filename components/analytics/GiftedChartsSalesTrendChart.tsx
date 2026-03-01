@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { format } from "date-fns";
 import { JSX } from "react";
@@ -51,7 +52,7 @@ export default function GiftedChartsSalesTrendChart() {
 
   if (isLoading) {
     return (
-      <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+      <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
         <Text className="text-gray-400 text-lg">Loading chart...</Text>
       </View>
     );
@@ -59,7 +60,7 @@ export default function GiftedChartsSalesTrendChart() {
 
   if (error) {
     return (
-      <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+      <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
         <Text className="text-red-400 text-lg">Error loading chart</Text>
       </View>
     );
@@ -67,14 +68,14 @@ export default function GiftedChartsSalesTrendChart() {
 
   if (!formattedData || formattedData.length === 0) {
     return (
-      <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+      <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
         <Text className="text-gray-400 text-lg">No data available</Text>
       </View>
     );
   }
 
   return (
-    <View className="h-[300px] w-full flex justify-end bg-[#303030] rounded-2xl border border-gray-600 p-4 overflow-hidden pb-8">
+    <View className="h-[300px] w-full flex justify-end bg-panel rounded-2xl border border-border p-4 overflow-hidden pb-8">
       <LineChart
         data={formattedData}
         areaChart
@@ -85,11 +86,11 @@ export default function GiftedChartsSalesTrendChart() {
         spacing={dataSpacing}
         animateOnDataChange
         animationDuration={1000}
-        startFillColor="#60a5fa"
-        endFillColor="#60a5fa33"
+        startFillColor={colors.info}
+        endFillColor={`${colors.info}33`}
         startOpacity={0.8}
         endOpacity={0.3}
-        color="#60a5fa"
+        color={colors.info}
         thickness={2}
         pointerConfig={{
           pointerStripHeight: 160,
@@ -117,13 +118,13 @@ export default function GiftedChartsSalesTrendChart() {
             );
           },
         }}
-        xAxisColor={"#374151"}
+        xAxisColor={colors.border}
         xAxisLabelTextStyle={{ color: "white" }}
         xAxisLabelTexts={xAxisLabels.filter((l) => l)}
         rotateLabel
         xAxisIndicesHeight={10}
         xAxisIndicesColor="white"
-        yAxisColor={"#374151"}
+        yAxisColor={colors.border}
         yAxisTextStyle={{ color: "white" }}
         noOfSections={4}
         hideDataPoints

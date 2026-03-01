@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { GripVertical } from "lucide-react-native";
 import React from "react";
@@ -81,7 +82,7 @@ const DraggableMenuItem = React.memo(({
   return (
     <Animated.View
       style={animatedStyle}
-      className={`flex-row items-center justify-between bg-[#303030] border border-gray-600 rounded-lg px-3 py-2 mb-2 ${
+      className={`flex-row items-center justify-between bg-surface border border-gray-600 rounded-lg px-3 py-2 mb-2 ${
         isEditable ? "pr-2" : ""
       }`}
     >
@@ -89,7 +90,7 @@ const DraggableMenuItem = React.memo(({
         {isEditable && (
           <GestureDetector gesture={panGesture}>
             <View className="p-2 -ml-2 cursor-grab">
-              <GripVertical size={20} color="#6B7280" />
+              <GripVertical size={20} color={colors.muted} />
             </View>
           </GestureDetector>
         )}

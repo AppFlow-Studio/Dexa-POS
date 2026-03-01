@@ -8,6 +8,7 @@ import BottomSheet, {
 import { Package, Search, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 export type RecipeIngredientSheetRef = BottomSheet;
 
@@ -59,12 +60,11 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose={true}
-        backgroundStyle={{ backgroundColor: "#212121" }}
-        handleIndicatorStyle={{ backgroundColor: "#4B5563" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
         topInset={60}
       >
-        <BottomSheetView className="flex-1 w-full bg-[#212121]">
+        <BottomSheetView className="flex-1 w-full bg-screen">
           {/* Header */}
           <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-800">
             <View>
@@ -79,31 +79,31 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
               onPress={() => (ref as any)?.current?.close?.()}
               className="p-2 bg-gray-800 rounded-full"
             >
-              <X size={20} color="#9CA3AF" />
+              <X size={20} color={colors.label} />
             </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
-          <View className="p-4 bg-[#212121]">
-            <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-xl px-3 py-2">
-              <Search size={20} color="#9CA3AF" />
+          <View className="p-4 bg-screen">
+            <View className="flex-row items-center bg-panel border border-border rounded-xl px-3 py-2">
+              <Search size={20} color={colors.label} />
               <BottomSheetTextInput
                 value={search}
                 onChangeText={setSearch}
                 placeholder="Search by name or category..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 className="flex-1 ml-3 text-white text-base h-10"
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => setSearch("")}>
-                  <X size={16} color="#9CA3AF" />
+                  <X size={16} color={colors.label} />
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
           {/* List */}
-          <View className="flex-1 w-full bg-[#212121]">
+          <View className="flex-1 w-full bg-screen">
             {filtered.length === 0 ? (
               <View className="flex-1 items-center justify-center p-8 opacity-50">
                 <Package size={48} color="#4B5563" />
@@ -133,8 +133,8 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
                         isSelected
                           ? "bg-blue-900/20 border-blue-500"
                           : isAdded
-                          ? "bg-[#252525] border-gray-800 opacity-50"
-                          : "bg-[#303030] border-gray-700"
+                          ? "bg-screen border-gray-800 opacity-50"
+                          : "bg-panel border-border"
                       }`}
                     >
                       <View className="flex-row items-center justify-between">

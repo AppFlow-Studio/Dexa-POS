@@ -1,4 +1,5 @@
 const { hairlineWidth } = require("nativewind/theme");
+const { colors: themeColors } = require("./lib/theme-colors");
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -8,25 +9,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // ── CSS-variable-driven (components/ui/ primitives) ──
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
-        background: {
-          100: "#FAFAFA",
-          200: "#F5F5F5",
-          300: "#F1F1F1",
-          400: "#DCDCDC",
-          500: "#BEBEBE",
-          600: "#A0A0A0",
-        },
         foreground: "hsl(var(--foreground))",
         primary: {
-          100: "#EAF1FD",
-          200: "#C0D6FA",
-          300: "#95BBF5",
-          400: "#659AF0",
-          500: "#3D72C2",
-          600: "#2A5291",
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -41,12 +31,8 @@ module.exports = {
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
-          100: "#E6E6EB",
-          200: "#A5A5B5",
-          300: "#5D5D73",
-          400: "#2F2F3E",
-          500: "#1C1C28",
-          600: "#11111A",
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -56,6 +42,28 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        background: "hsl(var(--background))",
+
+        // ── Semantic palette (direct hex from theme-colors.js) ──
+        screen: themeColors.screen,
+        panel: themeColors.panel,
+        surface: themeColors.card,
+        inset: themeColors.inset,
+
+        heading: themeColors.heading,
+        label: themeColors.label,
+        hint: themeColors.muted,
+
+        teal: {
+          DEFAULT: themeColors.teal,
+          muted: themeColors.tealMuted,
+        },
+        success: themeColors.success,
+        warning: themeColors.warning,
+        danger: themeColors.danger,
+        info: themeColors.info,
+
+        onSolid: themeColors.onSolid,
       },
       borderWidth: {
         hairline: hairlineWidth(),

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import {
   selectIsFullscreen,
   useModifierSidebarStore
@@ -109,7 +110,7 @@ const ModifierScreenOverlay: React.FC = () => {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#212121",
+    backgroundColor: colors.card,
     zIndex: 9999,
     elevation: 100, // Android shadow/layering
   },

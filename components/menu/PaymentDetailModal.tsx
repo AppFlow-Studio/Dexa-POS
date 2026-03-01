@@ -1,5 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import type { OrderPaymentItemCoverage } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
@@ -71,7 +72,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       case "primary":
         return "bg-blue-500/10 border-blue-500/50";
       default:
-        return "bg-[#2a2a2a] border-gray-600 active:bg-gray-700";
+        return "bg-surface border-gray-600 active:bg-gray-700";
     }
   };
 
@@ -129,10 +130,10 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   label,
   icon,
   isNegative = false,
-  accentColor = "#3B82F6",
+  accentColor = colors.info,
 }) => (
   <View
-    className="flex-1 bg-[#1f1f1f] rounded-xl p-4 border border-gray-800"
+    className="flex-1 bg-panel rounded-xl p-4 border border-gray-800"
     style={{ borderLeftWidth: 3, borderLeftColor: accentColor, minWidth: 160 }}
   >
     <View className="flex-row items-center justify-between mb-3">
@@ -319,7 +320,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
             <View
               className="absolute top-0 left-0 right-0 h-1"
               style={{
-                backgroundColor: "#3B82F6",
+                backgroundColor: colors.info,
                 opacity: 0.8,
               }}
             />
@@ -360,7 +361,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   onPress={onClose}
                   className="w-9 h-9 rounded-full bg-gray-800 items-center justify-center"
                 >
-                  <X size={18} color="#9CA3AF" />
+                  <X size={18} color={colors.label} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -379,21 +380,21 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   amount={paymentSummary.orderTotal}
                   cashAmount={paymentSummary.orderCashTotal}
                   label="Order Total"
-                  icon={<DollarSign size={20} color="#3B82F6" />}
-                  accentColor="#3B82F6"
+                  icon={<DollarSign size={20} color={colors.info} />}
+                  accentColor={colors.info}
                 />
                 <SummaryCard
                   amount={paymentSummary.refunds}
                   label="Refunds"
-                  icon={<RefreshCcw size={18} color="#EF4444" />}
+                  icon={<RefreshCcw size={18} color={colors.danger} />}
                   isNegative
-                  accentColor="#EF4444"
+                  accentColor={colors.danger}
                 />
                 <SummaryCard
                   amount={paymentSummary.collected}
                   label="Collected"
-                  icon={<CircleDollarSign size={20} color="#22C55E" />}
-                  accentColor="#22C55E"
+                  icon={<CircleDollarSign size={20} color={colors.success} />}
+                  accentColor={colors.success}
                 />
               </View>
             </View>
@@ -478,11 +479,11 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                             }`}
                           >
                             {payment.isVoided ? (
-                              <X size={14} color="#EF4444" />
+                              <X size={14} color={colors.danger} />
                             ) : payment.method === "Card" ? (
-                              <CreditCard size={14} color="#9CA3AF" />
+                              <CreditCard size={14} color={colors.label} />
                             ) : (
-                              <DollarSign size={14} color="#22C55E" />
+                              <DollarSign size={14} color={colors.success} />
                             )}
                           </View>
                           <View className="flex-1">
@@ -512,7 +513,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                               </Text>
                               {hasItemsCovered && (
                                 <View className="flex-row items-center ml-2">
-                                  <Package size={10} color="#6B7280" />
+                                  <Package size={10} color={colors.muted} />
                                   <Text className="text-xs text-gray-500 ml-1">
                                     {payment.itemsCovered!.length} item
                                     {payment.itemsCovered!.length !== 1
@@ -522,13 +523,13 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                                   {isExpanded ? (
                                     <ChevronUp
                                       size={12}
-                                      color="#6B7280"
+                                      color={colors.muted}
                                       style={{ marginLeft: 4 }}
                                     />
                                   ) : (
                                     <ChevronDown
                                       size={12}
-                                      color="#6B7280"
+                                      color={colors.muted}
                                       style={{ marginLeft: 4 }}
                                     />
                                   )}
@@ -586,9 +587,9 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
 
                       {/* Expanded Items Section */}
                       {isExpanded && hasItemsCovered && (
-                        <View className="bg-[#1a1a1a] rounded-lg mx-2 mb-3 p-3 border border-gray-800">
+                        <View className="bg-panel rounded-lg mx-2 mb-3 p-3 border border-gray-800">
                           <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
-                            <Package size={12} color="#6B7280" />
+                            <Package size={12} color={colors.muted} />
                             <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase tracking-wide">
                               Items Covered
                             </Text>
@@ -666,10 +667,10 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
           {/* ============================================================ */}
           {/* ACTION BUTTONS - Icon + Label, proper spacing */}
           {/* ============================================================ */}
-          <View className="px-6 py-5 border-t border-gray-800 bg-[#1a1a1a]">
+          <View className="px-6 py-5 border-t border-gray-800 bg-panel">
             <View className="flex-row gap-3">
               <ActionButton
-                icon={<RotateCcw size={18} color="#9CA3AF" />}
+                icon={<RotateCcw size={18} color={colors.label} />}
                 label="Re-open"
                 onPress={handleReOpenOrder}
                 variant="default"
@@ -678,7 +679,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 icon={
                   <DollarSign
                     size={18}
-                    color={hasTips ? "#9CA3AF" : "#4B5563"}
+                    color={hasTips ? colors.label : "#4B5563"}
                   />
                 }
                 label="Adjust Tip"
@@ -687,13 +688,13 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 disabled={!hasTips}
               />
               <ActionButton
-                icon={<RefreshCcw size={18} color="#EF4444" />}
+                icon={<RefreshCcw size={18} color={colors.danger} />}
                 label="Refund"
                 onPress={handleRefund}
                 variant="danger"
               />
               <ActionButton
-                icon={<Printer size={18} color="#22C55E" />}
+                icon={<Printer size={18} color={colors.success} />}
                 label="Receipt"
                 onPress={handleIssueReceipt}
                 variant="success"

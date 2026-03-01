@@ -141,7 +141,7 @@ const AddMenuItemScreen: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <ItemForm
         onSubmit={handleSubmit}
         isSaving={isSaving}

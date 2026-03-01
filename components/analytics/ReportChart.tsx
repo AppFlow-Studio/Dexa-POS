@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { format } from "date-fns";
 import React from "react";
 import { Dimensions, Text, View } from "react-native";
@@ -34,7 +35,7 @@ export default function ReportChart({
 }: ReportChartProps) {
   if (!data || data.length === 0) {
     return (
-      <View className="h-64 bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center p-4">
+      <View className="h-64 bg-panel rounded-2xl border border-border items-center justify-center p-4">
         <Text className="text-gray-400 text-lg">No data available</Text>
       </View>
     );
@@ -78,7 +79,7 @@ export default function ReportChart({
             width={chartWidth}
             disableScroll
             spacing={20}
-            frontColor={"#60a5fa"}
+            frontColor={colors.info}
             rotateLabel
             xAxisLabelTextStyle={{
               color: "white",
@@ -86,9 +87,9 @@ export default function ReportChart({
               textAlign: "center",
             }}
             yAxisTextStyle={{ color: "white" }}
-            xAxisColor={"#374151"}
-            yAxisColor={"#374151"}
-            rulesColor={"#374151"}
+            xAxisColor={colors.border}
+            yAxisColor={colors.border}
+            rulesColor={colors.border}
             onPress={(item: any) => {
               if (onDataPointPress) {
                 onDataPointPress(item.originalData);
@@ -144,17 +145,17 @@ export default function ReportChart({
             disableScroll
             focusEnabled
             spacing={dataSpacing}
-            startFillColor="#60a5fa"
-            endFillColor="#60a5fa33"
+            startFillColor={colors.info}
+            endFillColor={`${colors.info}33`}
             startOpacity={0.8}
             endOpacity={0.3}
-            color="#60a5fa"
+            color={colors.info}
             thickness={2}
             xAxisLabelTextStyle={{ color: "white" }}
             yAxisTextStyle={{ color: "white" }}
-            xAxisColor={"#374151"}
-            yAxisColor={"#374151"}
-            rulesColor={"#374151"}
+            xAxisColor={colors.border}
+            yAxisColor={colors.border}
+            rulesColor={colors.border}
             hideDataPoints
             rotateLabel
             xAxisLabelTexts={xAxisLabels}
@@ -215,7 +216,7 @@ export default function ReportChart({
   };
 
   return (
-    <View className="bg-[#303030] min-h-[350px] overflow-hidden">
+    <View className="bg-panel min-h-[350px] overflow-hidden">
       {title && (
         <Text className="text-white text-lg font-semibold mb-4">{title}</Text>
       )}

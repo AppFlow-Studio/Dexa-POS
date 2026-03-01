@@ -5,6 +5,7 @@ import BottomSheet, {
 import { CheckCircle2, Clock, XCircle } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 const MetricCard = ({
   label,
@@ -24,7 +25,7 @@ const MetricCard = ({
         ? "text-red-400"
         : "text-white";
   return (
-    <View className="flex-1 bg-[#212121] p-4 rounded-xl border border-gray-700">
+    <View className="flex-1 bg-panel p-4 rounded-xl border border-gray-700">
       <View className="flex-row items-center gap-2 mb-1">
         {icon}
         <Text className="text-sm text-gray-400">{label}</Text>
@@ -73,8 +74,7 @@ const OnTimeDrawer = forwardRef<BottomSheet>((props, ref) => {
           appearsOnIndex={0}
         />
       )}
-      backgroundStyle={{ backgroundColor: "#212121" }}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      {...bottomSheetTheme}
     >
       <BottomSheetScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
         <Text className="text-2xl font-bold text-white">
@@ -105,16 +105,16 @@ const OnTimeDrawer = forwardRef<BottomSheet>((props, ref) => {
             label="On Time"
             value="47 shifts"
             variant="success"
-            icon={<CheckCircle2 size={16} color="#22c55e" />}
+            icon={<CheckCircle2 size={16} color={colors.success} />}
           />
           <MetricCard
             label="Late"
             value="3 shifts"
             variant="danger"
-            icon={<XCircle size={16} color="#ef4444" />}
+            icon={<XCircle size={16} color={colors.danger} />}
           />
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-4">
             Recent Clock-Ins
           </Text>
@@ -122,13 +122,13 @@ const OnTimeDrawer = forwardRef<BottomSheet>((props, ref) => {
             {recentShifts.map((shift) => (
               <View
                 key={shift.date}
-                className="flex-row items-center justify-between p-3 bg-[#212121] rounded-lg"
+                className="flex-row items-center justify-between p-3 bg-panel rounded-lg"
               >
                 <View className="flex-row items-center gap-3">
                   {shift.status === "on-time" ? (
-                    <CheckCircle2 size={16} color="#22c55e" />
+                    <CheckCircle2 size={16} color={colors.success} />
                   ) : (
-                    <Clock size={16} color="#ef4444" />
+                    <Clock size={16} color={colors.danger} />
                   )}
                   <View>
                     <Text className="text-sm font-medium text-white">
@@ -148,7 +148,7 @@ const OnTimeDrawer = forwardRef<BottomSheet>((props, ref) => {
             ))}
           </View>
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-2">
             Insights
           </Text>

@@ -11,6 +11,7 @@ import {
   isBefore,
   startOfDay,
 } from "date-fns";
+import { colors } from "@/lib/theme";
 import { Calendar as CalendarIcon } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import {
@@ -163,15 +164,15 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
   };
 
   const calendarTheme = {
-    calendarBackground: "#303030",
+    calendarBackground: colors.panel,
     monthTextColor: "#FFFFFF",
     dayTextColor: "#FFFFFF",
-    textDisabledColor: "#6B7280",
-    selectedDayBackgroundColor: "#3b82f6",
+    textDisabledColor: colors.muted,
+    selectedDayBackgroundColor: colors.info,
     selectedDayTextColor: "#FFFFFF",
-    todayTextColor: "#60A5FA",
-    arrowColor: "#3b82f6",
-    textSectionTitleColor: "#9CA3AF",
+    todayTextColor: colors.info,
+    arrowColor: colors.info,
+    textSectionTitleColor: colors.label,
   };
 
   return (
@@ -179,7 +180,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >
-      <View className="p-4 bg-[#303030] border border-gray-700 rounded-2xl mb-6">
+      <View className="p-4 bg-surface border border-gray-700 rounded-2xl mb-6">
         <View className="flex-row items-center justify-between mb-4">
           <Text className="text-xl font-semibold text-white">
             New PTO Request
@@ -195,19 +196,19 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
               <TouchableOpacity
                 ref={startDateRef}
                 onPress={() => setIsStartDatePickerOpen(true)}
-                className="p-3 h-14 bg-[#212121] border rounded-lg flex-row justify-between items-center border-gray-600"
+                className="p-3 h-14 bg-panel border rounded-lg flex-row justify-between items-center border-gray-600"
               >
                 <Text className="text-white">
                   {startDate ? format(startDate, "yyyy-MM-dd") : "Select Date"}
                 </Text>
-                <CalendarIcon size={16} color="#9CA3AF" />
+                <CalendarIcon size={16} color={colors.label} />
               </TouchableOpacity>
               <Popover
                 from={startDateRef as unknown as React.RefObject<RNView>}
                 isVisible={isStartDatePickerOpen}
                 onRequestClose={() => setIsStartDatePickerOpen(false)}
               >
-                <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
+                <View className="w-96 bg-surface border-gray-700 z-50 rounded-lg">
                   <Calendar
                     onDayPress={(day) => onDayPress(day, "start")}
                     theme={calendarTheme}
@@ -216,7 +217,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                     markedDates={{
                       [startDate ? format(startDate, "yyyy-MM-dd") : ""]: {
                         selected: true,
-                        selectedColor: "#3b82f6",
+                        selectedColor: colors.info,
                       },
                     }}
                   />
@@ -229,19 +230,19 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
               <TouchableOpacity
                 ref={endDateRef}
                 onPress={() => setIsEndDatePickerOpen(true)}
-                className="p-3 h-14 bg-[#212121] border rounded-lg flex-row justify-between items-center border-gray-600"
+                className="p-3 h-14 bg-panel border rounded-lg flex-row justify-between items-center border-gray-600"
               >
                 <Text className="text-white">
                   {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
                 </Text>
-                <CalendarIcon size={16} color="#9CA3AF" />
+                <CalendarIcon size={16} color={colors.label} />
               </TouchableOpacity>
               <Popover
                 from={endDateRef as unknown as React.RefObject<RNView>}
                 isVisible={isEndDatePickerOpen}
                 onRequestClose={() => setIsEndDatePickerOpen(false)}
               >
-                <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
+                <View className="w-96 bg-surface border-gray-700 z-50 rounded-lg">
                   <Calendar
                     onDayPress={(day) => onDayPress(day, "end")}
                     theme={calendarTheme}
@@ -250,7 +251,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                     markedDates={{
                       [endDate ? format(endDate, "yyyy-MM-dd") : ""]: {
                         selected: true,
-                        selectedColor: "#3b82f6",
+                        selectedColor: colors.info,
                       },
                     }}
                   />
@@ -269,8 +270,8 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
               }}
               placeholder="e.g., 8"
               keyboardType="numeric"
-              placeholderTextColor="#6B7280"
-              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+              placeholderTextColor={colors.muted}
+              className="p-3 bg-panel border border-gray-600 rounded-lg text-white"
             />
           </View>
           <View>
@@ -280,8 +281,8 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
               onChangeText={setNote}
               placeholder="Add any additional details..."
               multiline
-              placeholderTextColor="#6B7280"
-              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white min-h-[80px]"
+              placeholderTextColor={colors.muted}
+              className="p-3 bg-panel border border-gray-600 rounded-lg text-white min-h-[80px]"
             />
           </View>
           <TouchableOpacity

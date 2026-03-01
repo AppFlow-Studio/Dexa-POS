@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Slider from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { colors } from "@/lib/theme";
 import { Map, MapPin, Plus, TrendingUp, Truck } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -26,7 +27,7 @@ const DeliveryManagementScreen = () => {
   const settings = useSettingsStore();
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">
           Delivery Management
@@ -44,19 +45,19 @@ const DeliveryManagementScreen = () => {
       >
         <View className="gap-6">
           {/* Delivery Zones */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Map color="#3b82f6" size={24} />
+                <Map color={colors.info} size={24} />
                 <CardTitle className="text-white">Delivery Zones</CardTitle>
               </View>
             </CardHeader>
             <CardContent className="gap-6">
               {/* Map Placeholder */}
               <View className="w-full h-64 bg-gray-800/50 rounded-lg border-2 border-dashed border-gray-600 items-center justify-center relative overflow-hidden">
-                <View className="absolute inset-0 bg-[#262626] opacity-50" />
+                <View className="absolute inset-0 bg-screen opacity-50" />
                 <View className="items-center z-10">
-                  <MapPin size={40} color="#60a5fa" />
+                  <MapPin size={40} color={colors.info} />
                   <Text className="text-gray-400 font-bold mt-2 text-xs uppercase tracking-wider">
                     [Map View]
                   </Text>
@@ -67,7 +68,7 @@ const DeliveryManagementScreen = () => {
               </View>
 
               {/* Zones Table */}
-              <View className="bg-[#212121] rounded-lg border border-gray-700 overflow-hidden">
+              <View className="bg-screen rounded-lg border border-gray-700 overflow-hidden">
                 <View className="flex-row bg-gray-800/50 p-3 border-b border-gray-700">
                   <Text className="flex-1 text-gray-400 text-xs font-bold uppercase">
                     Zone
@@ -106,11 +107,11 @@ const DeliveryManagementScreen = () => {
           </Card>
 
           {/* Connected Delivery Partners */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center gap-3">
-                  <Truck color="#10b981" size={24} />
+                  <Truck color={colors.success} size={24} />
                   <CardTitle className="text-white">
                     Connected Delivery Partners
                   </CardTitle>
@@ -130,7 +131,7 @@ const DeliveryManagementScreen = () => {
                 return (
                   <View
                     key={partner.id}
-                    className="bg-[#212121] p-4 rounded-lg border border-gray-700"
+                    className="bg-screen p-4 rounded-lg border border-gray-700"
                   >
                     <View className="flex-row justify-between items-start mb-4">
                       <View className="flex-row items-center gap-3">
@@ -183,7 +184,7 @@ const DeliveryManagementScreen = () => {
                             </Text>
                           </TouchableOpacity>
                         ) : (
-                          <TouchableOpacity className="bg-[#303030] border border-gray-600 px-3 py-1.5 rounded-md">
+                          <TouchableOpacity className="bg-panel border border-gray-600 px-3 py-1.5 rounded-md">
                             <Text className="text-gray-300 text-xs font-semibold">
                               Configure
                             </Text>
@@ -224,10 +225,10 @@ const DeliveryManagementScreen = () => {
           </Card>
 
           {/* Delivery Optimization */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <TrendingUp color="#f59e0b" size={24} />
+                <TrendingUp color={colors.warning} size={24} />
                 <CardTitle className="text-white">
                   Delivery Optimization
                 </CardTitle>

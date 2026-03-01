@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";
 import { BarChart } from "react-native-gifted-charts";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 const MetricCard = ({
   label,
@@ -16,7 +17,7 @@ const MetricCard = ({
   value: string;
   variant?: "success" | "default";
 }) => (
-  <View className="flex-1 bg-[#212121] p-4 rounded-xl border border-gray-700">
+  <View className="flex-1 bg-panel p-4 rounded-xl border border-gray-700">
     <Text className="text-sm text-gray-400 mb-1">{label}</Text>
     <Text
       className={`text-3xl font-bold ${variant === "success" ? "text-green-400" : "text-white"}`}
@@ -48,8 +49,7 @@ const OvertimeDrawer = forwardRef<BottomSheet>((props, ref) => {
           appearsOnIndex={0}
         />
       )}
-      backgroundStyle={{ backgroundColor: "#212121" }}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      {...bottomSheetTheme}
     >
       <BottomSheetScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
         <Text className="text-2xl font-bold text-white">Overtime Risk</Text>
@@ -59,7 +59,7 @@ const OvertimeDrawer = forwardRef<BottomSheet>((props, ref) => {
           <MetricCard label="Weekly Limit" value="50h" />
         </View>
         <View className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl flex-row items-start gap-3">
-          <AlertTriangle size={16} color="#22c55e" className="mt-1" />
+          <AlertTriangle size={16} color={colors.success} className="mt-1" />
           <View>
             <Text className="text-sm font-semibold text-green-400 mb-1">
               Safe Zone
@@ -70,19 +70,19 @@ const OvertimeDrawer = forwardRef<BottomSheet>((props, ref) => {
             </Text>
           </View>
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-4">
             4-Week Projection
           </Text>
           <BarChart
             data={weeklyProjection}
-            frontColor={"#3b82f6"}
+            frontColor={colors.info}
             barWidth={50}
             yAxisTextStyle={{ color: "white" }}
             xAxisLabelTextStyle={{ color: "white" }}
           />
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-2">
             Overtime Policy
           </Text>
@@ -93,7 +93,7 @@ const OvertimeDrawer = forwardRef<BottomSheet>((props, ref) => {
             {"\n"}• System alerts at 40h and 45h thresholds
           </Text>
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-2">
             Insights
           </Text>

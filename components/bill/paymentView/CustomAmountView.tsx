@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
@@ -75,13 +76,13 @@ const CustomAmountView = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "padding"}
-      className="flex-1 bg-[#212121]"
+      className="flex-1 bg-panel"
     >
       {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-[#333]">
+      <View className="flex-row items-center p-4 border-b border-border">
         <TouchableOpacity
           onPress={() => setView("split-options")}
-          className="p-2 bg-[#333] rounded-lg mr-4"
+          className="p-2 bg-surface rounded-lg mr-4"
         >
           <ArrowLeft size={20} color="white" />
         </TouchableOpacity>
@@ -95,7 +96,7 @@ const CustomAmountView = () => {
 
       <View className="flex-1 flex-row p-6 gap-6">
         {/* LEFT PANEL: The Math & Actions (Sticky) */}
-        <View className="w-1/3 bg-[#2A2A2A] rounded-3xl border border-[#333] p-6 justify-between">
+        <View className="w-1/3 bg-surface rounded-3xl border border-border p-6 justify-between">
           <View>
             <Text className="text-gray-500 uppercase tracking-widest text-xs font-bold mb-6">
               Summary
@@ -110,7 +111,7 @@ const CustomAmountView = () => {
             </View>
 
             {/* Allocated */}
-            <View className="flex-row justify-between mb-4 pb-4 border-b border-[#444]">
+            <View className="flex-row justify-between mb-4 pb-4 border-b border-border">
               <Text className="text-gray-400 text-lg">Allocated</Text>
               <Text className="text-blue-400 font-bold text-lg">
                 ${totalAllocated.toFixed(2)}
@@ -142,7 +143,7 @@ const CustomAmountView = () => {
           <View className="gap-4">
             {/* Hint */}
             {!isPerfect && (
-              <View className="bg-[#333] p-4 rounded-xl">
+              <View className="bg-surface p-4 rounded-xl">
                 <Text className="text-gray-400 text-sm text-center">
                   Assign the remaining amount to enable payment.
                 </Text>
@@ -154,12 +155,12 @@ const CustomAmountView = () => {
               onPress={handleProceed}
               disabled={!isPerfect}
               className={`w-full py-4 rounded-xl flex-row items-center justify-center shadow-lg 
-                        ${isPerfect ? "bg-blue-600 shadow-blue-900/20 active:bg-blue-700" : "bg-[#404040] opacity-80"}`}
+                        ${isPerfect ? "bg-blue-600 shadow-blue-900/20 active:bg-blue-700" : "bg-surface opacity-80"}`}
             >
               {isPerfect ? (
                 <Check size={20} color="white" className="mr-2" />
               ) : (
-                <ArrowRight size={20} color="#9CA3AF" className="mr-2" />
+                <ArrowRight size={20} color={colors.label} className="mr-2" />
               )}
               <Text
                 className={`font-bold text-lg ${isPerfect ? "text-white" : "text-gray-400"}`}
@@ -171,14 +172,14 @@ const CustomAmountView = () => {
         </View>
 
         {/* RIGHT PANEL: The Inputs (Scrollable) */}
-        <View className="flex-1 bg-[#1A1A1A] rounded-3xl border border-[#333] overflow-hidden">
-          <View className="p-4 border-b border-[#333] bg-[#262626] flex-row justify-between items-center">
+        <View className="flex-1 bg-panel rounded-3xl border border-border overflow-hidden">
+          <View className="p-4 border-b border-border bg-surface flex-row justify-between items-center">
             <Text className="text-gray-400 font-bold uppercase tracking-wider text-xs">
               Guest List
             </Text>
             <TouchableOpacity
               onPress={handleAddGuest}
-              className="bg-[#333] p-2 rounded-lg border border-[#444]"
+              className="bg-surface p-2 rounded-lg border border-border"
             >
               <Plus size={20} color="white" />
             </TouchableOpacity>
@@ -188,12 +189,12 @@ const CustomAmountView = () => {
             {splits.map((split) => (
               <View
                 key={split.id}
-                className="flex-row items-center mb-3 bg-[#2A2A2A] p-3 rounded-2xl border border-[#333]"
+                className="flex-row items-center mb-3 bg-surface p-3 rounded-2xl border border-border"
               >
                 {/* Icon & Name */}
                 <View className="flex-row items-center flex-1 mr-4">
-                  <View className="w-10 h-10 bg-[#333] rounded-full items-center justify-center mr-3">
-                    <User size={18} color="#888" />
+                  <View className="w-10 h-10 bg-surface rounded-full items-center justify-center mr-3">
+                    <User size={18} color={colors.muted} />
                   </View>
                   <Text
                     className="text-lg font-bold text-gray-200 w-24"
@@ -217,7 +218,7 @@ const CustomAmountView = () => {
                     </TouchableOpacity>
                   )}
 
-                  <View className="flex-row items-center bg-[#151515] rounded-xl px-4 border border-[#444] w-40 h-14">
+                  <View className="flex-row items-center bg-panel rounded-xl px-4 border border-border w-40 h-14">
                     <Text className="font-bold text-xl text-gray-500 mr-1">
                       $
                     </Text>
@@ -230,7 +231,7 @@ const CustomAmountView = () => {
                         updateSplitAmount(split.id, isNaN(amount) ? 0 : amount);
                       }}
                       placeholder="0.00"
-                      placeholderTextColor="#444"
+                      placeholderTextColor={colors.muted}
                       keyboardType="decimal-pad"
                       selectTextOnFocus
                     />
@@ -238,9 +239,9 @@ const CustomAmountView = () => {
 
                   <TouchableOpacity
                     onPress={() => removeSplit(split.id)}
-                    className="p-3 bg-[#333] rounded-xl"
+                    className="p-3 bg-surface rounded-xl"
                   >
-                    <Trash2 size={20} color="#666" />
+                    <Trash2 size={20} color={colors.muted} />
                   </TouchableOpacity>
                 </View>
               </View>

@@ -1,3 +1,4 @@
+import { colors } from '@/lib/theme';
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal } from 'react-native';
 import { Check, ChevronUp, ChevronDown } from 'lucide-react-native';
@@ -35,7 +36,7 @@ const SortDropdown: React.FC<SortDropdownProps> = ({
   return (
     <>
       <Text className="font-medium text-blue-400">{currentSortLabel}</Text>
-      {sortDirection === 'asc' ? <ChevronUp size={14} color="#60A5FA" /> : <ChevronDown size={14} color="#60A5FA" />}
+      {sortDirection === 'asc' ? <ChevronUp size={14} color={colors.info} /> : <ChevronDown size={14} color={colors.info} />}
 
       <Modal
         transparent={true}

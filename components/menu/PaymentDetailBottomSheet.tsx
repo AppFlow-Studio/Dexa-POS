@@ -1,4 +1,5 @@
 import { useToast, ToastRenderer } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, OrderRefundItemRecord, ReversalRecord } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useRefundMutation, type PerPaymentRefundDetail } from "@/hooks/orders/useRefundMutation";
@@ -137,7 +138,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       case "warning":
         return "bg-amber-500/10 border-amber-500/50";
       default:
-        return "bg-[#2a2a2a] border-gray-600 active:bg-gray-700";
+        return "bg-card border-gray-600 active:bg-gray-700";
     }
   };
 
@@ -195,10 +196,10 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   label,
   icon,
   isNegative = false,
-  accentColor = "#3B82F6",
+  accentColor = colors.info,
 }) => (
   <View
-    className="flex-1 bg-[#1f1f1f] rounded-xl p-3 border border-gray-800"
+    className="flex-1 bg-card rounded-xl p-3 border border-gray-800"
     style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}
   >
     <View className="flex-row items-center justify-between mb-2">
@@ -214,7 +215,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
     </Text>
     {cashAmount !== undefined && cashAmount > 0 && (
       <View className="flex-row items-center mt-0.5">
-        <Banknote color="#22C55E" size={14} />
+        <Banknote color={colors.success} size={14} />
         <Text className="text-sm font-medium text-gray-400 ml-1">
           ${cashAmount?.toFixed(2)}
         </Text>
@@ -402,7 +403,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   };
 
   return (
-    <View className="flex-[4] bg-[#1a1a1a] border-r border-gray-800">
+    <View className="flex-[4] bg-panel border-r border-gray-800">
       {/* Header */}
       <View className="px-4 py-3 border-b border-gray-800">
         <Text className="text-lg font-bold text-white">Order Receipt</Text>
@@ -449,12 +450,12 @@ const LeftPane: React.FC<LeftPaneProps> = ({
 
             // Determine left border color based on kitchen status
             const borderColor = isVoided
-              ? '#EF4444'
-              : item.kitchen_status === "ready"     ? '#4ADE80'
-              : item.kitchen_status === "preparing" ? '#FB923C'
-              : item.kitchen_status === "sent"      ? '#F59E0B'
-              : item.kitchen_status === "served"    ? '#9CA3AF'
-              : '#6B7280';
+              ? colors.danger
+              : item.kitchen_status === "ready"     ? colors.success
+              : item.kitchen_status === "preparing" ? colors.warning
+              : item.kitchen_status === "sent"      ? colors.warning
+              : item.kitchen_status === "served"    ? colors.label
+              : colors.muted;
 
             const isUnpaid = !isVoided && !isPaid && !isPartialPaid && !hasRefundHistory;
             const itemKey = item.id || String(index);
@@ -563,32 +564,32 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                       </View>
                       {/* Status icon */}
                       {isPaid && !isVoided && (
-                        <Check size={14} color="#22C55E" />
+                        <Check size={14} color={colors.success} />
                       )}
                       {isFullyRefunded && !isVoided && (
-                        <RotateCcw size={14} color="#EF4444" />
+                        <RotateCcw size={14} color={colors.danger} />
                       )}
                       {isPartiallyRefunded && !isVoided && (
-                        <RotateCcw size={12} color="#F97316" />
+                        <RotateCcw size={12} color={colors.warning} />
                       )}
                       {/* Expand/collapse chevron */}
                       {isExpanded ? (
-                        <ChevronUp size={14} color="#6B7280" style={{ marginLeft: 2 }} />
+                        <ChevronUp size={14} color={colors.muted} style={{ marginLeft: 2 }} />
                       ) : (
-                        <ChevronDown size={14} color="#6B7280" style={{ marginLeft: 2 }} />
+                        <ChevronDown size={14} color={colors.muted} style={{ marginLeft: 2 }} />
                       )}
                     </View>
                   </View>
 
                   {/* Collapsible Timeline */}
                   {isExpanded && timeline.length > 0 && (
-                    <View className="mt-2 ml-2" style={{ paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: '#374151' }}>
+                    <View className="mt-2 ml-2" style={{ paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: colors.border }}>
                       {timeline.map((entry, tIdx) => {
                         const dotColor = entry.type === 'paid'
-                          ? '#22C55E'
+                          ? colors.success
                           : entry.type === 'refunded' || entry.type === 'voided'
-                          ? '#EF4444'
-                          : '#3B82F6';
+                          ? colors.danger
+                          : colors.info;
                         return (
                           <View key={tIdx} className="flex-row items-start mb-1.5">
                             <View
@@ -627,7 +628,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
           {/* Empty State */}
           {(!order?.items || order.items.length === 0) && (
             <View className="py-12 items-center">
-              <Package size={32} color="#4B5563" />
+              <Package size={32} color={colors.muted} />
               <Text className="text-gray-500 text-sm mt-2">No items</Text>
             </View>
           )}
@@ -635,7 +636,7 @@ const LeftPane: React.FC<LeftPaneProps> = ({
       </ScrollView>
 
       {/* Pricing Footer */}
-      <View className="px-4 py-3 border-t border-gray-800 bg-[#161616]">
+      <View className="px-4 py-3 border-t border-gray-800 bg-screen">
         <View className="flex-row justify-between mb-1">
           <Text className="text-sm text-gray-400">Subtotal</Text>
           <Text className="text-sm text-gray-300">${subtotal?.toFixed(2)}</Text>
@@ -718,7 +719,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   }, [order?.reversals]);
   console.log("paymentSummary", paymentSummary?.payments?.[0]?.itemsCovered);
   return (
-    <View className="flex-[6] bg-[#161616]">
+    <View className="flex-[6] bg-screen">
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -731,8 +732,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               amount={paymentSummary.orderTotal}
               cashAmount={paymentSummary.orderCashTotal}
               label="Order Total"
-              icon={<DollarSign size={16} color="#3B82F6" />}
-              accentColor="#3B82F6"
+              icon={<DollarSign size={16} color={colors.info} />}
+              accentColor={colors.info}
             />
             <SummaryCard
               amount={paymentSummary.refunds}
@@ -741,15 +742,15 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   ? `Refunds (${(order?.reversals as ReversalRecord[] || []).filter((r: ReversalRecord) => r.status === 'completed').length})`
                   : "Refunds"
               }
-              icon={<RefreshCcw size={14} color="#EF4444" />}
+              icon={<RefreshCcw size={14} color={colors.danger} />}
               isNegative
-              accentColor="#EF4444"
+              accentColor={colors.danger}
             />
             <SummaryCard
               amount={paymentSummary.collected - paymentSummary.refunds}
               label="Net Collected"
-              icon={<CircleDollarSign size={16} color="#22C55E" />}
-              accentColor="#22C55E"
+              icon={<CircleDollarSign size={16} color={colors.success} />}
+              accentColor={colors.success}
             />
           </View>
         </View>
@@ -767,7 +768,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           {paymentSummary.payments.length === 0 ? (
             <View className="py-8 items-center">
               <View className="w-12 h-12 rounded-full bg-gray-800/50 items-center justify-center mb-3">
-                <CreditCard size={24} color="#4B5563" />
+                <CreditCard size={24} color={colors.muted} />
               </View>
               <Text className="text-gray-500 text-sm">
                 No payments recorded
@@ -810,11 +811,11 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       }`}
                     >
                       {payment.isVoided ? (
-                        <X size={18} color="#EF4444" />
+                        <X size={18} color={colors.danger} />
                       ) : payment.method === "Card" ? (
-                        <CreditCard size={18} color="#9CA3AF" />
+                        <CreditCard size={18} color={colors.label} />
                       ) : (
-                        <Banknote size={18} color="#22C55E" />
+                        <Banknote size={18} color={colors.success} />
                       )}
                     </View>
 
@@ -851,16 +852,16 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                         </Text>
                         {canExpand && (
                           <View className="flex-row items-center ml-2">
-                            <Package size={10} color="#6B7280" />
+                            <Package size={10} color={colors.muted} />
                             {hasItemsCovered && (
                               <Text className="text-xs text-gray-500 ml-1">
                                 {payment.itemsCovered!.length} items
                               </Text>
                             )}
                             {isExpanded ? (
-                              <ChevronUp size={12} color="#6B7280" />
+                              <ChevronUp size={12} color={colors.muted} />
                             ) : (
-                              <ChevronDown size={12} color="#6B7280" />
+                              <ChevronDown size={12} color={colors.muted} />
                             )}
                           </View>
                         )}
@@ -888,14 +889,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
 
                   {/* Expanded Details */}
                   {isExpanded && canExpand && (
-                    <View className="bg-[#1a1a1a] rounded-lg mb-3 p-3 border border-gray-800">
+                    <View className="bg-panel rounded-lg mb-3 p-3 border border-gray-800">
                       {hasCardInfo && (
                         <View className={hasItemsCovered ? "mb-3" : ""}>
                           <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
                             {payment.method === "Cash" ? (
-                              <Banknote size={12} color="#6B7280" />
+                              <Banknote size={12} color={colors.muted} />
                             ) : (
-                              <CreditCard size={12} color="#6B7280" />
+                              <CreditCard size={12} color={colors.muted} />
                             )}
                             <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase">
                               {payment.method === "Cash" ? "Cash Payment Details" : "Card Details"}
@@ -963,7 +964,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                         return (
                         <View>
                           <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
-                            <Package size={12} color="#6B7280" />
+                            <Package size={12} color={colors.muted} />
                             <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase">
                               Items Covered
                             </Text>
@@ -1041,7 +1042,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       className="flex-row items-center py-2 pl-12 border-t border-gray-800/30"
                     >
                       <View className="w-8 h-8 rounded-lg bg-red-500/10 items-center justify-center mr-3">
-                        <RotateCcw size={14} color="#EF4444" />
+                        <RotateCcw size={14} color={colors.danger} />
                       </View>
                       <View className="flex-1">
                         <View className="flex-row items-center">
@@ -1074,7 +1075,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   {payment.tip_adjusted_at && (
                     <View className="flex-row items-center py-2 pl-12 border-t border-gray-800/30">
                       <View className="w-8 h-8 rounded-lg bg-blue-500/10 items-center justify-center mr-3">
-                        <CircleDollarSign size={14} color="#3B82F6" />
+                        <CircleDollarSign size={14} color={colors.info} />
                       </View>
                       <View className="flex-1">
                         <View className="flex-row items-center">
@@ -1102,11 +1103,11 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
       </ScrollView>
 
       {/* Action Buttons Footer */}
-      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-[#1a1a1a] border-t border-gray-800">
+      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-panel border-t border-gray-800">
         <View className="flex-row gap-2">
           {!isOpen && (
             <ActionButton
-              icon={<RotateCcw size={16} color="#F59E0B" />}
+              icon={<RotateCcw size={16} color={colors.warning} />}
               label="Re-Open"
               onPress={onReopenOrder}
               variant="warning"
@@ -1114,7 +1115,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {isOpen && (
             <ActionButton
-              icon={<Check size={16} color="#22C55E" />}
+              icon={<Check size={16} color={colors.success} />}
               label="Close"
               onPress={onCloseOrder}
               variant="success"
@@ -1122,33 +1123,33 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           )}
           {isOpen && hasBalanceDue && (
             <ActionButton
-              icon={<DollarSign size={16} color="#3B82F6" />}
+              icon={<DollarSign size={16} color={colors.info} />}
               label="Continue"
               onPress={onContinueCharging}
               variant="primary"
             />
           )}
           <ActionButton
-            icon={<Printer size={16} color="#22C55E" />}
+            icon={<Printer size={16} color={colors.success} />}
             label="Receipt"
             onPress={onIssueReceipt}
             variant="success"
           />
           <ActionButton
-            icon={<ChefHat size={16} color="#F97316" />}
+            icon={<ChefHat size={16} color={colors.warning} />}
             label="Kitchen"
             onPress={onPrintKitchenTicket}
             variant="warning"
           />
           <ActionButton
-            icon={<CircleDollarSign size={16} color="#3B82F6" />}
+            icon={<CircleDollarSign size={16} color={colors.info} />}
             label="Tip Adjust"
             onPress={onTipAdjust}
             variant="primary"
             disabled={!hasCardPayments}
           />
           <ActionButton
-            icon={<RefreshCcw size={16} color="#EF4444" />}
+            icon={<RefreshCcw size={16} color={colors.danger} />}
             label="Refund"
             onPress={onRefund}
             variant="danger"
@@ -1335,15 +1336,15 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
 
   // console.log('PaymentDetailBottomSheet', cardPayments);
   return (
-    <View className="flex-[6] bg-[#161616]" style={{ position: 'relative' }}>
+    <View className="flex-[6] bg-screen" style={{ position: 'relative' }}>
       {/* Processing Overlay */}
       {processing && (
         <View
           className="absolute inset-0 z-50 items-center justify-center"
           style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
         >
-          <View className="bg-[#1f1f1f] rounded-2xl p-8 items-center mx-8 border border-gray-700">
-            <ActivityIndicator size="large" color="#3B82F6" />
+          <View className="bg-card rounded-2xl p-8 items-center mx-8 border border-gray-700">
+            <ActivityIndicator size="large" color={colors.info} />
             <Text className="text-white text-lg font-bold mt-4">Adjusting Tips</Text>
             <Text className="text-gray-400 text-sm mt-2 text-center">
               Processing tip adjustments on terminal...{"\n"}Please do not close this screen.
@@ -1363,7 +1364,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           className="flex-1 items-center justify-center"
           style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
         >
-          <View className="bg-[#1f1f1f] rounded-2xl p-6 mx-8 border border-gray-700" style={{ maxWidth: 400, width: "90%" }}>
+          <View className="bg-card rounded-2xl p-6 mx-8 border border-gray-700" style={{ maxWidth: 400, width: "90%" }}>
             <Text className="text-xl font-bold text-yellow-400 text-center mb-2">
               High Tip Warning
             </Text>
@@ -1418,7 +1419,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center mr-3"
           style={{ opacity: processing ? 0.3 : 1 }}
         >
-          <ArrowLeft size={16} color="#9CA3AF" />
+          <ArrowLeft size={16} color={colors.label} />
         </TouchableOpacity>
         <Text className="text-lg font-bold text-white">Adjust Tips</Text>
       </View>
@@ -1463,10 +1464,10 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                 <View className="flex-1 flex-row items-center">
                   {/* Green check for payments with existing tip */}
                   <View className="w-6 items-center justify-center mr-1">
-                    {hasTip && <Check size={16} color="#22C55E" />}
+                    {hasTip && <Check size={16} color={colors.success} />}
                   </View>
                   <View className="w-10 h-10 rounded-lg bg-gray-800 items-center justify-center mr-3">
-                    <CreditCard size={18} color="#9CA3AF" />
+                    <CreditCard size={18} color={colors.label} />
                   </View>
                   <View className="flex-1">
                     <View className="flex-row items-center gap-2">
@@ -1520,7 +1521,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
 
         {/* Summary Bar */}
         <View className="px-4">
-          <View className="flex-row justify-between bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
+          <View className="flex-row justify-between bg-panel rounded-xl p-4 border border-gray-800">
             <View className="items-center">
               <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">Order Total</Text>
               <Text className="text-base font-bold text-white">
@@ -1553,7 +1554,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
                   className="flex-1 py-3 bg-gray-800 border border-gray-700 rounded-lg items-center justify-center active:bg-gray-600"
                 >
                   {key === "backspace" ? (
-                    <Delete size={20} color="#FFFFFF" />
+                    <Delete size={20} color={colors.heading} />
                   ) : (
                     <Text className="text-white text-xl font-semibold">{key}</Text>
                   )}
@@ -1565,7 +1566,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
       </ScrollView>
 
       {/* Action Buttons Footer */}
-      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-[#1a1a1a] border-t border-gray-800">
+      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-panel border-t border-gray-800">
         <View className="flex-row gap-3">
           <TouchableOpacity
             onPress={onBack}
@@ -1582,7 +1583,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
             }`}
           >
             {processing ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.heading} />
             ) : (
               <Text
                 className={`text-base font-bold ${
@@ -2011,15 +2012,15 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   };
 
   return (
-    <View className="flex-[6] bg-[#161616]" style={{ position: 'relative' }}>
+    <View className="flex-[6] bg-screen" style={{ position: 'relative' }}>
       {/* Processing Overlay */}
       {refundProcessing && (
         <View
           className="absolute inset-0 z-50 items-center justify-center"
           style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
         >
-          <View className="bg-[#1f1f1f] rounded-2xl p-8 items-center mx-8 border border-gray-700">
-            <ActivityIndicator size="large" color="#EF4444" />
+          <View className="bg-card rounded-2xl p-8 items-center mx-8 border border-gray-700">
+            <ActivityIndicator size="large" color={colors.danger} />
             <Text className="text-white text-lg font-bold mt-4">Processing Refund</Text>
             <Text className="text-gray-400 text-sm mt-2 text-center">
               Processing refund on terminal...{"\n"}Please do not close this screen.
@@ -2036,7 +2037,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center mr-3"
           style={{ opacity: refundProcessing ? 0.3 : 1 }}
         >
-          <ArrowLeft size={16} color="#9CA3AF" />
+          <ArrowLeft size={16} color={colors.label} />
         </TouchableOpacity>
         <Text className="text-lg font-bold text-white">Process Refund</Text>
       </View>
@@ -2125,9 +2126,9 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 >
                   <View className="w-10 h-10 rounded-lg bg-gray-800 items-center justify-center mr-3">
                     {payment.method === "Card" ? (
-                      <CreditCard size={18} color="#9CA3AF" />
+                      <CreditCard size={18} color={colors.label} />
                     ) : (
-                      <Banknote size={18} color="#22C55E" />
+                      <Banknote size={18} color={colors.success} />
                     )}
                   </View>
                   <View className="flex-1">
@@ -2156,7 +2157,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                 </View>
               );
             })}
-            <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
+            <View className="mt-4 bg-panel rounded-xl p-4 border border-gray-800">
               <Text className="text-sm text-gray-400 mb-1">
                 {refundablePayments.length} payment
                 {refundablePayments.length !== 1 ? "s" : ""} to reverse
@@ -2210,7 +2211,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             : "border-gray-600"
                         }`}
                       >
-                        {isSelected && <Check size={14} color="#FFFFFF" />}
+                        {isSelected && <Check size={14} color={colors.heading} />}
                       </TouchableOpacity>
                       <View className="flex-1">
                         <Text className="text-sm text-white">{item.name}</Text>
@@ -2329,7 +2330,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 
             {/* Selected Items Total */}
             {selectedItemsTotal > 0 && (
-              <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
+              <View className="mt-4 bg-panel rounded-xl p-4 border border-gray-800">
                 <Text className="text-sm text-gray-400">Refund Amount</Text>
                 <Text className="text-2xl font-bold text-red-400">
                   ${selectedItemsTotal?.toFixed(2)}
@@ -2348,7 +2349,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             {refundablePayments.length === 0 ? (
               <View className="py-8 items-center">
                 <View className="w-12 h-12 rounded-full bg-gray-800/50 items-center justify-center mb-3">
-                  <CreditCard size={24} color="#4B5563" />
+                  <CreditCard size={24} color={colors.muted} />
                 </View>
                 <Text className="text-gray-500 text-sm">
                   No refundable payments
@@ -2389,15 +2390,15 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                   return (
                     <View
                       key={index}
-                      className="flex-row items-center py-4 border border-gray-700 rounded-xl mb-2 bg-[#1a1a1a]"
+                      className="flex-row items-center py-4 border border-gray-700 rounded-xl mb-2 bg-panel"
                     >
                       {/* Payment label */}
                       <View className="flex-1 flex-row items-center pl-3">
                         <View className="w-12 h-12 rounded-lg bg-gray-800 items-center justify-center mr-3">
                           {payment.method === "Card" ? (
-                            <CreditCard size={20} color="#9CA3AF" />
+                            <CreditCard size={20} color={colors.label} />
                           ) : (
-                            <Banknote size={20} color="#22C55E" />
+                            <Banknote size={20} color={colors.success} />
                           )}
                         </View>
                         <Text
@@ -2416,7 +2417,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             handlePaymentAmountChange(index, "orderAmount", v)
                           }
                           placeholder={remainingOrder.toFixed(2)}
-                          placeholderTextColor="#4B5563"
+                          placeholderTextColor={colors.muted}
                           keyboardType="decimal-pad"
                           className={`text-sm text-center py-3 px-3 rounded-lg border-2 ${
                             orderExceeds
@@ -2434,7 +2435,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
                             handlePaymentAmountChange(index, "tipAmount", v)
                           }
                           placeholder={remainingTip.toFixed(2)}
-                          placeholderTextColor="#4B5563"
+                          placeholderTextColor={colors.muted}
                           keyboardType="decimal-pad"
                           className={`text-sm text-center py-3 px-3 rounded-lg border-2 ${
                             tipExceeds
@@ -2466,7 +2467,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
 
                 {/* Payment Refund Total */}
                 {paymentRefundTotal > 0 && (
-                  <View className="mt-4 bg-[#1a1a1a] rounded-xl p-4 border border-gray-800">
+                  <View className="mt-4 bg-panel rounded-xl p-4 border border-gray-800">
                     <Text className="text-sm text-gray-400">Total Refund</Text>
                     <Text className="text-2xl font-bold text-red-400">
                       ${paymentRefundTotal?.toFixed(2)}
@@ -2487,10 +2488,10 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             value={refundReason}
             onChangeText={setRefundReason}
             placeholder="Enter reason for refund..."
-            placeholderTextColor="#4B5563"
+            placeholderTextColor={colors.muted}
             multiline={false}
             numberOfLines={1}
-            className="bg-[#1a1a1a] rounded-xl p-4 border border-gray-800 text-white text-sm"
+            className="bg-panel rounded-xl p-4 border border-gray-800 text-white text-sm"
             style={{ textAlignVertical: "top", minHeight: 80 }}
           />
         </View>
@@ -2500,7 +2501,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
             <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
               Refund Log
             </Text>
-            <View className="bg-[#1a1a1a] rounded-xl border border-gray-800">
+            <View className="bg-panel rounded-xl border border-gray-800">
               {refundLogs.map((log, index) => (
                 <View
                   key={log.id || index}
@@ -2529,7 +2530,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
       </ScrollView>
 
       {/* Process Button */}
-      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-[#1a1a1a] border-t border-gray-800">
+      <View className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-panel border-t border-gray-800">
         <TouchableOpacity
           onPress={async () => {
             if (refundProcessing || processingRef.current) {
@@ -2603,7 +2604,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
           }`}
         >
           {refundProcessing ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={colors.heading} />
           ) : (
             <Text
               className={`text-base font-bold ${
@@ -2661,7 +2662,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   // Mutation hooks
   const refundMutation = useRefundMutation();
 
-  const { isOpen, orderId, close } = usePaymentDetailSheetStore();
+  const { isOpen, orderId, initialView, close } = usePaymentDetailSheetStore();
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
 
   const [rightPaneView, setRightPaneView] = useState<RightPaneView>("summary");
@@ -2749,9 +2750,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   // Reset view when sheet opens (Modal is controlled by isOpen state directly)
   useEffect(() => {
     if (isOpen && orderId) {
-      setRightPaneView("summary");
+      setRightPaneView(initialView || "summary");
     }
-  }, [isOpen, orderId]);
+  }, [isOpen, orderId, initialView]);
 
   // Expose methods for compatibility (not needed for Modal but keeps the interface)
   useImperativeHandle(
@@ -3081,7 +3082,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         <View
           style={{
             height: "90%",
-            backgroundColor: "#161616",
+            backgroundColor: colors.screen,
             borderTopLeftRadius: 16,
             borderTopRightRadius: 16,
           }}

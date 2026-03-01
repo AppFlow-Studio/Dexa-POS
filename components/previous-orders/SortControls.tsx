@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { ArrowDown, ArrowUp } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -38,7 +39,7 @@ export default function SortControls({
           className={`px-4 py-2 rounded-lg ${
             sortBy === opt.value
               ? "bg-blue-600"
-              : "bg-[#303030]"
+              : "bg-panel"
           }`}
         >
           <Text className="text-white text-base">{opt.label}</Text>
@@ -48,12 +49,12 @@ export default function SortControls({
       {/* Sort Order Toggle */}
       <TouchableOpacity
         onPress={toggleSortOrder}
-        className="px-3 py-2 bg-[#303030] rounded-lg"
+        className="px-3 py-2 bg-panel rounded-lg"
       >
         {sortOrder === "asc" ? (
-          <ArrowUp size={20} color="#9ca3af" />
+          <ArrowUp size={20} color={colors.label} />
         ) : (
-          <ArrowDown size={20} color="#9ca3af" />
+          <ArrowDown size={20} color={colors.label} />
         )}
       </TouchableOpacity>
     </View>

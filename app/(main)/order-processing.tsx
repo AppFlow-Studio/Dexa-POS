@@ -15,9 +15,11 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
@@ -35,6 +37,7 @@ const OrderProcessing = () => {
   const updateOrderCheckStatus = useOrderStore((s) => s.updateOrderCheckStatus);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
   // OPTIMIZED: Use shallow selector to filter orders inside the store selector.
   // This prevents the component from re-rendering unless the resulting list of filtered orders changes.
@@ -160,6 +163,17 @@ const OrderProcessing = () => {
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
+  const handlePrintReceipt = useCallback(
+    async (order: OrderProfile) => {
+      if (!selectedStore) {
+        show({ title: "Print Error", message: "No store location selected.", type: "error" });
+        return;
+      }
+      await PrinterService.printReceipt(order, selectedStore);
+    },
+    [selectedStore, show],
+  );
+
   const handleCloseCheck = useCallback(async () => {
     const state = useOrderStore.getState();
     const currentActiveOrderId = state.activeOrderId;
@@ -239,8 +253,8 @@ const OrderProcessing = () => {
   const displayOrders = renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS;
 
   return (
-    <View className="flex-1 flex-col bg-[#212121]">
-      <View className="flex-1 flex-row">
+    <View className="flex-1 flex-col bg-background">
+      <View className="flex-1 flex-row ">
         {/* Stage 1: BillSection (lighter — user sees their order first) */}
         {renderStage >= 1 ? (
           <BillSection
@@ -253,17 +267,17 @@ const OrderProcessing = () => {
           />
         ) : (
           // BillSection skeleton: matches the 380px sidebar layout
-          <View className="w-[380px] bg-[#212121] p-4">
-            <View className="h-10 w-48 bg-[#2a2a2a] rounded-lg mb-4" />
-            <View className="h-6 w-32 bg-[#2a2a2a] rounded-md mb-3" />
-            <View className="h-6 w-64 bg-[#2a2a2a] rounded-md mb-3" />
-            <View className="h-6 w-52 bg-[#2a2a2a] rounded-md mb-3" />
+          <View className="w-[380px] bg-screen p-4">
+            <View className="h-10 w-48 bg-surface rounded-lg mb-4" />
+            <View className="h-6 w-32 bg-surface rounded-md mb-3" />
+            <View className="h-6 w-64 bg-surface rounded-md mb-3" />
+            <View className="h-6 w-52 bg-surface rounded-md mb-3" />
             <View className="flex-1" />
-            <View className="h-14 bg-[#2a2a2a] rounded-xl" />
+            <View className="h-14 bg-surface rounded-xl" />
           </View>
         )}
 
-        <View className="flex-1 py-4 px-2 pt-0 bg-[#323232] rounded-tl-3xl ">
+        <View className="flex-1 py-4 px-2 pt-0 bg-background rounded-tl-3xl ">
           <Accordion
             type="single"
             collapsible
@@ -330,6 +344,7 @@ const OrderProcessing = () => {
                   onViewItems={() => handleViewItems(item.id)}
                   onRetrieve={() => handleRetrieve(item.id)}
                   onReopenCheck={() => handleReopenCheck(item.id)}
+                  onPrintReceipt={() => handlePrintReceipt(item)}
                 />
               )}
             />
@@ -343,12 +358,12 @@ const OrderProcessing = () => {
             <View className="flex-1 pt-2">
               <View className="flex-row gap-x-2 mb-3">
                 {[1, 2, 3, 4].map((i) => (
-                  <View key={i} className="h-10 w-20 bg-[#2a2a2a] rounded-lg" />
+                  <View key={i} className="h-10 w-20 bg-surface rounded-lg" />
                 ))}
               </View>
               <View className="flex-row flex-wrap gap-2">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                  <View key={i} className="h-24 w-28 bg-[#2a2a2a] rounded-xl" />
+                  <View key={i} className="h-24 w-28 bg-surface rounded-xl" />
                 ))}
               </View>
             </View>

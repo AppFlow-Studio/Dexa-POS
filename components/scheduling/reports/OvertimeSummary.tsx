@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
@@ -40,7 +41,7 @@ const OvertimeSummary = () => {
   );
 
   return (
-    <Card className="p-6 bg-[#303030] border-gray-700 flex-1">
+    <Card className="p-6 bg-panel border-border flex-1">
       <View className="mb-6">
         <Text className="text-lg font-semibold text-white mb-1">
           Overtime Summary
@@ -56,7 +57,7 @@ const OvertimeSummary = () => {
           .map((record, i) => (
             <View
               key={i}
-              className="p-4 rounded-lg bg-[#212121] border border-gray-700"
+              className="p-4 rounded-lg bg-screen border border-border"
             >
               <View className="flex-row items-center justify-between mb-2">
                 <View className="flex-row items-center gap-2">
@@ -65,7 +66,7 @@ const OvertimeSummary = () => {
                   </Text>
                   {record.overtimeHours > 3 && (
                     <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 flex-row gap-1">
-                      <AlertTriangle size={12} color={"#facc15"} />
+                      <AlertTriangle size={12} color={colors.warning} />
                       <Text className="text-yellow-400">High OT</Text>
                     </Badge>
                   )}

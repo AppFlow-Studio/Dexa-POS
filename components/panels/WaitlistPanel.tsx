@@ -1,40 +1,55 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useWaitlistSheetStore } from "@/stores/useWaitlistSheetStore";
 import { useWaitlistStore } from "@/stores/useWaitlistStore";
+import { WaitlistEntry } from "@/types/db-floor-plan-types";
 import {
-  WaitlistEntry as DBWaitlistEntry,
-  FloorPlanObject,
-} from "@/types/db-floor-plan-types";
-import { useRouter } from "expo-router";
-import {
-  AlertTriangle,
+  Bell,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock,
-  GripVertical,
-  Trash2,
+  Phone,
+  StickyNote,
   UserPlus,
+  Users,
   X,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
+import { useToast } from "@/contexts/ToastContext";
 
-// AddWaitlistEntryModal Component (Themed)
-const AddWaitlistEntryModal: React.FC<{
-  isOpen: boolean;
+// ── Helpers ──────────────────────────────────────────────────
+
+function getElapsedMinutes(createdAt: string): number {
+  return Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000);
+}
+
+function formatElapsed(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+// ── AddWaitlistModal ─────────────────────────────────────────
+
+const AddWaitlistModal: React.FC<{
+  visible: boolean;
   onClose: () => void;
   onSubmit: (data: {
     name: string;
@@ -43,23 +58,15 @@ const AddWaitlistEntryModal: React.FC<{
     notes: string;
     phone?: string;
   }) => void;
-  isLoading?: boolean;
-}> = ({ isOpen, onClose, onSubmit, isLoading }) => {
+  isLoading: boolean;
+}> = ({ visible, onClose, onSubmit, isLoading }) => {
   const [name, setName] = useState("");
   const [partySize, setPartySize] = useState("");
   const [quotedTime, setQuotedTime] = useState("15");
   const [notes, setNotes] = useState("");
   const [phone, setPhone] = useState("");
 
-  const handleSubmit = () => {
-    onSubmit({
-      name: name || "Guest",
-      partySize: parseInt(partySize || "2"),
-      quotedTime: parseInt(quotedTime || "15"),
-      notes,
-      phone: phone || undefined,
-    });
-    // Reset form
+  const resetForm = () => {
     setName("");
     setPartySize("");
     setQuotedTime("15");
@@ -67,54 +74,84 @@ const AddWaitlistEntryModal: React.FC<{
     setPhone("");
   };
 
+  const handleSubmit = () => {
+    onSubmit({
+      name: name || "Guest",
+      partySize: parseInt(partySize || "2", 10),
+      quotedTime: parseInt(quotedTime || "15", 10),
+      notes,
+      phone: phone || undefined,
+    });
+    resetForm();
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  const inputStyle = {
+    backgroundColor: colors.screen,
+    color: "white" as const,
+    fontSize: 16,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  };
+
   return (
     <Modal
+      visible={visible}
+      transparent
       animationType="fade"
-      transparent={true}
-      visible={isOpen}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1 justify-center items-center bg-black/70"
+      <Pressable
+        className="flex-1 justify-center items-center"
+        style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+        onPress={handleClose}
       >
-        <Pressable
-          className="flex-1 justify-center items-center w-full"
-          onPress={onClose}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <Pressable
-            className="bg-[#303030] border border-gray-700 w-[450px] p-6 rounded-2xl"
-            onPress={(e) => e.stopPropagation()}
+            onPress={() => {}}
+            className="bg-panel rounded-2xl w-[400px] border border-border"
           >
-            <View className="flex-row justify-between items-center w-full mb-6">
-              <Text className="text-white text-2xl font-bold">
+            {/* Header */}
+            <View className="flex-row items-center justify-between px-5 pt-5 pb-3 border-b border-border">
+              <Text className="text-white text-xl font-bold">
                 Add to Waitlist
               </Text>
               <TouchableOpacity
-                onPress={onClose}
-                className="p-2 bg-[#404040] rounded-full"
+                onPress={handleClose}
+                className="w-9 h-9 rounded-full items-center justify-center bg-red-900/30"
               >
-                <X size={20} color="#9CA3AF" />
+                <X size={18} color={colors.danger} />
               </TouchableOpacity>
             </View>
 
-            <View className="gap-4">
+            {/* Form */}
+            <View className="px-5 pt-4 pb-6 gap-4">
+              {/* Name */}
               <View>
-                <Text className="text-gray-400 text-sm mb-2 font-medium">
+                <Text className="text-label text-sm mb-1.5 font-medium">
                   Guest Name
                 </Text>
                 <TextInput
                   value={name}
                   onChangeText={setName}
                   placeholder="Enter name"
-                  placeholderTextColor="#6B7280"
-                  className="bg-[#212121] text-white text-lg p-4 rounded-xl border border-gray-600"
+                  placeholderTextColor={colors.muted}
+                  style={inputStyle}
                 />
               </View>
 
+              {/* Party Size + Quoted Time */}
               <View className="flex-row gap-4">
                 <View className="flex-1">
-                  <Text className="text-gray-400 text-sm mb-2 font-medium">
+                  <Text className="text-label text-sm mb-1.5 font-medium">
                     Party Size
                   </Text>
                   <TextInput
@@ -122,12 +159,12 @@ const AddWaitlistEntryModal: React.FC<{
                     onChangeText={setPartySize}
                     keyboardType="numeric"
                     placeholder="2"
-                    placeholderTextColor="#6B7280"
-                    className="bg-[#212121] text-white text-lg p-4 rounded-xl border border-gray-600"
+                    placeholderTextColor={colors.muted}
+                    style={inputStyle}
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-gray-400 text-sm mb-2 font-medium">
+                  <Text className="text-label text-sm mb-1.5 font-medium">
                     Wait Time (min)
                   </Text>
                   <TextInput
@@ -135,14 +172,15 @@ const AddWaitlistEntryModal: React.FC<{
                     onChangeText={setQuotedTime}
                     keyboardType="numeric"
                     placeholder="15"
-                    placeholderTextColor="#6B7280"
-                    className="bg-[#212121] text-white text-lg p-4 rounded-xl border border-gray-600"
+                    placeholderTextColor={colors.muted}
+                    style={inputStyle}
                   />
                 </View>
               </View>
 
+              {/* Phone */}
               <View>
-                <Text className="text-gray-400 text-sm mb-2 font-medium">
+                <Text className="text-label text-sm mb-1.5 font-medium">
                   Phone (Optional)
                 </Text>
                 <TextInput
@@ -150,257 +188,199 @@ const AddWaitlistEntryModal: React.FC<{
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
                   placeholder="Phone number"
-                  placeholderTextColor="#6B7280"
-                  className="bg-[#212121] text-white text-lg p-4 rounded-xl border border-gray-600"
+                  placeholderTextColor={colors.muted}
+                  style={inputStyle}
                 />
               </View>
 
+              {/* Notes */}
               <View>
-                <Text className="text-gray-400 text-sm mb-2 font-medium">
+                <Text className="text-label text-sm mb-1.5 font-medium">
                   Notes (Optional)
                 </Text>
                 <TextInput
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="Special requests, allergies..."
-                  placeholderTextColor="#6B7280"
-                  className="bg-[#212121] text-white text-lg p-4 rounded-xl border border-gray-600 h-24"
+                  placeholderTextColor={colors.muted}
                   multiline
-                  textAlignVertical="top"
+                  style={{
+                    ...inputStyle,
+                    height: 80,
+                    textAlignVertical: "top",
+                  }}
                 />
               </View>
 
-              <TouchableOpacity
-                onPress={handleSubmit}
-                disabled={isLoading}
-                className={`bg-blue-600 p-4 rounded-xl items-center mt-2 ${
-                  isLoading ? "opacity-50" : ""
-                }`}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-white font-bold text-lg">
-                    Add to Waitlist
+              {/* Buttons */}
+              <View className="flex-row gap-3 mt-2">
+                <TouchableOpacity
+                  onPress={handleClose}
+                  className="flex-1 py-3.5 rounded-xl items-center border border-border"
+                >
+                  <Text className="text-label font-semibold text-base">
+                    Cancel
                   </Text>
-                )}
-              </TouchableOpacity>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSubmit}
+                  disabled={isLoading}
+                  className={`flex-1 py-3.5 rounded-xl items-center bg-teal ${
+                    isLoading ? "opacity-50" : ""
+                  }`}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text className="text-white font-bold text-base">
+                      Add to Waitlist
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </Pressable>
     </Modal>
   );
 };
 
-// Table Picker Modal
-const TablePickerModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  onSelectTable: (table: FloorPlanObject) => void;
-  waitlistEntry: DBWaitlistEntry | null;
-}> = ({ isOpen, onClose, onSelectTable, waitlistEntry }) => {
-  const tables = useFloorPlanStore((s) => s.tables);
-  const availableTables = useMemo(
-    () =>
-      tables.filter(
-        (t) =>
-          (t.session?.status || "available") === "available" &&
-          (t.category === "table" || t.category === "booth")
-      ),
-    [tables]
-  );
+// ── WaitlistPanelCard ────────────────────────────────────────
 
-  const recommendedTables = useMemo(
-    () =>
-      availableTables.filter(
-        (t) => (t.capacity || 0) >= (waitlistEntry?.party_size || 0)
-      ),
-    [availableTables, waitlistEntry]
-  );
-
-  return (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={isOpen}
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1 justify-end"
-      >
-        <Pressable className="flex-1 bg-black/50" onPress={onClose} />
-        <View className="bg-[#303030] rounded-t-3xl h-[60%] p-6">
-          <View className="w-12 h-1 bg-gray-600 rounded-full self-center mb-6" />
-          <Text className="text-white text-2xl font-bold mb-2">
-            Seat {waitlistEntry?.party_name}
-          </Text>
-          <Text className="text-gray-400 mb-6">
-            Party of {waitlistEntry?.party_size} • Quoted{" "}
-            {waitlistEntry?.quoted_wait_minutes}m
-          </Text>
-
-          <Text className="text-blue-400 font-semibold mb-3 uppercase text-xs tracking-wider">
-            Available Tables
-          </Text>
-          <FlatList
-            data={recommendedTables}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => onSelectTable(item)}
-                className="bg-[#212121] p-4 rounded-xl mb-3 flex-row justify-between items-center border border-gray-700"
-              >
-                <View>
-                  <Text className="text-white text-lg font-semibold">
-                    {item.name}
-                  </Text>
-                  <Text className="text-gray-400">
-                    Capacity: {item.capacity}
-                  </Text>
-                </View>
-                <View className="bg-green-600 px-4 py-2 rounded-lg">
-                  <Text className="text-white font-semibold">Seat</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              <View className="items-center py-8">
-                <Text className="text-gray-500 italic text-center">
-                  No available tables match the party size.
-                </Text>
-              </View>
-            }
-          />
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-};
-
-// Waitlist Item Component
-const WaitlistItem: React.FC<{
-  item: DBWaitlistEntry;
+const WaitlistPanelCard: React.FC<{
+  entry: WaitlistEntry;
+  isExpanded: boolean;
+  onToggle: () => void;
   onSeat: () => void;
+  onNotify: () => void;
   onDelete: () => void;
-  drag?: () => void;
-  isActive?: boolean;
-}> = ({ item, onSeat, onDelete, drag, isActive }) => {
-  const elapsed = Math.floor(
-    (new Date().getTime() - new Date(item.created_at).getTime()) / 60000
-  );
-  const isOverdue = elapsed > item.quoted_wait_minutes;
-
+  now: number;
+}> = ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete, now: _now }) => {
+  const elapsed = getElapsedMinutes(entry.created_at);
+  const isOverdue = elapsed > entry.quoted_wait_minutes;
   return (
-    <View
-      className={`mb-2 rounded-xl overflow-hidden border ${
-        isActive
-          ? "border-blue-500"
-          : isOverdue
-          ? "border-red-800/50"
-          : "border-gray-700"
-      }`}
+    <Animated.View
+      layout={LinearTransition.duration(200)}
+      className="mb-2 rounded-xl overflow-hidden bg-card border border-border"
     >
-      {/* Main Content */}
-      <View className={`p-3 ${isOverdue ? "bg-red-950/30" : "bg-[#2a2a2a]"}`}>
-        {/* Top Row: Drag + Party Size + Name */}
-        <View className="flex-row items-center gap-2">
-          <GestureDetector
-            gesture={Gesture.LongPress().onStart(() => {
-              if (drag) drag();
-            })}
-          >
-            <TouchableOpacity onPressIn={drag} className="p-1">
-              <GripVertical size={16} color="#6B7280" />
-            </TouchableOpacity>
-          </GestureDetector>
-
-          {/* Party Size Badge */}
-          <View
-            className={`w-9 h-9 rounded-full items-center justify-center ${
-              isOverdue ? "bg-red-900/50" : "bg-blue-900/50"
+      {/* Collapsed Row */}
+      <Pressable
+        onPress={onToggle}
+        className="flex-row items-center px-3 py-2.5"
+      >
+        {/* Time Badge */}
+        <View
+          className={`w-11 h-11 rounded-full items-center justify-center ${
+            isOverdue ? "bg-red-900/60" : "bg-teal/20"
+          }`}
+        >
+          <Text
+            className={`text-sm font-bold ${
+              isOverdue ? "text-red-400" : "text-teal"
             }`}
           >
-            <Text
-              className={`font-bold text-base ${
-                isOverdue ? "text-red-300" : "text-blue-300"
-              }`}
-            >
-              {item.party_size}
+            {formatElapsed(elapsed)}
+          </Text>
+        </View>
+
+        {/* Name + Guests */}
+        <View className="flex-1 ml-2.5 min-w-0">
+          <Text
+            className="text-white font-semibold text-base"
+            numberOfLines={1}
+          >
+            {entry.party_name}
+          </Text>
+          <View className="flex-row items-center mt-0.5">
+            <Users size={12} color={colors.muted} />
+            <Text className="text-muted-foreground text-sm ml-1">
+              {entry.party_size} {entry.party_size === 1 ? "guest" : "guests"}
             </Text>
           </View>
+        </View>
 
-          {/* Party Name & Time */}
-          <View className="flex-1 min-w-0">
-            <Text
-              className="text-white font-semibold text-base"
-              numberOfLines={1}
-            >
-              {item.party_name}
-            </Text>
-            <View className="flex-row items-center gap-1 mt-0.5">
-              <Clock size={10} color="#9CA3AF" />
-              <Text className="text-gray-400 text-xs" numberOfLines={1}>
-                {item.quoted_wait_minutes}m / {elapsed}m
+        {/* Chevron */}
+        {isExpanded ? (
+          <ChevronUp size={18} color={colors.label} />
+        ) : (
+          <ChevronDown size={18} color={colors.label} />
+        )}
+      </Pressable>
+
+      {/* Expanded Section */}
+      {isExpanded && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(150)}
+          className="px-3 pb-3 border-t border-border"
+        >
+          <View className="mt-2 gap-1.5">
+            {/* Phone */}
+            {entry.phone ? (
+              <View className="flex-row items-center">
+                <Phone size={14} color={colors.label} />
+                <Text className="text-label text-sm ml-1.5">
+                  {entry.phone}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Notes */}
+            {entry.notes ? (
+              <View className="flex-row items-start">
+                <StickyNote
+                  size={14}
+                  color={colors.label}
+                  style={{ marginTop: 2 }}
+                />
+                <Text className="text-label text-sm ml-1.5 italic flex-1">
+                  {entry.notes}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Quoted time */}
+            <View className="flex-row items-center">
+              <Clock size={14} color={colors.label} />
+              <Text className="text-label text-sm ml-1.5">
+                Quoted: {entry.quoted_wait_minutes} min
               </Text>
             </View>
           </View>
-        </View>
-
-        {/* Notes */}
-        {item.notes ? (
-          <Text
-            className="text-gray-500 text-xs italic mt-1 ml-12"
-            numberOfLines={1}
-          >
-            "{item.notes}"
-          </Text>
-        ) : null}
-
-        {/* Bottom Row: Status + Actions */}
-        <View className="flex-row items-center justify-between mt-3">
-          {/* Status Badge */}
-          <View
-            className={`flex-row items-center gap-1 px-2 py-1 rounded-full ${
-              isOverdue ? "bg-red-900/50" : "bg-green-900/50"
-            }`}
-          >
-            {isOverdue ? (
-              <AlertTriangle size={12} color="#F87171" />
-            ) : (
-              <Check size={12} color="#4ADE80" />
-            )}
-            <Text
-              className={`text-xs font-bold ${
-                isOverdue ? "text-red-400" : "text-green-400"
-              }`}
-            >
-              {isOverdue ? "LATE" : "OK"}
-            </Text>
-          </View>
 
           {/* Action Buttons */}
-          <View className="flex-row items-center gap-1">
+          <View className="flex-row items-center gap-2 mt-3">
             <TouchableOpacity
               onPress={onSeat}
-              className="flex-row items-center gap-1 px-3 py-1.5 bg-blue-600 rounded-lg"
+              className="flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-lg bg-teal"
             >
               <Check size={14} color="white" />
               <Text className="text-white font-semibold text-sm">Seat</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={onNotify}
+              className="flex-1 flex-row items-center justify-center gap-1.5 py-2 rounded-lg border border-border"
+            >
+              <Bell size={14} color={colors.label} />
+              <Text className="text-label font-semibold text-sm">Notify</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={onDelete}
-              className="p-1.5 bg-red-600/20 rounded-lg"
+              className="w-9 h-9 items-center justify-center rounded-lg bg-red-900/30"
             >
-              <Trash2 size={16} color="#F87171" />
+              <X size={14} color={colors.danger} />
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
-    </View>
+        </Animated.View>
+      )}
+    </Animated.View>
   );
 };
+
+// ── WaitlistPanel (main export) ──────────────────────────────
 
 const WaitlistPanel: React.FC = () => {
   const {
@@ -409,22 +389,14 @@ const WaitlistPanel: React.FC = () => {
     fetchWaitlist,
     addToWaitlistAsync,
     removeFromWaitlistAsync,
-    seatFromWaitlistAsync,
-    removeWaitlistEntry,
   } = useWaitlistStore();
-  const startNewOrder = useOrderStore((s) => s.startNewOrder);
-  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
-  const tables = useFloorPlanStore((s) => s.tables);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const router = useRouter();
+  const { show } = useToast();
 
-  const [isAddModalOpen, setAddModalOpen] = useState(false);
-  const [selectedWaitlistEntry, setSelectedWaitlistEntry] =
-    useState<DBWaitlistEntry | null>(null);
-  const [isTablePickerOpen, setTablePickerOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<DBWaitlistEntry | null>(
-    null
-  );
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<WaitlistEntry | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   // Fetch waitlist on mount
   useEffect(() => {
@@ -433,132 +405,151 @@ const WaitlistPanel: React.FC = () => {
     }
   }, [selectedStore?.id]);
 
-  const handleAddEntry = async (data: {
-    name: string;
-    partySize: number;
-    quotedTime: number;
-    notes: string;
-    phone?: string;
-  }) => {
-    if (!selectedStore?.id) return;
+  // Timer: update elapsed time every 60s
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
-    await addToWaitlistAsync({
-      locationId: selectedStore.id,
-      p_party_name: data.name,
-      p_party_size: data.partySize,
-      p_quoted_wait_minutes: data.quotedTime,
-      p_notes: data.notes,
-      p_phone: data.phone,
-    });
-    setAddModalOpen(false);
-  };
+  // Toggle expand
+  const handleToggle = useCallback((id: string) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
 
-  const handleSelectTable = async (table: FloorPlanObject) => {
-    if (!selectedWaitlistEntry) return;
+  // Seat action — open the WaitlistBottomSheet table picker
+  const handleSeat = useCallback(() => {
+    useWaitlistSheetStore.getState().openSheet();
+  }, []);
 
-    // Try backend-first approach
-    const result = await seatFromWaitlistAsync(selectedWaitlistEntry.id, [
-      table.id,
-    ]);
+  // Notify action
+  const handleNotify = useCallback(
+    async (entry: WaitlistEntry) => {
+      try {
+        await useFloorPlanStore.getState().notifyWaitlistParty(entry.id);
+        show({
+          title: "Notification Sent",
+          message: `${entry.party_name} has been notified.`,
+          type: "success",
+        });
+        if (selectedStore?.id) {
+          fetchWaitlist(selectedStore.id);
+        }
+      } catch {
+        show({
+          title: "Could Not Notify",
+          message: `Failed to notify ${entry.party_name}. Please try again.`,
+          type: "error",
+        });
+      }
+    },
+    [show, selectedStore?.id, fetchWaitlist],
+  );
 
-    if (result?.order_id) {
-      // Backend handled everything, use returned order
-      setActiveOrder(result.order_id);
-    } else {
-      // Fallback: Create order locally
-      const newOrder = startNewOrder({
-        guestCount: selectedWaitlistEntry.party_size,
-        tableId: table.id,
-      });
-      setActiveOrder(newOrder.id);
-    }
-
-    // Navigate to table
-    router.push(`/tables/${table.id}`);
-
-    setTablePickerOpen(false);
-    setSelectedWaitlistEntry(null);
-  };
-
-  const confirmDelete = async () => {
+  // Delete confirm
+  const confirmDelete = useCallback(async () => {
     if (itemToDelete) {
       await removeFromWaitlistAsync(itemToDelete.id);
       setItemToDelete(null);
     }
-  };
+  }, [itemToDelete, removeFromWaitlistAsync]);
+
+  // Add entry
+  const handleAddEntry = useCallback(
+    async (data: {
+      name: string;
+      partySize: number;
+      quotedTime: number;
+      notes: string;
+      phone?: string;
+    }) => {
+      if (!selectedStore?.id) return;
+
+      await addToWaitlistAsync({
+        locationId: selectedStore.id,
+        p_party_name: data.name,
+        p_party_size: data.partySize,
+        p_quoted_wait_minutes: data.quotedTime,
+        p_notes: data.notes,
+        p_phone: data.phone,
+      });
+      setShowAddModal(false);
+    },
+    [selectedStore?.id, addToWaitlistAsync],
+  );
 
   return (
-    <View className="flex-1 bg-[#1a1a1a] w-full h-full">
+    <View className="h-full flex-col bg-panel">
       {/* Header */}
-      <View className="p-4 border-b border-gray-800 flex-row justify-between items-center bg-[#242424]">
-        <View>
-          <Text className="text-xl font-bold text-white">Waitlist</Text>
-          <Text className="text-gray-500 text-sm">
-            {waitlist.length} {waitlist.length === 1 ? "party" : "parties"}{" "}
-            waiting
-          </Text>
+      <View className="px-3 py-3 border-b border-border">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <Text className="text-heading text-lg font-bold">Waitlist</Text>
+            <View className="bg-card px-2 py-0.5 rounded-full">
+              <Text className="text-muted text-sm font-medium">
+                {waitlist.length}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={() => setShowAddModal(true)}
+            className="w-8 h-8 rounded-full items-center justify-center bg-teal/20"
+          >
+            <UserPlus size={16} color={colors.teal} />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          onPress={() => setAddModalOpen(true)}
-          className="bg-blue-600 p-3 rounded-xl flex-row items-center gap-2"
-        >
-          <UserPlus size={20} color="white" />
-        </TouchableOpacity>
+        <Text className="text-label text-sm mt-1">
+          {waitlist.length} {waitlist.length === 1 ? "party" : "parties"}{" "}
+          waiting
+        </Text>
       </View>
 
-      {/* Content */}
-      <View className="flex-1">
+      {/* Scrollable List */}
+      <ScrollView
+        className="flex-1 p-2"
+        contentContainerStyle={{ paddingBottom: 20 }}
+      >
         {isLoading && waitlist.length === 0 ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#3B82F6" />
-            <Text className="text-gray-500 mt-3">Loading waitlist...</Text>
+          <View className="items-center justify-center py-12">
+            <ActivityIndicator size="large" color={colors.teal} />
+            <Text className="text-muted mt-3 text-base">
+              Loading waitlist...
+            </Text>
           </View>
         ) : waitlist.length > 0 ? (
-          <FlatList
-            data={waitlist}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <WaitlistItem
-                item={item}
-                onSeat={() => {
-                  setSelectedWaitlistEntry(item);
-                  setTablePickerOpen(true);
-                }}
-                onDelete={() => setItemToDelete(item)}
-              />
-            )}
-            contentContainerStyle={{ padding: 12 }}
-          />
+          waitlist.map((entry) => (
+            <WaitlistPanelCard
+              key={entry.id}
+              entry={entry}
+              isExpanded={expandedId === entry.id}
+              onToggle={() => handleToggle(entry.id)}
+              onSeat={() => handleSeat()}
+              onNotify={() => handleNotify(entry)}
+              onDelete={() => setItemToDelete(entry)}
+              now={now}
+            />
+          ))
         ) : (
-          <View className="flex-1 items-center justify-center">
-            <Clock size={48} color="#4B5563" />
-            <Text className="text-gray-500 text-lg mt-4">
+          <View className="items-center justify-center py-12">
+            <Clock size={36} color={colors.muted} />
+            <Text className="text-label text-base mt-3">
               No parties waiting
             </Text>
-            <Text className="text-gray-600 text-sm mt-1">
-              Tap + to add someone to the waitlist
+            <Text className="text-label text-sm mt-1">
+              Tap + to add someone
             </Text>
           </View>
         )}
-      </View>
+      </ScrollView>
 
-      {/* Modals */}
-      <AddWaitlistEntryModal
-        isOpen={isAddModalOpen}
-        onClose={() => setAddModalOpen(false)}
+      {/* Add Entry Modal */}
+      <AddWaitlistModal
+        visible={showAddModal}
+        onClose={() => setShowAddModal(false)}
         onSubmit={handleAddEntry}
         isLoading={isLoading}
       />
 
-      {selectedWaitlistEntry && (
-        <TablePickerModal
-          isOpen={isTablePickerOpen}
-          onClose={() => setTablePickerOpen(false)}
-          onSelectTable={handleSelectTable}
-          waitlistEntry={selectedWaitlistEntry}
-        />
-      )}
-
+      {/* Delete Confirmation */}
       <ConfirmationModal
         isOpen={!!itemToDelete}
         onClose={() => setItemToDelete(null)}

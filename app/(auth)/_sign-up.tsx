@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useOAuth, useSignUp } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -171,7 +172,7 @@ export default function SignUpScreen() {
                         className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl text-center tracking-widest"
                         value={code}
                         placeholder="Enter 6-digit code"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.label}
                         keyboardType="number-pad"
                         onChangeText={setCode}
                         maxLength={6}
@@ -223,7 +224,7 @@ export default function SignUpScreen() {
                     }`}
             >
                 {isGoogleLoading ? (
-                    <ActivityIndicator color="#4285F4" size="small" />
+                    <ActivityIndicator color={colors.info} size="small" />
                 ) : (
                     <>
                         <Image
@@ -252,7 +253,7 @@ export default function SignUpScreen() {
                 <TextInput
                     className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl"
                     placeholder="john@gmail.com"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.label}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={emailAddress}
@@ -266,7 +267,7 @@ export default function SignUpScreen() {
                 <KeyboardAvoidingView behavior="position">
                     <TextInput
                         className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.label}
                         placeholder="At least 8 characters"
                         secureTextEntry
                         value={password}
@@ -283,7 +284,7 @@ export default function SignUpScreen() {
                 <KeyboardAvoidingView behavior="position">
                     <TextInput
                         className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.label}
                         placeholder="••••••••"
                         secureTextEntry
                         value={confirmPassword}

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { CartItem, OrderProfile } from "@/lib/types";
 import { X } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
@@ -77,27 +78,27 @@ const ModifierItem = ({ item }: { item: CartItem }) => (
 
 const itemStyles = StyleSheet.create({
   card: {
-    backgroundColor: "#252525",
+    backgroundColor: colors.panel,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#3f3f3f",
+    borderColor: colors.border,
   },
   quantityBadge: {
-    backgroundColor: "#3f3f3f",
+    backgroundColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 8,
   },
   notesContainer: {
     flexDirection: "row",
-    backgroundColor: "#1a1a1a",
+    backgroundColor: colors.screen,
     borderRadius: 8,
     overflow: "hidden",
   },
   notesAccent: {
     width: 3,
-    backgroundColor: "#3B82F6",
+    backgroundColor: colors.info,
   },
   notesContent: {
     flex: 1,
@@ -326,13 +327,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     maxHeight: "80%",
-    backgroundColor: "#303030",
+    backgroundColor: colors.panel,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     borderTopWidth: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: "#374151",
+    borderColor: colors.border,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.25,
@@ -347,7 +348,7 @@ const styles = StyleSheet.create({
   dragHandle: {
     width: 40,
     height: 4,
-    backgroundColor: "#525252",
+    backgroundColor: colors.muted,
     borderRadius: 2,
   },
   header: {
@@ -357,7 +358,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: colors.border,
   },
   headerTitle: {
     fontSize: 22,
@@ -381,30 +382,30 @@ const styles = StyleSheet.create({
   orderInfoBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#252525",
+    backgroundColor: colors.panel,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 10,
     marginBottom: 16,
     alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "#3f3f3f",
+    borderColor: colors.border,
   },
   orderInfoText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#9CA3AF",
+    color: colors.label,
   },
   orderInfoDivider: {
     width: 1,
     height: 16,
-    backgroundColor: "#525252",
+    backgroundColor: colors.muted,
     marginHorizontal: 12,
   },
   orderTotalText: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#22C55E",
+    color: colors.success,
   },
   scrollView: {
     flex: 1,
@@ -421,24 +422,24 @@ const styles = StyleSheet.create({
   orderNotesLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#9CA3AF",
+    color: colors.label,
     marginBottom: 8,
   },
   orderNotesBox: {
     flexDirection: "row",
-    backgroundColor: "#1a1a1a",
+    backgroundColor: colors.screen,
     borderRadius: 8,
     overflow: "hidden",
   },
   orderNotesAccent: {
     width: 3,
-    backgroundColor: "#F59E0B",
+    backgroundColor: colors.warning,
   },
   orderNotesText: {
     flex: 1,
     padding: 12,
     fontSize: 15,
-    color: "#E5E7EB",
+    color: colors.heading,
     fontStyle: "italic",
   },
 });

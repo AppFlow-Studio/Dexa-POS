@@ -3,6 +3,7 @@ import {
   AlertDialogContent,
 } from "@/components/ui/alert-dialog";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -74,10 +75,10 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
         open={isNotReadyConfirmOpen}
         onOpenChange={onNotReadyConfirmChange}
       >
-        <AlertDialogContent className="w-[450px] p-5 rounded-2xl bg-[#1C1C1E] border border-[#333333]">
+        <AlertDialogContent className="w-[450px] p-5 rounded-2xl bg-panel border border-border">
           <View className="items-center mb-4">
             <View className="w-16 h-16 rounded-full bg-amber-500/20 items-center justify-center">
-              <AlertTriangle size={32} color="#f59e0b" />
+              <AlertTriangle size={32} color={colors.warning} />
             </View>
           </View>
           <Text className="text-xl font-bold text-white text-center mb-2">
@@ -88,7 +89,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
             not ready yet:
           </Text>
           <ScrollView
-            className="max-h-32 mb-4 bg-[#252528] rounded-xl p-3"
+            className="max-h-32 mb-4 bg-panel rounded-xl p-3"
             showsVerticalScrollIndicator={false}
           >
             {notReadyItems.map((item) => (
@@ -129,10 +130,10 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
         open={isClearNotReadyConfirmOpen}
         onOpenChange={onClearNotReadyConfirmChange}
       >
-        <AlertDialogContent className="w-[450px] p-5 rounded-2xl bg-[#1C1C1E] border border-[#333333]">
+        <AlertDialogContent className="w-[450px] p-5 rounded-2xl bg-panel border border-border">
           <View className="items-center mb-4">
             <View className="w-16 h-16 rounded-full bg-amber-500/20 items-center justify-center">
-              <AlertTriangle size={32} color="#f59e0b" />
+              <AlertTriangle size={32} color={colors.warning} />
             </View>
           </View>
           <Text className="text-xl font-bold text-white text-center mb-2">
@@ -143,7 +144,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
             not ready yet:
           </Text>
           <ScrollView
-            className="max-h-32 mb-4 bg-[#252528] rounded-xl p-3"
+            className="max-h-32 mb-4 bg-panel rounded-xl p-3"
             showsVerticalScrollIndicator={false}
           >
             {notReadyItems.map((item) => (
@@ -181,7 +182,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
 
       {/* Void Confirm */}
       <AlertDialog open={isVoidConfirmOpen} onOpenChange={onVoidConfirmChange}>
-        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-[#303030]">
+        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-surface">
           <Text className="text-lg font-bold text-white mb-2">
             Void check?
           </Text>
@@ -191,7 +192,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => onVoidConfirmChange(false)}
-              className="flex-1 py-2 border border-gray-600 rounded-lg items-center bg-[#212121]"
+              className="flex-1 py-2 border border-gray-600 rounded-lg items-center bg-panel"
             >
               <Text className="font-semibold text-white text-base">
                 Cancel
@@ -214,7 +215,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
         open={isOrderClosedWarningOpen}
         onOpenChange={onOrderClosedWarningChange}
       >
-        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-[#303030]">
+        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-surface">
           <Text className="text-lg font-bold text-white mb-2">
             Order is Closed
           </Text>
@@ -240,7 +241,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
           if (!isOpen) onCourseResendChange(null);
         }}
       >
-        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-[#303030]">
+        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-surface">
           <Text className="text-lg font-bold text-white mb-2">
             Resend Course {courseToResend}?
           </Text>
@@ -251,7 +252,7 @@ const TableAlertDialogs: React.FC<TableAlertDialogsProps> = ({
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => onCourseResendChange(null)}
-              className="flex-1 py-2 border border-gray-600 rounded-lg items-center bg-[#212121]"
+              className="flex-1 py-2 border border-gray-600 rounded-lg items-center bg-panel"
             >
               <Text className="font-semibold text-white text-base">
                 Cancel

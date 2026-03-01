@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { colors } from "@/lib/theme";
 import { ApplyMode } from "@/lib/types";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { AlertTriangle, CheckCircle, ChevronDown } from "lucide-react-native";
@@ -63,7 +64,7 @@ const ApplyTemplateBar: React.FC<ApplyTemplateBarProps> = ({
 
   return (
     <>
-      <View className="absolute bottom-0 left-0 right-0 bg-[#303030] border-t border-gray-700 p-4 flex-row items-center justify-between">
+      <View className="absolute bottom-0 left-0 right-0 bg-panel border-t border-border p-4 flex-row items-center justify-between">
         <View className="flex-row items-center gap-4">
           <Text className="text-white text-lg font-semibold">
             {templateName}
@@ -82,7 +83,7 @@ const ApplyTemplateBar: React.FC<ApplyTemplateBarProps> = ({
         <View className="flex-row items-center mx-4">
           {shiftsToAdd > 0 && (
             <View className="flex-row items-center mr-4 gap-1">
-              <CheckCircle size={16} color="#22c55e" className="mr-1" />
+              <CheckCircle size={16} color={colors.success} className="mr-1" />
               <Text className="text-green-400 text-sm">
                 {shiftsToAdd} shifts will be added
               </Text>
@@ -90,7 +91,7 @@ const ApplyTemplateBar: React.FC<ApplyTemplateBarProps> = ({
           )}
           {conflictsDetected > 0 && (
             <View className="flex-row items-center gap-1">
-              <AlertTriangle size={16} color="#facc15" className="mr-1" />
+              <AlertTriangle size={16} color={colors.warning} className="mr-1" />
               <Text className="text-yellow-400 text-sm">
                 {conflictsDetected} conflicts detected
               </Text>

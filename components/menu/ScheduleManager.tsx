@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Schedule } from "@/lib/types";
 import { Clock, Plus, Trash2 } from "lucide-react-native";
 import React from "react";
@@ -25,7 +26,7 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   return (
     <View className="gap-2">
       {schedules.length === 0 && (
-        <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+        <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
           <Text className="text-gray-300 text-lg">
             No schedule rules defined.
           </Text>
@@ -36,11 +37,11 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         <TouchableOpacity
           key={rule.id}
           onPress={() => onEdit(rule, idx)}
-          className="bg-[#303030] border rounded-lg p-3 border-gray-600"
+          className="bg-surface border rounded-lg p-3 border-gray-600"
         >
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-1.5">
-              <Clock size={16} color="#9CA3AF" />
+              <Clock size={16} color={colors.label} />
               <Text className="text-white font-semibold text-xl">
                 {rule.name || `Rule ${idx + 1}`}
               </Text>
@@ -52,7 +53,7 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
               }}
               className="p-1.5 bg-red-900/30 border border-red-500 rounded-lg"
             >
-              <Trash2 size={18} color="#F87171" />
+              <Trash2 size={18} color={colors.danger} />
             </TouchableOpacity>
           </View>
           <Text className="text-base text-gray-400 mt-1.5">

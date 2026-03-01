@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -41,7 +42,7 @@ const ResetPinScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1 justify-center items-center"
     >
-      <View className="w-full max-w-sm p-6 bg-[#212121] rounded-2xl shadow-xl">
+      <View className="w-full max-w-sm p-6 bg-screen rounded-2xl shadow-xl">
         <Text className="text-3xl font-bold text-white text-center mb-6">
           Reset Pin
         </Text>
@@ -53,9 +54,9 @@ const ResetPinScreen = () => {
           <TextInput
             value={newPin}
             onChangeText={setNewPin}
-            className="w-full p-4 h-16 bg-[#303030] border border-gray-600 rounded-lg text-xl text-white"
+            className="w-full p-4 h-16 bg-panel border border-gray-600 rounded-lg text-xl text-white"
             placeholder="••••"
-            placeholderTextColor="#6B7280"
+            placeholderTextColor={colors.muted}
             keyboardType="number-pad"
             secureTextEntry
             maxLength={6}
@@ -69,9 +70,9 @@ const ResetPinScreen = () => {
           <TextInput
             value={confirmPin}
             onChangeText={setConfirmPin}
-            className="w-full p-4 h-16 bg-[#303030] border border-gray-600 rounded-lg text-xl text-white"
+            className="w-full p-4 h-16 bg-panel border border-gray-600 rounded-lg text-xl text-white"
             placeholder="••••"
-            placeholderTextColor="#6B7280"
+            placeholderTextColor={colors.muted}
             keyboardType="number-pad"
             secureTextEntry
             maxLength={6}

@@ -22,6 +22,7 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react-native";
+import { colors, spinnerColor } from "@/lib/theme";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -85,10 +86,10 @@ const StationsDevicesScreen = () => {
     return (
       <TouchableOpacity
         onPress={() => toggleSection(sectionKey)}
-        className="bg-[#353535] p-4 rounded-t-xl border-b border-gray-700 flex-row items-center justify-between"
+        className="bg-surface p-4 rounded-t-xl border-b border-gray-700 flex-row items-center justify-between"
       >
         <View className="flex-row items-center flex-1">
-          <View className="w-10 h-10 bg-[#454545] rounded-lg items-center justify-center mr-3">
+          <View className="w-10 h-10 bg-card rounded-lg items-center justify-center mr-3">
             {icon}
           </View>
           <View className="flex-1">
@@ -97,9 +98,9 @@ const StationsDevicesScreen = () => {
           </View>
         </View>
         {isExpanded ? (
-          <ChevronUp size={24} color="#9ca3af" />
+          <ChevronUp size={24} color={colors.label} />
         ) : (
-          <ChevronDown size={24} color="#9ca3af" />
+          <ChevronDown size={24} color={colors.label} />
         )}
       </TouchableOpacity>
     );
@@ -143,7 +144,7 @@ const StationsDevicesScreen = () => {
     return (
       <View
         key={station.id}
-        className="bg-[#404040] p-4 rounded-xl border border-gray-600 mb-3"
+        className="bg-surface p-4 rounded-xl border border-gray-600 mb-3"
       >
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center flex-1">
@@ -154,7 +155,7 @@ const StationsDevicesScreen = () => {
             >
               <Monitor
                 size={24}
-                color={isAvailable ? "#4ade80" : "#fbbf24"}
+                color={isAvailable ? colors.success : colors.warning}
               />
             </View>
             <View className="flex-1">
@@ -179,9 +180,9 @@ const StationsDevicesScreen = () => {
           <View className="items-end">
             <View className="flex-row items-center mb-1">
               {isOnline ? (
-                <Wifi size={16} color="#4ade80" />
+                <Wifi size={16} color={colors.success} />
               ) : (
-                <WifiOff size={16} color="#6b7280" />
+                <WifiOff size={16} color={colors.muted} />
               )}
               <Text
                 className={`text-sm ml-1 ${
@@ -193,9 +194,9 @@ const StationsDevicesScreen = () => {
             </View>
             <View className="flex-row items-center">
               {isAvailable ? (
-                <CheckCircle2 size={16} color="#4ade80" />
+                <CheckCircle2 size={16} color={colors.success} />
               ) : (
-                <AlertCircle size={16} color="#fbbf24" />
+                <AlertCircle size={16} color={colors.warning} />
               )}
               <Text
                 className={`text-sm ml-1 ${
@@ -209,8 +210,8 @@ const StationsDevicesScreen = () => {
         </View>
 
         {!isAvailable && station.current_session && (
-          <View className="flex-row items-center mb-3 p-2 bg-[#353535] rounded-lg">
-            <User size={14} color="#9ca3af" />
+          <View className="flex-row items-center mb-3 p-2 bg-surface rounded-lg">
+            <User size={14} color={colors.label} />
             <Text className="text-gray-400 text-sm ml-2">
               In use by {station.current_session.staff_name}
               {station.current_session.device_name &&
@@ -289,12 +290,12 @@ const StationsDevicesScreen = () => {
         {(station.device_manufacturer || station.hardware_model || station.last_heartbeat_at) && (
           <View className="border-t border-gray-700 pt-3 mb-3">
             <View className="flex-row items-center mb-2">
-              <Smartphone size={16} color="#9ca3af" />
+              <Smartphone size={16} color={colors.label} />
               <Text className="text-gray-400 text-sm font-medium ml-2">
                 Device Health
               </Text>
             </View>
-            <View className="bg-[#353535] p-3 rounded-lg">
+            <View className="bg-surface p-3 rounded-lg">
               {station.hardware_model && (
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-gray-400 text-sm">Hardware</Text>
@@ -318,7 +319,7 @@ const StationsDevicesScreen = () => {
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-gray-400 text-sm">Network</Text>
                   <View className="flex-row items-center">
-                    <Wifi size={12} color="#9ca3af" />
+                    <Wifi size={12} color={colors.label} />
                     <Text className="text-white text-sm ml-1">
                       {station.network_type}
                     </Text>
@@ -335,25 +336,25 @@ const StationsDevicesScreen = () => {
               <View className="flex-row flex-wrap gap-2 mt-1">
                 {station.has_builtin_printer && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <Printer size={10} color="#34d399" />
+                    <Printer size={10} color={colors.success} />
                     <Text className="text-xs font-medium text-emerald-400 ml-1">Printer</Text>
                   </View>
                 )}
                 {station.has_builtin_cfd && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <Monitor size={10} color="#34d399" />
+                    <Monitor size={10} color={colors.success} />
                     <Text className="text-xs font-medium text-emerald-400 ml-1">CFD</Text>
                   </View>
                 )}
                 {station.has_nfc && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <Cpu size={10} color="#34d399" />
+                    <Cpu size={10} color={colors.success} />
                     <Text className="text-xs font-medium text-emerald-400 ml-1">NFC</Text>
                   </View>
                 )}
                 {station.has_cash_drawer_port && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <CreditCard size={10} color="#34d399" />
+                    <CreditCard size={10} color={colors.success} />
                     <Text className="text-xs font-medium text-emerald-400 ml-1">Cash Drawer</Text>
                   </View>
                 )}
@@ -365,12 +366,12 @@ const StationsDevicesScreen = () => {
         {station.payment_terminal && (
           <View className="border-t border-gray-700 pt-3">
             <View className="flex-row items-center mb-2">
-              <CreditCard size={16} color="#9ca3af" />
+              <CreditCard size={16} color={colors.label} />
               <Text className="text-gray-400 text-sm font-medium ml-2">
                 Linked Payment Terminal
               </Text>
             </View>
-            <View className="bg-[#353535] p-3 rounded-lg">
+            <View className="bg-surface p-3 rounded-lg">
               <Text className="text-white font-medium">
                 {station.payment_terminal.terminal_name}
               </Text>
@@ -388,14 +389,14 @@ const StationsDevicesScreen = () => {
               <View className="flex-row items-center mt-2">
                 {station.payment_terminal.is_connected ? (
                   <>
-                    <CheckCircle2 size={14} color="#4ade80" />
+                    <CheckCircle2 size={14} color={colors.success} />
                     <Text className="text-green-400 text-xs ml-1">
                       Connected
                     </Text>
                   </>
                 ) : (
                   <>
-                    <AlertCircle size={14} color="#ef4444" />
+                    <AlertCircle size={14} color={colors.danger} />
                     <Text className="text-red-400 text-xs ml-1">
                       Disconnected
                     </Text>
@@ -428,7 +429,7 @@ const StationsDevicesScreen = () => {
     return (
       <View
         key={terminal.id}
-        className="bg-[#404040] p-4 rounded-xl border border-gray-600 mb-3"
+        className="bg-surface p-4 rounded-xl border border-gray-600 mb-3"
       >
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center flex-1">
@@ -439,7 +440,7 @@ const StationsDevicesScreen = () => {
             >
               <CreditCard
                 size={24}
-                color={terminal.is_connected ? "#4ade80" : "#ef4444"}
+                color={terminal.is_connected ? colors.success : colors.danger}
               />
             </View>
             <View className="flex-1">
@@ -456,19 +457,19 @@ const StationsDevicesScreen = () => {
           <View className="items-end">
             {terminal.is_connected ? (
               <>
-                <CheckCircle2 size={20} color="#4ade80" />
+                <CheckCircle2 size={20} color={colors.success} />
                 <Text className="text-green-400 text-xs mt-1">Connected</Text>
               </>
             ) : (
               <>
-                <AlertCircle size={20} color="#ef4444" />
+                <AlertCircle size={20} color={colors.danger} />
                 <Text className="text-red-400 text-xs mt-1">Offline</Text>
               </>
             )}
           </View>
         </View>
 
-        <View className="bg-[#353535] p-3 rounded-lg mb-3">
+        <View className="bg-surface p-3 rounded-lg mb-3">
           <View className="flex-row items-center justify-between mb-2">
             <Text className="text-gray-400 text-sm">Terminal ID (TPN)</Text>
             <Text className="text-white font-mono">
@@ -516,7 +517,7 @@ const StationsDevicesScreen = () => {
         )}
 
         <View className="bg-blue-600/10 border border-blue-600/30 p-3 rounded-lg flex-row items-center">
-          <Shield size={16} color="#3b82f6" />
+          <Shield size={16} color={colors.info} />
           <Text className="text-blue-400 text-xs ml-2 flex-1">
             Auth credentials encrypted and accessed securely during payment
             processing
@@ -529,9 +530,9 @@ const StationsDevicesScreen = () => {
   // Loading state
   if (isLoading) {
     return (
-      <ScrollView className="flex-1 bg-[#212121] p-6">
+      <ScrollView className="flex-1 bg-screen p-6">
         <View className="w-full items-center justify-center py-20">
-          <ActivityIndicator size="large" color="#3b82f6" />
+          <ActivityIndicator size="large" color={colors.info} />
           <Text className="text-gray-400 mt-4">Loading stations...</Text>
         </View>
       </ScrollView>
@@ -541,9 +542,9 @@ const StationsDevicesScreen = () => {
   // Error state
   if (error) {
     return (
-      <ScrollView className="flex-1 bg-[#212121] p-6">
+      <ScrollView className="flex-1 bg-screen p-6">
         <View className="w-full items-center justify-center py-20">
-          <AlertCircle size={48} color="#ef4444" />
+          <AlertCircle size={48} color={colors.danger} />
           <Text className="text-red-400 text-lg text-center mt-4">
             Failed to load stations
           </Text>
@@ -562,7 +563,7 @@ const StationsDevicesScreen = () => {
   }
 
   return (
-    <ScrollView className="flex-1 bg-[#212121] p-6">
+    <ScrollView className="flex-1 bg-screen p-6">
       {/* Header */}
       <View className="flex-row items-center justify-between mb-6">
         <View className="flex-1">
@@ -593,7 +594,7 @@ const StationsDevicesScreen = () => {
       {/* No stations state */}
       {!stations || stations.length === 0 ? (
         <View className="w-full items-center justify-center py-20">
-          <Monitor size={48} color="#6b7280" />
+          <Monitor size={48} color={colors.muted} />
           <Text className="text-gray-400 text-lg text-center mt-4">
             No stations available
           </Text>
@@ -604,9 +605,9 @@ const StationsDevicesScreen = () => {
       ) : (
         <>
           {/* Stations Section */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(
-              <Monitor size={20} color="#3b82f6" />,
+              <Monitor size={20} color={colors.info} />,
               "Stations",
               `${stations.length} station${stations.length !== 1 ? "s" : ""} configured`,
               "stations"
@@ -620,9 +621,9 @@ const StationsDevicesScreen = () => {
 
           {/* Payment Terminals Section */}
           {stations.some((s) => s.payment_terminal) && (
-            <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+            <View className="bg-panel rounded-xl border border-gray-700 mb-6">
               {renderSectionHeader(
-                <CreditCard size={20} color="#10b981" />,
+                <CreditCard size={20} color={colors.success} />,
                 "Payment Terminals",
                 `${stations.filter((s) => s.payment_terminal).length} terminal${
                   stations.filter((s) => s.payment_terminal).length !== 1
@@ -645,7 +646,7 @@ const StationsDevicesScreen = () => {
       <View className="bg-neutral-900 rounded-xl p-4 mt-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-3">
-            <Monitor size={24} color="#9ca3af" />
+            <Monitor size={24} color={colors.label} />
             <View>
               <Text className="text-white text-lg font-semibold">
                 Customer Display
@@ -682,7 +683,7 @@ const StationsDevicesScreen = () => {
           {/* Security Notice */}
           <View className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
             <View className="flex-row items-start">
-              <Shield size={20} color="#3b82f6" className="mr-3 mt-0.5" />
+              <Shield size={20} color={colors.info} className="mr-3 mt-0.5" />
               <View className="flex-1">
                 <Text className="text-blue-400 font-medium mb-1">
                   Security & Encryption

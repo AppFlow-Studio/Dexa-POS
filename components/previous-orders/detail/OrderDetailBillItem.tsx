@@ -30,7 +30,7 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
   return (
     <View
-      className="bg-[#303030] rounded-xl overflow-hidden"
+      className="bg-panel rounded-xl overflow-hidden"
       style={{ borderLeftWidth: 3, borderLeftColor: borderColor }}
     >
       <View className="p-3">
@@ -43,7 +43,7 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
             {/* Size badge */}
             {item.customizations.size && (
-              <View className="bg-[#404040] self-start px-2 py-0.5 rounded mt-1">
+              <View className="bg-card self-start px-2 py-0.5 rounded mt-1">
                 <Text className="text-xs text-gray-300">
                   {item.customizations.size.name}
                 </Text>

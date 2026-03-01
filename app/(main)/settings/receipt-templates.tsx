@@ -12,6 +12,7 @@ import {
   QrCode,
   TriangleAlert,
 } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -50,7 +51,7 @@ function ToggleRow({
   onToggle: (val: boolean) => void;
 }) {
   return (
-    <View className="flex-row items-center justify-between py-3 px-3 bg-[#353535] rounded-lg mb-2">
+    <View className="flex-row items-center justify-between py-3 px-3 bg-surface rounded-lg mb-2">
       <Text className="text-white text-sm flex-1 mr-3">{label}</Text>
       <Switch checked={value} onCheckedChange={onToggle} />
     </View>
@@ -72,11 +73,11 @@ function TextRow({
     <View className="mb-2">
       <Text className="text-gray-400 text-xs mb-1 px-1">{label}</Text>
       <TextInput
-        className="bg-[#353535] text-white text-sm px-3 py-2.5 rounded-lg"
+        className="bg-surface text-white text-sm px-3 py-2.5 rounded-lg"
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder ?? label}
-        placeholderTextColor="#6b7280"
+        placeholderTextColor={colors.muted}
       />
     </View>
   );
@@ -447,13 +448,13 @@ const ReceiptTemplatesScreen = () => {
   }, [localConfig, merchantId, locationId, saveTemplate]);
 
   return (
-    <View className="flex-1 bg-[#1e1e1e]">
+    <View className="flex-1 bg-panel">
       {/* Tab Bar */}
       <View className="flex-row px-4 pt-4 pb-2">
         <TouchableOpacity
           onPress={() => setActiveTab("receipt")}
           className={`px-5 py-2.5 rounded-lg mr-2 ${
-            activeTab === "receipt" ? "bg-blue-600" : "bg-[#353535]"
+            activeTab === "receipt" ? "bg-blue-600" : "bg-surface"
           }`}
         >
           <Text
@@ -467,7 +468,7 @@ const ReceiptTemplatesScreen = () => {
         <TouchableOpacity
           onPress={() => setActiveTab("kitchen")}
           className={`px-5 py-2.5 rounded-lg ${
-            activeTab === "kitchen" ? "bg-blue-600" : "bg-[#353535]"
+            activeTab === "kitchen" ? "bg-blue-600" : "bg-surface"
           }`}
         >
           <Text
@@ -483,7 +484,7 @@ const ReceiptTemplatesScreen = () => {
       {/* Main Content: Preview + Settings side by side */}
       <View className="flex-1 flex-row px-4 pb-4 gap-4">
         {/* Preview Panel */}
-        <View className="flex-[4] bg-[#2b2b2b] rounded-xl p-4">
+        <View className="flex-[4] bg-card rounded-xl p-4">
           <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3 px-1">
             Preview
           </Text>
@@ -500,7 +501,7 @@ const ReceiptTemplatesScreen = () => {
         </View>
 
         {/* Settings Panel */}
-        <View className="flex-[6] bg-[#2b2b2b] rounded-xl p-4">
+        <View className="flex-[6] bg-card rounded-xl p-4">
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 20 }}

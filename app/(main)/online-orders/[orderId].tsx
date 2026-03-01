@@ -30,7 +30,7 @@ const OnlineOrderDetailsScreen = () => {
 
   if (!order) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center">
+      <View className="flex-1 bg-screen items-center justify-center">
         <Text className="text-xl text-red-400">Order not found!</Text>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -43,7 +43,7 @@ const OnlineOrderDetailsScreen = () => {
   }
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 120 }}>
         <View className="flex-row justify-between items-center mb-6">
           <Text className="text-3xl font-bold text-white">
@@ -54,7 +54,7 @@ const OnlineOrderDetailsScreen = () => {
 
         <View className="gap-y-4">
           {/* Basic Info */}
-          <View className="bg-[#303030] p-4 rounded-xl border border-gray-700">
+          <View className="bg-panel p-4 rounded-xl border border-border">
             <Text className="text-xl font-bold text-white mb-3">
               Basic Info
             </Text>
@@ -77,7 +77,7 @@ const OnlineOrderDetailsScreen = () => {
           </View>
 
           {/* Order Info */}
-          <View className="bg-[#303030] p-4 rounded-xl border border-gray-700">
+          <View className="bg-panel p-4 rounded-xl border border-border">
             <Text className="text-xl font-bold text-white mb-3">
               Order Info
             </Text>
@@ -107,7 +107,7 @@ const OnlineOrderDetailsScreen = () => {
           </View>
 
           {/* Items List */}
-          <View className="bg-[#303030] p-4 rounded-xl border border-gray-700">
+          <View className="bg-panel p-4 rounded-xl border border-border">
             <Text className="text-xl font-bold text-white mb-3">
               Items ({order.itemCount})
             </Text>
@@ -120,7 +120,7 @@ const OnlineOrderDetailsScreen = () => {
         </View>
       </ScrollView>
 
-      <View className="p-4 bg-[#303030]/90 backdrop-blur-sm border-t border-gray-700">
+      <View className="p-4 bg-panel/90 backdrop-blur-sm border-t border-border">
         <TouchableOpacity
           onPress={() => router.back()}
           className="py-3 bg-blue-600 rounded-xl items-center"

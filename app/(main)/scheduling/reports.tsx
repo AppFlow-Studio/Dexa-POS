@@ -18,8 +18,8 @@ const ReportsScreen = () => {
   const isDSTWeek = false; // Mock DST check
 
   return (
-    <View className="flex-1 bg-[#212121]">
-      <View className="border-b border-gray-700 bg-[#303030]">
+    <View className="flex-1 bg-screen">
+      <View className="border-b border-gray-700 bg-panel">
         <View className="px-6 py-4">
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-row items-center gap-4">
@@ -36,13 +36,13 @@ const ReportsScreen = () => {
                   label: "Downtown Location",
                 }}
               >
-                <SelectTrigger className="w-[180px] bg-[#212121] border border-gray-600 rounded-lg">
+                <SelectTrigger className="w-[180px] bg-screen border border-gray-600 rounded-lg">
                   <SelectValue
                     placeholder="Select a location"
                     className="text-white"
                   />
                 </SelectTrigger>
-                <SelectContent className="bg-[#212121] border-gray-600 rounded-lg text-white">
+                <SelectContent className="bg-screen border-gray-600 rounded-lg text-white">
                   <SelectItem
                     value="location-1"
                     label="Downtown Location"
@@ -61,13 +61,13 @@ const ReportsScreen = () => {
               <Select
                 defaultValue={{ value: "current", label: "Current Week" }}
               >
-                <SelectTrigger className="w-[180px] bg-[#212121] border border-gray-600 rounded-lg">
+                <SelectTrigger className="w-[180px] bg-screen border border-gray-600 rounded-lg">
                   <SelectValue
                     placeholder="Select a week"
                     className="text-white"
                   />
                 </SelectTrigger>
-                <SelectContent className="bg-[#212121] border-gray-600 rounded-lg text-white">
+                <SelectContent className="bg-screen border-gray-600 rounded-lg text-white">
                   <SelectItem label="Current Week" value="current" />
                   <SelectItem label="Last Week" value="last" />
                 </SelectContent>
@@ -137,7 +137,7 @@ const ReportsScreen = () => {
                 trendColor="text-green-400"
               />
             </View>
-            <View className="p-6 rounded-lg bg-[#303030] border border-gray-700">
+            <View className="p-6 rounded-lg bg-panel border border-gray-700">
               <Text className="text-lg font-semibold text-white mb-4">
                 Week Summary
               </Text>

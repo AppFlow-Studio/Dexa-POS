@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Smartphone,
 } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -55,7 +56,7 @@ const AnalyticsScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">
           Real-Time Analytics
@@ -73,10 +74,10 @@ const AnalyticsScreen = () => {
       >
         <View className="gap-6">
           {/* Live Dashboard Configuration */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <LayoutDashboard color="#3b82f6" size={24} />
+                <LayoutDashboard color={colors.info} size={24} />
                 <CardTitle className="text-white">Live Dashboard</CardTitle>
               </View>
             </CardHeader>
@@ -143,10 +144,10 @@ const AnalyticsScreen = () => {
           </Card>
 
           {/* Real-Time Alerts Configuration */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Bell color="#f59e0b" size={24} />
+                <Bell color={colors.warning} size={24} />
                 <CardTitle className="text-white">Real-Time Alerts</CardTitle>
               </View>
             </CardHeader>
@@ -163,7 +164,7 @@ const AnalyticsScreen = () => {
                     Daily Sales Goal ($)
                   </Label>
                   <Input
-                    className="bg-[#212121] border-gray-600 text-white h-10"
+                    className="bg-screen border-gray-600 text-white h-10"
                     placeholder="e.g. 5000"
                     placeholderClassName="text-gray-500"
                     keyboardType="numeric"
@@ -178,7 +179,7 @@ const AnalyticsScreen = () => {
                     Labor Cost Threshold (%)
                   </Label>
                   <Input
-                    className="bg-[#212121] border-gray-600 text-white h-10"
+                    className="bg-screen border-gray-600 text-white h-10"
                     placeholder="e.g. 30"
                     placeholderClassName="text-gray-500"
                     keyboardType="numeric"
@@ -218,7 +219,7 @@ const AnalyticsScreen = () => {
 
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <Smartphone size={16} color="#9ca3af" />
+                    <Smartphone size={16} color={colors.label} />
                     <Text className="text-gray-300">Push Notifications</Text>
                   </View>
                   <Switch
@@ -229,7 +230,7 @@ const AnalyticsScreen = () => {
 
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <MessageSquare size={16} color="#9ca3af" />
+                    <MessageSquare size={16} color={colors.label} />
                     <Text className="text-gray-300">SMS</Text>
                   </View>
                   <Switch
@@ -240,7 +241,7 @@ const AnalyticsScreen = () => {
 
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <Mail size={16} color="#9ca3af" />
+                    <Mail size={16} color={colors.label} />
                     <Text className="text-gray-300">Email</Text>
                   </View>
                   <Switch

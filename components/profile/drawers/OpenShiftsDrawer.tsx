@@ -5,6 +5,7 @@ import BottomSheet, {
 import { Briefcase } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 import { useToast } from "@/contexts/ToastContext";
 import { Shift } from "@/lib/types";
@@ -30,7 +31,7 @@ const MetricCard = ({
   value: string;
   variant?: "success" | "default";
 }) => (
-  <View className="flex-1 bg-[#212121] p-4 rounded-xl border border-gray-700">
+  <View className="flex-1 bg-panel p-4 rounded-xl border border-gray-700">
     <Text className="text-sm text-gray-400 mb-1">{label}</Text>
     <Text
       className={`text-3xl font-bold ${variant === "success" ? "text-green-400" : "text-white"}`}
@@ -176,8 +177,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet>((props, ref) => {
           appearsOnIndex={0}
         />
       )}
-      backgroundStyle={{ backgroundColor: "#212121" }}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      {...bottomSheetTheme}
     >
       <BottomSheetScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
         <Text className="text-2xl font-bold text-white">Open Shifts</Text>
@@ -191,7 +191,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet>((props, ref) => {
           <MetricCard label="Total Hours" value={`${totalHours}h`} />
         </View>
         <View className="p-4 bg-blue-600/10 border border-blue-500/20 rounded-2xl flex-row items-start gap-3">
-          <Briefcase size={16} color="#60A5FA" className="mt-1" />
+          <Briefcase size={16} color={colors.info} className="mt-1" />
           <View>
             <Text className="text-sm font-semibold text-white mb-1">
               How Matching Works
@@ -213,7 +213,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet>((props, ref) => {
             openShifts.map((shift) => (
               <View
                 key={shift.id}
-                className="p-4 bg-[#303030] rounded-xl border border-gray-700"
+                className="p-4 bg-surface rounded-xl border border-gray-700"
               >
                 <View className="flex-row justify-between items-start mb-3">
                   <View>
@@ -242,7 +242,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet>((props, ref) => {
             ))
           )}
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-2">
             Insights
           </Text>

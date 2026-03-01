@@ -1,5 +1,6 @@
 import ApplyTemplateBar from "@/components/scheduling/ApplyTemplateBar"; // Import ApplyTemplateBar
 import { Badge } from "@/components/ui/badge";
+import { colors } from "@/lib/theme";
 import {
   Select,
   SelectContent,
@@ -303,13 +304,13 @@ const ScheduleDetail = ({
   return (
     <DropZoneProvider>
       <DragOverlay />
-      <View className="flex-1 bg-[#212121]">
+      <View className="flex-1 bg-screen">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1"
         >
           {/* Header */}
-          <View className="border-b border-gray-700 bg-[#303030]">
+          <View className="border-b border-gray-700 bg-panel">
             <View className="px-6 py-4">
               <View className="flex-row items-center justify-between mb-6">
                 <View className="flex-row items-center gap-4">
@@ -328,13 +329,13 @@ const ScheduleDetail = ({
                     }}
                     className="text-white"
                   >
-                    <SelectTrigger className="w-[180px] bg-[#212121] border border-gray-600 rounded-lg">
+                    <SelectTrigger className="w-[180px] bg-screen border border-gray-600 rounded-lg">
                       <SelectValue
                         placeholder="Select a location"
                         className="text-white"
                       />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#212121] border-gray-600 rounded-lg text-white">
+                    <SelectContent className="bg-screen border-gray-600 rounded-lg text-white">
                       <SelectItem
                         value="location-1"
                         label="Downtown Location"
@@ -399,7 +400,7 @@ const ScheduleDetail = ({
                             !hasUnsavedChanges && "opacity-50"
                           }`}
                         >
-                          <X size={16} color="#f87171" />
+                          <X size={16} color={colors.danger} />
                           <Text className="text-red-400">Discard Changes</Text>
                         </TouchableOpacity>
                       )}
@@ -443,7 +444,7 @@ const ScheduleDetail = ({
           {/* Main Content */}
           <View className="flex-1 flex-row">
             {/* Left Sidebar */}
-            <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
+            <View className="w-64 border-r border-gray-700 bg-panel p-4">
               <ScrollView
                 contentContainerStyle={{
                   paddingBottom: overlayTemplateId ? 80 : 0, // Conditional padding for sidebar
@@ -469,7 +470,7 @@ const ScheduleDetail = ({
                       <View className="flex-row items-center gap-2 mb-2">
                         <Calendar
                           className="w-4 h-4 text-blue-400"
-                          color={"#60a5fa"}
+                          color={colors.info}
                         />
                         <Text className="text-sm font-semibold text-white">
                           Open Shifts
@@ -506,7 +507,7 @@ const ScheduleDetail = ({
                       <View className="flex-row items-center gap-2 mb-2">
                         <Users
                           className="w-4 h-4 text-blue-400"
-                          color={"#60a5fa"}
+                          color={colors.info}
                         />
                         <Text className="text-sm font-semibold text-white">
                           Swaps & Requests
@@ -539,13 +540,13 @@ const ScheduleDetail = ({
             </View>
             {/* Schedule Grid */}
             <View className="flex-1 flex-col overflow-hidden">
-              <View className="border-b border-gray-700 bg-[#303030] px-6 py-3 flex-row items-center justify-between">
+              <View className="border-b border-gray-700 bg-panel px-6 py-3 flex-row items-center justify-between">
                 <View className="w-full border border-gray-600 rounded-lg p-3">
-                  <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
-                    <Search size={16} color="#9CA3AF" />
+                  <View className="flex-row items-center bg-screen border border-gray-600 rounded-lg px-2 w-64">
+                    <Search size={16} color={colors.label} />
                     <TextInput
                       placeholder="Search employees..."
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={colors.label}
                       value={searchQuery}
                       onChangeText={setSearchQuery}
                       className="p-2 text-white flex-1"

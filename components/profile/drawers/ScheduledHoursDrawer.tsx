@@ -5,9 +5,10 @@ import BottomSheet, {
 import React, { forwardRef, useMemo } from "react";
 import { Text, View } from "react-native";
 import { BarChart } from "react-native-gifted-charts";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 const MetricCard = ({ label, value }: { label: string; value: string }) => (
-  <View className="flex-1 bg-[#212121] p-4 rounded-xl border border-gray-700">
+  <View className="flex-1 bg-panel p-4 rounded-xl border border-gray-700">
     <Text className="text-sm text-gray-400 mb-1">{label}</Text>
     <Text className="text-3xl font-bold text-white">{value}</Text>
   </View>
@@ -40,8 +41,7 @@ const ScheduledHoursDrawer = forwardRef<BottomSheet>((props, ref) => {
           appearsOnIndex={0}
         />
       )}
-      backgroundStyle={{ backgroundColor: "#212121" }}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      {...bottomSheetTheme}
     >
       <BottomSheetScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
         <Text className="text-2xl font-bold text-white">Scheduled Hours</Text>
@@ -50,19 +50,19 @@ const ScheduledHoursDrawer = forwardRef<BottomSheet>((props, ref) => {
           <MetricCard label="Last Week" value="42h" />
           <MetricCard label="4-Week Avg" value="39.5h" />
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-4">
             4-Week Trend
           </Text>
           <BarChart
             data={weeklyData}
-            frontColor={"#3b82f6"}
+            frontColor={colors.info}
             barWidth={50}
             yAxisTextStyle={{ color: "white" }}
             xAxisLabelTextStyle={{ color: "white" }}
           />
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-4">
             Hours by Role
           </Text>
@@ -75,7 +75,7 @@ const ScheduledHoursDrawer = forwardRef<BottomSheet>((props, ref) => {
                     {item.hours}h
                   </Text>
                 </View>
-                <View className="h-2 bg-[#212121] rounded-full">
+                <View className="h-2 bg-panel rounded-full">
                   <View
                     className="h-2 bg-blue-500 rounded-full"
                     style={{ width: `${item.percentage}%` }}
@@ -85,7 +85,7 @@ const ScheduledHoursDrawer = forwardRef<BottomSheet>((props, ref) => {
             ))}
           </View>
         </View>
-        <View className="p-4 bg-[#303030] rounded-xl border border-gray-700">
+        <View className="p-4 bg-surface rounded-xl border border-gray-700">
           <Text className="text-lg font-semibold text-white mb-2">
             Insights
           </Text>

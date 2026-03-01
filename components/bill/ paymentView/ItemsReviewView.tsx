@@ -19,7 +19,7 @@ const ItemsReviewView = () => {
   const items = activeOrder?.items || [];
 
   return (
-    <View className="bg-[#212121] p-4 rounded-2xl border border-gray-700 w-[550px]">
+    <View className="bg-panel p-4 rounded-2xl border border-gray-700 w-[550px]">
       <Text className="text-2xl font-bold text-center mb-4 text-white">
         Review Items
       </Text>
@@ -70,7 +70,7 @@ const ItemsReviewView = () => {
         <View className="flex-row gap-4 mt-4">
           <TouchableOpacity
             onPress={close}
-            className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
+            className="flex-1 py-3 bg-surface border border-gray-600 rounded-xl items-center"
           >
             <Text className="text-lg font-bold text-white text-center">
               Cancel

@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -133,7 +134,7 @@ const PaymentSuccessView = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] justify-between">
+    <View className="flex-1 bg-panel justify-between">
       {/* Main Content - Centered vertically if possible */}
       <View className="flex-1 justify-center items-center px-6">
         {/* Success Icon */}
@@ -141,7 +142,7 @@ const PaymentSuccessView = () => {
           entering={FadeIn.delay(100)}
           className="items-center mb-6"
         >
-          <View className="w-24 h-24 bg-green-500 rounded-full items-center justify-center mb-4 shadow-lg shadow-green-900/20 border-4 border-[#212121]">
+          <View className="w-24 h-24 bg-green-500 rounded-full items-center justify-center mb-4 shadow-lg shadow-green-900/20 border-4 border-panel">
             <Check color="white" size={48} strokeWidth={4} />
           </View>
           <Text className="text-3xl font-bold text-white mb-1">
@@ -155,7 +156,7 @@ const PaymentSuccessView = () => {
         {/* Compact Receipt Card */}
         <Animated.View
           entering={FadeInUp.delay(200)}
-          className="w-full max-w-sm bg-[#2A2A2A] rounded-2xl border border-[#333] p-6 items-center"
+          className="w-full max-w-sm bg-surface rounded-2xl border border-border p-6 items-center"
         >
           {/* Use captured payment info from store to prevent real-time sync overwrites */}
           {(() => {
@@ -209,7 +210,7 @@ const PaymentSuccessView = () => {
                         +${totalTips.toFixed(2)}
                       </Text>
                     </View>
-                    <View className="w-full h-[1px] bg-[#404040] mb-2" />
+                    <View className="w-full h-[1px] bg-border mb-2" />
                     <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
                       Grand Total
                     </Text>
@@ -231,7 +232,7 @@ const PaymentSuccessView = () => {
             );
           })()}
 
-          <View className="w-full h-[1px] bg-[#404040] mb-4" />
+          <View className="w-full h-[1px] bg-border mb-4" />
 
           <View className="flex-row justify-between w-full mb-2">
             <Text className="text-gray-400">Transaction ID</Text>
@@ -249,19 +250,19 @@ const PaymentSuccessView = () => {
       </View>
 
       {/* Footer Actions - Fixed at Bottom */}
-      <View className="w-full bg-[#212121] pt-2 pb-4 border-t border-[#333]">
+      <View className="w-full bg-panel pt-2 pb-4 border-t border-border">
         <View className="px-4 gap-y-3">
           {/* Secondary Actions Row */}
           <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={handlePrint}
               disabled={isPrinting}
-              className={`flex-1 py-3 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] gap-2 ${isPrinting ? "opacity-60" : ""}`}
+              className={`flex-1 py-3 bg-surface rounded-xl border border-border flex-row items-center justify-center active:bg-surface gap-2 ${isPrinting ? "opacity-60" : ""}`}
             >
               {isPrinting ? (
-                <ActivityIndicator size="small" color="#9CA3AF" />
+                <ActivityIndicator size="small" color={colors.label} />
               ) : (
-                <Printer size={18} color="#9CA3AF" className="mr-2" />
+                <Printer size={18} color={colors.label} className="mr-2" />
               )}
               <Text className="text-gray-300 font-semibold">
                 {isPrinting ? "Printing..." : "Print Receipt"}
@@ -270,9 +271,9 @@ const PaymentSuccessView = () => {
 
             <TouchableOpacity
               onPress={handleEmail}
-              className="flex-1 py-3 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] gap-2"
+              className="flex-1 py-3 bg-surface rounded-xl border border-border flex-row items-center justify-center active:bg-surface gap-2"
             >
-              <Mail size={18} color="#9CA3AF" className="mr-2" />
+              <Mail size={18} color={colors.label} className="mr-2" />
               <Text className="text-gray-300 font-semibold">Email Receipt</Text>
             </TouchableOpacity>
           </View>

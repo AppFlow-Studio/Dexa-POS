@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import {
     useOrderTypeCounts,
@@ -150,9 +151,9 @@ const OrderLineSectionContent: React.FC = () => {
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={scrollBackward}
-            className="p-2 bg-[#303030] border border-gray-600 rounded-full"
+            className="p-2 bg-surface border border-gray-600 rounded-full"
           >
-            <ChevronLeft color="#9CA3AF" size={20} />
+            <ChevronLeft color={colors.label} size={20} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={scrollForward}

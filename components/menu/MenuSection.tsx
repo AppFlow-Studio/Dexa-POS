@@ -58,6 +58,7 @@ interface MenuSectionProps {
 }
 
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
+import { colors } from "@/lib/theme";
 import { useSearchStore } from "@/stores/searchStore";
 import { StyleSheet } from "react-native";
 
@@ -415,7 +416,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   return (
     <>
       <View
-        className={`mt-4 flex-1 bg-[#323232] ${isTableOrder ? "rounded-tl-3xl" : ""}`}
+        className={`mt-4 flex-1 bg-background ${isTableOrder ? "rounded-tl-3xl" : ""}`}
       >
         <View
           className={`${isTableOrder ? "px-3 py-2" : ""} flex flex-row items-center justify-between pb-3`}
@@ -425,7 +426,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             {!isTableOrder && (
               <TouchableOpacity
                 onPress={() => {}}
-                className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
+                className="flex-row items-center bg-panel border border-gray-600 rounded-lg px-3 py-2"
               >
                 <Text className="text-white font-medium mr-2 text-base">
                   Order Type:
@@ -443,50 +444,50 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           >
             <TouchableOpacity
               onPress={handleTabMenu}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+              className={`flex-row items-center bg-panel rounded-lg p-3 justify-start ${
                 activeTab == "Menu"
                   ? "border-2 border-blue-400"
                   : "border border-gray-600"
               }`}
             >
-              <Table color="#9CA3AF" size={20} />
+              <Table color={colors.label} size={20} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={openSearch}
-              className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
+              className={`flex-row items-center bg-panel border border-gray-600 rounded-lg p-3 justify-start`}
             >
-              <Search color="#9CA3AF" size={20} />
+              <Search color={colors.label} size={20} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleTabOpenItem}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+              className={`flex-row items-center bg-panel rounded-lg p-3 justify-start ${
                 activeTab == "Open Item"
                   ? "border-2 border-blue-400"
                   : "border border-gray-600"
               }`}
             >
-              <PackagePlus color="#9CA3AF" size={20} />
+              <PackagePlus color={colors.label} size={20} />
             </TouchableOpacity>
 
             {!isTableOrder && (
               <Link
                 href="/tables"
-                className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
+                className={`flex-row items-center bg-panel border border-gray-600 rounded-lg p-3 justify-start`}
               >
-                <Sofa color="#9CA3AF" size={20} />
+                <Sofa color={colors.label} size={20} />
               </Link>
             )}
 
             {!isTableOrder && (
               <TouchableOpacity
                 onPress={handleTabOrders}
-                className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${
+                className={`flex-row items-center bg-panel rounded-lg px-3 py-2.5 justify-start ${
                   activeTab == "Orders"
                     ? "border-2 border-blue-400"
                     : "border border-gray-600"
                 }`}
               >
-                <Logs color="#9CA3AF" size={20} />
+                <Logs color={colors.label} size={20} />
                 <Text className="text-gray-300 ml-2 text-base">Orders</Text>
               </TouchableOpacity>
             )}
@@ -495,16 +496,16 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               <DialogTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-fit bg-[#303030] border-gray-600 flex-row items-center gap-2 h-14"
+                  className="w-fit bg-panel border-gray-600 flex-row items-center gap-2 h-14"
                 >
                   <Text className="text-white font-medium text-lg">
                     {activeMeal || "Select Menu"}
                   </Text>
 
-                  <ChevronDown color="#9CA3AF" size={18} />
+                  <ChevronDown color={colors.label} size={18} />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="min-w-2xl w-[500px] aspect-square bg-[#212121] border-gray-700">
+              <DialogContent className="min-w-2xl w-[500px] aspect-square bg-card border-gray-700">
                 <DialogHeader className="border-b border-gray-700 pb-4">
                   <DialogTitle className="text-white text-center">
                     <Text className="text-xl font-bold text-white">
@@ -533,13 +534,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                           isSelected
                             ? "bg-blue-600 border-blue-400"
                             : !isAvailable
-                              ? "bg-[#252538] border-gray-700 opacity-50"
-                              : "bg-[#252538] border-[#3a3a5c]"
+                              ? "bg-card border-gray-700 opacity-50"
+                              : "bg-card border-border"
                         }`}
                         style={
                           isSelected
                             ? {
-                                shadowColor: "#3b82f6",
+                                shadowColor: colors.info,
                                 shadowOffset: { width: 0, height: 4 },
                                 shadowOpacity: 0.3,
                                 shadowRadius: 8,
@@ -559,7 +560,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                           {isScheduled && (
                             <Clock
                               size={18}
-                              color={isSelected ? "#93c5fd" : "#60a5fa"}
+                              color={isSelected ? colors.info : colors.info}
                             />
                           )}
                         </View>
@@ -610,7 +611,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               />
             ) : (
               <View className="flex-1 items-center justify-center mt-20">
-                <Clock size={64} color="#4B5563" />
+                <Clock size={64} color={colors.muted} />
                 <Text className="text-white text-2xl font-bold mt-4">
                   No Menu Available
                 </Text>
@@ -643,7 +644,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   // OPTIMIZED: FlatList performance props
                   removeClippedSubviews={true}
                   maxToRenderPerBatch={8}
-                  windowSize={5}
+                  windowSize={4}
                   initialNumToRender={8}
                   ListEmptyComponent={
                     <View className="flex-1 items-center justify-center h-48">

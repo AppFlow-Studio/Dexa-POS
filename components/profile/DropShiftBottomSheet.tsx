@@ -9,6 +9,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface DropShiftSheetProps {
   shift: Shift | null;
@@ -63,8 +64,7 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-      backgroundStyle={{ backgroundColor: "#212121" }}
+      {...bottomSheetTheme}
       backdropComponent={(props) => (
         <BottomSheetBackdrop
           {...props}
@@ -88,7 +88,7 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
               className={`px-3 py-2 rounded-lg border ${
                 selectedReason === reason
                   ? "bg-blue-600 border-blue-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -105,9 +105,9 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
           value={note}
           onChangeText={setNote}
           placeholder="Add a note (optional)..."
-          placeholderTextColor="#6B7280"
+          placeholderTextColor={colors.muted}
           multiline
-          className="p-3 bg-[#303030] border border-gray-600 rounded-lg text-white min-h-[80px] mb-4"
+          className="p-3 bg-surface border border-gray-600 rounded-lg text-white min-h-[80px] mb-4"
         />
         <View className="flex-row gap-2 mt-auto">
           <TouchableOpacity

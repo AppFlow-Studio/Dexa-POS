@@ -4,6 +4,7 @@ import {
     validateCardNumber,
     validateExpiry,
 } from "@/lib/card-validation";
+import { colors } from "@/lib/theme";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
@@ -104,7 +105,7 @@ const ErrorText = ({ error }: { error?: string }) => {
   if (!error) return null;
   return (
     <View className="flex-row items-center mt-1 ml-1 gap-2">
-      <AlertCircle size={12} color="#EF4444" className="mr-1" />
+      <AlertCircle size={12} color={colors.danger} className="mr-1" />
       <Text className="text-red-400 text-xs">{error}</Text>
     </View>
   );
@@ -242,15 +243,15 @@ const ManualCardEntryView = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "padding"}
-      className=" bg-[#212121]"
+      className=" bg-panel"
     >
       <View className=" flex-row">
         {/* LEFT COLUMN: Visuals (Static) */}
-        <View className="w-[40%] bg-[#1A1A1A] border-r border-[#333] p-8 justify-center items-center">
+        <View className="w-[40%] bg-panel border-r border-border p-8 justify-center items-center">
           <View className="w-full max-w-[380px]">
             {/* Secure Badge */}
             <View className="flex-row items-center justify-center mb-6 bg-green-900/20 py-2 px-4 rounded-full self-center border border-green-900/50">
-              <Lock size={14} color="#10B981" className="mr-2" />
+              <Lock size={14} color={colors.success} className="mr-2" />
               <Text className="text-green-500 text-xs font-bold uppercase tracking-widest">
                 Secure Transaction
               </Text>
@@ -279,7 +280,7 @@ const ManualCardEntryView = () => {
         </View>
 
         {/* RIGHT COLUMN: Form (Scrollable) */}
-        <View className="flex-1 bg-[#212121]">
+        <View className="flex-1 bg-panel">
           <ScrollView
             contentContainerStyle={{
               padding: 32,
@@ -304,12 +305,12 @@ const ManualCardEntryView = () => {
                   onChangeText={setCardholderName}
                   onBlur={() => handleBlur("cardholderName")}
                   placeholder="NAME ON CARD"
-                  className={`bg-[#2A2A2A] text-white p-4 rounded-xl border text-lg ${
+                  className={`bg-surface text-white p-4 rounded-xl border text-lg ${
                     errors.cardholderName
                       ? "border-red-500"
-                      : "border-[#404040]"
+                      : "border-border"
                   }`}
-                  placeholderTextColor="#525252"
+                  placeholderTextColor={colors.muted}
                 />
                 <ErrorText error={errors.cardholderName} />
               </View>
@@ -320,11 +321,11 @@ const ManualCardEntryView = () => {
                   Card Number
                 </Text>
                 <View
-                  className={`flex-row items-center bg-[#2A2A2A] rounded-xl border px-4 ${
-                    errors.cardNumber ? "border-red-500" : "border-[#404040]"
+                  className={`flex-row items-center bg-surface rounded-xl border px-4 ${
+                    errors.cardNumber ? "border-red-500" : "border-border"
                   }`}
                 >
-                  <CreditCard size={20} color="#666" className="ml-4" />
+                  <CreditCard size={20} color={colors.muted} className="ml-4" />
                   <TextInput
                     value={formatCardNumber(cardNumber)}
                     onChangeText={(t) =>
@@ -335,7 +336,7 @@ const ManualCardEntryView = () => {
                     keyboardType="numeric"
                     maxLength={19}
                     className="flex-1 text-white p-4 font-mono text-lg"
-                    placeholderTextColor="#525252"
+                    placeholderTextColor={colors.muted}
                   />
                 </View>
                 <ErrorText error={errors.cardNumber} />
@@ -348,8 +349,8 @@ const ManualCardEntryView = () => {
                     Expiry (MM/YY)
                   </Text>
                   <View
-                    className={`flex-row bg-[#2A2A2A] rounded-xl border ${
-                      errors.expiry ? "border-red-500" : "border-[#404040]"
+                    className={`flex-row bg-surface rounded-xl border ${
+                      errors.expiry ? "border-red-500" : "border-border"
                     } overflow-hidden`}
                   >
                     <TextInput
@@ -363,9 +364,9 @@ const ManualCardEntryView = () => {
                       keyboardType="numeric"
                       maxLength={2}
                       className="flex-1 text-white p-4 text-center font-mono text-lg"
-                      placeholderTextColor="#525252"
+                      placeholderTextColor={colors.muted}
                     />
-                    <View className="w-[1px] bg-[#404040] my-2" />
+                    <View className="w-[1px] bg-border my-2" />
                     <TextInput
                       ref={expiryYearRef}
                       value={expiryYear}
@@ -378,7 +379,7 @@ const ManualCardEntryView = () => {
                       keyboardType="numeric"
                       maxLength={2}
                       className="flex-1 text-white p-4 text-center font-mono text-lg"
-                      placeholderTextColor="#525252"
+                      placeholderTextColor={colors.muted}
                     />
                   </View>
                   <ErrorText error={errors.expiry} />
@@ -388,8 +389,8 @@ const ManualCardEntryView = () => {
                   <Text className="text-gray-400 mb-2 font-medium ml-1">
                     CVV / CVC
                   </Text>
-                  <View className="flex-row items-center bg-[#2A2A2A] rounded-xl border border-[#404040] px-4">
-                    <ShieldCheck size={18} color="#666" className="ml-4" />
+                  <View className="flex-row items-center bg-surface rounded-xl border border-border px-4">
+                    <ShieldCheck size={18} color={colors.muted} className="ml-4" />
                     <TextInput
                       ref={cvvRef}
                       value={cvv}
@@ -399,16 +400,16 @@ const ManualCardEntryView = () => {
                       maxLength={4}
                       secureTextEntry={!showCvv}
                       className="flex-1 text-white p-4 font-mono text-lg"
-                      placeholderTextColor="#525252"
+                      placeholderTextColor={colors.muted}
                     />
                     <TouchableOpacity
                       onPress={() => setShowCvv(!showCvv)}
                       className="p-2"
                     >
                       {showCvv ? (
-                        <EyeOff size={20} color="#666" />
+                        <EyeOff size={20} color={colors.muted} />
                       ) : (
-                        <Eye size={20} color="#666" />
+                        <Eye size={20} color={colors.muted} />
                       )}
                     </TouchableOpacity>
                   </View>
@@ -426,8 +427,8 @@ const ManualCardEntryView = () => {
                   placeholder="12345"
                   keyboardType="numeric"
                   maxLength={5}
-                  className="bg-[#2A2A2A] text-white p-4 rounded-xl border border-[#404040] w-1/2"
-                  placeholderTextColor="#525252"
+                  className="bg-surface text-white p-4 rounded-xl border border-border w-1/2"
+                  placeholderTextColor={colors.muted}
                 />
               </View>
 
@@ -445,7 +446,7 @@ const ManualCardEntryView = () => {
                       className={`flex-1 py-2 rounded-xl border ${
                         selectedTipPreset === percent
                           ? "bg-blue-600 border-blue-500"
-                          : "bg-[#333] border-[#404040]"
+                          : "bg-surface border-border"
                       }`}
                     >
                       <Text
@@ -470,14 +471,14 @@ const ManualCardEntryView = () => {
                   ))}
                 </View>
                 {/* Custom Tip Input */}
-                <View className="flex-row items-center bg-[#2A2A2A] rounded-xl border border-[#404040] px-4 w-1/2">
-                  <DollarSign size={18} color="#666" />
+                <View className="flex-row items-center bg-surface rounded-xl border border-border px-4 w-1/2">
+                  <DollarSign size={18} color={colors.muted} />
                   <BottomSheetTextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
                     placeholder="0.00"
                     keyboardType="numeric"
-                    placeholderTextColor="#525252"
+                    placeholderTextColor={colors.muted}
                     style={{
                       flex: 1,
                       color: "white",
@@ -492,9 +493,9 @@ const ManualCardEntryView = () => {
               <View className="flex-row gap-4 pt-8">
                 <TouchableOpacity
                   onPress={() => setView("payment-method-selection")}
-                  className="flex-1 py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333]"
+                  className="flex-1 py-4 bg-surface rounded-xl border border-border flex-row items-center justify-center active:bg-surface"
                 >
-                  <ArrowLeft size={20} color="#D1D5DB" className="mr-2" />
+                  <ArrowLeft size={20} color={colors.heading} className="mr-2" />
                   <Text className="text-gray-300 font-semibold text-lg">
                     Back
                   </Text>

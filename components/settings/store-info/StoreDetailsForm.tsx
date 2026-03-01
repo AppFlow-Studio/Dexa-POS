@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
@@ -46,10 +47,10 @@ const FormField = ({
       editable={isEditable}
       className={`h-14 p-3 rounded-lg border text-lg ${
         isEditable
-          ? "bg-[#212121] border-gray-600 text-white"
+          ? "bg-screen border-gray-600 text-white"
           : "bg-gray-800 border-gray-700 text-gray-400"
       }`}
-      placeholderTextColor="#6B7280"
+      placeholderTextColor={colors.muted}
     />
   </View>
 );

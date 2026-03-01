@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
@@ -5,6 +6,7 @@ import {
   CreditCard,
   MoreHorizontal,
   RotateCcw,
+  ShoppingCart,
   Trash2,
 } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
@@ -69,16 +71,18 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     }
   }, [isSyncing]);
 
-  // Shared styling: flex-1 ensures they all take equal width
-  const buttonBaseClass =
-    "flex-1 flex-row items-center justify-center h-12 px-2 rounded-lg gap-2";
+  // Shared styling — main buttons take remaining space, More is compact
+  const mainButtonClass =
+    "flex-1 flex-row items-center justify-center h-12 px-3 rounded-xl gap-2";
+  const moreButtonClass =
+    "flex-row items-center justify-center h-12 px-4 rounded-xl gap-2";
 
   const renderDefaultButtons = () => (
     <>
       {/* Discount Button: Indigo (Distinct from Blue, fits dark theme) */}
       {/* <TouchableOpacity
         onPress={onPressDiscount}
-        className={`${buttonBaseClass} bg-indigo-600`}
+        className={`${mainButtonClass} bg-indigo-600`}
         activeOpacity={0.7}
       >
         <Percent size={18} color="white" />
@@ -95,7 +99,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         if (isSyncing) {
           return (
             <Animated.View style={{ opacity: pulseAnim, flex: 1 }}>
-              <View className={`${buttonBaseClass} bg-gray-600`}>
+              <View className={`${mainButtonClass} bg-gray-600`}>
                 <ActivityIndicator size="small" color="white" />
                 <Text
                   className="font-semibold text-white text-base"
@@ -117,9 +121,9 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
           return (
             <View
-              className={`${buttonBaseClass} bg-emerald-600/20 border border-emerald-500`}
+              className={`${mainButtonClass} bg-emerald-600/20 border border-emerald-500`}
             >
-              <CheckCircle size={18} color="#10b981" />
+              <CheckCircle size={18} color={colors.success} />
               <Text
                 className="font-semibold text-emerald-400 text-base"
                 numberOfLines={1}
@@ -134,16 +138,16 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         return (
           <TouchableOpacity
             onPress={onPressTotal}
-            className={`${buttonBaseClass} bg-blue-600`}
+            className={`${mainButtonClass} bg-teal`}
             activeOpacity={0.7}
           >
             <Text
-              className="font-semibold text-white text-base"
+              className="font-bold text-white text-base"
               numberOfLines={1}
             >
               ${totalDisplayAmount.toFixed(2)}
             </Text>
-            <CreditCard size={18} color="white" />
+            <ShoppingCart size={18} color="white" />
           </TouchableOpacity>
         );
       })()}
@@ -155,7 +159,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       {/* Close Check: Emerald Green (Success/Finish) */}
       <TouchableOpacity
         onPress={onPressCloseCheck}
-        className={`${buttonBaseClass} bg-emerald-600`}
+        className={`${mainButtonClass} bg-emerald-600`}
         activeOpacity={0.7}
       >
         <CheckCircle size={18} color="white" />
@@ -165,10 +169,10 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       {/* Clear Table: Red (Destructive) */}
       <TouchableOpacity
         onPress={onPressClearTable}
-        className={`${buttonBaseClass} bg-red-900/40 border border-red-500`}
+        className={`${mainButtonClass} bg-red-900/40 border border-red-500`}
         activeOpacity={0.7}
       >
-        <Trash2 size={18} color="#fca5a5" />
+        <Trash2 size={18} color={colors.danger} />
         <Text className="font-semibold text-red-100 text-base">Clear</Text>
       </TouchableOpacity>
     </>
@@ -179,7 +183,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       {/* Reopen: Amber (Undo/Correction) */}
       <TouchableOpacity
         onPress={onPressReopenCheck}
-        className={`${buttonBaseClass} bg-amber-600`}
+        className={`${mainButtonClass} bg-amber-600`}
         activeOpacity={0.7}
       >
         <RotateCcw size={18} color="white" />
@@ -189,10 +193,10 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       {/* Clear Table: Red */}
       <TouchableOpacity
         onPress={onPressClearTable}
-        className={`${buttonBaseClass} bg-red-900/40 border border-red-500`}
+        className={`${mainButtonClass} bg-red-900/40 border border-red-500`}
         activeOpacity={0.7}
       >
-        <Trash2 size={18} color="#fca5a5" />
+        <Trash2 size={18} color={colors.danger} />
         <Text className="font-semibold text-red-100 text-base">Clear</Text>
       </TouchableOpacity>
     </>
@@ -220,11 +224,11 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   return (
     // Container: Removed "justify-between", added "gap-3"
-    <View className="flex-row items-center py-4 px-4 bg-[#303030] border-t border-gray-700 gap-3">
-      {/* More Button: Now has text and uses flex-1 */}
+    <View className="flex-row items-center py-3 px-4 bg-surface border-t border-gray-700 gap-3">
+      {/* More Button: Compact, no flex */}
       <TouchableOpacity
         onPress={onPressMore}
-        className={`${buttonBaseClass} bg-[#212121] border border-gray-600`}
+        className={`${moreButtonClass} bg-panel border border-gray-600`}
         activeOpacity={0.7}
       >
         <MoreHorizontal size={20} color="white" />

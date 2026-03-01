@@ -16,6 +16,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Check, X } from "lucide-react-native";
 import React, { forwardRef, useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface DiscountBottomSheetProps {
   onClose: () => void;
@@ -197,8 +198,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       snapPoints={snapPoints}
       enablePanDownToClose={true}
       backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#212121" }}
-      handleIndicatorStyle={{ backgroundColor: "#4B5563" }}
+      {...bottomSheetTheme}
       // FIX 2: Use 'interactive'.
       // This synchronizes the sheet movement with the keyboard animation exactly.
       keyboardBehavior="interactive"
@@ -206,15 +206,15 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       android_keyboardInputMode="adjustResize"
       topInset={60}
     >
-      <BottomSheetScrollView className="flex-1 bg-[#212121] px-4 pb-6">
+      <BottomSheetScrollView className="flex-1 bg-panel px-4 pb-6">
         {/* Header */}
         <View className="flex-row justify-between items-center mb-4 border-b border-gray-700 pb-3">
           <Text className="text-xl font-bold text-white">Apply Discount</Text>
           <TouchableOpacity
             onPress={onClose}
-            className="p-1.5 bg-[#303030] rounded-full border border-gray-600"
+            className="p-1.5 bg-surface rounded-full border border-gray-600"
           >
-            <X color="#9CA3AF" size={18} />
+            <X color={colors.label} size={18} />
           </TouchableOpacity>
         </View>
 
@@ -246,7 +246,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         )}
 
         {/* Tabs */}
-        <View className="flex-row bg-[#303030] p-1 rounded-xl mb-5 border border-gray-700">
+        <View className="flex-row bg-surface p-1 rounded-xl mb-5 border border-gray-700">
           <TouchableOpacity
             onPress={() => setActiveTab("check")}
             className={`flex-1 py-2 rounded-lg items-center ${
@@ -286,9 +286,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                 <Text className="text-gray-400 text-sm mb-3 uppercase tracking-wider font-semibold">
                   Custom Discount
                 </Text>
-                <View className="bg-[#303030] border border-gray-700 rounded-xl p-4">
+                <View className="bg-surface border border-gray-700 rounded-xl p-4">
                   {/* Discount Type Tabs */}
-                  <View className="flex-row bg-[#212121] p-1 rounded-lg mb-4">
+                  <View className="flex-row bg-panel p-1 rounded-lg mb-4">
                     <TouchableOpacity
                       onPress={() => setCustomDiscountType("percentage")}
                       className={`flex-1 py-2 rounded-md items-center ${
@@ -335,7 +335,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                             className={`px-4 py-2 rounded-lg border ${
                               customDiscountValue === pct.toString()
                                 ? "bg-blue-600 border-blue-500"
-                                : "bg-[#212121] border-gray-600"
+                                : "bg-panel border-gray-600"
                             }`}
                           >
                             <Text
@@ -358,7 +358,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                             className={`px-4 py-2 rounded-lg border ${
                               customDiscountValue === amt.toString()
                                 ? "bg-green-600 border-green-500"
-                                : "bg-[#212121] border-gray-600"
+                                : "bg-panel border-gray-600"
                             }`}
                           >
                             <Text
@@ -376,7 +376,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
 
                   {/* Custom Input */}
                   <View className="flex-row items-center gap-3">
-                    <View className="flex-1 flex-row items-center bg-[#212121] rounded-lg border border-gray-600 px-3">
+                    <View className="flex-1 flex-row items-center bg-panel rounded-lg border border-gray-600 px-3">
                       <Text className="text-gray-400 text-lg mr-1">
                         {customDiscountType === "percentage" ? "%" : "$"}
                       </Text>
@@ -388,7 +388,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                             ? "Enter %"
                             : "Enter $"
                         }
-                        placeholderTextColor="#6B7280"
+                        placeholderTextColor={colors.muted}
                         keyboardType="decimal-pad"
                         className="flex-1 py-3 text-white text-lg"
                         style={{ color: "#FFFFFF" }}
@@ -416,7 +416,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                   {/* Preview */}
                   {customDiscountValue &&
                     parseFloat(customDiscountValue) > 0 && (
-                      <View className="mt-3 p-2 bg-[#212121] rounded-lg border border-dashed border-gray-600">
+                      <View className="mt-3 p-2 bg-panel rounded-lg border border-dashed border-gray-600">
                         <Text className="text-gray-400 text-sm text-center">
                           Will save:{" "}
                           <Text className="text-green-400 font-bold">
@@ -448,7 +448,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                       className={`p-3 rounded-xl border ${
                         d.eligible
                           ? "border-blue-500 bg-blue-500/10"
-                          : "border-gray-700 bg-[#303030]"
+                          : "border-gray-700 bg-surface"
                       }`}
                     >
                       <View className="flex-row justify-between items-center">
@@ -491,7 +491,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                       className={`flex-row justify-between items-center p-3 rounded-xl border ${
                         isApplied
                           ? "bg-blue-900/20 border-blue-500"
-                          : "bg-[#303030] border-gray-700"
+                          : "bg-surface border-gray-700"
                       }`}
                     >
                       <View className="flex-1 mr-4">

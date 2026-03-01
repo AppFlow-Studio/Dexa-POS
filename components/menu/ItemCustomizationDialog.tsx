@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { AddOn, CartItem, ItemSize } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -135,7 +136,7 @@ const ItemCustomizationDialog: React.FC = () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={close}>
-      <DialogContent className="p-0 rounded-[36px] max-w-xl bg-[#11111A] border-none">
+      <DialogContent className="p-0 rounded-[36px] max-w-xl bg-screen border-none">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -146,13 +147,13 @@ const ItemCustomizationDialog: React.FC = () => {
               className="w-24 h-24 rounded-lg"
             />
             <View className="flex-1">
-              <DialogTitle className="text-[#F1F1F1] text-2xl font-bold">
+              <DialogTitle className="text-heading text-2xl font-bold">
                 {menuItem.name}
               </DialogTitle>
-              <Text className="text-[#F1F1F1] mt-1 text-sm">
+              <Text className="text-heading mt-1 text-sm">
                 {menuItem.description}
               </Text>
-              <Text className="text-[#F1F1F1] font-medium text-lg mt-2">
+              <Text className="text-heading font-medium text-lg mt-2">
                 ${menuItem.price.toFixed(2)}
               </Text>
             </View>
@@ -168,7 +169,7 @@ const ItemCustomizationDialog: React.FC = () => {
                   onPress={() => setQuantity((q) => Math.max(1, q - 1))}
                   className="p-2 border border-gray-300 rounded-full bg-white"
                 >
-                  <Minus color="#4b5563" size={20} />
+                  <Minus color={colors.muted} size={20} />
                 </TouchableOpacity>
                 <Text className="text-xl font-bold text-gray-800 w-8 text-center">
                   {quantity}
@@ -178,7 +179,7 @@ const ItemCustomizationDialog: React.FC = () => {
                   onPress={() => setQuantity((q) => q + 1)}
                   className="p-2 bg-primary-400 rounded-full"
                 >
-                  <Plus color="#FFFFFF" size={20} />
+                  <Plus color={colors.heading} size={20} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -197,7 +198,7 @@ const ItemCustomizationDialog: React.FC = () => {
                         disabled={isReadOnly}
                         key={size.id}
                         onPress={() => setSelectedSize(size)}
-                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
+                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-blue-400 bg-blue-400/10" : "border-neutral-200"}`}
                       >
                         <View className="flex-row justify-between">
                           <Text className="font-semibold text-accent-500">
@@ -230,7 +231,7 @@ const ItemCustomizationDialog: React.FC = () => {
                         disabled={isReadOnly}
                         key={addOn.id}
                         onPress={() => handleAddOnToggle(addOn)}
-                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
+                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-blue-400 bg-blue-400/10" : "border-neutral-200"}`}
                       >
                         <Text className="font-semibold text-accent-500">
                           {addOn.name} (+ ${addOn.price.toFixed(2)})
@@ -253,7 +254,7 @@ const ItemCustomizationDialog: React.FC = () => {
                 onChangeText={setNotes}
                 placeholder="Make the cheese more melted"
                 multiline
-                className="p-3 border bg-white border-[#F1F1F1] rounded-lg h-20"
+                className="p-3 border bg-white border-gray-200 rounded-lg h-20"
               />
             </View>
             <View className="border-t border-gray-200 flex-row justify-between items-center py-2">

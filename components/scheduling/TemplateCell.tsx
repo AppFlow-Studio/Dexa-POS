@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { TemplateShift } from "@/lib/types";
 import { Plus } from "lucide-react-native";
 import React from "react";
@@ -20,7 +21,7 @@ const TemplateCell: React.FC<TemplateCellProps> = ({
 }) => {
   return (
     <View
-      className="w-40 p-2 min-h-[80px] border-r border-b border-gray-700 bg-[#303030]" // Styling adapted from ScheduleCell
+      className="w-40 p-2 min-h-[80px] border-r border-b border-border bg-panel" // Styling adapted from ScheduleCell
     >
       {shifts.length > 0 ? (
         <View className="gap-y-2">
@@ -37,7 +38,7 @@ const TemplateCell: React.FC<TemplateCellProps> = ({
           onPress={() => onAddShift(dayOfWeek)}
           className="flex-1 h-full w-full items-center justify-center border-2 border-dashed border-gray-600 rounded-lg"
         >
-          <Plus size={16} color="#9CA3AF" />
+          <Plus size={16} color={colors.label} />
           <Text className="text-gray-400 ml-2">Add Shift</Text>
         </TouchableOpacity>
       )}

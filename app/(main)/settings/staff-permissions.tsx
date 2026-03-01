@@ -1,5 +1,6 @@
 import { PermissionMatrixBottomSheet } from "@/components/settings/PermissionMatrixBottomSheet";
 import { Switch } from "@/components/ui/switch";
+import { colors } from "@/lib/theme";
 import { Permission, useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet from "@gorhom/bottom-sheet";
@@ -135,15 +136,15 @@ const StaffPermissionsScreen = () => {
   const renderSectionHeader = (title: string, icon: React.ReactNode, section: keyof typeof expandedSections) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700"
+      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
     >
       <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">
+        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
           {icon}
         </View>
         <Text className="text-white font-bold text-lg">{title}</Text>
       </View>
-      {expandedSections[section] ? <ChevronUp size={20} color="#9ca3af" /> : <ChevronDown size={20} color="#9ca3af" />}
+      {expandedSections[section] ? <ChevronUp size={20} color={colors.label} /> : <ChevronDown size={20} color={colors.label} />}
     </TouchableOpacity>
   );
 
@@ -161,10 +162,10 @@ const StaffPermissionsScreen = () => {
   const renderAddRoleModal = () => (
     <Modal visible={addRoleModal} transparent animationType="fade" onRequestClose={closeAddRoleModal} statusBarTranslucent>
       <View className="flex-1 justify-center items-center bg-black/70 px-4">
-        <View className="w-full max-w-[400px] bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden">
-          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between bg-[#353535]">
+        <View className="w-full max-w-[400px] bg-panel rounded-2xl border border-gray-700 overflow-hidden">
+          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between bg-surface">
             <Text className="text-xl font-bold text-white">Add New Role</Text>
-            <TouchableOpacity onPress={closeAddRoleModal} className="p-2"><X size={24} color="#9ca3af" /></TouchableOpacity>
+            <TouchableOpacity onPress={closeAddRoleModal} className="p-2"><X size={24} color={colors.label} /></TouchableOpacity>
           </View>
 
           <View className="p-4">
@@ -174,8 +175,8 @@ const StaffPermissionsScreen = () => {
                 value={newRoleName}
                 onChangeText={setNewRoleName}
                 placeholder="Enter role name"
-                placeholderTextColor="#6b7280"
-                className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white"
+                placeholderTextColor={colors.muted}
+                className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
               />
             </View>
 
@@ -197,7 +198,7 @@ const StaffPermissionsScreen = () => {
           </View>
 
           <View className="p-4 border-t border-gray-700 flex-row gap-3">
-            <TouchableOpacity onPress={closeAddRoleModal} className="flex-1 py-3 bg-[#404040] rounded-lg">
+            <TouchableOpacity onPress={closeAddRoleModal} className="flex-1 py-3 bg-surface rounded-lg">
               <Text className="text-white font-medium text-center">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={handleAddRole} disabled={!newRoleName.trim()} className={`flex-1 py-3 rounded-lg ${newRoleName.trim() ? 'bg-blue-600' : 'bg-blue-600/50'}`}>
@@ -212,10 +213,10 @@ const StaffPermissionsScreen = () => {
   const renderEditRoleModal = () => (
     <Modal visible={editRoleModal} transparent animationType="fade" onRequestClose={closeEditRoleModal} statusBarTranslucent>
       <View className="flex-1 justify-center items-center bg-black/70 px-4">
-        <View className="w-full max-w-[400px] bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden">
-          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between bg-[#353535]">
+        <View className="w-full max-w-[400px] bg-panel rounded-2xl border border-gray-700 overflow-hidden">
+          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between bg-surface">
             <Text className="text-xl font-bold text-white">Edit Role</Text>
-            <TouchableOpacity onPress={closeEditRoleModal} className="p-2"><X size={24} color="#9ca3af" /></TouchableOpacity>
+            <TouchableOpacity onPress={closeEditRoleModal} className="p-2"><X size={24} color={colors.label} /></TouchableOpacity>
           </View>
 
           <View className="p-4">
@@ -225,8 +226,8 @@ const StaffPermissionsScreen = () => {
                 value={newRoleName}
                 onChangeText={setNewRoleName}
                 placeholder="Enter role name"
-                placeholderTextColor="#6b7280"
-                className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white"
+                placeholderTextColor={colors.muted}
+                className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
               />
             </View>
 
@@ -253,7 +254,7 @@ const StaffPermissionsScreen = () => {
 
           <View className="p-4 border-t border-gray-700">
             <View className="flex-row gap-3 mb-3">
-              <TouchableOpacity onPress={closeEditRoleModal} className="flex-1 py-3 bg-[#404040] rounded-lg">
+              <TouchableOpacity onPress={closeEditRoleModal} className="flex-1 py-3 bg-surface rounded-lg">
                 <Text className="text-white font-medium text-center">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleEditRole} disabled={!newRoleName.trim()} className={`flex-1 py-3 rounded-lg ${newRoleName.trim() ? 'bg-blue-600' : 'bg-blue-600/50'}`}>
@@ -261,7 +262,7 @@ const StaffPermissionsScreen = () => {
               </TouchableOpacity>
             </View>
             <TouchableOpacity onPress={handleDeleteRole} className="py-3 bg-red-600/20 border border-red-600 rounded-lg flex-row items-center justify-center">
-              <Trash2 size={18} color="#f87171" />
+              <Trash2 size={18} color={colors.danger} />
               <Text className="text-red-400 font-medium ml-2">Delete Role</Text>
             </TouchableOpacity>
           </View>
@@ -272,7 +273,7 @@ const StaffPermissionsScreen = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View className="flex-1 bg-[#212121] p-6">
+      <View className="flex-1 bg-screen p-6">
         {renderAddRoleModal()}
         {renderEditRoleModal()}
 
@@ -286,8 +287,8 @@ const StaffPermissionsScreen = () => {
         <ScrollView showsVerticalScrollIndicator={false}>
 
           {/* Roles Management */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Role Management", <UserCog size={20} color="#60a5fa" />, "roles")}
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader("Role Management", <UserCog size={20} color={colors.info} />, "roles")}
             {expandedSections.roles && (
               <View className="p-5">
                 <Text className="text-gray-400 text-sm mb-4">Tap a role to edit. Define roles to categorize your staff members.</Text>
@@ -296,17 +297,17 @@ const StaffPermissionsScreen = () => {
                     <TouchableOpacity
                       key={role.id}
                       onPress={() => openEditRoleModal(role)}
-                      className="bg-[#404040] border border-gray-600 px-4 py-3 rounded-xl flex-row items-center"
+                      className="bg-surface border border-gray-600 px-4 py-3 rounded-xl flex-row items-center"
                     >
                       <View className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: role.color }} />
                       <Text className="text-white font-bold mr-2">{role.name}</Text>
-                      <View className="bg-[#505050] px-2 py-0.5 rounded-full">
+                      <View className="bg-card px-2 py-0.5 rounded-full">
                         <Text className="text-xs text-gray-300">{role.count}</Text>
                       </View>
                     </TouchableOpacity>
                   ))}
                   <TouchableOpacity onPress={openAddRoleModal} className="bg-blue-600/20 border border-blue-600 px-4 py-3 rounded-xl flex-row items-center">
-                    <Plus size={16} color="#60a5fa" />
+                    <Plus size={16} color={colors.info} />
                     <Text className="text-blue-400 font-bold ml-1">Add Role</Text>
                   </TouchableOpacity>
                 </View>
@@ -315,8 +316,8 @@ const StaffPermissionsScreen = () => {
           </View>
 
           {/* Permission Matrix */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Permission Matrix", <Shield size={20} color="#f97316" />, "matrix")}
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader("Permission Matrix", <Shield size={20} color={colors.warning} />, "matrix")}
             {expandedSections.matrix && (
               <View className="p-5">
                 <View className="flex-row mb-3 pb-2 border-b border-gray-600">
@@ -333,14 +334,14 @@ const StaffPermissionsScreen = () => {
                     <View className="flex-[2]"><Text className="text-white text-sm">{perm.name}</Text></View>
                     {ROLE_KEYS.map(role => (
                       <View key={role} className="flex-1 items-center">
-                        {perm[role] ? <Check size={16} color="#4ade80" /> : <X size={16} color="#ef4444" />}
+                        {perm[role] ? <Check size={16} color={colors.success} /> : <X size={16} color={colors.danger} />}
                       </View>
                     ))}
                   </View>
                 ))}
 
-                <TouchableOpacity onPress={openEditMatrix} className="mt-4 flex-row items-center justify-center bg-[#404040] py-3 rounded-lg border border-gray-600">
-                  <Edit3 size={16} color="#60a5fa" />
+                <TouchableOpacity onPress={openEditMatrix} className="mt-4 flex-row items-center justify-center bg-surface py-3 rounded-lg border border-gray-600">
+                  <Edit3 size={16} color={colors.info} />
                   <Text className="text-blue-400 font-medium ml-2">Edit Permission Matrix</Text>
                 </TouchableOpacity>
               </View>
@@ -349,7 +350,7 @@ const StaffPermissionsScreen = () => {
 
 
           {/* Break & Login */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader("Break & Login", <Coffee size={20} color="#f472b6" />, "breakLogin")}
             {expandedSections.breakLogin && (
               <View className="p-5">
@@ -364,8 +365,8 @@ const StaffPermissionsScreen = () => {
           </View>
 
           {/* Paid Time Off (PTO) */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Paid Time Off (PTO)", <Calendar size={20} color="#34d399" />, "pto")}
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader("Paid Time Off (PTO)", <Calendar size={20} color={colors.success} />, "pto")}
             {expandedSections.pto && (
               <View className="p-5">
                 <View className="mb-4">
@@ -379,7 +380,7 @@ const StaffPermissionsScreen = () => {
                       else if (text === "") setPtoAccrualRate(0);
                     }}
                     keyboardType="numeric"
-                    className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white"
+                    className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
                   />
                 </View>
 
@@ -394,7 +395,7 @@ const StaffPermissionsScreen = () => {
                       else if (text === "") updateField("minimumPtoNoticeDays", 0);
                     }}
                     keyboardType="numeric"
-                    className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white"
+                    className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
                   />
                 </View>
               </View>
@@ -402,7 +403,7 @@ const StaffPermissionsScreen = () => {
           </View>
 
           {/* Clock-In Settings */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader("Clock-In Security", <Lock size={20} color="#a78bfa" />, "clockin")}
             {expandedSections.clockin && (
               <View className="p-5">

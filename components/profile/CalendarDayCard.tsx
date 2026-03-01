@@ -36,7 +36,7 @@ const CalendarDayCard: React.FC<CalendarDayCardProps> = ({
             <TouchableOpacity
               key={shift.id}
               onPress={() => onShiftPress(shift)}
-              className="p-1 bg-[#212121] rounded"
+              className="p-1 bg-panel rounded"
             >
               <Text className="text-xs text-white font-semibold">
                 {shift.role}

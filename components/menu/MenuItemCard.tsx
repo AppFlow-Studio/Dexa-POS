@@ -1,4 +1,5 @@
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { Eye, EyeOff, Settings, Trash2, Utensils } from "lucide-react-native";
 import React from "react";
@@ -44,7 +45,7 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
   const isAvailable = item.availability !== false;
   return (
     // Main container is now a row
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-3 w-full flex-row items-center">
+    <View className="bg-surface rounded-lg border border-gray-700 p-3 w-full flex-row items-center">
       {/* Image Section - smaller image */}
       <View className="w-16 h-16 rounded-md border border-gray-600 overflow-hidden">
         {imageSource ? (
@@ -55,7 +56,7 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
           />
         ) : (
           <View className="w-full h-full bg-gray-700 items-center justify-center">
-            <Utensils color="#9ca3af" size={24} />
+            <Utensils color={colors.label} size={24} />
           </View>
         )}
       </View>
@@ -91,9 +92,9 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
           className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
         >
           {isAvailable ? (
-            <EyeOff size={20} color={editDisabled ? "#4B5563" : "#9CA3AF"} />
+            <EyeOff size={20} color={editDisabled ? "#4B5563" : colors.label} />
           ) : (
-            <Eye size={20} color={editDisabled ? "#4B5563" : "#9CA3AF"} />
+            <Eye size={20} color={editDisabled ? "#4B5563" : colors.label} />
           )}
         </TouchableOpacity>
         <TouchableOpacity
@@ -101,14 +102,14 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
           disabled={editDisabled}
           className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
         >
-          <Settings size={20} color={editDisabled ? "#4B5563" : "#9CA3AF"} />
+          <Settings size={20} color={editDisabled ? "#4B5563" : colors.label} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => onDelete(item.id)}
           disabled={editDisabled}
           className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
         >
-          <Trash2 size={20} color={editDisabled ? "#4B5563" : "#EF4444"} />
+          <Trash2 size={20} color={editDisabled ? "#4B5563" : colors.danger} />
         </TouchableOpacity>
       </View>
     </View>

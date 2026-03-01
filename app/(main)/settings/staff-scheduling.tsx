@@ -32,6 +32,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -113,7 +114,7 @@ const StaffSchedulingScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">
           Staff & Scheduling
@@ -150,9 +151,9 @@ const StaffSchedulingScreen = () => {
             </View>
 
             {templates.length === 0 ? (
-              <View className="bg-[#303030] border border-gray-600 rounded-xl p-8 items-center justify-center gap-4">
+              <View className="bg-panel border border-gray-600 rounded-xl p-8 items-center justify-center gap-4">
                 <View className="h-16 w-16 bg-gray-700 rounded-full items-center justify-center">
-                  <FileText size={32} color="#9CA3AF" />
+                  <FileText size={32} color={colors.label} />
                 </View>
                 <Text className="text-gray-300 font-medium">
                   No templates created yet
@@ -180,11 +181,11 @@ const StaffSchedulingScreen = () => {
                 {templates.map((template) => (
                   <View
                     key={template.id}
-                    className="bg-[#303030] border border-gray-600 rounded-lg p-4 flex-row justify-between items-center"
+                    className="bg-panel border border-gray-600 rounded-lg p-4 flex-row justify-between items-center"
                   >
                     <View className="flex-row items-center gap-4">
                       <View className="h-10 w-10 bg-blue-500/20 rounded-lg items-center justify-center">
-                        <Calendar size={20} color="#3B82F6" />
+                        <Calendar size={20} color={colors.info} />
                       </View>
                       <View>
                         <Text className="text-white font-semibold text-lg">
@@ -198,7 +199,7 @@ const StaffSchedulingScreen = () => {
 
                     <View className="flex-row gap-2">
                       <TouchableOpacity
-                        className="bg-[#212121] px-3 py-2 rounded-md border border-gray-600"
+                        className="bg-screen px-3 py-2 rounded-md border border-gray-600"
                         onPress={() => handleUseTemplate(template.id)}
                       >
                         <Text className="text-gray-300 font-medium">
@@ -206,16 +207,16 @@ const StaffSchedulingScreen = () => {
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        className="p-2 border border-gray-600 rounded-md bg-[#212121]"
+                        className="p-2 border border-gray-600 rounded-md bg-screen"
                         onPress={() => actions.duplicateTemplate(template.id)}
                       >
-                        <Copy size={16} color="#9CA3AF" />
+                        <Copy size={16} color={colors.label} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         className="p-2 border border-red-900/50 bg-red-900/20 rounded-md"
                         onPress={() => setTemplateToDelete(template.id)}
                       >
-                        <Trash2 size={16} color="#F87171" />
+                        <Trash2 size={16} color={colors.danger} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -225,11 +226,11 @@ const StaffSchedulingScreen = () => {
           </View>
 
           {/* Conflict Detection Section */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center gap-3">
-                  <AlertTriangle color="#F59E0B" size={24} />
+                  <AlertTriangle color={colors.warning} size={24} />
                   <View>
                     <CardTitle className="text-white">
                       Conflict Detection
@@ -340,9 +341,9 @@ const StaffSchedulingScreen = () => {
                   </View>
                 </View>
 
-                <View className="bg-[#212121] rounded-lg border border-gray-700 p-3 flex-row items-center justify-between">
+                <View className="bg-screen rounded-lg border border-gray-700 p-3 flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <AlertTriangle size={16} color="#F59E0B" />
+                    <AlertTriangle size={16} color={colors.warning} />
                     <Text className="text-gray-300">
                       View Current Conflicts
                     </Text>
@@ -359,7 +360,7 @@ const StaffSchedulingScreen = () => {
 
       {/* Select Schedule Type Modal */}
       <Dialog open={isScheduleTypeOpen} onOpenChange={setIsScheduleTypeOpen}>
-        <DialogContent className="w-[500px] max-w-lg bg-[#303030] rounded-2xl border-gray-700">
+        <DialogContent className="w-[500px] max-w-lg bg-panel rounded-2xl border-gray-700">
           <DialogHeader>
             <DialogTitle className="text-white text-xl font-bold">
               Create New Schedule
@@ -371,14 +372,14 @@ const StaffSchedulingScreen = () => {
             </Text>
 
             <TouchableOpacity
-              className="bg-[#212121] p-4 rounded-xl border border-gray-600 flex-row items-center gap-4 hover:bg-gray-800"
+              className="bg-screen p-4 rounded-xl border border-gray-600 flex-row items-center gap-4 hover:bg-gray-800"
               onPress={() => {
                 setIsScheduleTypeOpen(false);
                 setIsQuickScheduleOpen(true);
               }}
             >
               <View className="h-12 w-12 rounded-full bg-blue-500/10 items-center justify-center">
-                <Clock size={24} color="#3B82F6" />
+                <Clock size={24} color={colors.info} />
               </View>
               <View className="flex-1">
                 <Text className="text-white font-bold text-lg">
@@ -391,7 +392,7 @@ const StaffSchedulingScreen = () => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              className="bg-[#212121] p-4 rounded-xl border border-gray-600 flex-row items-center gap-4 hover:bg-gray-800"
+              className="bg-screen p-4 rounded-xl border border-gray-600 flex-row items-center gap-4 hover:bg-gray-800"
               onPress={() => {
                 setIsScheduleTypeOpen(false);
                 setIsPeriodWizardOpen(true);

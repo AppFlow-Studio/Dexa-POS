@@ -16,7 +16,7 @@ const ScheduleCalendarView: React.FC<ScheduleCalendarViewProps> = ({
   onShiftPress,
 }) => {
   return (
-    <View className="bg-[#303030] p-4 rounded-xl border border-gray-700">
+    <View className="bg-surface p-4 rounded-xl border border-gray-700">
       <View className="flex-row gap-2">
         {weekDays.map((date) => (
           <CalendarDayCard

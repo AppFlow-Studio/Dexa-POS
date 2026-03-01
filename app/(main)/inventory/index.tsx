@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { colors } from "@/lib/theme";
 import { InventoryItem, MenuItemType } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -53,14 +54,14 @@ const InventoryCatalogRow: React.FC<{
 
   return (
     <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
-      <TouchableOpacity className="flex-row items-center px-4 py-4 border-b border-gray-700">
+      <TouchableOpacity className="flex-row items-center px-4 py-4 border-b border-border">
         {/* Name: 25% */}
         <View className="w-[25%] flex-row items-center gap-1">
           <Text className="text-xl font-semibold text-white" numberOfLines={1}>
             {item.name}
           </Text>
           {item.isGlobal && (
-            <Globe color="#60A5FA" size={16} /> // Blue globe for global items
+            <Globe color={colors.info} size={16} /> // Blue globe for global items
           )}
         </View>
 
@@ -98,16 +99,16 @@ const InventoryCatalogRow: React.FC<{
             <DropdownMenuTrigger asChild>
               {/* Increased touch area */}
               <TouchableOpacity className="p-3">
-                <MoreHorizontal size={24} color="#9CA3AF" />
+                <MoreHorizontal size={24} color={colors.label} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
+            <DropdownMenuContent className="w-48 bg-panel border-border">
               <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-5 w-5" color="#9CA3AF" />
+                <Edit className="mr-2 h-5 w-5" color={colors.label} />
                 <Text className="text-lg text-white">Edit Item</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-5 w-5" color="#F87171" />
+                <Trash2 className="mr-2 h-5 w-5" color={colors.danger} />
                 <Text className="text-lg text-red-400">Delete Item</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -424,7 +425,7 @@ const InventoryScreen = () => {
         {lowStockItems.length > 0 && (
           <View className="mb-4 p-4 bg-red-900/30 border border-red-500 rounded-xl">
             <View className="flex-row items-center mb-2">
-              <AlertTriangle color="#F87171" size={20} />
+              <AlertTriangle color={colors.danger} size={20} />
               <Text className="text-2xl font-bold text-red-400 ml-1.5">
                 Low Stock Alerts
               </Text>
@@ -462,7 +463,7 @@ const InventoryScreen = () => {
             className={`px-3 py-1.5 rounded-lg border ${
               activeTab === "menu"
                 ? "bg-blue-600 border-blue-500"
-                : "bg-[#303030] border-gray-700"
+                : "bg-panel border-border"
             }`}
           >
             <Text
@@ -478,7 +479,7 @@ const InventoryScreen = () => {
             className={`px-3 py-1.5 rounded-lg border ${
               activeTab === "inventory"
                 ? "bg-blue-600 border-blue-500"
-                : "bg-[#303030] border-gray-700"
+                : "bg-panel border-border"
             }`}
           >
             <Text
@@ -491,9 +492,9 @@ const InventoryScreen = () => {
           </TouchableOpacity>
         </View>
 
-        <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
+        <View className="flex-1 bg-panel border border-border rounded-xl">
           {/* --- Header Section --- */}
-          <View className="flex-row py-3 px-4 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
+          <View className="flex-row py-3 px-4 bg-gray-800/50 rounded-t-xl border-b items-center border-border">
             {(activeTab === "inventory"
               ? TABLE_HEADERS_INVENTORY
               : TABLE_HEADERS_MENU
@@ -561,7 +562,7 @@ const InventoryScreen = () => {
                   {header === "Select" ? (
                     <TouchableOpacity
                       onPress={toggleSelectAllMenu}
-                      className="h-5 w-5 items-center justify-center border border-gray-600 rounded"
+                      className="h-5 w-5 items-center justify-center border border-border rounded"
                     >
                       <>{isAllSelected && <Check color="#fff" size={12} />}</>
                     </TouchableOpacity>
@@ -577,9 +578,9 @@ const InventoryScreen = () => {
               <View className="flex-row items-center justify-end gap-x-4 ml-auto">
                 <TouchableOpacity
                   onPress={openSearchSheet}
-                  className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-2"
+                  className="flex-row items-center bg-panel border border-border rounded-lg p-2"
                 >
-                  <Search color="#9CA3AF" size={18} />
+                  <Search color={colors.label} size={18} />
                 </TouchableOpacity>
                 {activeTab === "inventory" && (
                   <TouchableOpacity
@@ -628,7 +629,7 @@ const InventoryScreen = () => {
         </View>
 
         {activeTab === "menu" && selectedMenuIds.length > 0 && (
-          <View className="mt-2 p-3 bg-[#303030] border border-gray-700 rounded-xl flex-row items-center justify-between">
+          <View className="mt-2 p-3 bg-panel border border-border rounded-xl flex-row items-center justify-between">
             <Text className="text-white text-base">
               Selected: {selectedMenuIds.length}
             </Text>
@@ -697,7 +698,7 @@ const InventoryScreen = () => {
             className="flex-1"
           >
             <View className="flex-1 bg-black/50 justify-center items-center px-4">
-              <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+              <View className="bg-panel rounded-xl p-4 w-full max-w-sm">
                 <Text className="text-xl font-bold text-white mb-3">
                   Update Stock - {selectedMenuItem?.name}
                 </Text>
@@ -710,7 +711,7 @@ const InventoryScreen = () => {
                     onChangeText={setStockQuantity}
                     placeholder="Enter quantity"
                     keyboardType="numeric"
-                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
                   />
                 </View>
                 <View className="mb-4">
@@ -722,7 +723,7 @@ const InventoryScreen = () => {
                     onChangeText={setReorderThreshold}
                     placeholder="Enter threshold"
                     keyboardType="numeric"
-                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
                   />
                 </View>
                 <View className="flex-row gap-2">
@@ -760,7 +761,7 @@ const InventoryScreen = () => {
             className="flex-1"
           >
             <View className="flex-1 bg-black/50 justify-center items-center px-4">
-              <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+              <View className="bg-panel rounded-xl p-4 w-full max-w-sm">
                 <Text className="text-xl font-bold text-white mb-3">
                   Update Stock ({selectedInventoryIds.length} items)
                 </Text>
@@ -773,7 +774,7 @@ const InventoryScreen = () => {
                     onChangeText={setBulkInventoryStockQuantity}
                     placeholder="(Optional)"
                     keyboardType="numeric"
-                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
                   />
                 </View>
                 <View className="mb-4">
@@ -785,7 +786,7 @@ const InventoryScreen = () => {
                     onChangeText={setBulkInventoryReorderThreshold}
                     placeholder="(Optional)"
                     keyboardType="numeric"
-                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
                   />
                 </View>
                 <View className="flex-row gap-2">
@@ -823,7 +824,7 @@ const InventoryScreen = () => {
             className="flex-1"
           >
             <View className="flex-1 bg-black/50 justify-center items-center px-4">
-              <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+              <View className="bg-panel rounded-xl p-4 w-full max-w-sm">
                 <Text className="text-xl font-bold text-white mb-3">
                   Update Stock ({selectedMenuIds.length} items)
                 </Text>
@@ -836,7 +837,7 @@ const InventoryScreen = () => {
                     onChangeText={setBulkStockQuantity}
                     placeholder="(Optional)"
                     keyboardType="numeric"
-                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
                   />
                 </View>
                 <View className="mb-4">
@@ -848,7 +849,7 @@ const InventoryScreen = () => {
                     onChangeText={setBulkReorderThreshold}
                     placeholder="(Optional)"
                     keyboardType="numeric"
-                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
                   />
                 </View>
                 <View className="flex-row gap-2">

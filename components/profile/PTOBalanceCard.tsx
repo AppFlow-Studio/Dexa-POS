@@ -25,7 +25,7 @@ const PTOBalanceCard: React.FC<PTOBalanceCardProps> = ({
   const bgClasses = {
     success: "bg-green-600/10",
     warning: "bg-yellow-600/10",
-    default: "bg-[#303030]",
+    default: "bg-surface",
     primary: "bg-blue-600/10", // New background for primary
     secondary: "bg-gray-600/10", // New background for secondary
   };

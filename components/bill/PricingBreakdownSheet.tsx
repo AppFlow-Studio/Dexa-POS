@@ -7,6 +7,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { X } from "lucide-react-native";
 import React, { forwardRef, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface PricingBreakdownSheetProps {
   onClose: () => void;
@@ -120,20 +121,19 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
       snapPoints={snapPoints}
       enablePanDownToClose={true}
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      {...bottomSheetTheme}
       backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#212121" }}
     >
-      <BottomSheetView className="flex-1 bg-[#212121] rounded-t-3xl overflow-hidden">
+      <BottomSheetView className="flex-1 bg-panel rounded-t-3xl overflow-hidden">
         <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
           <Text className="text-2xl font-bold text-white">
             Pricing Breakdown
           </Text>
           <TouchableOpacity
             onPress={onClose}
-            className="p-2 bg-[#303030] rounded-full border border-gray-600"
+            className="p-2 bg-surface rounded-full border border-gray-600"
           >
-            <X color="#9CA3AF" size={20} />
+            <X color={colors.label} size={20} />
           </TouchableOpacity>
         </View>
         <View className="p-4 flex-1">

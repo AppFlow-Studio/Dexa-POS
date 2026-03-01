@@ -1,6 +1,7 @@
 import { images } from "@/lib/image";
 import { SIDEBAR_DATA } from "@/lib/sidebar-data";
 import { usePathname } from "expo-router";
+import { colors } from "@/lib/theme";
 import { Menu, X } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -22,23 +23,23 @@ const EXPANDED_WIDTH = 288;
 const COLLAPSED_WIDTH = 80;
 
 const SidebarFooter = () => (
-  <View className="p-4 mt-auto border-t border-gray-100">
+  <View className="p-4 mt-auto border-t border-border">
     <View className="flex-row items-center">
       <Image source={images.logo} className="h-8 w-8" resizeMode="contain" />
-      <Text className="ml-2 text-2xl font-bold text-gray-800">MTechPOS</Text>
+      <Text className="ml-2 text-2xl font-bold text-heading">MTechPOS</Text>
     </View>
-    <Text className="text-gray-600 mt-2">
+    <Text className="text-label mt-2">
       The Dreamy taste & Magic of sweet moments in every bite from our bakery
     </Text>
-    <View className="flex-row items-center justify-between mt-4 bg-gray-100 p-1 rounded-full">
-      <Text className="text-gray-500 font-semibold px-3 text-sm">
+    <View className="flex-row items-center justify-between mt-4 bg-surface p-1 rounded-full">
+      <Text className="text-hint font-semibold px-3 text-sm">
         © 2025 MTechPOS
       </Text>
-      <TouchableOpacity className="py-1 px-3 bg-white rounded-full">
-        <Text className="font-semibold text-gray-700 text-sm">Contacts</Text>
+      <TouchableOpacity className="py-1 px-3 bg-panel rounded-full">
+        <Text className="font-semibold text-label text-sm">Contacts</Text>
       </TouchableOpacity>
-      <TouchableOpacity className="py-1 px-3 bg-white rounded-full">
-        <Text className="font-semibold text-gray-700 text-sm">Help</Text>
+      <TouchableOpacity className="py-1 px-3 bg-panel rounded-full">
+        <Text className="font-semibold text-label text-sm">Help</Text>
       </TouchableOpacity>
     </View>
   </View>
@@ -128,12 +129,12 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      <View className="w-20 h-full bg-white p-2 border-r border-gray-200 items-center z-10">
+      <View className="w-20 h-full bg-panel p-2 border-r border-border items-center z-10">
         <TouchableOpacity
           onPress={() => setIsExpanded(true)}
           className="p-2 my-2"
         >
-          <Menu color="#1C1C28" size={24} />
+          <Menu color={colors.heading} size={24} />
         </TouchableOpacity>
         <View className="flex-1 justify-between">
           <View className="gap-y-1 mt-4">
@@ -172,7 +173,7 @@ const Sidebar: React.FC = () => {
 
       <Animated.View
         style={[animatedPanelStyle, { width: EXPANDED_WIDTH }]}
-        className="absolute top-0 left-0 h-full bg-white p-2 border-r border-gray-200 z-30"
+        className="absolute top-0 left-0 h-full bg-panel p-2 border-r border-border z-30"
       >
         <ScrollView
           ref={scrollViewRef} // Assign ref here
@@ -187,7 +188,7 @@ const Sidebar: React.FC = () => {
               onPress={() => setIsExpanded(false)}
               className="p-2"
             >
-              <X color="#1C1C28" size={24} />
+              <X color={colors.heading} size={24} />
             </TouchableOpacity>
             <View className="flex-row items-center ml-4">
               <Image

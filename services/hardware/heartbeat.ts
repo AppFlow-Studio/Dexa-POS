@@ -28,12 +28,16 @@ let currentLocationId: string | null = null;
 // ============================================================================
 
 async function sendHeartbeat(): Promise<void> {
-  if (!currentSupabase || !currentStationId || !currentLocationId) return;
+  // Capture local refs so mid-execution stopHeartbeat() can't null them out
+  const supabase = currentSupabase;
+  const stationId = currentStationId;
+  const locationId = currentLocationId;
+  if (!supabase || !stationId || !locationId) return;
 
   try {
     // 1. Call station_heartbeat RPC (updates stations.is_online + last_heartbeat_at)
-    const { error: rpcError } = await currentSupabase.rpc("station_heartbeat", {
-      p_station_id: currentStationId,
+    const { error: rpcError } = await supabase.rpc("station_heartbeat", {
+      p_station_id: stationId,
     });
 
     if (rpcError) {
@@ -57,11 +61,11 @@ async function sendHeartbeat(): Promise<void> {
     const appVersion = Application.nativeApplicationVersion || null;
 
     // 3. Insert into device_heartbeats
-    const { error: insertError } = await currentSupabase
+    const { error: insertError } = await supabase
       .from("device_heartbeats")
       .insert({
-        station_id: currentStationId,
-        location_id: currentLocationId,
+        station_id: stationId,
+        location_id: locationId,
         is_online: true,
         app_version: appVersion,
         battery_level: batteryLevel,
@@ -76,10 +80,10 @@ async function sendHeartbeat(): Promise<void> {
 
     // 4. Update battery level on stations table
     if (batteryLevel !== null) {
-      const { error: batteryError } = await currentSupabase
+      const { error: batteryError } = await supabase
         .from("stations")
         .update({ battery_level: batteryLevel })
-        .eq("id", currentStationId);
+        .eq("id", stationId);
 
       if (batteryError) {
         console.warn("[Heartbeat] Battery update error:", batteryError.message);
@@ -95,12 +99,14 @@ async function sendHeartbeat(): Promise<void> {
 // ============================================================================
 
 async function sendGoingOffline(): Promise<void> {
-  if (!currentSupabase || !currentStationId) return;
+  const supabase = currentSupabase;
+  const stationId = currentStationId;
+  if (!supabase || !stationId) return;
   try {
-    await currentSupabase
+    await supabase
       .from("stations")
       .update({ is_online: false })
-      .eq("id", currentStationId);
+      .eq("id", stationId);
     console.log("[Heartbeat] Sent offline signal");
   } catch (e) {
     console.warn("[Heartbeat] Failed to send offline signal:", e);

@@ -73,7 +73,7 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[450px]">
+      <DialogContent className="bg-panel border-border w-[450px]">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -88,7 +88,7 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
                 Inventory Item
               </Text>
               <Select value={selectedItem} onValueChange={setSelectedItem}>
-                <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg">
+                <SelectTrigger className="w-full p-3 bg-screen border border-border rounded-lg">
                   <SelectValue
                     className="text-lg text-white"
                     placeholder="Select an item..."
@@ -119,14 +119,14 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
                 value={quantity}
                 onChangeText={setQuantity}
                 keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                className="p-3 bg-screen border border-border rounded-lg text-lg text-white h-16"
               />
             </View>
           </View>
           <DialogFooter className="flex-row gap-2">
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+              className="flex-1 py-3 bg-screen border border-border rounded-lg"
             >
               <Text className="text-center text-lg font-bold text-gray-300">
                 Cancel

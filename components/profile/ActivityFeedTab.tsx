@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import {
   ArrowDownCircle,
   ArrowRightLeft,
@@ -17,7 +18,7 @@ const ActivityItem = ({
   subtitle: string;
   time: string;
 }) => (
-  <View className="p-4 bg-[#303030] border border-gray-700 rounded-2xl flex-row items-start gap-4">
+  <View className="p-4 bg-surface border border-gray-700 rounded-2xl flex-row items-start gap-4">
     {icon}
     <View className="flex-1">
       <Text className="text-sm font-medium text-white mb-1">{title}</Text>
@@ -31,19 +32,19 @@ const ActivityFeedTab = () => {
   return (
     <View className="gap-y-3">
       <ActivityItem
-        icon={<ArrowDownCircle size={20} color="#f59e0b" />}
+        icon={<ArrowDownCircle size={20} color={colors.warning} />}
         title="Drop request submitted"
         subtitle="Server shift on Jan 16 • Awaiting pickup"
         time="2 hours ago"
       />
       <ActivityItem
-        icon={<ArrowRightLeft size={20} color="#3b82f6" />}
+        icon={<ArrowRightLeft size={20} color={colors.info} />}
         title="Swap request submitted"
         subtitle="Requesting to swap Jan 18 shift for Jan 20 shift"
         time="1 day ago"
       />
       <ActivityItem
-        icon={<CheckCircle2 size={20} color="#22c55e" />}
+        icon={<CheckCircle2 size={20} color={colors.success} />}
         title="Drop request picked up"
         subtitle="Your Jan 10 shift was picked up by a coworker"
         time="3 days ago"

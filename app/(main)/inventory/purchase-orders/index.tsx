@@ -1,6 +1,7 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { PurchaseOrder } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
@@ -57,7 +58,7 @@ const PurchaseOrderRow: React.FC<{
   return (
     <Link
       href={`/inventory/purchase-orders/${item.id}`}
-      className="flex-row w-full flex-1 flex items-center p-3 border-b border-gray-700"
+      className="flex-row w-full flex-1 flex items-center p-3 border-b border-border"
     >
       <View className="flex-row w-full flex-1 flex items-center">
         <Text className="w-[15%] text-lg font-semibold text-white">
@@ -223,7 +224,7 @@ const PurchaseOrdersScreen = () => {
             )}
           </View>
 
-          <View className="flex-row bg-[#303030] border border-gray-700 rounded-lg p-1">
+          <View className="flex-row bg-panel border border-border rounded-lg p-1">
             <TouchableOpacity
               onPress={() => setActiveTab("purchase-orders")}
               className={`flex-1 py-2 rounded-lg items-center ${
@@ -261,8 +262,8 @@ const PurchaseOrdersScreen = () => {
 
         {/* Purchase Orders Tab Content */}
         {activeTab === "purchase-orders" && (
-          <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl overflow-hidden">
-            <View className="p-3 border-b border-gray-700">
+          <View className="flex-1 bg-panel border border-border rounded-xl overflow-hidden">
+            <View className="p-3 border-b border-border">
               <View className="gap-2 flex-row w-full justify-between">
                 <View className="flex-1">
                   <Text className="text-gray-300 mb-1 text-sm">Search</Text>
@@ -270,8 +271,8 @@ const PurchaseOrdersScreen = () => {
                     value={query}
                     onChangeText={setQuery}
                     placeholder="e.g., PO-2025, Alice..."
-                    placeholderTextColor="#9CA3AF"
-                    className="bg-[#212121] h-14 border border-gray-700 rounded-lg px-2 py-2 text-white text-sm"
+                    placeholderTextColor={colors.label}
+                    className="bg-screen h-14 border border-border rounded-lg px-2 py-2 text-white text-sm"
                   />
                 </View>
                 <View className="flex-1">
@@ -289,7 +290,7 @@ const PurchaseOrdersScreen = () => {
                 </View>
               </View>
             </View>
-            <View className="flex-row p-4 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
+            <View className="flex-row p-4 bg-gray-800/50 rounded-t-xl border-b border-border">
               {TABLE_HEADERS.map((header) => (
                 <Text
                   key={header}
@@ -340,7 +341,7 @@ const PurchaseOrdersScreen = () => {
 
         {/* External Expenses Tab Content */}
         {activeTab === "expenses" && (
-          <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl overflow-hidden">
+          <View className="flex-1 bg-panel border border-border rounded-xl overflow-hidden">
             {externalExpenses.length > 0 ? (
               <View className="flex-1 p-4">
                 <FlatList
@@ -348,7 +349,7 @@ const PurchaseOrdersScreen = () => {
                   keyExtractor={(item) => item.id}
                   contentContainerStyle={{ paddingBottom: 20 }}
                   renderItem={({ item }) => (
-                    <View className="bg-[#212121] border border-gray-600 rounded-lg p-3 mb-2">
+                    <View className="bg-screen border border-border rounded-lg p-3 mb-2">
                       <View className="flex-row justify-between items-start mb-2">
                         <View className="flex-1">
                           <Text className="text-white font-semibold text-base">
@@ -369,7 +370,7 @@ const PurchaseOrdersScreen = () => {
                             onPress={() => handleRemoveExternalExpense(item.id)}
                             className="mt-1.5 p-1"
                           >
-                            <Trash2 color="#EF4444" size={14} />
+                            <Trash2 color={colors.danger} size={14} />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -377,7 +378,7 @@ const PurchaseOrdersScreen = () => {
                         {item.items.map((lineItem, index) => (
                           <View
                             key={index}
-                            className="flex-row justify-between items-center py-1 border-b border-gray-700 last:border-b-0"
+                            className="flex-row justify-between items-center py-1 border-b border-border last:border-b-0"
                           >
                             <View className="flex-1">
                               <Text className="text-white text-base">

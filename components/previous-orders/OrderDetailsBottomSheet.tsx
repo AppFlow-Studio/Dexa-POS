@@ -20,6 +20,7 @@ import React, {
   useState,
 } from "react";
 import { Pressable, Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import OrderDetailSkeleton from "./detail/OrderDetailSkeleton";
 import OrderReceipt from "./detail/OrderReceipt";
 import DetailsPanel from "./detail/DetailsPanel";
@@ -88,13 +89,12 @@ const OrderDetailsBottomSheet = forwardRef<
       snapPoints={snapPoints}
       enablePanDownToClose={true}
       backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#212121" }}
-      handleIndicatorStyle={{ backgroundColor: "#4B5563" }}
+      {...bottomSheetTheme}
       onClose={onClose}
     >
-      <BottomSheetView className="flex-1 bg-[#212121]">
+      <BottomSheetView className="flex-1 bg-screen">
         {/* Header */}
-        <View className="px-4 py-3 border-b border-gray-700">
+        <View className="px-4 py-3 border-b border-border">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-3">
               <View className="bg-blue-900/30 border border-blue-500 px-3 py-1 rounded-lg">
@@ -137,7 +137,7 @@ const OrderDetailsBottomSheet = forwardRef<
               onPress={handleClose}
               className="p-2 rounded-full bg-gray-700"
             >
-              <X color="#9CA3AF" size={24} />
+              <X color={colors.label} size={24} />
             </TouchableOpacity>
           </View>
         </View>
@@ -147,14 +147,14 @@ const OrderDetailsBottomSheet = forwardRef<
         ) : (
           <View className="flex-1 flex-row">
             {/* Left Panel — Receipt */}
-            <View className="border-r border-gray-700" style={{ width: 380 }}>
+            <View className="border-r border-border" style={{ width: 380 }}>
               <OrderReceipt order={order} />
             </View>
 
             {/* Right Panel — Tabs */}
             <View className="flex-1">
               {/* Tab Bar */}
-              <View className="flex-row border-b border-gray-700 px-4">
+              <View className="flex-row border-b border-border px-4">
                 <TabButton
                   icon={
                     <Info
@@ -196,7 +196,7 @@ const OrderDetailsBottomSheet = forwardRef<
         )}
 
         {/* Bottom Action Bar */}
-        <View className="px-4 py-3 border-t border-gray-700 bg-[#212121]">
+        <View className="px-4 py-3 border-t border-border bg-screen">
           <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={() => onPrint?.(order)}

@@ -17,6 +17,7 @@ import { Redirect, Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
 import { useTableSessionInit } from "@/hooks/useTableSessionInit";
+import { colors, spinnerColor } from "@/lib/theme";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
@@ -135,8 +136,8 @@ export default function MainLayout() {
   // Show loading indicator while Clerk is loading
   if (!isLoaded) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#212121]">
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View className="flex-1 items-center justify-center bg-screen">
+        <ActivityIndicator size="large" color={spinnerColor} />
       </View>
     );
   }
@@ -156,7 +157,7 @@ export default function MainLayout() {
           onPaymentChange: handlePaymentChange,
         }}
       >
-        <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "#1a1a1a" }}>
+        <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: colors.screen }}>
           <StatusBar style="light" translucent />
           <Slot />
         </SafeAreaView>
@@ -177,7 +178,7 @@ export default function MainLayout() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
+      <SafeAreaView edges={["top"]} className="flex-1 bg-screen">
         <StatusBar style={"light"} translucent />
 
         <View className="flex-1 flex-row">

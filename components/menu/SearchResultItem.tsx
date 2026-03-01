@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
@@ -99,7 +100,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
         disabled={isDisabled}
       >
         <Plus
-          color={isDisabled ? "#6b7280" : "#60a5fa"}
+          color={isDisabled ? colors.muted : colors.info}
           size={20}
           strokeWidth={3}
         />

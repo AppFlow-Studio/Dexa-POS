@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ArrowRight, CheckCircle2 } from "lucide-react-native";
 import React from "react";
@@ -17,10 +18,10 @@ const SplitPaymentSuccessView = () => {
   const nextSplit = splits.find((s) => s.status === "pending");
 
   return (
-    <View className="flex-1 bg-[#212121] items-center justify-center p-6">
+    <View className="flex-1 bg-panel items-center justify-center p-6">
       <View className="items-center mb-10">
         <View className="w-24 h-24 bg-green-500/20 rounded-full items-center justify-center mb-6">
-          <CheckCircle2 size={48} color="#4ade80" />
+          <CheckCircle2 size={48} color={colors.success} />
         </View>
         <Text className="text-3xl font-bold text-white text-center mb-2">
           Payment Received

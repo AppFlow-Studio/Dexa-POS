@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -69,7 +70,7 @@ const ModifierScreenSkeleton: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#212121",
+    backgroundColor: colors.panel,
     padding: 16,
   },
   header: {
@@ -78,12 +79,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: colors.border,
   },
   itemNamePlaceholder: {
     width: 180,
     height: 32,
-    backgroundColor: "#303030",
+    backgroundColor: colors.card,
     borderRadius: 8,
   },
   headerActions: {
@@ -109,18 +110,18 @@ const styles = StyleSheet.create({
     gap: 24,
     paddingVertical: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: colors.border,
   },
   quantityButton: {
     width: 48,
     height: 48,
-    backgroundColor: "#303030",
+    backgroundColor: colors.card,
     borderRadius: 24,
   },
   quantityText: {
     width: 48,
     height: 32,
-    backgroundColor: "#303030",
+    backgroundColor: colors.card,
     borderRadius: 8,
   },
   categoryTabs: {
@@ -128,18 +129,18 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#374151",
+    borderBottomColor: colors.border,
   },
   categoryTab: {
     width: 110,
     height: 48,
-    backgroundColor: "#303030",
+    backgroundColor: colors.card,
     borderRadius: 12,
   },
   categoryTabShort: {
     width: 80,
     height: 48,
-    backgroundColor: "#303030",
+    backgroundColor: colors.card,
     borderRadius: 12,
   },
   optionsGrid: {
@@ -154,13 +155,13 @@ const styles = StyleSheet.create({
   optionItem: {
     flex: 1,
     height: 56,
-    backgroundColor: "#303030",
+    backgroundColor: colors.card,
     borderRadius: 12,
   },
   optionItemShort: {
     flex: 0.7,
     height: 56,
-    backgroundColor: "#303030",
+    backgroundColor: colors.card,
     borderRadius: 12,
   },
 });

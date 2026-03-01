@@ -1,5 +1,5 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { ArrowDown, ArrowUp, MoreVertical } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
@@ -13,30 +13,29 @@ import Animated, {
 } from "react-native-reanimated";
 
 export type SortColumn =
+  | "order"
   | "time"
-  | "assignee"
-  | "assignment"
-  | "customer"
-  | "items"
-  | "total";
+  | "staff"
+  | "total"
+  | "status";
 export type SortDirection = "asc" | "desc";
 
 interface ColumnConfig {
   key: SortColumn | "actions";
   label: string;
   sortable: boolean;
+  flex?: string;
   width?: string;
   align?: "left" | "center" | "right";
 }
 
 const columns: ColumnConfig[] = [
-  { key: "time", label: "TIME", sortable: true },
-  { key: "assignee", label: "ASSIGNEE", sortable: true },
-  { key: "assignment", label: "ASSIGNMENT", sortable: true },
-  { key: "customer", label: "CUSTOMER", sortable: true },
-  { key: "items", label: "ITEMS", sortable: true, align: "center" },
-  { key: "total", label: "TOTAL", sortable: true, align: "right" },
-  { key: "actions", label: "", sortable: false },
+  { key: "order", label: "ORDER", sortable: true, flex: "flex-[2]" },
+  { key: "time", label: "TIME", sortable: true, flex: "flex-[2.5]" },
+  { key: "staff", label: "STAFF", sortable: true, flex: "flex-[1.5]" },
+  { key: "total", label: "TOTAL", sortable: true, flex: "flex-[1.5]", align: "right" },
+  { key: "status", label: "STATUS", sortable: true, flex: "flex-[1.2]", align: "center" },
+  { key: "actions", label: "", sortable: false, width: "w-[60px]" },
 ];
 
 interface OrdersTableProps {
@@ -54,7 +53,86 @@ interface OrdersTableProps {
   onRefresh?: () => void;
 }
 
-// Memoized row component for better performance
+// Status pill config
+const STATUS_PILL: Record<string, { bg: string; text: string; label: string }> = {
+  Paid: {
+    bg: "rgba(34,197,94,0.20)",
+    text: colors.paymentPaid,
+    label: "Paid",
+  },
+  Pending: {
+    bg: "rgba(251,191,36,0.20)",
+    text: colors.warning,
+    label: "Pending",
+  },
+  Unpaid: {
+    bg: "rgba(251,191,36,0.20)",
+    text: colors.warning,
+    label: "Pending",
+  },
+  Partial: {
+    bg: "rgba(249,115,22,0.20)",
+    text: colors.paymentPartial,
+    label: "Partial",
+  },
+  Refunded: {
+    bg: "rgba(239,68,71,0.20)",
+    text: colors.danger,
+    label: "Refunded",
+  },
+};
+
+const DEFAULT_PILL = {
+  bg: "rgba(156,163,175,0.20)",
+  text: colors.label,
+  label: "Unknown",
+};
+
+// Left border color by status
+function getLeftBorderColor(order: OrderProfile): string {
+  if (order.order_status === "refunded") return colors.danger;
+
+  const totalRefunded = (order.payments || []).reduce(
+    (sum, p) => sum + (p.refundedAmount ?? 0),
+    0,
+  );
+  if (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0))
+    return colors.danger;
+
+  switch (order.paid_status) {
+    case "Paid":
+      return colors.muted;
+    case "Partial":
+      return colors.paymentPartial;
+    case "Pending":
+    case "Unpaid":
+    default:
+      return colors.warning;
+  }
+}
+
+// Effective display status (accounts for refunds)
+function getEffectiveStatus(order: OrderProfile): string {
+  if (order.order_status === "refunded") return "Refunded";
+  const totalRefunded = (order.payments || []).reduce(
+    (sum, p) => sum + (p.refundedAmount ?? 0),
+    0,
+  );
+  if (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0))
+    return "Refunded";
+  return order.paid_status || "Pending";
+}
+
+// Sort priority for status column
+const STATUS_SORT_PRIORITY: Record<string, number> = {
+  Pending: 0,
+  Unpaid: 0,
+  Partial: 1,
+  Paid: 2,
+  Refunded: 3,
+};
+
+// Memoized row component
 interface OrderRowProps {
   order: OrderProfile;
   isEven: boolean;
@@ -64,63 +142,55 @@ interface OrderRowProps {
     orderId: string,
     position?: { x: number; y: number; width: number; height: number },
   ) => void;
-  getTableName: (tableId: string | null | undefined) => string;
 }
 
 const OrderRow = memo<OrderRowProps>(
-  ({ order, isEven, onRowClick, onDoubleClick, onMoreClick, getTableName }) => {
+  ({ order, isEven, onRowClick, onDoubleClick, onMoreClick }) => {
     const buttonRef = React.useRef<React.ElementRef<
       typeof TouchableOpacity
     > | null>(null);
     const scale = useSharedValue(1);
 
-    // Memoize the time formatting to avoid recalculation on every render
+    // Time + order type display
     const timeDisplay = useMemo(() => {
       const timestamp = order.opened_at;
-      if (!timestamp) return { time: "—", date: "—" };
+      if (!timestamp) return "—";
       const date = new Date(timestamp);
       const time = date.toLocaleTimeString("en-US", {
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
       });
+      return time;
+    }, [order.opened_at]);
 
-      const now = new Date();
-      const diffDays = Math.floor(
-        (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      let dateStr: string;
-      // if (diffDays === 0) dateStr = "Today";
-      // else if (diffDays === 1) dateStr = "Yesterday";
-      // else
-      dateStr = date.toLocaleDateString("en-US", {
+    const dateDisplay = useMemo(() => {
+      const timestamp = order.opened_at;
+      if (!timestamp) return "";
+      const date = new Date(timestamp);
+      return date.toLocaleDateString("en-US", {
         month: "numeric",
         day: "numeric",
         year: "numeric",
       });
-
-      return { time, date: dateStr };
     }, [order.opened_at]);
 
-    const totalRefunded = useMemo(() => {
-      return (order.payments || []).reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
-    }, [order.payments]);
+    const orderTypeLabel = order.order_type || "";
 
-    const isFullyRefunded = order.order_status === "refunded" ||
-      (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0));
+    const displayNumber = order.display_number || order.order_number?.slice(-6) || "—";
+    const customerName = order.customer_name || "";
+
+    const effectiveStatus = useMemo(() => getEffectiveStatus(order), [order]);
+    const pill = STATUS_PILL[effectiveStatus] || DEFAULT_PILL;
+    const leftBorderColor = useMemo(() => getLeftBorderColor(order), [order]);
+
+    const hasCashTotal =
+      order.total_cash_amount != null &&
+      order.total_cash_amount !== order.total_amount;
 
     const handleRowPress = useCallback(() => {
-      // onRowClick(order.id);
-      usePaymentDetailSheetStore
-      .getState()
-      .open(
-        order.id
-      )
-    }, [order.id, onRowClick]);
-
-    // const handleDoublePress = useCallback(() => {
-    //   onDoubleClick(order.id);
-    // }, [order.id, onDoubleClick]);
+      usePaymentDetailSheetStore.getState().open(order.id);
+    }, [order.id]);
 
     const handleMorePress = useCallback(
       (e: any) => {
@@ -134,23 +204,6 @@ const OrderRow = memo<OrderRowProps>(
       [order.id, onMoreClick],
     );
 
-    // // Double-tap gesture (requires 2 taps within 250ms)
-    // const doubleTap = useMemo(
-    //   () =>
-    //     Gesture.Tap()
-    //       .numberOfTaps(2)
-    //       .maxDuration(250)
-    //       .onStart(() => {
-    //         scale.value = withSequence(
-    //           withSpring(0.95, { damping: 10, stiffness: 200 }),
-    //           withSpring(1),
-    //         );
-    //         // runOnJS(handleDoublePress)();
-    //       }),
-    //   [handleDoublePress, scale],
-    // );
-
-    // Single-tap gesture (fallback)
     const singleTap = useMemo(
       () =>
         Gesture.Tap().onEnd(() => {
@@ -163,120 +216,90 @@ const OrderRow = memo<OrderRowProps>(
       [handleRowPress, scale],
     );
 
-    // Compose: double-tap takes priority, single-tap is fallback
-    // const composedTap = useMemo(
-    //   () => Gesture.Exclusive(doubleTap, singleTap),
-    //   [doubleTap, singleTap],
-    // );
-
-    // const animatedStyle = useAnimatedStyle(() => ({
-    //   transform: [{ scale: scale.value }],
-    // }));
-
     return (
-      <TouchableOpacity
-      onPress={handleRowPress}
-      >
+      <TouchableOpacity onPress={handleRowPress} activeOpacity={0.7}>
         <Animated.View
-          style={[{ minHeight: 60 }]}
+          style={[
+            { minHeight: 56, borderLeftWidth: 3, borderLeftColor: leftBorderColor, marginVertical : 1, borderRadius: 10 },
+          ]}
           className={`
-          flex-row items-center border-b border-gray-800
-          ${isEven ? "bg-[#1a1a1a]" : "bg-[#202020]"}
-        `}
-        >
-        {/* TIME Column - now includes order number */}
-        <View className="flex-[1.5] py-3 px-4">
-          <Text className="text-sm font-medium text-white">
-            {timeDisplay.time}
-          </Text>
-          <Text className="text-xs text-gray-400 mt-0.5">
-            {timeDisplay.date}
-          </Text>
-          <Text className="text-xs text-gray-500 mt-0.5">
-            {order.display_number || order.order_number?.slice(-6) || "—"}
-          </Text>
-        </View>
-
-        {/* ASSIGNEE Column - staff name preferred, then station */}
-        <View className="flex-[2] py-3 px-4">
-          <Text className="text-sm font-medium text-white">
-            {order.server_name || order._sourceStationName || "Unknown"}
-          </Text>
-        </View>
-
-        {/* ASSIGNMENT Column */}
-        <View className="flex-[1.8] py-3 px-4">
-          <Text className="text-sm font-medium text-white">
-            {order.order_type || "—"}
-          </Text>
-          {order.service_location_id && (
-            <Text className="text-xs text-gray-500 mt-0.5">
-              Table{" "}
-              {order.service_location_name ||
-                getTableName(order.service_location_id)}
-            </Text>
-          )}
-        </View>
-
-        {/* CUSTOMER Column */}
-        <View className="flex-[2] py-3 px-4">
-          <Text className="text-sm font-medium text-white">
-            {order.customer_name || "—"}
-          </Text>
-        </View>
-
-        {/* ITEMS Column */}
-        <View className="flex-1 py-3 px-4 items-center">
-          <View className="bg-gray-700 rounded-full px-3 py-1 min-w-[32px] items-center">
-            <Text className="text-sm font-semibold text-white">
-              {order.items?.length || 0}
-            </Text>
-          </View>
-        </View>
-
-        {/* TOTAL Column with improved payment status colors */}
-        <View className="flex-[1.5] py-3 px-4 items-end">
-          <Text className="text-base font-bold text-white">
-            ${(order.total_amount || 0).toFixed(2)}
-          </Text>
-          <Text
-            className={`
-            text-xs font-medium mt-0.5
-            ${
-              order.paid_status === "Paid"
-                ? "text-green-400"
-                : order.paid_status === "Partial"
-                  ? "text-blue-400"
-                  : "text-orange-400"
-            }
+            flex-row items-center
+            ${isEven ? "bg-panel" : "bg-screen"}
           `}
-          >
-            {order.paid_status}
-          </Text>
-          {totalRefunded > 0 && (
-            <Text className="text-xs font-medium mt-0.5 text-red-400">
-              {isFullyRefunded ? "Refunded" : "Partial"} ${totalRefunded.toFixed(2)}
+        >
+          {/* ORDER cell */}
+          <View className="flex-[2] py-3 px-4">
+            <Text className="text-sm font-bold text-heading">
+              {displayNumber}
             </Text>
-          )}
-          <View className={`mt-1 px-1.5 py-0.5 rounded ${order.check_status === "Closed" ? "bg-gray-700" : "bg-emerald-900/30"}`}>
-            <Text className={`text-[10px] font-semibold ${order.check_status === "Closed" ? "text-gray-300" : "text-emerald-400"}`}>
-              {order.check_status === "Closed" ? "Closed" : "Open"}
+            {customerName !== "" && (
+              <Text className="text-xs text-hint mt-0.5" numberOfLines={1}>
+                {customerName}
+              </Text>
+            )}
+          </View>
+
+          {/* TIME cell */}
+          <View className="flex-[2.5] py-3 px-4">
+            <Text className="text-sm text-heading" numberOfLines={1}>
+              {timeDisplay}
+              {orderTypeLabel ? ` · ${orderTypeLabel}` : ""}
+            </Text>
+            <Text className="text-xs text-hint mt-0.5">{dateDisplay}</Text>
+          </View>
+
+          {/* STAFF cell */}
+          <View className="flex-[1.5] py-3 px-4">
+            <Text className="text-sm text-heading" numberOfLines={1}>
+              {order.server_name || order._sourceStationName || "—"}
             </Text>
           </View>
-        </View>
 
-        {/* ACTIONS Column */}
-        <View className="w-[60px] py-3 px-4 items-center">
-          <TouchableOpacity
-            ref={buttonRef}
-            onPress={handleMorePress}
-            className="p-2 rounded-full active:bg-gray-600"
-          >
-            <MoreVertical size={16} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
+          {/* TOTAL cell */}
+          <View className="flex-[1.5] py-3 px-4 items-end">
+            <Text className="text-sm font-bold text-heading">
+              ${(order.total_amount || 0).toFixed(2)}
+            </Text>
+            {hasCashTotal && (
+              <Text
+                className="text-xs mt-0.5"
+                style={{ color: colors.success }}
+              >
+                Cash ${(order.total_cash_amount!).toFixed(2)}
+              </Text>
+            )}
+          </View>
+
+          {/* STATUS cell */}
+          <View className="flex-[1.2] py-3 px-4 items-center">
+            <View
+              style={{
+                backgroundColor: pill.bg,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 12,
+              }}
+            >
+              <Text
+                style={{ color: pill.text, fontSize: 12, fontWeight: "600" }}
+              >
+                {pill.label}
+              </Text>
+            </View>
+          </View>
+
+          {/* ACTIONS cell */}
+          <View className="w-[60px] py-3 px-4 items-center">
+            <TouchableOpacity
+              ref={buttonRef}
+              onPress={handleMorePress}
+              className="p-2 rounded-full active:bg-gray-600"
+            >
+              <MoreVertical size={16} color={colors.label} />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
-        </TouchableOpacity>
+      </TouchableOpacity>
     );
   },
 );
@@ -294,51 +317,36 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   refreshing,
   onRefresh,
 }) => {
-  // Lift store access to parent to simple prop passing
-  const { tablesById } = useFloorPlanStore();
-
-  // Stable table lookup function
-  const getTableName = useCallback(
-    (tableId: string | null | undefined): string => {
-      if (!tableId) return "Unknown";
-      const table = tablesById[tableId];
-      return table?.name || "Unknown";
-    },
-    [tablesById],
-  );
-
   // Sort orders based on current sort column and direction
-  // This is expensive, so we memoize strictly
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => {
       let aVal: any;
       let bVal: any;
 
       switch (sortColumn) {
+        case "order":
+          aVal = a.display_number || "";
+          bVal = b.display_number || "";
+          break;
         case "time":
           aVal = new Date(a.opened_at || 0).getTime();
           bVal = new Date(b.opened_at || 0).getTime();
           break;
-        case "assignee":
+        case "staff":
           aVal = (a.server_name || a._sourceStationName || "").toLowerCase();
           bVal = (b.server_name || b._sourceStationName || "").toLowerCase();
-          break;
-        case "assignment":
-          aVal = (a.order_type || "").toLowerCase();
-          bVal = (b.order_type || "").toLowerCase();
-          break;
-        case "customer":
-          aVal = (a.customer_name || "walk-in").toLowerCase();
-          bVal = (b.customer_name || "walk-in").toLowerCase();
-          break;
-        case "items":
-          aVal = a.items?.length || 0;
-          bVal = b.items?.length || 0;
           break;
         case "total":
           aVal = a.total_amount || 0;
           bVal = b.total_amount || 0;
           break;
+        case "status": {
+          const aStatus = getEffectiveStatus(a);
+          const bStatus = getEffectiveStatus(b);
+          aVal = STATUS_SORT_PRIORITY[aStatus] ?? 99;
+          bVal = STATUS_SORT_PRIORITY[bStatus] ?? 99;
+          break;
+        }
         default:
           return 0;
       }
@@ -349,8 +357,6 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
     });
   }, [orders, sortColumn, sortDirection]);
 
-  // Use FlatList for better performance with large lists
-  // This renders only items currently on screen
   const renderItem = useCallback(
     ({ item, index }: { item: OrderProfile; index: number }) => (
       <OrderRow
@@ -359,16 +365,21 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         onRowClick={onRowClick}
         onDoubleClick={onDoubleClick}
         onMoreClick={onMoreClick}
-        getTableName={getTableName}
       />
     ),
-    [onRowClick, onDoubleClick, onMoreClick, getTableName],
+    [onRowClick, onDoubleClick, onMoreClick],
   );
 
   return (
-    <View className="flex-1 bg-[#1a1a1a] rounded-lg border border-gray-700">
+    <View
+      className="flex-1 rounded-lg overflow-hidden"
+      style={{ borderWidth: 1, borderColor: colors.border }}
+    >
       {/* Table Header */}
-      <View className="flex-row bg-[#252525] border-b border-gray-700">
+      <View
+        className="flex-row bg-panel"
+        style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
+      >
         {columns.map((column) => (
           <TouchableOpacity
             key={column.key}
@@ -376,13 +387,8 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
             disabled={!column.sortable}
             className={`
               py-3 px-4 flex-row items-center
-              ${column.key === "time" ? "flex-[1.5]" : ""}
-              ${column.key === "assignee" ? "flex-[2]" : ""}
-              ${column.key === "assignment" ? "flex-[1.8]" : ""}
-              ${column.key === "customer" ? "flex-[2]" : ""}
-              ${column.key === "items" ? "flex-1" : ""}
-              ${column.key === "total" ? "flex-[1.5]" : ""}
-              ${column.key === "actions" ? "w-[60px]" : ""}
+              ${column.flex || ""}
+              ${column.width || ""}
             `}
             style={{
               justifyContent:
@@ -393,15 +399,18 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
                     : "flex-start",
             }}
           >
-            <Text className="text-xs font-bold text-gray-400 uppercase">
+            <Text
+              className="text-xs font-bold uppercase"
+              style={{ color: colors.label }}
+            >
               {column.label}
             </Text>
             {column.sortable && sortColumn === column.key && (
               <View className="ml-1">
                 {sortDirection === "asc" ? (
-                  <ArrowUp size={12} color="#9CA3AF" />
+                  <ArrowUp size={12} color={colors.teal} />
                 ) : (
-                  <ArrowDown size={12} color="#9CA3AF" />
+                  <ArrowDown size={12} color={colors.teal} />
                 )}
               </View>
             )}
@@ -409,7 +418,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         ))}
       </View>
 
-      {/* Table Body - Optimized with FlatList */}
+      {/* Table Body */}
       <FlatList
         data={sortedOrders}
         renderItem={renderItem}
@@ -417,7 +426,9 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         contentContainerStyle={{ flexGrow: 1 }}
         ListEmptyComponent={() => (
           <View className="py-20 items-center justify-center">
-            <Text className="text-gray-500 text-sm">No orders found</Text>
+            <Text style={{ color: colors.muted }} className="text-sm">
+              No orders found
+            </Text>
           </View>
         )}
         initialNumToRender={12}

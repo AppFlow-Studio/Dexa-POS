@@ -2,6 +2,7 @@
 
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
+import { colors } from "@/lib/theme";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -213,18 +214,18 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             scale.value += 0.1;
             savedScale.value = scale.value;
           }}
-          className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start`}
+          className={`flex-row items-center bg-surface border border-gray-600 rounded-lg px-4 py-3 justify-start`}
         >
-          <Plus color="#9CA3AF" size={24} />
+          <Plus color={colors.label} size={24} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
             scale.value -= 0.1;
             savedScale.value = scale.value;
           }}
-          className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start `}
+          className={`flex-row items-center bg-surface border border-gray-600 rounded-lg px-4 py-3 justify-start `}
         >
-          <Minus color="#9CA3AF" size={24} />
+          <Minus color={colors.label} size={24} />
         </TouchableOpacity>
       </View>
       <GestureDetector gesture={combinedGesture}>

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import {
@@ -76,7 +77,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       {/* Refund */}
       {canRefund && (
         <ActionButton
-          icon={<RotateCcw color="#EF4444" size={18} />}
+          icon={<RotateCcw color={colors.danger} size={18} />}
           label="Refund"
           onPress={onRefund}
           variant="danger"
@@ -100,9 +101,9 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isClosingCheck ? (
-              <ActivityIndicator size="small" color="#4ade80" />
+              <ActivityIndicator size="small" color={colors.success} />
             ) : (
-              <CheckCircle color="#4ade80" size={18} />
+              <CheckCircle color={colors.success} size={18} />
             )
           }
           label={isClosingCheck ? "Closing..." : "Close Check"}
@@ -117,9 +118,9 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isReopeningCheck ? (
-              <ActivityIndicator size="small" color="#F59E0B" />
+              <ActivityIndicator size="small" color={colors.warning} />
             ) : (
-              <RefreshCcw color="#F59E0B" size={18} />
+              <RefreshCcw color={colors.warning} size={18} />
             )
           }
           label={isReopeningCheck ? "Reopening..." : "Re-open Order"}
@@ -132,7 +133,7 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       {/* Order Notes */}
       {order.notes && (
         <ActionButton
-          icon={<FileText color="#9CA3AF" size={18} />}
+          icon={<FileText color={colors.label} size={18} />}
           label="Order Notes"
           onPress={onNotes}
           variant="default"
@@ -145,9 +146,9 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isVoiding ? (
-              <ActivityIndicator size="small" color="#EF4444" />
+              <ActivityIndicator size="small" color={colors.danger} />
             ) : (
-              <XCircle color="#EF4444" size={18} />
+              <XCircle color={colors.danger} size={18} />
             )
           }
           label={isVoiding ? "Voiding..." : "Void Order"}
@@ -193,7 +194,7 @@ const variantStyles: Record<string, { border: string; bg: string }> = {
   purple: { border: "border-purple-500", bg: "bg-purple-900/30" },
   warning: { border: "border-yellow-500", bg: "bg-yellow-900/30" },
   success: { border: "border-green-500", bg: "bg-green-900/30" },
-  default: { border: "border-gray-600", bg: "bg-[#303030]" },
+  default: { border: "border-gray-600", bg: "bg-surface" },
 };
 
 const ActionButton = ({

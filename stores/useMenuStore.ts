@@ -350,7 +350,7 @@ const transformMenuItemsFromSync = (
         name: menu.name,
         description: menu.description || undefined,
         isActive: menu.is_active,
-        displayOrder: (menu as any).display_order,
+        displayOrder: menu.display_order ?? undefined,
         categories: categories.sort((a, b) => {
           // Website Logic: Missing order goes to the BOTTOM
           const aOrder = a.displayOrder ?? a.order ?? 999999;
@@ -359,16 +359,37 @@ const transformMenuItemsFromSync = (
           if (orderDiff !== 0) return orderDiff;
           return a.name.localeCompare(b.name);
         }), // Full Category Objects, sorted
-        schedules: (menu.schedules || []).map((s) => ({
-          id: s.id,
-          name: s.schedule.name,
-          startTime: s.schedule.time_slots[0]?.start_time || "00:00:00", // Simplified for now
-          endTime: s.schedule.time_slots[0]?.end_time || "23:59:59",
-          days: s.schedule.time_slots.map((ts: any) =>
-            ts.day_of_week.toString()
-          ), // TODO: map days correctly
-          isActive: s.schedule.is_active,
-        })),
+        schedules: (menu.schedules || []).flatMap((s) => {
+          if (!s.schedule.is_active || !s.schedule.time_slots?.length) return [];
+
+          // API day_of_week: 0=Monday..6=Sunday → JS getDay(): 0=Sunday..6=Saturday
+          const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const apiDayToJsDay = (apiDay: number): number => (apiDay + 1) % 7;
+
+          // Group time slots by start/end time to create Schedule objects
+          const timeSlotGroups = new Map<string, { startTime: string; endTime: string; days: Set<string> }>();
+
+          s.schedule.time_slots.forEach((ts: any) => {
+            const startTime = ts.start_time || "00:00:00";
+            const endTime = ts.end_time || "23:59:59";
+            const key = `${startTime}-${endTime}`;
+
+            if (!timeSlotGroups.has(key)) {
+              timeSlotGroups.set(key, { startTime, endTime, days: new Set() });
+            }
+            const jsDay = apiDayToJsDay(ts.day_of_week);
+            timeSlotGroups.get(key)!.days.add(dayNames[jsDay]);
+          });
+
+          return Array.from(timeSlotGroups.values()).map((group) => ({
+            id: `${s.id}-${group.startTime}-${group.endTime}`,
+            name: s.schedule.name,
+            startTime: group.startTime,
+            endTime: group.endTime,
+            days: Array.from(group.days),
+            isActive: s.schedule.is_active,
+          }));
+        }),
         createdAt: menu.created_at,
         updatedAt: menu.updated_at,
         location_id: menu.location_id,
@@ -382,59 +403,6 @@ const transformMenuItemsFromSync = (
       if (orderDiff !== 0) return orderDiff;
       return a.name.localeCompare(b.name);
     });
-
-  //   return {
-  //     id: menu.id,
-  //     name: menu.name,
-  //     description: menu.description || undefined,
-  //     isActive: menu.is_active,
-  //     categories: categories, // Full Category Objects
-  //     schedules: (menu.schedules || []).flatMap((s) => {
-  //       if (!s.schedule.is_active || !s.schedule.time_slots || s.schedule.time_slots.length === 0) {
-  //         return [];
-  //       }
-        
-  //       // Map API day_of_week (0=Monday, 1=Tuesday, ..., 6=Sunday) to JS day names
-  //       // JS getDay(): 0=Sunday, 1=Monday, ..., 6=Saturday
-  //       const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  //       const apiDayToJsDay = (apiDay: number): number => (apiDay + 1) % 7;
-        
-  //       // Group time slots by start/end time to create Schedule objects
-  //       const timeSlotGroups = new Map<string, { startTime: string; endTime: string; days: Set<string> }>();
-        
-  //       s.schedule.time_slots.forEach((ts: any) => {
-  //         const startTime = ts.start_time || "00:00:00";
-  //         const endTime = ts.end_time || "23:59:59";
-  //         const key = `${startTime}-${endTime}`;
-          
-  //         if (!timeSlotGroups.has(key)) {
-  //           timeSlotGroups.set(key, {
-  //             startTime,
-  //             endTime,
-  //             days: new Set(),
-  //           });
-  //         }
-          
-  //         // Convert API day number to JS day name
-  //         const jsDay = apiDayToJsDay(ts.day_of_week);
-  //         timeSlotGroups.get(key)!.days.add(dayNames[jsDay]);
-  //       });
-        
-  //       // Create one Schedule object per unique time range
-  //       return Array.from(timeSlotGroups.values()).map((group) => ({
-  //         id: `${s.id}-${group.startTime}-${group.endTime}`, // Unique ID for each time slot group
-  //         name: s.schedule.name,
-  //         startTime: group.startTime,
-  //         endTime: group.endTime,
-  //         days: Array.from(group.days),
-  //         isActive: s.schedule.is_active,
-  //       }));
-  //     }),
-  //     createdAt: menu.created_at,
-  //     updatedAt: menu.updated_at,
-  //     location_id: menu.location_id,
-  //   };
-  // });
 
   // 2. Build Global Item Map (for "Item Library"/Inventory view)
   // We perform a second pass or extract from a specific "All Items" list if available

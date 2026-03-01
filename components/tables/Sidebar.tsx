@@ -1,18 +1,21 @@
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { images } from "@/lib/image";
+import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { cn } from "@/lib/utils";
 import {
   BarChart3,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Clock,
   Lock,
   Users,
   Utensils,
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import { Image, LayoutAnimation, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -44,6 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<TabMode>("tables");
+  const [tabsCollapsed, setTabsCollapsed] = useState(true);
 
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
@@ -132,7 +136,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       case "tables":
         return <TablesPanel />;
       case "waitlist":
-        return <WaitlistPanel />;
+        return <WaitlistPanel />
       case "seated":
         return <SeatedPanel />;
       case "history":
@@ -146,7 +150,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: "tables", icon: Utensils, label: "Tables", isLocked: false },
     { id: "waitlist", icon: Clock, label: "Waitlist", isLocked: false },
     { id: "seated", icon: Users, label: "Seated", isLocked: false },
-    { id: "history", icon: BarChart3, label: "History", isLocked: true },
+    // { id: "history", icon: BarChart3, label: "History", isLocked: true },
   ] as const;
 
   const handleLockedAccess = (tab: TabMode) => {
@@ -172,19 +176,19 @@ const Sidebar: React.FC<SidebarProps> = ({
     <>
       <Animated.View
         style={[containerStyle, { height: "100%", zIndex: 20 }]}
-        className="bg-[#292929] border-r border-gray-800 shadow-xl overflow-visible"
+        className="bg-panel border-r border-border shadow-xl overflow-visible"
       >
         {/* Floating Toggle Button */}
         <TouchableOpacity
           onPress={toggleSidebar}
           hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           activeOpacity={0.7}
-          className="absolute -right-5 top-8 w-9 h-9 bg-[#303030] border border-gray-600 rounded-full flex items-center justify-center shadow-md z-50"
+          className="absolute -right-5 top-8 w-9 h-9 bg-surface border border-border rounded-full flex items-center justify-center shadow-md z-50"
         >
           {isExpanded ? (
-            <ChevronLeft size={20} color="#FFFFFF" />
+            <ChevronLeft size={20} color={colors.heading} />
           ) : (
-            <ChevronRight size={20} color="#FFFFFF" />
+            <ChevronRight size={20} color={colors.heading} />
           )}
         </TouchableOpacity>
 
@@ -192,7 +196,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <TouchableOpacity
           onPress={toggleSidebar}
           activeOpacity={0.8}
-          className="h-20 flex-row items-center border-b border-gray-600 shrink-0 px-4"
+          className="h-20 flex-row items-center border-b border-border shrink-0 px-4"
         >
           <View className="w-10 h-10 items-center justify-center">
             <Image
@@ -204,29 +208,57 @@ const Sidebar: React.FC<SidebarProps> = ({
         </TouchableOpacity>
 
         {/* Navigation Tabs */}
-        <View className="flex flex-col gap-2 p-3 shrink-0 border-b border-gray-800">
+        <View className="flex flex-col gap-2 p-3 shrink-0 border-b border-border">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
+
+            // When sidebar is expanded and tabs are collapsed, only show the active tab
+            if (isExpanded && tabsCollapsed && !isActive) return null;
+
             return (
               <TouchableOpacity
                 key={item.id}
                 onPress={() => {
+                  // Sidebar collapsed → expand sidebar
+                  if (!isExpanded) {
+                    setIsExpanded(true);
+                    return;
+                  }
+
+                  // Tabs collapsed → expand tabs (tapping the active tab header)
+                  if (tabsCollapsed && isActive) {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setTabsCollapsed(false);
+                    return;
+                  }
+
+                  // Tabs expanded → handle selection
+                  if (isActive) {
+                    // Tapping active tab again → just collapse
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setTabsCollapsed(true);
+                    return;
+                  }
+
                   if (item.isLocked) {
                     handleLockedAccess(item.id);
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setTabsCollapsed(true);
                   } else {
                     setActiveTab(item.id);
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setTabsCollapsed(true);
                   }
-                  if (!isExpanded) setIsExpanded(true);
                 }}
                 className={cn(
                   "flex-row items-center rounded-xl h-12 px-3 transition-all duration-100",
-                  isActive ? "bg-blue-600" : "hover:bg-[#252525]",
+                  isActive ? "bg-teal" : "hover:bg-surface",
                 )}
               >
                 <View className="w-6 items-center justify-center">
                   <item.icon
                     size={22}
-                    color={isActive ? "#FFFFFF" : "#9CA3AF"}
+                    color={isActive ? colors.heading : colors.label}
                   />
                 </View>
 
@@ -234,7 +266,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <Text
                     className={cn(
                       "text-base font-medium",
-                      isActive ? "text-white" : "text-gray-300",
+                      isActive ? "text-heading" : "text-label",
                     )}
                     numberOfLines={1}
                   >
@@ -242,15 +274,26 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </Text>
                 </Animated.View>
 
-                {/* Lock Icon - Only for locked items when expanded */}
-                {item.isLocked && isExpanded && (
+                {/* Chevron indicator on active tab when sidebar is expanded */}
+                {isActive && isExpanded && (
                   <View className="ml-2">
-                    <Lock size={18} color="#9CA3AF" />
+                    {tabsCollapsed ? (
+                      <ChevronDown size={18} color={colors.heading} />
+                    ) : (
+                      <ChevronUp size={18} color={colors.heading} />
+                    )}
+                  </View>
+                )}
+
+                {/* Lock Icon - Only for locked items when expanded and tabs are open */}
+                {item.isLocked && isExpanded && !isActive && (
+                  <View className="ml-2">
+                    <Lock size={18} color={colors.label} />
                   </View>
                 )}
 
                 {!isExpanded && isActive && (
-                  <View className="absolute right-2 top-2 w-2 h-2 bg-blue-400 rounded-full" />
+                  <View className="absolute right-2 top-2 w-2 h-2 bg-teal rounded-full" />
                 )}
               </TouchableOpacity>
             );
@@ -260,7 +303,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Panel Content */}
         <Animated.View
           style={{ flex: 1, opacity: opacitySV }}
-          className="bg-[#181818]"
+          className="bg-screen"
         >
           {isExpanded && renderPanel()}
         </Animated.View>
@@ -268,23 +311,24 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Live Status Indicator - Bottom of Sidebar */}
         {/* Tappable when offline/syncing to trigger manual reconnect */}
         <TouchableOpacity
-          className="p-3 border-t border-gray-800 flex-row items-center justify-center"
+          className="p-2 border-t border-border flex-row items-center justify-center"
           onPress={!floor.isConnected ? handleManualReconnect : undefined}
           activeOpacity={!floor.isConnected ? 0.7 : 1}
         >
           <View
-            className={`w-2.5 h-2.5 rounded-full ${
-              floor.isConnected
-                ? "bg-green-500"
+            className="w-2 h-2 rounded-full"
+            style={{
+              backgroundColor: floor.isConnected
+                ? colors.success
                 : isSyncing
-                  ? "bg-amber-500"
-                  : "bg-red-500"
-            }`}
+                  ? colors.warning
+                  : colors.danger,
+            }}
           />
           {isExpanded && (
             <Animated.Text
               style={textStyle}
-              className="text-sm text-gray-400 ml-2"
+              className="text-xs text-hint ml-2"
             >
               {floor.isConnected
                 ? "Live"
@@ -296,14 +340,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         </TouchableOpacity>
       </Animated.View>
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-        <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">
+        <DialogContent className="w-fit h-fit bg-surface border-border p-8">
           <DialogHeader>
             <DialogTitle className="text-center text-3xl font-semibold text-white">
               Manager Access Required
             </DialogTitle>
           </DialogHeader>
           <View className="py-4">
-            <Text className="text-center text-2xl text-gray-300 mb-6">
+            <Text className="text-center text-2xl text-label mb-6">
               Enter your manager PIN to access this feature
             </Text>
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
@@ -329,7 +373,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <TouchableOpacity
               onPress={handlePinSubmit}
-              className="p-4 bg-blue-600 rounded-lg w-full self-center mt-6"
+              className="p-4 bg-teal rounded-lg w-full self-center mt-6"
             >
               <Text className="text-center text-2xl font-bold text-white">
                 Enter

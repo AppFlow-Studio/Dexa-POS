@@ -6,6 +6,7 @@ import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import TableAlertDialogs from "@/components/tables/TableAlertDialogs";
 import TableDetailSkeleton from "@/components/tables/TableDetailSkeleton";
+import { colors } from "@/lib/theme";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { isItemReadyOrServed } from "@/lib/kitchenStatusUtils";
@@ -544,14 +545,14 @@ const UpdateTableScreen = () => {
 
   if (!table) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#212121]">
-        <Text className="text-xl font-bold text-red-400">Table not found!</Text>
+      <View className="flex-1 items-center justify-center bg-screen">
+        <Text className="text-xl font-bold" style={{ color: colors.danger }}>Table not found!</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       <Stack.Screen
         options={{
           headerLeft: () => (
@@ -565,14 +566,14 @@ const UpdateTableScreen = () => {
               }}
               className="flex-row items-center -ml-2 p-2"
             >
-              <ChevronLeft color="#FFFFFF" size={26} />
-              <Text className="text-white text-lg font-medium ml-1">Back</Text>
+              <ChevronLeft color={colors.heading} size={26} />
+              <Text className="text-heading text-lg font-medium ml-1">Back</Text>
             </TouchableOpacity>
           ),
-          headerStyle: { backgroundColor: "#212121" },
+          headerStyle: { backgroundColor: colors.screen },
           headerShadowVisible: false,
           headerTitle: "",
-          headerTintColor: "#FFFFFF",
+          headerTintColor: colors.heading,
         }}
       />
 
@@ -635,11 +636,11 @@ const UpdateTableScreen = () => {
                   <View className="flex-1 justify-center items-center">
                     <TouchableOpacity
                       onPress={finalizeCurrentCourse}
-                      className="px-4 py-2 rounded-lg bg-green-600 border border-green-500"
+                      className="flex-row items-center gap-1.5 px-4 py-2 rounded-lg border border-teal"
                       activeOpacity={0.8}
                     >
-                      <Text className="font-semibold text-white text-base">
-                        Start New Course
+                      <Text className="font-semibold text-teal text-base">
+                        + New Course
                       </Text>
                     </TouchableOpacity>
                   </View>

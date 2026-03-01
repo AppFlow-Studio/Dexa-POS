@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -52,7 +53,7 @@ const ShapeButton = ({
     className={`p-3 border-2 rounded-xl items-center justify-center w-[250px] h-[130px] ${
       isSelected
         ? "border-blue-500 bg-blue-500/10"
-        : "border-gray-700 bg-[#212121]"
+        : "border-gray-700 bg-panel"
     }`}
   >
     <ShapeComponent color={isSelected ? "#3b82f6" : "#9CA3AF"} height={60} />
@@ -112,7 +113,7 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[620px] p-8 rounded-2xl bg-[#2a2a2a] border border-gray-700">
+      <DialogContent className="w-[620px] p-8 rounded-2xl bg-surface border border-gray-700">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -141,7 +142,7 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
                     onChangeText={setName}
                     placeholder="e.g., T-24 or Main Bar"
                     placeholderTextColor="#6B7280"
-                    className="p-4 bg-[#1e1e1e] border border-gray-600 rounded-lg text-lg text-white h-14"
+                    className="p-4 bg-panel border border-gray-600 rounded-lg text-lg text-white h-14"
                   />
                 </View>
 

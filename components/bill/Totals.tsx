@@ -65,15 +65,14 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
   }
 
   return (
-    <View className="px-6 py-0.5 bg-[#212121]">
-      <View className="gap-y-0.5">
+    <View className="px-4 py-0.5 ">
+      <View className="gap-y-0.5 border-t border-gray-600/50 pt-0.5">
         {/* <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Subtotal</Text>
           <Text className="text-lg font-medium text-white">
             ${totals.subtotal.toFixed(2)}
           </Text>
         </View> */}
-
         {totals.discount > 0 && (
           <View className="flex-row justify-between items-center">
             <Text className="text-base text-green-400">Discount</Text>
@@ -117,11 +116,11 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       )}
 
       {/* Refunded amount */}
-      {paymentInfo.totalRefunded > 0 && (
+      {paymentInfo?.totalRefunded > 0 && (
         <View className="flex-row justify-between items-center mt-1">
           <Text className="text-lg text-red-400">Refunded</Text>
           <Text className="text-lg font-medium text-red-400">
-            +${paymentInfo.totalRefunded.toFixed(2)}
+            +${paymentInfo?.totalRefunded?.toFixed(2)}
           </Text>
         </View>
       )}

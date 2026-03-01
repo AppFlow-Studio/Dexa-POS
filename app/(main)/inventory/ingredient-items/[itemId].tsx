@@ -1,3 +1,4 @@
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { InventoryItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
@@ -344,14 +345,14 @@ const IngredientItemScreen = () => {
 
   if (!item) {
     return (
-      <View className="flex-1 justify-center items-center bg-[#212121]">
+      <View className="flex-1 justify-center items-center bg-screen">
         <Text className="text-white text-lg">Item not found</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
@@ -362,7 +363,7 @@ const IngredientItemScreen = () => {
             onPress={() => router.back()}
             className="flex-row items-center"
           >
-            <ArrowLeft color="#9CA3AF" size={20} />
+            <ArrowLeft color={colors.label} size={20} />
             <Text className="text-white text-lg ml-2">Back</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -385,16 +386,16 @@ const IngredientItemScreen = () => {
 
         <ScrollView className="flex-1 p-2">
           {/* Item Overview */}
-          <View className="bg-[#303030] rounded-xl p-3 mb-2">
+          <View className="bg-panel rounded-xl p-3 mb-2">
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-lg font-bold text-white">{item.name}</Text>
               <View className="flex-row items-center">
                 {item.stockQuantity !== undefined &&
                 item.reorderThreshold !== undefined &&
                 item.stockQuantity <= item.reorderThreshold ? (
-                  <AlertTriangle color="#F87171" size={20} />
+                  <AlertTriangle color={colors.danger} size={20} />
                 ) : (
-                  <CheckCircle color="#10B981" size={20} />
+                  <CheckCircle color={colors.success} size={20} />
                 )}
               </View>
             </View>
@@ -445,7 +446,7 @@ const IngredientItemScreen = () => {
           </View>
 
           {/* Quick Actions */}
-          <View className="bg-[#303030] rounded-xl p-3 mb-2">
+          <View className="bg-panel rounded-xl p-3 mb-2">
             <Text className="text-lg font-bold text-white mb-3">
               Quick Actions
             </Text>
@@ -479,7 +480,7 @@ const IngredientItemScreen = () => {
           </View>
 
           {/* Item Details Form */}
-          <View className="bg-[#303030] rounded-xl p-3">
+          <View className="bg-panel rounded-xl p-3">
             <Text className="text-lg font-bold text-white mb-3">
               Item Details
             </Text>
@@ -494,7 +495,7 @@ const IngredientItemScreen = () => {
                   className={`flex-1 p-2 rounded-lg border-2 ${
                     editStockTrackingMode === "in_stock"
                       ? "border-blue-500 bg-blue-500/20"
-                      : "border-gray-600 bg-gray-800"
+                      : "border-border bg-gray-800"
                   }`}
                 >
                   <Text
@@ -513,7 +514,7 @@ const IngredientItemScreen = () => {
                   className={`flex-1 p-2 rounded-lg border-2 ${
                     editStockTrackingMode === "out_of_stock"
                       ? "border-blue-500 bg-blue-500/20"
-                      : "border-gray-600 bg-gray-800"
+                      : "border-border bg-gray-800"
                   }`}
                 >
                   <Text
@@ -532,7 +533,7 @@ const IngredientItemScreen = () => {
                   className={`flex-1 p-2 rounded-lg border-2 ${
                     editStockTrackingMode === "quantity"
                       ? "border-blue-500 bg-blue-500/20"
-                      : "border-gray-600 bg-gray-800"
+                      : "border-border bg-gray-800"
                   }`}
                 >
                   <Text
@@ -558,11 +559,11 @@ const IngredientItemScreen = () => {
                 editable={isEditing}
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="Enter item name"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
 
@@ -576,11 +577,11 @@ const IngredientItemScreen = () => {
                 editable={isEditing}
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="Enter SKU or barcode"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
 
@@ -594,11 +595,11 @@ const IngredientItemScreen = () => {
                 editable={isEditing}
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="e.g., Spirits, Produce, Dry Goods"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
 
@@ -612,11 +613,11 @@ const IngredientItemScreen = () => {
                 editable={isEditing}
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="Select default vendor"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
 
@@ -630,11 +631,11 @@ const IngredientItemScreen = () => {
                 editable={isEditing}
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="e.g., Case, Bottle, Lbs"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
 
@@ -655,11 +656,11 @@ const IngredientItemScreen = () => {
                     keyboardType="numeric"
                     className={`p-2 rounded-lg ${
                       isEditing
-                        ? "bg-[#212121] border border-gray-600 text-white"
+                        ? "bg-screen border border-border text-white"
                         : "bg-gray-800 text-gray-400"
                     }`}
                     placeholder="0"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.label}
                   />
                 </View>
 
@@ -678,11 +679,11 @@ const IngredientItemScreen = () => {
                     keyboardType="numeric"
                     className={`p-2 rounded-lg ${
                       isEditing
-                        ? "bg-[#212121] border border-gray-600 text-white"
+                        ? "bg-screen border border-border text-white"
                         : "bg-gray-800 text-gray-400"
                     }`}
                     placeholder="0"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.label}
                   />
                 </View>
               </View>
@@ -699,11 +700,11 @@ const IngredientItemScreen = () => {
                 keyboardType="numeric"
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="0.00"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
 
@@ -744,7 +745,7 @@ const IngredientItemScreen = () => {
           className="flex-1"
         >
           <View className="flex-1 bg-black/50 justify-center items-center px-6">
-            <View className="bg-[#303030] rounded-xl p-3 w-full h-[90%] max-w-5xl">
+            <View className="bg-panel rounded-xl p-3 w-full h-[90%] max-w-5xl">
               <Text className="text-lg font-bold text-white mb-3">
                 Log Usage
               </Text>
@@ -765,9 +766,9 @@ const IngredientItemScreen = () => {
                     setLogUsageForm((prev) => ({ ...prev, quantityUsed: text }))
                   }
                   placeholder="Enter quantity used"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white text-base"
+                  className="bg-screen border border-border rounded-lg p-2 text-white text-base"
                 />
               </View>
 
@@ -775,7 +776,7 @@ const IngredientItemScreen = () => {
                 <Text className="text-base text-gray-300 mb-2">
                   Reason for Adjustment
                 </Text>
-                <View className="bg-[#212121] border border-gray-600 rounded-lg">
+                <View className="bg-screen border border-border rounded-lg">
                   <TouchableOpacity
                     onPress={() =>
                       setLogUsageForm((prev) => ({
@@ -859,8 +860,8 @@ const IngredientItemScreen = () => {
                         }))
                       }
                       placeholder="Describe the reason for this adjustment"
-                      placeholderTextColor="#9CA3AF"
-                      className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white text-base"
+                      placeholderTextColor={colors.label}
+                      className="bg-screen border border-border rounded-lg p-2 text-white text-base"
                     />
                   </View>
                 )}
@@ -876,10 +877,10 @@ const IngredientItemScreen = () => {
                     setLogUsageForm((prev) => ({ ...prev, notes: text }))
                   }
                   placeholder="Additional details..."
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   multiline
                   numberOfLines={3}
-                  className="bg-[#212121] border border-gray-600 h-24 rounded-lg p-2 text-white text-base"
+                  className="bg-screen border border-border h-24 rounded-lg p-2 text-white text-base"
                 />
               </View>
 
@@ -924,7 +925,7 @@ const IngredientItemScreen = () => {
           className="flex-1"
         >
           <View className="flex-1 bg-black/50 justify-center items-center px-6">
-            <View className="bg-[#303030] rounded-xl p-3 w-full max-w-md">
+            <View className="bg-panel rounded-xl p-3 w-full max-w-md">
               <Text className="text-lg font-bold text-white mb-3">
                 Add Stock
               </Text>
@@ -948,9 +949,9 @@ const IngredientItemScreen = () => {
                     }))
                   }
                   placeholder="Enter quantity added"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white text-base"
+                  className="bg-screen border border-border rounded-lg p-2 text-white text-base"
                 />
               </View>
 
@@ -958,7 +959,7 @@ const IngredientItemScreen = () => {
                 <Text className="text-base text-gray-300 mb-2">
                   Reason for Addition
                 </Text>
-                <View className="bg-[#212121] border border-gray-600 rounded-lg">
+                <View className="bg-screen border border-border rounded-lg">
                   <TouchableOpacity
                     onPress={() =>
                       setAddStockForm((prev) => ({
@@ -1015,10 +1016,10 @@ const IngredientItemScreen = () => {
                     setAddStockForm((prev) => ({ ...prev, notes: text }))
                   }
                   placeholder="Additional details..."
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   multiline
                   numberOfLines={3}
-                  className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white text-base"
+                  className="bg-screen border border-border rounded-lg p-2 text-white text-base"
                 />
               </View>
 
@@ -1051,8 +1052,7 @@ const IngredientItemScreen = () => {
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose={true}
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
       >
         <KeyboardAvoidingView
@@ -1067,7 +1067,7 @@ const IngredientItemScreen = () => {
               <TouchableOpacity
                 onPress={() => historySheetRef.current?.close()}
               >
-                <X color="#9CA3AF" size={20} />
+                <X color={colors.label} size={20} />
               </TouchableOpacity>
             </View>
 
@@ -1078,10 +1078,10 @@ const IngredientItemScreen = () => {
                 value={historyNote}
                 onChangeText={setHistoryNote}
                 placeholder="Type a note about this ingredient..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 multiline
                 numberOfLines={3}
-                className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white"
+                className="bg-screen border border-border rounded-lg p-2 text-white"
               />
               <View className="flex-row gap-2 mt-2">
                 <TouchableOpacity
@@ -1116,7 +1116,7 @@ const IngredientItemScreen = () => {
 
             {inventoryHistory.length === 0 ? (
               <View className="flex-1 justify-center items-center p-4">
-                <History color="#9CA3AF" size={32} />
+                <History color={colors.label} size={32} />
                 <Text className="text-gray-400 text-base mt-3 text-center">
                   No transaction history available
                 </Text>

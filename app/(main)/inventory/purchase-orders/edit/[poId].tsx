@@ -10,6 +10,7 @@ import {
 import { POLineItem, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { colors } from "@/lib/theme";
 import { Trash2 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
@@ -104,13 +105,13 @@ const EditPurchaseOrderScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <View className="bg-[#303030] border border-gray-700 rounded-xl p-4">
+      <View className="bg-panel border border-border rounded-xl p-4">
         <Text className="text-lg font-medium text-gray-300 mb-1.5">Vendor</Text>
         <Select
           value={vendorOptions.find((v) => v.value === selectedVendorId)}
           onValueChange={(opt) => setSelectedVendorId(opt?.value)}
         >
-          <SelectTrigger className="w-full p-4 bg-[#212121] border border-gray-600 rounded-lg">
+          <SelectTrigger className="w-full p-4 bg-screen border border-border rounded-lg">
             <SelectValue
               className="text-xl text-white"
               placeholder="Select a vendor..."
@@ -137,7 +138,7 @@ const EditPurchaseOrderScreen = () => {
                 (i) => i.id === item.inventoryItemId
               );
               return (
-                <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
+                <View className="flex-row items-center justify-between p-3 border-b border-border">
                   <Text className="text-xl text-white flex-1">
                     {invItem?.name}
                   </Text>
@@ -150,7 +151,7 @@ const EditPurchaseOrderScreen = () => {
                   <TouchableOpacity
                     onPress={() => handleRemoveLineItem(item.inventoryItemId)}
                   >
-                    <Trash2 color="#EF4444" size={20} />
+                    <Trash2 color={colors.danger} size={20} />
                   </TouchableOpacity>
                 </View>
               );

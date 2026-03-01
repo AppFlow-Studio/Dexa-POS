@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeClockStore } from "@/stores/useTimeClock";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -65,9 +66,9 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
 
   return (
     <Dialog open={isOpen}>
-      <DialogContent className="max-w-md p-6 rounded-2xl items-center text-center bg-[#303030] border-gray-700 w-[550px]">
+      <DialogContent className="max-w-md p-6 rounded-2xl items-center text-center bg-surface border-gray-700 w-[550px]">
         <View className="w-16 h-16 items-center justify-center bg-blue-900/30 rounded-full border-4 border-blue-500/30">
-          <Clock color="#60A5FA" size={32} />
+          <Clock color={colors.info} size={32} />
         </View>
         <Text className="text-3xl font-bold text-white mt-4">On Break</Text>
         <Text className="text-4xl font-bold text-white my-2">

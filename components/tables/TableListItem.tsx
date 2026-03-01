@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
@@ -9,7 +10,7 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { CheckCircle, Clock, Send } from "lucide-react-native";
+import { BrushCleaning, CheckCircle, ChevronDown, ChevronUp, Clock, Pencil, Send, Sparkles } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
@@ -19,7 +20,7 @@ import Animated, {
   Layout,
 } from "react-native-reanimated";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
-import { PaymentStatusBadge, type PaymentStatus } from "./PaymentStatusBadge";
+import { type PaymentStatus } from "./PaymentStatusBadge";
 
 // --- Helper Functions ---
 const formatDuration = (milliseconds: number): string => {
@@ -81,7 +82,8 @@ const QuickActionButton: React.FC<{
       className={`${baseStyle} ${variantStyle} ${disabledStyle}`}
     >
       {label.startsWith("Send") && <Send size={14} color="white" />}
-      <Text className="text-white font-semibold text-sm">{label}</Text>
+      {label === "Open Order" && <Pencil size={14} color="white" />}
+      <Text className="text-white font-semibold text-xs">{label}</Text>
     </TouchableOpacity>
   );
 };
@@ -389,11 +391,8 @@ const ExpandedView: React.FC<{
       exiting={FadeOut.duration(100)}
       className="mt-3"
     >
-      <View className="flex-row items-center gap-4 mb-3">
-        <Text className="text-sm text-gray-300">
-          Server: {tableData.server}
-        </Text>
-        <Text className="text-sm text-gray-300">
+      <View className="mb-3">
+        <Text className="text-xs text-gray-400">
           Seated:{" "}
           {tableData.seatedTime?.toLocaleTimeString([], {
             hour: "2-digit",
@@ -418,11 +417,11 @@ const ExpandedView: React.FC<{
                   <View className="ml-2">
                     {(item.item_status === "Ready" ||
                       item.item_status === "Served") && (
-                      <CheckCircle size={14} color="#22C55E" />
+                      <CheckCircle size={14} color={colors.success} />
                     )}
                     {(item.kitchen_status === "sent" ||
                       item.item_status === "Preparing") && (
-                      <Clock size={14} color="#F59E0B" />
+                      <Clock size={14} color={colors.warning} />
                     )}
                   </View>
                 </View>
@@ -430,44 +429,39 @@ const ExpandedView: React.FC<{
             </View>
           ))}
         <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
+          {/* Total */}
           <View className="flex-row justify-between">
-            <Text className="text-sm text-gray-400">Subtotal</Text>
-            <Text className="text-sm text-gray-400">
-              ${tableData.subtotal?.toFixed(2)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between">
-            <Text className="text-sm text-gray-400">Tax</Text>
-            <Text className="text-sm text-gray-400">
-              ${tableData.tax?.toFixed(2)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between mt-1">
             <Text className="text-base font-semibold text-white">Total</Text>
             <Text className="text-base font-semibold text-white">
               ${tableData.total?.toFixed(2)}
             </Text>
           </View>
 
-          {/* Payment Information */}
+          {/* Paid — with payment method */}
           {tableData.amountPaid > 0 && (
-            <>
-              <View className="border-t border-gray-600 mt-2 pt-2" />
-              <View className="flex-row justify-between">
-                <Text className="text-sm text-blue-400">Amount Paid</Text>
-                <Text className="text-sm text-blue-400">
-                  -${tableData.amountPaid.toFixed(2)}
-                </Text>
-              </View>
-            </>
+            <View className="flex-row justify-between mt-1">
+              <Text className="text-sm" style={{ color: colors.teal }}>Paid</Text>
+              <Text className="text-sm" style={{ color: colors.teal }}>
+                ${tableData.amountPaid.toFixed(2)}{" "}
+                {(() => {
+                  const payments = tableData.orders[0]?.payments;
+                  if (!payments || payments.length === 0) return "";
+                  if (payments.length === 1) return payments[0].method.toLowerCase();
+                  return `(${payments.length} payments)`;
+                })()}
+              </Text>
+            </View>
           )}
 
-          <View className="flex-row justify-between mt-2 items-center">
-            <View className="flex-row items-center gap-2">
-              <Text className="text-lg font-bold text-white">Amount Due</Text>
-              <PaymentStatusBadge status={tableData.paidStatus} size="md" />
-            </View>
-            <Text className="text-lg font-bold text-white">
+          {/* Remaining */}
+          <View className="flex-row justify-between mt-1">
+            <Text className="text-sm text-gray-400">Remaining</Text>
+            <Text
+              className="text-sm font-semibold"
+              style={{
+                color: tableData.amountDue <= 0 ? colors.success : colors.heading,
+              }}
+            >
               ${tableData.amountDue.toFixed(2)}
             </Text>
           </View>
@@ -476,7 +470,7 @@ const ExpandedView: React.FC<{
 
       <View className="flex-row items-center gap-2">
         <QuickActionButton
-          label="Table"
+          label="Open Order"
           onPress={onNavigateToOrder}
           variant="primary"
         />
@@ -542,6 +536,9 @@ const TableListItem: React.FC<{
       status === "seated" ||
       status === "ordered" ||
       status === "served" ||
+      status === "check_presented" ||
+      status === "paying" ||
+      status === "paid" ||
       status === "in use";
 
     if (!isActive || !tableData.seatedTime) {
@@ -570,7 +567,9 @@ const TableListItem: React.FC<{
       status === "ordered" ||
       status === "served" ||
       status === "in use" ||
-      status === "check_presented"
+      status === "check_presented" ||
+      status === "paying" ||
+      status === "paid"
     ) {
       onToggleExpand();
     } else {
@@ -580,62 +579,70 @@ const TableListItem: React.FC<{
 
   if (!tableData) return null;
 
+  const normalizedStatus = tableData.status.toLowerCase();
   const showActiveDetails =
-    tableData.status.toLowerCase() !== "available" &&
-    tableData.status.toLowerCase() !== "reserved" &&
-    tableData.status.toLowerCase() !== "cleaning";
+    normalizedStatus !== "available" &&
+    normalizedStatus !== "reserved" &&
+    normalizedStatus !== "cleaning" &&
+    normalizedStatus !== "closing";
+
+  const ChevronIcon = isExpanded ? ChevronUp : ChevronDown;
 
   return (
     <Animated.View
       layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-      className="border-b border-gray-700 overflow-hidden"
+      className="mb-2 overflow-hidden"
     >
       <TouchableOpacity
         onPress={handlePress}
-        className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
+        className="p-3 rounded-xl"
+        style={{ backgroundColor: isExpanded ? "#1a2347" : colors.card }}
       >
         {/* Main Layout Container */}
         <View className="flex-col w-full">
-          {/* Row 1: Status & Name (Always visible full width) */}
-          <View className="flex-row items-center gap-3 w-full">
+          {/* Row 1: Dot + Name + spacer + contextual right side */}
+          <View className="flex-row items-center w-full">
             <StatusIndicator
               status={tableData.status}
               isOvertime={isOvertime}
             />
-            <Text
-              className="text-white font-semibold text-base flex-1"
-              numberOfLines={1}
-            >
-              {tableData.displayName}
-            </Text>
-          </View>
-
-          {/* Row 2: Stats (Only when active) */}
-          {showActiveDetails && (
-            <View className="flex-row items-center justify-between pl-5 mt-1.5">
-              {/* Duration */}
-              <Text className="text-xs font-medium text-blue-300 w-16">
-                {duration}
+            <View className="ml-2 shrink">
+              <Text
+                className="text-white font-semibold text-base"
+                numberOfLines={1}
+              >
+                {tableData.displayName}
               </Text>
-
-              {/* Guests */}
-              <Text className="text-xs text-gray-400">
-                {tableData.guestCount} Guests
-              </Text>
-
-              {/* Amount */}
-              <View className="items-end min-w-[80px]">
-                <Text className="text-sm font-bold text-white">
-                  ${tableData.amountDue?.toFixed(2) || "0.00"}
+              {/* Duration below name for active tables */}
+              {showActiveDetails && duration ? (
+                <Text
+                  className="text-xs font-medium"
+                  style={{ color: colors.teal }}
+                >
+                  {duration}
                 </Text>
-                {tableData.amountPaid > 0 && (
-                  <Text className="text-[10px] text-gray-500">
-                    Paid: ${tableData.amountPaid.toFixed(2)}
-                  </Text>
-                )}
-              </View>
+              ) : null}
             </View>
-          )}
+            <View className="flex-1" />
+            {/* Available: "Empty" label */}
+            {normalizedStatus === "available" && (
+              <Text className="text-xs text-gray-500">Empty</Text>
+            )}
+            {/* Cleaning: sparkles icon */}
+            {(normalizedStatus === "cleaning" ||
+              normalizedStatus === "closing") && (
+              <BrushCleaning size={16} color={colors.danger} />
+            )}
+            {/* Active: total + chevron */}
+            {showActiveDetails && tableData.total > 0 ? (
+              <Text className="text-white font-bold text-sm mr-2">
+                ${tableData.total.toFixed(2)}
+              </Text>
+            ) : null}
+            {showActiveDetails && (
+              <ChevronIcon size={16} color={colors.muted} />
+            )}
+          </View>
         </View>
 
         {/* Expanded Detail View */}

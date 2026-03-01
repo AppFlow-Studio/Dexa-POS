@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { UNIT_OPTIONS } from "./InventoryItemFormModal";
 
 export type AddInventoryItemSheetRef = BottomSheet;
@@ -96,12 +97,11 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
       >
-        <BottomSheetView className=" bg-[#303030] rounded-t-3xl overflow-hidden">
-          <View className="p-3 border-b border-gray-700">
+        <BottomSheetView className=" bg-panel rounded-t-3xl overflow-hidden">
+          <View className="p-3 border-b border-border">
             <Text className="text-white text-xl font-bold">Add New Item</Text>
             <Text className="text-gray-400 mt-0.5 text-sm">( {step} / 3 )</Text>
           </View>
@@ -124,7 +124,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                     value={name}
                     onChangeText={setName}
                     placeholder="e.g., Jalapeño Peppers"
-                    className="bg-[#212121] border border-gray-600 rounded-lg h-14 px-3 py-2 text-white text-base"
+                    className="bg-screen border border-border rounded-lg h-14 px-3 py-2 text-white text-base"
                   />
                 </View>
                 <TouchableOpacity
@@ -161,7 +161,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                           className={`px-2 py-1.5 flex items-center justify-center rounded-lg border ${
                             unit === item.value
                               ? "border-blue-500 bg-blue-900/30"
-                              : "border-gray-600"
+                              : "border-border"
                           }`}
                         >
                           <Text
@@ -186,7 +186,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       onChangeText={(t) => setCost(t.replace(/[^0-9.]/g, ""))}
                       keyboardType="decimal-pad"
                       placeholder="0.00"
-                      className="bg-[#212121] border border-gray-600 rounded-lg h-14 px-3 py-2 text-white text-base"
+                      className="bg-screen border border-border rounded-lg h-14 px-3 py-2 text-white text-base"
                     />
                   </View>
                 </View>
@@ -202,7 +202,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                         className={`px-2 py-1.5 rounded-lg border ${
                           vendorId === ""
                             ? "border-blue-500 bg-blue-900/30"
-                            : "border-gray-600"
+                            : "border-border"
                         }`}
                       >
                         <Text
@@ -220,7 +220,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                           className={`px-2 py-1.5 rounded-lg border ${
                             vendorId === v.id
                               ? "border-blue-500 bg-blue-900/30"
-                              : "border-gray-600"
+                              : "border-border"
                           }`}
                         >
                           <Text
@@ -241,7 +241,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                 <View className="flex-row gap-2">
                   <TouchableOpacity
                     onPress={() => setStep(1)}
-                    className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl"
+                    className="flex-1 py-3 bg-panel border border-border rounded-xl"
                   >
                     <Text className="text-white text-center text-lg font-bold">
                       ← Back
@@ -277,7 +277,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       className={`flex-1 px-3 py-2 rounded-lg border ${
                         stockTrackingMode === "in_stock"
                           ? "border-blue-500 bg-blue-900/30"
-                          : "border-gray-600"
+                          : "border-border"
                       }`}
                     >
                       <Text
@@ -295,7 +295,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       className={`flex-1 px-3 py-2 rounded-lg border ${
                         stockTrackingMode === "out_of_stock"
                           ? "border-blue-500 bg-blue-900/30"
-                          : "border-gray-600"
+                          : "border-border"
                       }`}
                     >
                       <Text
@@ -313,7 +313,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       className={`flex-1 px-3 py-2 rounded-lg border ${
                         stockTrackingMode === "quantity"
                           ? "border-blue-500 bg-blue-900/30"
-                          : "border-gray-600"
+                          : "border-border"
                       }`}
                     >
                       <Text
@@ -340,7 +340,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       }
                       keyboardType="number-pad"
                       placeholder="e.g., 5"
-                      className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base"
+                      className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base"
                     />
                     <Text className="text-gray-500 text-xs mt-1">
                       Alert at this level
@@ -359,7 +359,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       }
                       keyboardType="decimal-pad"
                       placeholder="e.g., 10"
-                      className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base"
+                      className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base"
                     />
                     <Text className="text-gray-500 text-xs mt-1">
                       Current quantity on hand
@@ -369,7 +369,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                 <View className="flex-row gap-2">
                   <TouchableOpacity
                     onPress={() => setStep(2)}
-                    className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl"
+                    className="flex-1 py-3 bg-panel border border-border rounded-xl"
                   >
                     <Text className="text-white text-center text-lg font-bold">
                       ← Back

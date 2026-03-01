@@ -1,6 +1,7 @@
 import { PreviousOrder } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { colors } from "@/lib/theme";
 import { Users } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { FlatList, Text, View } from "react-native";
@@ -15,7 +16,7 @@ const HistoryCard = ({
 }) => {
   return (
     <View className="flex-row relative mb-4">
-      <View className="absolute left-2 top-2 w-4 h-4 rounded-full bg-[#212121] border-2 border-gray-700 z-10" />
+      <View className="absolute left-2 top-2 w-4 h-4 rounded-full bg-panel border-2 border-gray-700 z-10" />
       <View className="flex-1 bg-gray-800 rounded-lg p-3 ml-8 mr-4 border border-gray-700">
         <View className="flex-row justify-between mb-1">
           <Text className="font-bold text-white text-base">
@@ -25,7 +26,7 @@ const HistoryCard = ({
         </View>
         <View className="flex-row gap-4 text-xs text-gray-400 mb-2">
           <View className="flex-row items-center gap-1">
-            <Users size={14} color="#9CA3AF" />
+            <Users size={14} color={colors.label} />
             <Text className="text-gray-300">{order.itemCount} items</Text>
           </View>
           {/* Duration is not in PreviousOrder, so omitting for now */}
@@ -52,7 +53,7 @@ const HistoryPanel = () => {
   };
 
   return (
-    <View className="h-full flex-col bg-[#292929]">
+    <View className="h-full flex-col bg-panel">
       <View className="px-4 py-2 border-b border-gray-700">
         <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
           Recent Activity

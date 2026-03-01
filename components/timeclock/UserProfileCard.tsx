@@ -2,6 +2,7 @@ import { useTimeClock } from "@/hooks/useTimeclock";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { colors } from "@/lib/theme";
 import * as Application from "expo-application";
 import { router } from "expo-router";
 import { Clock, Timer, User } from "lucide-react-native";
@@ -151,7 +152,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
       // If a session exists, the user is either Clocked In or On Break
       const isBreak = session.status === "onBreak";
       return (
-        <View className="w-full p-4 bg-[#404040] rounded-xl border border-gray-600">
+        <View className="w-full p-4 bg-border rounded-xl border border-gray-600">
           <View className="flex-row justify-between items-center mb-4">
             <Text className="text-lg font-bold text-white">Shift Status</Text>
             <View
@@ -172,7 +173,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
           </View>
           <View className="gap-y-3 mb-4">
             <View className="flex-row items-center">
-              <Timer color="#9CA3AF" size={16} />
+              <Timer color={colors.label} size={16} />
               <Text className="text-sm ml-2 text-gray-300">
                 Duration:{" "}
                 <Text className="text-blue-400 font-semibold">
@@ -181,7 +182,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
               </Text>
             </View>
             <View className="flex-row items-center">
-              <Clock color="#9CA3AF" size={16} />
+              <Clock color={colors.label} size={16} />
               <Text className="text-sm ml-2 text-gray-300">
                 Clock in at:{" "}
                 <Text className="text-blue-400 font-semibold">
@@ -230,7 +231,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
     // Default: Not Clocked In
     return (
-      <View className="w-full p-4 bg-[#404040] rounded-xl border border-gray-600">
+      <View className="w-full p-4 bg-border rounded-xl border border-gray-600">
         <View className="flex-row justify-between items-center mb-4">
           <Text className="text-lg font-bold text-white">Shift Status</Text>
           <View className="px-3 py-1 bg-gray-600/50 border border-gray-500 rounded-lg">
@@ -253,7 +254,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
   if (!user) {
     return (
-      <View className="w-full p-6 bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+      <View className="w-full p-6 bg-surface rounded-2xl border border-gray-600 items-center justify-center">
         <Text className="text-white">No active employee.</Text>
       </View>
     );
@@ -261,7 +262,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
   return (
     <>
-      <View className="w-full p-6 bg-[#303030] rounded-2xl border border-gray-600">
+      <View className="w-full p-6 bg-surface rounded-2xl border border-gray-600">
         <View className="mb-6">
           <Text className="text-sm text-gray-400 text-center mb-2">
             Current Time

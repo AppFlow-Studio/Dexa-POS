@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import { BarChart3 } from "lucide-react-native";
 import React, { useEffect } from "react";
@@ -12,8 +13,8 @@ const AnalyticsScreen = () => {
   }, []);
 
   return (
-    <View className="flex-1 bg-[#212121] items-center justify-center">
-      <BarChart3 color="#3b82f6" size={48} />
+    <View className="flex-1 bg-screen items-center justify-center">
+      <BarChart3 color={colors.info} size={48} />
       <Text className="text-white text-xl mt-4">Redirecting to Analytics Dashboard...</Text>
     </View>
   );

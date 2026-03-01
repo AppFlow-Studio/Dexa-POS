@@ -14,6 +14,7 @@ import React, {
   useState,
 } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface MenuSearchSheetProps {
   menuItems: MenuItemType[];
@@ -41,7 +42,7 @@ const MenuItemRow = React.memo(
       item.stockQuantity <= item.reorderThreshold;
 
     return (
-      <View className="flex-row items-center px-4 py-3 border-b border-gray-700">
+      <View className="flex-row items-center px-4 py-3 border-b border-border">
         {/* Selection Checkbox - Optimized Hit Area */}
         <View className="w-[10%] mr-2">
           <TouchableOpacity
@@ -200,22 +201,21 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         topInset={60}
       >
-        <View className="px-4 pb-2 pt-2 border-b border-gray-700">
+        <View className="px-4 pb-2 pt-2 border-b border-border">
           <BottomSheetTextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search menu items..."
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.label}
             style={{
-              backgroundColor: "#212121",
-              borderColor: "#374151",
+              backgroundColor: colors.screen,
+              borderColor: colors.border,
               borderWidth: 1,
               borderRadius: 8,
               paddingHorizontal: 12,

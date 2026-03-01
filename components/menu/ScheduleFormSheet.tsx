@@ -5,6 +5,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import React, { forwardRef, useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 type DayKey = (typeof DAY_ORDER)[number];
@@ -46,7 +47,7 @@ const TimeField: React.FC<{
   };
 
   return (
-    <View className="flex-row items-center gap-2 p-1 bg-[#212121] border border-gray-600 rounded-lg">
+    <View className="flex-row items-center gap-2 p-1 bg-panel border border-gray-600 rounded-lg">
       <View className="flex-1 flex-row items-center justify-around">
         <TouchableOpacity
           onPress={() => setHour(displayHours === 1 ? 12 : displayHours - 1)}
@@ -84,7 +85,7 @@ const TimeField: React.FC<{
       </View>
       <TouchableOpacity
         onPress={toggleAmPm}
-        className="px-3 py-2 rounded bg-[#303030] border border-gray-700 min-w-[60px] items-center"
+        className="px-3 py-2 rounded bg-surface border border-gray-700 min-w-[60px] items-center"
       >
         <Text className="text-white text-lg font-bold">
           {isPm ? "PM" : "AM"}
@@ -194,8 +195,7 @@ const ScheduleFormSheet = forwardRef<BottomSheet, ScheduleFormSheetProps>(
             appearsOnIndex={0}
           />
         )}
-        backgroundStyle={{ backgroundColor: "#212121" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
       >
         <BottomSheetView className="p-4 h-full">
           <Text className="text-white text-2xl font-semibold mb-4">
@@ -212,8 +212,8 @@ const ScheduleFormSheet = forwardRef<BottomSheet, ScheduleFormSheetProps>(
               value={name}
               onChangeText={setName}
               placeholder="e.g. Lunch, Happy Hour"
-              placeholderTextColor="#9CA3AF"
-              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-white"
+              placeholderTextColor={colors.label}
+              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-white"
             />
           </View>
           <View className="mb-4">
@@ -227,7 +227,7 @@ const ScheduleFormSheet = forwardRef<BottomSheet, ScheduleFormSheetProps>(
                     onPress={() => toggleDay(d)}
                     className={`px-3 py-2 rounded-lg border ${active
                         ? "bg-blue-600 border-blue-500"
-                        : "bg-[#212121] border-gray-600"
+                        : "bg-panel border-gray-600"
                       }`}
                   >
                     <Text

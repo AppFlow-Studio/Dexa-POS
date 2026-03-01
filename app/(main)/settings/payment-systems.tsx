@@ -1,4 +1,5 @@
 import { Switch } from "@/components/ui/switch";
+import { colors } from "@/lib/theme";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import {
   AlertTriangle,
@@ -159,18 +160,18 @@ const PaymentSystemsScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700"
+      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
     >
       <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">
+        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
           {icon}
         </View>
         <Text className="text-white font-bold text-lg">{title}</Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color="#9ca3af" />
+        <ChevronUp size={20} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color="#9ca3af" />
+        <ChevronDown size={20} color={colors.label} />
       )}
     </TouchableOpacity>
   );
@@ -180,7 +181,7 @@ const PaymentSystemsScreen = () => {
     (1 + parseFloat(dualPricing.discount || "0") / 100);
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Payment Systems</Text>
         <Text className="text-gray-400 mt-2">
@@ -192,10 +193,10 @@ const PaymentSystemsScreen = () => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* DUAL PRICING */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Dual Pricing & Cash Discount",
-            <DollarSign size={20} color="#4ade80" />,
+            <DollarSign size={20} color={colors.success} />,
             "dual"
           )}
           {expandedSections.dual && (
@@ -226,7 +227,7 @@ const PaymentSystemsScreen = () => {
                         <TouchableOpacity
                           key={val}
                           onPress={() => setDualPricing({ discount: val })}
-                          className={`flex-1 py-2 rounded-lg ${dualPricing.discount === val ? "bg-green-600" : "bg-[#404040]"}`}
+                          className={`flex-1 py-2 rounded-lg ${dualPricing.discount === val ? "bg-green-600" : "bg-surface"}`}
                         >
                           <Text
                             className={`text-center font-bold ${dualPricing.discount === val ? "text-white" : "text-gray-400"}`}
@@ -238,7 +239,7 @@ const PaymentSystemsScreen = () => {
                     </View>
                   </View>
 
-                  <View className="bg-[#404040] p-4 rounded-lg border border-gray-600 mb-4">
+                  <View className="bg-surface p-4 rounded-lg border border-gray-600 mb-4">
                     <Text className="text-gray-400 text-xs mb-2 uppercase">
                       Live Price Calculator
                     </Text>
@@ -247,10 +248,10 @@ const PaymentSystemsScreen = () => {
                       <TextInput
                         value={calculatorAmount}
                         onChangeText={setCalculatorAmount}
-                        className="flex-1 bg-[#505050] p-2 rounded text-white text-lg"
+                        className="flex-1 bg-card p-2 rounded text-white text-lg"
                         keyboardType="decimal-pad"
                         placeholder="100"
-                        placeholderTextColor="#6b7280"
+                        placeholderTextColor={colors.muted}
                       />
                     </View>
                     <View className="flex-row justify-between mb-1">
@@ -268,7 +269,7 @@ const PaymentSystemsScreen = () => {
                   </View>
 
                   <View className="flex-row items-center bg-green-600/10 p-3 rounded-lg border border-green-600/30 mb-4">
-                    <Shield size={20} color="#4ade80" />
+                    <Shield size={20} color={colors.success} />
                     <View className="ml-3">
                       <Text className="text-green-400 font-bold">
                         Durbin Amendment Compliant
@@ -279,7 +280,7 @@ const PaymentSystemsScreen = () => {
                     </View>
                   </View>
 
-                  <View className="bg-[#404040] p-4 rounded-lg border border-gray-600">
+                  <View className="bg-surface p-4 rounded-lg border border-gray-600">
                     <Text className="text-gray-300 font-medium mb-3">
                       Signage Checklist
                     </Text>
@@ -322,10 +323,10 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* SURCHARGING */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Credit Card Surcharging",
-            <CreditCard size={20} color="#f87171" />,
+            <CreditCard size={20} color={colors.danger} />,
             "surcharge"
           )}
           {expandedSections.surcharge && (
@@ -351,14 +352,14 @@ const PaymentSystemsScreen = () => {
                     <Text className="text-gray-300 font-medium mb-2">
                       Surcharge Rate (%)
                     </Text>
-                    <View className="h-14 bg-[#404040] border border-gray-600 rounded-lg flex-row items-center overflow-hidden">
+                    <View className="h-14 bg-surface border border-gray-600 rounded-lg flex-row items-center overflow-hidden">
                       <TextInput
                         value={surcharging.rate}
                         onChangeText={(t) => setSurcharging({ rate: t })}
                         className="flex-1 p-3 text-white text-base"
                         keyboardType="decimal-pad"
                       />
-                      <View className="px-4 bg-[#505050] h-full justify-center border-l border-gray-600">
+                      <View className="px-4 bg-card h-full justify-center border-l border-gray-600">
                         <Text className="text-white font-bold">%</Text>
                       </View>
                     </View>
@@ -377,7 +378,7 @@ const PaymentSystemsScreen = () => {
                             onPress={() =>
                               setSurcharging({ selectedState: state })
                             }
-                            className={`px-3 py-2 rounded-lg ${surcharging.selectedState === state ? "bg-blue-600" : "bg-[#404040]"}`}
+                            className={`px-3 py-2 rounded-lg ${surcharging.selectedState === state ? "bg-blue-600" : "bg-surface"}`}
                           >
                             <Text
                               className={`text-sm ${surcharging.selectedState === state ? "text-white font-bold" : "text-gray-400"}`}
@@ -392,14 +393,14 @@ const PaymentSystemsScreen = () => {
                     >
                       {stateCompliance[surcharging.selectedState] ? (
                         <>
-                          <Check size={18} color="#4ade80" />
+                          <Check size={18} color={colors.success} />
                           <Text className="text-green-400 ml-2">
                             Surcharging is LEGAL in {surcharging.selectedState}
                           </Text>
                         </>
                       ) : (
                         <>
-                          <AlertTriangle size={18} color="#f87171" />
+                          <AlertTriangle size={18} color={colors.danger} />
                           <Text className="text-red-400 ml-2">
                             Surcharging is NOT ALLOWED in{" "}
                             {surcharging.selectedState}
@@ -421,10 +422,10 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* REAL-TIME FUNDING */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Real-Time Funding",
-            <Zap size={20} color="#facc15" />,
+            <Zap size={20} color={colors.warning} />,
             "funding"
           )}
           {expandedSections.funding && (
@@ -444,7 +445,7 @@ const PaymentSystemsScreen = () => {
                 />
               </View>
 
-              <View className="bg-[#404040] rounded-lg border border-gray-600 mb-4 overflow-hidden">
+              <View className="bg-surface rounded-lg border border-gray-600 mb-4 overflow-hidden">
                 <View className="flex-row border-b border-gray-600">
                   <View className="flex-1 p-3 border-r border-gray-600">
                     <Text className="text-gray-400 text-xs uppercase text-center">
@@ -516,10 +517,10 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* TOKENIZATION */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Card Vault / Tokenization",
-            <Lock size={20} color="#60a5fa" />,
+            <Lock size={20} color={colors.info} />,
             "token"
           )}
           {expandedSections.token && (
@@ -542,13 +543,13 @@ const PaymentSystemsScreen = () => {
               </View>
 
               <View className="flex-row gap-4 mb-4">
-                <View className="bg-[#404040] p-3 rounded-lg flex-1 border border-gray-600">
+                <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
                   <Text className="text-gray-400 text-xs uppercase">
                     Saved Cards
                   </Text>
                   <Text className="text-white text-xl font-bold">1,240</Text>
                 </View>
-                <View className="bg-[#404040] p-3 rounded-lg flex-1 border border-gray-600">
+                <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
                   <Text className="text-gray-400 text-xs uppercase">
                     Repeat Rate
                   </Text>
@@ -562,10 +563,10 @@ const PaymentSystemsScreen = () => {
               {savedCards.map((card) => (
                 <View
                   key={card.id}
-                  className="bg-[#404040] p-3 rounded-lg border border-gray-600 mb-2 flex-row items-center justify-between"
+                  className="bg-surface p-3 rounded-lg border border-gray-600 mb-2 flex-row items-center justify-between"
                 >
                   <View className="flex-row items-center">
-                    <CreditCard size={20} color="#9ca3af" />
+                    <CreditCard size={20} color={colors.label} />
                     <View className="ml-3">
                       <Text className="text-white font-medium">
                         {card.brand} •••• {card.last4}
@@ -576,13 +577,13 @@ const PaymentSystemsScreen = () => {
                     </View>
                   </View>
                   <TouchableOpacity className="p-2">
-                    <Trash2 size={16} color="#f87171" />
+                    <Trash2 size={16} color={colors.danger} />
                   </TouchableOpacity>
                 </View>
               ))}
 
               <View className="flex-row items-center bg-blue-900/20 p-3 rounded-lg border border-blue-900/50 mt-2">
-                <Shield size={18} color="#60a5fa" />
+                <Shield size={18} color={colors.info} />
                 <Text className="text-blue-300 text-sm ml-2">
                   PCI-DSS Level 1 Compliant Vault
                 </Text>
@@ -592,7 +593,7 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* TEXT-TO-PAY */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Text-to-Pay",
             <MessageSquare size={20} color="#a78bfa" />,
@@ -619,11 +620,11 @@ const PaymentSystemsScreen = () => {
 
               {textToPayEnabled && (
                 <>
-                  <View className="bg-[#404040] p-4 rounded-lg border border-gray-600 mb-4">
+                  <View className="bg-surface p-4 rounded-lg border border-gray-600 mb-4">
                     <Text className="text-gray-400 text-xs mb-2">
                       SMS Preview
                     </Text>
-                    <View className="bg-[#303030] p-3 rounded-lg">
+                    <View className="bg-panel p-3 rounded-lg">
                       <Text className="text-white text-sm">
                         "Hi [Name], your order at Dexa POS is ready! Pay
                         securely here: https://pay.dexa.app/abc123"
@@ -637,14 +638,14 @@ const PaymentSystemsScreen = () => {
                   >
                     {textToPayTestSent ? (
                       <>
-                        <Check size={18} color="#4ade80" />
+                        <Check size={18} color={colors.success} />
                         <Text className="text-green-400 font-medium ml-2">
                           Test Sent Successfully!
                         </Text>
                       </>
                     ) : (
                       <>
-                        <Send size={18} color="#60a5fa" />
+                        <Send size={18} color={colors.info} />
                         <Text className="text-blue-400 font-medium ml-2">
                           Send Test SMS
                         </Text>
@@ -653,13 +654,13 @@ const PaymentSystemsScreen = () => {
                   </TouchableOpacity>
 
                   <View className="flex-row gap-4">
-                    <View className="bg-[#404040] p-3 rounded-lg flex-1 border border-gray-600">
+                    <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
                       <Text className="text-gray-400 text-xs uppercase">
                         Paid via Text
                       </Text>
                       <Text className="text-white text-xl font-bold">328</Text>
                     </View>
-                    <View className="bg-[#404040] p-3 rounded-lg flex-1 border border-gray-600">
+                    <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
                       <Text className="text-gray-400 text-xs uppercase">
                         Avg. Pay Time
                       </Text>
@@ -675,10 +676,10 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* KITCHEN THROTTLING */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Smart Kitchen Throttling",
-            <Gauge size={20} color="#f97316" />,
+            <Gauge size={20} color={colors.warning} />,
             "throttle"
           )}
           {expandedSections.throttle && (
@@ -707,7 +708,7 @@ const PaymentSystemsScreen = () => {
                         <TouchableOpacity
                           key={val}
                           onPress={() => setThrottling({ capacity: val })}
-                          className={`flex-1 py-2 rounded ${throttling.capacity === val ? getCapacityColor(val).bg : "bg-[#404040]"}`}
+                          className={`flex-1 py-2 rounded ${throttling.capacity === val ? getCapacityColor(val).bg : "bg-surface"}`}
                         >
                           <Text
                             className={`text-center text-sm font-bold ${throttling.capacity === val ? "text-white" : "text-gray-500"}`}
@@ -745,7 +746,7 @@ const PaymentSystemsScreen = () => {
                   <Text className="text-gray-300 font-medium mb-2">
                     Actions When Threshold Reached
                   </Text>
-                  <View className="bg-[#404040] p-3 rounded-lg border border-gray-600">
+                  <View className="bg-surface p-3 rounded-lg border border-gray-600">
                     <View className="flex-row items-center justify-between py-2 border-b border-gray-700">
                       <Text className="text-white">Pause online orders</Text>
                       <Switch
@@ -781,10 +782,10 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* KDS */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Kitchen Display (KDS)",
-            <Monitor size={20} color="#2dd4bf" />,
+            <Monitor size={20} color={colors.teal} />,
             "kds"
           )}
           {expandedSections.kds && (
@@ -811,7 +812,7 @@ const PaymentSystemsScreen = () => {
                   {kdsDisplays.map((display) => (
                     <View
                       key={display.id}
-                      className="bg-[#404040] p-3 rounded-lg border border-gray-600 mb-2 flex-row items-center justify-between"
+                      className="bg-surface p-3 rounded-lg border border-gray-600 mb-2 flex-row items-center justify-between"
                     >
                       <View className="flex-row items-center">
                         <View
@@ -826,13 +827,13 @@ const PaymentSystemsScreen = () => {
                           </Text>
                         </View>
                       </View>
-                      <TouchableOpacity className="bg-[#505050] px-3 py-1 rounded">
+                      <TouchableOpacity className="bg-card px-3 py-1 rounded">
                         <Text className="text-blue-400 text-sm">Test</Text>
                       </TouchableOpacity>
                     </View>
                   ))}
-                  <TouchableOpacity className="bg-[#404040] p-3 rounded-lg border border-dashed border-gray-600 flex-row items-center justify-center mt-2">
-                    <Plus size={18} color="#60a5fa" />
+                  <TouchableOpacity className="bg-surface p-3 rounded-lg border border-dashed border-gray-600 flex-row items-center justify-center mt-2">
+                    <Plus size={18} color={colors.info} />
                     <Text className="text-blue-400 font-medium ml-2">
                       Add KDS Display
                     </Text>
@@ -844,7 +845,7 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* PREP TIMES */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Prep Time Configuration",
             <Clock size={20} color="#ec4899" />,
@@ -881,18 +882,18 @@ const PaymentSystemsScreen = () => {
                   <View className="flex-row items-center">
                     <TouchableOpacity
                       onPress={() => adjustPrepTime(cat.id, -1)}
-                      className="w-8 h-8 bg-[#505050] rounded items-center justify-center"
+                      className="w-8 h-8 bg-card rounded items-center justify-center"
                     >
-                      <Minus size={16} color="#9ca3af" />
+                      <Minus size={16} color={colors.label} />
                     </TouchableOpacity>
                     <Text className="text-white font-bold mx-3 w-12 text-center">
                       {cat.minutes} min
                     </Text>
                     <TouchableOpacity
                       onPress={() => adjustPrepTime(cat.id, 1)}
-                      className="w-8 h-8 bg-[#505050] rounded items-center justify-center"
+                      className="w-8 h-8 bg-card rounded items-center justify-center"
                     >
-                      <Plus size={16} color="#9ca3af" />
+                      <Plus size={16} color={colors.label} />
                     </TouchableOpacity>
                   </View>
                 </View>

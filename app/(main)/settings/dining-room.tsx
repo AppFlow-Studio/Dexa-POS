@@ -16,6 +16,7 @@ import {
   Settings2,
   Users,
 } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import { useMemo } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -61,7 +62,7 @@ const DiningRoomScreen = () => {
   }, [tables]);
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Dining Room</Text>
         <Text className="text-gray-400 mt-2">
@@ -77,10 +78,10 @@ const DiningRoomScreen = () => {
       >
         <View className="gap-6">
           {/* Floor Plans Section */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Map color="#3b82f6" size={24} />
+                <Map color={colors.info} size={24} />
                 <CardTitle className="text-white">Floor Plans</CardTitle>
               </View>
             </CardHeader>
@@ -103,10 +104,10 @@ const DiningRoomScreen = () => {
                   {floorPlans.map((layout) => (
                     <View
                       key={layout.id}
-                      className="w-[48%] bg-[#212121] p-4 rounded-lg border border-gray-700"
+                      className="w-[48%] bg-screen p-4 rounded-lg border border-gray-700"
                     >
                       <View className="flex-row items-center gap-2 mb-2">
-                        <LayoutTemplate size={18} color="#9ca3af" />
+                        <LayoutTemplate size={18} color={colors.label} />
                         <Text className="text-white font-bold text-lg">
                           {layout.name}
                         </Text>
@@ -133,9 +134,9 @@ const DiningRoomScreen = () => {
                   ))}
                   <TouchableOpacity
                     onPress={handleCreateFloorPlan}
-                    className="w-[48%] bg-[#212121] p-4 rounded-lg border border-dashed border-gray-600 items-center justify-center min-h-[140px]"
+                    className="w-[48%] bg-screen p-4 rounded-lg border border-dashed border-gray-600 items-center justify-center min-h-[140px]"
                   >
-                    <Plus size={24} color="#6b7280" className="mb-2" />
+                    <Plus size={24} color={colors.muted} className="mb-2" />
                     <Text className="text-gray-400 font-medium">
                       Create New
                     </Text>
@@ -146,10 +147,10 @@ const DiningRoomScreen = () => {
           </Card>
 
           {/* Table Configuration Section */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Settings2 color="#f59e0b" size={24} />
+                <Settings2 color={colors.warning} size={24} />
                 <CardTitle className="text-white">
                   Table Configuration
                 </CardTitle>
@@ -162,7 +163,7 @@ const DiningRoomScreen = () => {
                     Start Number
                   </Label>
                   <Input
-                    className="bg-[#212121] border-gray-600 text-white h-10"
+                    className="bg-screen border-gray-600 text-white h-10"
                     value={settings.tableStartNumber.toString()}
                     onChangeText={(v) =>
                       settings.updateDiningSettings({
@@ -175,7 +176,7 @@ const DiningRoomScreen = () => {
                 <View className="flex-1">
                   <Label className="text-gray-400 text-xs mb-1.5">Prefix</Label>
                   <Input
-                    className="bg-[#212121] border-gray-600 text-white h-10"
+                    className="bg-screen border-gray-600 text-white h-10"
                     value={settings.tablePrefix}
                     onChangeText={(v) =>
                       settings.updateDiningSettings({ tablePrefix: v })
@@ -187,7 +188,7 @@ const DiningRoomScreen = () => {
                     Default Party
                   </Label>
                   <Input
-                    className="bg-[#212121] border-gray-600 text-white h-10"
+                    className="bg-screen border-gray-600 text-white h-10"
                     value={settings.defaultPartySize.toString()}
                     onChangeText={(v) =>
                       settings.updateDiningSettings({
@@ -226,7 +227,7 @@ const DiningRoomScreen = () => {
                       Merge Timeout (minutes)
                     </Label>
                     <Input
-                      className="bg-[#212121] border-gray-600 text-white h-10 w-32"
+                      className="bg-screen border-gray-600 text-white h-10 w-32"
                       placeholder="0 = None"
                       placeholderClassName="text-gray-500"
                       value={
@@ -265,29 +266,29 @@ const DiningRoomScreen = () => {
           </Card>
 
           {/* Table Status Section */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Clock color="#10b981" size={24} />
+                <Clock color={colors.success} size={24} />
                 <CardTitle className="text-white">Table Status</CardTitle>
               </View>
             </CardHeader>
             <CardContent className="gap-6">
               {/* Status Legend / Live Counts */}
               <View className="flex-row gap-4 flex-wrap">
-                <View className="flex-row items-center gap-2 bg-[#212121] px-3 py-2 rounded-full border border-gray-700">
+                <View className="flex-row items-center gap-2 bg-screen px-3 py-2 rounded-full border border-gray-700">
                   <View className="w-2 h-2 rounded-full bg-green-500" />
                   <Text className="text-white text-sm">
                     {tableStats.available} Available
                   </Text>
                 </View>
-                <View className="flex-row items-center gap-2 bg-[#212121] px-3 py-2 rounded-full border border-gray-700">
+                <View className="flex-row items-center gap-2 bg-screen px-3 py-2 rounded-full border border-gray-700">
                   <View className="w-2 h-2 rounded-full bg-blue-500" />
                   <Text className="text-white text-sm">
                     {tableStats.inUse} Seated
                   </Text>
                 </View>
-                <View className="flex-row items-center gap-2 bg-[#212121] px-3 py-2 rounded-full border border-gray-700">
+                <View className="flex-row items-center gap-2 bg-screen px-3 py-2 rounded-full border border-gray-700">
                   <View className="w-2 h-2 rounded-full bg-red-500" />
                   <Text className="text-white text-sm">
                     {tableStats.cleaning} Dirty
@@ -323,7 +324,7 @@ const DiningRoomScreen = () => {
                         Duration (minutes)
                       </Label>
                       <Input
-                        className="bg-[#212121] border-gray-600 text-white h-10"
+                        className="bg-screen border-gray-600 text-white h-10"
                         value={settings.defaultSittingTimeMinutes.toString()}
                         onChangeText={(v) => {
                           const val = parseInt(v);
@@ -360,7 +361,7 @@ const DiningRoomScreen = () => {
           </Card>
 
           {/* Server Sections (Mock / Config) */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
                 <Users color="#8b5cf6" size={24} />
@@ -403,8 +404,8 @@ const DiningRoomScreen = () => {
                   />
                 </View>
               </View>
-              <View className="bg-[#212121] p-4 rounded-lg border border-gray-700 items-center">
-                <Grid size={32} color="#4b5563" className="mb-2" />
+              <View className="bg-screen p-4 rounded-lg border border-gray-700 items-center">
+                <Grid size={32} color={colors.muted} className="mb-2" />
                 <Text className="text-gray-500 text-center">
                   Section visuals are available in the floor plan editor.
                 </Text>

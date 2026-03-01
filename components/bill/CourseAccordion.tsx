@@ -11,8 +11,9 @@ import Animated, {
   useSharedValue,
   withSequence,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import BillItem from "./BillItem";
 
 // --- Types ---
@@ -69,37 +70,10 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
   onDoubleTap,
 }) => {
   const scale = useSharedValue(1);
-  const contentHeight = useSharedValue(0);
-  const contentOpacity = useSharedValue(0);
-
-  // Animate content height and opacity when expanded state changes
-  useEffect(() => {
-    if (isExpanded) {
-      contentHeight.value = withTiming(1, { duration: 250 });
-      contentOpacity.value = withTiming(1, { duration: 200 });
-    } else {
-      contentOpacity.value = withTiming(0, { duration: 150 });
-      contentHeight.value = withTiming(0, { duration: 200 });
-    }
-  }, [isExpanded]);
 
   // Header tap animation
   const animatedHeaderStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
-  }));
-
-  // Content container animation
-  const animatedContentStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value,
-    maxHeight: contentHeight.value === 0 ? 0 : undefined,
-    overflow: "hidden" as const,
-  }));
-
-  // Chevron rotation animation
-  const chevronStyle = useAnimatedStyle(() => ({
-    transform: [
-      { rotate: withTiming(isExpanded ? "90deg" : "0deg", { duration: 200 }) },
-    ],
   }));
 
   // Gesture Definitions
@@ -132,26 +106,23 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
   );
 
   return (
-    <Animated.View layout={LinearTransition.duration(200)} className="mb-2">
-      {/* Header */}
+    <Animated.View layout={LinearTransition.duration(200)} className="mb-1">
+      {/* Header — clean minimal row */}
       <GestureDetector gesture={composedTap}>
         <Animated.View
           style={animatedHeaderStyle}
-          className={`flex-row items-center justify-between p-3 rounded-lg border ${
-            isExpanded
-              ? "border-blue-500 bg-blue-900/20"
-              : "border-gray-700 bg-[#303030]"
-          }`}
+          className="flex-row items-center justify-between py-3 px-2"
         >
           <View className="flex-row items-center">
-            {isCurrent && (
-              <View className="w-2 h-2 bg-green-400 rounded-full mr-2" />
-            )}
-            <Text className="text-lg font-semibold text-white">
+            <View
+              className="w-2 h-2 rounded-full mr-2.5"
+              style={{ backgroundColor: isCurrent ? colors.success : colors.muted }}
+            />
+            <Text className="text-base font-bold text-white">
               Course {courseId}
             </Text>
             {isSent && (
-              <Text className="text-sm text-green-400 ml-2">✓ Sent</Text>
+              <Text className="text-sm font-semibold text-teal ml-2">Sent</Text>
             )}
             {isSent && aggregateStatus && (
               <View className={`ml-2 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}>
@@ -160,23 +131,26 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
                 </Text>
               </View>
             )}
-            <Text className="text-sm text-gray-400 ml-2">
-              • {courseItemCount} item{courseItemCount !== 1 ? "s" : ""}
+            <Text className="text-sm text-gray-500 ml-2">
+              {courseItemCount} item{courseItemCount !== 1 ? "s" : ""}
             </Text>
           </View>
-          <Animated.View style={chevronStyle}>
-            <Text className="text-white text-lg">▶</Text>
-          </Animated.View>
+          {isExpanded ? (
+            <ChevronDown size={18} color={colors.label} />
+          ) : (
+            <ChevronRight size={18} color={colors.label} />
+          )}
         </Animated.View>
       </GestureDetector>
 
-      {/* Content with Animation */}
+      {/* Content with Animation — sent courses get reduced opacity */}
       {isExpanded && (
         <Animated.View
           entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(150)}
           layout={LinearTransition.duration(200)}
-          className="mt-2 pl-4 gap-y-2 overflow-hidden"
+          className="pl-4 gap-y-2 overflow-hidden"
+          style={isSent ? { opacity: 0.5 } : undefined}
         >
           {items.map((item) => (
             <Animated.View
@@ -184,7 +158,7 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
               layout={LinearTransition.duration(150)}
               className="overflow-hidden"
             >
-              <BillItem item={item} isEditable={true} />
+              <BillItem item={item} isEditable={!isSent} />
             </Animated.View>
           ))}
         </Animated.View>
@@ -281,10 +255,10 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   }
 
   return (
-    <View className="flex-1 bg-[#212121] p-4">
+    <View className="flex-1 bg-panel p-4">
       {/* Main Header */}
-      <View className="flex-row items-center justify-between pb-3 border-b border-gray-700 mb-3">
-        <Text className="text-xl font-bold text-white">
+      <View className="flex-row items-center justify-between pb-3 mb-2">
+        <Text className="text-lg font-bold text-white">
           Order{" "}
           {activeOrder.display_number
             ? activeOrder.display_number.startsWith("#")
@@ -298,11 +272,12 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         </Text>
         <TouchableOpacity
           onPress={onPressStartNewCourse}
-          className="px-3 py-1.5 rounded-lg bg-green-600 border border-green-500"
+          className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal"
           activeOpacity={0.8}
         >
-          <Text className="font-semibold text-white text-base">
-            ✨ Start New Course
+          <Plus size={16} color={colors.teal} />
+          <Text className="font-semibold text-teal text-sm">
+            New Course
           </Text>
         </TouchableOpacity>
       </View>

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useToast } from "@/contexts/ToastContext";
 import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -287,11 +288,11 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
                 <View className="ml-2">
                   {(item.item_status === "Ready" ||
                     item.item_status === "Served") && (
-                    <CheckCircle size={14} color="#22C55E" />
+                    <CheckCircle size={14} color={colors.success} />
                   )}
                   {(item.kitchen_status === "sent" ||
                     item.item_status === "Preparing") && (
-                    <Clock size={14} color="#F59E0B" />
+                    <Clock size={14} color={colors.warning} />
                   )}
                 </View>
               </View>

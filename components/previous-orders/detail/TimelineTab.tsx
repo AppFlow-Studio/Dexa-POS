@@ -1,4 +1,5 @@
 import { OrderProfile } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import React, { useMemo } from "react";
 import { Text, View } from "react-native";
@@ -32,7 +33,7 @@ function buildTimeline(
     events.push({
       timestamp: order.opened_at,
       label: "Order Created",
-      color: "#3B82F6",
+      color: colors.orderCompleted,
     });
   }
 
@@ -41,7 +42,7 @@ function buildTimeline(
     events.push({
       timestamp: order.sent_to_kitchen_at,
       label: "Sent to Kitchen",
-      color: "#F59E0B",
+      color: colors.orderPreparing,
     });
   }
 
@@ -57,21 +58,21 @@ function buildTimeline(
         void: "Voided",
         refunded: "Refunded",
       };
-      const statusColors: Record<string, string> = {
-        pending: "#F59E0B",
-        preparing: "#3B82F6",
-        ready: "#22C55E",
-        completed: "#22C55E",
-        cancelled: "#EF4444",
-        void: "#EF4444",
-        refunded: "#EF4444",
+      const statusColorMap: Record<string, string> = {
+        pending: colors.orderPreparing,
+        preparing: colors.orderCompleted,
+        ready: colors.orderReady,
+        completed: colors.orderReady,
+        cancelled: colors.orderCancelled,
+        void: colors.orderCancelled,
+        refunded: colors.orderCancelled,
       };
 
       events.push({
         timestamp: entry.changed_at,
         label: statusLabels[entry.status] || `Status: ${entry.status}`,
         detail: entry.notes || (entry.changed_by ? `By: ${entry.changed_by}` : undefined),
-        color: statusColors[entry.status] || "#6B7280",
+        color: statusColorMap[entry.status] || colors.orderDefault,
       });
     });
   }
@@ -90,7 +91,7 @@ function buildTimeline(
         timestamp: payment.timestamp,
         label: `Payment #${idx + 1} (${methodLabel})`,
         detail: `$${payment.amount.toFixed(2)}${payment.tip_amount > 0 ? ` + $${payment.tip_amount.toFixed(2)} tip` : ""}`,
-        color: payment.isVoided ? "#EF4444" : "#22C55E",
+        color: payment.isVoided ? colors.orderCancelled : colors.paymentPaid,
       });
 
       // Tip adjustment
@@ -99,7 +100,7 @@ function buildTimeline(
           timestamp: payment.tip_adjusted_at,
           label: `Tip Adjusted on Payment #${idx + 1}`,
           detail: `New tip: $${payment.tip_amount.toFixed(2)}${payment.original_tip_amount != null ? ` (was $${payment.original_tip_amount.toFixed(2)})` : ""}`,
-          color: "#8B5CF6",
+          color: colors.orderSentToKitchen,
         });
       }
 
@@ -109,7 +110,7 @@ function buildTimeline(
           timestamp: payment.voidedAt,
           label: `Payment #${idx + 1} Voided`,
           detail: payment.voidReason || undefined,
-          color: "#EF4444",
+          color: colors.orderCancelled,
         });
       }
     });
@@ -132,7 +133,7 @@ function buildTimeline(
         timestamp: ts,
         label: `${typeLabel} Processed`,
         detail: `$${reversal.amount.toFixed(2)}${reversal.reason_description ? ` - ${reversal.reason_description}` : ""}`,
-        color: "#EF4444",
+        color: colors.orderCancelled,
       });
     });
   }
@@ -142,7 +143,7 @@ function buildTimeline(
     events.push({
       timestamp: order.closed_at,
       label: "Order Closed",
-      color: "#6B7280",
+      color: colors.orderDefault,
     });
   }
 
@@ -197,7 +198,7 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order, statusHistory }) => {
                   className="flex-1"
                   style={{
                     width: 2,
-                    backgroundColor: "#404040",
+                    backgroundColor: colors.border,
                     minHeight: 40,
                   }}
                 />

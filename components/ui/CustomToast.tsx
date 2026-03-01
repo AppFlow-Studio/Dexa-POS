@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -48,11 +49,11 @@ const CustomToast: React.FC<CustomToastProps> = ({
       : "flex-row items-center bg-gray-800 border border-green-500 rounded-lg p-4 w-full";
 
   const Icon = isError ? (
-    <XCircle size={24} color="#EF4444" />
+    <XCircle size={24} color={colors.danger} />
   ) : isWarning ? (
-    <AlertTriangle size={24} color="#FBBF24" />
+    <AlertTriangle size={24} color={colors.warning} />
   ) : (
-    <CheckCircle2 size={24} color="#22C55E" />
+    <CheckCircle2 size={24} color={colors.success} />
   );
 
   return (
@@ -78,7 +79,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
                 onPress={handleUndo}
                 className="flex-row items-center bg-yellow-500/20 border border-yellow-500/30 rounded-md px-3 py-1.5"
               >
-                <Undo2 size={14} color="#FBBF24" />
+                <Undo2 size={14} color={colors.warning} />
                 <Text className="text-yellow-400 font-bold text-xs ml-1.5">
                   UNDO
                 </Text>
@@ -87,7 +88,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
                 onPress={handleDismiss}
                 className="flex-row items-center bg-gray-600/50 border border-gray-500/50 rounded-md px-3 py-1.5"
               >
-                <XCircle size={14} color="#9CA3AF" />
+                <XCircle size={14} color={colors.label} />
                 <Text className="text-gray-400 font-semibold text-xs ml-1.5">
                   Dismiss
                 </Text>
@@ -97,7 +98,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
         </View>
         {!onUndo && (
           <TouchableOpacity onPress={handleDismiss} className="ml-2">
-            <X size={18} color="#9CA3AF" />
+            <X size={18} color={colors.label} />
           </TouchableOpacity>
         )}
       </View>

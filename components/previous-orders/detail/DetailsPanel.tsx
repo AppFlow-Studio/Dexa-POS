@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import React, { useMemo } from "react";
@@ -100,8 +101,8 @@ const DetailsPanel: React.FC<DetailsPanelProps> = ({ order }) => {
 
       {balanceDue > 0 && (
         <View
-          className="bg-[#303030] rounded-xl p-4 mb-4"
-          style={{ borderWidth: 1, borderColor: "#EAB308" }}
+          className="bg-surface rounded-xl p-4 mb-4"
+          style={{ borderWidth: 1, borderColor: colors.warning }}
         >
           <Text className="text-xs text-yellow-400 mb-1">Balance Due</Text>
           <Text className="text-xl font-bold text-yellow-400">
@@ -111,48 +112,48 @@ const DetailsPanel: React.FC<DetailsPanelProps> = ({ order }) => {
       )}
 
       {/* Order Details */}
-      <View className="bg-[#303030] rounded-xl p-4 mb-4 border border-gray-700">
+      <View className="bg-surface rounded-xl p-4 mb-4 border border-gray-700">
         <Text className="text-base font-bold text-white mb-3">
           Order Details
         </Text>
 
         <MetadataRow
-          icon={<TypeIcon color="#9CA3AF" size={16} />}
+          icon={<TypeIcon color={colors.label} size={16} />}
           label="Order Type"
           value={displayType}
         />
 
         {order.service_location_name && (
           <MetadataRow
-            icon={<MapPin color="#9CA3AF" size={16} />}
+            icon={<MapPin color={colors.label} size={16} />}
             label="Table / Location"
             value={order.service_location_name}
           />
         )}
 
         <MetadataRow
-          icon={<User color="#9CA3AF" size={16} />}
+          icon={<User color={colors.label} size={16} />}
           label="Server"
           value={order.server_name || "-"}
         />
 
         {order._sourceStationName && (
           <MetadataRow
-            icon={<Monitor color="#9CA3AF" size={16} />}
+            icon={<Monitor color={colors.label} size={16} />}
             label="Station"
             value={order._sourceStationName}
           />
         )}
 
         <MetadataRow
-          icon={<User color="#9CA3AF" size={16} />}
+          icon={<User color={colors.label} size={16} />}
           label="Customer"
           value={order.customer_name || "Walk-In"}
         />
 
         {order.opened_at && (
           <MetadataRow
-            icon={<Clock color="#9CA3AF" size={16} />}
+            icon={<Clock color={colors.label} size={16} />}
             label="Opened"
             value={formatDateTime(order.opened_at)}
           />
@@ -160,7 +161,7 @@ const DetailsPanel: React.FC<DetailsPanelProps> = ({ order }) => {
 
         {order.closed_at && (
           <MetadataRow
-            icon={<Clock color="#9CA3AF" size={16} />}
+            icon={<Clock color={colors.label} size={16} />}
             label="Closed"
             value={formatDateTime(order.closed_at)}
           />
@@ -168,14 +169,14 @@ const DetailsPanel: React.FC<DetailsPanelProps> = ({ order }) => {
 
         {duration && (
           <MetadataRow
-            icon={<Clock color="#9CA3AF" size={16} />}
+            icon={<Clock color={colors.label} size={16} />}
             label="Duration"
             value={duration}
           />
         )}
 
         <MetadataRow
-          icon={<Clock color="#9CA3AF" size={16} />}
+          icon={<Clock color={colors.label} size={16} />}
           label="Check Status"
           value={order.check_status || "Opened"}
         />
@@ -183,7 +184,7 @@ const DetailsPanel: React.FC<DetailsPanelProps> = ({ order }) => {
 
       {/* Payment Breakdown */}
       {activePayments.length > 0 && (
-        <View className="bg-[#303030] rounded-xl p-4 border border-gray-700">
+        <View className="bg-surface rounded-xl p-4 border border-gray-700">
           <Text className="text-base font-bold text-white mb-3">
             Payments
           </Text>
@@ -195,7 +196,7 @@ const DetailsPanel: React.FC<DetailsPanelProps> = ({ order }) => {
             return (
               <View
                 key={payment.id || idx}
-                className="bg-[#252525] rounded-lg p-3 mb-2 border border-gray-700"
+                className="bg-panel rounded-lg p-3 mb-2 border border-gray-700"
               >
                 <View className="flex-row justify-between mb-1">
                   <Text className="text-sm font-semibold text-white">
@@ -245,7 +246,7 @@ const SummaryCard = ({
   borderColor: string;
 }) => (
   <View
-    className="bg-[#303030] rounded-xl p-4"
+    className="bg-surface rounded-xl p-4"
     style={{
       borderWidth: 1,
       borderColor,

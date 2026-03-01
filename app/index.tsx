@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useAuth } from "@clerk/clerk-expo";
 import { Redirect } from "expo-router";
@@ -13,8 +14,8 @@ const StartPage = () => {
   // Show loading indicator while Clerk is loading
   if (!isLoaded) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#212121]">
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View className="flex-1 items-center justify-center bg-screen">
+        <ActivityIndicator size="large" color={colors.info} />
       </View>
     );
   }

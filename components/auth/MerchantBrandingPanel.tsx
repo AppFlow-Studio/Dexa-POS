@@ -3,6 +3,7 @@ import { useLiveClock } from "@/hooks/useLiveClock";
 import { useWeather } from "@/hooks/useWeather";
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { images } from "@/lib/image";
+import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -54,7 +55,7 @@ const MerchantBrandingPanel = () => {
   };
 
   return (
-    <View className="flex-1 h-full rounded-2xl bg-[#1a1a1a] p-8 justify-between">
+    <View className="flex-1 h-full rounded-2xl bg-panel p-8 justify-between">
       {/* Top Section: Logo + Store Name */}
       <View className="items-center">
         {showOrgLogo ? (
@@ -91,7 +92,7 @@ const MerchantBrandingPanel = () => {
         {/* Location */}
         {selectedStore && (
           <View className="flex-row items-center gap-2">
-            <MapPin size={16} color="#9ca3af" />
+            <MapPin size={16} color={colors.label} />
             <Text className="text-gray-400 text-base">
               {selectedStore.address_line1}
               {selectedStore.address_line2
@@ -106,8 +107,8 @@ const MerchantBrandingPanel = () => {
 
         {/* Station */}
         {selectedStation && (
-          <View className="flex-row items-center gap-2 bg-[#2D2D2D] px-4 py-2 rounded-lg">
-            <Monitor size={16} color="#60a5fa" />
+          <View className="flex-row items-center gap-2 bg-card px-4 py-2 rounded-lg">
+            <Monitor size={16} color={colors.info} />
             <Text className="text-blue-400 text-base font-medium">
               {selectedStation.station_name} #{selectedStation.station_number}
             </Text>
@@ -117,7 +118,7 @@ const MerchantBrandingPanel = () => {
         {/* Weather */}
         {weather && (
           <View className="flex-row items-center gap-2">
-            <Cloud size={16} color="#9ca3af" />
+            <Cloud size={16} color={colors.label} />
             <Text className="text-gray-400 text-base">
               {weather.temperature}\u00B0F \u2022 {weather.description}
             </Text>
@@ -134,7 +135,7 @@ const MerchantBrandingPanel = () => {
             isRefreshing && "opacity-50"
           }`}
         >
-          <RefreshCw size={18} color="#3b82f6" />
+          <RefreshCw size={18} color={colors.info} />
           <Text className="text-blue-400 text-base font-semibold">
             {isRefreshing ? "Refreshing..." : "Refresh Data"}
           </Text>
@@ -144,7 +145,7 @@ const MerchantBrandingPanel = () => {
           onPress={() => setDeactivateModalOpen(true)}
           className="flex-row items-center justify-center gap-2 py-3 bg-red-600/20 border border-red-500/30 rounded-xl"
         >
-          <Power size={18} color="#ef4444" />
+          <Power size={18} color={colors.danger} />
           <Text className="text-red-400 text-base font-semibold">
             Deactivate Terminal
           </Text>

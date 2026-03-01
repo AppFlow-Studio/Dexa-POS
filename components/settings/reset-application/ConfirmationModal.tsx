@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -34,12 +35,12 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       {/* Use a single dark background for the entire modal */}
-      <DialogContent className="p-6 rounded-2xl bg-[#303030] border border-gray-700 w-[480px]">
+      <DialogContent className="p-6 rounded-2xl bg-panel border border-gray-700 w-[480px]">
         <View className="items-center">
           {/* Use dark-theme friendly colors for the icon */}
           {isDestructive && (
             <View className="w-16 h-16 bg-red-900/30 rounded-full items-center justify-center border-4 border-red-500/30 mb-4">
-              <AlertTriangle color="#f87171" size={36} />
+              <AlertTriangle color={colors.danger} size={36} />
             </View>
           )}
 
@@ -55,7 +56,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           <DialogFooter className="pt-6 flex-row gap-4 w-full">
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 border border-gray-600 rounded-lg bg-[#212121]"
+              className="flex-1 py-3 border border-gray-600 rounded-lg bg-screen"
             >
               <Text className="font-bold text-lg text-gray-300 text-center">
                 Cancel

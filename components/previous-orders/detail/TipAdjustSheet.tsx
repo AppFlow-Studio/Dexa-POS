@@ -19,6 +19,7 @@ import React, {
   useState,
 } from "react";
 import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme } from "@/lib/theme";
 
 interface TipAdjustSheetProps {
   order: OrderProfile | null;
@@ -130,8 +131,7 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
       snapPoints={snapPoints}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#303030" }}
-      handleIndicatorStyle={{ backgroundColor: "#525252" }}
+      {...bottomSheetTheme}
     >
       <BottomSheetScrollView
         contentContainerStyle={{ padding: 20 }}
@@ -162,9 +162,9 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
         ) : (
           <View>
             {/* Selected payment info */}
-            <View className="bg-[#252525] rounded-xl p-4 mb-4 border border-gray-700">
+            <View className="bg-panel rounded-xl p-4 mb-4 border border-gray-700">
               <View className="flex-row items-center gap-2 mb-2">
-                <CreditCard color="#3B82F6" size={18} />
+                <CreditCard color={colors.info} size={18} />
                 <Text className="text-base font-semibold text-white">
                   {selectedPayment?.cardBrand || "Card"}{" "}
                   {selectedPayment?.last4 ? `••${selectedPayment.last4}` : ""}
@@ -178,7 +178,7 @@ const TipAdjustSheetComponent: React.ForwardRefRenderFunction<
 
             {/* Tip input */}
             <Text className="text-sm text-gray-400 mb-2">New Tip Amount:</Text>
-            <View className="flex-row items-center bg-[#252525] rounded-xl px-4 py-3 border border-gray-600 mb-4">
+            <View className="flex-row items-center bg-panel rounded-xl px-4 py-3 border border-gray-600 mb-4">
               <Text className="text-xl text-gray-400 mr-1">$</Text>
               <TextInput
                 value={tipInput}
@@ -231,9 +231,9 @@ const PaymentOption = ({
   <TouchableOpacity
     onPress={onSelect}
     activeOpacity={0.7}
-    className="bg-[#252525] rounded-xl p-4 border border-gray-700 flex-row items-center"
+    className="bg-panel rounded-xl p-4 border border-gray-700 flex-row items-center"
   >
-    <CreditCard color="#9CA3AF" size={20} />
+    <CreditCard color={colors.label} size={20} />
     <View className="flex-1 ml-3">
       <Text className="text-base font-semibold text-white">
         Payment #{index + 1} — {payment.cardBrand || "Card"}{" "}

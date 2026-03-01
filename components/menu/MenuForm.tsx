@@ -7,6 +7,7 @@ import { Menu, Schedule } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { router } from "expo-router";
+import { colors } from "@/lib/theme";
 import {
   ArrowLeft,
   Check,
@@ -242,14 +243,14 @@ const MenuForm: React.FC<MenuFormProps> = ({
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
+      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-surface">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={20} color="#9CA3AF" />
+          <ArrowLeft size={20} color={colors.label} />
           <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
         </TouchableOpacity>
 
@@ -294,9 +295,9 @@ const MenuForm: React.FC<MenuFormProps> = ({
               Menu Name
             </Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16 mb-4"
+              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16 mb-4"
               placeholder="e.g., Lunch Menu, Dinner Specials"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.label}
               value={name}
               onChangeText={setName}
             />
@@ -305,9 +306,9 @@ const MenuForm: React.FC<MenuFormProps> = ({
               Description (Optional)
             </Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-24 mb-4"
+              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-24 mb-4"
               placeholder="Describe this menu..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.label}
               value={description}
               onChangeText={setDescription}
               multiline
@@ -360,8 +361,8 @@ const MenuForm: React.FC<MenuFormProps> = ({
             </View>
 
             {availableCategories.length === 0 ? (
-              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
-                <Utensils size={36} color="#9CA3AF" />
+              <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
+                <Utensils size={36} color={colors.label} />
                 <Text className="text-xl text-gray-400 text-center mt-3">
                   No categories available.
                 </Text>
@@ -384,7 +385,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
                   return (
                     <View
                       key={category.id}
-                      className={`bg-[#303030] rounded-lg border ${
+                      className={`bg-surface rounded-lg border ${
                         isSelected
                           ? "border-blue-500 bg-blue-900/20"
                           : "border-gray-700"
@@ -448,9 +449,9 @@ const MenuForm: React.FC<MenuFormProps> = ({
                                 className="p-1.5"
                               >
                                 {isExpanded ? (
-                                  <ChevronUp size={20} color="#9CA3AF" />
+                                  <ChevronUp size={20} color={colors.label} />
                                 ) : (
-                                  <ChevronDown size={20} color="#9CA3AF" />
+                                  <ChevronDown size={20} color={colors.label} />
                                 )}
                               </TouchableOpacity>
                             )}
@@ -469,7 +470,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
                       </TouchableOpacity>
 
                       {isExpanded && categoryItems.length > 0 && (
-                        <View className="border-t border-gray-700 p-4 bg-[#2a2a2a]">
+                        <View className="border-t border-gray-700 p-4 bg-surface">
                           <Text className="text-lg text-gray-400 font-medium mb-2">
                             All Items in {category.name}:
                           </Text>
@@ -487,7 +488,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
                                     />
                                   ) : (
                                     <View className="w-full h-full bg-gray-600 items-center justify-center">
-                                      <Utensils color="#9ca3af" size={18} />
+                                      <Utensils color={colors.label} size={18} />
                                     </View>
                                   )}
                                 </View>
@@ -520,7 +521,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
               <Text className="text-xl font-semibold text-white mb-2">
                 Menu Preview ({totalItems} items)
               </Text>
-              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4">
+              <View className="bg-surface border border-gray-600 rounded-lg p-4">
                 {Object.entries(previewItems).map(([categoryName, items]) => (
                   <View key={categoryName} className="mb-3 last:mb-0">
                     <Text className="text-blue-400 font-medium mb-1.5 text-lg">
@@ -560,10 +561,10 @@ const MenuForm: React.FC<MenuFormProps> = ({
         onRequestClose={() => setShowConfirmation(false)}
       >
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
-          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+          <View className="bg-surface rounded-2xl p-4 w-full max-w-md border border-gray-600">
             <View className="items-center mb-4">
               <View className="w-16 h-16 bg-blue-600/20 rounded-full items-center justify-center mb-3">
-                <Save size={32} color="#60A5FA" />
+                <Save size={32} color={colors.info} />
               </View>
               <Text className="text-2xl font-bold text-white text-center">
                 {initialData ? "Update Menu?" : "Create Menu?"}
@@ -577,7 +578,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setShowConfirmation(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
+                className="flex-1 bg-panel border border-gray-600 rounded-lg py-3 items-center"
               >
                 <Text className="text-xl text-gray-300 font-medium">
                   Cancel

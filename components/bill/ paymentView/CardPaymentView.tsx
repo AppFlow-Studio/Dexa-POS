@@ -1,5 +1,6 @@
 import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
 import { useCFD } from "@/contexts/CFDProvider";
+import { colors } from "@/lib/theme";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
@@ -414,7 +415,7 @@ const CardPaymentView = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,
@@ -458,7 +459,7 @@ const CardPaymentView = () => {
                       className={`flex-1 py-3 rounded-xl border ${
                         selectedTipPreset === percent
                           ? "bg-blue-600 border-blue-500"
-                          : "bg-[#333] border-[#404040]"
+                          : "bg-surface border-border"
                       }`}
                     >
                       <Text
@@ -483,14 +484,14 @@ const CardPaymentView = () => {
                   ))}
                 </View>
                 {/* Custom Tip Input */}
-                <View className="flex-row items-center bg-[#2A2A2A] border border-[#333] rounded-xl px-4 h-16 w-full mb-8">
+                <View className="flex-row items-center bg-surface border border-border rounded-xl px-4 h-16 w-full mb-8">
                   <Text className="text-gray-400 text-xl mr-2">$</Text>
                   <BottomSheetTextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
                     placeholder="0.00"
                     keyboardType="numeric"
-                    placeholderTextColor="#525252"
+                    placeholderTextColor={colors.muted}
                     style={{
                       flex: 1,
                       fontSize: 24,
@@ -501,7 +502,7 @@ const CardPaymentView = () => {
                   />
                 </View>
 
-                <View className="flex-row justify-between w-full border-t border-[#333] pt-4">
+                <View className="flex-row justify-between w-full border-t border-border pt-4">
                   <Text className="text-gray-300 text-xl">Grand Total:</Text>
                   <Text className="text-white text-xl font-bold">
                     ${grandTotal.toFixed(2)}
@@ -517,10 +518,10 @@ const CardPaymentView = () => {
               {status === "processing" && (
                 <Animated.View entering={FadeIn} className="items-center">
                   <View className="w-24 h-24 bg-blue-600/10 rounded-full items-center justify-center mb-4 border-2 border-blue-500/20">
-                    <ActivityIndicator size="large" color="#3B82F6" />
+                    <ActivityIndicator size="large" color={colors.info} />
                   </View>
-                  <View className="flex-row items-center gap-2 bg-[#2A2A2A] px-4 py-2 rounded-full border border-[#333]">
-                    <Wifi size={16} color="#10B981" />
+                  <View className="flex-row items-center gap-2 bg-surface px-4 py-2 rounded-full border border-border">
+                    <Wifi size={16} color={colors.success} />
                     <Text className="text-gray-400 font-medium text-sm">
                       Terminal Connected
                     </Text>
@@ -534,7 +535,7 @@ const CardPaymentView = () => {
                   className="items-center"
                 >
                   <View className="w-24 h-24 bg-green-500/10 rounded-full items-center justify-center mb-4 border-2 border-green-500/20">
-                    <CheckCircle2 size={48} color="#10B981" />
+                    <CheckCircle2 size={48} color={colors.success} />
                   </View>
                   <Text className="text-green-400 font-bold text-lg">
                     Approved
@@ -570,7 +571,7 @@ const CardPaymentView = () => {
           {/* Receipt Breakdown Card */}
           {/* Only show simplified breakdown or nothing in ready state if unnecessary, keeping consistent for now */}
           {status !== "ready" && (
-            <View className="bg-[#2A2A2A] p-5 rounded-2xl border border-[#333333] mb-6">
+            <View className="bg-surface p-5 rounded-2xl border border-border mb-6">
               {activeSplit ? (
                 <View className="flex-row justify-between">
                   <Text className="text-gray-400 text-base">
@@ -600,7 +601,7 @@ const CardPaymentView = () => {
                     </View>
                   )}
 
-                  <View className="flex-row justify-between pt-3 border-t border-[#404040]">
+                  <View className="flex-row justify-between pt-3 border-t border-border">
                     <Text className="text-gray-400 text-base">Tax</Text>
                     <Text className="text-white text-base font-medium">
                       ${activeOrderOutstandingTax.toFixed(2)}
@@ -609,7 +610,7 @@ const CardPaymentView = () => {
                 </>
               )}
               {tipAmount > 0 && (
-                <View className="flex-row justify-between pt-3 border-t border-[#404040] mt-3">
+                <View className="flex-row justify-between pt-3 border-t border-border mt-3">
                   <Text className="text-gray-400 text-base">Tip</Text>
                   <Text className="text-white text-base font-medium">
                     ${tipAmount.toFixed(2)}
@@ -662,7 +663,7 @@ const CardPaymentView = () => {
                   close();
                 }
               }}
-              className={`w-full py-4 bg-[#2A2A2A] border border-[#404040] rounded-xl active:bg-[#333] ${isCancelling ? "opacity-50" : ""}`}
+              className={`w-full py-4 bg-surface border border-border rounded-xl active:bg-surface ${isCancelling ? "opacity-50" : ""}`}
             >
               <Text className="text-lg font-bold text-gray-300 text-center">
                 {isCancelling ? "Cancelling..." : "Cancel Transaction"}

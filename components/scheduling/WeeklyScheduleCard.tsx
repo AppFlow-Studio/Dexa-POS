@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { WeeklySchedule } from "@/lib/types";
 import { Calendar, Pencil, Trash2 } from "lucide-react-native";
 import React from "react";
@@ -28,13 +29,13 @@ const WeeklyScheduleCard: React.FC<WeeklyScheduleCardProps> = ({
     statusStyles[schedule.status] || statusStyles.draft;
 
   return (
-    <View className="bg-[#303030] border border-gray-700 rounded-2xl p-5 mb-4 shadow-sm w-full">
+    <View className="bg-panel border border-border rounded-2xl p-5 mb-4 shadow-sm w-full">
       {/* --- Header Section --- */}
       <View className="flex-row justify-between items-start">
         <View className="flex-row gap-4 flex-1 mr-2">
           {/* Icon Box */}
-          <View className="w-12 h-12 bg-[#252525] border border-gray-700 rounded-xl items-center justify-center">
-            <Calendar size={24} color="#60A5FA" />
+          <View className="w-12 h-12 bg-screen border border-border rounded-xl items-center justify-center">
+            <Calendar size={24} color={colors.info} />
           </View>
 
           {/* Text Content */}
@@ -74,9 +75,9 @@ const WeeklyScheduleCard: React.FC<WeeklyScheduleCardProps> = ({
           {/* Edit Button */}
           <TouchableOpacity
             onPress={onEdit}
-            className="w-11 h-11 border border-gray-600 rounded-xl bg-[#383838] items-center justify-center mr-3 active:bg-[#404040]"
+            className="w-11 h-11 border border-border rounded-xl bg-card items-center justify-center mr-3 active:bg-surface"
           >
-            <Pencil size={20} color="#E5E7EB" />
+            <Pencil size={20} color={colors.heading} />
           </TouchableOpacity>
 
           {/* Delete Button */}
@@ -84,7 +85,7 @@ const WeeklyScheduleCard: React.FC<WeeklyScheduleCardProps> = ({
             onPress={onDelete}
             className="w-11 h-11 border border-red-900/30 rounded-xl bg-red-500/10 items-center justify-center mr-3 active:bg-red-500/20"
           >
-            <Trash2 size={20} color="#EF4444" />
+            <Trash2 size={20} color={colors.danger} />
           </TouchableOpacity>
         </View>
         {/* Main Action Button */}

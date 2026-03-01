@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/ToastContext";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { ExternalExpenseLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
@@ -314,15 +315,15 @@ const CreateExternalExpenseScreen = () => {
           className="flex-1"
         >
           <ScrollView className="flex-1">
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <Text className="text-lg font-medium text-gray-300 mb-1.5">
                 Purchased By
               </Text>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
+                  <TouchableOpacity className="h-fit border border-border border-dashed rounded-lg p-3 flex-row items-center justify-between">
                     <View className="flex-row items-center">
-                      <User color="#9CA3AF" size={18} className="mr-1.5" />
+                      <User color={colors.label} size={18} className="mr-1.5" />
                       <Text className="text-xl text-white">
                         {selectedEmployeeId
                           ? employees.find((e) => e.id === selectedEmployeeId)
@@ -330,10 +331,10 @@ const CreateExternalExpenseScreen = () => {
                           : "Select..."}
                       </Text>
                     </View>
-                    <ChevronDown color="#9CA3AF" size={18} />
+                    <ChevronDown color={colors.label} size={18} />
                   </TouchableOpacity>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
+                <DropdownMenuContent className="w-72 bg-panel border-border">
                   {employees.map((employee) => (
                     <DropdownMenuItem
                       key={employee.id}
@@ -370,7 +371,7 @@ const CreateExternalExpenseScreen = () => {
               </DropdownMenu>
             </View>
 
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <Text className="text-xl font-semibold text-white mb-1.5">
                 Items
               </Text>
@@ -385,7 +386,7 @@ const CreateExternalExpenseScreen = () => {
                   `${item.inventoryItemId}-${index}`
                 }
                 renderItem={({ item, index }) => (
-                  <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
+                  <View className="flex-row items-center justify-between p-3 border-b border-border">
                     <View className="flex-1">
                       <Text className="text-xl text-white">
                         {item.itemName}
@@ -403,7 +404,7 @@ const CreateExternalExpenseScreen = () => {
                     <TouchableOpacity
                       onPress={() => handleRemoveItemFromExpense(index)}
                     >
-                      <Trash2 color="#EF4444" size={20} />
+                      <Trash2 color={colors.danger} size={20} />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -423,23 +424,23 @@ const CreateExternalExpenseScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <Text className="text-lg font-medium text-gray-300 mb-1.5">
                 Related PO (Optional)
               </Text>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
+                  <TouchableOpacity className="h-fit border border-border border-dashed rounded-lg p-3 flex-row items-center justify-between">
                     <Text className="text-xl text-white">
                       {selectedPOId
                         ? purchaseOrders.find((po) => po.id === selectedPOId)
                             ?.poNumber
                         : "Select..."}
                     </Text>
-                    <ChevronDown color="#9CA3AF" size={18} />
+                    <ChevronDown color={colors.label} size={18} />
                   </TouchableOpacity>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
+                <DropdownMenuContent className="w-72 bg-panel border-border">
                   <DropdownMenuItem
                     onPress={() => setSelectedPOId(null)}
                     className="flex-row items-center p-2"
@@ -480,7 +481,7 @@ const CreateExternalExpenseScreen = () => {
               </DropdownMenu>
             </View>
 
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <Text className="text-lg font-medium text-gray-300 mb-2">
                 Store Info (Optional)
               </Text>
@@ -491,10 +492,10 @@ const CreateExternalExpenseScreen = () => {
                   </Text>
                   <TextInput
                     value={storeName}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.label}
                     onChangeText={setStoreName}
                     placeholder="e.g., Fresh Market"
-                    className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                    className="text-white text-base bg-screen border border-border rounded-lg px-2 py-1.5 h-10"
                   />
                 </View>
                 <View>
@@ -503,24 +504,24 @@ const CreateExternalExpenseScreen = () => {
                     value={storeLocation}
                     onChangeText={setStoreLocation}
                     placeholder="e.g., 123 Main St"
-                    className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
-                    placeholderTextColor="#9CA3AF"
+                    className="text-white text-base bg-screen border border-border rounded-lg px-2 py-1.5 h-10"
+                    placeholderTextColor={colors.label}
                   />
                 </View>
               </View>
             </View>
 
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <Text className="text-lg font-medium text-gray-300 mb-1.5">
                 Notes (Optional)
               </Text>
               <TextInput
                 value={expenseNotes}
                 onChangeText={setExpenseNotes}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 placeholder="e.g., Vendor delay"
                 multiline
-                className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 min-h-[80px]"
+                className="text-white text-base bg-screen border border-border rounded-lg px-2 py-1.5 min-h-[80px]"
               />
             </View>
           </ScrollView>
@@ -535,9 +536,9 @@ const CreateExternalExpenseScreen = () => {
                 bounces={false}
                 className="rounded-2xl h-fit p-4 w-[550px]"
                 style={{
-                  backgroundColor: "#2b2b2b",
+                  backgroundColor: colors.panel,
                   borderWidth: 1,
-                  borderColor: "#4b5563",
+                  borderColor: colors.border,
                 }}
               >
                 <Text className="text-white text-xl font-bold mb-3">
@@ -548,34 +549,34 @@ const CreateExternalExpenseScreen = () => {
                   <TextInput
                     value={newItemName}
                     onChangeText={setNewItemName}
-                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                    className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                   />
                   <Text className="text-gray-300 mt-2 text-sm">Unit</Text>
                   <TextInput
                     value={newItemUnit}
                     onChangeText={setNewItemUnit}
-                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                    className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                   />
                   <Text className="text-gray-300 mt-2 text-sm">Cost/Unit</Text>
                   <TextInput
                     keyboardType="decimal-pad"
                     value={newItemCost}
                     onChangeText={setNewItemCost}
-                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                    className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                   />
                   <Text className="text-gray-300 mt-2 text-sm">Stock Qty</Text>
                   <TextInput
                     keyboardType="number-pad"
                     value={newItemStock}
                     onChangeText={setNewItemStock}
-                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                    className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                   />
                   <Text className="text-gray-300 mt-2 text-sm">Reorder</Text>
                   <TextInput
                     keyboardType="number-pad"
                     value={newItemReorder}
                     onChangeText={setNewItemReorder}
-                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                    className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                   />
                   <Text className="text-gray-300 mt-2 text-sm">
                     Expense Qty
@@ -584,12 +585,12 @@ const CreateExternalExpenseScreen = () => {
                     keyboardType="number-pad"
                     value={newItemPOQty}
                     onChangeText={setNewItemPOQty}
-                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                    className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                   />
                   <View className="flex-row gap-2 mt-3">
                     <TouchableOpacity
                       onPress={() => setNewItemModalOpen(false)}
-                      className="flex-1 py-2 rounded-lg border border-gray-600 items-center"
+                      className="flex-1 py-2 rounded-lg border border-border items-center"
                     >
                       <Text className="text-gray-300 text-base">Cancel</Text>
                     </TouchableOpacity>
@@ -612,8 +613,7 @@ const CreateExternalExpenseScreen = () => {
         ref={itemsSheetRef}
         index={-1}
         snapPoints={snapPoints}
-        backgroundStyle={{ backgroundColor: "#2b2b2b" }}
-        handleIndicatorStyle={{ backgroundColor: "#666" }}
+        {...bottomSheetTheme}
         topInset={60}
         enablePanDownToClose
         // 2. Add these props to handle keyboard interaction
@@ -629,17 +629,17 @@ const CreateExternalExpenseScreen = () => {
           />
         )}
       >
-        <View className="px-3 border-b border-gray-700 flex-row items-center justify-between">
+        <View className="px-3 border-b border-border flex-row items-center justify-between">
           <Text className="text-white text-lg font-bold">Select Item</Text>
-          <View className="mb-2 w-1/3 flex-row items-center gap-1.5 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5">
-            <Search color="#9CA3AF" size={16} />
+          <View className="mb-2 w-1/3 flex-row items-center gap-1.5 bg-screen border border-border rounded-lg px-2 py-1.5">
+            <Search color={colors.label} size={16} />
             {/* 3. Replace TextInput with BottomSheetTextInput */}
             <BottomSheetTextInput
               value={itemSearch}
               onChangeText={setItemSearch}
               placeholder="Search..."
               className="text-white w-full text-sm h-full"
-              placeholderTextColor={"#e5e7eb"}
+              placeholderTextColor={colors.heading}
               style={{ color: "white" }} // Explicit color often helps with BottomSheetTextInput
             />
           </View>
@@ -653,7 +653,7 @@ const CreateExternalExpenseScreen = () => {
         </View>
         <View className="px-3 py-2">
           {selectedInventoryItemId && (
-            <View className="mb-3 p-2 rounded-lg border border-gray-700 bg-[#383838]">
+            <View className="mb-3 p-2 rounded-lg border border-border bg-card">
               <Text className="text-white mb-1.5 text-base font-semibold">
                 Details -{" "}
                 {
@@ -670,7 +670,7 @@ const CreateExternalExpenseScreen = () => {
                     value={selectedQuantity}
                     onChangeText={setSelectedQuantity}
                     placeholder="1"
-                    className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                    className="text-white text-base bg-screen border border-border rounded-lg px-2 py-1.5 h-10"
                     style={{ color: "white" }}
                   />
                 </View>
@@ -681,7 +681,7 @@ const CreateExternalExpenseScreen = () => {
                     value={selectedUnitPrice}
                     onChangeText={setSelectedUnitPrice}
                     placeholder="0.00"
-                    className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                    className="text-white text-base bg-screen border border-border rounded-lg px-2 py-1.5 h-10"
                     style={{ color: "white" }}
                   />
                 </View>
@@ -692,9 +692,9 @@ const CreateExternalExpenseScreen = () => {
                   value={itemNotes}
                   onChangeText={setItemNotes}
                   placeholder="e.g., Organic"
-                  className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                  className="text-white text-base bg-screen border border-border rounded-lg px-2 py-1.5 h-10"
                   style={{ color: "white" }}
-                  placeholderTextColor={"#e5e7eb"}
+                  placeholderTextColor={colors.heading}
                 />
               </View>
               <Button
@@ -716,7 +716,7 @@ const CreateExternalExpenseScreen = () => {
                   setSelectedInventoryItemId(item.id);
                   setSelectedUnitPrice(item.cost.toString());
                 }}
-                className="p-3 border-b border-gray-700"
+                className="p-3 border-b border-border"
               >
                 <View className="flex-row justify-between items-center">
                   <View className="flex-1 pr-2">

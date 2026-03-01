@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { PaymentView, usePaymentStore } from "@/stores/usePaymentStore";
 import {
   Banknote,
@@ -78,7 +79,7 @@ const PaymentMethodSelectionView: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 4 }}
@@ -114,7 +115,7 @@ const PaymentMethodSelectionView: React.FC = () => {
                   ${
                     isSelected
                       ? "border-blue-500 bg-[#252b36]"
-                      : "border-[#333333] bg-[#262626]"
+                      : "border-border bg-surface"
                   }
                 `}
               >
@@ -122,11 +123,11 @@ const PaymentMethodSelectionView: React.FC = () => {
                 <View
                   className={`
                     w-12 h-12 rounded-xl items-center justify-center mr-4
-                    ${isSelected ? "bg-blue-600" : "bg-[#333333]"}
+                    ${isSelected ? "bg-blue-600" : "bg-surface"}
                   `}
                 >
                   <Icon
-                    color={isSelected ? "#FFFFFF" : "#9CA3AF"}
+                    color={isSelected ? "#FFFFFF" : colors.label}
                     size={24}
                     strokeWidth={isSelected ? 2.5 : 2}
                   />
@@ -155,8 +156,8 @@ const PaymentMethodSelectionView: React.FC = () => {
                   {isSelected ? (
                     <CheckCircle2
                       size={28}
-                      color="#3B82F6"
-                      fill="#3B82F6"
+                      color={colors.info}
+                      fill={colors.info}
                       stroke="#fff"
                     />
                   ) : (
@@ -170,12 +171,12 @@ const PaymentMethodSelectionView: React.FC = () => {
       </ScrollView>
 
       {/* Footer Buttons */}
-      <View className="bg-[#212121] pt-4 pb-4 border-t border-[#333333]">
+      <View className="bg-panel pt-4 pb-4 border-t border-border">
         <View className="flex-row gap-4">
           {/* Back / Cancel Button */}
           <TouchableOpacity
             onPress={() => (activeSplit ? handleBack() : close())}
-            className="flex-1 py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] active:bg-[#333333]"
+            className="flex-1 py-4 bg-surface rounded-xl border border-border active:bg-surface"
           >
             <Text className="text-center font-semibold text-lg text-gray-300">
               {activeSplit ? "Back" : "Cancel"}

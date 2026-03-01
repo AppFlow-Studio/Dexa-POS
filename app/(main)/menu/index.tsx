@@ -8,6 +8,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useTriggerPosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { colors } from "@/lib/theme";
 import { Menu, MenuItemType } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -230,13 +231,13 @@ const DraggableMenu = React.memo(({
   return (
     <Animated.View
       style={animatedStyle}
-      className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3"
+      className="bg-surface rounded-lg border border-gray-700 p-4 mb-3"
     >
       <View className="flex-row items-center justify-between mb-1.5">
         <View className="flex-row items-center gap-2">
           <GestureDetector gesture={panGesture}>
             <View className="p-2 cursor-grab">
-              <GripVertical size={20} color="#9CA3AF" />
+              <GripVertical size={20} color={colors.label} />
             </View>
           </GestureDetector>
           <Text className="text-2xl font-semibold text-white">{menu.name}</Text>
@@ -265,24 +266,24 @@ const DraggableMenu = React.memo(({
           <TouchableOpacity
             onPress={() => onToggleMenuActive(menu.id)}
             disabled={!isEditable}
-            className={`p-2 bg-[#212121] rounded border ${
+            className={`p-2 bg-panel rounded border ${
               isEditable ? "border-gray-600" : "border-gray-800 opacity-50"
             }`}
           >
             {menu.isActive ? (
               <Eye size={20} color={isEditable ? "#10B981" : "#4B5563"} />
             ) : (
-              <EyeOff size={20} color={isEditable ? "#EF4444" : "#4B5563"} />
+              <EyeOff size={20} color={isEditable ? colors.danger : "#4B5563"} />
             )}
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onEdit}
             disabled={!isEditable}
-            className={`p-2 bg-[#212121] rounded border ${
+            className={`p-2 bg-panel rounded border ${
               isEditable ? "border-gray-600" : "border-gray-800 opacity-50"
             }`}
           >
-            <Settings size={20} color={isEditable ? "#9CA3AF" : "#4B5563"} />
+            <Settings size={20} color={isEditable ? colors.label : "#4B5563"} />
           </TouchableOpacity>
         </View>
       </View>
@@ -395,13 +396,13 @@ const DraggableMenuCategory = React.memo(({
   return (
     <Animated.View
       style={animatedStyle}
-      className="bg-[#212121] rounded border border-gray-700"
+      className="bg-panel rounded border border-gray-700"
     >
       <View className="flex-row items-center justify-between p-4">
         <View className="flex-row items-center gap-2">
           <GestureDetector gesture={panGesture}>
             <View className="p-2 -ml-2 cursor-grab">
-              <GripVertical size={20} color="#6B7280" />
+              <GripVertical size={20} color={colors.muted} />
             </View>
           </GestureDetector>
           <TouchableOpacity
@@ -409,9 +410,9 @@ const DraggableMenuCategory = React.memo(({
             className="flex-row items-center gap-2"
           >
             {isExpanded ? (
-              <ChevronUp size={18} color="#9CA3AF" />
+              <ChevronUp size={18} color={colors.label} />
             ) : (
-              <ChevronDown size={18} color="#9CA3AF" />
+              <ChevronDown size={18} color={colors.label} />
             )}
             <Text className="text-gray-200 text-xl">{category.name}</Text>
             <View className="bg-blue-900/30 border border-blue-500 px-2 py-1 rounded">
@@ -446,7 +447,7 @@ const DraggableMenuCategory = React.memo(({
             {category.isActive ? (
               <Eye size={20} color={isEditable ? "#10B981" : "#4B5563"} />
             ) : (
-              <EyeOff size={20} color={isEditable ? "#EF4444" : "#4B5563"} />
+              <EyeOff size={20} color={isEditable ? colors.danger : "#4B5563"} />
             )}
           </TouchableOpacity>
         </View>
@@ -830,7 +831,7 @@ const MenuPage: React.FC = () => {
   }, [selectedStore?.id]);
 
   const renderMenusContent = () => (
-    <View className="flex-1 p-4 bg-[#212121]">
+    <View className="flex-1 p-4 bg-panel">
       <MenuHeader
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
@@ -882,7 +883,7 @@ const MenuPage: React.FC = () => {
   );
 
   const renderCategoriesContent = () => (
-    <View className="flex-1 p-4 bg-[#212121]">
+    <View className="flex-1 p-4 bg-panel">
       <MenuHeader
         title={`Categories (${storeCategories.length})`}
         onAddPress={handleAddCategory}
@@ -905,7 +906,7 @@ const MenuPage: React.FC = () => {
             const isExpanded = !!expandedCategories[categoryName.name];
             return (
               <View
-                className="bg-[#303030] rounded-lg border border-gray-700 p-4"
+                className="bg-surface rounded-lg border border-gray-700 p-4"
               >
                 <View className="flex-row justify-between items-center">
                   <TouchableOpacity
@@ -918,9 +919,9 @@ const MenuPage: React.FC = () => {
                     className="flex-row items-center gap-2 flex-1"
                   >
                     {isExpanded ? (
-                      <ChevronUp size={20} color="#9CA3AF" />
+                      <ChevronUp size={20} color={colors.label} />
                     ) : (
-                      <ChevronDown size={20} color="#9CA3AF" />
+                      <ChevronDown size={20} color={colors.label} />
                     )}
                     <Text className="font-medium text-white text-2xl">
                       {categoryName.name}
@@ -941,7 +942,7 @@ const MenuPage: React.FC = () => {
                           categoryName.name
                         )
                       }
-                      className={`p-2 bg-[#212121] rounded border ${
+                      className={`p-2 bg-panel rounded border ${
                         isEntityEditable(
                           categoryName.location_id,
                           categoryName.name
@@ -970,7 +971,7 @@ const MenuPage: React.FC = () => {
                               categoryName.location_id,
                               categoryName.name
                             )
-                              ? "#EF4444"
+                              ? colors.danger
                               : "#4B5563"
                           }
                         />
@@ -990,7 +991,7 @@ const MenuPage: React.FC = () => {
                           categoryName.name
                         )
                       }
-                      className={`p-2 bg-[#212121] rounded border ${
+                      className={`p-2 bg-panel rounded border ${
                         isEntityEditable(
                           categoryName.location_id,
                           categoryName.name
@@ -1006,7 +1007,7 @@ const MenuPage: React.FC = () => {
                             categoryName.location_id,
                             categoryName.name
                           )
-                            ? "#9CA3AF"
+                            ? colors.label
                             : "#4B5563"
                         }
                       />
@@ -1051,7 +1052,7 @@ const MenuPage: React.FC = () => {
                                   }
                                 );
                               }}
-                              className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2"
+                              className="flex-row items-center justify-between bg-panel border border-gray-700 rounded-lg px-3 py-2"
                             >
                               <View className="flex-row items-center gap-2 ">
                                 <Text className="text-lg text-white">
@@ -1096,7 +1097,7 @@ const MenuPage: React.FC = () => {
   );
 
   const renderItemsContent = () => (
-    <View className="flex-1 p-4 bg-[#212121]">
+    <View className="flex-1 p-4 bg-panel">
       <MenuHeader
         title={`Menu Items (${filteredItems.length})`}
         onAddPress={handleAddItem}
@@ -1157,7 +1158,7 @@ const MenuPage: React.FC = () => {
   );
 
   const renderModifiersContent = () => (
-    <View className="flex-1 p-4 bg-[#212121]">
+    <View className="flex-1 p-4 bg-panel">
       <MenuHeader
         title={`Modifier Groups (${uniqueModifierGroups.length})`}
         onAddPress={() => router.push("/menu/add-modifier")}
@@ -1177,7 +1178,7 @@ const MenuPage: React.FC = () => {
         initialNumToRender={5}
         renderItem={({ item: modifierGroup }) => (
             <View
-              className="bg-[#303030] rounded-lg border border-gray-700 p-4"
+              className="bg-surface rounded-lg border border-gray-700 p-4"
             >
               <View className="flex-row items-center justify-between mb-3">
                 <View className="flex-row items-center gap-2 flex-wrap">
@@ -1240,7 +1241,7 @@ const MenuPage: React.FC = () => {
                         modifierGroup.name
                       )
                     }
-                    className={`p-2 bg-[#212121] rounded border ${
+                    className={`p-2 bg-panel rounded border ${
                       isEntityEditable(
                         modifierGroup.location_id,
                         modifierGroup.name
@@ -1256,7 +1257,7 @@ const MenuPage: React.FC = () => {
                           modifierGroup.location_id,
                           modifierGroup.name
                         )
-                          ? "#9CA3AF"
+                          ? colors.label
                           : "#4B5563"
                       }
                     />
@@ -1273,7 +1274,7 @@ const MenuPage: React.FC = () => {
                   {modifierGroup.options.slice(0, 5).map((option, index) => (
                     <View
                       key={index}
-                      className="bg-[#212121] border border-gray-600 px-3 py-2 rounded-lg"
+                      className="bg-panel border border-gray-600 px-3 py-2 rounded-lg"
                     >
                       <Text className="text-lg text-gray-200">
                         {option.name}
@@ -1287,7 +1288,7 @@ const MenuPage: React.FC = () => {
                     </View>
                   ))}
                   {modifierGroup.options.length > 5 && (
-                    <View className="bg-[#212121] border border-gray-600 px-3 py-2 rounded-lg">
+                    <View className="bg-panel border border-gray-600 px-3 py-2 rounded-lg">
                       <Text className="text-lg text-gray-400">
                         +{modifierGroup.options.length - 5} more
                       </Text>
@@ -1305,7 +1306,7 @@ const MenuPage: React.FC = () => {
                   {modifierGroup.items.slice(0, 3).map((item) => (
                     <View
                       key={item.id}
-                      className="flex-row items-center justify-between bg-[#212121] p-3 rounded border border-gray-700"
+                      className="flex-row items-center justify-between bg-panel p-3 rounded border border-gray-700"
                     >
                       <View className="flex-row items-center gap-3">
                         <View className="w-10 h-10 rounded border border-gray-600 overflow-hidden">
@@ -1322,7 +1323,7 @@ const MenuPage: React.FC = () => {
                             />
                           ) : (
                             <View className="w-full h-full bg-gray-600 items-center justify-center">
-                              <Utensils color="#9ca3af" size={20} />
+                              <Utensils color={colors.label} size={20} />
                             </View>
                           )}
                         </View>
@@ -1360,7 +1361,7 @@ const MenuPage: React.FC = () => {
                     </View>
                   ))}
                   {modifierGroup.items.length > 3 && (
-                    <View className="bg-[#212121] p-3 rounded border border-gray-700 items-center">
+                    <View className="bg-panel p-3 rounded border border-gray-700 items-center">
                       <Text className="text-lg text-gray-400">
                         +{modifierGroup.items.length - 3} more items use this
                         modifier
@@ -1376,10 +1377,10 @@ const MenuPage: React.FC = () => {
   );
 
   const renderSchedulesContent = () => (
-    <View className="flex-1 p-4 bg-[#212121]">
+    <View className="flex-1 p-4 bg-panel">
       <View className="flex-row items-center justify-between mb-4">
         <Text className="text-2xl font-bold text-white">Schedules</Text>
-        <View className="flex-row bg-[#303030] border border-gray-600 rounded-lg p-1">
+        <View className="flex-row bg-surface border border-gray-600 rounded-lg p-1">
           <TouchableOpacity
             onPress={() => setScheduleViewType("menus")}
             className={`px-4 py-2 rounded-md ${
@@ -1418,7 +1419,7 @@ const MenuPage: React.FC = () => {
             ? menus.map((menu) => (
                 <View
                   key={menu.id}
-                  className="bg-[#303030] rounded-lg border border-gray-700 p-4"
+                  className="bg-surface rounded-lg border border-gray-700 p-4"
                 >
                   <View className="flex-row items-center justify-between mb-1.5">
                     <Text className="text-xl text-white font-semibold">
@@ -1457,7 +1458,7 @@ const MenuPage: React.FC = () => {
                       {menu.schedules!.map((r) => (
                         <View
                           key={r.id}
-                          className="flex-row justify-between bg-[#212121] p-3 rounded border border-gray-700"
+                          className="flex-row justify-between bg-panel p-3 rounded border border-gray-700"
                         >
                           <Text className="text-lg text-gray-200">
                             {r.name || r.id}
@@ -1486,7 +1487,7 @@ const MenuPage: React.FC = () => {
             : storeCategories.map((category) => (
                 <View
                   key={category.id}
-                  className="bg-[#303030] rounded-lg border border-gray-700 p-4"
+                  className="bg-surface rounded-lg border border-gray-700 p-4"
                 >
                   <View className="flex-row items-center justify-between mb-1.5">
                     <Text className="text-xl text-white font-semibold">
@@ -1527,7 +1528,7 @@ const MenuPage: React.FC = () => {
                       {category.schedules!.map((r) => (
                         <View
                           key={r.id}
-                          className="flex-row justify-between bg-[#212121] p-3 rounded border border-gray-700"
+                          className="flex-row justify-between bg-panel p-3 rounded border border-gray-700"
                         >
                           <Text className="text-lg text-gray-200">
                             {r.name || r.id}
@@ -1576,7 +1577,7 @@ const MenuPage: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       {renderContent()}
       <PriceEditBottomSheet
         ref={priceEditRef}
@@ -1629,7 +1630,7 @@ const MenuItemCard = React.memo(({
     <TouchableOpacity
       onPress={() => onPriceEdit?.(item)}
       activeOpacity={onPriceEdit ? 0.7 : 1}
-      className="bg-[#303030] max-h-48 rounded-lg border border-gray-700 p-3"
+      className="bg-surface max-h-48 rounded-lg border border-gray-700 p-3"
     >
       <View className="flex-row items-start gap-3">
         <View className="h-full aspect-square rounded-lg border border-gray-600">
@@ -1644,7 +1645,7 @@ const MenuItemCard = React.memo(({
             />
           ) : (
             <View className="w-full h-full rounded-lg bg-gray-100 items-center justify-center">
-              <Utensils color="#9ca3af" size={24} />
+              <Utensils color={colors.label} size={24} />
             </View>
           )}
         </View>
@@ -1720,7 +1721,7 @@ const MenuItemCard = React.memo(({
                 : "bg-blue-900/30 border border-blue-500"
             }`}
           >
-            <Edit size={20} color={editDisabled ? "#6B7280" : "#60A5FA"} />
+            <Edit size={20} color={editDisabled ? colors.muted : colors.info} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1732,7 +1733,7 @@ const MenuItemCard = React.memo(({
                 : "bg-red-900/30 border border-red-500"
             }`}
           >
-            <Trash2 size={20} color={editDisabled ? "#6B7280" : "#F87171"} />
+            <Trash2 size={20} color={editDisabled ? colors.muted : colors.danger} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={
@@ -1742,9 +1743,9 @@ const MenuItemCard = React.memo(({
             className={`p-1.5 ${editDisabled ? "opacity-50" : ""}`}
           >
             {item.availability !== false ? (
-              <Eye size={20} color={editDisabled ? "#6B7280" : "#10B981"} />
+              <Eye size={20} color={editDisabled ? colors.muted : "#10B981"} />
             ) : (
-              <EyeOff size={20} color={editDisabled ? "#6B7280" : "#EF4444"} />
+              <EyeOff size={20} color={editDisabled ? colors.muted : colors.danger} />
             )}
           </TouchableOpacity>
         </View>

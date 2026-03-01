@@ -5,6 +5,7 @@
  * Displays color-coded payment status badge for tables.
  */
 
+import { PAYMENT_STATUS_COLORS } from "@/lib/theme";
 import React from "react";
 import { Text, View } from "react-native";
 
@@ -15,26 +16,20 @@ interface PaymentStatusBadgeProps {
   size?: "sm" | "md";
 }
 
-// Color mappings for payment statuses
-const STATUS_COLORS: Record<PaymentStatus, string> = {
-  Paid: "bg-green-500",
-  Partial: "bg-yellow-500",
-  Pending: "bg-gray-500",
-  Unpaid: "bg-red-500",
-};
-
 export const PaymentStatusBadge: React.FC<PaymentStatusBadgeProps> = ({
   status,
   size = "sm",
 }) => {
-  const bgColor = STATUS_COLORS[status];
   const sizeClasses = size === "sm"
     ? "px-2 py-0.5"
     : "px-3 py-1";
   const textSizeClass = size === "sm" ? "text-xs" : "text-sm";
 
   return (
-    <View className={`${bgColor} ${sizeClasses} rounded-full`}>
+    <View
+      className={`${sizeClasses} rounded-full`}
+      style={{ backgroundColor: PAYMENT_STATUS_COLORS[status] }}
+    >
       <Text className={`${textSizeClass} text-white font-semibold`}>
         {status}
       </Text>

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Sparkles } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -17,14 +18,14 @@ const TemplateDrawer: React.FC<TemplateDrawerProps> = ({ onApplyTemplate }) => {
   return (
     <View className="gap-y-3">
       <View className="flex-row items-center gap-2 mb-4">
-        <Sparkles className="text-blue-400" size={16} color={"#60a5fa"} />
+        <Sparkles className="text-blue-400" size={16} color={colors.info} />
         <Text className="text-sm font-semibold text-white">Templates</Text>
       </View>
       {activeTemplates.length > 0 ? (
         activeTemplates.map((template) => (
           <TouchableOpacity
             key={template.id}
-            className="p-3 bg-[#212121] border border-gray-700 rounded-lg active:border-blue-500"
+            className="p-3 bg-screen border border-border rounded-lg active:border-blue-500"
             onPress={() => onApplyTemplate(template.id)}
           >
             <Text className="text-sm font-medium text-white mb-1">

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { CartItem, OrderProfile } from "@/lib/types";
 import { ChevronDown, ChevronRight, CreditCard, DollarSign } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -131,16 +132,16 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
             {/* Payment Header - Clickable */}
             <Pressable
               onPress={() => togglePayment(paymentId)}
-              className="bg-[#303030] rounded-lg border border-gray-700 p-4"
+              className="bg-panel rounded-lg border border-border p-4"
             >
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center gap-3 flex-1">
                   {/* Payment icon */}
                   <View className="w-10 h-10 bg-blue-600/20 border border-blue-500 rounded-full items-center justify-center">
                     {paymentMethod.toLowerCase().includes("card") ? (
-                      <CreditCard color="#3B82F6" size={20} />
+                      <CreditCard color={colors.info} size={20} />
                     ) : (
-                      <DollarSign color="#3B82F6" size={20} />
+                      <DollarSign color={colors.info} size={20} />
                     )}
                   </View>
 
@@ -163,9 +164,9 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
 
                   {/* Expand/Collapse icon */}
                   {isExpanded ? (
-                    <ChevronDown color="#9CA3AF" size={24} />
+                    <ChevronDown color={colors.label} size={24} />
                   ) : (
-                    <ChevronRight color="#9CA3AF" size={24} />
+                    <ChevronRight color={colors.label} size={24} />
                   )}
                 </View>
               </View>
@@ -173,7 +174,7 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
 
             {/* Expanded content - Item list */}
             {isExpanded && (
-              <View className="bg-[#2A2A2A] border border-gray-700 rounded-b-lg mt-1 p-4">
+              <View className="bg-screen border border-border rounded-b-lg mt-1 p-4">
                 {coveredItems.length > 0 ? (
                   <View>
                     <Text className="text-gray-400 text-sm mb-3 font-semibold">
@@ -186,7 +187,7 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
                       return (
                         <View
                           key={idx}
-                          className="flex-row items-center justify-between py-2 border-b border-gray-700 last:border-b-0"
+                          className="flex-row items-center justify-between py-2 border-b border-border last:border-b-0"
                         >
                           <View className="flex-1">
                             <Text className="text-white font-medium">
@@ -205,7 +206,7 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
                     })}
 
                     {/* Total for this payment */}
-                    <View className="flex-row items-center justify-between pt-3 mt-2 border-t border-gray-600">
+                    <View className="flex-row items-center justify-between pt-3 mt-2 border-t border-border">
                       <Text className="text-white font-bold">Total Covered</Text>
                       <Text className="text-white font-bold text-lg">
                         ${totalCovered.toFixed(2)}

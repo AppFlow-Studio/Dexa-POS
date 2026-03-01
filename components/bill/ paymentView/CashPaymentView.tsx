@@ -1,5 +1,6 @@
 import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
 import { useCFD } from "@/contexts/CFDProvider";
+import { colors } from "@/lib/theme";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTerminalStatus } from "@/hooks/useTerminalStatus";
 import {
@@ -399,7 +400,7 @@ const CashPaymentView = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
@@ -407,7 +408,7 @@ const CashPaymentView = () => {
         {/* Header */}
         <View className="items-center py-6 pt-2">
           <View className="w-16 h-16 bg-green-900/20 rounded-full items-center justify-center mb-3">
-            <Banknote size={32} color="#10B981" />
+            <Banknote size={32} color={colors.success} />
           </View>
           <Text className="text-2xl font-bold text-white">Cash Payment</Text>
           <Text className="text-gray-400">
@@ -429,9 +430,9 @@ const CashPaymentView = () => {
         )}
 
         {/* Main Card */}
-        <View className="mx-4 bg-[#2A2A2A] rounded-2xl border border-[#333] overflow-hidden">
+        <View className="mx-4 bg-surface rounded-2xl border border-border overflow-hidden">
           {/* Top Section: Amount Due */}
-          <View className="p-6 items-center border-b border-[#333]">
+          <View className="p-6 items-center border-b border-border">
             <Text className="text-gray-400 uppercase tracking-widest text-xs font-bold mb-2">
               Total Due
             </Text>
@@ -441,24 +442,24 @@ const CashPaymentView = () => {
           </View>
 
           {/* Middle Section: Input */}
-          <View className="p-4 bg-[#262626]">
+          <View className="p-4 bg-surface">
             <Text className="text-gray-400 mb-2 font-medium">
               Amount Received
             </Text>
-            <View className="flex-row items-center bg-[#1A1A1A] border border-[#404040] rounded-xl px-4 h-16">
-              <DollarSign size={20} color="#9CA3AF" />
+            <View className="flex-row items-center bg-panel border border-border rounded-xl px-4 h-16">
+              <DollarSign size={20} color={colors.label} />
               <TextInput
                 value={amountTendered}
                 onChangeText={setAmountTendered}
                 placeholder="0.00"
                 keyboardType="numeric"
                 className="flex-1 text-2xl font-bold text-white ml-2 h-full"
-                placeholderTextColor="#525252"
+                placeholderTextColor={colors.muted}
                 autoFocus={false}
               />
               {amountTendered.length > 0 && (
                 <TouchableOpacity onPress={() => setAmountTendered("")}>
-                  <Delete size={20} color="#6B7280" />
+                  <Delete size={20} color={colors.muted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -467,7 +468,7 @@ const CashPaymentView = () => {
             <View className="flex-row flex-wrap gap-2 mt-4">
               <TouchableOpacity
                 onPress={handleSelectExact}
-                className="flex-grow bg-[#333] border border-[#404040] py-3 px-4 rounded-lg active:bg-[#404040]"
+                className="flex-grow bg-surface border border-border py-3 px-4 rounded-lg active:bg-surface"
               >
                 <Text className="text-blue-400 font-bold text-center">
                   Exact
@@ -478,7 +479,7 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   key={bill}
                   onPress={() => handleSelectAmount(bill)}
-                  className="flex-grow bg-[#333] border border-[#404040] py-3 px-4 rounded-lg active:bg-[#404040]"
+                  className="flex-grow bg-surface border border-border py-3 px-4 rounded-lg active:bg-surface"
                 >
                   <Text className="text-white font-bold text-center">
                     ${bill}
@@ -489,7 +490,7 @@ const CashPaymentView = () => {
           </View>
 
           {/* Tip Section */}
-          <View className="p-4 bg-[#262626] border-t border-[#333]">
+          <View className="p-4 bg-surface border-t border-border">
             <Text className="text-gray-400 mb-2 font-medium">Tip Amount</Text>
             {/* Preset Tip Buttons */}
             <View className="flex-row gap-2 mb-3">
@@ -500,7 +501,7 @@ const CashPaymentView = () => {
                   className={`flex-1 py-2 rounded-xl border ${
                     selectedTipPreset === percent
                       ? "bg-blue-600 border-blue-500"
-                      : "bg-[#333] border-[#404040]"
+                      : "bg-surface border-border"
                   }`}
                 >
                   <Text
@@ -525,21 +526,21 @@ const CashPaymentView = () => {
               ))}
             </View>
             {/* Custom Tip Input */}
-            <View className="flex-row items-center bg-[#1A1A1A] border border-[#404040] rounded-xl px-4 h-16">
-              <DollarSign size={20} color="#9CA3AF" />
+            <View className="flex-row items-center bg-panel border border-border rounded-xl px-4 h-16">
+              <DollarSign size={20} color={colors.label} />
               <TextInput
                 value={tipInput}
                 onChangeText={handleTipInputChange}
                 placeholder="0.00"
                 keyboardType="numeric"
                 className="flex-1 text-2xl font-bold text-white ml-2 h-full"
-                placeholderTextColor="#525252"
+                placeholderTextColor={colors.muted}
               />
             </View>
           </View>
 
           {/* Grand Total Section - Shows when tip is added */}
-          <View className="p-4 bg-[#1A1A1A] border-t border-[#333]">
+          <View className="p-4 bg-panel border-t border-border">
             <View className="flex-row justify-between items-center">
               <Text className="text-gray-400 text-sm">Bill Total</Text>
               <Text className="text-gray-400 text-sm">${total.toFixed(2)}</Text>
@@ -552,7 +553,7 @@ const CashPaymentView = () => {
                 </Text>
               </View>
             )}
-            <View className="flex-row justify-between items-center mt-2 pt-2 border-t border-[#333]">
+            <View className="flex-row justify-between items-center mt-2 pt-2 border-t border-border">
               <Text className="text-white font-bold text-lg">Grand Total</Text>
               <Text className="text-blue-400 font-bold text-2xl">
                 ${grandTotal.toFixed(2)}
@@ -563,7 +564,7 @@ const CashPaymentView = () => {
           {/* Bottom Section: Change Calculation */}
           <View
             className={`p-6 flex-row justify-between items-center ${
-              isSufficient ? "bg-green-900/10" : "bg-[#2A2A2A]"
+              isSufficient ? "bg-green-900/10" : "bg-surface"
             }`}
           >
             <Text className="text-lg font-medium text-gray-300">
@@ -589,14 +590,14 @@ const CashPaymentView = () => {
       />
 
       {/* Footer Buttons */}
-      <View className="absolute bottom-0 left-0 right-0 bg-[#212121] pt-2 pb-10 border-t border-[#333]">
+      <View className="absolute bottom-0 left-0 right-0 bg-panel pt-2 pb-10 border-t border-border">
         <View className="flex-row gap-4 px-4">
           <TouchableOpacity
             onPress={handleBack}
             disabled={isProcessing}
-            className={`flex-1 py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] ${isProcessing ? "opacity-50" : ""}`}
+            className={`flex-1 py-4 bg-surface rounded-xl border border-border flex-row items-center justify-center active:bg-surface ${isProcessing ? "opacity-50" : ""}`}
           >
-            <ArrowLeft size={20} color="#D1D5DB" className="mr-2" />
+            <ArrowLeft size={20} color={colors.heading} className="mr-2" />
             <Text className="text-gray-300 font-semibold text-lg">Back</Text>
           </TouchableOpacity>
 
@@ -607,7 +608,7 @@ const CashPaymentView = () => {
               ${
                 (isSufficient || total === 0) && !isProcessing // && terminalReady
                   ? "bg-blue-600 active:bg-blue-700"
-                  : "bg-[#333] border border-[#404040]"
+                  : "bg-surface border border-border"
               }`}
           >
             <Text

@@ -1,8 +1,9 @@
 import { useToast } from "@/contexts/ToastContext";
 import { CartItem } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import {
-    getAutoRetryCount,
-    isAutoRetryInProgress,
+  getAutoRetryCount,
+  isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
@@ -12,12 +13,12 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import {
-    AlertTriangle,
-    Clock,
-    Plus,
-    RefreshCw,
-    Send,
-    WifiOff,
+  AlertTriangle,
+  Clock,
+  Plus,
+  RefreshCw,
+  Send,
+  WifiOff,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -143,7 +144,9 @@ const BillSectionContent = ({
   useEffect(() => {
     if (!hasFailedSyncs && !hasPendingSyncs) {
       setAutoRetryState((prev) =>
-        prev.isRetrying || prev.count !== 0 ? { isRetrying: false, count: 0 } : prev
+        prev.isRetrying || prev.count !== 0
+          ? { isRetrying: false, count: 0 }
+          : prev,
       );
       return;
     }
@@ -153,7 +156,9 @@ const BillSectionContent = ({
       const isRetrying = isAutoRetryInProgress();
       const count = getAutoRetryCount();
       setAutoRetryState((prev) =>
-        prev.isRetrying === isRetrying && prev.count === count ? prev : { isRetrying, count }
+        prev.isRetrying === isRetrying && prev.count === count
+          ? prev
+          : { isRetrying, count },
       );
     };
 
@@ -221,12 +226,7 @@ const BillSectionContent = ({
       cart.length === 0 ||
       displayBalanceDue <= 0 ||
       isProcessing,
-    [
-      activeOrderId,
-      cart.length,
-      displayBalanceDue,
-      isProcessing,
-    ],
+    [activeOrderId, cart.length, displayBalanceDue, isProcessing],
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
   // OPTIMIZED: Wrap callbacks with useCallback to prevent recreation on each render
@@ -344,7 +344,7 @@ const BillSectionContent = ({
 
   if (!activeOrderId)
     return (
-      <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
+      <View className="w-1/3 items-center justify-center p-8 bg-background ">
         <Text className="text-xl font-semibold text-white mb-4">
           No Active Order
         </Text>
@@ -368,12 +368,12 @@ const BillSectionContent = ({
   };
 
   return (
-    <View className="w-1/3 bg-[#303030]">
+    <View className="w-1/3 bg-background border-r-2 border-border " >
       {showOrderDetails && <OrderDetails />}
 
       {/* Offline / Sync Status Banner */}
       {(!isOnline || hasFailedSyncs || pendingSyncCount > 0) && (
-        <View className="px-4 py-2 bg-[#212121]">
+        <View className="px-4 py-2" style={{ backgroundColor: colors.panel }}>
           {/* Offline Mode Banner */}
           {!isOnline && (
             <View className="flex-row items-center justify-center bg-amber-600 px-3 py-2 rounded-lg mb-2">
@@ -449,68 +449,78 @@ const BillSectionContent = ({
       )}
 
       <BillItemsAndTotals cart={cart} />
-      <View className="py-3 px-4 bg-[#212121]">
-        <View className="flex-row gap-4">
+      <View className="py-2 px-4" >
+        <View className="flex-row gap-3">
           {/* Start New Order Button */}
           <TouchableOpacity
             onPress={handleStartNewOrder}
-            className="flex-1 py-1.5 flex-row items-center justify-center gap-2 bg-[#303030] rounded-xl border border-gray-600"
+            className="w-1/5 py-1.5 px-3 flex-row items-center justify-center gap-1.5 rounded-lg border"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            <Plus color="#22c55e" size={20} />
-            <Text className="text-center text-lg font-bold text-white">
-              New Order
+            <Plus color={colors.success} size={18} />
+            <Text className="text-center text-base font-semibold text-white">
+              New
             </Text>
           </TouchableOpacity>
 
-          {/* Send to Kitchen Button - matching previous colors but with new layout */}
+          {/* Send to Kitchen Button - secondary styling */}
           <TouchableOpacity
-            className={`flex-1 py-1.5 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${
-              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
+            className={`flex-1 py-1.5 px-2 flex-row items-center justify-center gap-2 rounded-lg border ${
+              newItemsCount === 0 || hasDraftItems
+                ? "opacity-40"
+                : ""
             }`}
+            style={{
+              backgroundColor: newItemsCount === 0 || hasDraftItems ? colors.panel : colors.card,
+              borderColor: colors.border,
+            }}
             disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
-            activeOpacity={0.85}
+            activeOpacity={1}
           >
             {hasPendingSyncs ? (
-              <ActivityIndicator size={10} color="#60A5FA" />
+              <ActivityIndicator size={10} color={colors.info} />
             ) : null}
-            <Text className="text-center text-lg font-bold text-white">
-              Send to Kitchen ({newItemsCount})
+            {/* <Send size={16} color="#9CA3AF" /> */}
+            <Text className="text-center text-base font-semibold text-gray-300">
+              Send to Kitchen
             </Text>
-            <Send size={18} color="#9CA3AF" />
+            <Text
+              className={`text-sm mr-2 rounded-full bg-blue-600 px-3 py-1 text-white`}
+            >
+              {newItemsCount}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
-      <View className="bg-[#212121]">
-        <View className="h-[0.5px] w-[90%] self-center bg-gray-600" />
-      </View>
       {showPlaymentActions && (
-        <View className="py-3 px-4 bg-[#212121]">
-          <View className="flex-row gap-4">
+        <View className="px-4 pt-1 pb-3" >
+          <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
-              className="flex-1 py-1.5 bg-[#303030] rounded-xl border border-gray-600"
+              className="w-1/5 h-14 items-center justify-center rounded-xl border"
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
-              <Text className="text-center text-lg font-bold text-white">
+              <Text className="text-center text-base font-bold text-gray-300">
                 More
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={isPayButtonDisabled}
-              className={`flex-1 py-1.5 rounded-xl flex-row items-center justify-center gap-2 ${
+              className={`flex-1 h-14 rounded-xl flex-row items-center justify-center gap-2 ${
                 isPayButtonDisabled
-                  ? "bg-gray-500"
+                  ? "bg-gray-600"
                   : isPartiallyPaid
                     ? "bg-green-600"
                     : "bg-blue-600"
               }`}
             >
               {hasPendingSyncs || isProcessing ? (
-                <ActivityIndicator size={10} color="#FFFFFF" />
+                <ActivityIndicator size={14} color="#FFFFFF" />
               ) : null}
               <Text
-                className={`text-center text-lg font-bold ${
+                className={`text-center text-xl font-bold ${
                   isPayButtonDisabled ? "text-gray-400" : "text-white"
                 }`}
               >
@@ -521,7 +531,6 @@ const BillSectionContent = ({
             </TouchableOpacity>
           </View>
           {/* Cash Discount Option */}
-
           <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
             <Text className="text-center text-sm text-green-400">
               Pay cash: ${cashBalanceDue?.toFixed(2)} (save $

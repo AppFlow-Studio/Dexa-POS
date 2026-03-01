@@ -4,6 +4,7 @@ import ReportChart from "@/components/analytics/ReportChart";
 import ReportTable from "@/components/analytics/ReportTable";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { colors } from "@/lib/theme";
 import { ArrowLeft, Download, Share } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -150,7 +151,7 @@ const ReportViewScreen = () => {
 
   if (isLoading && !currentReportData) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center">
+      <View className="flex-1 bg-screen items-center justify-center">
         <Text className="text-xl text-white">Loading report...</Text>
       </View>
     );
@@ -158,13 +159,13 @@ const ReportViewScreen = () => {
 
   // if (error) {
   //     return (
-  //         <View className="flex-1 bg-[#212121] p-6">
+  //         <View className="flex-1 bg-screen p-6">
   //             <View className="flex-row items-center mb-6">
   //                 <TouchableOpacity
   //                     onPress={() => router.back()}
   //                     className="mr-4 p-2"
   //                 >
-  //                     <ArrowLeft color="#9CA3AF" size={24} />
+  //                     <ArrowLeft color={colors.label} size={24} />
   //                 </TouchableOpacity>
   //                 <Text className="text-2xl font-bold text-white">Report Error</Text>
   //             </View>
@@ -185,18 +186,18 @@ const ReportViewScreen = () => {
 
   if (!currentReportData) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center">
+      <View className="flex-1 bg-screen items-center justify-center">
         <Text className="text-xl text-white">No report data available</Text>
       </View>
     );
   }
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-6 border-b border-gray-700">
+      <View className="flex-row items-center justify-between p-6 border-b border-border">
         <View className="flex-row items-center">
           {/* <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2">
-            <ArrowLeft color="#9CA3AF" size={24} />
+            <ArrowLeft color={colors.label} size={24} />
           </TouchableOpacity> */}
           <View>
             <Text className="text-2xl font-bold text-white">
@@ -211,16 +212,16 @@ const ReportViewScreen = () => {
         <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={() => {}}
-            className="p-3 bg-[#303030] border border-gray-600 rounded-xl"
+            className="p-3 bg-panel border border-border rounded-xl"
           >
-            <Download color="#9CA3AF" size={20} />
+            <Download color={colors.label} size={20} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleRefresh}
-            className="p-3 bg-[#303030] border border-gray-600 rounded-xl"
+            className="p-3 bg-panel border border-border rounded-xl"
             disabled={isLoading}
           >
-            <Share color="#9CA3AF" size={20} />
+            <Share color={colors.label} size={20} />
           </TouchableOpacity>
         </View>
       </View>
@@ -235,7 +236,7 @@ const ReportViewScreen = () => {
             Key Performance Indicators
           </Text>
           <View className="flex-row flex-wrap gap-4">
-            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+            <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
               <View className="flex-row items-center justify-between mb-2">
                 <Text className="text-sm text-gray-400">Gross Margin</Text>
                 <KpiTooltip definition="Percentage of revenue remaining after subtracting cost of goods sold" />
@@ -245,7 +246,7 @@ const ReportViewScreen = () => {
               </Text>
             </View>
 
-            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+            <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
               <View className="flex-row items-center justify-between mb-2">
                 <Text className="text-sm text-gray-400">Total Revenue</Text>
                 <KpiTooltip definition="Total sales revenue for the selected period" />
@@ -255,7 +256,7 @@ const ReportViewScreen = () => {
               </Text>
             </View>
 
-            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+            <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
               <View className="flex-row items-center justify-between mb-2">
                 <Text className="text-sm text-gray-400">Avg Order Value</Text>
                 <KpiTooltip definition="Average value per order" />
@@ -265,7 +266,7 @@ const ReportViewScreen = () => {
               </Text>
             </View>
 
-            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+            <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
               <View className="flex-row items-center justify-between mb-2">
                 <Text className="text-sm text-gray-400">Total Orders</Text>
                 <KpiTooltip definition="Total number of orders placed" />
@@ -280,7 +281,7 @@ const ReportViewScreen = () => {
         {/* Chart Section */}
         <View className="mt-8">
           <Text className="text-xl font-bold text-white mb-4">Chart</Text>
-          <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
+          <View className="bg-panel p-6 rounded-2xl border border-border">
             <ReportChart
               data={currentReportData.chartData}
               chartType={chartType}
@@ -295,7 +296,7 @@ const ReportViewScreen = () => {
           <Text className="text-xl font-bold text-white mb-4">
             Detailed Data
           </Text>
-          <View className="bg-[#303030] w-full rounded-2xl border border-gray-600 overflow-hidden">
+          <View className="bg-panel w-full rounded-2xl border border-border overflow-hidden">
             <ReportTable data={currentReportData.tableData} />
           </View>
         </View>

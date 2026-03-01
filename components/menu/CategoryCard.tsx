@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { Settings } from "lucide-react-native";
@@ -23,7 +24,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   const categoryDetails = categories.find((c) => c.name === categoryName);
 
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
+    <View className="bg-surface rounded-lg border border-gray-700 p-4 mb-3">
       <View className="flex-row justify-between items-center">
         <TouchableOpacity
           onPress={() => onToggleExpand(categoryName)}
@@ -40,9 +41,9 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={onEdit}
-            className="p-2 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-panel rounded border border-gray-600"
           >
-            <Settings size={20} color="#9CA3AF" />
+            <Settings size={20} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>
@@ -58,7 +59,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
               {categoryItems.map((item: MenuItemType) => (
                 <View
                   key={item.id}
-                  className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-md px-3 py-2"
+                  className="flex-row items-center justify-between bg-panel border border-gray-700 rounded-md px-3 py-2"
                 >
                   <Text className="text-base text-white">{item.name}</Text>
                   <Text className="text-base text-gray-300 ml-2">

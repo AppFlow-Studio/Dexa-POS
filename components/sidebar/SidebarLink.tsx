@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { LinearGradient } from "expo-linear-gradient";
 import { LucideIcon } from "lucide-react-native";
 import React from "react";
@@ -40,24 +41,24 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
       {isActive ? (
         <>
           {isExpanded ? (
-            <View className="flex-row items-center py-3 px-2 rounded-xl bg-blue-50 overflow-hidden border-l-[3px] border-primary-400">
+            <View className="flex-row items-center py-3 px-2 rounded-xl overflow-hidden border-l-[3px] border-teal">
               <LinearGradient
                 colors={[
-                  "rgba(101, 154, 240, 0.0)",
-                  "rgba(101, 154, 240, 0.12)",
+                  "rgba(45, 212, 191, 0.0)",
+                  "rgba(45, 212, 191, 0.12)",
                 ]}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 className="absolute inset-0"
               />
-              {Icon && <Icon color="#659AF0" size={22} strokeWidth={2.5} />}
-              <Text className="ml-4 text-base font-medium text-primary-400">
+              {Icon && <Icon color={colors.teal} size={22} strokeWidth={2.5} />}
+              <Text className="ml-4 text-base font-medium text-teal">
                 {label}
               </Text>
             </View>
           ) : (
             <View className="flex-row items-center justify-center py-3 px-4 rounded-lg bg-transparent">
-              {Icon && <Icon color="#659AF0" size={22} strokeWidth={2.5} />}
+              {Icon && <Icon color={colors.teal} size={22} strokeWidth={2.5} />}
             </View>
           )}
         </>
@@ -67,9 +68,9 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
             isExpanded ? "" : "justify-center"
           }`}
         >
-          {!!Icon && <Icon color="#2F2F3E" size={22} strokeWidth={2.5} />}
+          {!!Icon && <Icon color={colors.label} size={22} strokeWidth={2.5} />}
           {isExpanded && (
-            <Text className={`ml-4 text-base text-accent-400 font-medium`}>
+            <Text className={`ml-4 text-base text-label font-medium`}>
               {label}
             </Text>
           )}

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ArrowLeft, ListChecks, Receipt, Split, Users } from "lucide-react-native";
 import React from "react";
@@ -7,12 +8,12 @@ const SplitOptionsView: React.FC = () => {
   const setView = usePaymentStore((state) => state.setView);
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-[#333]">
+      <View className="flex-row items-center p-4 border-b border-border">
         <TouchableOpacity
           onPress={() => setView("payment-method-selection")}
-          className="p-2 bg-[#333] rounded-lg mr-4"
+          className="p-2 bg-surface rounded-lg mr-4"
         >
           <ArrowLeft size={20} color="white" />
         </TouchableOpacity>
@@ -33,11 +34,11 @@ const SplitOptionsView: React.FC = () => {
         <View className="flex-row gap-4 w-full max-w-4xl h-[220px] mb-4">
           {/* Option 1: Split by Item */}
           <TouchableOpacity
-            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-[#333] justify-between active:bg-[#333]"
+            className="flex-1 bg-surface rounded-2xl p-5 border border-border justify-between active:bg-surface"
             onPress={() => setView("split-by-item")}
           >
             <View className="w-14 h-14 rounded-full bg-sky-500/10 items-center justify-center mb-3">
-              <ListChecks size={28} color="#0EA5E9" />
+              <ListChecks size={28} color={colors.info} />
             </View>
             <View>
               <Text className="text-lg font-bold text-white mb-1">
@@ -51,11 +52,11 @@ const SplitOptionsView: React.FC = () => {
 
           {/* Option 2: Split Evenly */}
           <TouchableOpacity
-            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-[#333] justify-between active:bg-[#333]"
+            className="flex-1 bg-surface rounded-2xl p-5 border border-border justify-between active:bg-surface"
             onPress={() => setView("split-evenly")}
           >
             <View className="w-14 h-14 rounded-full bg-green-500/10 items-center justify-center mb-3">
-              <Users size={28} color="#22C55E" />
+              <Users size={28} color={colors.success} />
             </View>
             <View>
               <Text className="text-lg font-bold text-white mb-1">
@@ -72,11 +73,11 @@ const SplitOptionsView: React.FC = () => {
         <View className="flex-row gap-4 w-full max-w-4xl h-[220px]">
           {/* Option 3: Custom Amount */}
           <TouchableOpacity
-            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-[#333] justify-between active:bg-[#333]"
+            className="flex-1 bg-surface rounded-2xl p-5 border border-border justify-between active:bg-surface"
             onPress={() => setView("split-custom-amount")}
           >
             <View className="w-14 h-14 rounded-full bg-yellow-500/10 items-center justify-center mb-3">
-              <Split size={28} color="#EAB308" />
+              <Split size={28} color={colors.warning} />
             </View>
             <View>
               <Text className="text-lg font-bold text-white mb-1">
@@ -90,7 +91,7 @@ const SplitOptionsView: React.FC = () => {
 
           {/* Option 4: Pay for Items (Split Review) */}
           <TouchableOpacity
-            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-orange-600/50 justify-between active:bg-[#333]"
+            className="flex-1 bg-surface rounded-2xl p-5 border border-orange-600/50 justify-between active:bg-surface"
             onPress={() => setView("pay-for-items")}
           >
             <View className="w-14 h-14 rounded-full bg-orange-500/10 items-center justify-center mb-3">

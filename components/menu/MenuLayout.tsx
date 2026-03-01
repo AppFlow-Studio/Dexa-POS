@@ -1,4 +1,5 @@
 import { MENU_SIDEBAR_DATA, MenuSidebarItem } from "@/lib/menu-sidebar-data";
+import { colors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePathname, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
@@ -53,12 +54,12 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <View className="flex-row h-full">
         {/* Sidebar */}
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="w-80 border-r border-gray-700 h-full bg-[#303030]"
+          className="w-80 border-r border-gray-700 h-full bg-surface"
         >
           {/* Header */}
           <View className="p-4 border-b border-gray-700">
@@ -69,12 +70,12 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
 
           {/* Search */}
           <View className="p-4 border-b border-gray-700">
-            <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2">
-              <Search size={16} color="#9CA3AF" />
+            <View className="flex-row items-center bg-panel rounded-lg px-3 py-2">
+              <Search size={16} color={colors.label} />
               <TextInput
                 className="flex-1 ml-2 text-white h-20"
                 placeholder="Search items..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
@@ -99,7 +100,7 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
                       <item.icon
                         size={18}
                         color={
-                          isActive(item.href || "") ? "#60A5FA" : "#9CA3AF"
+                          isActive(item.href || "") ? colors.info : colors.label
                         }
                       />
                     )}

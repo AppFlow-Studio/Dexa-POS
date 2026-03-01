@@ -44,7 +44,7 @@ const BillTab: React.FC<BillTabProps> = ({ order }) => {
     <View className="flex-1">
       {/* Cash/Card pricing toggle */}
       {hasCashPricing && (
-        <View className="flex-row items-center justify-between px-4 py-2.5 mb-2 bg-[#2a2a2a] rounded-lg mx-4 mt-2">
+        <View className="flex-row items-center justify-between px-4 py-2.5 mb-2 bg-panel rounded-lg mx-4 mt-2">
           <Text className="text-sm text-gray-400">
             Show Cash Pricing
           </Text>
@@ -65,7 +65,7 @@ const BillTab: React.FC<BillTabProps> = ({ order }) => {
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8 }}
         showsVerticalScrollIndicator={false}
         ListFooterComponent={
-          <View className="mt-3 pt-3 border-t border-gray-700">
+          <View className="mt-3 pt-3 border-t border-border">
             {/* Subtotal */}
             <TotalRow label="Subtotal" value={displaySubtotal} />
 
@@ -90,7 +90,7 @@ const BillTab: React.FC<BillTabProps> = ({ order }) => {
             )}
 
             {/* Total */}
-            <View className="flex-row justify-between items-center pt-3 mt-2 border-t border-gray-600">
+            <View className="flex-row justify-between items-center pt-3 mt-2 border-t border-border">
               <Text className="text-xl font-bold text-white">Total</Text>
               <Text className="text-xl font-bold text-white">
                 ${totals.total.toFixed(2)}

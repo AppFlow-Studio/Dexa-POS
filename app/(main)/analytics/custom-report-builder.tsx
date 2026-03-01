@@ -7,6 +7,7 @@ import {
   Save,
   TrendingUp,
 } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import {
   Alert,
@@ -344,15 +345,15 @@ const CustomReportBuilderScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <View className="flex-1 bg-[#212121]">
+      <View className="flex-1 bg-screen">
         {/* Header */}
-        <View className="flex-row items-center justify-between p-6 border-b border-gray-700">
+        <View className="flex-row items-center justify-between p-6 border-b border-border">
           <View className="flex-row items-center">
             <TouchableOpacity
               onPress={() => router.back()}
               className="mr-4 p-2"
             >
-              <ArrowLeft color="#9CA3AF" size={24} />
+              <ArrowLeft color={colors.label} size={24} />
             </TouchableOpacity>
             <Text className="text-2xl font-bold text-white">
               Custom Report Builder
@@ -366,12 +367,12 @@ const CustomReportBuilderScreen = () => {
             <Text className="text-xl font-bold text-white mb-4">
               Report Name
             </Text>
-            <View className="bg-[#303030] border border-gray-600 h-26 rounded-xl p-4">
+            <View className="bg-panel border border-border h-26 rounded-xl p-4">
               <TextInput
                 value={reportName}
                 onChangeText={setReportName}
                 placeholder="Enter report name..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 className="text-white text-lg px-6 py-4 h-20"
               />
             </View>
@@ -394,7 +395,7 @@ const CustomReportBuilderScreen = () => {
                   className={`p-4 rounded-xl border ${
                     selectedDateRange === option.id
                       ? "bg-blue-900/30 border-blue-500"
-                      : "bg-[#303030] border-gray-600"
+                      : "bg-panel border-border"
                   }`}
                   activeOpacity={0.8}
                 >
@@ -435,8 +436,8 @@ const CustomReportBuilderScreen = () => {
                     value={customStartDate}
                     onChangeText={setCustomStartDate}
                     placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#9CA3AF"
-                    className="bg-[#303030] border border-gray-600 rounded-xl p-4 text-white text-lg"
+                    placeholderTextColor={colors.label}
+                    className="bg-panel border border-border rounded-xl p-4 text-white text-lg"
                   />
                 </View>
                 <View>
@@ -445,8 +446,8 @@ const CustomReportBuilderScreen = () => {
                     value={customEndDate}
                     onChangeText={setCustomEndDate}
                     placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#9CA3AF"
-                    className="bg-[#303030] border border-gray-600 rounded-xl p-4 text-white text-lg"
+                    placeholderTextColor={colors.label}
+                    className="bg-panel border border-border rounded-xl p-4 text-white text-lg"
                   />
                 </View>
               </View>
@@ -470,7 +471,7 @@ const CustomReportBuilderScreen = () => {
                   className={`p-4 rounded-xl border ${
                     selectedMetrics.includes(metric.id)
                       ? "bg-blue-900/30 border-blue-500"
-                      : "bg-[#303030] border-gray-600"
+                      : "bg-panel border-border"
                   }`}
                   activeOpacity={0.8}
                 >
@@ -523,7 +524,7 @@ const CustomReportBuilderScreen = () => {
                   className={`p-4 rounded-xl border ${
                     selectedBreakdown === dimension.id
                       ? "bg-blue-900/30 border-blue-500"
-                      : "bg-[#303030] border-gray-600"
+                      : "bg-panel border-border"
                   }`}
                   activeOpacity={0.8}
                 >
@@ -570,13 +571,13 @@ const CustomReportBuilderScreen = () => {
                 className={`flex-1 p-4 rounded-xl border ${
                   chartType === "bar"
                     ? "bg-blue-900/30 border-blue-500"
-                    : "bg-[#303030] border-gray-600"
+                    : "bg-panel border-border"
                 }`}
                 activeOpacity={0.8}
               >
                 <View className="items-center">
                   <BarChart3
-                    color={chartType === "bar" ? "#60A5FA" : "#9CA3AF"}
+                    color={chartType === "bar" ? colors.info : colors.label}
                     size={32}
                   />
                   <Text
@@ -594,13 +595,13 @@ const CustomReportBuilderScreen = () => {
                 className={`flex-1 p-4 rounded-xl border ${
                   chartType === "line"
                     ? "bg-blue-900/30 border-blue-500"
-                    : "bg-[#303030] border-gray-600"
+                    : "bg-panel border-border"
                 }`}
                 activeOpacity={0.8}
               >
                 <View className="items-center">
                   <TrendingUp
-                    color={chartType === "line" ? "#60A5FA" : "#9CA3AF"}
+                    color={chartType === "line" ? colors.info : colors.label}
                     size={32}
                   />
                   <Text
@@ -617,13 +618,13 @@ const CustomReportBuilderScreen = () => {
                 className={`flex-1 p-4 rounded-xl border ${
                   chartType === "pie"
                     ? "bg-blue-900/30 border-blue-500"
-                    : "bg-[#303030] border-gray-600"
+                    : "bg-panel border-border"
                 }`}
                 activeOpacity={0.8}
               >
                 <View className="items-center">
                   <PieChart
-                    color={chartType === "pie" ? "#60A5FA" : "#9CA3AF"}
+                    color={chartType === "pie" ? colors.info : colors.label}
                     size={32}
                   />
                   <Text
@@ -644,7 +645,7 @@ const CustomReportBuilderScreen = () => {
               <Text className="text-xl font-bold text-white mb-4">
                 Report Preview
               </Text>
-              <View className="bg-[#303030] border border-gray-600 rounded-xl p-4">
+              <View className="bg-panel border border-border rounded-xl p-4">
                 <Text className="text-lg font-semibold text-blue-400 mb-2">
                   {reportName}
                 </Text>
@@ -707,7 +708,7 @@ const CustomReportBuilderScreen = () => {
 
             <TouchableOpacity
               onPress={handleSaveReport}
-              className="flex-1 bg-[#303030] border border-gray-600 py-4 rounded-xl items-center"
+              className="flex-1 bg-panel border border-border py-4 rounded-xl items-center"
               activeOpacity={0.8}
               disabled={
                 !reportName ||
@@ -724,7 +725,7 @@ const CustomReportBuilderScreen = () => {
               }}
             >
               <View className="flex-row items-center">
-                <Save color="#9CA3AF" size={20} />
+                <Save color={colors.label} size={20} />
                 <Text className="text-white text-lg font-semibold ml-2">
                   Save Report
                 </Text>

@@ -1,4 +1,5 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { spinnerColor } from "@/lib/theme";
 import { clearLocationData } from "@/services/cacheService";
 import {
   SelectedLocation,
@@ -43,7 +44,7 @@ const StoreSelectItem = ({
     onPress={onPress}
     className={`p-4 border rounded-lg mb-3 ${isSelected
       ? "border-blue-500 bg-blue-900/30"
-      : "border-gray-700 bg-[#303030]"
+      : "border-gray-700 bg-panel"
       }`}
   >
     <View className="flex-row items-center justify-between">
@@ -220,7 +221,7 @@ const StoreSelectScreen = () => {
   if (isLoading) {
     return (
       <View className="w-full items-center justify-center py-20">
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={spinnerColor} />
         <Text className="text-gray-400 mt-4">Loading your locations...</Text>
       </View>
     );

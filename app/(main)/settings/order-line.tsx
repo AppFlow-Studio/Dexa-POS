@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { Check, ChevronDown, ChevronUp, List } from "lucide-react-native";
 import React, { useState } from "react";
@@ -31,24 +32,24 @@ const OrderLineSettingsScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700"
+      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
     >
       <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">
+        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
           {icon}
         </View>
         <Text className="text-white font-bold text-lg">{title}</Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color="#9ca3af" />
+        <ChevronUp size={20} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color="#9ca3af" />
+        <ChevronDown size={20} color={colors.label} />
       )}
     </TouchableOpacity>
   );
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">
           Order Line Settings
@@ -62,10 +63,10 @@ const OrderLineSettingsScreen = () => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Order Visibility */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Order Visibility",
-            <List size={20} color="#60a5fa" />,
+            <List size={20} color={colors.info} />,
             "visibility"
           )}
           {expandedSections.visibility && (
@@ -87,7 +88,7 @@ const OrderLineSettingsScreen = () => {
                     className={`flex-row items-center justify-between p-4 rounded-lg mb-2 border ${
                       isSelected
                         ? "bg-blue-600/10 border-blue-500"
-                        : "bg-[#404040] border-gray-600"
+                        : "bg-surface border-gray-600"
                     }`}
                   >
                     <View className="flex-1">

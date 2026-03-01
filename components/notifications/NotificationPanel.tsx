@@ -125,9 +125,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
   };
 
   return (
-    <View className="flex-1 bg-[#1F1F1F]   overflow-hidden">
+    <View className="flex-1 bg-panel   overflow-hidden">
       {/* Header */}
-      <View className="bg-[#252525]/95 backdrop-blur-md sticky top-0 z-10 p-4">
+      <View className="bg-panel/95 backdrop-blur-md sticky top-0 z-10 p-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
             <Text className="text-white font-semibold text-xl">
@@ -152,7 +152,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
           <TouchableOpacity
             onPress={() => setFilter("all")}
             className={`px-4 py-1.5 rounded-full ${
-              filter === "all" ? "bg-blue-600" : "bg-[#2A2A2A] hover:bg-[#333]"
+              filter === "all" ? "bg-blue-600" : "bg-surface hover:bg-surface"
             }`}
           >
             <Text
@@ -168,7 +168,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
             className={`px-4 py-1.5 rounded-full ${
               filter === "unread"
                 ? "bg-blue-600"
-                : "bg-[#2A2A2A] hover:bg-[#333]"
+                : "bg-surface hover:bg-surface"
             }`}
           >
             <Text
@@ -184,7 +184,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
             className={`px-4 py-1.5 rounded-full ${
               filter === "schedule"
                 ? "bg-blue-600"
-                : "bg-[#2A2A2A] hover:bg-[#333]"
+                : "bg-surface hover:bg-surface"
             }`}
           >
             <Text
@@ -211,7 +211,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
             </TouchableOpacity>
           )}
           renderSectionHeader={({ section: { title } }) => (
-            <View className="bg-[#1F1F1F] py-2 px-4 sticky top-0">
+            <View className="bg-panel py-2 px-4 sticky top-0">
               <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
                 {title}
               </Text>

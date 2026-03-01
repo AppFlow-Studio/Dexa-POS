@@ -72,7 +72,7 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
   };
   return (
     <Link href={`/online-orders/${order.id.replace("#", "")}` as Href}>
-      <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600 w-full">
+      <View className="bg-surface p-4 rounded-2xl border border-gray-600 w-full">
         {/* Header */}
         <View className="flex-row justify-between items-center">
           <View>

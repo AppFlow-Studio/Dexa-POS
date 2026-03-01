@@ -21,7 +21,7 @@ const StatCard: React.FC<StatCardProps> = ({
     changeType === "increase" ? "text-green-500" : "text-red-500";
 
   return (
-    <View className="flex-1 bg-[#303030] p-6 rounded-2xl border border-gray-200">
+    <View className="flex-1 bg-panel p-6 rounded-2xl border border-gray-200">
       <View className="flex-row justify-between items-start">
         <Text className="text-xl font-semibold text-white">{title}</Text>
         <View className="p-2 bg-blue-50 rounded-lg">{icon}</View>

@@ -8,6 +8,7 @@ import {
   Calendar as CalendarIcon,
   RefreshCw,
 } from "lucide-react-native";
+import { colors, spinnerColor } from "@/lib/theme";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -168,15 +169,15 @@ const DailyShiftReportScreen = () => {
   };
 
   const calendarTheme = {
-    calendarBackground: "#303030",
+    calendarBackground: colors.panel,
     monthTextColor: "#FFFFFF",
     dayTextColor: "#FFFFFF",
-    textDisabledColor: "#6B7280",
-    selectedDayBackgroundColor: "#3b82f6",
+    textDisabledColor: colors.muted,
+    selectedDayBackgroundColor: colors.info,
     selectedDayTextColor: "#FFFFFF",
-    todayTextColor: "#60A5FA",
-    arrowColor: "#3b82f6",
-    textSectionTitleColor: "#9CA3AF",
+    todayTextColor: colors.info,
+    arrowColor: colors.info,
+    textSectionTitleColor: colors.label,
   };
 
   const getStatusBadge = (status: string) => {
@@ -218,7 +219,7 @@ const DailyShiftReportScreen = () => {
   );
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
         <View className="flex-row items-center">
           <TouchableOpacity
@@ -229,7 +230,7 @@ const DailyShiftReportScreen = () => {
             }
             className="mr-3 p-2"
           >
-            <ArrowLeft color="#9CA3AF" size={22} />
+            <ArrowLeft color={colors.label} size={22} />
           </TouchableOpacity>
           <View>
             <Text className="text-xl font-bold text-white">
@@ -246,7 +247,7 @@ const DailyShiftReportScreen = () => {
             disabled={isLoading}
             className="p-2 bg-gray-700 rounded-lg"
           >
-            <RefreshCw color={isLoading ? "#6B7280" : "#FFFFFF"} size={18} />
+            <RefreshCw color={isLoading ? colors.muted : "#FFFFFF"} size={18} />
           </TouchableOpacity>
           <Popover
             isVisible={isCalendarOpen}
@@ -263,7 +264,7 @@ const DailyShiftReportScreen = () => {
               </TouchableOpacity>
             }
           >
-            <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
+            <View className="w-96 bg-panel border-gray-700 z-50 rounded-lg">
               <Calendar
                 current={format(selectedDate, "yyyy-MM-dd")}
                 onDayPress={onDateChange}
@@ -271,7 +272,7 @@ const DailyShiftReportScreen = () => {
                 markedDates={{
                   [format(selectedDate, "yyyy-MM-dd")]: {
                     selected: true,
-                    selectedColor: "#3b82f6",
+                    selectedColor: colors.info,
                   },
                 }}
               />
@@ -287,8 +288,8 @@ const DailyShiftReportScreen = () => {
           </View>
         )}
 
-        <View className="flex-1 bg-[#303030] rounded-xl border border-gray-600 overflow-hidden">
-          <View className="flex-row p-3 bg-[#404040] border-b border-gray-600">
+        <View className="flex-1 bg-panel rounded-xl border border-gray-600 overflow-hidden">
+          <View className="flex-row p-3 bg-surface border-b border-gray-600">
             {TABLE_HEADERS.map((header) => (
               <Text
                 key={header}
@@ -301,7 +302,7 @@ const DailyShiftReportScreen = () => {
 
           {isLoading ? (
             <View className="p-8 items-center">
-              <ActivityIndicator size="large" color="#3b82f6" />
+              <ActivityIndicator size="large" color={spinnerColor} />
               <Text className="text-gray-400 mt-2">Loading shifts...</Text>
             </View>
           ) : (

@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
+import { colors } from "@/lib/theme";
 import { getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useEffect, useMemo, useState } from "react";
@@ -342,7 +343,7 @@ const SplitPaymentView = () => {
               {splits.map((split) => (
                 <View
                   key={split.id}
-                  className="p-3 bg-[#212121] border border-gray-700 rounded-lg"
+                  className="p-3 bg-panel border border-gray-700 rounded-lg"
                 >
                   <View className="flex-row justify-between items-center mb-2">
                     <Text className="text-xl font-bold text-blue-400 mb-2">
@@ -353,7 +354,7 @@ const SplitPaymentView = () => {
                         onPress={() => handleRemoveSplit(split)}
                         className="p-2 bg-red-900/30 rounded-full"
                       >
-                        <Minus color="#ef4444" size={20} />
+                        <Minus color={colors.danger} size={20} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -396,12 +397,12 @@ const SplitPaymentView = () => {
             {splits.map((split, index) => (
               <View
                 key={split.id}
-                className="flex-row items-center justify-between p-3 bg-[#212121] border border-gray-700 rounded-lg"
+                className="flex-row items-center justify-between p-3 bg-panel border border-gray-700 rounded-lg"
               >
                 <Text className="text-xl font-bold text-blue-400 w-24">
                   Split {index + 1}
                 </Text>
-                <View className="flex-1 flex-row items-center bg-[#303030] rounded-md px-2 border border-gray-600">
+                <View className="flex-1 flex-row items-center bg-surface rounded-md px-2 border border-gray-600">
                   <Text className="font-bold text-xl text-gray-400">$</Text>
                   <TextInput
                     className="flex-1 p-2 text-xl font-semibold text-right text-white h-16"
@@ -410,7 +411,7 @@ const SplitPaymentView = () => {
                       handleCustomAmountChange(split.id, text)
                     }
                     placeholder="0.00"
-                    placeholderTextColor="#6B7280"
+                    placeholderTextColor={colors.muted}
                     keyboardType="decimal-pad"
                   />
                 </View>
@@ -419,7 +420,7 @@ const SplitPaymentView = () => {
                     onPress={() => handleRemoveSplit(split)}
                     className="p-2 ml-2"
                   >
-                    <Minus color="#ef4444" size={20} />
+                    <Minus color={colors.danger} size={20} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -442,7 +443,7 @@ const SplitPaymentView = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]"
+      className="rounded-2xl overflow-hidden bg-panel border border-gray-700 w-[550px]"
     >
       {/* Dark Header */}
       <View className="p-4">
@@ -452,7 +453,7 @@ const SplitPaymentView = () => {
       </View>
 
       {/* Dark Content */}
-      <View className="p-4 bg-[#303030] rounded-b-2xl">
+      <View className="p-4 bg-surface rounded-b-2xl">
         <ScrollView
           className="max-h-[800px]"
           showsVerticalScrollIndicator={false}
@@ -509,7 +510,7 @@ const SplitPaymentView = () => {
             {splits.map((split) => (
               <View
                 key={split.id}
-                className="flex-row items-center p-2 bg-[#212121] border border-gray-700 rounded-lg"
+                className="flex-row items-center p-2 bg-panel border border-gray-700 rounded-lg"
               >
                 <Text className="text-xl font-semibold text-white w-28">
                   Split {split.id}:
@@ -587,7 +588,7 @@ const SplitPaymentView = () => {
           <View className="flex-row gap-4 mt-4 border-t border-gray-700 pt-4">
             <TouchableOpacity
               onPress={close}
-              className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
+              className="flex-1 py-3 bg-surface border border-gray-600 rounded-xl items-center"
             >
               <Text className="text-lg font-bold text-white">Cancel</Text>
             </TouchableOpacity>

@@ -6,6 +6,7 @@ import BottomSheet, {
 import { CheckCircle2 } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 const APPLY_MODES: {
   value: ApplyMode;
@@ -51,8 +52,7 @@ const ApplyModeSheet: React.FC<ApplyModeSheetProps> = ({
       snapPoints={["40%"]}
       enablePanDownToClose
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-      backgroundStyle={{ backgroundColor: "#1F1F1F" }}
+      {...bottomSheetTheme}
       backdropComponent={(props) => (
         <BottomSheetBackdrop
           {...props}
@@ -73,7 +73,7 @@ const ApplyModeSheet: React.FC<ApplyModeSheetProps> = ({
               className={`p-4 rounded-lg border-2 ${
                 currentMode === mode.value
                   ? "border-blue-500 bg-blue-500/10"
-                  : "border-gray-700 bg-[#303030]"
+                  : "border-border bg-panel"
               }`}
             >
               <View className="flex-row items-center justify-between">
@@ -81,7 +81,7 @@ const ApplyModeSheet: React.FC<ApplyModeSheetProps> = ({
                   {mode.label}
                 </Text>
                 {currentMode === mode.value && (
-                  <CheckCircle2 size={20} color="#3b82f6" />
+                  <CheckCircle2 size={20} color={colors.info} />
                 )}
               </View>
               <Text className="text-gray-400 text-sm mt-1">

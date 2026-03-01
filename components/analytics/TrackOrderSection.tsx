@@ -1,4 +1,5 @@
 import { MOCK_TRACKED_ORDERS } from "@/lib/mockData";
+import { colors } from "@/lib/theme";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import {
@@ -54,8 +55,8 @@ const TrackOrderSection = () => {
       <View className="flex-row justify-between items-center">
         <Text className="text-3xl font-bold text-white">Track Order</Text>
         <View className="flex-row items-center gap-3">
-          <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 w-72">
-            <Search color="#9CA3AF" size={24} />
+          <View className="flex-row items-center bg-panel border border-gray-600 rounded-lg px-4 w-72">
+            <Search color={colors.label} size={24} />
             <TextInput
               placeholder="Search Order"
               value={searchText}
@@ -67,7 +68,7 @@ const TrackOrderSection = () => {
             onPress={scrollBackward}
             className="p-3 border border-gray-600 rounded-full"
           >
-            <ChevronLeft color="#9CA3AF" size={24} />
+            <ChevronLeft color={colors.label} size={24} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={scrollForward}

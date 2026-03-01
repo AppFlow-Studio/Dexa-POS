@@ -15,7 +15,7 @@ const OrderLineItemsModal: React.FC<OrderLineItemsModalProps> = ({
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 bg-transparent w-[550px]">
+      <DialogContent className="p-0 bg-transparent w-[900px]" style={{ maxHeight: '85%' }}>
         <OrderLineItemsView onClose={onClose} orderId={orderId} />
       </DialogContent>
     </Dialog>

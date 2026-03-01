@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import { BarChart3, Calendar, Sparkles } from "lucide-react-native"; // Added Sparkles
 import React from "react";
@@ -21,7 +22,7 @@ const SchedulingCard: React.FC<SchedulingCardProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="w-1/3 h-1/4 rounded-2xl border border-gray-600 p-6 bg-[#303030] justify-center items-center"
+      className="w-1/3 h-1/4 rounded-2xl border border-border p-6 bg-panel justify-center items-center"
     >
       <View className={`mb-3 p-4 rounded-full ${iconBgColor}`}>{icon}</View>
       <Text className="text-3xl font-bold text-white mb-1 text-center">
@@ -38,7 +39,7 @@ const SchedulingMenuScreen = () => {
   const menuItems = [
     {
       id: "dashboard",
-      icon: <Calendar color="#60A5FA" size={48} />,
+      icon: <Calendar color={colors.info} size={48} />,
       title: "Dashboard",
       subtitle: "Manage Schedules",
       route: "/scheduling/dashboard",
@@ -46,7 +47,7 @@ const SchedulingMenuScreen = () => {
     },
     {
       id: "reports",
-      icon: <BarChart3 color="#34D399" size={48} />,
+      icon: <BarChart3 color={colors.success} size={48} />,
       title: "Reports",
       subtitle: "Analytics & Insights",
       route: "/scheduling/reports",
@@ -63,7 +64,7 @@ const SchedulingMenuScreen = () => {
   ];
 
   return (
-    <View className="flex-1 p-4 bg-[#212121] justify-center items-center">
+    <View className="flex-1 p-4 bg-screen justify-center items-center">
       <View className="flex-row flex-wrap gap-4 w-full h-full items-center justify-center">
         {menuItems.map((item) => (
           <SchedulingCard

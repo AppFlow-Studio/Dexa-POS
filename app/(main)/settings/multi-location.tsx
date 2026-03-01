@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { AlertCircle, AlertTriangle, BarChart3, ChevronDown, ChevronUp, GitBranch, Map, RefreshCw, UploadCloud } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -30,20 +31,20 @@ const MultiLocationScreen = () => {
     const renderSectionHeader = (title: string, icon: React.ReactNode, section: keyof typeof expandedSections) => (
         <TouchableOpacity
             onPress={() => toggleSection(section)}
-            className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700"
+            className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
         >
             <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">
+                <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
                     {icon}
                 </View>
                 <Text className="text-white font-bold text-lg">{title}</Text>
             </View>
-            {expandedSections[section] ? <ChevronUp size={20} color="#9ca3af" /> : <ChevronDown size={20} color="#9ca3af" />}
+            {expandedSections[section] ? <ChevronUp size={20} color={colors.label} /> : <ChevronDown size={20} color={colors.label} />}
         </TouchableOpacity>
     );
 
     return (
-        <View className="flex-1 bg-[#212121] p-6">
+        <View className="flex-1 bg-screen p-6">
             <View className="mb-6">
                 <Text className="text-3xl font-bold text-white">Multi-Location Management</Text>
                 <Text className="text-gray-400 mt-2">Manage multiple store locations, menu inheritance, and global updates.</Text>
@@ -54,13 +55,13 @@ const MultiLocationScreen = () => {
             <ScrollView showsVerticalScrollIndicator={false}>
 
                 {/* Locations Overview */}
-                <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-                    {renderSectionHeader("Locations Overview", <Map size={20} color="#60a5fa" />, "locations")}
+                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+                    {renderSectionHeader("Locations Overview", <Map size={20} color={colors.info} />, "locations")}
                     {expandedSections.locations && (
                         <View className="p-5">
                             <View className="flex-row flex-wrap gap-4">
                                 {locations.map(loc => (
-                                    <View key={loc.id} className="w-full md:w-[48%] bg-[#404040] p-4 rounded-xl border border-gray-600">
+                                    <View key={loc.id} className="w-full md:w-[48%] bg-surface p-4 rounded-xl border border-gray-600">
                                         <View className="flex-row justify-between items-start mb-2">
                                             <View>
                                                 <Text className="text-white font-bold text-lg">{loc.name}</Text>
@@ -90,7 +91,7 @@ const MultiLocationScreen = () => {
                                                 </>
                                             )}
                                         </View>
-                                        <TouchableOpacity className="mt-4 bg-[#505050] py-2 rounded-lg items-center">
+                                        <TouchableOpacity className="mt-4 bg-card py-2 rounded-lg items-center">
                                             <Text className="text-white font-medium text-sm">Manage Location</Text>
                                         </TouchableOpacity>
                                     </View>
@@ -104,7 +105,7 @@ const MultiLocationScreen = () => {
                 </View>
 
                 {/* Menu Inheritance */}
-                <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
                     {renderSectionHeader("Menu Inheritance System", <GitBranch size={20} color="#a78bfa" />, "menu")}
                     {expandedSections.menu && (
                         <View className="p-5">
@@ -117,20 +118,20 @@ const MultiLocationScreen = () => {
                             </View>
 
                             {inheritance.enabled && (
-                                <View className="bg-[#404040] p-4 rounded-xl border border-gray-600">
+                                <View className="bg-surface p-4 rounded-xl border border-gray-600">
                                     <Text className="text-gray-300 font-medium mb-3">Inheritance Mode</Text>
                                     <View className="flex-row gap-2 mb-4">
                                         {['Full', 'Selective', 'Independent'].map((mode) => (
                                             <TouchableOpacity
                                                 key={mode}
                                                 onPress={() => setInheritance({ ...inheritance, mode: mode.toLowerCase() })}
-                                                className={`flex-1 py-2 px-3 rounded-lg border ${inheritance.mode === mode.toLowerCase() ? 'bg-purple-600 border-purple-500' : 'bg-[#505050] border-gray-600'}`}
+                                                className={`flex-1 py-2 px-3 rounded-lg border ${inheritance.mode === mode.toLowerCase() ? 'bg-purple-600 border-purple-500' : 'bg-card border-gray-600'}`}
                                             >
                                                 <Text className={`text-center font-bold ${inheritance.mode === mode.toLowerCase() ? 'text-white' : 'text-gray-400'}`}>{mode}</Text>
                                             </TouchableOpacity>
                                         ))}
                                     </View>
-                                    <View className="bg-[#505050] p-3 rounded-lg flex-row items-center">
+                                    <View className="bg-card p-3 rounded-lg flex-row items-center">
                                         <AlertCircle size={16} color="#a78bfa" />
                                         <Text className="text-gray-300 text-xs ml-2 flex-1">
                                             {inheritance.mode === 'full' && "All locations perfectly mirror the HQ menu. No local overrides allowed."}
@@ -145,12 +146,12 @@ const MultiLocationScreen = () => {
                 </View>
 
                 {/* Push Menu Updates */}
-                <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-                    {renderSectionHeader("Push Menu Updates", <UploadCloud size={20} color="#f97316" />, "updates")}
+                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+                    {renderSectionHeader("Push Menu Updates", <UploadCloud size={20} color={colors.warning} />, "updates")}
                     {expandedSections.updates && (
                         <View className="p-5">
                             <View className="bg-yellow-500/10 border border-yellow-500/30 p-5 rounded-lg flex-row items-start mb-6">
-                                <AlertTriangle size={20} color="#eab308" className="mt-0.5" />
+                                <AlertTriangle size={20} color={colors.warning} className="mt-0.5" />
                                 <View className="ml-4 flex-1">
                                     <Text className="text-yellow-500 font-bold mb-1">Pending Changes Detected</Text>
                                     <Text className="text-yellow-200/70 text-sm">You have 12 menu changes saved in draft (3 new items, 9 price updates). These have not been pushed to live locations.</Text>
@@ -158,7 +159,7 @@ const MultiLocationScreen = () => {
                             </View>
 
                             <View className="flex-row gap-4">
-                                <TouchableOpacity className="flex-1 bg-[#404040] py-3 rounded-lg border border-gray-600 items-center">
+                                <TouchableOpacity className="flex-1 bg-surface py-3 rounded-lg border border-gray-600 items-center">
                                     <Text className="text-white font-medium">Preview Changes</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity className="flex-1 bg-blue-600 py-3 rounded-lg items-center flex-row justify-center gap-3">
@@ -171,8 +172,8 @@ const MultiLocationScreen = () => {
                 </View>
 
                 {/* Performance Comparison */}
-                <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-                    {renderSectionHeader("Performance Benchmarking", <BarChart3 size={20} color="#34d399" />, "analytics")}
+                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+                    {renderSectionHeader("Performance Benchmarking", <BarChart3 size={20} color={colors.success} />, "analytics")}
                     {expandedSections.analytics && (
                         <View className="p-5">
                             <View className="flex-row justify-between items-center mb-4">
@@ -188,7 +189,7 @@ const MultiLocationScreen = () => {
                                         </View>
                                         <Text className="text-white font-bold">{index === 0 ? "$124/hr" : index === 1 ? "$98/hr" : "$0/hr"}</Text>
                                     </View>
-                                    <View className="h-2 bg-[#505050] rounded-full overflow-hidden">
+                                    <View className="h-2 bg-card rounded-full overflow-hidden">
                                         <View className="h-full bg-blue-600 rounded-full" style={{ width: index === 0 ? '100%' : index === 1 ? '75%' : '0%' }} />
                                     </View>
                                 </View>

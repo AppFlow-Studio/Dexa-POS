@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { colors } from "@/lib/theme";
 import { Role } from "@/lib/types"; // Assuming types will be in lib/types
 import { formatInTimeZone } from "date-fns-tz";
 import { AlertCircle, Clock, Users } from "lucide-react-native";
@@ -61,7 +62,7 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({
   return (
     <TouchableOpacity
       onPress={onClick}
-      className={`relative px-3 py-2 rounded-lg border cursor-pointer transition-all active:scale-95 ${isOpen ? "border-dashed border-gray-500 bg-[#212121]" : roleColorStyle} ${conflictStyle}`}
+      className={`relative px-3 py-2 rounded-lg border cursor-pointer transition-all active:scale-95 ${isOpen ? "border-dashed border-gray-500 bg-screen" : roleColorStyle} ${conflictStyle}`}
     >
       <View className="flex-row items-center justify-between gap-2 mb-1">
         <Badge
@@ -76,7 +77,7 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({
         </Badge>
         {requiredCount > 1 && (
           <View className="flex-row items-center gap-1 text-xs text-gray-400">
-            <Users size={12} color={"#9ca3af"} />
+            <Users size={12} color={colors.label} />
             <Text className="text-xs text-gray-400">{requiredCount}</Text>
           </View>
         )}

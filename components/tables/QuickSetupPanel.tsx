@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import React, { useState } from "react";
 import {
@@ -45,10 +46,10 @@ const ShapeInputRow = ({
   };
 
   return (
-    <View className="flex-row items-center justify-between p-4 bg-[#3c3c3c] rounded-lg border border-gray-600">
+    <View className="flex-row items-center justify-between p-4 bg-surface rounded-lg border border-gray-600">
       <View className="flex-row items-center gap-5 flex-1">
         <View className="w-20 items-center justify-center">
-          <shape.component color="#d4d4d4" height={28} />
+          <shape.component color={colors.label} height={28} />
         </View>
         <Text className="text-gray-200 text-lg font-medium">{shape.label}</Text>
       </View>
@@ -57,7 +58,7 @@ const ShapeInputRow = ({
         onChangeText={handleTextChange}
         keyboardType="number-pad"
         maxLength={2}
-        className="w-24 h-12 bg-[#2a2a2a] border border-gray-500 rounded-md text-white text-lg text-center"
+        className="w-24 h-12 bg-surface border border-gray-500 rounded-md text-white text-lg text-center"
       />
     </View>
   );
@@ -94,7 +95,7 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[580px] bg-[#2a2a2a] rounded-xl border border-gray-700 shadow-2xl p-0">
+      <DialogContent className="w-[580px] bg-surface rounded-xl border border-gray-700 shadow-2xl p-0">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -122,7 +123,7 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
             </View>
           </ScrollView>
 
-          <DialogFooter className="flex-row gap-4 p-6 bg-[#313131] border-t border-gray-700 rounded-b-xl">
+          <DialogFooter className="flex-row gap-4 p-6 bg-surface border-t border-gray-700 rounded-b-xl">
             <TouchableOpacity
               onPress={onClose}
               className="flex-1 py-3 bg-gray-600 rounded-lg items-center"

@@ -20,6 +20,7 @@ import React, {
   useState,
 } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface InventorySearchSheetProps {
   inventoryItems: InventoryItem[];
@@ -65,14 +66,14 @@ const InventorySearchRow = React.memo(
     const isLowStock = item.stockQuantity <= item.reorderThreshold;
 
     return (
-      <View className="flex-row items-center px-4 py-3 border-b border-gray-700 h-16">
+      <View className="flex-row items-center px-4 py-3 border-b border-border h-16">
         {/* Checkbox (6%) */}
         <View className="w-[6%] mr-2">
           <TouchableOpacity
             onPress={handlePress}
             activeOpacity={0.7}
             className={`h-6 w-6 items-center justify-center border rounded ${
-              isSelected ? "bg-blue-600 border-blue-500" : "border-gray-600"
+              isSelected ? "bg-blue-600 border-blue-500" : "border-border"
             }`}
           >
             {isSelected && <Check color="#fff" size={14} />}
@@ -126,16 +127,16 @@ const InventorySearchRow = React.memo(
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="p-3">
-                <MoreHorizontal size={24} color="#9CA3AF" />
+                <MoreHorizontal size={24} color={colors.label} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
+            <DropdownMenuContent className="w-48 bg-panel border-border">
               <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-5 w-5" color="#9CA3AF" />
+                <Edit className="mr-2 h-5 w-5" color={colors.label} />
                 <Text className="text-lg text-white">Edit Item</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-5 w-5" color="#F87171" />
+                <Trash2 className="mr-2 h-5 w-5" color={colors.danger} />
                 <Text className="text-lg text-red-400">Delete Item</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -242,8 +243,7 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
         ref={ref}
         index={-1}
         snapPoints={snapPoints}
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
@@ -251,15 +251,15 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
         enablePanDownToClose
       >
         {/* Search Header */}
-        <View className="px-3 pb-2 pt-2 border-b border-gray-700 bg-[#303030]">
+        <View className="px-3 pb-2 pt-2 border-b border-border bg-panel">
           <BottomSheetTextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search inventory..."
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.label}
             style={{
-              backgroundColor: "#212121",
-              borderColor: "#374151",
+              backgroundColor: colors.screen,
+              borderColor: colors.border,
               borderWidth: 1,
               borderRadius: 8,
               paddingHorizontal: 12,
@@ -271,11 +271,11 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
         </View>
 
         {/* Select All Header */}
-        <View className="flex-row items-center px-4 py-2 border-b border-gray-700 bg-[#303030]">
+        <View className="flex-row items-center px-4 py-2 border-b border-border bg-panel">
           <View className="w-[6%] mr-2">
             <TouchableOpacity
               onPress={handleToggleAll}
-              className="h-5 w-5 items-center justify-center border border-gray-600 rounded"
+              className="h-5 w-5 items-center justify-center border border-border rounded"
             >
               {isAllSelected && <Check color="#fff" size={12} />}
             </TouchableOpacity>
@@ -296,7 +296,7 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
 
         {/* Bulk Actions Footer */}
         {selectedIds.length > 0 && (
-          <View className="absolute bottom-5 left-4 right-4 bg-[#212121] p-4 rounded-xl border border-gray-700 shadow-xl flex-row items-center justify-between">
+          <View className="absolute bottom-5 left-4 right-4 bg-screen p-4 rounded-xl border border-border shadow-xl flex-row items-center justify-between">
             <Text className="text-white font-semibold">
               {selectedIds.length} items selected
             </Text>

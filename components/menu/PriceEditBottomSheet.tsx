@@ -29,6 +29,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 export interface PriceEditItem {
   id: string;
@@ -279,9 +280,8 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose={true}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      {...bottomSheetTheme}
       backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#303030" }}
     >
       <BottomSheetView className="flex-1 p-6">
         {/* Header */}
@@ -289,9 +289,9 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           <Text className="text-2xl font-bold text-white">Edit Price</Text>
           <TouchableOpacity
             onPress={handleClose}
-            className="p-2 bg-[#212121] rounded-full"
+            className="p-2 bg-panel rounded-full"
           >
-            <X size={24} color="#9CA3AF" />
+            <X size={24} color={colors.label} />
           </TouchableOpacity>
         </View>
 
@@ -335,7 +335,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           <Text className="text-base text-gray-400 mb-2">
             Card Price
           </Text>
-          <View className="flex-row items-center bg-[#212121] rounded-lg border border-gray-600 px-4 py-3">
+          <View className="flex-row items-center bg-panel rounded-lg border border-gray-600 px-4 py-3">
             <Text className="text-2xl text-white mr-2">$</Text>
             <BottomSheetTextInput
               value={priceValue}
@@ -343,7 +343,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
               editable={!isDualPricing}
               keyboardType="decimal-pad"
               placeholder="0.00"
-              placeholderTextColor="#6B7280"
+              placeholderTextColor={colors.muted}
               style={{
                 flex: 1,
                 fontSize: 24,
@@ -362,14 +362,14 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
               <Text className="text-purple-400"> (auto-calculated)</Text>
             )}
           </Text>
-          <View className="flex-row items-center bg-[#212121] rounded-lg border border-gray-600 px-4 py-3">
+          <View className="flex-row items-center bg-panel rounded-lg border border-gray-600 px-4 py-3">
             <Text className="text-2xl text-white mr-2">$</Text>
             <BottomSheetTextInput
               value={cashPriceValue}
               onChangeText={handleCashPriceChange}
               keyboardType="decimal-pad"
               placeholder="0.00"
-              placeholderTextColor="#6B7280"
+              placeholderTextColor={colors.muted}
               style={{
                 flex: 1,
                 fontSize: 24,
@@ -380,7 +380,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
         </View>
 
         {/* Availability Toggle */}
-        <View className="flex-row items-center justify-between bg-[#212121] rounded-lg border border-gray-600 px-4 py-3 mb-4">
+        <View className="flex-row items-center justify-between bg-panel rounded-lg border border-gray-600 px-4 py-3 mb-4">
           <Text className="text-lg text-white">Available</Text>
           <Switch
             value={isAvailable}
@@ -402,9 +402,9 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           <TouchableOpacity
             onPress={handleReset}
             disabled={isLoading}
-            className="flex-row items-center justify-center bg-[#212121] border border-gray-600 rounded-lg py-3 mb-4"
+            className="flex-row items-center justify-center bg-panel border border-gray-600 rounded-lg py-3 mb-4"
           >
-            <RotateCcw size={20} color="#9CA3AF" />
+            <RotateCcw size={20} color={colors.label} />
             <Text className="text-gray-300 text-lg ml-2">
               {resetDescription}
             </Text>
@@ -416,7 +416,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
           <TouchableOpacity
             onPress={handleClose}
             disabled={isLoading}
-            className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-4"
+            className="flex-1 bg-panel border border-gray-600 rounded-lg py-4"
           >
             <Text className="text-center text-white text-lg font-semibold">
               Cancel

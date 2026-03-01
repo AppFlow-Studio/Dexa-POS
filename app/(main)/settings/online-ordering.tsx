@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { colors as themeColors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
@@ -143,7 +144,7 @@ const OnlineOrderingScreen = () => {
   const buttonText = isOrdersPaused ? "ORDERS PAUSED" : "ACCEPTING ORDERS";
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Online Ordering</Text>
         <Text className="text-gray-400 mt-2">
@@ -159,7 +160,7 @@ const OnlineOrderingScreen = () => {
       >
         <View className="gap-6">
           {/* 1. Order Status Control */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <CardTitle className="text-white">Order Status Control</CardTitle>
             </CardHeader>
@@ -214,13 +215,13 @@ const OnlineOrderingScreen = () => {
                       updateField("onlinePauseReason", opt?.value || null)
                     }
                   >
-                    <SelectTrigger className="bg-[#212121] border-gray-600">
+                    <SelectTrigger className="bg-screen border-gray-600">
                       <SelectValue
                         placeholder="Select a reason..."
                         className="text-white"
                       />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#212121] border-gray-600">
+                    <SelectContent className="bg-screen border-gray-600">
                       <SelectGroup>
                         <SelectItem
                           label="Kitchen at Capacity"
@@ -247,10 +248,10 @@ const OnlineOrderingScreen = () => {
           </Card>
 
           {/* 2. Order Acceptance */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <CheckCircle2 color="#3b82f6" size={24} />
+                <CheckCircle2 color={themeColors.info} size={24} />
                 <CardTitle className="text-white">Order Acceptance</CardTitle>
               </View>
             </CardHeader>
@@ -341,10 +342,10 @@ const OnlineOrderingScreen = () => {
           </Card>
 
           {/* 3. Dynamic Prep Times */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Clock color="#eab308" size={24} />
+                <Clock color={themeColors.warning} size={24} />
                 <View className="flex-row items-center gap-2">
                   <CardTitle className="text-white">
                     Dynamic Prep Times
@@ -375,7 +376,7 @@ const OnlineOrderingScreen = () => {
                   <View className="gap-4">
                     <View className="flex-row justify-between">
                       <Label className="text-gray-300">Base Prep Time</Label>
-                      <Text className="text-[#3b82f6] font-bold text-lg">
+                      <Text className="text-info font-bold text-lg">
                         {basePrepTime} min
                       </Text>
                     </View>
@@ -388,11 +389,11 @@ const OnlineOrderingScreen = () => {
                     />
                   </View>
 
-                  <View className="bg-[#3e3e3e] p-6 rounded-xl items-center justify-center shadow-lg">
+                  <View className="bg-surface p-6 rounded-xl items-center justify-center shadow-lg">
                     <Text className="text-gray-500 text-sm uppercase tracking-widest mb-1">
                       Current Quoted Time
                     </Text>
-                    <Text className="text-[#3b82f6] font-black text-5xl">
+                    <Text className="text-info font-black text-5xl">
                       {currentPrepTime} min
                     </Text>
                     <Text className="text-gray-400 text-xs mt-2">
@@ -461,7 +462,7 @@ const OnlineOrderingScreen = () => {
           </Card>
 
           {/* 4. Pre-Ordering */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
                 <CalendarDays color="#a855f7" size={24} />
@@ -495,7 +496,7 @@ const OnlineOrderingScreen = () => {
                   {/* Config Rows */}
                   <View className="flex-row items-center justify-between">
                     <Text className="text-gray-300">Accept orders up to:</Text>
-                    <View className="flex-row items-center bg-[#212121] rounded-lg border border-gray-600">
+                    <View className="flex-row items-center bg-screen rounded-lg border border-gray-600">
                       <TouchableOpacity
                         onPress={() =>
                           updateField("preOrderMaxDays", preOrderMaxDays - 1)
@@ -520,7 +521,7 @@ const OnlineOrderingScreen = () => {
 
                   <View className="flex-row items-center justify-between">
                     <Text className="text-gray-300">Minimum advance time:</Text>
-                    <View className="flex-row items-center bg-[#212121] rounded-lg border border-gray-600">
+                    <View className="flex-row items-center bg-screen rounded-lg border border-gray-600">
                       <TouchableOpacity
                         onPress={() =>
                           updateField(
@@ -566,10 +567,10 @@ const OnlineOrderingScreen = () => {
                       ].map((item, i) => (
                         <View
                           key={i}
-                          className="flex-row justify-between bg-[#212121] p-3 rounded-lg border border-gray-700"
+                          className="flex-row justify-between bg-screen p-3 rounded-lg border border-gray-700"
                         >
                           <View className="flex-row items-center gap-2">
-                            <CalendarClock size={14} color="#6b7280" />
+                            <CalendarClock size={14} color={themeColors.muted} />
                             <Text className="text-gray-200 font-semibold">
                               {item.date}
                             </Text>
@@ -580,7 +581,7 @@ const OnlineOrderingScreen = () => {
                         </View>
                       ))}
                     </View>
-                    <TouchableOpacity className="mt-3 bg-[#212121] py-2 rounded-lg border border-gray-600 items-center">
+                    <TouchableOpacity className="mt-3 bg-screen py-2 rounded-lg border border-gray-600 items-center">
                       <Text className="text-gray-300 text-xs font-bold">
                         View All Scheduled Orders
                       </Text>
@@ -592,10 +593,10 @@ const OnlineOrderingScreen = () => {
           </Card>
 
           {/* 5. Time-Based Menus */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Utensils color="#10b981" size={24} />
+                <Utensils color={themeColors.success} size={24} />
                 <View className="flex-row items-center gap-2">
                   <CardTitle className="text-white">Time-Based Menus</CardTitle>
                   <View className="bg-[#10b981]/20 px-2 py-0.5 rounded">
@@ -623,7 +624,7 @@ const OnlineOrderingScreen = () => {
 
                   <View className="gap-2">
                     <Label className="text-gray-300 mb-2">Menu Schedule:</Label>
-                    <View className="bg-[#212121] rounded-lg border border-gray-700 overflow-hidden divide-y divide-gray-700">
+                    <View className="bg-screen rounded-lg border border-gray-700 overflow-hidden divide-y divide-gray-700">
                       {menus.map((menu, i) => {
                         const schedule = menu.schedules?.find(
                           (s: any) => s.isActive
@@ -669,7 +670,7 @@ const OnlineOrderingScreen = () => {
                               />
                               <Clock
                                 size={14}
-                                color={isActiveNow ? "#10b981" : "#6b7280"}
+                                color={isActiveNow ? themeColors.success : themeColors.muted}
                               />
                               <Text
                                 className={
@@ -718,7 +719,7 @@ const OnlineOrderingScreen = () => {
                         params: { returnTo: "/settings/online-ordering" },
                       })
                     }
-                    className="bg-[#212121] py-3 rounded-lg border border-gray-600 items-center"
+                    className="bg-screen py-3 rounded-lg border border-gray-600 items-center"
                   >
                     <Text className="text-gray-300 font-bold">
                       Edit Menu Schedule

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -5,11 +6,11 @@ import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    Pressable,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Pressable,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
@@ -19,61 +20,56 @@ import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
 // Define types for props
 type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
 
-interface Tab {
-  name: TabName;
-  count?: number;
-}
-
 // Remove old OrderRow and RetrieveButton components - replaced by table view
+
+interface TabCounts {
+  All: number;
+  "Dine In": number;
+  Takeaway: number;
+  Delivery: number;
+}
 
 interface OrderTabsProps {
   onTabChange: (tab: TabName) => void;
-  totalOrder: number;
+  counts: TabCounts;
   activeTab: string;
 }
 
 const OrderTabs: React.FC<OrderTabsProps> = ({
   onTabChange,
-  totalOrder,
+  counts,
   activeTab,
 }) => {
-  const TABS: Tab[] = [
-    { name: "All", count: totalOrder },
-    { name: "Dine In" },
-    { name: "Takeaway" },
-    { name: "Delivery" },
-  ];
-
-  const handlePress = (tabName: TabName) => {
-    onTabChange(tabName);
-  };
+  const TAB_NAMES: TabName[] = ["All", "Takeaway", "Dine In", "Delivery"];
 
   return (
-    <View className="bg-[#252525] border border-gray-700 p-1 rounded-lg flex-row self-start">
-      {TABS.map((tab) => {
-        const isActive = activeTab === tab.name;
+    <View
+      className="bg-panel p-1 rounded-lg flex-row self-start"
+      style={{ borderWidth: 1, borderColor: colors.border }}
+    >
+      {TAB_NAMES.map((name) => {
+        const isActive = activeTab === name;
+        const count = counts[name] ?? 0;
         return (
           <Pressable
-            key={tab.name}
-            onPress={() => handlePress(tab.name)}
+            key={name}
+            onPress={() => onTabChange(name)}
             className={`py-2 px-4 rounded-md flex-row items-center ${
-              isActive ? "bg-[#3a3a3a]" : ""
+              isActive ? "bg-surface" : ""
             }`}
           >
             <Text
-              className={`font-semibold text-sm ${
-                isActive ? "text-blue-400" : "text-gray-400"
-              }`}
+              className="font-semibold text-sm"
+              style={{ color: isActive ? colors.teal : colors.label }}
             >
-              {tab.name}
+              {name}
             </Text>
-            {tab.count !== undefined && tab.count > 0 && isActive && (
-              <View className="bg-blue-500 rounded-full w-8 h-8 items-center justify-center ml-2 mt-0.5">
-                <Text className="text-white font-bold text-xs">
-                  {String(tab.count)}
-                </Text>
-              </View>
-            )}
+            <Text
+              className="font-semibold text-sm ml-1"
+              style={{ color: isActive ? colors.teal : colors.muted }}
+            >
+              ({count})
+            </Text>
           </Pressable>
         );
       })}
@@ -218,9 +214,31 @@ const PreviousOrdersSection = () => {
     return [...activeOrders, ...mappedHistoryOrders];
   }, [ordersById, previousOrders]);
 
-  const totalOrder = allOrders.length;
-  // console.log("OrdersById Length", Object.keys(ordersById).length);
-  // console.log("All Orders Length", allOrders.length);
+  // Compute per-tab counts
+  const tabCounts = useMemo<TabCounts>(() => {
+    let dineIn = 0;
+    let takeaway = 0;
+    let delivery = 0;
+    for (const o of allOrders) {
+      switch (o.order_type) {
+        case "Dine In":
+          dineIn++;
+          break;
+        case "Takeaway":
+          takeaway++;
+          break;
+        case "Delivery":
+          delivery++;
+          break;
+      }
+    }
+    return {
+      All: allOrders.length,
+      "Dine In": dineIn,
+      Takeaway: takeaway,
+      Delivery: delivery,
+    };
+  }, [allOrders]);
 
   // Filter orders based on active tab and search query
   const filteredOrders = useMemo(() => {
@@ -298,18 +316,21 @@ const PreviousOrdersSection = () => {
       <View className="flex-row justify-between items-center mb-4 gap-x-4">
         <OrderTabs
           onTabChange={handleTabChange}
-          totalOrder={totalOrder || 0}
+          counts={tabCounts}
           activeTab={activeTab}
         />
 
         {/* Search Bar */}
-        <View className="bg-[#1a1a1a] border border-gray-700 rounded-lg p-2 flex-row items-center flex-1 max-w-md">
-          <Search color="#9CA3AF" size={18} />
+        <View
+          className="bg-panel rounded-lg p-2 flex-row items-center flex-1 max-w-md"
+          style={{ borderWidth: 1, borderColor: colors.border }}
+        >
+          <Search color={colors.label} size={18} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search by order number or customer name..."
-            placeholderTextColor="#6B7280"
+            placeholderTextColor={colors.muted}
             className="flex-1 ml-2 text-white text-sm"
             autoCapitalize="none"
             autoCorrect={false}
@@ -319,7 +340,7 @@ const PreviousOrdersSection = () => {
               onPress={() => setSearchQuery("")}
               className="ml-2 p-1"
             >
-              <X color="#9CA3AF" size={18} />
+              <X color={colors.label} size={18} />
             </TouchableOpacity>
           )}
         </View>

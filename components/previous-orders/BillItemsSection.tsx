@@ -12,12 +12,12 @@ const BillItemsSection: React.FC<BillItemsSectionProps> = ({ order }) => {
       <Text className="text-xl font-bold text-white mb-4">Order Items</Text>
 
       {/* Order Items List */}
-      <View className="bg-[#303030] rounded-lg border border-gray-700 p-4">
+      <View className="bg-panel rounded-lg border border-border p-4">
         {order.items && order.items.length > 0 ? (
           order.items.map((item, index) => (
             <View
               key={index}
-              className="border-b border-gray-700 last:border-b-0 py-3"
+              className="border-b border-border last:border-b-0 py-3"
             >
               <View className="flex-row justify-between items-start mb-1">
                 <View className="flex-1">
@@ -68,7 +68,7 @@ const BillItemsSection: React.FC<BillItemsSectionProps> = ({ order }) => {
       </View>
 
       {/* Order Totals */}
-      <View className="mt-4 bg-[#303030] rounded-lg border border-gray-700 p-4">
+      <View className="mt-4 bg-panel rounded-lg border border-border p-4">
         <View className="flex-row justify-between py-2">
           <Text className="text-gray-400">Subtotal</Text>
           <Text className="text-white font-semibold">
@@ -89,7 +89,7 @@ const BillItemsSection: React.FC<BillItemsSectionProps> = ({ order }) => {
             </Text>
           </View>
         )}
-        <View className="flex-row justify-between py-2 border-t border-gray-700 mt-2 pt-2">
+        <View className="flex-row justify-between py-2 border-t border-border mt-2 pt-2">
           <Text className="text-white font-bold text-lg">Total</Text>
           <Text className="text-white font-bold text-lg">
             ${order.total_amount?.toFixed(2) || "0.00"}

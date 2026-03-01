@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Schedule } from "@/lib/types";
 import React, { useEffect, useState } from "react";
 import {
@@ -128,7 +129,7 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#212121] border-gray-700 w-[600px]">
+      <DialogContent className="bg-panel border-gray-700 w-[600px]">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -146,8 +147,8 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
                 value={name}
                 onChangeText={setName}
                 placeholder="e.g., Happy Hour"
-                placeholderTextColor="#6B7280"
-                className="bg-[#303030] border border-gray-600 rounded-lg px-3 py-2 text-white text-lg h-16"
+                placeholderTextColor={colors.muted}
+                className="bg-surface border border-gray-600 rounded-lg px-3 py-2 text-white text-lg h-16"
               />
             </View>
             <View>
@@ -164,7 +165,7 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
                       className={`px-4 py-3 rounded-lg border ${
                         active
                           ? "bg-blue-600 border-blue-500"
-                          : "bg-[#303030] border-gray-600"
+                          : "bg-surface border-gray-600"
                       }`}
                     >
                       <Text
@@ -200,7 +201,7 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
           <View className="flex-row gap-3 mt-3 pt-4 border-t border-gray-700">
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 px-3 py-3 rounded-lg bg-[#303030] border border-gray-600"
+              className="flex-1 px-3 py-3 rounded-lg bg-surface border border-gray-600"
             >
               <Text className="text-white text-center text-xl font-bold">
                 Cancel

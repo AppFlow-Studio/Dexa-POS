@@ -7,7 +7,7 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
   const itemsToShow = order.items.slice(0, 4); // Show a maximum of 4 items
 
   return (
-    <View className="w-96 p-6 bg-[#303030] border border-gray-200 rounded-2xl mr-4">
+    <View className="w-96 p-6 bg-panel border border-gray-200 rounded-2xl mr-4">
       {/* Header */}
       <View className="flex-row justify-between items-start">
         <View>

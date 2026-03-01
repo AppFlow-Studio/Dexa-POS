@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import {
@@ -72,14 +73,14 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[450px] p-6">
+      <DialogContent className="bg-surface border-gray-700 w-[450px] p-6">
         <DialogHeader>
           <DialogTitle className="text-white text-2xl text-center font-semibold">
             Enter Number of Guests
           </DialogTitle>
         </DialogHeader>
         <View className="py-4">
-          <View className="bg-[#212121] border border-gray-600 rounded-lg p-4 mb-4">
+          <View className="bg-panel border border-gray-600 rounded-lg p-4 mb-4">
             <Text className="text-center text-4xl font-bold text-white">
               {count}
             </Text>
@@ -89,7 +90,7 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
         <DialogFooter className="flex-row gap-3">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+            className="flex-1 py-3 bg-panel border border-gray-600 rounded-lg"
           >
             <Text className="text-center text-xl font-bold text-gray-300">
               Cancel

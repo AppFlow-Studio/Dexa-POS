@@ -6,6 +6,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme } from "@/lib/theme";
 import { DraggableShape } from "./DraggableShape";
 import { runOnJS, useAnimatedReaction } from "react-native-reanimated";
 
@@ -54,8 +55,7 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-      backgroundStyle={{ backgroundColor: "#1C1C1E" }} // Slightly different dark color for components
+      {...bottomSheetTheme}
       backdropComponent={(props) => (
         <BottomSheetBackdrop
           {...props}
@@ -64,7 +64,7 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
         />
       )}
     >
-      <BottomSheetView className="flex-1 bg-[#1C1C1E]">
+      <BottomSheetView className="flex-1 bg-panel">
         <View className="px-4 pt-2 pb-2 border-b border-gray-700">
           <Text className="text-white text-xl font-bold">Add to Floor Plan</Text>
           <Text className="text-gray-400 text-sm mt-1">
@@ -111,9 +111,9 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
                 <DraggableShape
                   shapeId={id as keyof typeof TABLE_SHAPES}
                 >
-                  <View className="p-3 rounded-xl items-center justify-center h-[110px] bg-[#2C2C2E]">
+                  <View className="p-3 rounded-xl items-center justify-center h-[110px] bg-surface">
                     <View className="flex-1 items-center justify-center">
-                      <ShapeComponent color="#9CA3AF" height={50} />
+                      <ShapeComponent color={colors.label} height={50} />
                     </View>
                     <Text
                       className="mt-2 h-5 font-semibold text-xs text-center text-gray-300"

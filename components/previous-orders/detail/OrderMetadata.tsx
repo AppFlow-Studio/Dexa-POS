@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { PreviousOrder } from "@/lib/types";
 import {
   Clock,
@@ -38,48 +39,48 @@ const OrderMetadata: React.FC<OrderMetadataProps> = ({ order }) => {
   const TypeIcon = typeIcons[order.type] || Utensils;
 
   return (
-    <View className="bg-[#303030] rounded-xl p-4 mt-4 border border-gray-700">
+    <View className="bg-panel rounded-xl p-4 mt-4 border border-gray-700">
       <Text className="text-base font-bold text-white mb-3">
         Order Details
       </Text>
 
       <MetadataRow
-        icon={<TypeIcon color="#9CA3AF" size={16} />}
+        icon={<TypeIcon color={colors.label} size={16} />}
         label="Order Type"
         value={order.type}
       />
 
       {order.service_location_name && (
         <MetadataRow
-          icon={<MapPin color="#9CA3AF" size={16} />}
+          icon={<MapPin color={colors.label} size={16} />}
           label="Table / Location"
           value={order.service_location_name}
         />
       )}
 
       <MetadataRow
-        icon={<User color="#9CA3AF" size={16} />}
+        icon={<User color={colors.label} size={16} />}
         label="Server"
         value={order.server}
       />
 
       {order.station_name && (
         <MetadataRow
-          icon={<Monitor color="#9CA3AF" size={16} />}
+          icon={<Monitor color={colors.label} size={16} />}
           label="Station"
           value={order.station_name}
         />
       )}
 
       <MetadataRow
-        icon={<Users color="#9CA3AF" size={16} />}
+        icon={<Users color={colors.label} size={16} />}
         label="Customer"
         value={order.customer}
       />
 
       {order.opened_at && (
         <MetadataRow
-          icon={<Clock color="#9CA3AF" size={16} />}
+          icon={<Clock color={colors.label} size={16} />}
           label="Opened"
           value={formatDateTime(order.opened_at)}
         />
@@ -87,7 +88,7 @@ const OrderMetadata: React.FC<OrderMetadataProps> = ({ order }) => {
 
       {order.closed_at && (
         <MetadataRow
-          icon={<Clock color="#9CA3AF" size={16} />}
+          icon={<Clock color={colors.label} size={16} />}
           label="Closed"
           value={formatDateTime(order.closed_at)}
         />
@@ -95,7 +96,7 @@ const OrderMetadata: React.FC<OrderMetadataProps> = ({ order }) => {
 
       {duration && (
         <MetadataRow
-          icon={<Clock color="#9CA3AF" size={16} />}
+          icon={<Clock color={colors.label} size={16} />}
           label="Duration"
           value={duration}
         />

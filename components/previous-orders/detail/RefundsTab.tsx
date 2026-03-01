@@ -1,4 +1,5 @@
 import { PreviousOrder } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import React, { useMemo } from "react";
 import { ScrollView, Text, View } from "react-native";
 
@@ -50,7 +51,7 @@ const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
       showsVerticalScrollIndicator={false}
     >
       {/* Refund Summary Card */}
-      <View className="bg-[#303030] rounded-xl p-4 mb-4 border border-gray-700">
+      <View className="rounded-xl p-4 mb-4 border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
         <Text className="text-base font-bold text-white mb-3">
           Refund Summary
         </Text>
@@ -86,7 +87,7 @@ const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
             return (
               <View
                 key={reversal.id}
-                className="bg-[#303030] rounded-xl p-4 mb-2.5 border border-gray-700"
+                className="rounded-xl p-4 mb-2.5 border" style={{ backgroundColor: colors.card, borderColor: colors.border }}
               >
                 <View className="flex-row items-center justify-between mb-2">
                   {/* Type badge */}
@@ -156,7 +157,7 @@ const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
             return (
               <View
                 key={refundItem.id}
-                className="bg-[#303030] rounded-xl p-3 mb-2 border border-gray-700 flex-row items-center justify-between"
+                className="rounded-xl p-3 mb-2 border flex-row items-center justify-between" style={{ backgroundColor: colors.card, borderColor: colors.border }}
               >
                 <View className="flex-1 mr-3">
                   <Text className="text-sm font-semibold text-white">

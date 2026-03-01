@@ -1,3 +1,4 @@
+import { spinnerColor } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Text, View } from "react-native";
@@ -25,8 +26,8 @@ export default function SSOCallbackScreen() {
   }, [router]);
 
   return (
-    <View className="flex-1 items-center justify-center bg-[#212121]">
-      <ActivityIndicator size="large" color="#3b82f6" />
+    <View className="flex-1 items-center justify-center bg-screen">
+      <ActivityIndicator size="large" color={spinnerColor} />
       <Text className="text-white text-xl mt-4">Completing sign-in...</Text>
       <Text className="text-neutral-400 mt-2 text-center px-8">
         Please wait while we verify your credentials

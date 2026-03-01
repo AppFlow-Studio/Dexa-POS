@@ -249,7 +249,7 @@ const SeatedPanel: React.FC = () => {
   };
 
   return (
-    <View className="h-full flex-col bg-[#292929]">
+    <View className="h-full flex-col bg-panel">
       <View className="p-4 border-b border-gray-700 space-y-3">
         <View className="flex-row gap-2">
           {["All", "My Tables", "By Server"].map((filter) => (

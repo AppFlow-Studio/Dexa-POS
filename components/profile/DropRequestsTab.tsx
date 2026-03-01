@@ -1,6 +1,7 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { format, parseISO } from "date-fns";
+import { colors } from "@/lib/theme";
 import {
   AlertCircle,
   CheckCircle2,
@@ -15,21 +16,21 @@ const getStatusStyles = (status: string) => {
   switch (status) {
     case "approved":
       return {
-        icon: <CheckCircle2 size={20} color="#22c55e" />,
+        icon: <CheckCircle2 size={20} color={colors.success} />,
         borderColor: "border-green-500/20",
         textColor: "text-green-400",
         bgColor: "bg-green-500/20",
       };
     case "denied":
       return {
-        icon: <XCircle size={20} color="#ef4444" />,
+        icon: <XCircle size={20} color={colors.danger} />,
         borderColor: "border-red-500/20",
         textColor: "text-red-400",
         bgColor: "bg-red-500/20",
       };
     default: // pending
       return {
-        icon: <AlertCircle size={20} color="#f59e0b" />,
+        icon: <AlertCircle size={20} color={colors.warning} />,
         borderColor: "border-yellow-500/20",
         textColor: "text-yellow-400",
         bgColor: "bg-yellow-500/20",
@@ -47,8 +48,8 @@ const DropRequestsTab = () => {
 
   if (myDropRequests.length === 0) {
     return (
-      <View className="p-12 bg-[#303030] border border-gray-700 rounded-2xl items-center justify-center">
-        <AlertCircle size={48} color="#6B7280" />
+      <View className="p-12 bg-surface border border-gray-700 rounded-2xl items-center justify-center">
+        <AlertCircle size={48} color={colors.muted} />
         <Text className="text-lg font-semibold text-white mt-4">
           No Drop Requests
         </Text>
@@ -74,7 +75,7 @@ const DropRequestsTab = () => {
         return (
           <View
             key={request.id}
-            className={`p-4 bg-[#303030] rounded-2xl border ${styles.borderColor}`}
+            className={`p-4 bg-surface rounded-2xl border ${styles.borderColor}`}
           >
             <View className="flex-row items-start justify-between mb-3">
               <View className="flex-row items-start gap-3">
@@ -88,14 +89,14 @@ const DropRequestsTab = () => {
                   </Text>
                   <View className="flex-row gap-4">
                     <View className="flex-row items-center gap-2">
-                      <Clock size={16} color="#9CA3AF" />
+                      <Clock size={16} color={colors.label} />
                       <Text className="text-sm text-gray-400">
                         {formatTime(request.shift.startTime)} -{" "}
                         {formatTime(request.shift.endTime)}
                       </Text>
                     </View>
                     <View className="flex-row items-center gap-2">
-                      <MapPin size={16} color="#9CA3AF" />
+                      <MapPin size={16} color={colors.label} />
                       <Text className="text-sm text-gray-400">
                         {request.shift.location}
                       </Text>

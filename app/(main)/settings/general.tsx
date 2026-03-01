@@ -2,6 +2,7 @@ import { SessionLogoutButton } from "@/components/auth/SessionLogoutButton";
 import { OperatingHoursTimeSheet } from "@/components/settings/OperatingHoursTimeSheet";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { Switch } from "@/components/ui/switch";
+import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { CacheStats, clearCache, getCacheStats } from "@/services/cacheService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -271,18 +272,18 @@ const GeneralSettingsScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700"
+      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
     >
       <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">
+        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
           {icon}
         </View>
         <Text className="text-white font-bold text-lg">{title}</Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color="#9ca3af" />
+        <ChevronUp size={20} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color="#9ca3af" />
+        <ChevronDown size={20} color={colors.label} />
       )}
     </TouchableOpacity>
   );
@@ -296,9 +297,9 @@ const GeneralSettingsScreen = () => {
   ) => (
     <View className="mb-4">
       <Text className="text-gray-400 text-sm font-medium mb-2">{label}</Text>
-      <View className="flex-row items-center bg-[#404040] border border-gray-600 rounded-lg overflow-hidden">
+      <View className="flex-row items-center bg-surface border border-gray-600 rounded-lg overflow-hidden">
         {icon && (
-          <View className="p-3 bg-[#505050] border-r border-gray-600">
+          <View className="p-3 bg-card border-r border-gray-600">
             {icon}
           </View>
         )}
@@ -307,7 +308,7 @@ const GeneralSettingsScreen = () => {
           onChangeText={onChange}
           className="flex-1 p-3 text-white text-base"
           placeholder={placeholder}
-          placeholderTextColor="#6b7280"
+          placeholderTextColor={colors.muted}
         />
       </View>
     </View>
@@ -318,7 +319,7 @@ const GeneralSettingsScreen = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View className="flex-1 bg-[#212121] p-6">
+      <View className="flex-1 bg-screen p-6">
         <View className="mb-6">
           <Text className="text-3xl font-bold text-white">
             General Settings
@@ -333,10 +334,10 @@ const GeneralSettingsScreen = () => {
 
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* Business Information */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(
               "Business Information",
-              <Store size={20} color="#60a5fa" />,
+              <Store size={20} color={colors.info} />,
               "info"
             )}
             {expandedSections.info && (
@@ -345,13 +346,13 @@ const GeneralSettingsScreen = () => {
                   "Business Name",
                   displayStoreName,
                   () => {}, // Read-only for now, API integration later
-                  <Building2 size={18} color="#60a5fa" />
+                  <Building2 size={18} color={colors.info} />
                 )}
                 {renderInputField(
                   "Address",
                   addressString,
                   () => {},
-                  <MapPin size={18} color="#f87171" />
+                  <MapPin size={18} color={colors.danger} />
                 )}
                 <View className="flex-row gap-4">
                   <View className="flex-1">
@@ -359,7 +360,7 @@ const GeneralSettingsScreen = () => {
                       "Phone",
                       displayPhone || "",
                       () => {}, // Read-only for now
-                      <Phone size={18} color="#4ade80" />
+                      <Phone size={18} color={colors.success} />
                     )}
                   </View>
                   <View className="flex-1">
@@ -376,10 +377,10 @@ const GeneralSettingsScreen = () => {
           </View>
 
           {/* Operating Hours */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(
               "Operating Hours",
-              <Clock size={20} color="#f97316" />,
+              <Clock size={20} color={colors.warning} />,
               "hours"
             )}
             {expandedSections.hours && (
@@ -402,7 +403,7 @@ const GeneralSettingsScreen = () => {
                         onPress={() =>
                           dayHoursItem.enabled && openTimePicker(index, "open")
                         }
-                        className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600"
+                        className="bg-surface px-3 py-2 rounded-lg border border-gray-600"
                         disabled={!dayHoursItem.enabled}
                       >
                         <Text className="text-white font-medium">
@@ -414,7 +415,7 @@ const GeneralSettingsScreen = () => {
                         onPress={() =>
                           dayHoursItem.enabled && openTimePicker(index, "close")
                         }
-                        className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600"
+                        className="bg-surface px-3 py-2 rounded-lg border border-gray-600"
                         disabled={!dayHoursItem.enabled}
                       >
                         <Text className="text-white font-medium">
@@ -435,10 +436,10 @@ const GeneralSettingsScreen = () => {
           </View>
 
           {/* Tax Settings */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(
               "Tax Configuration",
-              <Percent size={20} color="#4ade80" />,
+              <Percent size={20} color={colors.success} />,
               "tax"
             )}
             {expandedSections.tax && (
@@ -463,7 +464,7 @@ const GeneralSettingsScreen = () => {
                   Tax Rates by Category
                 </Text>
                 {taxRates.length === 0 ? (
-                  <View className="bg-[#404040] rounded-lg p-4">
+                  <View className="bg-surface rounded-lg p-4">
                     <Text className="text-gray-400 text-center">
                       No tax rates configured. Tax rates will be loaded from
                       your location settings.
@@ -509,10 +510,10 @@ const GeneralSettingsScreen = () => {
           </View>
 
           {/* Service Charges */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(
               "Service Charges & Gratuity",
-              <DollarSign size={20} color="#facc15" />,
+              <DollarSign size={20} color={colors.warning} />,
               "service"
             )}
             {expandedSections.service && (
@@ -552,7 +553,7 @@ const GeneralSettingsScreen = () => {
                       "Gratuity Percentage (%)",
                       serviceCharge.rate,
                       (t) => setServiceCharge((prev) => ({ ...prev, rate: t })),
-                      <Percent size={18} color="#9ca3af" />
+                      <Percent size={18} color={colors.label} />
                     )}
                   </View>
                 </View>
@@ -568,10 +569,10 @@ const GeneralSettingsScreen = () => {
           </TouchableOpacity>
 
           {/* Cache & Data Section */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(
               "Cache & Data",
-              <Trash2 size={20} color="#f87171" />,
+              <Trash2 size={20} color={colors.danger} />,
               "cache"
             )}
             {expandedSections.cache && (
@@ -606,11 +607,11 @@ const GeneralSettingsScreen = () => {
           </View>
 
           {/* Log Out Section */}
-          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-10 p-5">
+          <View className="bg-panel rounded-xl border border-gray-700 mb-10 p-5">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center">
                 <View className="w-8 h-8 bg-red-500/20 rounded-lg items-center justify-center mr-3">
-                  <LogOut size={20} color="#ef4444" />
+                  <LogOut size={20} color={colors.danger} />
                 </View>
                 <View>
                   <Text className="text-white font-bold text-lg">Log Out</Text>

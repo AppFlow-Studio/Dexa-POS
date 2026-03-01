@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { PreviousOrder } from "@/lib/types";
 import React, { useMemo } from "react";
 import { Text, View } from "react-native";
@@ -45,8 +46,8 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ order }) => {
       {/* Full-width balance due card (only if > 0) */}
       {balanceDue > 0 && (
         <View
-          className="bg-[#303030] rounded-xl p-4 mt-3"
-          style={{ borderWidth: 1, borderColor: "#EAB308" }}
+          className="bg-panel rounded-xl p-4 mt-3"
+          style={{ borderWidth: 1, borderColor: colors.warning }}
         >
           <Text className="text-xs text-yellow-400 mb-1">Balance Due</Text>
           <Text className="text-xl font-bold text-yellow-400">
@@ -68,7 +69,7 @@ const SummaryCard = ({
   borderColor: string;
 }) => (
   <View
-    className="bg-[#303030] rounded-xl p-4"
+    className="bg-panel rounded-xl p-4"
     style={{
       borderWidth: 1,
       borderColor,

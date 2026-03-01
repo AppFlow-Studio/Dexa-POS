@@ -67,7 +67,7 @@ const ManagerPinModal = () => {
 
   return (
     <Dialog open={isPinModalOpen} onOpenChange={closePinModal}>
-      <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-6">
+      <DialogContent className="w-fit h-fit bg-panel border-gray-600 p-6">
         <DialogHeader>
           <DialogTitle className="text-center text-2xl font-semibold text-white">
             Manager Override

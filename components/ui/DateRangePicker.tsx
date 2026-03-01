@@ -1,3 +1,4 @@
+import { colors } from '@/lib/theme';
 import { Calendar, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
@@ -128,12 +129,12 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
         <>
             <TouchableOpacity
                 onPress={() => setIsModalOpen(true)}
-                className={`flex-row items-center w-[33%] justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-3 ${className}`}
+                className={`flex-row items-center w-[33%] justify-between bg-panel border border-gray-700 rounded-lg px-3 py-3 ${className}`}
             >
                 <Text className={`text-lg ${startDate || endDate ? 'text-white' : 'text-gray-400'}`}>
                     {getDisplayText()}
                 </Text>
-                <Calendar color="#9CA3AF" size={20} />
+                <Calendar color={colors.label} size={20} />
             </TouchableOpacity>
 
             <Modal
@@ -143,12 +144,12 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 onRequestClose={() => setIsModalOpen(false)}
             >
                 <View className="flex-1 bg-black/50 justify-center items-center px-4">
-                    <View className="bg-[#303030] rounded-2xl p-6 w-full max-w-3xl">
+                    <View className="bg-surface rounded-2xl p-6 w-full max-w-3xl">
                         {/* Header */}
                         <View className="flex-row items-center justify-between mb-6">
                             <Text className="text-2xl font-bold text-white">Select Date Range</Text>
                             <TouchableOpacity onPress={() => setIsModalOpen(false)}>
-                                <X color="#9CA3AF" size={24} />
+                                <X color={colors.label} size={24} />
                             </TouchableOpacity>
                         </View>
 

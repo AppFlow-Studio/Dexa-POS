@@ -10,6 +10,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { toastService } from "@/lib/toastService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { colors } from "@/lib/theme";
 import {
   AlertTriangle,
   CheckCircle,
@@ -132,7 +133,7 @@ export function NetworkStatusBadge(): React.ReactElement {
           bgColor: isExpanded ? "bg-blue-900/40" : "bg-green-900/30",
           textColor: isExpanded ? "text-blue-400" : "text-green-400",
           borderColor: isExpanded ? "border-blue-600/50" : "border-green-600/50",
-          icon: <CheckCircle size={14} color={isExpanded ? "#60a5fa" : "#4ade80"} />,
+          icon: <CheckCircle size={14} color={isExpanded ? colors.info : "#4ade80"} />,
           label: isExpanded ? "Sync Options" : "Online",
         };
       case "pending":
@@ -141,9 +142,9 @@ export function NetworkStatusBadge(): React.ReactElement {
           textColor: "text-amber-400",
           borderColor: "border-amber-600/50",
           icon: isSyncing ? (
-            <ActivityIndicator size="small" color="#fbbf24" />
+            <ActivityIndicator size="small" color={colors.warning} />
           ) : (
-            <Clock size={14} color="#fbbf24" />
+            <Clock size={14} color={colors.warning} />
           ),
           label: isSyncing
             ? `Syncing ${pendingSyncCount}...`
@@ -154,7 +155,7 @@ export function NetworkStatusBadge(): React.ReactElement {
           bgColor: "bg-red-900/30",
           textColor: "text-red-400",
           borderColor: "border-red-600/50",
-          icon: <WifiOff size={14} color="#f87171" />,
+          icon: <WifiOff size={14} color={colors.danger} />,
           label:
             pendingSyncCount > 0
               ? `Offline - ${pendingSyncCount} pending`
@@ -185,7 +186,7 @@ export function NetworkStatusBadge(): React.ReactElement {
             <View className="ml-0.5">
               <RefreshCw
                 size={12}
-                color={isExpanded ? "#60a5fa" : "#fbbf24"}
+                color={isExpanded ? colors.info : colors.warning}
                 style={isExpanded ? { transform: [{ rotate: "180deg" }] } : undefined}
               />
             </View>
@@ -236,7 +237,7 @@ export function NetworkStatusBadge(): React.ReactElement {
           exiting={SlideOutRight.duration(200)}
         >
           <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-amber-600/50 bg-amber-900/40">
-            <CreditCard size={14} color="#fbbf24" />
+            <CreditCard size={14} color={colors.warning} />
             <Text className="text-sm font-medium text-amber-400">
               {pendingPaymentsCount} payment{pendingPaymentsCount > 1 ? "s" : ""} queued
             </Text>
@@ -260,11 +261,11 @@ export function NetworkStatusBadge(): React.ReactElement {
             activeOpacity={0.7}
             className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-red-600/50 bg-red-900/40"
           >
-            <AlertTriangle size={14} color="#f87171" />
+            <AlertTriangle size={14} color={colors.danger} />
             <Text className="text-sm font-medium text-red-400">
               {failedPayments.length} payment{failedPayments.length > 1 ? "s" : ""} failed
             </Text>
-            <RefreshCw size={12} color="#f87171" />
+            <RefreshCw size={12} color={colors.danger} />
           </TouchableOpacity>
         </Animated.View>
       )}

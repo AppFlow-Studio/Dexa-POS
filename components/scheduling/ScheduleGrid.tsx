@@ -30,6 +30,7 @@ import {
   parseISO,
   startOfDay,
 } from "date-fns";
+import { colors } from "@/lib/theme";
 import { Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -107,7 +108,7 @@ const ScheduleCell = React.memo(
       const isHovered = hoveredDropZoneKey.value === cellKey;
       const isDragging = draggingCellKey.value === cellKey;
       return {
-        borderColor: isHovered ? "#22c55e" : "#4b5563", // Green when hovered, otherwise gray
+        borderColor: isHovered ? colors.success : colors.border, // Green when hovered, otherwise gray
         borderWidth: isHovered ? 2 : 1,
         zIndex: 1, // Keep cell z-index low
       };
@@ -118,7 +119,7 @@ const ScheduleCell = React.memo(
         ref={viewRef}
         style={animatedStyle}
         className={`w-40 p-2 min-h-[80px] border-r border-b ${
-          isDateInRange ? "bg-[#303030]" : "bg-[#363636]"
+          isDateInRange ? "bg-panel" : "bg-card"
         } ${ptoOnDate ? "bg-purple-900/30" : ""} ${dropOnDate ? "bg-orange-900/30" : ""}`}
       >
         {overlayShifts.map((shift) => (
@@ -329,12 +330,12 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   return (
     // Ensure 'relative' so the absolute overlay positions relative to this container if needed,
     // though normally pageX/Y are screen absolute. If using pageX, this container should be top-level.
-    <View className="flex-1 bg-[#212121] relative">
+    <View className="flex-1 bg-screen relative">
       <AlertDialog
         open={!!conflictMessage}
         onOpenChange={(open) => !open && setConflictMessage(null)}
       >
-        <AlertDialogContent className="bg-[#1C1C1E] border-gray-700">
+        <AlertDialogContent className="bg-panel border-border">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">
               Shift Conflict
@@ -366,14 +367,14 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
       >
         <View>
           {/* Header */}
-          <View className="flex-row bg-[#212121] sticky top-0 z-10">
-            <View className="w-48 bg-[#212121] p-3 border-r border-gray-700">
+          <View className="flex-row bg-screen sticky top-0 z-10">
+            <View className="w-48 bg-screen p-3 border-r border-gray-700">
               <Text className="text-sm font-semibold text-white">Employee</Text>
             </View>
             {weekDates.map((date, i) => (
               <View
                 key={i}
-                className="w-40 bg-[#212121] p-3 text-center border-r border-gray-700 items-center"
+                className="w-40 bg-screen p-3 text-center border-r border-gray-700 items-center"
               >
                 <Text className="text-xs text-gray-400 uppercase">
                   {format(date, "E")}
@@ -389,7 +390,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
           <ScrollView ref={scrollViewRef}>
             {employees.map((employee: EmployeeProfile) => (
               <View key={employee.id} className="flex-row">
-                <View className="w-48 bg-[#303030] p-3 flex-row items-center border-r border-gray-700 border-b">
+                <View className="w-48 bg-panel p-3 flex-row items-center border-r border-border border-b">
                   <View className="w-12 h-12 rounded-full bg-purple-500 items-center justify-center mr-3">
                     <Text className="text-white font-bold text-lg">
                       {employee.fullName
@@ -485,7 +486,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                             onPress={() => onAddShift(employee.id, dateStr)}
                             className="flex-1 h-full w-full items-center justify-center border-2 border-dashed border-gray-600 rounded-lg"
                           >
-                            <Plus size={16} color="#9CA3AF" />
+                            <Plus size={16} color={colors.label} />
                             <Text className="text-gray-400 ml-2">
                               Add Shift
                             </Text>

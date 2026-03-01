@@ -35,7 +35,7 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     };
 
     return (
-        <View className="w-80 bg-[#303030] rounded-2xl border border-gray-600 p-4 h-fit">
+        <View className="w-80 bg-panel rounded-2xl border border-gray-600 p-4 h-fit">
             <Text className="text-lg font-bold text-white mb-4">{title}</Text>
             <View className="gap-y-2">
                 {subsections.map((subsection) => {

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { ShiftRequest } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import {
@@ -35,16 +36,16 @@ const DropRequestCard: React.FC<DropRequestCardProps> = ({
   onDeny,
 }) => {
   return (
-    <View className="p-4 bg-[#303030] rounded-2xl border border-yellow-500/20">
+    <View className="p-4 bg-panel rounded-2xl border border-yellow-500/20">
       <View className="flex-row items-start justify-between mb-3">
         <View className="flex-row items-start gap-3">
-          <AlertCircle size={20} color="#f59e0b" className="mt-1" />
+          <AlertCircle size={20} color={colors.warning} className="mt-1" />
           <View>
             <Text className="text-lg font-semibold text-white mb-1">
               {request.shift.role} - Drop Request
             </Text>
             <View className="flex-row items-center gap-2 mb-1">
-              <User size={14} color="#9CA3AF" />
+              <User size={14} color={colors.label} />
               <Text className="text-sm text-gray-300 font-medium">
                 {employeeName}
               </Text>
@@ -54,14 +55,14 @@ const DropRequestCard: React.FC<DropRequestCardProps> = ({
             </Text>
             <View className="flex-row gap-4">
               <View className="flex-row items-center gap-2">
-                <Clock size={16} color="#9CA3AF" />
+                <Clock size={16} color={colors.label} />
                 <Text className="text-sm text-gray-400">
                   {formatTime(request.shift.startTime)} -{" "}
                   {formatTime(request.shift.endTime)}
                 </Text>
               </View>
               <View className="flex-row items-center gap-2">
-                <MapPin size={16} color="#9CA3AF" />
+                <MapPin size={16} color={colors.label} />
                 <Text className="text-sm text-gray-400">
                   {request.shift.location}
                 </Text>
@@ -79,7 +80,7 @@ const DropRequestCard: React.FC<DropRequestCardProps> = ({
         </View>
       </View>
       {request.note && (
-        <View className="p-3 bg-[#212121] border border-gray-600 rounded-lg mb-3">
+        <View className="p-3 bg-screen border border-border rounded-lg mb-3">
           <Text className="text-gray-300 italic">Reason: {request.note}</Text>
         </View>
       )}
@@ -88,7 +89,7 @@ const DropRequestCard: React.FC<DropRequestCardProps> = ({
           onPress={onApprove}
           className="flex-1 bg-green-600 flex-row gap-2"
         >
-          <Check size={16} color="#FFFFFF" />
+          <Check size={16} color={colors.heading} />
           <Text className="text-white font-semibold">Approve</Text>
         </Button>
         <Button
@@ -96,7 +97,7 @@ const DropRequestCard: React.FC<DropRequestCardProps> = ({
           variant="destructive"
           className="flex-1 flex-row gap-2"
         >
-          <X size={16} color="#FFFFFF" />
+          <X size={16} color={colors.heading} />
           <Text className="text-white font-semibold">Deny</Text>
         </Button>
       </View>

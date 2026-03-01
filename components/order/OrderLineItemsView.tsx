@@ -1,59 +1,92 @@
+import {
+  colors,
+  ORDER_STATUS_COLORS,
+  PAYMENT_STATUS_COLORS,
+} from "@/lib/theme";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { LinearGradient } from "expo-linear-gradient";
-import { useCallback, useMemo, useState } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { X } from "lucide-react-native";
+import { useMemo } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import ReadOnlyBillItem from "./ReadOnlyBillItem";
 
-// FIX: Update props to accept a specific orderId
 interface OrderLineItemsViewProps {
   onClose: () => void;
   orderId: string | null;
 }
-const OrderLineItemsView = ({
-  onClose,
-  orderId,
+
+// ── Status chip helper ─────────────────────────────────────────
+const StatusChip = ({
+  label,
+  color,
 }: {
-  onClose: () => void;
-  orderId: string | null;
-}) => {
-  // CRITICAL FIX: Use proper selector with direct ID lookup instead of destructuring entire store
-  // This prevents re-renders when unrelated orders change
+  label: string;
+  color: string;
+}) => (
+  <View
+    className="px-3 py-1 rounded-full mr-2 mb-1"
+    style={{ backgroundColor: color + "22" }}
+  >
+    <Text
+      className="text-xs font-semibold capitalize"
+      style={{ color }}
+    >
+      {label}
+    </Text>
+  </View>
+);
+
+// ── Format helpers ─────────────────────────────────────────────
+const formatTime = (iso: string | null | undefined) => {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const formatOrderType = (type: string | undefined) => {
+  if (!type) return "";
+  const map: Record<string, string> = {
+    "Dine In": "Dine In",
+    dine_in: "Dine In",
+    Takeaway: "Takeaway",
+    takeout: "Takeaway",
+    Delivery: "Delivery",
+    delivery: "Delivery",
+  };
+  return map[type] || type;
+};
+
+const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
   const orderToView = useOrderStore((s) => s.ordersById[orderId || ""]);
   const items = orderToView?.items || [];
 
-  // Calculate totals - prefer backend values, fallback to local calculation
-  const { subtotal, discount, tax, total, amountPaid, amountDue } =
+  // ── Totals ────────────────────────────────────────────────────
+  const { subtotal, discount, tax, total, amountPaid, amountDue, cashTotal, cashSavings } =
     useMemo(() => {
       if (!orderToView) {
-        return {
-          subtotal: 0,
-          discount: 0,
-          tax: 0,
-          total: 0,
-          amountPaid: 0,
-          amountDue: 0,
-        };
+        return { subtotal: 0, discount: 0, tax: 0, total: 0, amountPaid: 0, amountDue: 0, cashTotal: 0, cashSavings: 0 };
       }
 
-      // Calculate local subtotal from items as fallback
       const localSubtotal = orderToView.items.reduce(
         (acc, item) => acc + item.price * item.quantity,
         0,
       );
 
-      // Calculate discount
-      const disc = orderToView.checkDiscount
+      const disc = orderToView.total_discount ?? (orderToView.checkDiscount
         ? localSubtotal * orderToView.checkDiscount.value
-        : 0;
+        : 0);
 
-      // Prefer backend values, fallback to local calculations
-      // Note: OrderProfile doesn't have a subtotal property, so we derive it from total - tax
       const finalTax = orderToView.total_tax ?? 0;
-      const finalTotal =
-        orderToView.total_amount ?? localSubtotal - disc + finalTax;
-      const finalSubtotal = finalTotal - finalTax; // Derive subtotal from total - tax
+      const finalTotal = orderToView.total_amount ?? localSubtotal - disc + finalTax;
+      const finalSubtotal = finalTotal - finalTax;
       const finalAmountPaid = orderToView.amount_paid ?? 0;
       const finalAmountDue = orderToView.amount_due ?? finalTotal;
+      const finalCashTotal = orderToView.total_cash_amount ?? 0;
+      const finalCashSavings = finalCashTotal > 0 && finalCashTotal < finalTotal
+        ? finalTotal - finalCashTotal
+        : 0;
 
       return {
         subtotal: finalSubtotal > 0 ? finalSubtotal : localSubtotal,
@@ -62,270 +95,364 @@ const OrderLineItemsView = ({
         total: finalTotal,
         amountPaid: finalAmountPaid,
         amountDue: finalAmountDue,
+        cashTotal: finalCashTotal,
+        cashSavings: finalCashSavings,
       };
     }, [orderToView]);
 
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  // ── Payments ──────────────────────────────────────────────────
+  const validPayments = useMemo(
+    () => orderToView?.payments?.filter((p) => !p.isVoided) || [],
+    [orderToView?.payments],
+  );
 
-  const handleToggleExpand = useCallback((itemId: string) => {
-    setExpandedItemId((prev) => (prev === itemId ? null : itemId));
-  }, []);
+  // ── Total refunded ────────────────────────────────────────────
+  const totalRefunded = useMemo(() => {
+    if (!validPayments.length) return 0;
+    return validPayments.reduce((acc, p) => acc + (p.refundedAmount ?? 0), 0);
+  }, [validPayments]);
 
-  // Helper for status badge styling
-  const getStatusBadgeStyle = (status: string) => {
-    const normalized = status?.toLowerCase() || "";
-    if (normalized === "preparing" || normalized === "draft") {
-      return {
-        bg: "bg-amber-100",
-        text: "text-amber-800",
-      };
-    }
-    if (normalized === "ready" || normalized === "completed") {
-      return {
-        bg: "bg-green-100",
-        text: "text-green-800",
-      };
-    }
-    return {
-      bg: "bg-blue-100",
-      text: "text-blue-800",
-    };
-  };
+  if (!orderToView) return null;
 
-  const getPaidStatusBadgeStyle = (status: string) => {
-    if (status === "Paid") {
-      return {
-        bg: "bg-green-100",
-        text: "text-green-800",
-      };
-    }
-    if (status === "Pending") {
-      return {
-        bg: "bg-yellow-100",
-        text: "text-yellow-800",
-      };
-    }
-    // Unpaid
-    return {
-      bg: "bg-red-100",
-      text: "text-red-800",
-    };
-  };
+  const orderTypeLabel = formatOrderType(orderToView.order_type);
+  const itemCount = items.length;
+  const customerLabel = orderToView.customer_name || "Walk-In";
+  const timeLabel = formatTime(orderToView.opened_at);
 
-  if (!orderToView) {
-    return null; // Don't render if there's no order to show
-  }
-
-  const orderStatusStyle = getStatusBadgeStyle(orderToView.order_status);
-  const paidStatusStyle = getPaidStatusBadgeStyle(orderToView.paid_status);
-
-  // Filter non-voided payments
-  const validPayments = orderToView.payments?.filter((p) => !p.isVoided) || [];
-  const hasPayments = validPayments.length > 0;
+  // Status chip colors
+  const orderStatusColor =
+    ORDER_STATUS_COLORS[orderToView.order_status] || colors.info;
+  const paidStatusColor =
+    PAYMENT_STATUS_COLORS[orderToView.paid_status] || colors.muted;
 
   return (
-    <View className="bg-[#1C1C1E] rounded-2xl border border-[#333] overflow-hidden">
-      {/* Receipt Header with Gradient */}
-      <LinearGradient
-        colors={["#2A2A2D", "#1C1C1E"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        className="p-5 pb-4 items-center border-b border-dashed border-[#444]"
+    <View
+      className="rounded-2xl overflow-hidden border border-border w-full"
+      style={{ backgroundColor: colors.panel }}
+    >
+      {/* ═══ HEADER ═══ */}
+      <View
+        className="px-5 pt-4 pb-3 border-b border-border"
+        style={{ backgroundColor: colors.card }}
       >
-        <View className="flex-row items-center gap-2 mb-3 p-5">
-          <Text className="text-2xl font-bold text-white">
-            Order {orderToView.display_number || orderToView.order_number || ""}
-          </Text>
-          {orderToView.display_number && (
-            <Text className="text-sm text-gray-400">
-              {new Date(orderToView.opened_at || Date.now()).toLocaleDateString(
-                "en-US",
-                {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                },
-              )}
-            </Text>
-          )}
-        </View>
-
-        {/* Status Badges - Pastel Pills */}
-        <View className="flex-row items-center gap-3 px-5">
-          <View className={`px-4 py-1.5 rounded-full ${orderStatusStyle.bg}`}>
+        {/* Row 1: Order # + status pill + close */}
+        <View className="flex-row items-center justify-between mb-1">
+          <View className="flex-row items-center gap-3">
             <Text
-              className={`text-sm font-semibold capitalize ${orderStatusStyle.text}`}
+              className="text-xl font-bold"
+              style={{ color: colors.heading }}
             >
-              {orderToView.order_status}
+              Order {orderToView.display_number || orderToView.order_number || ""}
             </Text>
+            <View
+              className="px-3 py-0.5 rounded-full"
+              style={{ backgroundColor: paidStatusColor + "22" }}
+            >
+              <Text
+                className="text-xs font-semibold"
+                style={{ color: paidStatusColor }}
+              >
+                {orderToView.paid_status}
+              </Text>
+            </View>
           </View>
-          <View className={`px-4 py-1.5 rounded-full ${paidStatusStyle.bg}`}>
-            <Text className={`text-sm font-semibold ${paidStatusStyle.text}`}>
-              {orderToView.paid_status}
-            </Text>
-          </View>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={12}
+            className="p-1 rounded-full"
+            style={{ backgroundColor: colors.border + "66" }}
+          >
+            <X size={18} color={colors.muted} />
+          </TouchableOpacity>
         </View>
-      </LinearGradient>
 
-      {/* Items List */}
-      <View className="p-4">
-        <Text className="text-sm text-gray-500 uppercase mb-2 font-medium">
-          Order Items
-        </Text>
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          className="max-h-[300px]"
-          contentContainerStyle={{ gap: 8 }}
+        {/* Row 2: type · customer · count ... time */}
+        <View className="flex-row items-center justify-between">
+          <Text className="text-sm" style={{ color: colors.label }}>
+            {[orderTypeLabel, customerLabel, `${itemCount} item${itemCount !== 1 ? "s" : ""}`]
+              .filter(Boolean)
+              .join(" \u00B7 ")}
+          </Text>
+          {timeLabel ? (
+            <Text className="text-sm" style={{ color: colors.muted }}>
+              {timeLabel}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      {/* ═══ BODY — Two columns ═══ */}
+      <View className="flex-row" style={{ maxHeight: 420 }}>
+        {/* ─── Left Column: Items (50%) ─── */}
+        <ScrollView
+          className="px-4 py-3 border-r border-border"
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
+        >
+          <Text
+            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            style={{ color: colors.muted }}
+          >
+            Items
+          </Text>
+          {items.map((item, idx) => (
             <ReadOnlyBillItem
+              key={item.id}
               item={item}
-              expandedItemId={expandedItemId}
-              onToggleExpand={handleToggleExpand}
+              isLast={idx === items.length - 1}
             />
-          )}
-        />
+          ))}
+        </ScrollView>
 
-        {/* Pricing Breakdown Section */}
-        <View className="border-t border-dashed border-[#444] pt-4 mt-4 gap-y-2">
-          <Text className="text-sm text-gray-500 uppercase mb-2 font-medium">
+        {/* ─── Right Column: Info (50%) ─── */}
+        <ScrollView
+          className="py-3 px-4"
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* STATUS */}
+          <Text
+            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            style={{ color: colors.muted }}
+          >
+            Status
+          </Text>
+          <View className="flex-row flex-wrap mb-4">
+            {orderTypeLabel ? (
+              <StatusChip label={orderTypeLabel} color={colors.info} />
+            ) : null}
+            <StatusChip
+              label={orderToView.order_status.replace(/_/g, " ")}
+              color={orderStatusColor}
+            />
+            <StatusChip
+              label={orderToView.check_status}
+              color={orderToView.check_status === "Opened" ? colors.success : colors.muted}
+            />
+          </View>
+
+          {/* PRICING BREAKDOWN */}
+          <Text
+            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            style={{ color: colors.muted }}
+          >
             Pricing Breakdown
           </Text>
-          <View className="flex-row justify-between items-center">
-            <Text className="text-base text-gray-400">Subtotal</Text>
-            <Text
-              className="text-base text-gray-300"
-              style={{ fontFamily: "monospace" }}
-            >
-              ${subtotal.toFixed(2)}
-            </Text>
+          <View className="gap-y-1.5 mb-1">
+            {/* Subtotal */}
+            <PriceRow label="Subtotal" amount={subtotal} />
+
+            {/* Discount */}
+            {discount > 0 && (
+              <PriceRow
+                label="Discount"
+                amount={-discount}
+                color={colors.success}
+              />
+            )}
+
+            {/* Tax */}
+            <PriceRow label="Tax" amount={tax} />
           </View>
-          {discount > 0 && (
+
+          {/* Separator + Total */}
+          <View
+            className="border-t border-dashed my-2 pt-2"
+            style={{ borderColor: colors.border }}
+          >
             <View className="flex-row justify-between items-center">
-              <Text className="text-base text-green-400">Discount</Text>
               <Text
-                className="text-base text-green-400"
-                style={{ fontFamily: "monospace" }}
+                className="text-base font-bold"
+                style={{ color: colors.heading }}
               >
-                -${discount.toFixed(2)}
+                Total
+              </Text>
+              <Text
+                className="text-lg font-bold"
+                style={{ color: colors.heading, fontFamily: "monospace" }}
+              >
+                ${total.toFixed(2)}
               </Text>
             </View>
-          )}
-          <View className="flex-row justify-between items-center">
-            <Text className="text-base text-gray-400">Tax</Text>
-            <Text
-              className="text-base text-gray-300"
-              style={{ fontFamily: "monospace" }}
-            >
-              ${tax.toFixed(2)}
-            </Text>
           </View>
 
-          {/* Large Total */}
-          <View className="flex-row justify-between items-center pt-2 mt-2 border-t border-dashed border-[#555]">
-            <Text className="text-xl font-bold text-white">Total</Text>
+          {/* Cash savings */}
+          {cashSavings > 0 && (
             <Text
-              className="text-2xl font-black text-white"
-              style={{ fontFamily: "monospace" }}
+              className="text-sm mt-1"
+              style={{ color: colors.success }}
             >
-              ${total.toFixed(2)}
+              Cash ${(cashTotal).toFixed(2)} (save ${cashSavings.toFixed(2)})
             </Text>
-          </View>
-
-          {/* Amount Paid (if any) */}
-          {amountPaid > 0 && (
-            <View className="flex-row justify-between items-center">
-              <Text className="text-base text-gray-400">Amount Paid</Text>
-              <Text
-                className="text-base text-green-400 font-medium"
-                style={{ fontFamily: "monospace" }}
-              >
-                ${amountPaid.toFixed(2)}
-              </Text>
-            </View>
           )}
 
-          {/* Amount Due (if not fully paid) */}
+          {/* Amount paid / balance due */}
+          {amountPaid > 0 && orderToView.paid_status !== "Paid" && (
+            <PriceRow
+              label="Amount Paid"
+              amount={amountPaid}
+              color={colors.success}
+              className="mt-2"
+            />
+          )}
           {amountDue > 0.01 && orderToView.paid_status !== "Paid" && (
-            <View className="flex-row justify-between items-center pt-2 mt-2 border-t border-dashed border-[#555]">
-              <Text className="text-lg font-bold text-yellow-400">
-                Balance Due
-              </Text>
-              <Text
-                className="text-xl font-bold text-yellow-400"
-                style={{ fontFamily: "monospace" }}
-              >
-                ${amountDue.toFixed(2)}
-              </Text>
-            </View>
-          )}
-
-          {/* Fully Paid indicator */}
-          {orderToView.paid_status === "Paid" && (
-            <View className="flex-row justify-center items-center pt-2 mt-2">
-              <Text className="text-lg font-bold text-green-400">
-                ✓ Fully Paid
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Payment History Section */}
-        {hasPayments && (
-          <View className="border-t border-dashed border-[#444] pt-4 mt-4">
-            <Text className="text-sm text-gray-500 uppercase mb-2 font-medium">
-              Payment History
-            </Text>
-            {validPayments.map((p, i) => (
-              <View
-                key={p.id || i}
-                className="flex-row justify-between items-center py-2 border-b border-[#333]"
-              >
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-gray-300">{p.method}</Text>
-                  {p.timestamp && (
-                    <Text className="text-gray-500 text-xs">
-                      {new Date(p.timestamp).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </Text>
-                  )}
-                </View>
-                <View className="flex-row items-center gap-2">
-                  <View className="px-2 py-0.5 rounded border border-green-600">
-                    <Text className="text-green-400 text-xs font-medium">
-                      Paid
-                    </Text>
-                  </View>
-                  <Text
-                    className="text-gray-300 font-medium"
-                    style={{ fontFamily: "monospace" }}
-                  >
-                    ${p.amount.toFixed(2)}
-                  </Text>
-                </View>
+            <View className="mt-2">
+              <View className="flex-row justify-between items-center">
+                <Text className="text-sm font-bold" style={{ color: colors.warning }}>
+                  Balance Due
+                </Text>
+                <Text
+                  className="text-base font-bold"
+                  style={{ color: colors.warning, fontFamily: "monospace" }}
+                >
+                  ${amountDue.toFixed(2)}
+                </Text>
               </View>
-            ))}
-          </View>
-        )}
+            </View>
+          )}
 
-        {/* Close Button */}
+          {/* Fully paid badge */}
+          {orderToView.paid_status === "Paid" && (
+            <Text
+              className="text-sm font-bold mt-2"
+              style={{ color: colors.success }}
+            >
+              Fully Paid
+            </Text>
+          )}
+
+          {/* PAYMENTS */}
+          {validPayments.length > 0 && (
+            <View className="mt-4">
+              <Text
+                className="text-xs font-semibold uppercase tracking-wider mb-2"
+                style={{ color: colors.muted }}
+              >
+                Payments
+              </Text>
+              <View className="gap-y-2">
+                {validPayments.map((p, i) => (
+                  <View key={p.id || i}>
+                    <View className="flex-row justify-between items-center">
+                      <View className="flex-row items-center gap-1.5">
+                        <Text className="text-sm" style={{ color: colors.label }}>
+                          {p.method === "Card" ? "\uD83D\uDCB3" : "\uD83D\uDCB5"}
+                        </Text>
+                        <Text
+                          className="text-sm font-medium"
+                          style={{ color: colors.heading }}
+                        >
+                          {p.method === "Card"
+                            ? `${p.cardBrand || "Card"} ${p.last4 ? `\u2022\u2022\u2022\u2022${p.last4}` : ""}`
+                            : "Cash"}
+                        </Text>
+                      </View>
+                      <Text
+                        className="text-sm font-semibold"
+                        style={{ color: colors.heading, fontFamily: "monospace" }}
+                      >
+                        ${p.amount.toFixed(2)}
+                      </Text>
+                    </View>
+                    {/* Timestamp + status */}
+                    <View className="flex-row items-center gap-1 mt-0.5 pl-5">
+                      {p.timestamp && (
+                        <Text className="text-xs" style={{ color: colors.muted }}>
+                          {formatTime(p.timestamp)}
+                        </Text>
+                      )}
+                      <Text className="text-xs" style={{ color: colors.muted }}>
+                        {p.timestamp ? " \u00B7 " : ""}
+                        {p.status === "captured" ? "Captured" : p.status}
+                      </Text>
+                    </View>
+                    {/* Cash tendered / change */}
+                    {p.method === "Cash" && p.amountTendered != null && (
+                      <Text
+                        className="text-xs pl-5 mt-0.5"
+                        style={{ color: colors.label }}
+                      >
+                        Tendered ${p.amountTendered.toFixed(2)}
+                        {p.changeGiven ? ` · Change $${p.changeGiven.toFixed(2)}` : ""}
+                      </Text>
+                    )}
+                    {/* Tip */}
+                    {p.tip_amount > 0 && (
+                      <Text
+                        className="text-xs pl-5 mt-0.5"
+                        style={{ color: colors.label }}
+                      >
+                        Tip ${p.tip_amount.toFixed(2)}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* REFUND INFO */}
+          {totalRefunded > 0 && (
+            <View className="mt-3">
+              <Text
+                className="text-xs font-semibold uppercase tracking-wider mb-1"
+                style={{ color: colors.muted }}
+              >
+                Refunds
+              </Text>
+              <Text className="text-sm font-medium" style={{ color: colors.danger }}>
+                Total Refunded: ${totalRefunded.toFixed(2)}
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* ═══ FOOTER ═══ */}
+      <View
+        className="px-5 py-3 border-t border-border flex-row justify-end"
+        style={{ backgroundColor: colors.card }}
+      >
         <TouchableOpacity
           onPress={onClose}
-          className="w-full py-3.5 mt-5 bg-[#2A2A2D] border border-[#444] rounded-xl items-center"
+          className="px-6 py-2.5 rounded-xl border border-border"
+          style={{ backgroundColor: colors.panel }}
         >
-          <Text className="text-lg font-semibold text-gray-300">Close</Text>
+          <Text
+            className="text-sm font-semibold"
+            style={{ color: colors.label }}
+          >
+            Close
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 };
+
+// ── Reusable price row ──────────────────────────────────────────
+const PriceRow = ({
+  label,
+  amount,
+  color,
+  className: extraClass,
+}: {
+  label: string;
+  amount: number;
+  color?: string;
+  className?: string;
+}) => (
+  <View className={`flex-row justify-between items-center ${extraClass || ""}`}>
+    <Text className="text-sm" style={{ color: color || colors.label }}>
+      {label}
+    </Text>
+    <Text
+      className="text-sm"
+      style={{ color: color || colors.heading, fontFamily: "monospace" }}
+    >
+      {amount < 0 ? `-$${Math.abs(amount).toFixed(2)}` : `$${amount.toFixed(2)}`}
+    </Text>
+  </View>
+);
 
 export default OrderLineItemsView;

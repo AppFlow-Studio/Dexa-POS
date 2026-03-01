@@ -1,5 +1,6 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { createSupabaseClient } from "@/lib/supabase";
+import { colors, spinnerColor } from "@/lib/theme";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { SelectedStation, Station } from "@/types/station";
 import { useAuth } from "@clerk/clerk-expo";
@@ -37,8 +38,8 @@ const StationSelectItem = ({
         isSelected
           ? "border-blue-500 bg-blue-900/30"
           : isAvailable
-            ? "border-gray-700 bg-[#303030]"
-            : "border-gray-700 bg-[#252525]"
+            ? "border-gray-700 bg-panel"
+            : "border-gray-700 bg-card"
       }`}
     >
       <View className="flex-row items-center justify-between">
@@ -48,7 +49,7 @@ const StationSelectItem = ({
               isAvailable ? "bg-green-600/20" : "bg-amber-600/20"
             }`}
           >
-            <Monitor size={24} color={isAvailable ? "#4ade80" : "#fbbf24"} />
+            <Monitor size={24} color={isAvailable ? colors.success : colors.warning} />
           </View>
           <View className="flex-1">
             <View className="flex-row items-center">
@@ -81,7 +82,7 @@ const StationSelectItem = ({
             </Text>
             {!isAvailable && station.current_session && (
               <View className="flex-row items-center mt-2">
-                <User size={14} color="#9ca3af" />
+                <User size={14} color={colors.label} />
                 <Text className="text-gray-400 text-sm ml-1">
                   In use by {station.current_session.staff_name}
                   {station.current_session.device_name &&
@@ -94,13 +95,13 @@ const StationSelectItem = ({
         <View className="items-end">
           {isAvailable ? (
             <View className="flex-row items-center">
-              <Wifi size={16} color="#4ade80" />
+              <Wifi size={16} color={colors.success} />
               <Text className="text-green-400 text-sm ml-1">Available</Text>
             </View>
           ) : (
             <View>
               <View className="flex-row items-center mb-2">
-                <WifiOff size={16} color="#fbbf24" />
+                <WifiOff size={16} color={colors.warning} />
                 <Text className="text-amber-400 text-sm ml-1">In Use</Text>
               </View>
               <TouchableOpacity
@@ -230,7 +231,7 @@ const StationSelectScreen = () => {
   if (isLoading) {
     return (
       <View className="w-full items-center justify-center py-20">
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color={spinnerColor} />
         <Text className="text-gray-400 mt-4">Loading stations...</Text>
       </View>
     );
@@ -260,7 +261,7 @@ const StationSelectScreen = () => {
   if (!stations || stations.length === 0) {
     return (
       <View className="w-full items-center justify-center py-20">
-        <Monitor size={48} color="#6b7280" />
+        <Monitor size={48} color={colors.muted} />
         <Text className="text-gray-400 text-lg text-center mt-4">
           No stations available
         </Text>
@@ -290,7 +291,7 @@ const StationSelectScreen = () => {
         >
           <RefreshCw
             size={24}
-            color={isRefetching ? "#6b7280" : "#3b82f6"}
+            color={isRefetching ? colors.muted : colors.info}
             style={isRefetching ? { opacity: 0.5 } : undefined}
           />
         </TouchableOpacity>

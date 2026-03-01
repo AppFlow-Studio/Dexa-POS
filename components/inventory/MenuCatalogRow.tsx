@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { Link } from "expo-router";
 import { Check, Edit, Eye, EyeOff, MoreHorizontal } from "lucide-react-native";
@@ -44,7 +45,7 @@ const MenuCatalogRow = React.memo(
       item.stockQuantity <= item.reorderThreshold;
 
     return (
-      <View className="flex-row items-center px-4 py-3 border-b border-gray-700">
+      <View className="flex-row items-center px-4 py-3 border-b border-border">
         {/* 1. Checkbox (Outside Link) */}
         <View className="w-[6%]">
           <TouchableOpacity
@@ -114,19 +115,19 @@ const MenuCatalogRow = React.memo(
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="p-3">
-                <MoreHorizontal color="#9CA3AF" size={24} />
+                <MoreHorizontal color={colors.label} size={24} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#303030] border-gray-700">
+            <DropdownMenuContent className="bg-panel border-border">
               <DropdownMenuItem
                 onPress={() => onToggleAvailability(item)}
                 className="flex-row items-center p-2"
               >
                 <>
                   {item.availability !== false ? (
-                    <EyeOff color="#9CA3AF" size={14} />
+                    <EyeOff color={colors.label} size={14} />
                   ) : (
-                    <Eye color="#9CA3AF" size={14} />
+                    <Eye color={colors.label} size={14} />
                   )}
                 </>
                 <Text className="text-white ml-1.5 text-sm">
@@ -137,7 +138,7 @@ const MenuCatalogRow = React.memo(
                 onPress={() => onOpenStockModal(item)}
                 className="flex-row items-center p-2"
               >
-                <Edit color="#9CA3AF" size={14} />
+                <Edit color={colors.label} size={14} />
                 <Text className="text-white ml-1.5 text-sm">Update Stock</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>

@@ -33,8 +33,8 @@ const OnHandReport = () => {
   ];
 
   return (
-    <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-      <View className="flex-row p-4 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
+    <View className="flex-1 bg-panel border border-border rounded-xl">
+      <View className="flex-row p-4 bg-gray-800/50 rounded-t-xl border-b border-border">
         {headers.map((h) => (
           <Text key={h} className="w-1/6 font-bold text-lg text-gray-400">
             {h}
@@ -46,7 +46,7 @@ const OnHandReport = () => {
         // FIX: Combine ID with Index to guarantee uniqueness even with duplicate data
         keyExtractor={(item, index) => `${item.id}-${index}`}
         renderItem={({ item }) => (
-          <View className="flex-row items-center p-4 border-b border-gray-700">
+          <View className="flex-row items-center p-4 border-b border-border">
             <Text className="w-1/6 text-xl text-white">{item.name}</Text>
             <Text className="w-1/6 text-xl text-gray-300">{item.category}</Text>
             <Text className="w-1/6 text-xl text-white">
@@ -83,8 +83,8 @@ const LowStockReport = () => {
   const headers = ["Name", "Category", "Stock Qty", "Threshold", "Vendor"];
 
   return (
-    <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-      <View className="flex-row p-2 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
+    <View className="flex-1 bg-panel border border-border rounded-xl">
+      <View className="flex-row p-2 bg-gray-800/50 rounded-t-xl border-b border-border">
         {headers.map((h) => (
           <Text key={h} className="w-1/5 font-bold text-lg text-gray-400">
             {h}
@@ -96,7 +96,7 @@ const LowStockReport = () => {
         // FIX: Combine ID with Index to guarantee uniqueness even with duplicate data
         keyExtractor={(item, index) => `${item.id}-${index}`}
         renderItem={({ item }) => (
-          <View className="flex-row items-center p-2 border-b border-gray-700">
+          <View className="flex-row items-center p-2 border-b border-border">
             <Text className="w-1/5 text-lg text-white">{item.name}</Text>
             <Text className="w-1/5 text-lg text-gray-300">{item.category}</Text>
             <Text className="w-1/5 text-lg text-red-400 font-bold">
@@ -121,7 +121,7 @@ const LowStockReport = () => {
 };
 
 const PlaceholderReport = ({ title }: { title: string }) => (
-  <View className="flex-1 justify-center items-center bg-[#303030] border border-gray-700 rounded-xl">
+  <View className="flex-1 justify-center items-center bg-panel border border-border rounded-xl">
     <Text className="text-xl text-gray-500">{title}</Text>
     <Text className="text-lg text-gray-600 mt-2">(Coming Soon)</Text>
   </View>
@@ -165,7 +165,7 @@ const ReportsScreen = () => {
                 className={`py-2 px-4 rounded-lg ${
                   isActive
                     ? "bg-blue-600"
-                    : "bg-[#303030] border border-gray-700"
+                    : "bg-panel border border-border"
                 }`}
               >
                 <Text

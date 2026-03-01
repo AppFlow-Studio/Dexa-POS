@@ -172,7 +172,7 @@ const PaymentProgressHeader: React.FC = () => {
   }));
 
   return (
-    <View className="w-full px-6 py-3 bg-[#212121] border-b border-[#333]">
+    <View className="w-full px-6 py-3 bg-panel border-b border-border">
       <View className="flex-row justify-between items-center mb-2">
         <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest">
           {progressLabel}
@@ -182,7 +182,7 @@ const PaymentProgressHeader: React.FC = () => {
         </Text>
       </View>
 
-      <View className="h-1.5 w-full bg-[#333333] rounded-full overflow-hidden">
+      <View className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
         <Animated.View
           className="h-full bg-blue-600 rounded-full"
           style={animatedStyle}

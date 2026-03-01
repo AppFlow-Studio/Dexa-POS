@@ -77,7 +77,7 @@ const CleanTableScreen = () => {
 
   if (!table) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#212121]">
+      <View className="flex-1 items-center justify-center bg-screen">
         <Text className="text-2xl text-white">Table not found.</Text>
       </View>
     );
@@ -89,7 +89,7 @@ const CleanTableScreen = () => {
   );
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       {/* --- Main Content Area --- */}
       <View className="flex-1 items-center p-4">
         <View className="w-full max-w-4xl">
@@ -104,7 +104,7 @@ const CleanTableScreen = () => {
           </View>
 
           {/* Info Banner - NOW DISPLAYS MERGED INFO */}
-          <View className="flex-row items-center p-4 bg-[#303030] rounded-lg my-4">
+          <View className="flex-row items-center p-4 bg-panel rounded-lg my-4">
             <Info color="#f97316" size={20} />
             <Text className="ml-2 font-semibold text-lg text-white">
               Tables: {displayNames} (Capacity: {totalCapacity})
@@ -115,7 +115,7 @@ const CleanTableScreen = () => {
           <View className="flex-row gap-4">
             <TouchableOpacity
               onPress={() => router.replace("/tables")}
-              className="flex-1 py-4 border border-gray-600 rounded-lg items-center bg-[#303030]"
+              className="flex-1 py-4 border border-gray-600 rounded-lg items-center bg-panel"
             >
               <Text className="text-lg font-bold text-white">Cancel</Text>
             </TouchableOpacity>

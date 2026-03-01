@@ -13,7 +13,7 @@ const GuestCountNumpad: React.FC<GuestCountNumpadProps> = ({ onKeyPress }) => {
     }> = ({ value, onPress, isDestructive }) => (
         <TouchableOpacity
             onPress={onPress}
-            className={`flex-1 h-20 rounded-lg items-center justify-center ${isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
+            className={`flex-1 h-20 rounded-lg items-center justify-center ${isDestructive ? "bg-red-600" : "bg-surface border border-gray-600"
                 }`}
         >
             <Text className="text-xl font-bold text-white">{value}</Text>

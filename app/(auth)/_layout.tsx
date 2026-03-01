@@ -1,5 +1,6 @@
 import MerchantBrandingPanel from "@/components/auth/MerchantBrandingPanel";
 import { images } from "@/lib/image";
+import { spinnerColor } from "@/lib/theme";
 import { useAuth } from "@clerk/clerk-expo";
 import { Slot, usePathname } from "expo-router";
 import React from "react";
@@ -12,8 +13,8 @@ export default function AuthLayout() {
   // Show loading indicator while Clerk is loading
   if (!isLoaded) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#212121]">
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View className="flex-1 items-center justify-center bg-screen">
+        <ActivityIndicator size="large" color={spinnerColor} />
       </View>
     );
   }
@@ -24,7 +25,7 @@ export default function AuthLayout() {
   // store-select and pin-login pages are in this group and require signed-in users
 
   return (
-    <View className="flex-1 flex-row items-center justify-center bg-[#212121] p-8">
+    <View className="flex-1 flex-row items-center justify-center bg-screen p-8">
       {/* Left side: branding panel on pin-login, burger image on others */}
       <View className="flex-1 h-full w-1/2">
         {isPinLogin ? (

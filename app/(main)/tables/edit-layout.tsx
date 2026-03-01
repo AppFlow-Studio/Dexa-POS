@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { AddTableBottomSheet } from "@/components/tables/AddTableBottomSheet";
 import DraggableTable from "@/components/tables/DraggableTable";
 import PropertiesPanel from "@/components/tables/PropertiesPanel";
@@ -269,7 +270,7 @@ const LayoutEditorScreenContent = () => {
 
   if (!activeLayout) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center">
+      <View className="flex-1 bg-screen items-center justify-center">
         <Text className="text-xl text-white">Loading Floor Plan...</Text>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -285,8 +286,8 @@ const LayoutEditorScreenContent = () => {
   const hasFuture = future.length > 0;
 
   return (
-    <View className="flex-1 bg-[#212121]">
-      <View className="bg-[#303030] p-4 flex-row justify-between items-center z-10">
+    <View className="flex-1 bg-screen">
+      <View className="bg-panel p-4 flex-row justify-between items-center z-10">
         <View className="flex-row items-center gap-2">
           <Text className="text-2xl font-bold text-white">
             Testing / {activeLayout.name}
@@ -355,21 +356,21 @@ const LayoutEditorScreenContent = () => {
           <View className="absolute top-4 left-4 flex-col gap-y-2 z-20">
             <TouchableOpacity
               onPress={() => handleZoom("in")}
-              className="p-3 bg-[#303030] border border-gray-600 rounded-lg"
+              className="p-3 bg-panel border border-gray-600 rounded-lg"
             >
-              <Plus color="#9CA3AF" size={24} />
+              <Plus color={colors.label} size={24} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleZoom("out")}
-              className="p-3 bg-[#303030] border border-gray-600 rounded-lg"
+              className="p-3 bg-panel border border-gray-600 rounded-lg"
             >
-              <Minus color="#9CA3AF" size={24} />
+              <Minus color={colors.label} size={24} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={recenterCanvas}
-              className="p-3 bg-[#303030] border border-gray-600 rounded-lg"
+              className="p-3 bg-panel border border-gray-600 rounded-lg"
             >
-              <Maximize color="#9CA3AF" size={24} />
+              <Maximize color={colors.label} size={24} />
             </TouchableOpacity>
           </View>
         </View>
@@ -400,7 +401,7 @@ const LayoutEditorScreenContent = () => {
               currentId={draggedShapeId}
             >
               <ShapeComp
-                color="#9CA3AF"
+                color={colors.label}
                 height={SHAPE_SIZE}
                 width={SHAPE_SIZE}
               />

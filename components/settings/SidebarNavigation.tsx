@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { usePathname, useRouter } from "expo-router";
 import {
   Banknote,
@@ -200,7 +201,7 @@ const SidebarNavigation = () => {
   };
 
   return (
-    <View className="w-80 h-full bg-[#1e1e1e] border-r border-gray-800 flex flex-col pt-4">
+    <View className="w-80 h-full bg-panel border-r border-gray-800 flex flex-col pt-4">
       {/* Navigation Items */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         <View className="px-3 pb-4">
@@ -224,9 +225,9 @@ const SidebarNavigation = () => {
                     {section.title}
                   </Text>
                   {isExpanded ? (
-                    <ChevronUp size={16} color="#9ca3af" />
+                    <ChevronUp size={16} color={colors.label} />
                   ) : (
-                    <ChevronDown size={16} color="#9ca3af" />
+                    <ChevronDown size={16} color={colors.label} />
                   )}
                 </TouchableOpacity>
 
@@ -252,7 +253,7 @@ const SidebarNavigation = () => {
                           <View className="ml-2 mr-3">
                             <Icon
                               size={20}
-                              color={isActive ? "#3b82f6" : "#9ca3af"}
+                              color={isActive ? colors.info : colors.label}
                               strokeWidth={isActive ? 2.5 : 2}
                             />
                           </View>
@@ -275,7 +276,7 @@ const SidebarNavigation = () => {
       </ScrollView>
 
       {/* Footer */}
-      <View className="p-6 border-t border-gray-800 bg-[#1e1e1e]">
+      <View className="p-6 border-t border-gray-800 bg-panel">
         <View className="bg-gray-800/50 rounded-lg p-3">
           <Text className="text-xs text-gray-400 text-center">
             Version 2.4.1

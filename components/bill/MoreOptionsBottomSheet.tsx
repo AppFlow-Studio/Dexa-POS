@@ -13,6 +13,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { CheckCircle, Lock, Printer, Tag, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -306,11 +307,10 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose={true}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: "#212121" }}
       >
-        <BottomSheetScrollView className="flex-1 bg-[#212121] rounded-t-3xl overflow-hidden">
+        <BottomSheetScrollView className="flex-1 bg-panel rounded-t-3xl overflow-hidden">
           <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
             <Text className="text-2xl font-bold text-white">More Options</Text>
             <TouchableOpacity
@@ -319,9 +319,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                   ref.current.close();
                 }
               }}
-              className="p-2 bg-[#303030] rounded-full border border-gray-600"
+              className="p-2 bg-surface rounded-full border border-gray-600"
             >
-              <X color="#9CA3AF" size={20} />
+              <X color={colors.label} size={20} />
             </TouchableOpacity>
           </View>
           <View>
@@ -331,9 +331,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               </Text>
               <TouchableOpacity
                 onPress={handleClearCart}
-                className="flex-row items-center gap-x-2 bg-[#303030] border border-red-700 p-2 rounded-lg"
+                className="flex-row items-center gap-x-2 bg-surface border border-red-700 p-2 rounded-lg"
               >
-                <Trash2 color="#f87171" size={16} />
+                <Trash2 color={colors.danger} size={16} />
                 <Text className="text-base text-red-400 font-semibold">
                   Clear Cart
                 </Text>
@@ -354,11 +354,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 onPress={handleOpenDiscounts}
                 className={`flex-row items-center gap-x-2 p-2 rounded-lg ${
                   canApplyDiscount
-                    ? "bg-[#303030] border border-purple-700"
-                    : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                    ? "bg-surface border border-purple-700"
+                    : "bg-surface border border-gray-700 opacity-50"
                 }`}
               >
-                <Tag color={canApplyDiscount ? "#a855f7" : "#6B7280"} size={16} />
+                <Tag color={canApplyDiscount ? "#a855f7" : colors.muted} size={16} />
                 <Text className={`text-base font-semibold ${
                   canApplyDiscount ? "text-purple-400" : "text-gray-500"
                 }`}>
@@ -380,11 +380,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 disabled={!canVoid}
                 className={`flex-row items-center gap-x-2 p-2 rounded-lg ${
                   canVoid
-                    ? "bg-[#303030] border border-red-700"
-                    : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                    ? "bg-surface border border-red-700"
+                    : "bg-surface border border-gray-700 opacity-50"
                 }`}
               >
-                <Trash2 color={canVoid ? "#f87171" : "#6B7280"} size={16} />
+                <Trash2 color={canVoid ? colors.danger : colors.muted} size={16} />
                 <Text
                   className={`text-base font-semibold ${
                     canVoid ? "text-red-400" : "text-gray-500"
@@ -404,14 +404,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                   disabled={!hasItems || isPrintingReceipt}
                   className={`flex-1 flex-row items-center justify-center gap-x-2 p-3 rounded-lg ${
                     hasItems && !isPrintingReceipt
-                      ? "bg-[#303030] border border-blue-700"
-                      : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                      ? "bg-surface border border-blue-700"
+                      : "bg-surface border border-gray-700 opacity-50"
                   }`}
                 >
                   {isPrintingReceipt ? (
-                    <ActivityIndicator size="small" color="#60a5fa" />
+                    <ActivityIndicator size="small" color={colors.info} />
                   ) : (
-                    <Printer color={hasItems ? "#60a5fa" : "#6B7280"} size={16} />
+                    <Printer color={hasItems ? colors.info : colors.muted} size={16} />
                   )}
                   <Text
                     className={`text-base font-semibold ${
@@ -426,14 +426,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                   disabled={!hasItems || isPrintingKitchen}
                   className={`flex-1 flex-row items-center justify-center gap-x-2 p-3 rounded-lg ${
                     hasItems && !isPrintingKitchen
-                      ? "bg-[#303030] border border-orange-700"
-                      : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                      ? "bg-surface border border-orange-700"
+                      : "bg-surface border border-gray-700 opacity-50"
                   }`}
                 >
                   {isPrintingKitchen ? (
                     <ActivityIndicator size="small" color="#fb923c" />
                   ) : (
-                    <Printer color={hasItems ? "#fb923c" : "#6B7280"} size={16} />
+                    <Printer color={hasItems ? "#fb923c" : colors.muted} size={16} />
                   )}
                   <Text
                     className={`text-base font-semibold ${
@@ -480,9 +480,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               <Text className="text-xl font-semibold text-white">Customer</Text>
               <TouchableOpacity
                 onPress={handleAddCustomer}
-                className="flex-row items-center gap-x-2 bg-[#303030] border border-gray-600 p-2 rounded-lg"
+                className="flex-row items-center gap-x-2 bg-surface border border-gray-600 p-2 rounded-lg"
               >
-                <User color="#9CA3AF" size={16} />
+                <User color={colors.label} size={16} />
                 <Text className="text-base text-gray-300">Add Customer</Text>
               </TouchableOpacity>
             </View>
@@ -496,8 +496,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 placeholder="Add special instructions..."
                 multiline
                 numberOfLines={3}
-                className="p-3 bg-[#303030] rounded-xl text-lg min-h-[90px] text-white border border-gray-600"
-                placeholderTextColor="#6B7280"
+                className="p-3 bg-surface rounded-xl text-lg min-h-[90px] text-white border border-gray-600"
+                placeholderTextColor={colors.muted}
                 textAlignVertical="top"
               />
             </View>
@@ -511,11 +511,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                   <Text className="text-lg text-gray-400 mr-2">
                     Requires PIN
                   </Text>
-                  <Lock color="#9CA3AF" size={20} />
+                  <Lock color={colors.label} size={20} />
                 </View>
                 <TouchableOpacity
                   onPress={handleOpenDrawer}
-                  className="px-5 py-2 bg-[#303030] rounded-xl border border-gray-600"
+                  className="px-5 py-2 bg-surface rounded-xl border border-gray-600"
                 >
                   <Text className="text-xl font-medium text-white">Open</Text>
                 </TouchableOpacity>
@@ -528,7 +528,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         open={showManagerPin}
         onOpenChange={() => setShowManagerPin(false)}
       >
-        <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-6">
+        <DialogContent className="w-fit h-fit bg-surface border-gray-600 p-6">
           <DialogHeader>
             <DialogTitle className="text-center text-2xl font-semibold text-white">
               Manager Override
@@ -586,7 +586,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         open={showRefundedDiscountDialog}
         onOpenChange={() => setShowRefundedDiscountDialog(false)}
       >
-        <DialogContent className="w-80 bg-[#303030] border-gray-600 p-6">
+        <DialogContent className="w-80 bg-surface border-gray-600 p-6">
           <DialogHeader>
             <DialogTitle className="text-center text-xl font-semibold text-white">
               Cannot Add Discount

@@ -10,6 +10,7 @@ import {
 import { useToast } from "@/contexts/ToastContext";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useRouter } from "expo-router";
+import { colors } from "@/lib/theme";
 import { AlertCircle, Bell, Mail, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -95,17 +96,17 @@ export function PublishModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
+      <DialogContent className="bg-panel border-border w-[550px]">
         <DialogHeader>
           <View className="text-white flex-row items-center gap-2">
-            <Send size={20} className="text-blue-400" color={"#60a5fa"} />
+            <Send size={20} className="text-blue-400" color={colors.info} />
             <Text className="text-white font-semibold">Publish Schedule</Text>
           </View>
         </DialogHeader>
 
         <View className="gap-y-4 py-4">
           {/* Summary */}
-          <View className="p-4 rounded-lg bg-[#212121] border border-gray-700 gap-y-3">
+          <View className="p-4 rounded-lg bg-screen border border-border gap-y-3">
             <View className="flex-row items-center justify-between">
               <Text className="text-sm text-gray-400">Added Shifts</Text>
               <Badge className="bg-green-500/20 text-green-400">
@@ -148,13 +149,13 @@ export function PublishModal({
                 <AlertCircle
                   size={16}
                   className="text-red-400"
-                  color={"#f87171"}
+                  color={colors.danger}
                 />
                 <Text className="text-sm text-white font-semibold">
                   Conflicts Detected
                 </Text>
               </View>
-              <ScrollView className="h-24 rounded-lg border border-gray-700 bg-[#212121] p-3">
+              <ScrollView className="h-24 rounded-lg border border-border bg-screen p-3">
                 {conflicts.map((conflict, i) => (
                   <View key={i} className="flex-row items-start gap-2 mb-2">
                     <Badge className="text-xs bg-red-500/20 text-red-400 border-red-500/30">
@@ -176,7 +177,7 @@ export function PublishModal({
             <Text className="text-sm font-semibold text-white">
               Notify Employees
             </Text>
-            <View className="gap-y-3 p-4 rounded-lg bg-[#212121] border border-gray-700">
+            <View className="gap-y-3 p-4 rounded-lg bg-screen border border-border">
               <View className="flex-row items-center gap-3">
                 <Checkbox
                   id="push"
@@ -186,7 +187,7 @@ export function PublishModal({
                   }
                 />
                 <View className="flex-row items-center gap-2">
-                  <Bell size={16} className="text-blue-400" color={"#60a5fa"} />
+                  <Bell size={16} className="text-blue-400" color={colors.info} />
                   <Text className="text-sm text-white">Push Notifications</Text>
                 </View>
               </View>
@@ -199,7 +200,7 @@ export function PublishModal({
                   }
                 />
                 <View className="flex-row items-center gap-2">
-                  <Mail size={16} className="text-blue-400" color={"#60a5fa"} />
+                  <Mail size={16} className="text-blue-400" color={colors.info} />
                   <Text className="text-sm text-white">Email</Text>
                 </View>
               </View>
@@ -216,7 +217,7 @@ export function PublishModal({
               onPress={handlePublish}
               className="gap-2 bg-yellow-600 hover:bg-yellow-700 flex-row"
             >
-              <AlertCircle size={16} color="#FFFFFF" />
+              <AlertCircle size={16} color={colors.heading} />
               <Text className="text-white font-semibold">Publish Anyway</Text>
             </Button>
           ) : (
@@ -224,7 +225,7 @@ export function PublishModal({
               onPress={handlePublish}
               className="gap-2 bg-blue-600 hover:bg-blue-700 flex-row"
             >
-              <Send size={16} color="#FFFFFF" />
+              <Send size={16} color={colors.heading} />
               <Text className="text-white font-semibold">Publish Schedule</Text>
             </Button>
           )}

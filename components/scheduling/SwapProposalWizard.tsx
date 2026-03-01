@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Shift } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
@@ -22,6 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { bottomSheetTheme } from "@/lib/theme";
 
 type SwapProposalWizardProps = {
   shiftToOffer: Shift | null;
@@ -42,7 +44,7 @@ const ShiftInfoCard = ({
 
   return (
     <View
-      className={`p-4 bg-[#212121] rounded-xl border ${isSelected ? "border-blue-500" : "border-gray-700"}`}
+      className={`p-4 bg-screen rounded-xl border ${isSelected ? "border-blue-500" : "border-border"}`}
     >
       <Text className="text-base font-semibold text-white mb-1">
         {shift.role}
@@ -52,14 +54,14 @@ const ShiftInfoCard = ({
       </Text>
       <View className="flex-row gap-4">
         <View className="flex-row items-center gap-2">
-          <Clock size={16} color="#9CA3AF" />
+          <Clock size={16} color={colors.label} />
           <Text className="text-sm text-gray-400">
             {format(parseISO(shift.startTime), "h:mm a")} -{" "}
             {format(parseISO(shift.endTime), "h:mm a")}
           </Text>
         </View>
         <View className="flex-row items-center gap-2">
-          <MapPin size={16} color="#9CA3AF" />
+          <MapPin size={16} color={colors.label} />
           <Text className="text-sm text-gray-400">{shift.location}</Text>
         </View>
       </View>
@@ -152,8 +154,7 @@ export default function SwapProposalWizard({
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-      backgroundStyle={{ backgroundColor: "#212121" }}
+      {...bottomSheetTheme}
       backdropComponent={(props) => (
         <BottomSheetBackdrop
           {...props}
@@ -162,13 +163,13 @@ export default function SwapProposalWizard({
         />
       )}
     >
-      <BottomSheetView className="flex-1 p-4 bg-[#212121]">
+      <BottomSheetView className="flex-1 p-4 bg-screen">
         {/* Header */}
-        <View className="flex-row items-center justify-between pb-4 border-b border-gray-700">
+        <View className="flex-row items-center justify-between pb-4 border-b border-border">
           <View className="flex-row items-center gap-3">
             {selectedPeer && (
               <TouchableOpacity onPress={handleBack} className="p-1">
-                <ArrowLeft size={20} color="#FFFFFF" />
+                <ArrowLeft size={20} color={colors.heading} />
               </TouchableOpacity>
             )}
             <Text className="text-xl font-bold text-white">
@@ -176,7 +177,7 @@ export default function SwapProposalWizard({
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} className="p-1">
-            <X size={20} color="#9CA3AF" />
+            <X size={20} color={colors.label} />
           </TouchableOpacity>
         </View>
 
@@ -188,7 +189,7 @@ export default function SwapProposalWizard({
               Select a Peer
             </Text>
             {isLoading && !shiftToOffer ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.heading} />
             ) : compatiblePeers.length === 0 ? (
               <Text className="text-gray-400 text-center">
                 No compatible peers found.
@@ -199,7 +200,7 @@ export default function SwapProposalWizard({
                 keyExtractor={(item) => item.employee.id}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    className={`p-4 rounded-lg border mb-3 flex-row justify-between items-center ${selectedPeer?.id === item.employee.id ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-700"}`}
+                    className={`p-4 rounded-lg border mb-3 flex-row justify-between items-center ${selectedPeer?.id === item.employee.id ? "bg-blue-600 border-blue-500" : "bg-panel border-border"}`}
                     onPress={() => handleSelectPeer(item.employee)}
                   >
                     <View className="flex-row items-center gap-3">
@@ -208,7 +209,7 @@ export default function SwapProposalWizard({
                         color={
                           selectedPeer?.id === item.employee.id
                             ? "#FFFFFF"
-                            : "#9CA3AF"
+                            : colors.label
                         }
                       />
                       <Text
@@ -230,12 +231,12 @@ export default function SwapProposalWizard({
 
           {/* Column 2: Select Shift */}
           {selectedPeer && (
-            <View className="flex-1 border-l border-gray-700 pl-4">
+            <View className="flex-1 border-l border-border pl-4">
               <Text className="text-lg font-bold text-white mb-4">
                 Select {selectedPeer.fullName}'s Shift
               </Text>
               {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={colors.heading} />
               ) : swappablePeerShifts.length === 0 ? (
                 <Text className="text-gray-400 text-center">
                   No swappable shifts found.
@@ -262,7 +263,7 @@ export default function SwapProposalWizard({
 
           {/* Column 3: Confirm */}
           {selectedPeerShift && (
-            <View className="flex-1 border-l border-gray-700 pl-4">
+            <View className="flex-1 border-l border-border pl-4">
               <Text className="text-lg font-bold text-white mb-4">
                 Confirm Proposal
               </Text>
@@ -271,7 +272,7 @@ export default function SwapProposalWizard({
               </Text>
               <ShiftInfoCard shift={shiftToOffer} />
               <View className="items-center my-4">
-                <ArrowRightLeft size={24} color="#3b82f6" />
+                <ArrowRightLeft size={24} color={colors.info} />
               </View>
               <Text className="text-gray-400 font-semibold mb-2">
                 In exchange for:

@@ -1,5 +1,6 @@
 import { MOCK_USER_PROFILE } from "@/lib/mockData";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { colors } from "@/lib/theme";
 import { useTimeclockStore } from "@/stores/useTimeclockStore"; // 1. Import the timeclock store
 import { Clock, Timer } from "lucide-react-native";
 import React, { useEffect, useState } from "react"; // Import hooks
@@ -54,7 +55,7 @@ const ProfileCard = () => {
   const renderShiftStatus = () => {
     if (status === "clockedIn" || status === "onBreak") {
       return (
-        <View className="w-full mt-4 p-4 bg-[#212121] border border-gray-700 rounded-lg">
+        <View className="w-full mt-4 p-4 bg-panel border border-gray-700 rounded-lg">
           <View className="flex-row justify-between items-center">
             <Text className="font-bold text-gray-400 text-base">
               Shift Status
@@ -67,13 +68,13 @@ const ProfileCard = () => {
           </View>
           <View className="mt-3 gap-y-2">
             <View className="flex-row items-center">
-              <Timer color="#9CA3AF" size={16} />
+              <Timer color={colors.label} size={16} />
               <Text className="ml-2 text-gray-300 text-base">
                 Duration : {shiftDuration}
               </Text>
             </View>
             <View className="flex-row items-center">
-              <Clock color="#9CA3AF" size={16} />
+              <Clock color={colors.label} size={16} />
               <Text className="ml-2 text-gray-300 text-base">
                 Clock in at :{" "}
                 {currentShift?.clockInTime?.toLocaleTimeString([], {
@@ -106,7 +107,7 @@ const ProfileCard = () => {
   };
 
   return (
-    <View className="w-80 p-4 rounded-2xl items-center bg-[#303030] border border-gray-700">
+    <View className="w-80 p-4 rounded-2xl items-center bg-surface border border-gray-700">
       <Image
         source={
           user.profileImageUrl

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { PaymentStatus } from "@/lib/types";
 import { Check, Filter } from "lucide-react-native";
 import React from "react";
@@ -41,14 +42,14 @@ export default function StatusFilterDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-[#303030] rounded-lg">
-          <Filter size={18} color="#9ca3af" />
+        <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-panel rounded-lg">
+          <Filter size={18} color={colors.label} />
           <Text className="text-white text-base">
             {`Status${selected.length > 0 ? ` (${selected.length})` : ""}`}
           </Text>
         </TouchableOpacity>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-64 bg-[#1a1a1a] border border-[#404040]">
+      <DropdownMenuContent className="w-64 bg-screen border border-border">
         {STATUS_OPTIONS.map((status) => (
           <DropdownMenuItem
             key={status}
@@ -57,13 +58,13 @@ export default function StatusFilterDropdown({
           >
             <Text className="text-white text-base">{status}</Text>
             {selected.includes(status) && (
-              <Check size={18} color="#4ade80" />
+              <Check size={18} color={colors.success} />
             )}
           </DropdownMenuItem>
         ))}
         {selected.length > 0 && (
           <>
-            <View className="h-px bg-[#404040] my-1" />
+            <View className="h-px bg-card my-1" />
             <DropdownMenuItem
               onPress={clearAll}
               className="py-3 px-4"

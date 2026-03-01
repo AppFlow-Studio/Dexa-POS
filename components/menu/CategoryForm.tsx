@@ -35,6 +35,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface CategoryFormData {
   name: string;
@@ -280,13 +281,13 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
+    <View className="flex-1 bg-panel">
+      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-surface">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={20} color="#9CA3AF" />
+          <ArrowLeft size={20} color={colors.label} />
           <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
         </TouchableOpacity>
         <View className="flex-row gap-2">
@@ -328,11 +329,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           <View className="mb-4">
             <Text className="text-xl font-semibold text-white mb-2">Name</Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
               value={name}
               onChangeText={setName}
               placeholder="Category name"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.label}
             />
           </View>
 
@@ -355,7 +356,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               <Text className="text-xl font-semibold text-white mb-2">
                 Selected Items ({selectedItemIds.length})
               </Text>
-              <View className="bg-[#303030] border border-gray-600 rounded-lg p-3">
+              <View className="bg-surface border border-gray-600 rounded-lg p-3">
                 <View className="flex-row flex-wrap gap-1.5">
                   {selectedItemIds.map((itemId) => {
                     const item = allItems.find(
@@ -373,7 +374,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                           onPress={() => toggleItem(item)}
                           className="ml-1.5"
                         >
-                          <X size={16} color="#60A5FA" />
+                          <X size={16} color={colors.info} />
                         </TouchableOpacity>
                       </View>
                     ) : null;
@@ -395,17 +396,17 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                 </Text>
                 <TouchableOpacity
                   onPress={() => quickSearchSheetRef.current?.expand()}
-                  className="p-2 rounded-lg bg-[#212121] border border-gray-600"
+                  className="p-2 rounded-lg bg-panel border border-gray-600"
                   accessibilityLabel="Quick search items"
                 >
-                  <Search size={20} color="#9CA3AF" />
+                  <Search size={20} color={colors.label} />
                 </TouchableOpacity>
               </View>
             </View>
 
             {allItems.length === 0 ? (
-              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
-                <Utensils size={36} color="#9CA3AF" />
+              <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
+                <Utensils size={36} color={colors.label} />
                 <Text className="text-xl text-gray-400 text-center mt-3">
                   No menu items found.
                 </Text>
@@ -439,7 +440,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                     <TouchableOpacity
                       key={item.id}
                       onPress={() => toggleItem(item)}
-                      className={`bg-[#303030] rounded-lg w-[32.5%] border p-3 ${
+                      className={`bg-surface rounded-lg w-[32.5%] border p-3 ${
                         isSelected
                           ? "border-blue-500 bg-blue-900/20"
                           : "border-gray-700"
@@ -460,7 +461,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                             />
                           ) : (
                             <View className="w-full h-full bg-gray-600 items-center justify-center">
-                              <Utensils color="#9ca3af" size={20} />
+                              <Utensils color={colors.label} size={20} />
                             </View>
                           )}
                         </View>
@@ -494,7 +495,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                     }
                                     className="bg-red-900/40 border border-red-500 rounded px-2 py-1"
                                   >
-                                    <X size={12} color="#F87171" />
+                                    <X size={12} color={colors.danger} />
                                   </TouchableOpacity>
                                 </View>
                               ) : (
@@ -504,7 +505,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                   }
                                   className="flex-row items-center gap-1 bg-yellow-900/30 border border-yellow-500 px-1.5 py-0.5 rounded self-start"
                                 >
-                                  <DollarSign size={10} color="#FBBF24" />
+                                  <DollarSign size={10} color={colors.warning} />
                                   <Text className="text-yellow-400 text-[10px]">
                                     Set Price
                                   </Text>
@@ -513,7 +514,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 
                               {/* Inline Edit for New Custom Pricing */}
                               {newPricing?.itemId === item.id && (
-                                <View className="flex-col items-center gap-1.5 mt-1.5 bg-[#212121] p-2 rounded border border-gray-600 absolute z-10 w-[150%]">
+                                <View className="flex-col items-center gap-1.5 mt-1.5 bg-panel p-2 rounded border border-gray-600 absolute z-10 w-[150%]">
                                   <View className="flex-row items-center gap-1.5">
                                     <TouchableOpacity
                                       onPress={() => {
@@ -615,8 +616,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             appearsOnIndex={0}
           />
         )}
-        backgroundStyle={{ backgroundColor: "#212121" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
       >
         <View className="p-3 border-b border-gray-700">
           <Text className="text-white text-xl font-bold">Add Items</Text>
@@ -629,8 +629,8 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             value={quickSearchQuery}
             onChangeText={setQuickSearchQuery}
             placeholder="Search items..."
-            placeholderTextColor="#9CA3AF"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-3 py-2 text-white text-base"
+            placeholderTextColor={colors.label}
+            className="bg-surface border border-gray-600 rounded-lg h-16 px-3 py-2 text-white text-base"
           />
         </View>
         <BottomSheetFlatList
@@ -642,7 +642,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             return (
               <TouchableOpacity
                 onPress={() => toggleItem(item)}
-                className={`flex-row items-center justify-between bg-[#303030] border rounded-lg px-3 py-2.5 mb-2 ${
+                className={`flex-row items-center justify-between bg-surface border rounded-lg px-3 py-2.5 mb-2 ${
                   isSelected
                     ? "border-blue-500 bg-blue-900/20"
                     : "border-gray-700"
@@ -663,7 +663,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                       />
                     ) : (
                       <View className="w-full h-full bg-gray-600 items-center justify-center">
-                        <Utensils color="#9ca3af" size={16} />
+                        <Utensils color={colors.label} size={16} />
                       </View>
                     )}
                   </View>

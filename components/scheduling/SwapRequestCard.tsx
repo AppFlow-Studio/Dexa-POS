@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { colors } from "@/lib/theme";
 import { Shift } from "@/lib/types";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
 import {
@@ -38,20 +39,20 @@ const formatTimeAgo = (dateString: string): string => {
 };
 
 const ShiftInfoCard = ({ shift }: { shift: Shift }) => (
-  <View className="p-3 rounded-lg bg-[#303030] border border-gray-600">
+  <View className="p-3 rounded-lg bg-panel border border-border">
     <Text className="text-sm font-medium text-white">{shift.role}</Text>
     <Text className="text-xs text-gray-400 mt-1 mb-2">
       {format(parseISO(shift.date), "EEEE, MMM d")}
     </Text>
     <View className="flex-row gap-4">
       <View className="flex-row items-center gap-2">
-        <Clock size={16} color="#9CA3AF" />
+        <Clock size={16} color={colors.label} />
         <Text className="text-sm text-gray-400">
           {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
         </Text>
       </View>
       <View className="flex-row items-center gap-2">
-        <MapPin size={16} color="#9CA3AF" />
+        <MapPin size={16} color={colors.label} />
         <Text className="text-sm text-gray-400">{shift.location}</Text>
       </View>
     </View>
@@ -68,7 +69,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
   onDeny,
 }) => {
   return (
-    <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl gap-y-3">
+    <View className="p-4 bg-screen border border-border rounded-2xl gap-y-3">
       <View className="flex-row items-center justify-between">
         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
           <Text className="text-xs text-blue-400">Swap Request</Text>
@@ -89,7 +90,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
         </Text>
         <ShiftInfoCard shift={myShift} />
         <View className="items-center my-1">
-          <ArrowRightLeft size={20} color="#3b82f6" />
+          <ArrowRightLeft size={20} color={colors.info} />
         </View>
         <Text className="text-xs text-gray-400 font-semibold">
           For {peerName}'s shift:
@@ -102,7 +103,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
           onPress={onApprove}
           className="flex-1 gap-2 bg-green-600 hover:bg-green-700 flex-row"
         >
-          <CheckCircle2 size={16} color="#FFFFFF" />
+          <CheckCircle2 size={16} color={colors.heading} />
           <Text className="text-white font-semibold">Approve</Text>
         </Button>
         <Button
@@ -110,7 +111,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
           variant="destructive"
           className="flex-1 gap-2 border-gray-600 flex-row"
         >
-          <X size={16} color="#FFFFFF" />
+          <X size={16} color={colors.heading} />
           <Text className="text-white font-semibold">Deny</Text>
         </Button>
       </View>

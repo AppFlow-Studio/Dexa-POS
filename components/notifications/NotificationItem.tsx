@@ -62,7 +62,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
       <Animated.View style={animatedStyle}>
         <View
           className={`p-4 flex-row items-start gap-4 rounded-lg ${
-            !notification.isRead ? "bg-[#2A2A2A]" : "bg-[#1F1F1F]"
+            !notification.isRead ? "bg-surface" : "bg-panel"
           }`}
           style={{ borderLeftColor: color, borderLeftWidth: 4 }}
         >

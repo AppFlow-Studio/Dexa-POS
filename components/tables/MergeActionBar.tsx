@@ -25,7 +25,7 @@ const MergeActionBar: React.FC<MergeActionBarProps> = ({
   if (selectedCount === 0) return null;
 
   return (
-    <View className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex-row items-center gap-3 p-3 rounded-xl bg-[#1c1c1c]/95 border border-gray-600">
+    <View className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex-row items-center gap-3 p-3 rounded-xl bg-panel/95 border border-gray-600">
       <View className="bg-gray-700 px-3 py-2 rounded-lg">
         <Text className="text-white font-semibold">
           {selectedCount} table{selectedCount !== 1 ? "s" : ""} selected

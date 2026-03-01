@@ -1,3 +1,4 @@
+import { colors as themeColors } from "@/lib/theme";
 import React, { FC, useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
@@ -243,7 +244,7 @@ export const PieChart = ({
               cx={center}
               cy={center}
               r={radius}
-              stroke="#374151"
+              stroke={themeColors.border}
               strokeWidth={strokeWidth}
               fill="transparent"
             />

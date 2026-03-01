@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/contexts/ToastContext";
 import { useUndoableToast } from "@/hooks/useUndoableToast";
+import { colors } from "@/lib/theme";
 import { PTORequest, Shift, ShiftRequest } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
@@ -22,6 +23,7 @@ import {
 } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme } from "@/lib/theme";
 import { DenyRequestModal } from "./DenyRequestModal";
 import DropRequestCard from "./DropRequestCard";
 import PTORequestCard from "./PTORequestCard";
@@ -265,7 +267,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                   <Calendar
                     size={48}
                     className="text-gray-600 mb-3"
-                    color={"#4b5563"}
+                    color={colors.muted}
                   />
                   <Text className="text-sm text-gray-500">No open shifts</Text>
                 </View>
@@ -276,7 +278,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                   return (
                     <Card
                       key={shift.id}
-                      className="p-4 bg-[#303030] border-gray-700 gap-y-3"
+                      className="p-4 bg-panel border-border gap-y-3"
                     >
                       <View className="flex-row items-start justify-between">
                         <View className="gap-1">
@@ -296,13 +298,13 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                             onPress={() => handleEditClick(shift)}
                             className="p-2 bg-gray-700 rounded-md"
                           >
-                            <Edit2 size={16} color="#9CA3AF" />
+                            <Edit2 size={16} color={colors.label} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => handleDeleteClick(shift)}
                             className="p-2 bg-red-500/10 rounded-md"
                           >
-                            <Trash2 size={16} color="#f87171" />
+                            <Trash2 size={16} color={colors.danger} />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -329,7 +331,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                             {applicants.map((app) => (
                               <View
                                 key={app.employeeId}
-                                className="flex-row justify-between items-center bg-[#212121] p-2 rounded"
+                                className="flex-row justify-between items-center bg-screen p-2 rounded"
                               >
                                 <Text className="text-gray-300 text-sm">
                                   {getEmployeeName(app.employeeId)}
@@ -364,7 +366,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                   <ArrowDownCircle
                     size={48}
                     className="text-gray-600 mb-3"
-                    color={"#4b5563"}
+                    color={colors.muted}
                   />
                   <Text className="text-sm text-gray-500">
                     No pending drop requests
@@ -403,7 +405,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                   <ArrowRightLeft
                     size={48}
                     className="text-gray-600 mb-3"
-                    color={"#4b5563"}
+                    color={colors.muted}
                   />
                   <Text className="text-sm text-gray-500">
                     No pending swap requests
@@ -452,7 +454,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                   <Calendar
                     size={48}
                     className="text-gray-600 mb-3"
-                    color={"#4b5563"}
+                    color={colors.muted}
                   />
                   <Text className="text-sm text-gray-500">
                     No pending PTO requests
@@ -492,23 +494,22 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
               appearsOnIndex={0}
             />
           )}
-          backgroundStyle={{ backgroundColor: "#212121" }}
-          handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+          {...bottomSheetTheme}
         >
-          <View className="flex-1 bg-[#212121]">
-            <View className="px-6 py-4 border-b border-gray-700">
+          <View className="flex-1 bg-screen">
+            <View className="px-6 py-4 border-b border-border">
               <View className="flex-row items-center gap-2">
                 <Calendar
                   size={20}
                   className="text-blue-400"
-                  color={"#60a5fa"}
+                  color={colors.info}
                 />
                 <Text className="text-white text-xl font-bold">
                   Open Shifts & Requests
                 </Text>
               </View>
             </View>
-            <View className="flex-row w-full rounded-none border-b border-gray-700 bg-transparent px-6">
+            <View className="flex-row w-full rounded-none border-b border-border bg-transparent px-6">
               <TouchableOpacity
                 onPress={() => setActiveTab("open-shifts")}
                 className={`flex-1 py-3 items-center border-b-2 ${

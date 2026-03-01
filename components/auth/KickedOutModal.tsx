@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
 import { Modal, Text, TouchableOpacity, View } from "react-native";
 
@@ -28,11 +29,11 @@ export function KickedOutModal({
       statusBarTranslucent
     >
       <View className="flex-1 bg-black/70 items-center justify-center p-6">
-        <View className="bg-[#2b2b2b] rounded-2xl p-6 w-full max-w-md border-2 border-red-500">
+        <View className="bg-card rounded-2xl p-6 w-full max-w-md border-2 border-red-500">
           {/* Icon */}
           <View className="items-center mb-4">
             <View className="bg-red-500/20 p-4 rounded-full">
-              <AlertTriangle size={48} color="#EF4444" />
+              <AlertTriangle size={48} color={colors.danger} />
             </View>
           </View>
 

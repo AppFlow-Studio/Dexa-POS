@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { Plus, RefreshCw, Search } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
@@ -54,32 +55,32 @@ const MenuHeader: React.FC<MenuHeaderProps> = ({
   });
 
   return (
-    <View className="flex-row items-center justify-between bg-[#212121] mb-4">
+    <View className="flex-row items-center justify-between bg-panel mb-4">
       <Text className="text-2xl font-bold text-white">{title}</Text>
       <View className="flex-row items-center gap-x-3">
         {onRefresh && (
           <TouchableOpacity
             onPress={onRefresh}
             disabled={isRefreshing}
-            className={`p-3 bg-[#303030] border border-gray-600 rounded-lg ${
+            className={`p-3 bg-surface border border-gray-600 rounded-lg ${
               isRefreshing ? "opacity-50" : ""
             }`}
           >
             {isRefreshing ? (
               <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                <RefreshCw color="#9CA3AF" size={20} />
+                <RefreshCw color={colors.label} size={20} />
               </Animated.View>
             ) : (
-              <RefreshCw color="#9CA3AF" size={20} />
+              <RefreshCw color={colors.label} size={20} />
             )}
           </TouchableOpacity>
         )}
 
         <TouchableOpacity
           onPress={openSearch}
-          className="p-3 bg-[#303030] border border-gray-600 rounded-lg"
+          className="p-3 bg-surface border border-gray-600 rounded-lg"
         >
-          <Search color="#9CA3AF" size={20} />
+          <Search color={colors.label} size={20} />
         </TouchableOpacity>
 
         {/* Add Button */}

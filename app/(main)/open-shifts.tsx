@@ -4,7 +4,7 @@ import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const OpenShiftCard = ({ shift }: { shift: Shift }) => (
-  <View className="p-4 bg-[#303030] rounded-2xl border border-gray-700">
+  <View className="p-4 bg-panel rounded-2xl border border-gray-700">
     <View className="flex-row justify-between items-start">
       <View>
         <Text className="text-lg font-semibold text-white mb-1">
@@ -27,7 +27,7 @@ const OpenShiftsScreen = () => {
   const openShifts = MOCK_SHIFTS.filter((shift) => shift.status === "dropped");
 
   return (
-    <View className="flex-1 bg-[#212121] p-4">
+    <View className="flex-1 bg-screen p-4">
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ gap: 12 }}

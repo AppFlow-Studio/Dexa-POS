@@ -1,8 +1,6 @@
-import AdvancedRefundModal, { AdvancedRefundModalRef } from "@/components/previous-orders/AdvancedRefundModal";
-import OrderDetailsBottomSheet from "@/components/previous-orders/OrderDetailsBottomSheet";
+import { colors } from "@/lib/theme";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
-import TipAdjustSheet, { TipAdjustSheetRef } from "@/components/previous-orders/detail/TipAdjustSheet";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { useOrderHistory } from "@/hooks/orders/useOrderHistory";
 import {
@@ -14,7 +12,6 @@ import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import type { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import {
   AlertTriangle,
   ArrowDown,
@@ -26,7 +23,7 @@ import {
   Utensils,
 } from "lucide-react-native";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -90,7 +87,7 @@ const SkeletonBar = ({
 };
 
 const SkeletonRow = () => (
-  <View className="bg-[#303030] rounded-xl mx-2 mb-2 p-4">
+  <View className="bg-panel rounded-xl mx-2 mb-2 p-4">
     <View className="flex-row items-center gap-3">
       <SkeletonBar width={70} height={20} />
       <SkeletonBar width={50} height={14} />
@@ -128,7 +125,7 @@ const FilterPill = ({
     className={`flex-row items-center gap-1.5 px-3 py-2 rounded-full border ${
       isActive
         ? `${activeBg} border-transparent`
-        : "bg-[#303030] border-gray-600"
+        : "bg-panel border-gray-600"
     }`}
   >
     {icon}
@@ -151,36 +148,57 @@ const FilterPill = ({
   </TouchableOpacity>
 );
 
-// ─── Sort Button ────────────────────────────────────────────
-const SortButton = ({
-  label,
-  isActive,
+// ─── Sort Segment Group ─────────────────────────────────────
+const SortSegmentGroup = ({
+  sortBy,
   sortOrder,
-  onPress,
+  onSortChange,
 }: {
-  label: string;
-  isActive: boolean;
+  sortBy: "date" | "total" | "status";
   sortOrder: "asc" | "desc";
-  onPress: () => void;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.7}
-    className="flex-row items-center gap-1"
-  >
-    <Text
-      className={`text-sm ${isActive ? "font-bold text-white" : "text-gray-500"}`}
+  onSortChange: (field: "date" | "total" | "status") => void;
+}) => {
+  const segments: { key: "date" | "total" | "status"; label: string }[] = [
+    { key: "date", label: "Date" },
+    { key: "total", label: "Amount" },
+    { key: "status", label: "Status" },
+  ];
+
+  return (
+    <View
+      className="flex-row items-center rounded-lg overflow-hidden border border-border"
+      style={{ backgroundColor: "rgba(31, 41, 55, 0.5)" }}
     >
-      {label}
-    </Text>
-    {isActive &&
-      (sortOrder === "desc" ? (
-        <ArrowDown color="#FFFFFF" size={12} />
-      ) : (
-        <ArrowUp color="#FFFFFF" size={12} />
-      ))}
-  </TouchableOpacity>
-);
+      {segments.map((seg, idx) => {
+        const isActive = sortBy === seg.key;
+        return (
+          <React.Fragment key={seg.key}>
+            {idx > 0 && (
+              <View style={{ width: 1, backgroundColor: "#374151", alignSelf: "stretch" }} />
+            )}
+            <TouchableOpacity
+              onPress={() => onSortChange(seg.key)}
+              activeOpacity={0.7}
+              className={`flex-row items-center gap-1 px-3 py-2 ${isActive ? "bg-blue-600" : ""}`}
+            >
+              <Text
+                className={`text-sm ${isActive ? "font-bold text-white" : "text-gray-400"}`}
+              >
+                {seg.label}
+              </Text>
+              {isActive &&
+                (sortOrder === "desc" ? (
+                  <ArrowDown color="#FFFFFF" size={12} />
+                ) : (
+                  <ArrowUp color="#FFFFFF" size={12} />
+                ))}
+            </TouchableOpacity>
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+};
 
 // ─── Main Screen ────────────────────────────────────────────
 const PreviousOrdersScreen = () => {
@@ -188,15 +206,6 @@ const PreviousOrdersScreen = () => {
   const [activeModal, setActiveModal] = useState<"notes" | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(null);
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] =
-    useState<OrderProfile | null>(null);
-  const [selectedOrderForDetails, setSelectedOrderForDetails] =
-    useState<OrderProfile | null>(null);
-  const orderDetailsSheetRef = useRef<BottomSheetMethods>(null);
-  const refundModalRef = useRef<AdvancedRefundModalRef>(null);
-  const tipAdjustRef = useRef<TipAdjustSheetRef>(null);
-  const [selectedOrderForRefund, setSelectedOrderForRefund] =
-    useState<OrderProfile | null>(null);
-  const [selectedOrderForTip, setSelectedOrderForTip] =
     useState<OrderProfile | null>(null);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
@@ -229,7 +238,7 @@ const PreviousOrdersScreen = () => {
   // Data layer
   const {
     orders,
-    needsAttentionCount,
+    filterCounts,
     isLoading,
     isFetchingNextPage,
     hasNextPage,
@@ -282,16 +291,24 @@ const PreviousOrdersScreen = () => {
     setExpandedOrderId((prev) => (prev === order.id ? null : order.id));
   }, []);
 
-  const handleDoublePress = useCallback((order: OrderProfile) => {
-    // Ensure the order is in the order store so PaymentDetailBottomSheet can find it
-    const existing = useOrderStore.getState().ordersById[order.id];
-    if (!existing) {
-      useOrderStore.setState((state) => ({
-        ordersById: { ...state.ordersById, [order.id]: order },
-      }));
-    }
-    usePaymentDetailSheetStore.getState().open(order.id);
-  }, []);
+  /** Ensure order is in store then open PaymentDetailBottomSheet to the given view */
+  const openPaymentSheet = useCallback(
+    (order: OrderProfile, view: "summary" | "refund" | "tipAdjust") => {
+      const existing = useOrderStore.getState().ordersById[order.id];
+      if (!existing) {
+        useOrderStore.setState((state) => ({
+          ordersById: { ...state.ordersById, [order.id]: order },
+        }));
+      }
+      usePaymentDetailSheetStore.getState().open(order.id, view);
+    },
+    [],
+  );
+
+  const handleDoublePress = useCallback(
+    (order: OrderProfile) => openPaymentSheet(order, "summary"),
+    [openPaymentSheet],
+  );
 
   const handleOpenNotes = useCallback((order: OrderProfile) => {
     setSelectedOrder(order);
@@ -302,15 +319,15 @@ const PreviousOrdersScreen = () => {
     setSelectedOrderForReceipt(order);
   }, []);
 
-  const handleViewTimeline = useCallback((order: OrderProfile) => {
-    setSelectedOrderForDetails(order);
-    orderDetailsSheetRef.current?.snapToIndex?.(0);
-  }, []);
+  const handleViewTimeline = useCallback(
+    (order: OrderProfile) => openPaymentSheet(order, "summary"),
+    [openPaymentSheet],
+  );
 
-  const handleTipAdjust = useCallback((order: OrderProfile) => {
-    setSelectedOrderForTip(order);
-    tipAdjustRef.current?.open();
-  }, []);
+  const handleTipAdjust = useCallback(
+    (order: OrderProfile) => openPaymentSheet(order, "tipAdjust"),
+    [openPaymentSheet],
+  );
 
   const handleCloseCheck = useCallback(
     (order: OrderProfile) => {
@@ -328,10 +345,10 @@ const PreviousOrdersScreen = () => {
     [reopenCheckMutation],
   );
 
-  const handleRefund = useCallback((order: OrderProfile) => {
-    setSelectedOrderForRefund(order);
-    refundModalRef.current?.open();
-  }, []);
+  const handleRefund = useCallback(
+    (order: OrderProfile) => openPaymentSheet(order, "refund"),
+    [openPaymentSheet],
+  );
 
   const handleVoidOrder = useCallback(
     (order: OrderProfile) => {
@@ -384,7 +401,7 @@ const PreviousOrdersScreen = () => {
     if (!isFetchingNextPage) return null;
     return (
       <View className="py-4 items-center">
-        <ActivityIndicator size="small" color="#3B82F6" />
+        <ActivityIndicator size="small" color={colors.info} />
       </View>
     );
   }, [isFetchingNextPage]);
@@ -394,121 +411,108 @@ const PreviousOrdersScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <View className="flex-1 p-4 bg-[#212121]">
+      <View className="flex-1 p-4 bg-screen">
         {/* ─── Toolbar ─────────────────────────────────── */}
-        <View className="mb-4 gap-3">
+        <View className="mb-4 flex-row items-center gap-2 flex-wrap">
           {/* Search bar */}
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-3 w-[450px]">
-              <Search color="#9CA3AF" size={20} />
-              <TextInput
-                placeholder="Search Order ID or Customer..."
-                placeholderTextColor="#9CA3AF"
-                value={searchText}
-                onChangeText={setSearchText}
-                className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
-              />
-            </View>
+          <View className="flex-row items-center bg-panel border border-gray-700 rounded-lg px-3 w-[350px]">
+            <Search color={colors.label} size={20} />
+            <TextInput
+              placeholder="Search Order ID or Customer..."
+              placeholderTextColor={colors.label}
+              value={searchText}
+              onChangeText={setSearchText}
+              className="ml-2 text-lg px-4 py-3 h-14 flex-1 text-white"
+            />
           </View>
 
-          {/* ─── Filter Pills + Sort ───────────────────── */}
-          <View className="flex-row items-center gap-2 flex-wrap">
-            <FilterPill
-              label="Needs Attention"
-              isActive={activeFilters.has("needs-attention")}
-              onPress={() => toggleFilter("needs-attention")}
-              icon={
-                <AlertTriangle
-                  color={
-                    activeFilters.has("needs-attention")
-                      ? "#FFFFFF"
-                      : "#EAB308"
-                  }
-                  size={14}
-                />
-              }
-              count={needsAttentionCount}
-              activeBg="bg-yellow-600"
-            />
-            <FilterPill
-              label="Refunded"
-              isActive={activeFilters.has("refunded")}
-              onPress={() => toggleFilter("refunded")}
-              icon={
-                <RotateCcw
-                  color={
-                    activeFilters.has("refunded") ? "#FFFFFF" : "#EF4444"
-                  }
-                  size={14}
-                />
-              }
-              activeBg="bg-red-600"
-            />
-            <FilterPill
-              label="Dine-In"
-              isActive={activeFilters.has("dine-in")}
-              onPress={() => toggleFilter("dine-in")}
-              icon={
-                <Utensils
-                  color={
-                    activeFilters.has("dine-in") ? "#FFFFFF" : "#A78BFA"
-                  }
-                  size={14}
-                />
-              }
-              activeBg="bg-purple-600"
-            />
-            <FilterPill
-              label="Takeaway"
-              isActive={activeFilters.has("takeaway")}
-              onPress={() => toggleFilter("takeaway")}
-              icon={
-                <ShoppingBag
-                  color={
-                    activeFilters.has("takeaway") ? "#FFFFFF" : "#FB923C"
-                  }
-                  size={14}
-                />
-              }
-              activeBg="bg-orange-600"
-            />
-            <FilterPill
-              label="Delivery"
-              isActive={activeFilters.has("delivery")}
-              onPress={() => toggleFilter("delivery")}
-              icon={
-                <Truck
-                  color={
-                    activeFilters.has("delivery") ? "#FFFFFF" : "#22D3EE"
-                  }
-                  size={14}
-                />
-              }
-              activeBg="bg-cyan-600"
-            />
+          {/* Filter Pills */}
+          <FilterPill
+            label="Needs Attention"
+            isActive={activeFilters.has("needs-attention")}
+            onPress={() => toggleFilter("needs-attention")}
+            icon={
+              <AlertTriangle
+                color={
+                  activeFilters.has("needs-attention")
+                    ? "#FFFFFF"
+                    : "#EAB308"
+                }
+                size={14}
+              />
+            }
+            count={filterCounts.needsAttention}
+            activeBg="bg-yellow-600"
+          />
+          <FilterPill
+            label="Refunded"
+            isActive={activeFilters.has("refunded")}
+            onPress={() => toggleFilter("refunded")}
+            icon={
+              <RotateCcw
+                color={
+                  activeFilters.has("refunded") ? "#FFFFFF" : "#EF4444"
+                }
+                size={14}
+              />
+            }
+            count={filterCounts.refunded}
+            activeBg="bg-red-600"
+          />
+          <FilterPill
+            label="Dine-In"
+            isActive={activeFilters.has("dine-in")}
+            onPress={() => toggleFilter("dine-in")}
+            icon={
+              <Utensils
+                color={
+                  activeFilters.has("dine-in") ? "#FFFFFF" : "#A78BFA"
+                }
+                size={14}
+              />
+            }
+            count={filterCounts.dineIn}
+            activeBg="bg-purple-600"
+          />
+          <FilterPill
+            label="Takeaway"
+            isActive={activeFilters.has("takeaway")}
+            onPress={() => toggleFilter("takeaway")}
+            icon={
+              <ShoppingBag
+                color={
+                  activeFilters.has("takeaway") ? "#FFFFFF" : "#FB923C"
+                }
+                size={14}
+              />
+            }
+            count={filterCounts.takeaway}
+            activeBg="bg-orange-600"
+          />
+          <FilterPill
+            label="Delivery"
+            isActive={activeFilters.has("delivery")}
+            onPress={() => toggleFilter("delivery")}
+            icon={
+              <Truck
+                color={
+                  activeFilters.has("delivery") ? "#FFFFFF" : "#22D3EE"
+                }
+                size={14}
+              />
+            }
+            count={filterCounts.delivery}
+            activeBg="bg-cyan-600"
+          />
 
-            {/* Sort controls */}
-            <View className="ml-auto flex-row items-center gap-3">
-              <Text className="text-xs text-gray-500">Sort:</Text>
-              <SortButton
-                label="Date"
-                isActive={sortBy === "date"}
-                sortOrder={sortOrder}
-                onPress={() => handleSortChange("date")}
-              />
-              <SortButton
-                label="Amount"
-                isActive={sortBy === "total"}
-                sortOrder={sortOrder}
-                onPress={() => handleSortChange("total")}
-              />
-              <SortButton
-                label="Status"
-                isActive={sortBy === "status"}
-                sortOrder={sortOrder}
-                onPress={() => handleSortChange("status")}
-              />
-            </View>
+          {/* Sort controls — cohesive pill group */}
+          <View className="ml-auto flex-row items-center gap-2">
+            <Text className="text-xs text-gray-500">Sort:</Text>
+            <SortSegmentGroup
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+            />
           </View>
         </View>
 
@@ -562,14 +566,6 @@ const PreviousOrdersScreen = () => {
           order={selectedOrder}
         />
 
-        <OrderDetailsBottomSheet
-          ref={orderDetailsSheetRef}
-          order={selectedOrderForDetails}
-          onClose={() => setSelectedOrderForDetails(null)}
-          onPrint={handleOpenPrint}
-          onRefund={handleRefund}
-        />
-
         <ReceiptModal
           isOpen={!!selectedOrderForReceipt}
           onClose={() => setSelectedOrderForReceipt(null)}
@@ -577,16 +573,6 @@ const PreviousOrdersScreen = () => {
           location={selectedStore}
         />
 
-        <AdvancedRefundModal
-          ref={refundModalRef}
-          order={selectedOrderForRefund}
-          onClose={() => setSelectedOrderForRefund(null)}
-        />
-
-        <TipAdjustSheet
-          ref={tipAdjustRef}
-          order={selectedOrderForTip}
-        />
       </View>
     </KeyboardAvoidingView>
   );

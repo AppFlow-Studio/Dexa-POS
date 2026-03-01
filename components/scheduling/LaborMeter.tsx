@@ -1,4 +1,5 @@
 import { Progress } from "@/components/ui/progress";
+import { colors } from "@/lib/theme";
 import { DollarSign, TrendingUp } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
@@ -21,7 +22,7 @@ const LaborMeter: React.FC<LaborMeterProps> = ({
   const trendColor = isOverBudget ? "text-red-500" : "text-green-400";
 
   return (
-    <View className="flex-row items-center gap-8 px-4 py-3 bg-[#20262f] rounded-2xl ">
+    <View className="flex-row items-center gap-8 px-4 py-3 bg-panel rounded-2xl ">
       <View className="flex-row items-center gap-2 max-w-[60px]">
         <TrendingUp
           className={trendColor}
@@ -45,7 +46,7 @@ const LaborMeter: React.FC<LaborMeterProps> = ({
       </View>
 
       <View className="flex-row items-center gap-2">
-        <DollarSign size={16} color={"#9ca3af"} />
+        <DollarSign size={16} color={colors.label} />
         <Text className="text-gray-400">
           ${projectedCost.toLocaleString()} / ${forecastSales.toLocaleString()}
         </Text>

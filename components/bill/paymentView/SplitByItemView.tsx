@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { CartItem } from "@/lib/types";
 import {
   calculateItemEffectiveCashPrice,
@@ -307,12 +308,12 @@ const SplitByItemView = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       {/* 1. Header */}
-      <View className="flex-row items-center p-4 border-b border-[#333] h-[70px]">
+      <View className="flex-row items-center p-4 border-b border-border h-[70px]">
         <TouchableOpacity
           onPress={handleGoBack}
-          className="p-2 bg-[#333] rounded-lg mr-4"
+          className="p-2 bg-surface rounded-lg mr-4"
         >
           <ArrowLeft size={20} color="white" />
         </TouchableOpacity>
@@ -325,7 +326,7 @@ const SplitByItemView = () => {
       </View>
 
       {/* 2. Guest Tabs */}
-      <View className="h-[70px] bg-[#1a1a1a] border-b border-[#333]">
+      <View className="h-[70px] bg-panel border-b border-border">
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -336,7 +337,7 @@ const SplitByItemView = () => {
         >
           <TouchableOpacity
             onPress={handleAddGuest}
-            className="flex-row items-center px-4 py-2 mx-2 rounded-full border border-[#444] bg-[#2a2a2a]"
+            className="flex-row items-center px-4 py-2 mx-2 rounded-full border border-border bg-surface"
           >
             <Plus size={18} color="#fff" />
             <Text className="ml-2 text-white font-semibold">Add</Text>
@@ -351,10 +352,10 @@ const SplitByItemView = () => {
                 className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${
                   isActive
                     ? "bg-blue-600 border-blue-500"
-                    : "bg-[#2a2a2a] border-[#333]"
+                    : "bg-surface border-border"
                 }`}
               >
-                <User size={16} color={isActive ? "white" : "#9ca3af"} />
+                <User size={16} color={isActive ? "white" : colors.label} />
                 <Text
                   className={`ml-2 font-semibold ${
                     isActive ? "text-white" : "text-gray-400"
@@ -370,14 +371,14 @@ const SplitByItemView = () => {
 
       {/* 3. Active Guest Summary */}
       {activeSplit && (
-        <View className="p-4 bg-[#262626] border-b border-[#333]">
+        <View className="p-4 bg-surface border-b border-border">
           <View className="flex-row justify-between items-start mb-3">
             <View>
               <TextInput
-                className="text-2xl font-bold text-white border-b border-[#444] pb-1 min-w-[150px]"
+                className="text-2xl font-bold text-white border-b border-border pb-1 min-w-[150px]"
                 value={activeSplit.customerName}
                 onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
-                placeholderTextColor="#555"
+                placeholderTextColor={colors.muted}
               />
               <Text className="text-gray-400 text-xs mt-1">
                 Tap items below to assign
@@ -403,9 +404,9 @@ const SplitByItemView = () => {
           {activeSplit.items.length > 0 && (
             <View className="flex-row gap-2">
               {/* Card Payment Option */}
-              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-[#1A1A1A] rounded-xl border border-[#333]">
+              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-panel rounded-xl border border-border">
                 <View className="flex-row items-center">
-                  <CreditCard size={16} color="#60A5FA" />
+                  <CreditCard size={16} color={colors.info} />
                   <Text className="text-gray-400 text-xs ml-2">Card</Text>
                 </View>
                 <Text className="text-lg font-bold text-blue-400">
@@ -414,9 +415,9 @@ const SplitByItemView = () => {
               </View>
 
               {/* Cash Payment Option */}
-              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-[#1A1A1A] rounded-xl border border-green-900/50">
+              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-panel rounded-xl border border-green-900/50">
                 <View className="flex-row items-center">
-                  <Banknote size={16} color="#10B981" />
+                  <Banknote size={16} color={colors.success} />
                   <Text className="text-gray-400 text-xs ml-2">Cash</Text>
                   {cashSavings > 0.01 && (
                     <View className="ml-1 px-1.5 py-0.5 bg-green-900/30 rounded-full">
@@ -436,7 +437,7 @@ const SplitByItemView = () => {
       )}
 
       {/* 4. Main Item List */}
-      <View className="flex-1 bg-[#1F1F1F]">
+      <View className="flex-1 bg-panel">
         <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 100 }}>
           {itemData.map((item) => {
             const isSelected = item.qtyInCurrent > 0;
@@ -448,12 +449,12 @@ const SplitByItemView = () => {
             return (
               <View
                 key={item.id}
-                className={`flex-row justify-between items-center p-4 border-b border-[#333] ${
+                className={`flex-row justify-between items-center p-4 border-b border-border ${
                   isSelected
                     ? "bg-[#1e3a8a] border-[#2563eb]"
                     : isFullyAssignedToOthers
-                      ? "bg-[#1A1A1A] opacity-40"
-                      : "bg-[#262626]"
+                      ? "bg-panel opacity-40"
+                      : "bg-surface"
                 }`}
               >
                 {/* Item Info */}
@@ -493,7 +494,7 @@ const SplitByItemView = () => {
                         className={`w-8 h-8 rounded-full items-center justify-center ${
                           canRemove
                             ? "bg-red-600 active:bg-red-700"
-                            : "bg-[#333] opacity-30"
+                            : "bg-surface opacity-30"
                         }`}
                       >
                         <Minus size={16} color={canRemove ? "white" : "#666"} />
@@ -502,7 +503,7 @@ const SplitByItemView = () => {
                       {/* Quantity Badge */}
                       <View
                         className={`min-w-[36px] px-2 py-1 rounded-md items-center ${
-                          isSelected ? "bg-blue-600" : "bg-[#333]"
+                          isSelected ? "bg-blue-600" : "bg-surface"
                         }`}
                       >
                         <Text
@@ -521,7 +522,7 @@ const SplitByItemView = () => {
                         className={`w-8 h-8 rounded-full items-center justify-center ${
                           canAdd
                             ? "bg-green-600 active:bg-green-700"
-                            : "bg-[#333] opacity-30"
+                            : "bg-surface opacity-30"
                         }`}
                       >
                         <Plus size={16} color={canAdd ? "white" : "#666"} />
@@ -548,7 +549,7 @@ const SplitByItemView = () => {
       </View>
 
       {/* 5. Footer Action: PAY ALL SPLITS */}
-      <View className="p-4 bg-[#212121] border-t border-[#333]">
+      <View className="p-4 bg-panel border-t border-border">
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-gray-400 text-sm">Items Remaining</Text>
           <Text
@@ -566,13 +567,13 @@ const SplitByItemView = () => {
           className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${
             isAllAssigned
               ? "bg-blue-600 active:bg-blue-700"
-              : "bg-[#333] opacity-80"
+              : "bg-surface opacity-80"
           }`}
         >
           {isAllAssigned ? (
             <Play size={20} color="white" fill="white" className="mr-1" />
           ) : (
-            <Circle size={20} color="#666" className="mr-1" />
+            <Circle size={20} color={colors.muted} className="mr-1" />
           )}
           <Text
             className={`text-lg font-bold ${

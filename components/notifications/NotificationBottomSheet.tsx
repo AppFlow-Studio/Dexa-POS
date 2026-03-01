@@ -3,6 +3,7 @@ import BottomSheet, {
   BottomSheetView, // Using BottomSheetView as per DropShiftBottomSheet
 } from "@gorhom/bottom-sheet";
 import React, { useMemo } from "react";
+import { bottomSheetTheme } from "@/lib/theme";
 import NotificationPanel from "./NotificationPanel"; // Assuming NotificationPanel is in the same directory
 
 interface NotificationBottomSheetProps {
@@ -24,8 +25,7 @@ const NotificationBottomSheet: React.FC<NotificationBottomSheetProps> = ({
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-      backgroundStyle={{ backgroundColor: "#1F1F1F" }}
+      {...bottomSheetTheme}
       backdropComponent={(props) => (
         <BottomSheetBackdrop
           {...props}

@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -176,7 +177,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
 
   const menuItems: MenuItem[] = [
     {
-      icon: <Eye size={18} color="#6B7280" />,
+      icon: <Eye size={18} color={colors.muted} />,
       label: "View Details",
       onPress: () => {
         onClose();
@@ -184,36 +185,36 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
       },
     },
     {
-      icon: <Plus size={18} color="#6B7280" />,
+      icon: <Plus size={18} color={colors.muted} />,
       label: "Add to Bill",
       onPress: handleAddToBill,
       disabled: !activeOrderId || !order.items || order.items.length === 0,
     },
     {
-      icon: <DollarSign size={18} color="#6B7280" />,
+      icon: <DollarSign size={18} color={colors.muted} />,
       label: "Pay Outstanding",
       onPress: handlePayOutstanding,
       disabled: !hasOutstanding,
     },
     {
-      icon: <Printer size={18} color="#6B7280" />,
+      icon: <Printer size={18} color={colors.muted} />,
       label: "Print Receipt",
       onPress: handlePrintReceipt,
     },
     {
-      icon: <ChefHat size={18} color="#6B7280" />,
+      icon: <ChefHat size={18} color={colors.muted} />,
       label: "Print Kitchen Ticket",
       onPress: handlePrintKitchenTicket,
       disabled: !order.items || order.items.filter((i) => !i.is_voided).length === 0,
     },
     {
-      icon: <ReceiptText size={18} color="#EF4444" />,
+      icon: <ReceiptText size={18} color={colors.danger} />,
       label: "Refund",
       onPress: handleRefund,
       destructive: true,
     },
     {
-      icon: <Trash2 size={18} color="#EF4444" />,
+      icon: <Trash2 size={18} color={colors.danger} />,
       label: "Void Order",
       onPress: handleVoidOrder,
       destructive: true,
@@ -234,7 +235,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
           }`}
         >
           <Pressable
-            className="bg-[#1a1a1a] rounded-lg shadow-2xl overflow-hidden min-w-[220px] border border-gray-700"
+            className="bg-panel rounded-lg shadow-2xl overflow-hidden min-w-[220px] border border-gray-700"
             onPress={(e) => e.stopPropagation()}
             style={
               position
@@ -247,7 +248,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
             }
           >
             {/* Menu Header */}
-            <View className="px-4 py-3 border-b border-gray-700 bg-[#252525]">
+            <View className="px-4 py-3 border-b border-gray-700 bg-panel">
               <Text className="text-xs font-semibold text-gray-400 uppercase">
                 Order Actions
               </Text>

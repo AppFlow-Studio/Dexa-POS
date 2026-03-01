@@ -2,6 +2,7 @@ import { calculateItemEffectiveCardPrice, calculateItemEffectiveCashPrice } from
 import { CartItem, OrderProfile } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { SelectedLocation } from "@/stores/useStoreSettingsStore";
+import { colors } from "@/lib/theme";
 import { Printer, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -558,7 +559,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
               onPress={onClose}
               className="p-2 rounded-full bg-gray-800"
             >
-              <X color="#9CA3AF" size={20} />
+              <X color={colors.label} size={20} />
             </TouchableOpacity>
           </View>
 

@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { colors } from "@/lib/theme";
 import { CheckCircle2, X } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
@@ -24,7 +25,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
   const isSingleDay = startDate === endDate;
 
   return (
-    <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl gap-y-3">
+    <View className="p-4 bg-screen border border-border rounded-2xl gap-y-3">
       <View className="flex-row items-center justify-between">
         <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
           <Text className="text-purple-400">PTO Request</Text>
@@ -40,7 +41,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
       </View>
 
       {reason && (
-        <View className="p-3 rounded-lg bg-[#303030] border border-gray-600">
+        <View className="p-3 rounded-lg bg-panel border border-border">
           <Text className="text-xs text-gray-400 mb-1">Reason</Text>
           <Text className="text-sm text-white">{reason}</Text>
         </View>
@@ -51,7 +52,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
           onPress={onApprove}
           className="flex-1 gap-2 bg-green-600 hover:bg-green-700 flex-row"
         >
-          <CheckCircle2 size={16} color="#FFFFFF" />
+          <CheckCircle2 size={16} color={colors.heading} />
           <Text className="text-white font-semibold">Approve</Text>
         </Button>
         <Button
@@ -59,7 +60,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
           variant="destructive"
           className="flex-1 gap-2 flex-row"
         >
-          <X size={16} color="#FFFFFF" />
+          <X size={16} color={colors.heading} />
           <Text className="text-white font-semibold">Deny</Text>
         </Button>
       </View>

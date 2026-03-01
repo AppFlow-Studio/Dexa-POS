@@ -27,6 +27,7 @@ import {
   Clock,
   Coffee,
 } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import React, { useMemo, useRef, useState } from "react";
 import {
   FlatList,
@@ -498,7 +499,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
       onPress: () => onTimeSheetRef.current?.expand(),
     },
     {
-      icon: <Coffee size={24} color="#60A5FA" />,
+      icon: <Coffee size={24} color={colors.info} />,
       title: "Break Compliance",
       value: breakCompliance.text,
       trend: breakCompliance.trend,
@@ -515,7 +516,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
       onPress: () => overtimeSheetRef.current?.expand(),
     },
     {
-      icon: <Briefcase size={24} color="#60A5FA" />,
+      icon: <Briefcase size={24} color={colors.info} />,
       title: "Open Shift Matches",
       value: openShiftMatchesCount.toString(),
       period: "Claimable this week",
@@ -525,7 +526,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
 
   return (
     <>
-      <View className="flex-1 bg-[#303030] rounded-2xl">
+      <View className="flex-1 bg-surface rounded-2xl">
         <View className="p-4 gap-y-4">
           {/* Header */}
           <View className="flex-row items-center justify-between">
@@ -535,9 +536,9 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
             <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={goToPreviousWeek}
-                className="p-2 bg-[#212121] rounded-md border border-gray-700"
+                className="p-2 bg-panel rounded-md border border-gray-700"
               >
-                <ChevronLeft size={20} color="#9CA3AF" />
+                <ChevronLeft size={20} color={colors.label} />
               </TouchableOpacity>
               <Text className="text-base font-medium text-gray-300">
                 {format(weekDays[0], "MMM d")} -{" "}
@@ -545,9 +546,9 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
               </Text>
               <TouchableOpacity
                 onPress={goToNextWeek}
-                className="p-2 bg-[#212121] rounded-md border border-gray-700"
+                className="p-2 bg-panel rounded-md border border-gray-700"
               >
-                <ChevronRight size={20} color="#9CA3AF" />
+                <ChevronRight size={20} color={colors.label} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={goToCurrentWeek}
@@ -585,7 +586,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
             {isSchedulePublished ? (
               // Schedule View
               <View className="mt-4">
-                <View className="flex-row p-1 bg-[#212121] rounded-lg border border-gray-600 self-start mb-3">
+                <View className="flex-row p-1 bg-panel rounded-lg border border-gray-600 self-start mb-3">
                   <TouchableOpacity
                     onPress={() => setScheduleView("List")}
                     className={`px-4 py-2 rounded-md flex-row items-center gap-2 ${
@@ -608,7 +609,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
                   >
                     <CalendarIcon
                       size={20}
-                      color={scheduleView === "Calendar" ? "white" : "#9CA3AF"}
+                      color={scheduleView === "Calendar" ? "white" : colors.label}
                     />
                     <Text
                       className={`text-base font-semibold ${

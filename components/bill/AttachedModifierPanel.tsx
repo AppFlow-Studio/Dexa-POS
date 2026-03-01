@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import {
   selectIsOpen,
   selectMode,
@@ -111,10 +112,10 @@ const styles = StyleSheet.create({
     right: PANEL_RIGHT_OFFSET, // Positioned more to the left
     bottom: 60,
     width: PANEL_WIDTH,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: colors.panel,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: "#3B82F6", // Blue accent border
+    borderColor: colors.info, // Blue accent border
     zIndex: 200,
     // Enhanced shadow for depth
     shadowColor: "#000",

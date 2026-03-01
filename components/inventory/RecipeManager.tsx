@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet from "@gorhom/bottom-sheet";
@@ -88,7 +89,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
   return (
     <View className="flex-1 gap-y-4">
       {recipe.length === 0 ? (
-        <View className="bg-[#212121] rounded-2xl p-8 items-center border border-gray-800 border-dashed">
+        <View className="bg-screen rounded-2xl p-8 items-center border border-gray-800 border-dashed">
           <View className="w-16 h-16 bg-gray-800 rounded-full items-center justify-center mb-4">
             <ChefHat size={32} color="#4B5563" />
           </View>
@@ -120,7 +121,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
             return (
               <View
                 key={index}
-                className="bg-[#212121] rounded-2xl p-4 border border-gray-800"
+                className="bg-screen rounded-2xl p-4 border border-gray-800"
               >
                 <View className="flex-row items-center gap-4">
                   <TouchableOpacity
@@ -171,9 +172,9 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
                       }
                       onChangeText={(text) => handleQuantityChange(text, index)}
                       keyboardType="numeric"
-                      className="bg-[#303030] border border-gray-700 text-white px-3 py-2 rounded-xl text-center h-12 text-base font-semibold"
+                      className="bg-panel border border-border text-white px-3 py-2 rounded-xl text-center h-12 text-base font-semibold"
                       placeholder="0"
-                      placeholderTextColor="#4B5563"
+                      placeholderTextColor={colors.muted}
                     />
                   </View>
 
@@ -182,7 +183,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
                       onPress={() => removeItem(index)}
                       className="bg-red-900/10 border border-red-900/30 p-3 rounded-xl"
                     >
-                      <Trash2 color="#EF4444" size={20} />
+                      <Trash2 color={colors.danger} size={20} />
                     </TouchableOpacity>
                   )}
                 </View>
@@ -196,7 +197,7 @@ const RecipeManager: React.FC<RecipeManagerProps> = ({
                 setEditingIndex(null);
                 sheetRef.current?.expand();
               }}
-              className="bg-[#212121] border-2 border-dashed border-gray-800 rounded-2xl p-4 items-center flex-row justify-center"
+              className="bg-screen border-2 border-dashed border-gray-800 rounded-2xl p-4 items-center flex-row justify-center"
             >
               <Plus color="#4B5563" size={20} />
               <Text className="text-gray-500 ml-2 font-bold text-base">

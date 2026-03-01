@@ -77,7 +77,7 @@ const PinInputModal: React.FC<PinInputModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCancel}>
-      <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-6">
+      <DialogContent className="w-fit h-fit bg-surface border-gray-600 p-6">
         <DialogHeader>
           <DialogTitle className="text-center text-2xl font-semibold text-white">
             {title}

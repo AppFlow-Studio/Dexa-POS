@@ -1,3 +1,4 @@
+import { URGENCY_COLORS } from "@/lib/theme";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
@@ -80,8 +81,6 @@ export function getUrgencyLevel(startTime: string | null): number {
 }
 
 /** Maps urgency level to color hex */
-const URGENCY_COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
-
 export function getUrgencyColor(startTime: string | null): string {
   return URGENCY_COLORS[getUrgencyLevel(startTime)];
 }

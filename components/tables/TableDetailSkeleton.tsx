@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
@@ -126,7 +127,7 @@ const TableDetailSkeleton: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#212121",
+    backgroundColor: colors.screen,
   },
   headerSection: {
     paddingHorizontal: 8,
@@ -136,33 +137,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#4B5563",
+    borderColor: colors.border,
   },
   headerItem: {
     width: 80,
     height: 16,
-    backgroundColor: "#404040",
+    backgroundColor: colors.skeletonHighlight,
     borderRadius: 4,
   },
   headerItemShort: {
     width: 50,
     height: 16,
-    backgroundColor: "#404040",
+    backgroundColor: colors.skeletonHighlight,
     borderRadius: 4,
   },
   headerDivider: {
     width: 1,
     height: 16,
-    backgroundColor: "#6B7280",
+    backgroundColor: colors.muted,
     marginHorizontal: 8,
   },
   headerChevron: {
     width: 20,
     height: 20,
-    backgroundColor: "#404040",
+    backgroundColor: colors.skeletonHighlight,
     borderRadius: 4,
     marginLeft: "auto",
   },
@@ -185,16 +186,16 @@ const styles = StyleSheet.create({
   courseTab: {
     width: 80,
     height: 40,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 8,
   },
   courseTabActive: {
     width: 100,
     height: 40,
-    backgroundColor: "#374151",
+    backgroundColor: colors.card,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: "#3B82F6",
+    borderColor: colors.info,
   },
   orderItems: {
     flex: 1,
@@ -207,7 +208,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 12,
     paddingHorizontal: 12,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 12,
   },
   orderItemLeft: {
@@ -218,7 +219,7 @@ const styles = StyleSheet.create({
   itemQuantity: {
     width: 32,
     height: 32,
-    backgroundColor: "#404040",
+    backgroundColor: colors.skeletonHighlight,
     borderRadius: 8,
   },
   itemDetails: {
@@ -227,19 +228,19 @@ const styles = StyleSheet.create({
   itemName: {
     width: 140,
     height: 18,
-    backgroundColor: "#404040",
+    backgroundColor: colors.skeletonHighlight,
     borderRadius: 4,
   },
   itemModifier: {
     width: 80,
     height: 14,
-    backgroundColor: "#404040",
+    backgroundColor: colors.skeletonHighlight,
     borderRadius: 4,
   },
   itemPrice: {
     width: 60,
     height: 20,
-    backgroundColor: "#404040",
+    backgroundColor: colors.skeletonHighlight,
     borderRadius: 4,
   },
   actionBar: {
@@ -247,18 +248,18 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: "#374151",
+    borderTopColor: colors.border,
   },
   moreButton: {
     width: 80,
     height: 48,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 12,
   },
   totalButton: {
     flex: 1,
     height: 48,
-    backgroundColor: "#1D4ED8",
+    backgroundColor: colors.info,
     borderRadius: 12,
   },
   menuSection: {
@@ -273,19 +274,19 @@ const styles = StyleSheet.create({
   categoryTabActive: {
     width: 100,
     height: 44,
-    backgroundColor: "#3B82F6",
+    backgroundColor: colors.info,
     borderRadius: 10,
   },
   categoryTab: {
     width: 90,
     height: 44,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 10,
   },
   categoryTabShort: {
     width: 70,
     height: 44,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 10,
   },
   menuGrid: {
@@ -299,7 +300,7 @@ const styles = StyleSheet.create({
   menuItem: {
     flex: 1,
     height: 100,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 12,
   },
 });

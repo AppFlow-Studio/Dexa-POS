@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { colors } from "@/lib/theme";
 import { InventoryItem, Vendor } from "@/lib/types";
 import React, { useEffect, useState } from "react";
 import {
@@ -181,7 +182,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   if (initialData?.isGlobal) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
+        <DialogContent className="bg-panel border-border w-[550px]">
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -210,20 +211,20 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               <View className="flex-row gap-4">
                 <View className="flex-1">
                   <Text className="text-gray-400 mb-1">Item Name</Text>
-                  <View className="p-3 bg-[#252525] border border-gray-700 rounded-lg">
+                  <View className="p-3 bg-screen border border-border rounded-lg">
                     <Text className="text-gray-300">{initialData.name}</Text>
                   </View>
                 </View>
                 <View className="w-1/3">
                   <Text className="text-gray-400 mb-1">Unit</Text>
-                  <View className="p-3 bg-[#252525] border border-gray-700 rounded-lg">
+                  <View className="p-3 bg-screen border border-border rounded-lg">
                     <Text className="text-gray-300">{initialData.unit}</Text>
                   </View>
                 </View>
               </View>
 
               {/* Stock Management */}
-              <View className="p-4 bg-[#252525]/50 border border-gray-700 rounded-xl space-y-3">
+              <View className="p-4 bg-screen/50 border border-border rounded-xl space-y-3">
                 <Text className="text-gray-200 font-semibold">
                   Location Stock
                 </Text>
@@ -234,7 +235,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                       value={stockQuantity}
                       onChangeText={setStockQuantity}
                       keyboardType="numeric"
-                      className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                      className="p-3 bg-screen border border-border rounded-lg text-white"
                     />
                   </View>
                   <View className="flex-1">
@@ -245,9 +246,9 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                       value={reorderThreshold}
                       onChangeText={setReorderThreshold}
                       placeholder={String(initialData.reorderThreshold)}
-                      placeholderTextColor="#666"
+                      placeholderTextColor={colors.muted}
                       keyboardType="numeric"
-                      className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                      className="p-3 bg-screen border border-border rounded-lg text-white"
                     />
                     <Text className="text-xs text-gray-500 mt-1">
                       Override default ({initialData.reorderThreshold})
@@ -266,15 +267,15 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                       value={stockUpdateReason}
                       onChangeText={setStockUpdateReason}
                       placeholder="e.g. Received delivery, Spoilage..."
-                      placeholderTextColor="#666"
-                      className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                      placeholderTextColor={colors.muted}
+                      className="p-3 bg-screen border border-border rounded-lg text-white"
                     />
                   </View>
                 )}
               </View>
 
               {/* Cost Override */}
-              <View className="p-4 bg-[#252525]/50 border border-gray-700 rounded-xl">
+              <View className="p-4 bg-screen/50 border border-border rounded-xl">
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-gray-200 font-semibold">Pricing</Text>
                   <Text className="text-gray-400 text-sm">
@@ -287,9 +288,9 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                     value={cost}
                     onChangeText={setCost}
                     placeholder="Set custom cost..."
-                    placeholderTextColor="#666"
+                    placeholderTextColor={colors.muted}
                     keyboardType="numeric"
-                    className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                    className="p-3 bg-screen border border-border rounded-lg text-white"
                   />
                 </View>
               </View>
@@ -298,7 +299,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
             <DialogFooter className="flex-row gap-2 mt-2">
               <TouchableOpacity
                 onPress={onClose}
-                className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+                className="flex-1 py-3 bg-screen border border-border rounded-lg"
               >
                 <Text className="text-center text-lg font-bold text-gray-300">
                   Cancel
@@ -322,7 +323,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   // Render Local Form (Full Edit - Existing Code Wrapped)
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
+      <DialogContent className="bg-panel border-border w-[550px]">
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -341,7 +342,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                  className="p-3 bg-screen border border-border rounded-lg text-lg text-white h-16"
                 />
               </View>
               <View className="flex-1">
@@ -351,7 +352,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 <TextInput
                   value={category}
                   onChangeText={setCategory}
-                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                  className="p-3 bg-screen border border-border rounded-lg text-lg text-white h-16"
                 />
               </View>
             </View>
@@ -364,7 +365,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   value={stockQuantity}
                   onChangeText={setStockQuantity}
                   keyboardType="numeric"
-                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                  className="p-3 bg-screen border border-border rounded-lg text-lg text-white h-16"
                 />
               </View>
               <View className="flex-1">
@@ -372,7 +373,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   Unit
                 </Text>
                 <Select value={unit} onValueChange={setUnit}>
-                  <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
+                  <SelectTrigger className="w-full p-3 h-16 bg-screen border border-border rounded-lg">
                     <SelectValue
                       className="text-lg text-white"
                       placeholder="Select a unit..."
@@ -403,7 +404,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   value={reorderThreshold}
                   onChangeText={setReorderThreshold}
                   keyboardType="numeric"
-                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                  className="p-3 bg-screen border border-border rounded-lg text-lg text-white h-16"
                 />
               </View>
               <View className="flex-1">
@@ -414,7 +415,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                   value={cost}
                   onChangeText={setCost}
                   keyboardType="numeric"
-                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                  className="p-3 bg-screen border border-border rounded-lg text-lg text-white h-16"
                 />
               </View>
             </View>
@@ -423,7 +424,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 Default Vendor
               </Text>
               <Select value={vendorId} onValueChange={setVendorId}>
-                <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
+                <SelectTrigger className="w-full p-3 h-16 bg-screen border border-border rounded-lg">
                   <SelectValue
                     className="text-lg text-white"
                     placeholder="Select a vendor..."
@@ -448,7 +449,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
           <DialogFooter className="flex-row gap-2">
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+              className="flex-1 py-3 bg-screen border border-border rounded-lg"
             >
               <Text className="text-center text-lg font-bold text-gray-300">
                 Cancel

@@ -14,7 +14,7 @@ const TABLE_HEADERS = [
 ];
 
 const HistoryTableHeader = () => (
-  <View className="flex-row p-4 bg-[#303030] rounded-t-xl border-b border-gray-700">
+  <View className="flex-row p-4 bg-surface rounded-t-xl border-b border-gray-700">
     {TABLE_HEADERS.map((header) => (
       <Text key={header} className="flex-1 font-bold text-lg text-gray-300">
         {header}

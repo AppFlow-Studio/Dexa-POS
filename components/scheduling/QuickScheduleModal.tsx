@@ -4,6 +4,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { colors } from "@/lib/theme";
 import { addDays, eachDayOfInterval, format, parseISO } from "date-fns";
 import { Plus } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -30,15 +31,15 @@ const QuickScheduleModal: React.FC<QuickScheduleModalProps> = ({
   };
 
   const calendarTheme = {
-    calendarBackground: "#303030",
-    monthTextColor: "#FFFFFF",
-    dayTextColor: "#FFFFFF",
-    textDisabledColor: "#6B7280",
-    selectedDayBackgroundColor: "#3b82f6",
-    selectedDayTextColor: "#FFFFFF",
-    todayTextColor: "#60A5FA",
-    arrowColor: "#3b82f6",
-    textSectionTitleColor: "#9CA3AF",
+    calendarBackground: colors.panel,
+    monthTextColor: colors.heading,
+    dayTextColor: colors.heading,
+    textDisabledColor: colors.muted,
+    selectedDayBackgroundColor: colors.info,
+    selectedDayTextColor: colors.heading,
+    todayTextColor: colors.info,
+    arrowColor: colors.info,
+    textSectionTitleColor: colors.label,
   };
 
   const markedDates = useMemo(() => {
@@ -64,7 +65,7 @@ const QuickScheduleModal: React.FC<QuickScheduleModalProps> = ({
     // Add the solid blue circle for the specifically selected start date
     if (dates[selectedDate]) {
       dates[selectedDate].selected = true;
-      dates[selectedDate].selectedColor = "#3b82f6";
+      dates[selectedDate].selectedColor = colors.info;
     }
 
     return dates;
@@ -77,7 +78,7 @@ const QuickScheduleModal: React.FC<QuickScheduleModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[550px] max-w-lg bg-[#303030] rounded-2xl border-gray-700 p-0">
+      <DialogContent className="w-[550px] max-w-lg bg-panel rounded-2xl border-border p-0">
         <DialogHeader className="p-6 border-b border-gray-700">
           <DialogTitle className="text-white text-xl font-bold">
             Create Schedule for Week
@@ -95,7 +96,7 @@ const QuickScheduleModal: React.FC<QuickScheduleModalProps> = ({
             onPress={handleCreate}
             className="flex-row items-center justify-center gap-2 px-4 py-3 bg-blue-600 rounded-xl mt-6"
           >
-            <Plus size={18} color="#FFFFFF" />
+            <Plus size={18} color={colors.heading} />
             <Text className="text-white font-bold">Create & View Week</Text>
           </TouchableOpacity>
         </View>

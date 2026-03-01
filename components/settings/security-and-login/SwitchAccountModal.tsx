@@ -7,6 +7,7 @@ import { getDeviceId } from "@/lib/deviceId";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { colors } from "@/lib/theme";
 import { Clock } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -142,8 +143,8 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-[#303030] border-gray-700">
-        <View className="bg-[#212121] p-4 w-full">
+      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-panel border-gray-700">
+        <View className="bg-screen p-4 w-full">
           <DialogTitle className="text-white text-xl font-bold text-center">
             Switch Account
           </DialogTitle>
@@ -168,7 +169,7 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
           </TouchableOpacity>
           <View className="flex-row gap-3 border-t border-gray-700 pt-4">
             <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-600 rounded-lg">
-              <Clock color="#9CA3AF" size={18} />
+              <Clock color={colors.label} size={18} />
               <Text className="font-bold text-gray-300 text-lg">Timeclock</Text>
             </TouchableOpacity>
             <TouchableOpacity

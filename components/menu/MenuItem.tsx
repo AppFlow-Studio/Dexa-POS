@@ -1,9 +1,14 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
-import { isMenuBlockedSync, setMenuBlockedSync, useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import {
+  isMenuBlockedSync,
+  setMenuBlockedSync,
+  useModifierSidebarStore,
+} from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { Banknote, Settings, Utensils } from "lucide-react-native";
+import { Utensils } from "lucide-react-native";
 import React, { useCallback, useMemo } from "react";
 import {
   Image,
@@ -20,9 +25,11 @@ const styles = StyleSheet.create({
     width: "23%",
     borderRadius: 20,
     marginBottom: 8,
-    backgroundColor: "#303030",
+    backgroundColor: colors.panel,
     borderWidth: 1,
-    borderColor: "#4B5563",
+    borderColor: colors.border,
+    aspectRatio: 1,
+    padding: 3
   },
   containerDisabled: {
     opacity: 0.5,
@@ -37,39 +44,49 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     position: "relative",
-    width: "100%",
+    width: "90%",
     height: 96,
     flex: 1,
+    borderWidth: 2,
+    borderColor: colors.border,
+    marginTop: 2,
+    borderRadius: 10,
   },
   image: {
     width: "100%",
-    height: 96,
+    height: '100%',
     borderRadius: 8,
   },
   placeholderContainer: {
     width: "100%",
-    height: 96,
+    height: '100%',
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
   modifierIconContainer: {
     position: "absolute",
-    bottom: 8,
-    right: 8,
+    top: 0,
+    right: 0,
+  },
+  modifierTriangle: {
+    width: 0,
+    height: 0,
+    borderTopWidth: 14,
+    borderTopColor: `${colors.info}8C`,
+    borderLeftWidth: 14,
+    borderLeftColor: "transparent",
   },
   divider: {
     height: 1,
-    backgroundColor: "#60A5FA",
+    backgroundColor: colors.info,
     alignSelf: "center",
     width: "90%",
   },
   contentContainer: {
     width: "100%",
     paddingHorizontal: 16,
-    flex: 1,
     paddingBottom: 4,
-    height: "100%",
     justifyContent: "flex-end",
   },
   nameContainer: {
@@ -78,10 +95,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   nameText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "white",
-    marginTop: 12,
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.heading,
+    marginTop: 2,
     flex: 1,
   },
   priceContainer: {
@@ -91,23 +108,30 @@ const styles = StyleSheet.create({
   priceText: {
     fontSize: 20,
     fontWeight: "600",
-    color: "white",
+    color: colors.heading,
   },
   priceTextCustom: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#FACC15",
+    color: colors.warning,
   },
   originalPriceText: {
     fontSize: 18,
-    color: "#6B7280",
+    color: colors.muted,
     marginLeft: 8,
     textDecorationLine: "line-through",
   },
   cashPriceText: {
-    fontSize: 14,
-    color: "#D1D5DB",
+    fontSize: 12,
+    color: colors.success,
     marginLeft: 4,
+    marginRight: 4,
+  },
+  cashPriceTextCash: {
+    fontSize: 12,
+    color: colors.success,
+    marginLeft: 4,
+    fontWeight: 500,
   },
   stockContainer: {
     marginTop: 8,
@@ -119,24 +143,24 @@ const styles = StyleSheet.create({
   stockDotGreen: {
     width: 8,
     height: 8,
-    backgroundColor: "#22C55E",
+    backgroundColor: colors.success,
     borderRadius: 4,
     marginRight: 8,
   },
   stockDotRed: {
     width: 8,
     height: 8,
-    backgroundColor: "#EF4444",
+    backgroundColor: colors.danger,
     borderRadius: 4,
     marginRight: 8,
   },
   stockTextGreen: {
-    color: "#4ADE80",
+    color: colors.success,
     fontSize: 14,
     fontWeight: "500",
   },
   stockTextRed: {
-    color: "#F87171",
+    color: colors.danger,
     fontSize: 14,
     fontWeight: "500",
   },
@@ -144,49 +168,51 @@ const styles = StyleSheet.create({
 
 // OPTIMIZED: Memoized icon components (prevents re-render)
 const PlaceholderIcon = React.memo(() => (
-  <Utensils color="#9ca3af" size={24} />
+  <Utensils color={colors.label} size={24} />
 ));
 PlaceholderIcon.displayName = "PlaceholderIcon";
 
-const ModifierIcon = React.memo(() => <Settings color="#60A5FA" size={24} />);
-ModifierIcon.displayName = "ModifierIcon";
+const ModifierTriangle = React.memo(() => (
+  <View style={styles.modifierTriangle} />
+));
+ModifierTriangle.displayName = "ModifierTriangle";
 
 // OPTIMIZED: Memoized stock status component
-// const StockStatus = React.memo(
-//   ({
-//     stockQuantity,
-//     availability,
-//   }: {
-//     stockQuantity?: number;
-//     availability?: boolean;
-//   }) => {
-//     if (stockQuantity !== undefined && stockQuantity > 0) {
-//       return (
-//         <View style={styles.stockRow}>
-//           <View style={styles.stockDotGreen} />
-//           <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
-//         </View>
-//       );
-//     }
+const StockStatus = React.memo(
+  ({
+    stockQuantity,
+    availability,
+  }: {
+    stockQuantity?: number;
+    availability?: boolean;
+  }) => {
+    //     if (stockQuantity !== undefined && stockQuantity > 0) {
+    //       return (
+    //         <View style={styles.stockRow}>
+    //           <View style={styles.stockDotGreen} />
+    //           <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
+    //         </View>
+    //       );
+    //     }
 
-//     if (availability === false) {
-//       return (
-//         <View style={styles.stockRow}>
-//           <View style={styles.stockDotRed} />
-//           <Text style={styles.stockTextRed}>Out of Stock</Text>
-//         </View>
-//       );
-//     }
+    if (availability === false) {
+      return (
+        <View style={styles.stockRow}>
+          <View style={styles.stockDotRed} />
+          <Text style={styles.stockTextRed}>Out of Stock</Text>
+        </View>
+      );
+    }
 
-//     return (
-//       <View style={styles.stockRow}>
-//         <View style={styles.stockDotGreen} />
-//         <Text style={styles.stockTextGreen}>In Stock</Text>
-//       </View>
-//     );
-//   }
-// );
-// StockStatus.displayName = "StockStatus";
+    return (
+      <View style={styles.stockRow}>
+        <View style={styles.stockDotGreen} />
+        <Text style={styles.stockTextGreen}>In Stock</Text>
+      </View>
+    );
+  },
+);
+StockStatus.displayName = "StockStatus";
 
 interface MenuItemProps {
   item: MenuItemType;
@@ -230,7 +256,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   // OPTIMIZED: Pre-compute derived values
   const hasModifiers = useMemo(
     () => item.modifierGroupIds && item.modifierGroupIds.length > 0,
-    [item.modifierGroupIds]
+    [item.modifierGroupIds],
   );
 
   const isDisabled = item.availability === false;
@@ -269,7 +295,15 @@ const MenuItem: React.FC<MenuItemProps> = ({
     // Pre-warm: compute modifier data NOW while finger is still down.
     // By the time onPress fires, this is already cached.
     useModifierSidebarStore.getState().preWarm(item, categoryId, menuId);
-  }, [item, categoryId, menuId, isClockedIn, onOrderClosedCheck, showClockInWall, show]);
+  }, [
+    item,
+    categoryId,
+    menuId,
+    isClockedIn,
+    onOrderClosedCheck,
+    showClockInWall,
+    show,
+  ]);
 
   // ─── Phase 2: onPress ──────────────────────────────────────────────────────
   // Fires after finger lifts. Pre-warm is already done — just flip isOpen = true.
@@ -293,6 +327,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
       style={[styles.container, isDisabled && styles.containerDisabled]}
     >
       <View style={styles.innerContainer}>
+        {hasModifiers && (
+          <View style={styles.modifierIconContainer}>
+            <ModifierTriangle />
+          </View>
+        )}
         <View style={styles.imageContainer}>
           {imageSource ? (
             <Image source={imageSource} style={styles.image} />
@@ -301,34 +340,35 @@ const MenuItem: React.FC<MenuItemProps> = ({
               <PlaceholderIcon />
             </View>
           )}
-          {hasModifiers && (
-            <View style={styles.modifierIconContainer}>
-              <ModifierIcon />
-            </View>
-          )}
         </View>
-        <View style={styles.divider} />
-        <View style={styles.contentContainer}>
+        {/* <View style={styles.divider} /> */}
+        <View style={styles.contentContainer} >
           <View style={styles.nameContainer}>
             <Text style={styles.nameText}>{item.name}</Text>
           </View>
-          <View style={styles.priceContainer} className="flex-row flex items-center gap-1">
+          <View
+            style={styles.priceContainer}
+            className="flex-row flex items-center gap-1"
+          >
             <Text
               style={
                 priceData.hasCustomPricing
                   ? styles.priceTextCustom
                   : styles.priceText
               }
-              className="flex-row items-center gap-1 w-fit " 
+              className="flex-row items-center gap-1 w-fit "
             >
               ${priceData.displayPrice?.toFixed(2)}
             </Text>
 
             {item.cashPrice && (
-              <View className="flex-row  items-center gap-1 w-fit">
-                <Banknote size={16} color="#22c55e"/>
-                <Text style={styles.cashPriceText} className="flex-row items-center gap-1">
-                   ${item.cashPrice.toFixed(2)}
+              <View className="flex-row  items-center gap-1 w-fit rounded-full bg-emerald-900 p-0.5">
+                <Text style={styles.cashPriceTextCash}>Cash:</Text>
+                <Text
+                  style={styles.cashPriceText}
+                  className="flex-row items-center gap-1"
+                >
+                  ${item.cashPrice.toFixed(2)}
                 </Text>
               </View>
             )}

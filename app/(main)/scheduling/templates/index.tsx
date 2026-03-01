@@ -1,6 +1,7 @@
 import TemplateListItem from "@/components/scheduling/TemplateListItem";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { ScheduleTemplate } from "@/lib/types";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore";
 import { useRouter } from "expo-router";
@@ -130,9 +131,9 @@ const TemplateLibraryScreen = () => {
           <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={() => setSelectionMode(true)}
-              className="bg-[#374151] flex-row items-center px-6 py-3 rounded-xl gap-4"
+              className="bg-card flex-row items-center px-6 py-3 rounded-xl gap-4"
             >
-              <CheckCircle2 className="w-5 h-5 mr-2" color={"#ffffff"} />
+              <CheckCircle2 className="w-5 h-5 mr-2" color={colors.heading} />
               <Text className="text-white font-semibold">
                 Set Active Templates
               </Text>
@@ -141,7 +142,7 @@ const TemplateLibraryScreen = () => {
               onPress={() => router.push("/(main)/scheduling/templates/create")}
               className="bg-blue-600 flex-row items-center px-6 py-3 rounded-xl gap-4"
             >
-              <Plus className="w-5 h-5 mr-2" color={"#ffffff"} />
+              <Plus className="w-5 h-5 mr-2" color={colors.heading} />
               <Text className="text-white font-semibold">Create Template</Text>
             </TouchableOpacity>
           </View>
@@ -152,7 +153,7 @@ const TemplateLibraryScreen = () => {
       {isSelectionMode && (
         <View className="mb-6 bg-zinc-800 rounded-xl p-4 border border-blue-600 flex-row items-center justify-between">
           <View className="flex-row items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-blue-500" color={"#3b82f6"} />
+            <CheckCircle2 className="w-5 h-5 text-blue-500" color={colors.info} />
             <View>
               <Text className="text-white font-semibold">
                 Select Templates for Schedule Making
@@ -168,7 +169,7 @@ const TemplateLibraryScreen = () => {
               onPress={handleCancelSelection}
               className="bg-zinc-700 hover:bg-zinc-600 flex-row items-center px-4 py-2 rounded-lg gap-2"
             >
-              <X className="w-4 h-4 text-white mr-2" color={"#ffffff"} />
+              <X className="w-4 h-4 text-white mr-2" color={colors.heading} />
               <Text className="text-white font-medium">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -178,7 +179,7 @@ const TemplateLibraryScreen = () => {
             >
               <CheckCircle2
                 className="w-4 h-4 text-white mr-2"
-                color={"#ffffff"}
+                color={colors.heading}
               />
               <Text className="text-white font-medium">
                 Save Selection ({selectedActiveIds.length})
@@ -214,10 +215,10 @@ const TemplateLibraryScreen = () => {
       ) : (
         <View className="flex-1 items-center justify-center py-20">
           <Calendar
-            className="w-20 h-20 text-[#374151] mb-6"
+            className="w-20 h-20 text-muted mb-6"
             height={80}
             width={80}
-            color={"#374151"}
+            color={colors.muted}
           />
           <Text className="text-white text-2xl font-semibold mb-2">
             No templates yet
@@ -229,7 +230,7 @@ const TemplateLibraryScreen = () => {
             onPress={() => router.push("/(main)/scheduling/templates/create")}
             className="bg-blue-600 hover:bg-blue-500 flex-row items-center px-6 py-3 rounded-xl gap-2"
           >
-            <Plus className="w-5 h-5 text-white mr-2" color={"#ffffff"} />
+            <Plus className="w-5 h-5 text-white mr-2" color={colors.heading} />
             <Text className="text-white font-semibold">Create Template</Text>
           </TouchableOpacity>
         </View>

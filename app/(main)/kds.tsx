@@ -7,6 +7,7 @@ import {
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
+import { colors, URGENCY_COLORS, KDS_STATUS_TAB_COLORS } from "@/lib/theme";
 import { clearStationData } from "@/services/cacheService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
@@ -61,9 +62,9 @@ type StatusFilter = "pending" | "cooking" | "ready";
 type OrderTypeFilter = "all" | "delivery" | "takeout" | "dine_in";
 
 const STATUS_TABS: { key: StatusFilter; label: string; color: string }[] = [
-  { key: "pending", label: "Pending", color: "#d97706" },
-  { key: "cooking", label: "Cooking", color: "#ea580c" },
-  { key: "ready", label: "Served", color: "#16a34a" },
+  { key: "pending", label: "Pending", color: KDS_STATUS_TAB_COLORS.pending },
+  { key: "cooking", label: "Cooking", color: KDS_STATUS_TAB_COLORS.cooking },
+  { key: "ready", label: "Served", color: KDS_STATUS_TAB_COLORS.ready },
 ];
 
 const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
@@ -73,8 +74,8 @@ const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
   { key: "dine_in", label: "Dine-In" },
 ];
 
-// ─── Urgency border colors by level ──────────────────────────────
-const URGENCY_BORDER_COLORS = ["#22c55e", "#eab308", "#f97316", "#ef4444"];
+// ─── Urgency border colors by level (from theme) ────────────────
+const URGENCY_BORDER_COLORS = URGENCY_COLORS;
 
 // ─── Manager roles for bulk operations ──────────────────────────
 const MANAGER_ROLES = ["merchant.manager", "merchant.admin", "merchant.owner"];
@@ -121,7 +122,7 @@ const SkeletonBar = ({
         {
           width: typeof width === "number" ? width : undefined,
           height,
-          backgroundColor: "#4B5563",
+          backgroundColor: colors.muted,
           borderRadius: 4,
           opacity,
         },
@@ -137,19 +138,19 @@ const KDSSkeletonCard = () => (
       margin: 4,
       borderRadius: 10,
       overflow: "hidden",
-      backgroundColor: "#2a2a2e",
+      backgroundColor: colors.skeleton,
       borderWidth: 2,
-      borderColor: "#444",
+      borderColor: colors.border,
       height: 180,
     }}
   >
     <View
       style={{
-        backgroundColor: "#333338",
+        backgroundColor: colors.skeletonHighlight,
         paddingHorizontal: 10,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: "#444",
+        borderBottomColor: colors.border,
         flexDirection: "row",
         justifyContent: "space-between",
       }}
@@ -190,10 +191,10 @@ function getOrderTypeLabel(type: string | null): string {
 
 function getOrderTypeIcon(type: string | null) {
   const t = (type || "").toLowerCase();
-  if (t === "delivery") return <Truck size={11} color="#22c55e" />;
+  if (t === "delivery") return <Truck size={11} color={colors.orderTypeDelivery} />;
   if (t === "takeout" || t === "to_go" || t === "to go")
-    return <ShoppingBag size={11} color="#3b82f6" />;
-  return <UtensilsCrossed size={11} color="#d97706" />;
+    return <ShoppingBag size={11} color={colors.orderTypeToGo} />;
+  return <UtensilsCrossed size={11} color={colors.orderTypeDineIn} />;
 }
 
 function matchesTypeFilter(ticket: KDSTicket, filter: OrderTypeFilter): boolean {
@@ -272,7 +273,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     };
 
     const urgencyColor = URGENCY_BORDER_COLORS[urgencyLevel];
-    const borderColor = bulkMode && isSelected ? "#3b82f6" : urgencyColor;
+    const borderColor = bulkMode && isSelected ? colors.info : urgencyColor;
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
     const hasRush = ticket.items.some((item) => item.rush);
@@ -285,7 +286,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               margin: 4,
               borderRadius: 10,
               overflow: "hidden",
-              backgroundColor: "#2a2a2e",
+              backgroundColor: colors.skeleton,
               borderWidth: 2,
               borderColor,
               shadowColor: borderColor,
@@ -308,9 +309,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               }}
             >
               {isSelected ? (
-                <CheckSquare size={20} color="#3b82f6" fill="#3b82f6" />
+                <CheckSquare size={20} color={colors.info} fill={colors.info} />
               ) : (
-                <Square size={20} color="#9ca3af" />
+                <Square size={20} color={colors.label} />
               )}
             </View>
           )}
@@ -323,7 +324,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 top: 0,
                 left: 0,
                 right: 0,
-                backgroundColor: "#dc2626",
+                backgroundColor: colors.danger,
                 paddingVertical: 2,
                 zIndex: 5,
                 flexDirection: "row",
@@ -389,28 +390,28 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           {/* Order info */}
           <View
             style={{
-              backgroundColor: "#333338",
+              backgroundColor: colors.skeletonHighlight,
               paddingHorizontal: 10,
               paddingVertical: 6,
               borderBottomWidth: 1,
-              borderBottomColor: "#444",
+              borderBottomColor: colors.border,
             }}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
                 {ticket.display_number || ticket.order_number?.slice(-4) || "----"}
                 {ticket.course_number > 1 && (
-                  <Text style={{ color: "#fbbf24" }}> C{ticket.course_number}</Text>
+                  <Text style={{ color: colors.warning }}> C{ticket.course_number}</Text>
                 )}
               </Text>
               {ticket.table_name && (
-                <Text style={{ color: "#9ca3af", fontSize: 12 }}>{ticket.table_name}</Text>
+                <Text style={{ color: colors.label, fontSize: 12 }}>{ticket.table_name}</Text>
               )}
             </View>
           </View>
 
           {/* Items list */}
-          <View style={{ padding: 8, backgroundColor: "#252528" }}>
+          <View style={{ padding: 8, backgroundColor: colors.screen }}>
             {ticket.items.map((item: KDSTicketItem, index: number) => (
               <View
                 key={item.id}
@@ -419,7 +420,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
                   <View
                     style={{
-                      backgroundColor: "#3a3a40",
+                      backgroundColor: colors.border,
                       width: 22,
                       height: 22,
                       borderRadius: 4,
@@ -449,7 +450,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       <Text
                         key={`${item.id}_m${mi}`}
                         style={{
-                          color: isRemoval ? "#ef4444" : "#4ade80",
+                          color: isRemoval ? colors.danger : colors.success,
                           fontSize: 11,
                           marginLeft: 28,
                           marginTop: 1,
@@ -464,7 +465,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 {item.special_instructions && (
                   <Text
                     style={{
-                      color: "#eab308",
+                      color: colors.warning,
                       fontSize: 11,
                       fontStyle: "italic",
                       marginLeft: 28,
@@ -483,14 +484,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
           {ticket.customer_name && (
             <View
               style={{
-                backgroundColor: "#1f1f22",
+                backgroundColor: colors.screen,
                 paddingHorizontal: 10,
                 paddingVertical: 4,
                 borderTopWidth: 1,
-                borderTopColor: "#333",
+                borderTopColor: colors.border,
               }}
             >
-              <Text style={{ color: "#9ca3af", fontSize: 11 }} numberOfLines={1}>
+              <Text style={{ color: colors.label, fontSize: 11 }} numberOfLines={1}>
                 {ticket.customer_name}
               </Text>
             </View>
@@ -841,13 +842,13 @@ const KitchenDisplayScreen = () => {
   const selectionCount = selectedTicketIds.size;
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#1a1a1a" }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* ─── Header ─── */}
       <View
         style={{
-          backgroundColor: "#222225",
+          backgroundColor: colors.panel,
           borderBottomWidth: 1,
-          borderBottomColor: "#333",
+          borderBottomColor: colors.border,
           paddingHorizontal: 16,
           paddingVertical: 10,
         }}
@@ -862,19 +863,19 @@ const KitchenDisplayScreen = () => {
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <ChefHat size={24} color="#3b82f6" />
-            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", marginLeft: 10 }}>
+            <ChefHat size={24} color={colors.teal} />
+            <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "700", marginLeft: 10 }}>
               Kitchen Display
             </Text>
             {showDisconnected ? (
               <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
-                <WifiOff size={14} color="#ef4444" />
-                <Text style={{ color: "#ef4444", fontSize: 11, fontWeight: "600", marginLeft: 4 }}>
+                <WifiOff size={14} color={colors.danger} />
+                <Text style={{ color: colors.danger, fontSize: 11, fontWeight: "600", marginLeft: 4 }}>
                   Reconnecting...
                 </Text>
               </View>
             ) : (
-              <Wifi size={14} color="#22c55e" style={{ marginLeft: 8 }} />
+              <Wifi size={14} color={colors.success} style={{ marginLeft: 8 }} />
             )}
             {/* KDS Display Badge */}
             {displayName && (
@@ -882,17 +883,17 @@ const KitchenDisplayScreen = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  backgroundColor: "#333338",
+                  backgroundColor: colors.skeletonHighlight,
                   paddingHorizontal: 10,
                   paddingVertical: 4,
                   borderRadius: 12,
                   marginLeft: 12,
                 }}
               >
-                <Flame size={13} color="#f97316" />
+                <Flame size={13} color={colors.urgencyElevated} />
                 <Text
                   style={{
-                    color: "#fff",
+                    color: colors.heading,
                     fontSize: 12,
                     fontWeight: "600",
                     marginLeft: 4,
@@ -907,13 +908,13 @@ const KitchenDisplayScreen = () => {
                       style={{
                         width: 1,
                         height: 14,
-                        backgroundColor: "#555",
+                        backgroundColor: colors.muted,
                         marginHorizontal: 8,
                       }}
                     />
                     <Text
                       style={{
-                        color: "#22c55e",
+                        color: colors.success,
                         fontSize: 11,
                         fontWeight: "700",
                       }}
@@ -927,14 +928,14 @@ const KitchenDisplayScreen = () => {
                       style={{
                         width: 1,
                         height: 14,
-                        backgroundColor: "#555",
+                        backgroundColor: colors.muted,
                         marginHorizontal: 8,
                       }}
                     />
-                    <CircleDotDashed size={12} color="#9ca3af" />
+                    <CircleDotDashed size={12} color={colors.label} />
                     <Text
                       style={{
-                        color: "#9ca3af",
+                        color: colors.label,
                         fontSize: 11,
                         fontWeight: "500",
                         marginLeft: 4,
@@ -954,24 +955,24 @@ const KitchenDisplayScreen = () => {
               onPress={toggleBulkMode}
               style={{
                 padding: 8,
-                backgroundColor: bulkMode ? "#3b82f6" : "#333338",
+                backgroundColor: bulkMode ? colors.info : colors.skeletonHighlight,
                 borderRadius: 8,
               }}
             >
-              <Layers size={18} color={bulkMode ? "#fff" : "#9CA3AF"} />
+              <Layers size={18} color={bulkMode ? "#fff" : colors.label} />
             </TouchableOpacity>
             {/* Refresh */}
             <TouchableOpacity
               onPress={onRefresh}
               style={{
                 padding: 8,
-                backgroundColor: "#333338",
+                backgroundColor: colors.skeletonHighlight,
                 borderRadius: 8,
               }}
             >
               <RefreshCw
                 size={18}
-                color={isFetching ? "#3b82f6" : "#9CA3AF"}
+                color={isFetching ? colors.teal : colors.label}
                 style={refreshing ? { opacity: 0.5 } : undefined}
               />
             </TouchableOpacity>
@@ -980,11 +981,11 @@ const KitchenDisplayScreen = () => {
               onPress={handleKDSLogout}
               style={{
                 padding: 8,
-                backgroundColor: "#333338",
+                backgroundColor: colors.skeletonHighlight,
                 borderRadius: 8,
               }}
             >
-              <LogOut size={18} color="#9CA3AF" />
+              <LogOut size={18} color={colors.label} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1009,14 +1010,14 @@ const KitchenDisplayScreen = () => {
                     paddingHorizontal: 14,
                     paddingVertical: 6,
                     borderRadius: 20,
-                    backgroundColor: isActive ? tab.color : "#333338",
+                    backgroundColor: isActive ? tab.color : colors.skeletonHighlight,
                     flexDirection: "row",
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      color: isActive ? "#fff" : "#9ca3af",
+                      color: isActive ? "#fff" : colors.label,
                       fontSize: 13,
                       fontWeight: isActive ? "700" : "500",
                     }}
@@ -1025,7 +1026,7 @@ const KitchenDisplayScreen = () => {
                   </Text>
                   <View
                     style={{
-                      backgroundColor: isActive ? "rgba(255,255,255,0.25)" : "#444",
+                      backgroundColor: isActive ? "rgba(255,255,255,0.25)" : colors.border,
                       paddingHorizontal: 6,
                       paddingVertical: 1,
                       borderRadius: 8,
@@ -1036,7 +1037,7 @@ const KitchenDisplayScreen = () => {
                   >
                     <Text
                       style={{
-                        color: isActive ? "#fff" : "#9ca3af",
+                        color: isActive ? "#fff" : colors.label,
                         fontSize: 11,
                         fontWeight: "700",
                         opacity: isFetching ? 0.7 : 1,
@@ -1063,16 +1064,16 @@ const KitchenDisplayScreen = () => {
                     paddingHorizontal: 10,
                     paddingVertical: 5,
                     borderRadius: 6,
-                    backgroundColor: isActive ? "#3b82f6" : "#2a2a2e",
+                    backgroundColor: isActive ? colors.info : colors.skeleton,
                     borderWidth: 1,
-                    borderColor: isActive ? "#3b82f6" : "#444",
+                    borderColor: isActive ? colors.info : colors.border,
                     flexDirection: "row",
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      color: isActive ? "#fff" : "#9ca3af",
+                      color: isActive ? "#fff" : colors.label,
                       fontSize: 12,
                       fontWeight: isActive ? "600" : "400",
                     }}
@@ -1082,7 +1083,7 @@ const KitchenDisplayScreen = () => {
                   {tab.key !== "all" && count > 0 && (
                     <View
                       style={{
-                        backgroundColor: isActive ? "rgba(255,255,255,0.2)" : "#444",
+                        backgroundColor: isActive ? "rgba(255,255,255,0.2)" : colors.border,
                         paddingHorizontal: 4,
                         borderRadius: 6,
                         marginLeft: 4,
@@ -1104,9 +1105,9 @@ const KitchenDisplayScreen = () => {
       {bulkMode && (
         <View
           style={{
-            backgroundColor: "#2a2a2e",
+            backgroundColor: colors.skeleton,
             borderBottomWidth: 1,
-            borderBottomColor: "#444",
+            borderBottomColor: colors.border,
             paddingHorizontal: 16,
             paddingVertical: 8,
             flexDirection: "row",
@@ -1115,7 +1116,7 @@ const KitchenDisplayScreen = () => {
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Text style={{ color: "#9ca3af", fontSize: 13 }}>
+            <Text style={{ color: colors.label, fontSize: 13 }}>
               {selectionCount} selected
             </Text>
             <TouchableOpacity
@@ -1123,7 +1124,7 @@ const KitchenDisplayScreen = () => {
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 4,
-                backgroundColor: "#333338",
+                backgroundColor: colors.skeletonHighlight,
                 borderRadius: 6,
               }}
             >
@@ -1134,7 +1135,7 @@ const KitchenDisplayScreen = () => {
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 4,
-                backgroundColor: "#333338",
+                backgroundColor: colors.skeletonHighlight,
                 borderRadius: 6,
               }}
             >
@@ -1148,7 +1149,7 @@ const KitchenDisplayScreen = () => {
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
-                backgroundColor: selectionCount > 0 ? "#3b82f6" : "#333338",
+                backgroundColor: selectionCount > 0 ? colors.info : colors.skeletonHighlight,
                 borderRadius: 6,
                 opacity: selectionCount > 0 ? 1 : 0.5,
               }}
@@ -1163,7 +1164,7 @@ const KitchenDisplayScreen = () => {
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
-                backgroundColor: activeFilteredTickets.length > 0 ? "#dc2626" : "#333338",
+                backgroundColor: activeFilteredTickets.length > 0 ? colors.danger : colors.skeletonHighlight,
                 borderRadius: 6,
                 opacity: activeFilteredTickets.length > 0 ? 1 : 0.5,
               }}
@@ -1212,7 +1213,7 @@ const KitchenDisplayScreen = () => {
                   extraData={bulkMode}
                   ListEmptyComponent={
                     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
-                      <Text style={{ color: "#6b7280", fontSize: 14 }}>
+                      <Text style={{ color: colors.muted, fontSize: 14 }}>
                         No {status} tickets
                       </Text>
                     </View>

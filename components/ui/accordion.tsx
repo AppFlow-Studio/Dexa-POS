@@ -91,7 +91,7 @@ function AccordionTrigger({
           >
             {children}
             <Animated.View style={chevronStyle}>
-              <View className="p-2 border border-gray-600 rounded-lg bg-[#303030]">
+              <View className="p-2 border border-gray-600 rounded-lg bg-panel">
                 <ChevronDown size={24} className={"text-white shrink-0"} />
               </View>
             </Animated.View>

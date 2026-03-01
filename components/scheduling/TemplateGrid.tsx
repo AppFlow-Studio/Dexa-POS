@@ -1,4 +1,5 @@
 import { useDropZoneContext } from "@/contexts/DropZoneContext";
+import { colors } from "@/lib/theme";
 import { TemplateShift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
 import {
@@ -90,9 +91,9 @@ const TemplateCell = React.memo(
       const isHovered = hoveredDropZoneKey.value === cellKey;
       const isDraggingFromThisCell = draggingCellKey.value === cellKey; // Check if this cell is the origin of the drag
       return {
-        borderColor: isHovered ? "#22c55e" : "#4b5563",
+        borderColor: isHovered ? colors.success : colors.border,
         borderWidth: isHovered ? 2 : 1,
-        backgroundColor: isHovered ? "#3a3a3a" : "#2a2a2a",
+        backgroundColor: isHovered ? colors.card : colors.panel,
         zIndex: isDraggingFromThisCell ? 100 : 1, // Elevate zIndex if dragging from this cell
       };
     });
@@ -142,18 +143,18 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
   };
 
   return (
-    <View className="flex-1 bg-[#1c1c1c] rounded-lg overflow-hidden">
+    <View className="flex-1 bg-screen rounded-lg overflow-hidden">
       <ScrollView horizontal contentContainerStyle={{ flexGrow: 1 }}>
         <View className="flex-1 flex-col">
           {/* Header */}
-          <View className="flex-row bg-[#212121] sticky top-0 z-10">
-            <View className="w-56 bg-[#212121] p-4 border-r border-b border-gray-700">
+          <View className="flex-row bg-screen sticky top-0 z-10">
+            <View className="w-56 bg-screen p-4 border-r border-b border-gray-700">
               <Text className="text-base font-bold text-white">Employee</Text>
             </View>
             {weekDates.map((date, i) => (
               <View
                 key={i}
-                className="flex-1 min-w-[160px] bg-[#212121] p-3 text-center border-r border-b border-gray-700 items-center justify-center"
+                className="flex-1 min-w-[160px] bg-screen p-3 text-center border-r border-b border-gray-700 items-center justify-center"
               >
                 <Text className="text-sm font-semibold text-gray-300">
                   {format(date, "E")}
@@ -166,7 +167,7 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
           <ScrollView ref={scrollViewRef}>
             {employees.map((employee) => (
               <View key={employee.id} className="flex-row items-stretch">
-                <View className="w-56 bg-[#2a2a2a] p-3 flex-row items-center border-r border-b border-gray-700">
+                <View className="w-56 bg-panel p-3 flex-row items-center border-r border-b border-gray-700">
                   <View className="w-12 h-12 rounded-full bg-blue-600 items-center justify-center mr-4 shadow-md">
                     <Text className="text-white font-bold text-xl">
                       {employee.fullName
@@ -221,7 +222,7 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
                             onPress={() => onAddShift(employee.id, dayOfWeek)}
                             className="flex-1 h-full w-full items-center justify-center border-2 border-dashed border-gray-600 rounded-lg hover:bg-gray-700/50 transition-colors"
                           >
-                            <Plus size={20} color="#6b7280" />
+                            <Plus size={20} color={colors.muted} />
                           </TouchableOpacity>
                         )}
                       </View>

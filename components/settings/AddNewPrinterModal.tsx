@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
@@ -64,7 +65,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-[#303030] border border-gray-700 max-w-sm">
+      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-panel border border-gray-700 max-w-sm">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -85,8 +86,8 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                 value={itemName}
                 onChangeText={setItemName}
                 placeholder="e.g., Kitchen Printer"
-                placeholderTextColor="#6B7280"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-14"
+                placeholderTextColor={colors.muted}
+                className="p-3 bg-screen border border-gray-600 rounded-lg text-lg text-white h-14"
               />
             </View>
 
@@ -102,7 +103,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                   }
                 }}
               >
-                <SelectTrigger className="w-full p-2 bg-[#212121] border-gray-600 rounded-lg flex-row justify-between items-center">
+                <SelectTrigger className="w-full p-2 bg-screen border-gray-600 rounded-lg flex-row justify-between items-center">
                   <SelectValue
                     className="text-sm text-white"
                     placeholder="Select..."
@@ -110,7 +111,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                 </SelectTrigger>
                 <SelectContent
                   insets={contentInsets}
-                  className="bg-[#212121] border-gray-600"
+                  className="bg-screen border-gray-600"
                 >
                   <SelectGroup>
                     {CONNECTION_TYPES.map((type) => (
@@ -136,8 +137,8 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                   value={ipAddress}
                   onChangeText={setIpAddress}
                   placeholder="Type IP Address"
-                  placeholderTextColor="#6B7280"
-                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-14"
+                  placeholderTextColor={colors.muted}
+                  className="p-3 bg-screen border border-gray-600 rounded-lg text-lg text-white h-14"
                 />
               </View>
             )}
@@ -151,7 +152,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                   value={selectedDevice}
                   onValueChange={setSelectedDevice}
                 >
-                  <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg h-14">
+                  <SelectTrigger className="w-full p-3 bg-screen border border-gray-600 rounded-lg h-14">
                     <SelectValue
                       className="text-lg text-white"
                       placeholder="Select device..."
@@ -159,7 +160,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                   </SelectTrigger>
                   <SelectContent
                     insets={contentInsets}
-                    className="bg-[#212121] border-gray-600"
+                    className="bg-screen border-gray-600"
                   >
                     <SelectGroup>
                       {MOCK_BLUETOOTH_DEVICES.map((device) => (

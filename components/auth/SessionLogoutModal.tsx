@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { colors, spinnerColor } from "@/lib/theme";
 import { LogOut, Monitor } from "lucide-react-native";
 import React from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -29,7 +30,7 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-6 rounded-2xl bg-[#303030] border border-gray-700 w-[480px]">
+      <DialogContent className="p-6 rounded-2xl bg-panel border border-gray-700 w-[480px]">
         <DialogHeader className="items-center">
           <DialogTitle className="text-2xl font-bold text-white text-center">
             Logout Options
@@ -46,11 +47,11 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
           <TouchableOpacity
             onPress={onEndStationSession}
             disabled={isLoading}
-            className="flex-row items-center p-4 bg-[#404040] border border-gray-600 rounded-xl"
+            className="flex-row items-center p-4 bg-surface border border-gray-600 rounded-xl"
             style={isLoading ? { opacity: 0.5 } : undefined}
           >
             <View className="w-12 h-12 bg-amber-500/20 rounded-full items-center justify-center mr-4">
-              <Monitor color="#f59e0b" size={24} />
+              <Monitor color={colors.warning} size={24} />
             </View>
             <View className="flex-1">
               <Text className="text-white font-bold text-lg">
@@ -66,11 +67,11 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
           <TouchableOpacity
             onPress={onFullLogout}
             disabled={isLoading}
-            className="flex-row items-center p-4 bg-[#404040] border border-red-600/50 rounded-xl"
+            className="flex-row items-center p-4 bg-surface border border-red-600/50 rounded-xl"
             style={isLoading ? { opacity: 0.5 } : undefined}
           >
             <View className="w-12 h-12 bg-red-500/20 rounded-full items-center justify-center mr-4">
-              <LogOut color="#ef4444" size={24} />
+              <LogOut color={colors.danger} size={24} />
             </View>
             <View className="flex-1">
               <Text className="text-white font-bold text-lg">Full Logout</Text>
@@ -85,7 +86,7 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
           <TouchableOpacity
             onPress={onClose}
             disabled={isLoading}
-            className="w-full py-3 border border-gray-600 rounded-lg bg-[#212121]"
+            className="w-full py-3 border border-gray-600 rounded-lg bg-screen"
           >
             <Text className="font-bold text-lg text-gray-300 text-center">
               Cancel
@@ -95,7 +96,7 @@ const SessionLogoutModal: React.FC<SessionLogoutModalProps> = ({
 
         {isLoading && (
           <View className="absolute inset-0 bg-black/50 items-center justify-center rounded-2xl">
-            <ActivityIndicator size="large" color="#3b82f6" />
+            <ActivityIndicator size="large" color={spinnerColor} />
             <Text className="text-white mt-2">Logging out...</Text>
           </View>
         )}

@@ -345,6 +345,40 @@ export function useTableSession(
     handleAutoCreateSession();
   }, [tableId, tableStatus, session?.order_id]);
 
+  // Recovery: re-sync if order vanishes while phase is "ready"
+  useEffect(() => {
+    if (
+      phase === "ready" &&
+      sessionOrderId &&
+      !activeOrder &&
+      getPhase(phaseRef) !== "navigating_away"
+    ) {
+      const timer = setTimeout(async () => {
+        if (getPhase(phaseRef) !== "ready" || !sessionOrderId) return;
+
+        // Double-check the order is truly missing (not just a render lag)
+        const found = useOrderStore.getState().getOrder(sessionOrderId);
+        if (found) {
+          setActiveOrder(found.id);
+          return;
+        }
+
+        updatePhase("loading_session");
+        try {
+          const localId = await syncOrderFromDatabase(sessionOrderId);
+          if (localId && getPhase(phaseRef) !== "navigating_away") {
+            setActiveOrder(localId);
+          }
+        } catch (e) {
+          console.error("[useTableSession] Recovery sync failed:", e);
+        }
+        updatePhase("ready");
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [phase, sessionOrderId, activeOrder?.id]);
+
   // Phase transition callbacks
   const markNavigatingAway = useCallback(() => {
     updatePhase("navigating_away");

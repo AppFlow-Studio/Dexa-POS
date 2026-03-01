@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { Check, CreditCard, DollarSign, X } from "lucide-react-native";
 import React, { useMemo } from "react";
@@ -50,11 +51,11 @@ const PaymentCard: React.FC<{ payment: Payment; index: number; isLast: boolean }
         >
           <Text>
             {isVoided ? (
-              <X color="#EF4444" size={20} />
+              <X color={colors.danger} size={20} />
             ) : paymentMethod.toLowerCase().includes("card") ? (
-              <CreditCard color="#10B981" size={20} />
+              <CreditCard color={colors.success} size={20} />
             ) : (
-              <DollarSign color="#10B981" size={20} />
+              <DollarSign color={colors.success} size={20} />
             )}
           </Text>
         </View>
@@ -64,8 +65,8 @@ const PaymentCard: React.FC<{ payment: Payment; index: number; isLast: boolean }
       {/* Payment details */}
       <View className="flex-1 mb-6">
         <View
-          className={`bg-[#303030] rounded-lg border p-4 ${
-            isVoided ? "border-red-700 opacity-60" : "border-gray-700"
+          className={`bg-panel rounded-lg border p-4 ${
+            isVoided ? "border-red-700 opacity-60" : "border-border"
           }`}
         >
           {/* Header */}

@@ -1,5 +1,6 @@
 import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import KanbanColumn from "@/components/online-orders/KanbanColumn";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useOnlineOrderStore } from "@/stores/useOnlineOrderStore";
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Href, Link } from "expo-router";
@@ -149,29 +150,29 @@ const OnlineOrdersScreen = () => {
   };
 
   return (
-    <View className="flex-1 px-4 bg-[#212121]">
+    <View className="flex-1 px-4 bg-screen">
       <View className="flex-row items-center justify-between my-3">
         <View className="flex-row items-center justify-end gap-x-3">
           <TouchableOpacity
             onPress={openSearchSheet}
             activeOpacity={0.8}
-            className="flex-row items-center bg-[#303030] rounded-xl border border-gray-600 p-3"
+            className="flex-row items-center bg-panel rounded-xl border border-border p-3"
           >
-            <Search color="#9CA3AF" size={20} />
+            <Search color={colors.label} size={20} />
           </TouchableOpacity>
           <Link href="/order-processing" asChild>
-            <TouchableOpacity className="flex-row items-center bg-[#303030] rounded-xl border border-gray-600 p-3">
-              <Table color="#9CA3AF" size={20} />
+            <TouchableOpacity className="flex-row items-center bg-panel rounded-xl border border-border p-3">
+              <Table color={colors.label} size={20} />
             </TouchableOpacity>
           </Link>
         </View>
-        <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl">
+        <View className="flex-row items-center bg-panel border border-border p-1 rounded-xl">
           {PARTNERS.map((partner) => (
             <TouchableOpacity
               key={partner}
               onPress={() => setActivePartner(partner)}
               className={`py-2 px-4 rounded-lg ${
-                activePartner === partner ? "bg-[#212121]" : ""
+                activePartner === partner ? "bg-screen" : ""
               }`}
             >
               <Text
@@ -195,8 +196,7 @@ const OnlineOrdersScreen = () => {
         ref={bottomSheetRef}
         index={-1}
         snapPoints={snapPoints}
-        backgroundStyle={{ backgroundColor: "#2b2b2b" }}
-        handleIndicatorStyle={{ backgroundColor: "#555" }}
+        {...bottomSheetTheme}
         onClose={handleSheetClose}
         enablePanDownToClose
       >
@@ -210,11 +210,11 @@ const OnlineOrdersScreen = () => {
                 Search Online Orders
               </Text>
               <TouchableOpacity onPress={closeSearchSheet} className="p-2">
-                <X size={20} color="#9CA3AF" />
+                <X size={20} color={colors.label} />
               </TouchableOpacity>
             </View>
             <View className="gap-y-2 mb-3">
-              <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
+              <View className="bg-panel border border-border rounded-xl px-3">
                 <Text className="text-gray-400 mt-2 mb-1 text-sm">
                   Customer Name
                 </Text>
@@ -223,10 +223,10 @@ const OnlineOrdersScreen = () => {
                   onChangeText={setSearchCustomer}
                   placeholder="e.g. John Smith"
                   className="text-white text-base py-2"
-                  placeholderTextColor={"#9CA3AF"}
+                  placeholderTextColor={colors.label}
                 />
               </View>
-              <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
+              <View className="bg-panel border border-border rounded-xl px-3">
                 <Text className="text-gray-400 mt-2 mb-1 text-sm">
                   Order ID
                 </Text>
@@ -235,7 +235,7 @@ const OnlineOrdersScreen = () => {
                   onChangeText={setSearchOrderId}
                   placeholder="#45654"
                   className="text-white text-base py-2"
-                  placeholderTextColor={"#9CA3AF"}
+                  placeholderTextColor={colors.label}
                 />
               </View>
               <View>
@@ -248,7 +248,7 @@ const OnlineOrdersScreen = () => {
                       className={`px-2 py-1.5 rounded-lg border ${
                         searchPartner === partner
                           ? "bg-blue-900/30 border-blue-500"
-                          : "bg-[#303030] border-gray-600"
+                          : "bg-panel border-border"
                       }`}
                     >
                       <Text
@@ -274,7 +274,7 @@ const OnlineOrdersScreen = () => {
                 {filteredForSearch.map((order) => (
                   <View
                     key={order.id}
-                    className="bg-[#303030] border border-gray-600 rounded-xl p-3"
+                    className="bg-panel border border-border rounded-xl p-3"
                   >
                     <View className="flex-row justify-between items-start mb-2">
                       <View>
@@ -341,7 +341,7 @@ const OnlineOrdersScreen = () => {
                           onPress={() => {
                             closeSearchSheet();
                           }}
-                          className="px-2 py-1.5 rounded-lg bg-[#1f2937] border border-gray-600"
+                          className="px-2 py-1.5 rounded-lg bg-card border border-border"
                         >
                           <Text className="text-white text-xs">Details</Text>
                         </TouchableOpacity>

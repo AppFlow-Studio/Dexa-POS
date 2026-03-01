@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useCustomerStore } from "@/stores/useCustomerStore";
 import { useDineInStore } from "@/stores/useDineInStore";
@@ -207,7 +208,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       />
       <ScrollView
         bounces={false}
-        className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl"
+        className="absolute left-0 top-0 bottom-0 w-[85%] bg-surface shadow-2xl"
       >
         <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
           <Text className="text-2xl font-bold text-white">Order Type</Text>
@@ -259,7 +260,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
               </Text>
               <TouchableOpacity
                 onPress={openSheet}
-                className="flex-row items-center p-3 border-2 border-dashed border-gray-600 rounded-lg bg-[#212121] min-h-[70px]"
+                className="flex-row items-center p-3 border-2 border-dashed border-gray-600 rounded-lg bg-panel min-h-[70px]"
               >
                 {activeOrder?.customer_name ? (
                   <>
@@ -277,11 +278,11 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                         </Text>
                       )}
                     </View>
-                    <Edit3 color="#60A5FA" size={20} />
+                    <Edit3 color={colors.info} size={20} />
                   </>
                 ) : (
                   <>
-                    <Plus color="#9CA3AF" size={20} />
+                    <Plus color={colors.label} size={20} />
                     <Text className="text-xl font-semibold text-gray-300 ml-2">
                       Add Customer
                     </Text>
@@ -293,7 +294,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                   <Text className="text-gray-300 text-lg font-medium mb-1">
                     Delivery Address
                   </Text>
-                  <View className="w-full p-3 border border-gray-600 rounded-lg bg-[#212121] h-16 justify-center">
+                  <View className="w-full p-3 border border-gray-600 rounded-lg bg-panel h-16 justify-center">
                     <Text className="text-xl text-white">
                       {formatAddress(activeOrder?.delivery_address) ||
                         "No address set"}
@@ -325,7 +326,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                         "Select Floor"
                       : "Select Floor"}
                   </Text>
-                  <ChevronDown color="#9CA3AF" size={20} />
+                  <ChevronDown color={colors.label} size={20} />
                 </TouchableOpacity>
               </View>
 
@@ -395,8 +396,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
       {/* Floor Selection Modal */}
       <Dialog open={showFloorModal} onOpenChange={setShowFloorModal}>
-        <DialogContent className="bg-[#303030] border-gray-700 h-[700px] w-[700px]">
-          <View className="bg-[#303030] rounded-2xl border border-gray-600 w-full">
+        <DialogContent className="bg-surface border-gray-700 h-[700px] w-[700px]">
+          <View className="bg-surface rounded-2xl border border-gray-600 w-full">
             {/* Modal Header */}
             <View className="flex-row items-center w-full justify-between p-6 border-b border-gray-600">
               <Text className="text-xl font-bold text-white">Select Floor</Text>

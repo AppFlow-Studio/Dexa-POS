@@ -1,6 +1,7 @@
 import FilterControls from "@/components/analytics/FilterControls";
 import GiftedChartsSalesTrendChart from "@/components/analytics/GiftedChartsSalesTrendChart";
 import KpiTooltip from "@/components/analytics/KpiTooltip";
+import { colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useRouter } from "expo-router";
 import {
@@ -31,7 +32,7 @@ const ReportCard: React.FC<ReportCardProps> = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className="bg-[#303030] p-6 rounded-2xl border border-gray-600 mb-4"
+    className="bg-panel p-6 rounded-2xl border border-border mb-4"
     activeOpacity={0.8}
   >
     <View className="flex-row items-center mb-3">
@@ -93,63 +94,63 @@ const AnalyticsDashboardScreen = () => {
       id: "sales-summary",
       title: "Sales Summary",
       description: "Overview of total sales, orders, and key metrics",
-      icon: <TrendingUp color="#3b82f6" size={24} />,
+      icon: <TrendingUp color={colors.info} size={24} />,
       chartType: "line",
     },
     {
       id: "item-sales",
       title: "Item Sales",
       description: "Best selling items and sales performance",
-      icon: <ShoppingCart color="#3b82f6" size={24} />,
+      icon: <ShoppingCart color={colors.info} size={24} />,
       chartType: "pie",
     },
     {
       id: "sales-by-hour",
       title: "Sales by Hour",
       description: "Peak hours and hourly sales patterns",
-      icon: <Calendar color="#3b82f6" size={24} />,
+      icon: <Calendar color={colors.info} size={24} />,
       chartType: "line",
     },
     {
       id: "sales-by-employee",
       title: "Sales by Employee",
       description: "Individual employee performance metrics",
-      icon: <Users color="#3b82f6" size={24} />,
+      icon: <Users color={colors.info} size={24} />,
       chartType: "pie",
     },
     {
       id: "discounts",
       title: "Discounts",
       description: "Discount usage and impact on revenue",
-      icon: <PieChart color="#3b82f6" size={24} />,
+      icon: <PieChart color={colors.info} size={24} />,
       chartType: "line",
     },
     {
       id: "payments",
       title: "Payments",
       description: "Payment methods and transaction analysis",
-      icon: <Package color="#3b82f6" size={24} />,
+      icon: <Package color={colors.info} size={24} />,
       chartType: "pie",
     },
     {
       id: "revenue-by-category",
       title: "Revenue by Category",
       description: "Revenue breakdown by menu categories",
-      icon: <PieChart color="#3b82f6" size={24} />,
+      icon: <PieChart color={colors.info} size={24} />,
       chartType: "pie",
     },
     {
       id: "items-sold-by-category",
       title: "Items Sold by Category",
       description: "Number of items sold per menu category",
-      icon: <BarChart3 color="#3b82f6" size={24} />,
+      icon: <BarChart3 color={colors.info} size={24} />,
       chartType: "pie",
     },
     {
       id: "category-performance",
       title: "Category Performance",
       description: "Comprehensive category analysis with revenue and volume",
-      icon: <TrendingUp color="#3b82f6" size={24} />,
+      icon: <TrendingUp color={colors.info} size={24} />,
       chartType: "bar",
     },
   ];
@@ -178,7 +179,7 @@ const AnalyticsDashboardScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       <ScrollView contentContainerClassName="p-6">
         {/* Header */}
         <View className="mb-6">
@@ -213,7 +214,7 @@ const AnalyticsDashboardScreen = () => {
               Key Performance Indicators
             </Text>
             <View className="flex-row flex-wrap gap-4">
-              <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+              <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-sm text-gray-400">Gross Margin</Text>
                   <KpiTooltip definition="Percentage of revenue remaining after subtracting cost of goods sold" />
@@ -223,7 +224,7 @@ const AnalyticsDashboardScreen = () => {
                 </Text>
               </View>
 
-              <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+              <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-sm text-gray-400">Total Revenue</Text>
                   <KpiTooltip definition="Total sales revenue for the selected period" />
@@ -233,7 +234,7 @@ const AnalyticsDashboardScreen = () => {
                 </Text>
               </View>
 
-              <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+              <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-sm text-gray-400">Avg Order Value</Text>
                   <KpiTooltip definition="Average value per order" />
@@ -243,7 +244,7 @@ const AnalyticsDashboardScreen = () => {
                 </Text>
               </View>
 
-              <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+              <View className="bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]">
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-sm text-gray-400">Total Orders</Text>
                   <KpiTooltip definition="Total number of orders placed" />
@@ -282,12 +283,12 @@ const AnalyticsDashboardScreen = () => {
                 <Text className="text-lg font-semibold text-white mb-3">
                   Top 5 Fast Movers
                 </Text>
-                <View className="bg-[#303030] rounded-xl border border-gray-600 p-4">
+                <View className="bg-panel rounded-xl border border-border p-4">
                   {currentReportData.inventoryAnalysis.fastMovers.map(
                     (item, index) => (
                       <View
                         key={index}
-                        className="flex-row justify-between items-center py-2 border-b border-gray-600 last:border-b-0"
+                        className="flex-row justify-between items-center py-2 border-b border-border last:border-b-0"
                       >
                         <Text className="text-white text-sm flex-1">
                           {item.itemName}
@@ -305,12 +306,12 @@ const AnalyticsDashboardScreen = () => {
                 <Text className="text-lg font-semibold text-white mb-3">
                   Top 5 Slow Movers
                 </Text>
-                <View className="bg-[#303030] rounded-xl border border-gray-600 p-4">
+                <View className="bg-panel rounded-xl border border-border p-4">
                   {currentReportData.inventoryAnalysis.slowMovers.map(
                     (item, index) => (
                       <View
                         key={index}
-                        className="flex-row justify-between items-center py-2 border-b border-gray-600 last:border-b-0"
+                        className="flex-row justify-between items-center py-2 border-b border-border last:border-b-0"
                       >
                         <Text className="text-white text-sm flex-1">
                           {item.itemName}
@@ -365,13 +366,13 @@ const AnalyticsDashboardScreen = () => {
                 key={report.id}
                 title={report.name}
                 description={`Metrics: ${report.metrics.join(", ")} | Breakdown: ${report.breakdown}`}
-                icon={<BarChart3 color="#3b82f6" size={24} />}
+                icon={<BarChart3 color={colors.info} size={24} />}
                 onPress={() => handleCustomReportPress(report)}
               />
             ))
           ) : (
-            <View className="bg-[#303030] p-8 rounded-2xl border border-gray-600 items-center">
-              <BarChart3 color="#6b7280" size={48} />
+            <View className="bg-panel p-8 rounded-2xl border border-border items-center">
+              <BarChart3 color={colors.muted} size={48} />
               <Text className="text-lg text-gray-400 mt-4 text-center">
                 No custom reports yet
               </Text>

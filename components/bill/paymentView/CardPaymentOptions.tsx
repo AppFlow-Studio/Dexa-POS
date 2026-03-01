@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
   ArrowLeft,
@@ -26,7 +27,7 @@ const CardPaymentOptions = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
@@ -34,7 +35,7 @@ const CardPaymentOptions = () => {
         {/* Header Section */}
         <View className="mb-8 mt-2 items-center">
           <View className="w-16 h-16 bg-blue-900/20 rounded-full items-center justify-center mb-4">
-            <CreditCard size={32} color="#60A5FA" />
+            <CreditCard size={32} color={colors.info} />
           </View>
           <Text className="text-2xl font-bold text-white mb-2">
             Card Payment
@@ -50,10 +51,10 @@ const CardPaymentOptions = () => {
           <TouchableOpacity
             onPress={handleUseCardReader}
             activeOpacity={0.7}
-            className="flex-row items-center p-5 rounded-2xl bg-[#262626] border border-[#333333] active:bg-[#303030]"
+            className="flex-row items-center p-5 rounded-2xl bg-surface border border-border active:bg-surface"
           >
             <View className="w-12 h-12 rounded-xl bg-blue-600/10 items-center justify-center mr-4">
-              <CreditCard size={24} color="#3B82F6" />
+              <CreditCard size={24} color={colors.info} />
             </View>
             <View className="flex-1">
               <Text className="text-lg font-bold text-white mb-1">
@@ -63,14 +64,14 @@ const CardPaymentOptions = () => {
                 Tap, insert, or swipe on terminal
               </Text>
             </View>
-            <ChevronRight size={20} color="#525252" />
+            <ChevronRight size={20} color={colors.muted} />
           </TouchableOpacity>
 
           {/* Option 2: Manual Entry */}
           <TouchableOpacity
             onPress={handleManualEntry}
             activeOpacity={0.7}
-            className="flex-row items-center p-5 rounded-2xl bg-[#262626] border border-[#333333] active:bg-[#303030]"
+            className="flex-row items-center p-5 rounded-2xl bg-surface border border-border active:bg-surface"
           >
             <View className="w-12 h-12 rounded-xl bg-purple-600/10 items-center justify-center mr-4">
               <Keyboard size={24} color="#A855F7" />
@@ -83,18 +84,18 @@ const CardPaymentOptions = () => {
                 Type card number manually
               </Text>
             </View>
-            <ChevronRight size={20} color="#525252" />
+            <ChevronRight size={20} color={colors.muted} />
           </TouchableOpacity>
         </View>
       </ScrollView>
 
       {/* Footer / Back Button */}
-      <View className="absolute bottom-0 left-0 right-0 bg-[#212121] pt-2 pb-4 border-t border-[#333333]">
+      <View className="absolute bottom-0 left-0 right-0 bg-panel pt-2 pb-4 border-t border-border">
         <TouchableOpacity
           onPress={handleBack}
-          className="flex-row items-center justify-center py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] active:bg-[#333333] mx-4"
+          className="flex-row items-center justify-center py-4 bg-surface rounded-xl border border-border active:bg-surface mx-4"
         >
-          <ArrowLeft size={20} color="#D1D5DB" className="mr-2" />
+          <ArrowLeft size={20} color={colors.heading} className="mr-2" />
           <Text className="font-semibold text-lg text-gray-300">Back</Text>
         </TouchableOpacity>
       </View>

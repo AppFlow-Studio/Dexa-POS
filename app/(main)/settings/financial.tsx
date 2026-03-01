@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { calculateMenuEngineering } from "@/lib/analyticsEngine";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -204,7 +205,7 @@ const FinancialReportsScreen = () => {
   );
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Financial Reports</Text>
         <Text className="text-gray-400 mt-2">
@@ -220,10 +221,10 @@ const FinancialReportsScreen = () => {
       >
         <View className="gap-6">
           {/* Menu Engineering Report */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Menu color="#3b82f6" size={24} />
+                <Menu color={colors.info} size={24} />
                 <CardTitle className="text-white">
                   Menu Engineering ({reportFrequency.label})
                 </CardTitle>
@@ -248,13 +249,13 @@ const FinancialReportsScreen = () => {
                     if (val) setReportFrequency(val);
                   }}
                 >
-                  <SelectTrigger className="w-[180px] bg-[#212121] border-gray-600">
+                  <SelectTrigger className="w-[180px] bg-screen border-gray-600">
                     <SelectValue
                       placeholder="Select Frequency"
                       className="text-white"
                     />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#212121] border-gray-600">
+                  <SelectContent className="bg-screen border-gray-600">
                     <SelectGroup>
                       <SelectItem label="Daily" value="daily" />
                       <SelectItem label="Weekly" value="weekly" />
@@ -291,7 +292,7 @@ const FinancialReportsScreen = () => {
                           title="Puzzles"
                           subtitle="High Profit / Low Pop."
                           icon={HelpCircle}
-                          color="#3B82F6" // Blue-500
+                          color={colors.info} // Blue-500
                           textColor="text-blue-500"
                           bgColor="bg-blue-500/10"
                           count={menuQuadrants.puzzles.length}
@@ -325,7 +326,7 @@ const FinancialReportsScreen = () => {
                           title="Dogs"
                           subtitle="Low Profit / Low Pop."
                           icon={AlertTriangle}
-                          color="#EF4444" // Red-500
+                          color={colors.danger} // Red-500
                           textColor="text-red-500"
                           bgColor="bg-red-500/10"
                           count={menuQuadrants.dogs.length}
@@ -353,10 +354,10 @@ const FinancialReportsScreen = () => {
           </Card>
 
           {/* Labor Cost Optimization */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <DollarSign color="#22c55e" size={24} />
+                <DollarSign color={colors.success} size={24} />
                 <CardTitle className="text-white">
                   Labor Cost Optimization ({reportFrequency.label})
                 </CardTitle>
@@ -418,7 +419,7 @@ const FinancialReportsScreen = () => {
                     />
                     {laborStats.currentPercent > targetLaborPercent && (
                       <View className="flex-row items-center mt-1">
-                        <TrendingUp size={14} color="#EF4444" />
+                        <TrendingUp size={14} color={colors.danger} />
                         <Text className="text-red-500 text-xs ml-1">
                           Exceeding target by{" "}
                           {laborStats.currentPercent - targetLaborPercent}%
@@ -445,10 +446,9 @@ const FinancialReportsScreen = () => {
         snapPoints={["50%", "80%"]}
         enablePanDownToClose
         backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: "#212121" }}
-        handleIndicatorStyle={{ backgroundColor: "#4B5563" }}
+        {...bottomSheetTheme}
       >
-        <BottomSheetView className="flex-1 bg-[#212121] px-6 pt-2 pb-6">
+        <BottomSheetView className="flex-1 bg-screen px-6 pt-2 pb-6">
           {selectedQuadrant && (
             <>
               <View className="mb-4 border-b border-gray-700 pb-4">

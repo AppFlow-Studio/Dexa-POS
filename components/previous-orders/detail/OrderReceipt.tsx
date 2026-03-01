@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import React, { useMemo } from "react";
@@ -42,7 +43,7 @@ const OrderReceipt: React.FC<OrderReceiptProps> = ({ order }) => {
       contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       showsVerticalScrollIndicator={false}
     >
-      <View className="bg-[#252525] rounded-xl p-4 border border-gray-700">
+      <View className="bg-panel rounded-xl p-4 border border-gray-700">
         {/* Receipt Header */}
         <View className="items-center pb-3 border-b border-dashed border-gray-600">
           <Text className="text-lg font-bold text-white">Receipt</Text>

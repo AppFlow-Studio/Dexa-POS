@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { SelectedLocation } from "@/stores/useStoreSettingsStore";
@@ -31,7 +32,7 @@ const ReceiptRow = ({
   value: string | number;
   bold?: boolean;
 }) => (
-  <View className="flex-row justify-between items-center py-2.5 border-b border-[#3f3f3f]">
+  <View className="flex-row justify-between items-center py-2.5 border-b border-border">
     <Text className={`text-base text-gray-400 ${bold ? "font-bold text-lg" : ""}`}>
       {label}
     </Text>
@@ -182,7 +183,7 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
 
       {/* Bottom sheet */}
       <Animated.View
-        className="absolute bottom-0 left-0 right-0 bg-[#303030] rounded-t-2xl border-t border-l border-r border-gray-700"
+        className="absolute bottom-0 left-0 right-0 bg-surface rounded-t-2xl border-t border-l border-r border-gray-700"
         style={{
           maxHeight: "85%",
           shadowColor: "#000",
@@ -232,7 +233,7 @@ const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({
           showsVerticalScrollIndicator={false}
         >
           {/* Receipt Card */}
-          <View className="bg-[#252525] rounded-xl p-4 border border-[#3f3f3f]">
+          <View className="bg-panel rounded-xl p-4 border border-border">
             <ReceiptRow label="Order #" value={order.display_number || order.order_number || `#${order.id.slice(-4)}`} />
             <ReceiptRow
               label="Table"

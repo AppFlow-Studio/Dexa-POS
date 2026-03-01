@@ -1,7 +1,8 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import {
   CheckCircle,
-  DollarSign,
+  FileText,
   MoreHorizontal,
   Printer,
   RefreshCw,
@@ -11,14 +12,8 @@ import {
   Utensils,
   XCircle,
 } from "lucide-react-native";
-import React, { useMemo, useRef } from "react";
-import { LayoutAnimation, Platform, Text, TouchableOpacity, UIManager, View } from "react-native";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { LayoutAnimation, Modal, Platform, Text, TouchableOpacity, UIManager, View } from "react-native";
 import ExpandedOrderPanel from "./ExpandedOrderPanel";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -145,9 +140,26 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const TypeIcon = typeConfig.icon;
   const displayType = displayTypeLabels[orderType] || orderType;
 
-  // "Needs Attention" = Paid but check not closed
-  const needsAttention =
-    order.paid_status === "Paid" && order.check_status !== "Closed";
+  // "Needs Attention" = pending open orders with no payments
+  const needsAttention = order.paid_status === "Pending";
+
+  // ─── Context menu state ──────────────────────────────────
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<View>(null);
+
+  const openMenu = useCallback(() => {
+    triggerRef.current?.measureInWindow((x, y, width, height) => {
+      const menuWidth = 256;
+      setMenuPos({
+        top: y + height + 8,
+        left: Math.max(8, x + width - menuWidth),
+      });
+      setMenuVisible(true);
+    });
+  }, []);
+
+  const closeMenu = useCallback(() => setMenuVisible(false), []);
 
   // Server initials for avatar
   const serverInitials = useMemo(() => {
@@ -184,7 +196,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={handlePress}
-        className="bg-[#303030] px-4 py-3"
+        className="bg-panel px-4 py-3"
       >
         <View className="flex-row items-center">
           {/* Order number + time + items preview */}
@@ -280,72 +292,15 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             )}
           </View>
 
-          {/* Menu */}
+          {/* Menu trigger */}
           <View
             style={{ width: 36 }}
+            ref={triggerRef}
             onTouchStart={(e) => e.stopPropagation()}
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <TouchableOpacity className="p-1">
-                  <MoreHorizontal color="#9CA3AF" size={20} />
-                </TouchableOpacity>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56 bg-[#303030] border-gray-600">
-                {order.paid_status === "Paid" &&
-                  order.check_status !== "Closed" &&
-                  onCloseCheck && (
-                    <DropdownMenuItem
-                      onTouchStart={(e) => e.stopPropagation()}
-                      onPress={() => onCloseCheck(order)}
-                    >
-                      <CheckCircle className="mr-2 h-5 w-5" color="#4ade80" />
-                      <Text className="text-xl text-white">Close Check</Text>
-                    </DropdownMenuItem>
-                  )}
-                {order.check_status === "Closed" && onReopenCheck && (
-                  <DropdownMenuItem
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onPress={() => onReopenCheck(order)}
-                  >
-                    <RefreshCw className="mr-2 h-5 w-5" color="#60a5fa" />
-                    <Text className="text-xl text-white">Reopen Check</Text>
-                  </DropdownMenuItem>
-                )}
-                {onRefund && (
-                  <DropdownMenuItem
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onPress={() => onRefund(order)}
-                  >
-                    <RotateCcw className="mr-2 h-5 w-5" color="#f59e0b" />
-                    <Text className="text-xl text-white">Process Refund</Text>
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onPress={() => onViewNotes(order)}
-                >
-                  <DollarSign className="mr-2 h-5 w-5" color="#9CA3AF" />
-                  <Text className="text-xl text-white">View Notes</Text>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onPress={() => onPrint(order)}
-                >
-                  <Printer className="mr-2 h-5 w-5" color="#9CA3AF" />
-                  <Text className="text-xl text-white">Print Receipt</Text>
-                </DropdownMenuItem>
-                {onVoid && (
-                  <DropdownMenuItem
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onPress={() => onVoid(order)}
-                  >
-                    <XCircle className="mr-2 h-5 w-5" color="#F87171" />
-                    <Text className="text-xl text-red-400">Void Order</Text>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <TouchableOpacity className="p-1" onPress={openMenu}>
+              <MoreHorizontal color={colors.label} size={20} />
+            </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
@@ -357,8 +312,112 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           onPrint={onPrint}
           onViewTimeline={onViewTimeline}
           onTipAdjust={onTipAdjust}
+          onRefund={onRefund}
         />
       )}
+
+      {/* Context menu popover */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={closeMenu}
+          style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+        >
+          <View
+            onStartShouldSetResponder={() => true}
+            style={{
+              position: "absolute",
+              top: menuPos.top,
+              left: menuPos.left,
+              width: 256,
+              backgroundColor: "#1a1f3a",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: "#2a3058",
+              paddingVertical: 6,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.4,
+              shadowRadius: 24,
+              elevation: 20,
+            }}
+          >
+            {order.paid_status === "Paid" &&
+              order.check_status !== "Closed" &&
+              onCloseCheck && (
+                <TouchableOpacity
+                  activeOpacity={0.6}
+                  onPress={() => { closeMenu(); onCloseCheck(order); }}
+                  className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
+                >
+                  <CheckCircle color={colors.success} size={18} />
+                  <Text className="text-base text-white ml-3">Close Check</Text>
+                </TouchableOpacity>
+              )}
+            {order.check_status === "Closed" && onReopenCheck && (
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => { closeMenu(); onReopenCheck(order); }}
+                className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
+              >
+                <RefreshCw color={colors.info} size={18} />
+                <Text className="text-base text-white ml-3">Reopen Check</Text>
+              </TouchableOpacity>
+            )}
+            {onRefund && (
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => { closeMenu(); onRefund(order); }}
+                className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
+              >
+                <RotateCcw color={colors.teal} size={18} />
+                <Text className="text-base text-white ml-3">Process Refund</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              activeOpacity={0.6}
+              onPress={() => { closeMenu(); onViewNotes(order); }}
+              className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
+            >
+              <FileText color={colors.info} size={18} />
+              <Text className="text-base text-white ml-3">View Notes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.6}
+              onPress={() => { closeMenu(); onPrint(order); }}
+              className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
+            >
+              <Printer color="#9CA3AF" size={18} />
+              <Text className="text-base text-white ml-3">Print Receipt</Text>
+            </TouchableOpacity>
+            {onVoid && (
+              <>
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: "#2a3058",
+                    marginVertical: 6,
+                    marginHorizontal: 16,
+                  }}
+                />
+                <TouchableOpacity
+                  activeOpacity={0.6}
+                  onPress={() => { closeMenu(); onVoid(order); }}
+                  className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-red-900/20"
+                >
+                  <XCircle color={colors.danger} size={18} />
+                  <Text className="text-base text-red-400 ml-3">Void Order</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };

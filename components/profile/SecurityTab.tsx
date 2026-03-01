@@ -69,7 +69,7 @@ const SectionRow = ({
       {!isEditing && (
         <TouchableOpacity
           onPress={onEdit}
-          className="py-2 px-4 border border-gray-600 rounded-lg bg-[#303030]"
+          className="py-2 px-4 border border-gray-600 rounded-lg bg-surface"
         >
           <Text className="font-bold text-base text-gray-300">Change</Text>
         </TouchableOpacity>
@@ -145,7 +145,7 @@ const SecurityTab = () => {
           name="email"
           render={({ field: { onChange, onBlur, value } }) => (
             <TextInput
-              className="text-xl font-semibold text-white bg-[#212121] p-3 rounded-md border border-gray-600 w-full"
+              className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
               value={value}
               onBlur={onBlur}
               onChangeText={onChange}
@@ -162,7 +162,7 @@ const SecurityTab = () => {
         <View className="flex-row justify-end gap-3 mt-4">
           <TouchableOpacity
             onPress={() => setEditingSection(null)}
-            className="py-2 px-6 border border-gray-600 rounded-lg bg-[#303030]"
+            className="py-2 px-6 border border-gray-600 rounded-lg bg-surface"
           >
             <Text className="font-bold text-base text-gray-300">Cancel</Text>
           </TouchableOpacity>
@@ -188,7 +188,7 @@ const SecurityTab = () => {
           name="phone"
           render={({ field: { onChange, onBlur, value } }) => (
             <TextInput
-              className="text-xl font-semibold text-white bg-[#212121] p-3 rounded-md border border-gray-600 w-full"
+              className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
               value={value}
               onBlur={onBlur}
               onChangeText={onChange}
@@ -204,7 +204,7 @@ const SecurityTab = () => {
         <View className="flex-row justify-end gap-3 mt-4">
           <TouchableOpacity
             onPress={() => setEditingSection(null)}
-            className="py-2 px-6 border border-gray-600 rounded-lg bg-[#303030]"
+            className="py-2 px-6 border border-gray-600 rounded-lg bg-surface"
           >
             <Text className="font-bold text-base text-gray-300">Cancel</Text>
           </TouchableOpacity>
@@ -233,7 +233,7 @@ const SecurityTab = () => {
               name="pin"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextInput
-                  className="text-xl font-semibold text-white bg-[#212121] p-3 rounded-md border border-gray-600 w-full"
+                  className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
                   value={value}
                   onBlur={onBlur}
                   onChangeText={onChange}
@@ -258,7 +258,7 @@ const SecurityTab = () => {
               name="confirmPin"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextInput
-                  className="text-xl font-semibold text-white bg-[#212121] p-3 rounded-md border border-gray-600 w-full"
+                  className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
                   value={value}
                   onBlur={onBlur}
                   onChangeText={onChange}
@@ -278,7 +278,7 @@ const SecurityTab = () => {
         <View className="flex-row justify-end gap-3 mt-4">
           <TouchableOpacity
             onPress={() => setEditingSection(null)}
-            className="py-2 px-6 border border-gray-600 rounded-lg bg-[#303030]"
+            className="py-2 px-6 border border-gray-600 rounded-lg bg-surface"
           >
             <Text className="font-bold text-base text-gray-300">Cancel</Text>
           </TouchableOpacity>

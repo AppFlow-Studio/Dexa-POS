@@ -30,7 +30,7 @@ const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="flex-1 bg-[#303030] p-4 rounded-2xl border border-gray-700 min-h-[150px] justify-between hover:border-blue-500 transition-colors"
+      className="flex-1 bg-surface p-4 rounded-2xl border border-gray-700 min-h-[150px] justify-between hover:border-blue-500 transition-colors"
       activeOpacity={0.8}
     >
       <View>

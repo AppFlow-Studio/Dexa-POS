@@ -21,6 +21,7 @@ import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { previousOrderToOrderProfile } from "@/utils/previousOrderMapper";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { colors } from "@/lib/theme";
 import { Clock, CreditCard, Receipt, RotateCcw } from "lucide-react-native";
 import React, {
   useCallback,
@@ -100,7 +101,7 @@ const OrderDetailsScreen = () => {
   // Not-found state
   if (!order) {
     return (
-      <View className="flex-1 items-center justify-center p-4 bg-[#212121]">
+      <View className="flex-1 items-center justify-center p-4 bg-screen">
         <Text className="text-2xl font-bold text-red-400 mb-3">
           Order Not Found
         </Text>
@@ -123,14 +124,14 @@ const OrderDetailsScreen = () => {
   }
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       <OrderDetailHeader order={order} onBack={() => router.back()} />
 
       <View className="flex-1 flex-row">
         {/* Left Pane */}
-        <View className="flex-[3] border-r border-gray-700">
+        <View className="flex-[3] border-r border-border">
           {/* Tab Bar */}
-          <View className="flex-row border-b border-gray-700 px-4">
+          <View className="flex-row border-b border-border px-4">
             {TABS.map((tab) => {
               const isActive = activeTab === tab.key;
               const TabIcon = tab.icon;
@@ -143,7 +144,7 @@ const OrderDetailsScreen = () => {
                   }`}
                 >
                   <TabIcon
-                    color={isActive ? "#3B82F6" : "#9CA3AF"}
+                    color={isActive ? colors.info : colors.label}
                     size={18}
                   />
                   <Text
@@ -165,7 +166,7 @@ const OrderDetailsScreen = () => {
               <RefreshControl
                 refreshing={isRefreshing}
                 onRefresh={handleRefresh}
-                tintColor="#3B82F6"
+                tintColor={colors.info}
               />
             }
             showsVerticalScrollIndicator={false}

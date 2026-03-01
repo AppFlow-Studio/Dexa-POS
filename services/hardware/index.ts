@@ -32,3 +32,8 @@ export {
   startListening,
   stopListening,
 } from "./hardwareEventListener";
+
+export {
+  startStarPrinterHealthCheck,
+  stopStarPrinterHealthCheck,
+} from "./starPrinterHealthCheck";

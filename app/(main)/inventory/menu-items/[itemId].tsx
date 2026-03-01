@@ -1,3 +1,4 @@
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -502,21 +503,21 @@ const MenuItemScreen = () => {
 
   if (!item) {
     return (
-      <View className="flex-1 justify-center items-center bg-[#212121]">
+      <View className="flex-1 justify-center items-center bg-screen">
         <Text className="text-white text-lg">Item not found</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       {/* Header */}
       <View className="flex-row items-center justify-between p-2 border-b border-gray-700">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft color="#9CA3AF" size={20} />
+          <ArrowLeft color={colors.label} size={20} />
           <Text className="text-white text-lg ml-2">Back</Text>
         </TouchableOpacity>
       </View>
@@ -527,16 +528,16 @@ const MenuItemScreen = () => {
       >
         <ScrollView className="flex-1 p-2">
           {/* Item Overview */}
-          <View className="bg-[#303030] rounded-xl p-3 mb-2">
+          <View className="bg-panel rounded-xl p-3 mb-2">
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-lg font-bold text-white">{item.name}</Text>
               <View className="flex-row items-center">
                 {item.stockQuantity !== undefined &&
                 item.reorderThreshold !== undefined &&
                 item.stockQuantity <= item.reorderThreshold ? (
-                  <AlertTriangle color="#F87171" size={20} />
+                  <AlertTriangle color={colors.danger} size={20} />
                 ) : (
-                  <CheckCircle color="#10B981" size={20} />
+                  <CheckCircle color={colors.success} size={20} />
                 )}
               </View>
             </View>
@@ -581,7 +582,7 @@ const MenuItemScreen = () => {
           </View>
 
           {/* Quick Actions */}
-          <View className="bg-[#303030] rounded-xl p-3 mb-2">
+          <View className="bg-panel rounded-xl p-3 mb-2">
             <Text className="text-lg font-bold text-white mb-3">
               Quick Actions
             </Text>
@@ -607,7 +608,7 @@ const MenuItemScreen = () => {
           </View>
 
           {/* Item Details Form */}
-          <View className="bg-[#303030] rounded-xl p-3">
+          <View className="bg-panel rounded-xl p-3">
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-lg font-bold text-white">Item Details</Text>
               <View className="flex-row">
@@ -660,7 +661,7 @@ const MenuItemScreen = () => {
                   className={`flex-1 p-2 rounded-lg border-2 ${
                     editStockTrackingMode === "in_stock"
                       ? "border-blue-500 bg-blue-500/20"
-                      : "border-gray-600 bg-gray-800"
+                      : "border-border bg-gray-800"
                   }`}
                 >
                   <View className="flex-row items-center justify-center">
@@ -699,7 +700,7 @@ const MenuItemScreen = () => {
                   className={`flex-1 p-2 rounded-lg border-2 ${
                     editStockTrackingMode === "out_of_stock"
                       ? "border-blue-500 bg-blue-500/20"
-                      : "border-gray-600 bg-gray-800"
+                      : "border-border bg-gray-800"
                   }`}
                 >
                   <View className="flex-row items-center justify-center">
@@ -738,7 +739,7 @@ const MenuItemScreen = () => {
                   className={`flex-1 p-2 rounded-lg border-2 ${
                     editStockTrackingMode === "quantity"
                       ? "border-blue-500 bg-blue-500/20"
-                      : "border-gray-600 bg-gray-800"
+                      : "border-border bg-gray-800"
                   }`}
                 >
                   <View className="flex-row items-center justify-center">
@@ -777,11 +778,11 @@ const MenuItemScreen = () => {
                   editable={isEditing}
                   className={`p-2 rounded-lg ${
                     isEditing
-                      ? "bg-[#212121] border border-gray-600 text-white"
+                      ? "bg-screen border border-border text-white"
                       : "bg-gray-800 text-gray-400"
                   }`}
                   placeholder="Enter item name"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                 />
               </View>
               <View className="mb-2 flex-1">
@@ -794,11 +795,11 @@ const MenuItemScreen = () => {
                   editable={isEditing}
                   className={`p-2 rounded-lg ${
                     isEditing
-                      ? "bg-[#212121] border border-gray-600 text-white"
+                      ? "bg-screen border border-border text-white"
                       : "bg-gray-800 text-gray-400"
                   }`}
                   placeholder="Enter SKU or barcode"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                 />
               </View>
             </View>
@@ -814,11 +815,11 @@ const MenuItemScreen = () => {
                   editable={isEditing}
                   className={`p-2 rounded-lg ${
                     isEditing
-                      ? "bg-[#212121] border border-gray-600 text-white"
+                      ? "bg-screen border border-border text-white"
                       : "bg-gray-800 text-gray-400"
                   }`}
                   placeholder="Enter categories (comma separated)"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                 />
               </View>
 
@@ -832,11 +833,11 @@ const MenuItemScreen = () => {
                   editable={isEditing}
                   className={`p-2 rounded-lg ${
                     isEditing
-                      ? "bg-[#212121] border border-gray-600 text-white"
+                      ? "bg-screen border border-border text-white"
                       : "bg-gray-800 text-gray-400"
                   }`}
                   placeholder="Select default vendor"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                 />
               </View>
             </View>
@@ -851,11 +852,11 @@ const MenuItemScreen = () => {
                 editable={isEditing}
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="e.g., Case, Bottle, Lbs, Gallon"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
 
@@ -870,7 +871,7 @@ const MenuItemScreen = () => {
                       <TextInput
                         className={`flex-1 rounded-lg px-3 py-2 h-20 ${
                           isEditing
-                            ? "bg-[#212121] border border-gray-600 text-white"
+                            ? "bg-screen border border-border text-white"
                             : "bg-gray-800 text-gray-400"
                         }`}
                         keyboardType="numeric"
@@ -884,7 +885,7 @@ const MenuItemScreen = () => {
                           }));
                         }}
                         placeholder="Enter quantity"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={colors.muted}
                         editable={isEditing}
                       />
                     </View>
@@ -896,7 +897,7 @@ const MenuItemScreen = () => {
                     <TextInput
                       className={`flex-1 rounded-lg px-3 py-2 h-20 ${
                         isEditing
-                          ? "bg-[#212121] border border-gray-600 text-white"
+                          ? "bg-screen border border-border text-white"
                           : "bg-gray-800 text-gray-400"
                       }`}
                       keyboardType="numeric"
@@ -910,7 +911,7 @@ const MenuItemScreen = () => {
                       }}
                       editable={isEditing}
                       placeholder="Enter threshold"
-                      placeholderTextColor="#888"
+                      placeholderTextColor={colors.muted}
                     />
                   </View>
                 </View>
@@ -937,11 +938,11 @@ const MenuItemScreen = () => {
                         keyboardType="numeric"
                         className={`p-3 rounded-lg h-20 ${
                           isEditing
-                            ? "bg-[#212121] border border-gray-600 text-white"
+                            ? "bg-screen border border-border text-white"
                             : "bg-gray-800 text-gray-400"
                         }`}
                         placeholder="0"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.label}
                       />
                     )}
                   </View>
@@ -969,11 +970,11 @@ const MenuItemScreen = () => {
                         keyboardType="numeric"
                         className={`p-3 rounded-lg h-20 ${
                           isEditing
-                            ? "bg-[#212121] border border-gray-600 text-white"
+                            ? "bg-screen border border-border text-white"
                             : "bg-gray-800 text-gray-400"
                         }`}
                         placeholder="0"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.label}
                       />
                     )}
                   </View>
@@ -992,17 +993,17 @@ const MenuItemScreen = () => {
                 keyboardType="numeric"
                 className={`p-2 rounded-lg ${
                   isEditing
-                    ? "bg-[#212121] border border-gray-600 text-white"
+                    ? "bg-screen border border-border text-white"
                     : "bg-gray-800 text-gray-400"
                 }`}
                 placeholder="0.00"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
               />
             </View>
           </View>
 
           {/* Recipe Section */}
-          <View className="bg-[#303030] rounded-xl p-3 mt-2">
+          <View className="bg-panel rounded-xl p-3 mt-2">
             <View className="flex-row items-center justify-between mb-3">
               <Text className="text-lg font-bold text-white">Recipe</Text>
               {!isEditingRecipe ? (
@@ -1052,7 +1053,7 @@ const MenuItemScreen = () => {
           className="flex-1"
         >
           <View className="flex-1 bg-black/50 justify-center items-center px-6">
-            <View className="bg-[#303030] rounded-xl p-3 w-full max-w-md">
+            <View className="bg-panel rounded-xl p-3 w-full max-w-md">
               <Text className="text-lg font-bold text-white mb-3">
                 Log Usage
               </Text>
@@ -1073,9 +1074,9 @@ const MenuItemScreen = () => {
                     setLogUsageForm((prev) => ({ ...prev, quantityUsed: text }))
                   }
                   placeholder="Enter quantity used"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-screen border border-border rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
 
@@ -1083,7 +1084,7 @@ const MenuItemScreen = () => {
                 <Text className="text-lg text-gray-300 mb-2">
                   Reason for Adjustment
                 </Text>
-                <View className="bg-[#212121] border border-gray-600 rounded-lg">
+                <View className="bg-screen border border-border rounded-lg">
                   <TouchableOpacity
                     onPress={() =>
                       setLogUsageForm((prev) => ({
@@ -1157,10 +1158,10 @@ const MenuItemScreen = () => {
                     setLogUsageForm((prev) => ({ ...prev, notes: text }))
                   }
                   placeholder="Additional details..."
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   multiline
                   numberOfLines={3}
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-screen border border-border rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
 
@@ -1193,8 +1194,7 @@ const MenuItemScreen = () => {
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose={true}
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
       >
         <View className="flex-1">
@@ -1203,7 +1203,7 @@ const MenuItemScreen = () => {
               Inventory History
             </Text>
             <TouchableOpacity onPress={() => historySheetRef.current?.close()}>
-              <X color="#9CA3AF" size={20} />
+              <X color={colors.label} size={20} />
             </TouchableOpacity>
           </View>
           {/* ... history content with reduced padding and text sizes ... */}
@@ -1216,8 +1216,7 @@ const MenuItemScreen = () => {
         index={-1}
         snapPoints={inventorySnapPoints}
         enablePanDownToClose={true}
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={renderInventoryBackdrop}
       >
         <KeyboardAvoidingView
@@ -1230,19 +1229,19 @@ const MenuItemScreen = () => {
               <TouchableOpacity
                 onPress={() => inventorySelectionSheetRef.current?.close()}
               >
-                <X color="#9CA3AF" size={20} />
+                <X color={colors.label} size={20} />
               </TouchableOpacity>
             </View>
 
             {/* Search Bar */}
             <View className="p-4 border-b border-gray-700">
-              <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2">
-                <Search color="#9CA3AF" size={20} />
+              <View className="flex-row items-center bg-screen rounded-lg px-3 py-2">
+                <Search color={colors.label} size={20} />
                 <TextInput
                   value={inventorySearchQuery}
                   onChangeText={(text) => setInventorySearchQuery(text.trim())}
                   placeholder="Search inventory items..."
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   className="flex-1 text-white ml-3 h-16"
                 />
               </View>

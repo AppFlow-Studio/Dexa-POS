@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useState } from "react";
@@ -168,7 +169,7 @@ const OpenItemAdder = () => {
     <TouchableOpacity
       onPress={onPress}
       className={`flex-1 h-12 rounded-lg items-center justify-center ${
-        isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
+        isDestructive ? "bg-red-600" : "bg-surface border border-gray-600"
       }`}
     >
       <Text className="text-xl font-bold text-white">{value}</Text>
@@ -220,7 +221,7 @@ const OpenItemAdder = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-[#212121]"
+      className="flex-1 bg-panel"
     >
       <ScrollView className="flex-1 py-4">
         <View className="mb-4">
@@ -228,11 +229,11 @@ const OpenItemAdder = () => {
             Open Item Name
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-xl text-white h-16"
+            className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-xl text-white h-16"
             value={openItemName}
             onChangeText={setOpenItemName}
             placeholder="Enter item name (default: Custom)"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.label}
           />
         </View>
 
@@ -240,7 +241,7 @@ const OpenItemAdder = () => {
           <Text className="text-xl font-semibold text-white mb-2">
             Open Item Price
           </Text>
-          <View className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 items-center">
+          <View className="bg-surface border border-gray-600 rounded-lg px-4 py-3 items-center">
             <Text className="text-3xl font-bold text-white">
               ${priceDisplay}
             </Text>

@@ -34,6 +34,8 @@ import {
   stopHeartbeat,
   startTerminalHealthCheck,
   stopTerminalHealthCheck,
+  startStarPrinterHealthCheck,
+  stopStarPrinterHealthCheck,
 } from "@/services/hardware";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
@@ -140,6 +142,16 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       stopTerminalHealthCheck();
     };
   }, [supabase, selectedStation?.payment_terminal?.id]);
+
+  // Star printer health check lifecycle
+  useEffect(() => {
+    if (selectedStore?.id && !isKDS) {
+      startStarPrinterHealthCheck(selectedStore.id);
+    }
+    return () => {
+      stopStarPrinterHealthCheck();
+    };
+  }, [selectedStore?.id, isKDS]);
 
   // Sync employees from location_members
   const syncEmployees = useCallback(

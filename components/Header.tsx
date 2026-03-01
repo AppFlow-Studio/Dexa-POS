@@ -6,6 +6,7 @@ import {
   usePathname,
   useRouter,
 } from "expo-router";
+import { colors } from "@/lib/theme";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useCallback, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -180,15 +181,15 @@ const Header = () => {
   }, [globalParams.returnTo, cancelAndRemoveDraft, closeModifierSidebar, pathname, router]);
 
   return (
-    <View className="flex-row justify-between items-center h-14">
+    <View className="flex-row justify-between items-center border-b border-border pb-2">
       {/* Left Section */}
       <View className="flex-row items-center flex-shrink-0">
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBackPress}
-            className="p-2 mr-3 bg-gray-100 rounded-lg"
+            className="p-2 mr-3 bg-panel rounded-lg"
           >
-            <ArrowLeft color="#1f2937" size={20} />
+            <ArrowLeft color={colors.heading} size={20} />
           </TouchableOpacity>
         )}
         <Text className="text-2xl font-bold text-white">{title}</Text>

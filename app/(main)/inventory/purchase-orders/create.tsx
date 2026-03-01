@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { POLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
@@ -249,10 +250,10 @@ const CreatePurchaseOrderScreen = () => {
         </View>
       </View>
 
-      <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+      <View className="bg-panel border border-border rounded-xl p-4 mb-4">
         <Text className="text-lg font-medium text-gray-300 mb-1.5">Vendor</Text>
         <TouchableOpacity
-          className="h-fit border border-gray-600 border-dashed rounded-lg p-3"
+          className="h-fit border border-border border-dashed rounded-lg p-3"
           onPress={() => vendorsSheetRef.current?.expand()}
         >
           <Text className="text-xl text-white">
@@ -268,9 +269,9 @@ const CreatePurchaseOrderScreen = () => {
           </Text>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
+              <TouchableOpacity className="h-fit border border-border border-dashed rounded-lg p-3 flex-row items-center justify-between">
                 <View className="flex-row items-center">
-                  <User color="#9CA3AF" size={18} className="mr-1.5" />
+                  <User color={colors.label} size={18} className="mr-1.5" />
                   <Text className="text-xl text-white">
                     {selectedEmployeeId
                       ? employees.find((e) => e.id === selectedEmployeeId)
@@ -278,10 +279,10 @@ const CreatePurchaseOrderScreen = () => {
                       : "Select..."}
                   </Text>
                 </View>
-                <ChevronDown color="#9CA3AF" size={18} />
+                <ChevronDown color={colors.label} size={18} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
+            <DropdownMenuContent className="w-72 bg-panel border-border">
               {employees.map((employee) => (
                 <DropdownMenuItem
                   key={employee.id}
@@ -327,12 +328,12 @@ const CreatePurchaseOrderScreen = () => {
 
   // --- Footer Component for the main FlatList ---
   const renderFooter = () => (
-    <View className="bg-[#303030] border border-t-0 border-gray-700 rounded-b-xl p-4">
+    <View className="bg-panel border border-t-0 border-border rounded-b-xl p-4">
       <TouchableOpacity
         disabled={!selectedVendorId}
         onPress={() => itemsSheetRef.current?.expand()}
         className={`py-2 border border-dashed rounded-lg items-center ${
-          selectedVendorId ? "border-gray-500" : "border-gray-700 opacity-50"
+          selectedVendorId ? "border-gray-500" : "border-border opacity-50"
         }`}
       >
         <Text className="text-lg font-semibold text-gray-300">+ Add Item</Text>
@@ -358,8 +359,8 @@ const CreatePurchaseOrderScreen = () => {
               (i) => i.id === item.inventoryItemId
             );
             return (
-              <View className="bg-[#303030] px-4 border-x border-gray-700">
-                <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
+              <View className="bg-panel px-4 border-x border-border">
+                <View className="flex-row items-center justify-between p-3 border-b border-border">
                   <Text className="text-xl text-white flex-1">
                     {invItem?.name}
                   </Text>
@@ -370,7 +371,7 @@ const CreatePurchaseOrderScreen = () => {
                         handleQuantityChange(item.inventoryItemId, text)
                       }
                       keyboardType="number-pad"
-                      className="w-16 bg-[#212121] border border-gray-500 rounded-lg text-lg text-white text-center"
+                      className="w-16 bg-screen border border-gray-500 rounded-lg text-lg text-white text-center"
                     />
                     <Text className="text-lg text-gray-300">
                       {invItem?.unit}
@@ -382,14 +383,14 @@ const CreatePurchaseOrderScreen = () => {
                   <TouchableOpacity
                     onPress={() => handleRemoveLineItem(item.inventoryItemId)}
                   >
-                    <Trash2 color="#EF4444" size={20} />
+                    <Trash2 color={colors.danger} size={20} />
                   </TouchableOpacity>
                 </View>
               </View>
             );
           }}
           ListEmptyComponent={
-            <View className="bg-[#303030] px-4 border-x border-gray-700">
+            <View className="bg-panel px-4 border-x border-border">
               <Text className="text-lg text-gray-400 text-center py-4">
                 No items added yet.
               </Text>
@@ -402,8 +403,7 @@ const CreatePurchaseOrderScreen = () => {
         ref={itemsSheetRef}
         index={-1}
         snapPoints={["50%", "95%"]}
-        backgroundStyle={{ backgroundColor: "#2b2b2b" }}
-        handleIndicatorStyle={{ backgroundColor: "#666" }}
+        {...bottomSheetTheme}
         backdropComponent={(backdropProps) => (
           <BottomSheetBackdrop
             {...backdropProps}
@@ -418,17 +418,17 @@ const CreatePurchaseOrderScreen = () => {
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             className="flex-1"
           >
-            <View className="px-3 pt-1 pb-2 border-b border-gray-700 flex-row items-center justify-between">
+            <View className="px-3 pt-1 pb-2 border-b border-border flex-row items-center justify-between">
               <Text className="text-white text-lg font-bold">Select Item</Text>
               <View className="flex-row items-center justify-between gap-1.5">
-                <View className="w-1/2 flex-row items-center gap-1.5 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5">
-                  <Search color="#9CA3AF" size={16} />
+                <View className="w-1/2 flex-row items-center gap-1.5 bg-screen border border-border rounded-lg px-2 py-1.5">
+                  <Search color={colors.label} size={16} />
                   <TextInput
                     value={itemSearch}
                     onChangeText={setItemSearch}
                     placeholder="Search..."
                     className="text-white w-full text-sm"
-                    placeholderTextColor={"#9CA3AF"}
+                    placeholderTextColor={colors.label}
                   />
                 </View>
                 <Button
@@ -451,7 +451,7 @@ const CreatePurchaseOrderScreen = () => {
               ) : (
                 <>
                   {selectedInventoryItemId && (
-                    <View className="mb-3 p-2 rounded-lg border border-gray-700 bg-[#303030]">
+                    <View className="mb-3 p-2 rounded-lg border border-border bg-panel">
                       <Text className="text-white mb-1.5 text-base font-semibold">
                         Qty -{" "}
                         {
@@ -472,7 +472,7 @@ const CreatePurchaseOrderScreen = () => {
                         value={selectedQuantity}
                         onChangeText={setSelectedQuantity}
                         placeholder="Quantity"
-                        className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 mb-2 h-16"
+                        className="text-white text-base bg-screen border border-border rounded-lg px-2 py-1.5 mb-2 h-16"
                       />
                       <Button
                         onPress={addSelectedItemToPO}
@@ -490,7 +490,7 @@ const CreatePurchaseOrderScreen = () => {
                     renderItem={({ item }: { item: any }) => (
                       <TouchableOpacity
                         onPress={() => setSelectedInventoryItemId(item.id)}
-                        className="p-3 border-b border-gray-700"
+                        className="p-3 border-b border-border"
                       >
                         <View className="flex-row justify-between items-center">
                           <View className="flex-1 pr-2">
@@ -529,9 +529,9 @@ const CreatePurchaseOrderScreen = () => {
               bounces={false}
               className="rounded-2xl h-fit p-4 w-[550px]"
               style={{
-                backgroundColor: "#2b2b2b",
+                backgroundColor: colors.panel,
                 borderWidth: 1,
-                borderColor: "#4b5563",
+                borderColor: colors.border,
               }}
             >
               <Text className="text-white text-xl font-bold mb-3">
@@ -539,7 +539,7 @@ const CreatePurchaseOrderScreen = () => {
               </Text>
               <View className="gap-y-2">
                 <Text className="text-gray-300 text-sm">Vendor</Text>
-                <View className="bg-[#303030] border border-gray-700 rounded-lg p-2">
+                <View className="bg-panel border border-border rounded-lg p-2">
                   <Text className="text-white text-base">
                     {
                       vendorOptions.find((v) => v.value === selectedVendorId)
@@ -551,46 +551,46 @@ const CreatePurchaseOrderScreen = () => {
                 <TextInput
                   value={newItemName}
                   onChangeText={setNewItemName}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                 />
                 <Text className="text-gray-300 mt-2 text-sm">Unit</Text>
                 <TextInput
                   value={newItemUnit}
                   onChangeText={setNewItemUnit}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                 />
                 <Text className="text-gray-300 mt-2 text-sm">Cost/Unit</Text>
                 <TextInput
                   keyboardType="decimal-pad"
                   value={newItemCost}
                   onChangeText={setNewItemCost}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                 />
                 <Text className="text-gray-300 mt-2 text-sm">Stock Qty</Text>
                 <TextInput
                   keyboardType="number-pad"
                   value={newItemStock}
                   onChangeText={setNewItemStock}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                 />
                 <Text className="text-gray-300 mt-2 text-sm">Reorder</Text>
                 <TextInput
                   keyboardType="number-pad"
                   value={newItemReorder}
                   onChangeText={setNewItemReorder}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                 />
                 <Text className="text-gray-300 mt-2 text-sm">PO Qty</Text>
                 <TextInput
                   keyboardType="number-pad"
                   value={newItemPOQty}
                   onChangeText={setNewItemPOQty}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  className="text-white text-base bg-panel border border-border rounded-lg px-2 py-1.5"
                 />
                 <View className="flex-row gap-2 mt-3">
                   <TouchableOpacity
                     onPress={() => setNewItemModalOpen(false)}
-                    className="flex-1 py-2 rounded-lg border border-gray-600 items-center"
+                    className="flex-1 py-2 rounded-lg border border-border items-center"
                   >
                     <Text className="text-gray-300 text-base">Cancel</Text>
                   </TouchableOpacity>

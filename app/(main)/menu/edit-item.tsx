@@ -24,7 +24,7 @@ const EditMenuItemScreen: React.FC = () => {
 
   if (!itemToEdit) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center">
+      <View className="flex-1 bg-panel items-center justify-center">
         <Text className="text-xl text-white mb-4">Item not found</Text>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -43,7 +43,7 @@ const EditMenuItemScreen: React.FC = () => {
 
   if (isGlobalItem || !isLocalItem) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+      <View className="flex-1 bg-panel items-center justify-center p-4">
         <Text className="text-2xl text-white font-bold mb-2">Global Item</Text>
         <Text className="text-lg text-gray-400 text-center mb-6">
           This item belongs to all locations and cannot be edited from here.
@@ -173,7 +173,7 @@ const EditMenuItemScreen: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <ItemForm
         initialData={itemToEdit}
         onSubmit={handleSubmit}

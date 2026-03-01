@@ -1,3 +1,4 @@
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -55,7 +56,7 @@ const VendorRow = ({
 
   if (!vendor) return null;
   return (
-    <View className="border-b border-gray-700 py-3">
+    <View className="border-b border-border py-3">
       <View className="flex-row items-center justify-between">
         <View className="flex-1 pr-2">
           <Text className="text-white text-base font-semibold">
@@ -76,7 +77,7 @@ const VendorRow = ({
           </TouchableOpacity>
         )}
       </View>
-      <View className="mt-2 bg-[#212121] border border-gray-700 rounded-xl p-2">
+      <View className="mt-2 bg-screen border border-border rounded-xl p-2">
         <Text className="text-white font-semibold mb-1.5 text-sm">
           Recent POs
         </Text>
@@ -119,7 +120,7 @@ const VendorRow = ({
                   {preview.map((li, idx) => (
                     <View
                       key={`${po.id}_${idx}`}
-                      className="px-1.5 py-0.5 rounded-full bg-[#2a2a2a] border border-gray-700"
+                      className="px-1.5 py-0.5 rounded-full bg-screen border border-border"
                     >
                       <Text className="text-[10px] text-gray-200">
                         {getItemName(li.inventoryItemId)} x{li.quantity}
@@ -127,7 +128,7 @@ const VendorRow = ({
                     </View>
                   ))}
                   {remaining > 0 && (
-                    <View className="px-1.5 py-0.5 rounded-full bg-[#2a2a2a] border border-gray-700">
+                    <View className="px-1.5 py-0.5 rounded-full bg-screen border border-border">
                       <Text className="text-[10px] text-gray-300">
                         +{remaining} more
                       </Text>
@@ -172,8 +173,7 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
             disappearsOnIndex={-1}
           />
         )}
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -183,10 +183,10 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
             <Text className="text-white text-base font-bold mb-1.5">
               Select Vendor
             </Text>
-            <View className="bg-[#212121] border border-gray-700 rounded-xl px-2 py-1.5">
+            <View className="bg-screen border border-border rounded-xl px-2 py-1.5">
               <TextInput
                 placeholder="Search vendors..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 value={query}
                 onChangeText={setQuery}
                 className="text-white h-16 text-base"

@@ -3,12 +3,13 @@ import {
   registerTablePosition,
   unregisterTablePosition,
 } from "@/lib/tablePositionRegistry";
+import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { useTableTimerTick } from "@/hooks/useTableTimerTick";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { RotateCcw, Trash2 } from "lucide-react-native";
+import { BrushCleaning, RotateCcw, Sparkles, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -34,33 +35,6 @@ interface DraggableTableProps {
   index?: number; // For staggered entry animation
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  Available: "#10B981",
-  available: "#10B981", // Lowercase map
-  "In Use": "#3B82F6",
-  "Needs Cleaning": "#EF4444",
-  cleaning: "#EF4444",
-  "Not in Service": "#6B7280",
-  not_in_service: "#6B7280",
-  Overtime: "#F59E0B",
-  // Map Session Statuses
-  Seated: "#3B82F6",
-  seated: "#3B82F6",
-  Ordered: "#3B82F6",
-  ordered: "#3B82F6",
-  Served: "#3B82F6",
-  served: "#3B82F6",
-  "Check Presented": "#3B82F6",
-  check_presented: "#3B82F6",
-  Paid: "#10B981",
-  paid: "#10B981",
-  // Local-only intermediate states
-  seating: "#60A5FA",
-  ordering: "#818CF8",
-  paying: "#F59E0B",
-  closing: "#F87171",
-};
-
 const DraggableTable: React.FC<DraggableTableProps> = ({
   table,
   layoutId,
@@ -77,7 +51,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const saveSnapshot = useFloorPlanStore((s) => s.saveSnapshot);
   const ordersById = useOrderStore((s) => s.ordersById);
   const { defaultSittingTimeMinutes } = useSettingsStore();
-
   const tick = useTableTimerTick();
 
   // --- COMPONENT LOOKUP ---
@@ -88,20 +61,20 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const getOrder = useOrderStore((s) => s.getOrder);
 
-  const activeOrderForThisTable = useMemo(() => {
-    // Only run the O(n) scan for tables without sessions (direct order assignment fallback)
-    if (table.session?.order_id) return undefined;
+  const effectiveOrder = useMemo(() => {
+    // Fast path: O(1) session-based lookup via getOrder (checks ordersById + dbOrderIdIndex)
+    console.log(table.session?.order_id)
+    if (table.session?.order_id) {
+      const found = getOrder(table.session.order_id);
+      if (found) return found;
+    }
+
+    // Fallback: scan by service_location_id (matches SeatedPanel's proven approach)
+    // Handles timing gaps where dbOrderIdIndex isn't populated yet
     return Object.values(ordersById).find(
       (o) => o.service_location_id === table.id && o.order_status !== "void",
     );
-  }, [ordersById, table.id, table.session?.order_id]);
-
-  const orderForThisGroup = useMemo(() => {
-    if (table.session?.order_id) {
-      // O(1) lookup via getOrder (checks both local ID and dbOrderIdIndex)
-      return getOrder(table.session.order_id);
-    }
-  }, [table.session?.order_id, getOrder, ordersById]);
+  }, [table.session?.order_id, getOrder, ordersById, table.id]);
 
   const { duration, isOvertime } = useMemo(() => {
     // Determine if table is effectively "in use" based on session or order
@@ -116,13 +89,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       status === "paying" ||
       status === "paid" ||
       status === "closing" ||
-      activeOrderForThisTable;
+      effectiveOrder;
 
-    if (!isInUse || !orderForThisGroup?.opened_at) {
+    if (!isInUse || !effectiveOrder?.opened_at) {
       return { duration: "", isOvertime: false };
     }
 
-    const startTime = new Date(orderForThisGroup.opened_at).getTime();
+    const startTime = new Date(effectiveOrder.opened_at).getTime();
     const diffMins = Math.floor((Date.now() - startTime) / 60000);
 
     return {
@@ -132,9 +105,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   }, [
     tick,
     table.session,
-    orderForThisGroup,
+    effectiveOrder,
     defaultSittingTimeMinutes,
-    activeOrderForThisTable,
   ]);
 
   const displayName = useMemo(() => {
@@ -279,9 +251,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       opacity: entryOpacity.value,
       borderWidth: 2,
       borderColor: isSelected
-        ? "#3B82F6"
+        ? colors.info
         : isMerged
-          ? "#F59E0B"
+          ? colors.warning
           : "transparent",
       borderRadius: 18,
       padding: 4,
@@ -289,19 +261,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   });
 
   const orderTotal =
-    orderForThisGroup?.items?.reduce(
+    effectiveOrder?.items?.reduce(
       (acc: number, item: any) => acc + item.price * item.quantity,
       0,
     ) || 0;
 
   const tableStatus = table.session?.status || "available"; // Fallback
-  // console.log(
-  //   "[DraggableTable] tableStatus",
-  //   `${table.name == "Family Bar" && tableStatus}`
-  // );
   const tableColor = isOvertime
-    ? STATUS_COLORS.Overtime
-    : STATUS_COLORS[tableStatus];
+    ? TABLE_STATUS_COLORS.Overtime
+    : TABLE_STATUS_COLORS[tableStatus];
 
   // Type check for category is effective if we trust the object
   const isTableType = table.category === "table" || table.category === "booth";
@@ -315,15 +283,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         >
           {TableComponent ? (
             <TableComponent
-              color={isTableType ? tableColor : "#E5E7EB"}
-              chairColor={isTableType ? tableColor : "#E5E7EB"}
+              color={isTableType ? tableColor : colors.label}
+              chairColor={isTableType ? tableColor : colors.label}
             />
           ) : (
             <View
               style={{
                 width: 100,
                 height: 100,
-                backgroundColor: isTableType ? tableColor : "#E5E7EB",
+                backgroundColor: isTableType ? tableColor : colors.label,
                 borderRadius: 16,
               }}
             />
@@ -331,22 +299,34 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           <View className="absolute inset-0 items-center justify-center px-1">
             <Text
               className={`text-base text-center font-bold ${
-                isTableType ? "text-white" : "text-[#757575]"
+                isTableType ? "text-white" : "text-hint"
               }`}
               numberOfLines={1}
             >
               {displayName ? displayName : table.name}
             </Text>
 
+            {isTableType && tableStatus === "available" && (
+              <Text className="text-white font-semibold text-[9px]">
+                {table.capacity ||
+                  TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
+                    ?.capacity ||
+                  0}{" "}
+                SEATS
+              </Text>
+            )}
+
             {isTableType &&
-              (tableStatus === "seated" ||
+              (tableStatus === "seating" ||
+                tableStatus === "seated" ||
                 tableStatus === "ordering" ||
                 tableStatus === "ordered" ||
                 tableStatus === "served" ||
                 tableStatus === "check_presented" ||
-                tableStatus === "paying") && (
+                tableStatus === "paying" ||
+                tableStatus === "paid") && (
                 <>
-                  {!orderForThisGroup && table.session ? (
+                  {!effectiveOrder && table.session ? (
                     <Text className="text-white/60 font-semibold text-sm">
                       Loading...
                     </Text>
@@ -361,6 +341,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                     </>
                   )}
                 </>
+              )}
+
+            {isTableType &&
+              (tableStatus === "cleaning" || tableStatus === "closing") && (
+                <BrushCleaning size={16} color="rgba(255,255,255,0.6)" />
               )}
           </View>
         </TouchableOpacity>

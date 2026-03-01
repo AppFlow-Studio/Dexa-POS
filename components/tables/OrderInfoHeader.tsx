@@ -1,7 +1,7 @@
+import { colors } from "@/lib/theme";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -10,6 +10,7 @@ import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { ChevronDown, Minus, Plus } from "lucide-react-native";
+import ServerSelectSheet from "./ServerSelectSheet";
 
 interface OrderInfoHeaderProps {
   duration?: string;
@@ -25,6 +26,7 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId }) 
   const openCustomerSheet = useCustomerSheetStore((s) => s.openSheet);
 
   const [numberOfGuests, setNumberOfGuests] = useState(1);
+  const [serverSheetOpen, setServerSheetOpen] = useState(false);
 
   const table = useMemo(() => {
     // Primary: use the tableId prop from route (always correct)
@@ -45,10 +47,11 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId }) 
     setNumberOfGuests(guestCount);
   }, [guestCount]);
 
-  const handleServerNameChange = (name: string) => {
+  const handleServerSelect = (name: string) => {
     if (activeOrder) {
       updateActiveOrderDetails({ server_name: name });
     }
+    setServerSheetOpen(false);
   };
 
   const handleGuestCountChange = (newCount: number) => {
@@ -79,7 +82,11 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId }) 
 
   if (!isExpanded) {
     return (
-      <View className="flex-row items-center px-3 py-2 border-b border-gray-700/50">
+      <TouchableOpacity
+        onPress={() => setIsExpanded(true)}
+        activeOpacity={0.7}
+        className="flex-row items-center px-3 py-2 border-b border-gray-700/50"
+      >
         {/* Table name */}
         <Text className="text-gray-400 text-xs font-medium">
           {getTableDisplayName()}
@@ -108,87 +115,96 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId }) 
         )}
 
         {/* Expand chevron */}
-        <TouchableOpacity onPress={() => setIsExpanded(true)} className="ml-auto p-1">
-          <ChevronDown color="#6B7280" size={16} />
-        </TouchableOpacity>
-      </View>
+        <View className="ml-auto p-1">
+          <ChevronDown color={colors.muted} size={16} />
+        </View>
+      </TouchableOpacity>
     );
   }
 
   return (
-    <View className="border-b border-gray-700/50">
-      {/* Server */}
-      <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700/30">
-        <Text className="text-gray-500 text-xs w-20">Server</Text>
-        <TextInput
-          value={activeOrder.server_name || ""}
-          onChangeText={handleServerNameChange}
-          placeholder="Unknown"
-          placeholderTextColor="#6B7280"
-          className="flex-1 text-white text-sm p-0"
-        />
-      </View>
-
-      {/* Customer */}
-      <TouchableOpacity
-        onPress={openCustomerSheet}
-        className="flex-row items-center px-3 py-2.5 border-b border-gray-700/30"
-      >
-        <Text className="text-gray-500 text-xs w-20">Customer</Text>
-        <Text className={activeOrder.customer_name ? "text-white text-sm" : "text-blue-400 text-sm"}>
-          {activeOrder.customer_name || "Assign Customer"}
-        </Text>
-      </TouchableOpacity>
-
-      {/* Guests */}
-      <View className="flex-row items-center px-3 py-2 border-b border-gray-700/30">
-        <Text className="text-gray-500 text-xs w-20">Guests</Text>
-        <Text className="text-white text-sm flex-1">Number of people</Text>
-        <View className="flex-row items-center gap-2 bg-[#303030] p-1 rounded-full border border-gray-700">
-          <TouchableOpacity
-            onPress={() => handleGuestCountChange(numberOfGuests - 1)}
-            className="p-1"
-          >
-            <Minus color="#9CA3AF" size={12} />
-          </TouchableOpacity>
-          <Text className="text-sm font-bold text-white w-4 text-center">
-            {numberOfGuests}
+    <>
+      <View className="border-b border-gray-700/50">
+        {/* Server */}
+        <TouchableOpacity
+          onPress={() => setServerSheetOpen(true)}
+          className="flex-row items-center px-3 py-2.5 border-b border-gray-700/30"
+        >
+          <Text className="text-gray-500 text-xs w-20">Server</Text>
+          <Text className={activeOrder.server_name ? "text-white text-sm" : "text-blue-400 text-sm"}>
+            {activeOrder.server_name || "Assign Server"}
           </Text>
-          <TouchableOpacity
-            onPress={() => handleGuestCountChange(numberOfGuests + 1)}
-            className="p-1 bg-blue-500 rounded-full"
-          >
-            <Plus color="#FFFFFF" size={12} />
-          </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* Customer */}
+        <TouchableOpacity
+          onPress={openCustomerSheet}
+          className="flex-row items-center px-3 py-2.5 border-b border-gray-700/30"
+        >
+          <Text className="text-gray-500 text-xs w-20">Customer</Text>
+          <Text className={activeOrder.customer_name ? "text-white text-sm" : "text-blue-400 text-sm"}>
+            {activeOrder.customer_name || "Assign Customer"}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Guests */}
+        <View className="flex-row items-center px-3 py-2 border-b border-gray-700/30">
+          <Text className="text-gray-500 text-xs w-20">Guests</Text>
+          <Text className="text-white text-sm flex-1">Number of people</Text>
+          <View className="flex-row items-center gap-2 bg-surface p-1 rounded-full border border-gray-700">
+            <TouchableOpacity
+              onPress={() => handleGuestCountChange(numberOfGuests - 1)}
+              className="p-1"
+            >
+              <Minus color={colors.label} size={12} />
+            </TouchableOpacity>
+            <Text className="text-sm font-bold text-white w-4 text-center">
+              {numberOfGuests}
+            </Text>
+            <TouchableOpacity
+              onPress={() => handleGuestCountChange(numberOfGuests + 1)}
+              className="p-1 bg-blue-500 rounded-full"
+            >
+              <Plus color="#FFFFFF" size={12} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      {/* Table */}
-      <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700/30">
-        <Text className="text-gray-500 text-xs w-20">Table</Text>
-        <Text className="text-gray-300 text-sm">{getTableDisplayName()}</Text>
-      </View>
-
-      {/* Duration (only if present) */}
-      {duration && (
+        {/* Table */}
         <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700/30">
-          <Text className="text-gray-500 text-xs w-20">Duration</Text>
-          <Text className="text-white text-sm font-medium">{duration}</Text>
+          <Text className="text-gray-500 text-xs w-20">Table</Text>
+          <Text className="text-gray-300 text-sm">{getTableDisplayName()}</Text>
         </View>
-      )}
 
-      {/* Collapse */}
-      <TouchableOpacity
-        onPress={() => setIsExpanded(false)}
-        className="items-center py-1.5"
-      >
-        <ChevronDown
-          style={{ transform: [{ rotate: "180deg" }] }}
-          color="#6B7280"
-          size={14}
-        />
-      </TouchableOpacity>
-    </View>
+        {/* Duration (only if present) */}
+        {duration && (
+          <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700/30">
+            <Text className="text-gray-500 text-xs w-20">Duration</Text>
+            <Text className="text-white text-sm font-medium">{duration}</Text>
+          </View>
+        )}
+
+        {/* Collapse */}
+        <TouchableOpacity
+          onPress={() => setIsExpanded(false)}
+          className="items-center py-1.5"
+        >
+          <ChevronDown
+            style={{ transform: [{ rotate: "180deg" }] }}
+            color={colors.card}
+            size={14}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {/* Server selection sheet — outside layout View to avoid stealing space */}
+      <ServerSelectSheet
+        isOpen={serverSheetOpen}
+        onClose={() => setServerSheetOpen(false)}
+        onSelect={handleServerSelect}
+        currentServer={activeOrder.server_name}
+      />
+    </>
   );
 };
 

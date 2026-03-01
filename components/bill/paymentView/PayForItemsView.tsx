@@ -1,5 +1,6 @@
 import { useRefreshActiveOrder } from "@/hooks/pos/useRefreshActiveOrder";
 import { CartItem } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import {
     calculateItemEffectiveCashPrice,
     useOrderStore,
@@ -187,7 +188,7 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(({
                 : payment.method;
 
     return (
-        <View className="flex-row items-center justify-between py-3 px-2 bg-[#2a2a2a] rounded-lg mb-2">
+        <View className="flex-row items-center justify-between py-3 px-2 bg-surface rounded-lg mb-2">
             {/* Payment Badge + Method */}
             <View className="flex-row items-center flex-1">
                 <View className="bg-green-600 px-2 py-1 rounded mr-3">
@@ -225,7 +226,7 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(({
                         onPress={onPrint}
                         className="px-3 py-2 bg-blue-600/20 rounded-lg"
                     >
-                        <FileText size={16} color="#60A5FA" />
+                        <FileText size={16} color={colors.info} />
                     </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -234,9 +235,9 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(({
                     className="px-3 py-2 bg-red-600/20 rounded-lg"
                 >
                     {isVoiding ? (
-                        <ActivityIndicator size="small" color="#EF4444" />
+                        <ActivityIndicator size="small" color={colors.danger} />
                     ) : (
-                        <RotateCcw size={16} color="#EF4444" />
+                        <RotateCcw size={16} color={colors.danger} />
                     )}
                 </TouchableOpacity>
             </View>
@@ -485,7 +486,7 @@ const PayForItemsView: React.FC = () => {
     // --- RENDER ---
     if (!activeOrder) {
         return (
-            <View className="flex-1 bg-[#212121] items-center justify-center">
+            <View className="flex-1 bg-panel items-center justify-center">
                 <Text className="text-gray-400">No active order</Text>
             </View>
         );
@@ -494,12 +495,12 @@ const PayForItemsView: React.FC = () => {
 
     console.log("selectedItems", selectedCashTotals);
     return (
-        <View className="flex-1 bg-[#212121]">
+        <View className="flex-1 bg-panel">
             {/* Header */}
-            <View className="flex-row items-center p-4 border-b border-[#333] h-[70px]">
+            <View className="flex-row items-center p-4 border-b border-border h-[70px]">
                 <TouchableOpacity
                     onPress={handleGoBack}
-                    className="p-2 bg-[#333] rounded-lg mr-4"
+                    className="p-2 bg-surface rounded-lg mr-4"
                 >
                     <ArrowLeft size={20} color="white" />
                 </TouchableOpacity>
@@ -516,7 +517,7 @@ const PayForItemsView: React.FC = () => {
                         onPress={handleVoidAllPayments}
                         className="px-3 py-2 bg-red-600/20 rounded-lg flex-row items-center"
                     >
-                        <Trash2 size={16} color="#EF4444" />
+                        <Trash2 size={16} color={colors.danger} />
                         <Text className="text-red-400 font-bold ml-2 text-sm">VOID ALL</Text>
                     </TouchableOpacity>
                 )}
@@ -525,9 +526,9 @@ const PayForItemsView: React.FC = () => {
             {/* Two-Panel Layout */}
             <View className="flex-1 flex-row">
                 {/* LEFT PANEL - Remaining Items */}
-                <View className="w-[45%] border-r border-gray-700 bg-[#1a1a1a]">
+                <View className="w-[45%] border-r border-gray-700 bg-panel">
                     {/* Left Panel Header */}
-                    <View className="p-3 border-b border-[#333] flex-row justify-between items-center">
+                    <View className="p-3 border-b border-border flex-row justify-between items-center">
                         <Text className="text-orange-500 font-bold text-sm uppercase tracking-wider">
                             Remaining Items
                         </Text>
@@ -551,7 +552,7 @@ const PayForItemsView: React.FC = () => {
                     <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 100 }}>
                         {unpaidItems.length === 0 ? (
                             <View className="p-4 items-center">
-                                <CheckCircle size={40} color="#10B981" />
+                                <CheckCircle size={40} color={colors.success} />
                                 <Text className="text-green-400 font-bold mt-2">
                                     All Items Paid!
                                 </Text>
@@ -566,7 +567,7 @@ const PayForItemsView: React.FC = () => {
                                 return (
                                     <View
                                         key={item.id}
-                                        className={`flex-row items-center p-3 border-b border-[#333] ${isSelected ? "bg-blue-900/30" : "bg-transparent"
+                                        className={`flex-row items-center p-3 border-b border-border ${isSelected ? "bg-blue-900/30" : "bg-transparent"
                                             }`}
                                     >
                                         {/* Item Info */}
@@ -589,14 +590,14 @@ const PayForItemsView: React.FC = () => {
                                                 disabled={selectedQty === 0}
                                                 className={`w-8 h-8 rounded-full items-center justify-center ${selectedQty > 0
                                                     ? "bg-red-600"
-                                                    : "bg-[#333] opacity-30"
+                                                    : "bg-surface opacity-30"
                                                     }`}
                                             >
                                                 <Minus size={14} color="white" />
                                             </TouchableOpacity>
 
                                             <View
-                                                className={`min-w-[36px] px-2 py-1 rounded-md items-center ${isSelected ? "bg-blue-600" : "bg-[#333]"
+                                                className={`min-w-[36px] px-2 py-1 rounded-md items-center ${isSelected ? "bg-blue-600" : "bg-surface"
                                                     }`}
                                             >
                                                 <Text
@@ -612,7 +613,7 @@ const PayForItemsView: React.FC = () => {
                                                 disabled={selectedQty >= unpaidQty}
                                                 className={`w-8 h-8 rounded-full items-center justify-center ${selectedQty < unpaidQty
                                                     ? "bg-green-600"
-                                                    : "bg-[#333] opacity-30"
+                                                    : "bg-surface opacity-30"
                                                     }`}
                                             >
                                                 <Plus size={14} color="white" />
@@ -626,9 +627,9 @@ const PayForItemsView: React.FC = () => {
                 </View>
 
                 {/* RIGHT PANEL - Split Review */}
-                <View className="w-[55%] bg-[#212121]">
+                <View className="w-[55%] bg-panel">
                     {/* Totals Header */}
-                    <View className="p-4 border-b border-[#333]">
+                    <View className="p-4 border-b border-border">
                         <View className="flex-row justify-between">
                             {/* Order Total */}
                             <View className="items-center">
@@ -695,7 +696,7 @@ const PayForItemsView: React.FC = () => {
 
                         {/* Selected Items Summary */}
                         {selectedItems.size > 0 && (
-                            <View className="mt-4 p-3 bg-[#2a2a2a] rounded-xl border border-[#444]">
+                            <View className="mt-4 p-3 bg-surface rounded-xl border border-border">
                                 <Text className="text-gray-400 text-xs uppercase mb-2">
                                     Selected for Payment
                                 </Text>
@@ -707,12 +708,12 @@ const PayForItemsView: React.FC = () => {
                                         onPress={() => setPaymentMethod("card")}
                                         className={`flex-1 p-3 rounded-lg border ${paymentMethod === "card"
                                             ? "bg-blue-600/20 border-blue-500"
-                                            : "bg-[#333] border-[#444]"
+                                            : "bg-surface border-border"
                                             }`}
                                     >
                                         <View className="flex-row items-center justify-between">
                                             <View className="flex-row items-center">
-                                                <CreditCard size={16} color="#60A5FA" />
+                                                <CreditCard size={16} color={colors.info} />
                                                 <Text className="text-gray-400 text-xs ml-2">Card</Text>
                                             </View>
                                             <Text className="text-blue-400 font-bold">
@@ -726,12 +727,12 @@ const PayForItemsView: React.FC = () => {
                                         onPress={() => setPaymentMethod("cash")}
                                         className={`flex-1 p-3 rounded-lg border ${paymentMethod === "cash"
                                             ? "bg-green-600/20 border-green-500"
-                                            : "bg-[#333] border-[#444]"
+                                            : "bg-surface border-border"
                                             }`}
                                     >
                                         <View className="flex-row items-center justify-between">
                                             <View className="flex-row items-center">
-                                                <Banknote size={16} color="#10B981" />
+                                                <Banknote size={16} color={colors.success} />
                                                 <Text className="text-gray-400 text-xs ml-2">Cash</Text>
                                                 {cashSavings > 0.01 && (
                                                     <View className="ml-1 px-1.5 py-0.5 bg-green-900/30 rounded-full">
@@ -752,11 +753,11 @@ const PayForItemsView: React.FC = () => {
                     </View>
 
                     {/* Footer Actions */}
-                    <View className="p-4 border-t border-[#333]">
+                    <View className="p-4 border-t border-border">
                         <View className="flex-row gap-3">
                             <TouchableOpacity
                                 onPress={handleBackToOrder}
-                                className="flex-1 py-3 rounded-xl border border-[#444] items-center"
+                                className="flex-1 py-3 rounded-xl border border-border items-center"
                             >
                                 <Text className="text-white font-bold">BACK TO ORDER</Text>
                             </TouchableOpacity>
@@ -766,7 +767,7 @@ const PayForItemsView: React.FC = () => {
                                 disabled={selectedItems.size === 0 || isProcessing}
                                 className={`flex-1 py-3 rounded-xl items-center ${selectedItems.size > 0
                                     ? "bg-green-600"
-                                    : "bg-[#333] opacity-50"
+                                    : "bg-surface opacity-50"
                                     }`}
                             >
                                 {isProcessing ? (

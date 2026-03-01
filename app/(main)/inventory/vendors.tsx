@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { Vendor } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
@@ -38,7 +39,7 @@ const VendorRow: React.FC<{
 }> = ({ item, onEdit, onDelete }) => {
   return (
     <Link href={`/inventory/vendors/${item.id}`} asChild>
-      <TouchableOpacity className="flex-row w-full flex items-center p-2 border-b border-gray-700">
+      <TouchableOpacity className="flex-row w-full flex items-center p-2 border-b border-border">
         <Text className="w-[20%] text-lg font-semibold text-white">
           {item.name}
         </Text>
@@ -51,16 +52,16 @@ const VendorRow: React.FC<{
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="p-2">
-                <MoreHorizontal size={20} color="#9CA3AF" />
+                <MoreHorizontal size={20} color={colors.label} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
+            <DropdownMenuContent className="w-48 bg-panel border-border">
               <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-5 w-5" color="#9CA3AF" />
+                <Edit className="mr-2 h-5 w-5" color={colors.label} />
                 <Text className="text-base text-white">Edit Vendor</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-5 w-5 text-red-400" color="#F87171" />
+                <Trash2 className="mr-2 h-5 w-5 text-red-400" color={colors.danger} />
                 <Text className="text-base text-red-400">Delete Vendor</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -135,8 +136,8 @@ const VendorScreen = () => {
 
   return (
     <View className="flex-1">
-      <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-        <View className="flex-row p-2 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
+      <View className="flex-1 bg-panel border border-border rounded-xl">
+        <View className="flex-row p-2 bg-gray-800/50 rounded-t-xl border-b items-center border-border">
           {TABLE_HEADERS.map((header) => (
             <Text
               key={header}
@@ -161,9 +162,9 @@ const VendorScreen = () => {
                 setIsSearchOpen(true);
                 setTimeout(() => sheetRef.current?.expand(), 0);
               }}
-              className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-2"
+              className="flex-row items-center bg-panel border border-border rounded-lg p-2"
             >
-              <Search color="#9CA3AF" size={20} />
+              <Search color={colors.label} size={20} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleOpenAddModal}
@@ -210,8 +211,7 @@ const VendorScreen = () => {
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={(props) => (
           <BottomSheetBackdrop
             {...props}
@@ -224,14 +224,14 @@ const VendorScreen = () => {
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <View className="p-2 border-b border-gray-700">
-            <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-1 border border-gray-600">
-              <Search color="#9CA3AF" size={20} />
+          <View className="p-2 border-b border-border">
+            <View className="flex-row items-center bg-screen rounded-lg px-3 py-1 border border-border">
+              <Search color={colors.label} size={20} />
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search vendors..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 className="flex-1 text-white ml-3 p-2 text-lg"
               />
             </View>
@@ -247,7 +247,7 @@ const VendorScreen = () => {
                 setIsSearchOpen(false);
                 router.push(`/inventory/vendors/${item.id}`);
               }}
-              className="p-2 border-b border-gray-700"
+              className="p-2 border-b border-border"
             >
               <View className="flex-row items-center justify-between">
                 <View className="flex-1">

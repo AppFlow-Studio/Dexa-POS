@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -283,7 +284,7 @@ const OrderDetailsComponent: React.FC = () => {
   };
 
   return (
-    <View className=" px-6 bg-[#212121] overflow-hidden ">
+    <View className=" px-4 overflow-hidden ">
       {/* Header */}
       <View className="flex-row flex items-center justify-center w-full gap-x-4">
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-1">
@@ -292,13 +293,13 @@ const OrderDetailsComponent: React.FC = () => {
             onPress={openSheet}
             className={`flex-row w-full items-center p-2 border-2 rounded-lg h-12 ${
               customerName
-                ? "border-green-500 bg-[#303030] border-solid"
-                : "border-dashed border-gray-700 bg-[#303030]"
+                ? "border-green-500 bg-surface border-solid"
+                : "border-dashed border-gray-700 bg-surface"
             }`}
           >
             {customerName ? (
               <>
-                <User color="#A5A5B5" size={24} />
+                <User color={colors.label} size={24} />
                 <View className="ml-3 flex-1">
                   <Text
                     className="text-xl font-semibold text-white overflow-ellipsis"
@@ -312,11 +313,11 @@ const OrderDetailsComponent: React.FC = () => {
                     </Text>
                   )}
                 </View>
-                <Edit3 color="#60A5FA" size={24} />
+                <Edit3 color={colors.info} size={24} />
               </>
             ) : (
               <>
-                <Plus color="#9CA3AF" size={24} />
+                <Plus color={colors.label} size={24} />
                 <Text className="text-xl font-semibold text-gray-300 ml-3">
                   Add Customer
                 </Text>
@@ -328,7 +329,7 @@ const OrderDetailsComponent: React.FC = () => {
           <Label className="text-white font-semibold text-xl">Order Type</Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row items-center justify-between p-2 border border-background-400 rounded-lg bg-[#303030] h-12"
+            className="w-full flex-row items-center justify-between p-2 border border-background-400 rounded-lg bg-surface h-12"
             onPress={openDrawer}
           >
             <Text className="text-xl font-semibold text-white">
@@ -390,13 +391,13 @@ const OrderDetailsComponent: React.FC = () => {
         open={isCustomerNameModalVisible}
         onOpenChange={setIsCustomerNameModalVisible}
       >
-        <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-[#11111A] border-none">
+        <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-screen border-none">
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
             {/* Dark Header */}
             <View className="p-6 rounded-lg ">
-              <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
+              <DialogTitle className="text-heading text-3xl font-bold text-center">
                 {localCustomerName ? "Edit Customer Name" : "Add Customer Name"}
               </DialogTitle>
             </View>
@@ -417,7 +418,7 @@ const OrderDetailsComponent: React.FC = () => {
                 <TextInput
                   className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20"
                   placeholder="Enter customer name"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.muted}
                   value={tempCustomerName}
                   onChangeText={setTempCustomerName}
                   autoFocus

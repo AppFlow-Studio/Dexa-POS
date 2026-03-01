@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { OrderProfile } from "@/lib/types";
@@ -16,6 +16,8 @@ export const orderHistoryKeys = {
   list: (locationId: string, filters: Record<string, unknown>) =>
     ["orderHistory", "list", locationId, filters] as const,
   detail: (orderId: string) => ["orderHistory", "detail", orderId] as const,
+  filterCounts: (locationId: string) =>
+    ["orderHistory", "filterCounts", locationId] as const,
 };
 
 interface OrderHistoryFilters {
@@ -26,6 +28,14 @@ interface OrderHistoryFilters {
   sortOrder: "asc" | "desc";
   needsAttention?: boolean;
   refundedOnly?: boolean;
+}
+
+export interface FilterCounts {
+  needsAttention: number;
+  refunded: number;
+  dineIn: number;
+  takeaway: number;
+  delivery: number;
 }
 
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -141,11 +151,11 @@ export function useOrderHistory(filters: OrderHistoryFilters) {
         return transformBroadcastToOrder(normalized);
       });
 
-      // Client-side filter: needs attention
+      // Client-side filter: needs attention (pending open orders with no payments)
       let filtered = orders;
       if (queryFilters.needsAttention) {
         filtered = filtered.filter(
-          (o) => o.paid_status === "Paid" && o.check_status !== "Closed",
+          (o) => o.paid_status === "Pending",
         );
       }
 
@@ -179,16 +189,63 @@ export function useOrderHistory(filters: OrderHistoryFilters) {
     [query.data?.pages],
   );
 
-  // Count needs-attention orders for the pill badge
-  const needsAttentionCount = useMemo(() => {
-    return orders.filter(
-      (o) => o.paid_status === "Paid" && o.check_status !== "Closed",
-    ).length;
-  }, [orders]);
+  // ─── Filter counts (parallel head-only queries, independent of active filters) ───
+  const countsQuery = useQuery({
+    queryKey: orderHistoryKeys.filterCounts(locationId),
+    queryFn: async (): Promise<FilterCounts> => {
+      if (!locationId) throw new Error("No location ID");
+
+      const base = () =>
+        supabase
+          .from("orders")
+          .select("*", { count: "exact", head: true })
+          .eq("location_id", locationId)
+          .neq("status", "draft");
+
+      const [
+        needsAttentionRes,
+        refundedRes,
+        dineInRes,
+        takeawayRes,
+        deliveryRes,
+      ] = await Promise.all([
+        // needs-attention: pending open orders with no payments
+        base().eq("payment_status", "pending"),
+        // refunded
+        base().in("payment_status", ["refunded", "partially_refunded"]),
+        // dine-in
+        base().eq("order_type", "dine_in"),
+        // takeaway
+        base().eq("order_type", "takeout"),
+        // delivery
+        base().eq("order_type", "delivery"),
+      ]);
+
+      return {
+        needsAttention: needsAttentionRes.count ?? 0,
+        refunded: refundedRes.count ?? 0,
+        dineIn: dineInRes.count ?? 0,
+        takeaway: takeawayRes.count ?? 0,
+        delivery: deliveryRes.count ?? 0,
+      };
+    },
+    enabled: !!locationId && !!supabase,
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
+  });
+
+  const filterCounts: FilterCounts = countsQuery.data ?? {
+    needsAttention: 0,
+    refunded: 0,
+    dineIn: 0,
+    takeaway: 0,
+    delivery: 0,
+  };
 
   return {
     orders,
-    needsAttentionCount,
+    filterCounts,
     isLoading: query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage,

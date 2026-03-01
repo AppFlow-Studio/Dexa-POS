@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -33,7 +34,7 @@ const ForgotPinScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1 justify-center items-center"
     >
-      <View className="w-full max-w-sm p-6 bg-[#212121] rounded-2xl shadow-xl">
+      <View className="w-full max-w-sm p-6 bg-screen rounded-2xl shadow-xl">
         <Text className="text-2xl font-bold text-white text-center mb-6">
           Forgot Pin
         </Text>
@@ -45,9 +46,9 @@ const ForgotPinScreen = () => {
           <TextInput
             value={email}
             onChangeText={setEmail}
-            className="w-full p-4 bg-[#303030] border border-gray-600 rounded-lg text-xl text-white h-16"
+            className="w-full p-4 bg-panel border border-gray-600 rounded-lg text-xl text-white h-16"
             placeholder="john@gmail.com"
-            placeholderTextColor="#6B7280"
+            placeholderTextColor={colors.muted}
             keyboardType="email-address"
             autoCapitalize="none"
             autoComplete="email"

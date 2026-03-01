@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
@@ -39,7 +40,7 @@ export function DenyRequestModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#1C1C1E] border-gray-700">
+      <DialogContent className="bg-panel border-border">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -52,9 +53,9 @@ export function DenyRequestModal({
               value={reason}
               onChangeText={setReason}
               placeholder="Provide a reason (optional)..."
-              placeholderTextColor="#6B7280"
+              placeholderTextColor={colors.muted}
               multiline
-              className="p-3 bg-[#303030] border border-gray-600 rounded-lg text-white min-h-[80px] mt-2"
+              className="p-3 bg-card border border-border rounded-lg text-white min-h-[80px] mt-2"
             />
           </View>
           <DialogFooter className="gap-2">

@@ -12,6 +12,7 @@ import {
   Users,
   X,
 } from "lucide-react-native";
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import {
   ScrollView,
@@ -61,7 +62,7 @@ const WaitlistScreen = () => {
       : 0;
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">
           Waitlist & Reservations
@@ -79,10 +80,10 @@ const WaitlistScreen = () => {
       >
         <View className="gap-6">
           {/* Digital Waitlist Section */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <Users color="#3b82f6" size={24} />
+                <Users color={colors.info} size={24} />
                 <CardTitle className="text-white">Digital Waitlist</CardTitle>
               </View>
             </CardHeader>
@@ -108,13 +109,13 @@ const WaitlistScreen = () => {
                       Live Dashboard
                     </Text>
                     <View className="flex-row gap-4">
-                      <View className="flex-1 bg-[#212121] p-4 rounded-lg border border-gray-700">
+                      <View className="flex-1 bg-screen p-4 rounded-lg border border-gray-700">
                         <Text className="text-gray-400 text-xs">Waiting</Text>
                         <Text className="text-2xl font-bold text-white">
                           {waitlist.length}
                         </Text>
                       </View>
-                      <View className="flex-1 bg-[#212121] p-4 rounded-lg border border-gray-700">
+                      <View className="flex-1 bg-screen p-4 rounded-lg border border-gray-700">
                         <Text className="text-gray-400 text-xs">Avg Wait</Text>
                         <Text className="text-2xl font-bold text-blue-400">
                           {avgWaitTime}m
@@ -123,7 +124,7 @@ const WaitlistScreen = () => {
                     </View>
 
                     {/* Active Waitlist Items */}
-                    <View className="bg-[#212121] rounded-lg border border-gray-700 overflow-hidden">
+                    <View className="bg-screen rounded-lg border border-gray-700 overflow-hidden">
                       <View className="p-3 border-b border-gray-700 bg-gray-800/50">
                         <Text className="text-gray-300 font-medium">
                           Active Parties
@@ -152,16 +153,16 @@ const WaitlistScreen = () => {
                             </View>
                             <View className="flex-row gap-2">
                               <TouchableOpacity className="p-2 bg-blue-600/20 rounded-md border border-blue-600/50">
-                                <MessageSquare size={14} color="#60a5fa" />
+                                <MessageSquare size={14} color={colors.info} />
                               </TouchableOpacity>
                               <TouchableOpacity className="p-2 bg-green-600/20 rounded-md border border-green-600/50">
-                                <Check size={14} color="#4ade80" />
+                                <Check size={14} color={colors.success} />
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => removeWaitlistEntry(entry.id)}
                                 className="p-2 bg-red-600/20 rounded-md border border-red-600/50"
                               >
-                                <X size={14} color="#f87171" />
+                                <X size={14} color={colors.danger} />
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -196,7 +197,7 @@ const WaitlistScreen = () => {
                         <TextInput
                           multiline
                           numberOfLines={3}
-                          className="bg-[#212121] border border-gray-600 rounded-md p-3 text-white text-sm h-24"
+                          className="bg-screen border border-gray-600 rounded-md p-3 text-white text-sm h-24"
                           value={smsTemplate}
                           onChangeText={setSmsTemplate}
                           textAlignVertical="top"
@@ -213,10 +214,10 @@ const WaitlistScreen = () => {
           </Card>
 
           {/* Reservation System Section */}
-          <Card className="bg-[#303030] border-gray-600">
+          <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
-                <CalendarDays color="#f59e0b" size={24} />
+                <CalendarDays color={colors.warning} size={24} />
                 <CardTitle className="text-white">Reservation System</CardTitle>
               </View>
             </CardHeader>
@@ -247,7 +248,7 @@ const WaitlistScreen = () => {
                           Days Ahead
                         </Label>
                         <Input
-                          className="bg-[#212121] border-gray-600 text-white h-10"
+                          className="bg-screen border-gray-600 text-white h-10"
                           value={daysAhead}
                           onChangeText={setDaysAhead}
                           keyboardType="numeric"
@@ -258,7 +259,7 @@ const WaitlistScreen = () => {
                           Max Guests
                         </Label>
                         <Input
-                          className="bg-[#212121] border-gray-600 text-white h-10"
+                          className="bg-screen border-gray-600 text-white h-10"
                           value={maxGuestsPerSlot}
                           onChangeText={setMaxGuestsPerSlot}
                           keyboardType="numeric"
@@ -269,7 +270,7 @@ const WaitlistScreen = () => {
                           Slot (min)
                         </Label>
                         <Input
-                          className="bg-[#212121] border-gray-600 text-white h-10"
+                          className="bg-screen border-gray-600 text-white h-10"
                           value={slotDuration}
                           onChangeText={setSlotDuration}
                           keyboardType="numeric"
@@ -294,7 +295,7 @@ const WaitlistScreen = () => {
                             Amount per Person ($)
                           </Label>
                           <Input
-                            className="bg-[#212121] border-gray-600 text-white h-10"
+                            className="bg-screen border-gray-600 text-white h-10"
                             value={depositAmount}
                             onChangeText={setDepositAmount}
                             keyboardType="numeric"
@@ -306,7 +307,7 @@ const WaitlistScreen = () => {
                           </Label>
                           <TextInput
                             multiline
-                            className="bg-[#212121] border border-gray-600 rounded-md p-3 text-white text-sm h-20"
+                            className="bg-screen border border-gray-600 rounded-md p-3 text-white text-sm h-20"
                             value={cancellationPolicy}
                             onChangeText={setCancellationPolicy}
                             textAlignVertical="top"
@@ -335,9 +336,9 @@ const WaitlistScreen = () => {
                       {mockReservations.map((res, index) => (
                         <View
                           key={index}
-                          className="flex-row items-center bg-[#212121] p-3 rounded-md border border-gray-700"
+                          className="flex-row items-center bg-screen p-3 rounded-md border border-gray-700"
                         >
-                          <Clock size={16} color="#9ca3af" className="mr-3" />
+                          <Clock size={16} color={colors.label} className="mr-3" />
                           <Text className="text-blue-400 font-bold w-20">
                             {res.time}
                           </Text>
@@ -345,7 +346,7 @@ const WaitlistScreen = () => {
                             {res.name}
                           </Text>
                           <View className="flex-row items-center gap-1">
-                            <Users size={14} color="#9ca3af" />
+                            <Users size={14} color={colors.label} />
                             <Text className="text-gray-400 text-sm">
                               {res.party}
                             </Text>

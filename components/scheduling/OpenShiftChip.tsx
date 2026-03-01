@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Shift } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { Clock, UserPlus } from "lucide-react-native";
@@ -25,13 +26,13 @@ export const OpenShiftChip: React.FC<OpenShiftChipProps> = ({
     >
       <View className="flex-row items-center justify-between mb-1">
         <Text className="text-xs font-bold text-amber-400">OPEN SHIFT</Text>
-        <UserPlus size={14} color="#FBBF24" />
+        <UserPlus size={14} color={colors.warning} />
       </View>
       <Text className="text-sm font-semibold text-white" numberOfLines={1}>
         {shift.role}
       </Text>
       <View className="flex-row items-center gap-1 mt-1">
-        <Clock size={12} color="#9CA3AF" />
+        <Clock size={12} color={colors.label} />
         <Text className="text-xs text-gray-300">
           {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
         </Text>

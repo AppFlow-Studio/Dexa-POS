@@ -165,7 +165,7 @@ const ScheduleManagerDashboard = () => {
   };
 
   return (
-    <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
+    <SafeAreaView edges={["top"]} className="flex-1 bg-screen">
       <View className="p-4 flex-1">
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
@@ -210,7 +210,7 @@ const ScheduleManagerDashboard = () => {
             ItemSeparatorComponent={() => <View className="w-4" />}
             showsHorizontalScrollIndicator={false}
             ListEmptyComponent={() => (
-              <View className="h-24 justify-center items-center bg-[#303030] border border-gray-700 rounded-2xl p-4">
+              <View className="h-24 justify-center items-center bg-panel border border-border rounded-2xl p-4">
                 <Text className="text-white">
                   No schedule periods created yet.
                 </Text>
@@ -237,7 +237,7 @@ const ScheduleManagerDashboard = () => {
             )}
             ItemSeparatorComponent={() => <View className="h-4" />}
             ListEmptyComponent={() => (
-              <View className="flex-1 justify-center items-center bg-[#303030] border border-gray-700 rounded-2xl p-4">
+              <View className="flex-1 justify-center items-center bg-panel border border-border rounded-2xl p-4">
                 <Text className="text-white">
                   No weekly schedules created yet.
                 </Text>

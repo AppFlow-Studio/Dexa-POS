@@ -1,5 +1,6 @@
 import { ClerkVerificationScreen } from "@/components/tests/ClerkVerificationScreen";
 // import { DebugSignInScreen } from "@/components/tests/DebugSigninScreen";
+import { colors } from "@/lib/theme";
 import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
@@ -157,7 +158,7 @@ const MerchantLoginScreen = () => {
         }`}
       >
         {isGoogleLoading ? (
-          <ActivityIndicator color="#4285F4" size="small" />
+          <ActivityIndicator color={colors.info} size="small" />
         ) : (
           <>
             <Image
@@ -186,7 +187,7 @@ const MerchantLoginScreen = () => {
         <TextInput
           className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl"
           placeholder="john@gmail.com"
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.label}
           keyboardType="email-address"
           autoCapitalize="none"
           value={emailAddress}
@@ -200,7 +201,7 @@ const MerchantLoginScreen = () => {
         <KeyboardAvoidingView behavior="position">
           <TextInput
             className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.label}
             placeholder="••••••••"
             secureTextEntry
             value={password}

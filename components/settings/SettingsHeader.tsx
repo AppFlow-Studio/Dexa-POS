@@ -1,3 +1,4 @@
+import { colors, switchTrackColors } from "@/lib/theme";
 import React from "react";
 import { Switch, Text, View } from "react-native";
 
@@ -18,8 +19,8 @@ const SettingsHeader: React.FC<SettingsHeaderProps> = ({
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: "#d1d5db", true: "#86efac" }}
-        thumbColor={value ? "#22c55e" : "#f4f3f4"}
+        trackColor={switchTrackColors}
+        thumbColor={value ? colors.success : "#f4f3f4"}
       />
     </View>
   );

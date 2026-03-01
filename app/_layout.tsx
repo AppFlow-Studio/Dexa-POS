@@ -16,6 +16,7 @@ import { SessionKickListenerProvider } from "@/contexts/SessionKickListenerProvi
 import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
+import { colors } from "@/lib/theme";
 import { initLogCollector } from "@/lib/logCollector";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { PrinterService } from "@/services/printing/PrinterService";
@@ -180,18 +181,18 @@ export default function RootLayout() {
                             <Toasts
                               defaultStyle={{
                                 view: {
-                                  backgroundColor: "#ffffff",
+                                  backgroundColor: colors.card,
                                   borderWidth: 1,
-                                  borderColor: "#e5e7eb",
+                                  borderColor: colors.border,
                                   flex: 1,
                                 },
                                 text: {
-                                  color: "#1f2937",
+                                  color: colors.heading,
                                   fontWeight: "bold",
                                   fontSize: 24,
                                 },
                                 indicator: {
-                                  backgroundColor: "#659AF0",
+                                  backgroundColor: colors.teal,
                                 },
                               }}
                             />

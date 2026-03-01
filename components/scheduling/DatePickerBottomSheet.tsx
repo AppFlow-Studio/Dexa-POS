@@ -5,6 +5,7 @@ import BottomSheet, {
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface DatePickerBottomSheetProps {
   bottomSheetRef: React.RefObject<BottomSheet>;
@@ -37,22 +38,22 @@ const DatePickerBottomSheet: React.FC<DatePickerBottomSheetProps> = ({
   };
 
   const calendarTheme = {
-    calendarBackground: "#303030", // Match QuickScheduleModal theme
-    monthTextColor: "#FFFFFF",
-    dayTextColor: "#FFFFFF",
-    textDisabledColor: "#6B7280",
-    selectedDayBackgroundColor: "#3b82f6",
-    selectedDayTextColor: "#FFFFFF",
-    todayTextColor: "#60A5FA",
-    arrowColor: "#3b82f6",
-    textSectionTitleColor: "#9CA3AF",
+    calendarBackground: colors.panel,
+    monthTextColor: colors.heading,
+    dayTextColor: colors.heading,
+    textDisabledColor: colors.muted,
+    selectedDayBackgroundColor: colors.info,
+    selectedDayTextColor: colors.heading,
+    todayTextColor: colors.info,
+    arrowColor: colors.info,
+    textSectionTitleColor: colors.label,
   };
 
   const markedDates = useMemo(() => {
     return {
       [selectedDate]: {
         selected: true,
-        selectedColor: "#3b82f6",
+        selectedColor: colors.info,
       },
     };
   }, [selectedDate]);
@@ -64,8 +65,8 @@ const DatePickerBottomSheet: React.FC<DatePickerBottomSheetProps> = ({
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#4B5563", width: 40 }}
-      backgroundStyle={{ backgroundColor: "#1C1C1E" }}
+      {...bottomSheetTheme}
+      handleIndicatorStyle={{ ...bottomSheetTheme.handleIndicatorStyle, width: 40 }}
       backdropComponent={(props) => (
         <BottomSheetBackdrop
           {...props}
@@ -80,7 +81,7 @@ const DatePickerBottomSheet: React.FC<DatePickerBottomSheetProps> = ({
           {title}
         </Text>
 
-        <View className="bg-[#303030] rounded-2xl overflow-hidden p-2">
+        <View className="bg-panel rounded-2xl overflow-hidden p-2">
           <Calendar
             current={selectedDate}
             onDayPress={onDayPress}

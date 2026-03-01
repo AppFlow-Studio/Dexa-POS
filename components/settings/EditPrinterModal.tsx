@@ -76,13 +76,13 @@ const EditPrinterModal: React.FC<EditPrinterModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-[#11111A] max-w-sm">
+      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-screen max-w-sm">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Dark Header */}
           <View className="p-3 pb-0 rounded-t-3xl">
-            <DialogTitle className="text-[#F1F1F1] text-xl font-bold text-center">
+            <DialogTitle className="text-heading text-xl font-bold text-center">
               Edit Printer
             </DialogTitle>
           </View>

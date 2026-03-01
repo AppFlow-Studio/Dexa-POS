@@ -1,3 +1,4 @@
+import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
@@ -107,19 +108,19 @@ const TableLayoutSkeleton: React.FC<TableLayoutSkeletonProps> = ({
       {showControls && (
         <View style={styles.statusBar}>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#10B981" }]} />
+            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS.Available }]} />
             <AnimatedPulse style={styles.statusText} />
           </View>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#3B82F6" }]} />
+            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS["In Use"] }]} />
             <AnimatedPulse style={styles.statusText} />
           </View>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#EF4444" }]} />
+            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS["Needs Cleaning"] }]} />
             <AnimatedPulse style={styles.statusText} />
           </View>
           <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: "#F59E0B" }]} />
+            <View style={[styles.statusDot, { backgroundColor: TABLE_STATUS_COLORS.Overtime }]} />
             <AnimatedPulse style={styles.statusText} />
           </View>
         </View>
@@ -131,7 +132,7 @@ const TableLayoutSkeleton: React.FC<TableLayoutSkeletonProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#212121",
+    backgroundColor: colors.screen,
     position: "relative",
   },
   zoomControls: {
@@ -144,10 +145,10 @@ const styles = StyleSheet.create({
   zoomButton: {
     width: 52,
     height: 48,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#4B5563",
+    borderColor: colors.border,
   },
   actionButtons: {
     position: "absolute",
@@ -160,13 +161,13 @@ const styles = StyleSheet.create({
   mergeButton: {
     width: 140,
     height: 44,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 8,
   },
   editButton: {
     width: 110,
     height: 44,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 8,
   },
   canvasArea: {
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 100,
     height: 100,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 16,
   },
   tableRound: {
@@ -196,10 +197,10 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "rgba(28, 28, 28, 0.9)",
+    backgroundColor: "rgba(12, 15, 26, 0.9)",
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#4B5563",
+    borderColor: colors.border,
   },
   statusItem: {
     flexDirection: "row",
@@ -214,7 +215,7 @@ const styles = StyleSheet.create({
   statusText: {
     width: 60,
     height: 16,
-    backgroundColor: "#303030",
+    backgroundColor: colors.skeleton,
     borderRadius: 4,
   },
 });

@@ -1,8 +1,10 @@
 import MergeActionBar from "@/components/tables/MergeActionBar";
 import { GuestCountModal } from "@/components/tables/GuestCountModal";
 import Sidebar from "@/components/tables/Sidebar";
+import WaitlistBottomSheet from "@/components/tables/WaitlistBottomSheet";
 import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
+import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { getDeviceId } from "@/lib/deviceId";
@@ -18,7 +20,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
-import { GitMerge, Search, X } from "lucide-react-native";
+import { GitMerge, Pencil, Search, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   InteractionManager,
@@ -342,8 +344,8 @@ const TablesScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] px-2 py-1">
-      <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
+    <View className="flex-1 bg-screen px-2 py-1">
+      <View className="flex-1 flex-row bg-screen rounded-lg border border-border">
         {/* NEW: Sidebar Component */}
         <Sidebar
           // layouts={layouts} REMOVED
@@ -353,22 +355,22 @@ const TablesScreen = () => {
 
         {/* Right Side: Floor Plan */}
         <View className="flex-1 p-4">
-          <View className="flex-row justify-between items-center mb-3">
+          <View className="flex-row items-center mb-3 gap-3">
             {/* Layout Tabs */}
-            <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl self-start ml-2">
+            <View className="flex-row items-center bg-panel border border-border p-1 rounded-xl ml-2">
               {floorPlans.map((layout) => (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => setActiveFloorPlan(layout.id)}
                   className={`py-2 px-4 rounded-lg ${
-                    activeFloorPlanId === layout.id ? "bg-[#212121]" : ""
+                    activeFloorPlanId === layout.id ? "bg-screen" : ""
                   }`}
                 >
                   <Text
                     className={`text-lg font-semibold ${
                       activeFloorPlanId === layout.id
-                        ? "text-blue-400"
-                        : "text-gray-300"
+                        ? "text-teal"
+                        : "text-label"
                     }`}
                   >
                     {layout.name}
@@ -377,26 +379,61 @@ const TablesScreen = () => {
               ))}
             </View>
 
-            {/* Search Bar - Edit button removed from here */}
-            <View className="flex-row items-center gap-2">
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 max-w-sm"
-              >
-                <Search color="#9CA3AF" size={20} />
-                <TextInput
-                  placeholder="Search table name..."
-                  placeholderTextColor="#9CA3AF"
-                  value={searchInput}
-                  onChangeText={setSearchInput}
-                  className="ml-2 text-lg h-12 flex-1 text-white"
-                />
-              </KeyboardAvoidingView>
-            </View>
+            {/* Search Bar */}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              className="flex-1 flex-row items-center bg-panel border border-border rounded-lg px-3 max-w-sm"
+            >
+              <Search color={colors.label} size={20} />
+              <TextInput
+                placeholder="Search table name..."
+                placeholderTextColor={colors.label}
+                value={searchInput}
+                onChangeText={setSearchInput}
+                className="ml-2 text-lg h-12 flex-1 text-white"
+              />
+            </KeyboardAvoidingView>
+
+            {/* Merge Tables Toggle Button */}
+            <TouchableOpacity
+              onPress={() => {
+                if (isMergeMode) {
+                  handleCancelMerge();
+                } else {
+                  clearSelection();
+                  setMergeMode(true);
+                }
+              }}
+              className={`py-2 px-4 flex-row items-center justify-center rounded-lg border ${
+                isMergeMode
+                  ? "bg-gray-600 border-gray-500"
+                  : "bg-amber-600 border-amber-500"
+              }`}
+            >
+              {isMergeMode ? (
+                <X color="white" size={20} />
+              ) : (
+                <GitMerge color="white" size={20} />
+              )}
+              <Text className="text-lg font-bold text-white ml-2">
+                {isMergeMode ? "Cancel" : "Merge Tables"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Edit Layout Button */}
+            <TouchableOpacity
+              onPress={() => router.push(`/tables/floor-plan` as Href)}
+              className="py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 border border-blue-500"
+            >
+              <Pencil color="white" size={18} />
+              <Text className="text-lg font-bold text-white ml-2">
+                Edit Layout
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Map Container */}
-          <View className="bg-[#212121] border border-gray-700 rounded-xl flex-1 relative">
+          <View className="bg-screen border border-border rounded-xl flex-1 relative">
             {!isReady || (floorPlanLoading && tables.length === 0) ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
@@ -408,45 +445,6 @@ const TablesScreen = () => {
                 layoutId={activeFloorPlanId || ""}
               />
             )}
-
-            {/* Top Right Buttons: Merge + Edit Layout */}
-            <View className="absolute top-4 right-4 z-10 flex-row gap-2">
-              {/* Merge Tables Toggle Button */}
-              <TouchableOpacity
-                onPress={() => {
-                  if (isMergeMode) {
-                    handleCancelMerge();
-                  } else {
-                    clearSelection();
-                    setMergeMode(true);
-                  }
-                }}
-                className={`py-2 px-4 flex-row items-center justify-center rounded-lg shadow-md border ${
-                  isMergeMode
-                    ? "bg-gray-600 border-gray-500"
-                    : "bg-amber-600 border-amber-500"
-                }`}
-              >
-                {isMergeMode ? (
-                  <X color="white" size={20} />
-                ) : (
-                  <GitMerge color="white" size={20} />
-                )}
-                <Text className="text-lg font-bold text-white ml-2">
-                  {isMergeMode ? "Cancel" : "Merge Tables"}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Edit Layout Button */}
-              <TouchableOpacity
-                onPress={() => router.push(`/tables/floor-plan` as Href)}
-                className="py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 shadow-md border border-blue-500"
-              >
-                <Text className="text-lg font-bold text-white">
-                  Edit Layout
-                </Text>
-              </TouchableOpacity>
-            </View>
 
             {/* Merge Mode Action Bar */}
             {isMergeMode && (
@@ -462,35 +460,38 @@ const TablesScreen = () => {
               />
             )}
 
-            {/* Status Indicators (Bottom Left) */}
-            <View className="absolute bottom-3 left-4 self-center flex-row items-center gap-4 p-2 rounded-full bg-[#1c1c1c]/90 border border-gray-600">
+            {/* Status Indicators (Bottom Center) */}
+            <View className="absolute bottom-3 left-0 right-0 flex-row justify-center">
+            <View className="flex-row items-center gap-4 p-2 rounded-full bg-screen/90 border border-border">
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full bg-green-500" />
-                <Text className="text-base font-semibold text-gray-300">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.Available }} />
+                <Text className="text-base font-semibold text-label">
                   Available
                 </Text>
               </View>
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full bg-blue-500" />
-                <Text className="text-base font-semibold text-gray-300">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS["In Use"] }} />
+                <Text className="text-base font-semibold text-label">
                   In Use
                 </Text>
               </View>
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full bg-red-500" />
-                <Text className="text-base font-semibold text-gray-300">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS["Needs Cleaning"] }} />
+                <Text className="text-base font-semibold text-label">
                   Needs Cleaning
                 </Text>
               </View>
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full bg-yellow-500" />
-                <Text className="text-base font-semibold text-gray-300">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.Overtime }} />
+                <Text className="text-base font-semibold text-label">
                   Overtime
                 </Text>
               </View>
             </View>
+            </View>
           </View>
         </View>
+        <WaitlistBottomSheet />
       </View>
       <GuestCountModal
         isOpen={isGuestModalOpen}

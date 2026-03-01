@@ -5,13 +5,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OfflineOrder } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import { ArrowUpRight, MoreHorizontal, Trash2, Zap } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const OfflineOrderRow: React.FC<{ order: OfflineOrder }> = ({ order }) => {
   return (
-    <View className="flex-row items-center p-4 border-b border-gray-700 bg-[#212121]">
+    <View className="flex-row items-center p-4 border-b border-gray-700 bg-screen">
       {/* Column widths are set to match the header */}
       <Text className="w-1/6 font-semibold text-gray-300 text-lg">
         {order.serialNo}
@@ -26,11 +27,11 @@ const OfflineOrderRow: React.FC<{ order: OfflineOrder }> = ({ order }) => {
         {order.orderId}
       </Text>
       <View className="w-1/6">
-        <TouchableOpacity className="flex-row items-center gap-1 bg-[#303030] border border-gray-600 py-1 px-2 rounded-md self-start">
+        <TouchableOpacity className="flex-row items-center gap-1 bg-panel border border-gray-600 py-1 px-2 rounded-md self-start">
           <Text className="font-semibold text-sm text-gray-300">
             {order.server}
           </Text>
-          <ArrowUpRight size={12} color="#9CA3AF" />
+          <ArrowUpRight size={12} color={colors.label} />
         </TouchableOpacity>
       </View>
       <Text className="w-1/6 font-bold text-white text-lg">
@@ -40,12 +41,12 @@ const OfflineOrderRow: React.FC<{ order: OfflineOrder }> = ({ order }) => {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="p-2 rounded-md hover:bg-gray-700">
-              <MoreHorizontal size={20} color="#9CA3AF" />
+              <MoreHorizontal size={20} color={colors.label} />
             </TouchableOpacity>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-32 bg-[#303030]">
+          <DropdownMenuContent className="w-32 bg-panel">
             <DropdownMenuItem>
-              <Zap className="mr-1.5 h-3.5 w-3.5 " color="#d1d5db" />
+              <Zap className="mr-1.5 h-3.5 w-3.5 " color={colors.label} />
               <Text
                 className="text-sm text-gray-300"
                 onPress={() => alert("Sync")}
@@ -56,7 +57,7 @@ const OfflineOrderRow: React.FC<{ order: OfflineOrder }> = ({ order }) => {
             <DropdownMenuItem>
               <Trash2
                 className="mr-1.5 h-3.5 w-3.5 text-red-500"
-                color="#ef4444"
+                color={colors.danger}
               />
               <Text
                 className="text-red-500 text-sm"

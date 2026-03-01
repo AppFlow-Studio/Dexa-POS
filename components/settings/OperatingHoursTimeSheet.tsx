@@ -5,6 +5,7 @@ import BottomSheet, {
 import { Clock, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface OperatingHoursTimeSheetProps {
   bottomSheetRef: React.RefObject<BottomSheet | null>;
@@ -95,11 +96,10 @@ export const OperatingHoursTimeSheet: React.FC<
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-      backgroundStyle={{ backgroundColor: "#303030" }}
+      {...bottomSheetTheme}
       backdropComponent={renderBackdrop}
     >
-      <BottomSheetView className="p-5 flex-1 bg-[#303030]">
+      <BottomSheetView className="p-5 flex-1 bg-panel">
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
           <View>
@@ -110,22 +110,22 @@ export const OperatingHoursTimeSheet: React.FC<
           </View>
           <TouchableOpacity
             onPress={onClose}
-            className="p-2 bg-[#404040] rounded-full"
+            className="p-2 bg-surface rounded-full"
           >
-            <X size={20} color="#9ca3af" />
+            <X size={20} color={colors.label} />
           </TouchableOpacity>
         </View>
 
         {/* Current Time Context */}
         <View className="flex-row items-center justify-center mb-6">
-          <Clock size={16} color="#f97316" />
+          <Clock size={16} color={colors.warning} />
           <Text className="text-orange-500 text-sm font-bold ml-2">
             SELECTED: {hour}:{String(minute).padStart(2, "0")} {ampm}
           </Text>
         </View>
 
         {/* Custom Time Picker UI */}
-        <View className="flex-row items-center justify-center gap-2 p-4 bg-[#252525] border border-gray-700 rounded-xl self-center mb-8">
+        <View className="flex-row items-center justify-center gap-2 p-4 bg-inset border border-gray-700 rounded-xl self-center mb-8">
           {/* Hours */}
           <View className="flex-row items-center">
             <TouchableOpacity onPress={() => changeHour(-1)} className="p-3">
@@ -157,7 +157,7 @@ export const OperatingHoursTimeSheet: React.FC<
           {/* AM/PM */}
           <TouchableOpacity
             onPress={toggleAmPm}
-            className="ml-4 px-4 py-3 rounded-lg bg-[#353535] border border-gray-600"
+            className="ml-4 px-4 py-3 rounded-lg bg-surface border border-gray-600"
           >
             <Text className="text-white text-xl font-bold">{ampm}</Text>
           </TouchableOpacity>

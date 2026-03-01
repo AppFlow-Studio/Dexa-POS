@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Calendar as CalendarIcon, X } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -41,14 +42,14 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
       marked[fromString] = {
         startingDay: true,
         endingDay: true,
-        color: "#3b82f6",
+        color: colors.info,
         textColor: "white",
       };
     } else {
       // Different dates - mark range
       marked[fromString] = {
         startingDay: true,
-        color: "#3b82f6",
+        color: colors.info,
         textColor: "white",
       };
 
@@ -58,7 +59,7 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
       while (currentDate < range.to) {
         const dateString = currentDate.toISOString().split("T")[0];
         marked[dateString] = {
-          color: "#3b82f6",
+          color: colors.info,
           textColor: "white",
         };
         currentDate.setDate(currentDate.getDate() + 1);
@@ -66,7 +67,7 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
 
       marked[toString] = {
         endingDay: true,
-        color: "#3b82f6",
+        color: colors.info,
         textColor: "white",
       };
     }
@@ -75,7 +76,7 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
     marked[fromString] = {
       startingDay: true,
       endingDay: true,
-      color: activeSelector === "to" ? "#3b82f6" : "#60a5fa",
+      color: colors.info,
       textColor: "white",
     };
   }
@@ -109,14 +110,14 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   };
 
   const calendarTheme = {
-    backgroundColor: "#212121",
-    calendarBackground: "#212121",
-    textSectionTitleColor: "#9CA3AF",
-    selectedDayBackgroundColor: "#3b82f6",
+    backgroundColor: colors.panel,
+    calendarBackground: colors.panel,
+    textSectionTitleColor: colors.label,
+    selectedDayBackgroundColor: colors.info,
     selectedDayTextColor: "#ffffff",
-    todayTextColor: "#60A5FA",
+    todayTextColor: colors.info,
     dayTextColor: "#FFFFFF",
-    arrowColor: "#60A5FA",
+    arrowColor: colors.info,
     monthTextColor: "#FFFFFF",
     textMonthFontWeight: "bold",
   };
@@ -124,8 +125,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <TouchableOpacity className="flex-row items-center p-3 gap-2 bg-[#303030] border border-gray-600 rounded-lg">
-          <CalendarIcon color="#9CA3AF" size={20} />
+        <TouchableOpacity className="flex-row items-center p-3 gap-2 bg-surface border border-gray-600 rounded-lg">
+          <CalendarIcon color={colors.label} size={20} />
           <Text className="text-lg font-semibold text-gray-300">
             {range.from
               ? `${formatDisplayDate(range.from)} - ${formatDisplayDate(
@@ -138,13 +139,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
               onPress={clearRange}
               className="ml-2 p-1 bg-gray-700 rounded-full"
             >
-              <X size={14} color="#E5E7EB" />
+              <X size={14} color={colors.heading} />
             </TouchableOpacity>
           )}
         </TouchableOpacity>
       </PopoverTrigger>
       <PopoverContent
-        className="p-0 w-[700px] bg-[#303030] border border-gray-700 rounded-2xl"
+        className="p-0 w-[700px] bg-surface border border-gray-700 rounded-2xl"
         align="end"
       >
         <View className="flex-row p-4 gap-x-4 w-[700px] justify-between">
@@ -158,14 +159,14 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
               markingType="period"
               markedDates={getMarkedDates(range, activeSelector)}
               theme={{
-                backgroundColor: "#303030",
-                calendarBackground: "#303030",
-                textSectionTitleColor: "#9CA3AF",
-                selectedDayBackgroundColor: "#3b82f6",
+                backgroundColor: colors.card,
+                calendarBackground: colors.card,
+                textSectionTitleColor: colors.label,
+                selectedDayBackgroundColor: colors.info,
                 selectedDayTextColor: "#ffffff",
-                todayTextColor: "#60A5FA",
+                todayTextColor: colors.info,
                 dayTextColor: "#FFFFFF",
-                arrowColor: "#60A5FA",
+                arrowColor: colors.info,
                 monthTextColor: "#FFFFFF",
                 textMonthFontWeight: "bold",
               }}
@@ -187,14 +188,14 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
               markingType="period"
               markedDates={getMarkedDates(range, activeSelector)}
               theme={{
-                backgroundColor: "#303030",
-                calendarBackground: "#303030",
-                textSectionTitleColor: "#9CA3AF",
-                selectedDayBackgroundColor: "#3b82f6",
+                backgroundColor: colors.card,
+                calendarBackground: colors.card,
+                textSectionTitleColor: colors.label,
+                selectedDayBackgroundColor: colors.info,
                 selectedDayTextColor: "#ffffff",
-                todayTextColor: "#60A5FA",
+                todayTextColor: colors.info,
                 dayTextColor: "#FFFFFF",
-                arrowColor: "#60A5FA",
+                arrowColor: colors.info,
                 monthTextColor: "#FFFFFF",
                 textMonthFontWeight: "bold",
               }}

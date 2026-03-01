@@ -18,7 +18,7 @@ const PinButton = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className="w-32 h-16 bg-[#212121] border border-gray-700 rounded-xl items-center justify-center"
+    className="w-32 h-16 bg-screen border border-gray-700 rounded-xl items-center justify-center"
   >
     {typeof value === "string" ? (
       <Text className="text-2xl font-bold text-white">{value}</Text>

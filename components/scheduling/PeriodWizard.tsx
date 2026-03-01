@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { differenceInDays, format, parse } from "date-fns";
 import {
@@ -185,15 +186,15 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
   };
 
   const calendarTheme = {
-    calendarBackground: "#303030",
-    monthTextColor: "#FFFFFF",
-    dayTextColor: "#FFFFFF",
-    textDisabledColor: "#6B7280",
-    selectedDayBackgroundColor: "#3b82f6",
-    selectedDayTextColor: "#FFFFFF",
-    todayTextColor: "#60A5FA",
-    arrowColor: "#3b82f6",
-    textSectionTitleColor: "#9CA3AF",
+    calendarBackground: colors.panel,
+    monthTextColor: colors.heading,
+    dayTextColor: colors.heading,
+    textDisabledColor: colors.muted,
+    selectedDayBackgroundColor: colors.info,
+    selectedDayTextColor: colors.heading,
+    todayTextColor: colors.info,
+    arrowColor: colors.info,
+    textSectionTitleColor: colors.label,
   };
 
   const renderStepIndicator = () => (
@@ -210,7 +211,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
             }`}
           >
             {s < step ? (
-              <Check size={20} color="#FFFFFF" />
+              <Check size={20} color={colors.heading} />
             ) : (
               <Text className="text-white font-bold text-lg">{s}</Text>
             )}
@@ -236,7 +237,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
               <CalendarIcon
                 size={32}
                 className="text-blue-400"
-                color={"#60a5fa"}
+                color={colors.info}
               />
             </View>
             <Text className="text-xl font-bold text-white mb-2">
@@ -249,8 +250,8 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
               value={formData.name}
               onChangeText={(text) => setFormData({ ...formData, name: text })}
               placeholder="e.g., Q3 Summer Schedule"
-              placeholderTextColor="#6B7280"
-              className="p-4 w-full bg-[#212121] border border-gray-600 rounded-lg text-white text-base"
+              placeholderTextColor={colors.muted}
+              className="p-4 w-full bg-screen border border-gray-600 rounded-lg text-white text-base"
             />
           </View>
         );
@@ -261,7 +262,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
               <CalendarIcon
                 size={32}
                 className="text-blue-400"
-                color={"#60a5fa"}
+                color={colors.info}
               />
             </View>
             <Text className="text-xl font-bold text-white mb-2">
@@ -287,21 +288,21 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                 <TouchableOpacity
                   ref={startDateRef as unknown as React.RefObject<RNView>}
                   onPress={() => setIsStartDatePickerOpen(true)}
-                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                  className="p-4 h-14 bg-screen border border-gray-600 rounded-lg flex-row justify-between items-center"
                 >
                   <Text className="text-white text-base">
                     {formData.startDate
                       ? format(new Date(formData.startDate), "yyyy-MM-dd")
                       : "Select Start Date"}
                   </Text>
-                  <CalendarIcon size={16} color="#9CA3AF" />
+                  <CalendarIcon size={16} color={colors.label} />
                 </TouchableOpacity>
                 <Popover
                   from={startDateRef as unknown as React.RefObject<RNView>}
                   isVisible={isStartDatePickerOpen}
                   onRequestClose={() => setIsStartDatePickerOpen(false)}
                 >
-                  <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
+                  <View className="w-96 bg-panel border-gray-700 z-50 rounded-lg">
                     <Calendar
                       current={formData.startDate || undefined}
                       onDayPress={(day) => onDayPress(day, "startDate")}
@@ -309,7 +310,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                       markedDates={{
                         [formData.startDate]: {
                           selected: true,
-                          selectedColor: "#3b82f6",
+                          selectedColor: colors.info,
                         },
                       }}
                     />
@@ -323,21 +324,21 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                 <TouchableOpacity
                   ref={endDateRef as unknown as React.RefObject<RNView>}
                   onPress={() => setIsEndDatePickerOpen(true)}
-                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                  className="p-4 h-14 bg-screen border border-gray-600 rounded-lg flex-row justify-between items-center"
                 >
                   <Text className="text-white text-base">
                     {formData.endDate
                       ? format(new Date(formData.endDate), "yyyy-MM-dd")
                       : "Select End Date"}
                   </Text>
-                  <CalendarIcon size={16} color="#9CA3AF" />
+                  <CalendarIcon size={16} color={colors.label} />
                 </TouchableOpacity>
                 <Popover
                   from={endDateRef as unknown as React.RefObject<RNView>}
                   isVisible={isEndDatePickerOpen}
                   onRequestClose={() => setIsEndDatePickerOpen(false)}
                 >
-                  <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
+                  <View className="w-96 bg-panel border-gray-700 z-50 rounded-lg">
                     <Calendar
                       current={formData.endDate || undefined}
                       onDayPress={(day) => onDayPress(day, "endDate")}
@@ -345,7 +346,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                       markedDates={{
                         [formData.endDate]: {
                           selected: true,
-                          selectedColor: "#3b82f6",
+                          selectedColor: colors.info,
                         },
                       }}
                     />
@@ -367,7 +368,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
             <Text className="text-gray-400 text-center mb-6">
               Verify the details before saving.
             </Text>
-            <View className="w-full p-4 bg-[#212121] border border-gray-600 rounded-lg gap-y-3">
+            <View className="w-full p-4 bg-screen border border-gray-600 rounded-lg gap-y-3">
               <View className="flex-row justify-between">
                 <Text className="text-gray-400">Period Name:</Text>
                 <Text className="text-white font-semibold">
@@ -408,7 +409,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[550px] max-w-lg bg-[#303030] rounded-2xl border-gray-700 p-0">
+      <DialogContent className="w-[550px] max-w-lg bg-panel rounded-2xl border-gray-700 p-0">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "position"}
           // Add a small offset if needed
@@ -424,7 +425,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                 <Text className="text-gray-400 mt-1">Step {step} of 3</Text>
               </View>
               <TouchableOpacity onPress={onClose} className="p-1">
-                <X size={24} color="#9CA3AF" />
+                <X size={24} color={colors.label} />
               </TouchableOpacity>
             </View>
           </View>
@@ -441,7 +442,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                 step === 1 ? "opacity-50" : "bg-gray-700/80"
               }`}
             >
-              <ArrowLeft size={18} color="#FFFFFF" />
+              <ArrowLeft size={18} color={colors.heading} />
               <Text className="text-white font-bold">Back</Text>
             </TouchableOpacity>
             {step < 3 ? (
@@ -453,14 +454,14 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                 }`}
               >
                 <Text className="text-white font-bold">Next</Text>
-                <ArrowRight size={18} color="#FFFFFF" />
+                <ArrowRight size={18} color={colors.heading} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 onPress={handleComplete}
                 className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg"
               >
-                <Check size={18} color="#FFFFFF" />
+                <Check size={18} color={colors.heading} />
                 <Text className="text-white font-bold">
                   {periodToEdit ? "Save Changes" : "Create Period"}
                 </Text>

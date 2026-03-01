@@ -53,7 +53,7 @@ export default function MenuLayout() {
         setSearchQuery: () => {},
       }}
     >
-      <View className="flex-1 bg-[#212121]">
+      <View className="flex-1 bg-panel">
         <View className="flex-row h-full">
           <MenuSidebar activeTab={activeTab} onTabChange={setActiveTab} />
           <View className="flex-1">

@@ -64,7 +64,7 @@ const PTOPage = () => {
 
   if (!activeEmployeeId) {
     return (
-      <View className="flex-1 bg-[#212121] p-4 items-center justify-center">
+      <View className="flex-1 bg-screen p-4 items-center justify-center">
         <Text className="text-white text-lg">
           Please clock in to view your PTO information.
         </Text>
@@ -73,7 +73,7 @@ const PTOPage = () => {
   }
 
   return (
-    <View className="flex-1 bg-[#212121] p-4">
+    <View className="flex-1 bg-screen p-4">
       <View className="flex-row items-center justify-between mb-6">
         <View></View>
         {!showRequestForm && (

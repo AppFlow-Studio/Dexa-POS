@@ -8,6 +8,7 @@ import BottomSheet, {
 import { Check, Search, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 
 const ROLE_KEYS = ["admin", "manager", "server", "kitchen", "host"] as const;
 const ROLE_LABELS = { admin: "ADMN", manager: "MANA", server: "SERV", kitchen: "KITC", host: "HOST" };
@@ -67,18 +68,18 @@ export const PermissionMatrixBottomSheet: React.FC<PermissionMatrixBottomSheetPr
     const renderFooter = useCallback(
         (props: any) => (
             <BottomSheetFooter {...props} bottomInset={0}>
-                <View className="px-6 py-4 border-t border-gray-700 bg-[#303030]">
+                <View className="px-6 py-4 border-t border-gray-700 bg-panel">
                     <View className="flex-row gap-4">
                         <TouchableOpacity
                             onPress={onClose}
-                            className="flex-1 py-4 bg-[#404040] rounded-xl border border-gray-600 items-center justify-center"
+                            className="flex-1 py-4 bg-surface rounded-xl border border-gray-600 items-center justify-center"
                         >
                             <Text className="text-white font-semibold text-base">Cancel</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={handleSave}
                             className="flex-1 py-4 bg-blue-600 rounded-xl items-center justify-center"
-                            style={{ shadowColor: "#3b82f6", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 }}
+                            style={{ shadowColor: colors.info, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6 }}
                         >
                             <Text className="text-white font-bold text-base">Save Changes</Text>
                         </TouchableOpacity>
@@ -96,48 +97,48 @@ export const PermissionMatrixBottomSheet: React.FC<PermissionMatrixBottomSheetPr
             snapPoints={snapPoints}
             enablePanDownToClose
             onClose={onClose}
-            handleIndicatorStyle={{ backgroundColor: "#525252", width: 40 }}
-            backgroundStyle={{ backgroundColor: "#303030" }}
+            {...bottomSheetTheme}
+            handleIndicatorStyle={{ ...bottomSheetTheme.handleIndicatorStyle, width: 40 }}
             backdropComponent={renderBackdrop}
             footerComponent={renderFooter}
             keyboardBehavior="extend"
         >
-            <View className="flex-1 bg-[#303030]">
+            <View className="flex-1 bg-panel">
                 {/* Fixed Header Section */}
-                <View className="bg-[#303030] z-10">
+                <View className="bg-panel z-10">
                     {/* Title Section */}
                     <View className="px-6 pt-4 pb-5">
                         <View className="flex-row items-center justify-between">
                             <Text className="text-2xl font-bold text-white tracking-wide">Edit Permission Matrix</Text>
-                            <TouchableOpacity onPress={onClose} className="p-2 bg-[#404040]/50 rounded-full">
-                                <X size={22} color="#9ca3af" />
+                            <TouchableOpacity onPress={onClose} className="p-2 bg-surface/50 rounded-full">
+                                <X size={22} color={colors.label} />
                             </TouchableOpacity>
                         </View>
                     </View>
 
                     {/* Search Bar Section */}
                     <View className="px-6 pb-5">
-                        <View className="flex-row items-center bg-[#404040] rounded-xl px-4 py-3.5 border border-gray-600/80">
-                            <Search size={20} color="#9ca3af" />
+                        <View className="flex-row items-center bg-surface rounded-xl px-4 py-3.5 border border-gray-600/80">
+                            <Search size={20} color={colors.label} />
                             <BottomSheetTextInput
                                 value={searchText}
                                 onChangeText={setSearchText}
                                 placeholder="Search permissions..."
-                                placeholderTextColor="#6b7280"
+                                placeholderTextColor={colors.muted}
                                 className="flex-1 ml-3 text-white text-base"
                                 style={{ color: "white", fontSize: 16 }}
-                                selectionColor="#3b82f6"
+                                selectionColor={colors.info}
                             />
                             {searchText.length > 0 && (
                                 <TouchableOpacity onPress={() => setSearchText("")} className="p-1.5">
-                                    <X size={18} color="#9ca3af" />
+                                    <X size={18} color={colors.label} />
                                 </TouchableOpacity>
                             )}
                         </View>
                     </View>
 
                     {/* Column Headers */}
-                    <View className="px-6 py-4 border-y border-gray-700 bg-[#353535]/50 flex-row items-center">
+                    <View className="px-6 py-4 border-y border-gray-700 bg-surface/50 flex-row items-center">
                         <View className="flex-[2.5]">
                             <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider">Permission</Text>
                         </View>
@@ -158,7 +159,7 @@ export const PermissionMatrixBottomSheet: React.FC<PermissionMatrixBottomSheetPr
                 >
                     {filteredPermissions.length === 0 ? (
                         <View className="py-16 items-center justify-center">
-                            <Search size={56} color="#4b5563" style={{ opacity: 0.5, marginBottom: 16 }} />
+                            <Search size={56} color={colors.muted} style={{ opacity: 0.5, marginBottom: 16 }} />
                             <Text className="text-gray-400 text-base text-center">No permissions found matching "{searchText}"</Text>
                         </View>
                     ) : (
@@ -186,7 +187,7 @@ export const PermissionMatrixBottomSheet: React.FC<PermissionMatrixBottomSheetPr
                                             style={
                                                 perm[role]
                                                     ? {
-                                                        shadowColor: "#16a34a",
+                                                        shadowColor: colors.success,
                                                         shadowOffset: { width: 0, height: 2 },
                                                         shadowOpacity: 0.4,
                                                         shadowRadius: 4,
@@ -198,7 +199,7 @@ export const PermissionMatrixBottomSheet: React.FC<PermissionMatrixBottomSheetPr
                                             {perm[role] ? (
                                                 <Check size={20} color="white" strokeWidth={3} />
                                             ) : (
-                                                <X size={20} color="#ef4444" strokeWidth={2.5} />
+                                                <X size={20} color={colors.danger} strokeWidth={2.5} />
                                             )}
                                         </View>
                                     </TouchableOpacity>

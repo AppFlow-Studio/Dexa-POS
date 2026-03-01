@@ -1,5 +1,6 @@
 // components/analytics/KpiTooltip.tsx
 
+import { colors } from "@/lib/theme";
 import { HelpCircle, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
@@ -17,7 +18,7 @@ export default function KpiTooltip({ definition }: KpiTooltipProps) {
                 onPress={() => setIsVisible(true)}
                 className="ml-2"
             >
-                <HelpCircle color="#9CA3AF" size={16} />
+                <HelpCircle color={colors.label} size={16} />
             </TouchableOpacity>
 
             <Modal
@@ -27,14 +28,14 @@ export default function KpiTooltip({ definition }: KpiTooltipProps) {
                 onRequestClose={() => setIsVisible(false)}
             >
                 <View className="flex-1 bg-black/50 items-center justify-center p-6">
-                    <View className="bg-[#303030] rounded-2xl border border-gray-600 p-6 max-w-sm">
+                    <View className="bg-panel rounded-2xl border border-gray-600 p-6 max-w-sm">
                         <View className="flex-row items-center justify-between mb-4">
                             <Text className="text-white text-lg font-semibold">Definition</Text>
                             <TouchableOpacity
                                 onPress={() => setIsVisible(false)}
                                 className="p-1"
                             >
-                                <X color="#9CA3AF" size={20} />
+                                <X color={colors.label} size={20} />
                             </TouchableOpacity>
                         </View>
 

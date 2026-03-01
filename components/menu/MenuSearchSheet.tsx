@@ -10,6 +10,7 @@ import { router } from "expo-router";
 import { Search } from "lucide-react-native";
 import React, { forwardRef, useEffect, useMemo, useState } from "react";
 import { Alert, Text, View } from "react-native";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { CategoryCard } from "./CategoryCard";
 import { DraggableMenu as MenuCard } from "./MenuCard";
 import { MenuItemCard } from "./MenuItemCard";
@@ -186,8 +187,7 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
             appearsOnIndex={0}
           />
         )}
-        backgroundStyle={{ backgroundColor: "#212121" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
       >
         <BottomSheetView className="flex-1">
           <View className="p-4 border-b border-gray-700">
@@ -196,13 +196,13 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
             </Text>
           </View>
           <View className="p-4">
-            <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3">
-              <Search color="#9CA3AF" size={20} />
+            <View className="flex-row items-center bg-surface border border-gray-600 rounded-lg px-3">
+              <Search color={colors.label} size={20} />
               <BottomSheetTextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder={`Search for a ${activeTab.slice(0, -1)}...`}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.label}
                 className="flex-1 h-12 ml-2 text-white text-base"
               />
             </View>

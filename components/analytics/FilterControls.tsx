@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Calendar, ChevronDown, MapPin, User } from "lucide-react-native";
@@ -26,13 +27,13 @@ const FilterChip: React.FC<FilterChipProps> = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className="flex-row items-center bg-[#303030] border border-gray-600 rounded-xl px-4 py-3 mr-3"
+    className="flex-row items-center bg-panel border border-border rounded-xl px-4 py-3 mr-3"
     activeOpacity={0.8}
   >
     {icon}
     <Text className="text-white font-medium ml-2 mr-2">{label}:</Text>
     <Text className="text-blue-400 font-semibold">{value}</Text>
-    <ChevronDown color="#9CA3AF" size={16} className="ml-2" />
+    <ChevronDown color={colors.label} size={16} className="ml-2" />
   </TouchableOpacity>
 );
 
@@ -178,21 +179,21 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         <FilterChip
           label="Date Range"
           value={formatDateRange()}
-          icon={<Calendar color="#9CA3AF" size={16} />}
+          icon={<Calendar color={colors.label} size={16} />}
           onPress={() => setShowDateModal(true)}
         />
 
         <FilterChip
           label="Location"
           value={getLocationName()}
-          icon={<MapPin color="#9CA3AF" size={16} />}
+          icon={<MapPin color={colors.label} size={16} />}
           onPress={() => setShowLocationModal(true)}
         />
 
         <FilterChip
           label="Employee"
           value={getEmployeeName()}
-          icon={<User color="#9CA3AF" size={16} />}
+          icon={<User color={colors.label} size={16} />}
           onPress={() => setShowEmployeeModal(true)}
         />
       </ScrollView>
@@ -205,7 +206,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         onRequestClose={() => setShowDateModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-[#303030] rounded-t-3xl p-6 max-h-[80%]">
+          <View className="bg-panel rounded-t-3xl p-6 max-h-[80%]">
             <View className="flex-row items-center justify-between mb-6">
               <Text className="text-2xl font-bold text-white">
                 Select Date Range
@@ -228,7 +229,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                   <TouchableOpacity
                     key={preset.label}
                     onPress={() => handleDatePreset(preset.days)}
-                    className="px-4 py-2 bg-[#212121] border border-gray-600 rounded-xl"
+                    className="px-4 py-2 bg-screen border border-border rounded-xl"
                   >
                     <Text className="text-white">{preset.label}</Text>
                   </TouchableOpacity>
@@ -246,12 +247,12 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                   <Text className="text-gray-400 mb-2">From Date</Text>
                   <TouchableOpacity
                     onPress={() => setShowFromDatePicker(true)}
-                    className="bg-[#212121] border border-gray-600 rounded-xl px-4 py-3 flex-row items-center justify-between"
+                    className="bg-screen border border-border rounded-xl px-4 py-3 flex-row items-center justify-between"
                   >
                     <Text className="text-white text-lg">
                       {new Date(tempDateRange.start).toLocaleDateString()}
                     </Text>
-                    <Calendar color="#9CA3AF" size={20} />
+                    <Calendar color={colors.label} size={20} />
                   </TouchableOpacity>
                   {showFromDatePicker && (
                     <View className="mt-2">
@@ -260,7 +261,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                         mode="date"
                         display={Platform.OS === "ios" ? "spinner" : "default"}
                         onChange={handleFromDateChange}
-                        textColor="#ffffff"
+                        textColor={colors.heading}
                       />
                       {Platform.OS === "ios" && (
                         <TouchableOpacity
@@ -277,12 +278,12 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                   <Text className="text-gray-400 mb-2">To Date</Text>
                   <TouchableOpacity
                     onPress={() => setShowToDatePicker(true)}
-                    className="bg-[#212121] border border-gray-600 rounded-xl px-4 py-3 flex-row items-center justify-between"
+                    className="bg-screen border border-border rounded-xl px-4 py-3 flex-row items-center justify-between"
                   >
                     <Text className="text-white text-lg">
                       {new Date(tempDateRange.end).toLocaleDateString()}
                     </Text>
-                    <Calendar color="#9CA3AF" size={20} />
+                    <Calendar color={colors.label} size={20} />
                   </TouchableOpacity>
                   {showToDatePicker && (
                     <View className="mt-2">
@@ -291,7 +292,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                         mode="date"
                         display={Platform.OS === "ios" ? "spinner" : "default"}
                         onChange={handleToDateChange}
-                        textColor="#ffffff"
+                        textColor={colors.heading}
                       />
                       {Platform.OS === "ios" && (
                         <TouchableOpacity
@@ -325,7 +326,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         onRequestClose={() => setShowLocationModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-[#303030] rounded-t-3xl p-6 max-h-[60%]">
+          <View className="bg-panel rounded-t-3xl p-6 max-h-[60%]">
             <View className="flex-row items-center justify-between mb-6">
               <Text className="text-2xl font-bold text-white">
                 Select Location
@@ -357,7 +358,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                   className={`p-4 rounded-xl mb-2 ${
                     filters.location === location.id
                       ? "bg-blue-900/30 border border-blue-500"
-                      : "bg-[#212121] border border-gray-600"
+                      : "bg-screen border border-border"
                   }`}
                 >
                   <Text
@@ -384,7 +385,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         onRequestClose={() => setShowEmployeeModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-[#303030] rounded-t-3xl p-6 max-h-[60%]">
+          <View className="bg-panel rounded-t-3xl p-6 max-h-[60%]">
             <View className="flex-row items-center justify-between mb-6">
               <Text className="text-2xl font-bold text-white">
                 Select Employee
@@ -416,7 +417,7 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                   className={`p-4 rounded-xl mb-2 ${
                     filters.employee === employee.id
                       ? "bg-blue-900/30 border border-blue-500"
-                      : "bg-[#212121] border border-gray-600"
+                      : "bg-screen border border-border"
                   }`}
                 >
                   <Text

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
@@ -111,7 +112,7 @@ const TableBillSection = ({
                 onPress={handleRemoveDiscount}
                 className="p-1.5 bg-blue-600/30 rounded-full"
               >
-                <X color="#60A5FA" size={20} />
+                <X color={colors.info} size={20} />
               </TouchableOpacity>
             </View>
           </View>

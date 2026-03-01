@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router, usePathname } from "expo-router";
 import { ChevronRight, Plus } from "lucide-react-native";
@@ -128,7 +129,7 @@ const MenuSidebar = React.memo(({
   };
 
   return (
-    <View className="w-96 border-r border-gray-700 h-full bg-[#303030]">
+    <View className="w-96 border-r border-gray-700 h-full bg-surface">
       {/* Header */}
       <View className="p-4 flex-row items-center justify-between">
         <Text className="text-2xl font-bold text-white">Menu Management</Text>
@@ -160,7 +161,7 @@ const MenuSidebar = React.memo(({
             >
               Menus ({menus.length})
             </Text>
-            <ChevronRight size={20} color="#9CA3AF" />
+            <ChevronRight size={20} color={colors.label} />
           </View>
         </TouchableOpacity>
 
@@ -180,7 +181,7 @@ const MenuSidebar = React.memo(({
             >
               Categories ({categories.length})
             </Text>
-            <ChevronRight size={20} color="#9CA3AF" />
+            <ChevronRight size={20} color={colors.label} />
           </View>
         </TouchableOpacity>
 
@@ -200,7 +201,7 @@ const MenuSidebar = React.memo(({
             >
               Items ({menuItems.length})
             </Text>
-            <ChevronRight size={20} color="#9CA3AF" />
+            <ChevronRight size={20} color={colors.label} />
           </View>
         </TouchableOpacity>
 
@@ -220,7 +221,7 @@ const MenuSidebar = React.memo(({
             >
               Modifiers ({modifierGroups.length})
             </Text>
-            <ChevronRight size={20} color="#9CA3AF" />
+            <ChevronRight size={20} color={colors.label} />
           </View>
         </TouchableOpacity>
 
@@ -240,7 +241,7 @@ const MenuSidebar = React.memo(({
             >
               Schedules
             </Text>
-            <ChevronRight size={20} color="#9CA3AF" />
+            <ChevronRight size={20} color={colors.label} />
           </View>
         </TouchableOpacity>
       </View>

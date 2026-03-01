@@ -5,7 +5,7 @@ export default function PurchaseOrderLayout() {
   const router = useRouter();
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-screen">
       {/* <View className="flex-row items-center p-6 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
           onPress={() => router.back()}

@@ -6,6 +6,7 @@ import { ModifierOption } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { colors } from "@/lib/theme";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
@@ -313,14 +314,14 @@ const AddModifierScreen: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-[#212121]" behavior="padding">
+    <KeyboardAvoidingView className="flex-1 bg-panel" behavior="padding">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
+      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-surface">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={20} color="#9CA3AF" />
+          <ArrowLeft size={20} color={colors.label} />
           <Text className="text-xl text-white font-medium ml-1.5">
             Back to Modifiers
           </Text>
@@ -349,9 +350,9 @@ const AddModifierScreen: React.FC = () => {
             Modifier Name
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+            className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
             placeholder="e.g., Size, Toppings, Sauce"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.muted}
             value={formData.name}
             onChangeText={(text) =>
               setFormData((prev) => ({ ...prev, name: text }))
@@ -373,7 +374,7 @@ const AddModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.type === "optional"
                   ? "bg-blue-600 border-blue-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -391,7 +392,7 @@ const AddModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.type === "required"
                   ? "bg-red-600 border-red-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -418,7 +419,7 @@ const AddModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.selectionType === "single"
                   ? "bg-green-600 border-green-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -438,7 +439,7 @@ const AddModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.selectionType === "multiple"
                   ? "bg-green-600 border-green-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -460,9 +461,9 @@ const AddModifierScreen: React.FC = () => {
               Max Selections (Optional)
             </Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
               placeholder="Leave empty for unlimited"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.muted}
               value={formData.maxSelections?.toString() || ""}
               onChangeText={(text) =>
                 setFormData((prev) => ({
@@ -486,9 +487,9 @@ const AddModifierScreen: React.FC = () => {
             Description (Optional)
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+            className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
             placeholder="e.g., Choose up to 3 toppings"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.muted}
             value={formData.description}
             onChangeText={(text) =>
               setFormData((prev) => ({ ...prev, description: text }))
@@ -521,7 +522,7 @@ const AddModifierScreen: React.FC = () => {
           </View>
 
           {formData.options.length === 0 ? (
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+            <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
               <Text className="text-xl text-gray-400 text-center mb-2">
                 No options added yet.
               </Text>
@@ -540,7 +541,7 @@ const AddModifierScreen: React.FC = () => {
               {formData.options.map((option, index) => (
                 <View
                   key={option.id}
-                  className="bg-[#303030] border border-gray-600 rounded-lg p-4"
+                  className="bg-surface border border-gray-600 rounded-lg p-4"
                 >
                   <View className="flex-row items-center justify-between mb-2">
                     <Text className="text-xl text-white font-medium">
@@ -550,7 +551,7 @@ const AddModifierScreen: React.FC = () => {
                       onPress={() => removeOption(index)}
                       className="p-1.5"
                     >
-                      <Trash2 size={20} color="#EF4444" />
+                      <Trash2 size={20} color={colors.danger} />
                     </TouchableOpacity>
                   </View>
 
@@ -558,9 +559,9 @@ const AddModifierScreen: React.FC = () => {
                     <View className="flex-1">
                       <Text className="text-lg text-gray-300 mb-1.5">Name</Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
+                        className="bg-panel border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
                         placeholder="e.g., Large"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.muted}
                         value={option.name}
                         onChangeText={(text) =>
                           updateOption(index, "name", text)
@@ -572,9 +573,9 @@ const AddModifierScreen: React.FC = () => {
                         Price
                       </Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
+                        className="bg-panel border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
                         placeholder="0.00"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor={colors.muted}
                         value={option.price.toString()}
                         onChangeText={(text) =>
                           updateOption(index, "price", parseFloat(text) || 0)
@@ -590,7 +591,7 @@ const AddModifierScreen: React.FC = () => {
                       className={`flex-row items-center justify-between p-3 rounded-lg border ${
                         option.isDefault
                           ? "bg-green-600/20 border-green-500"
-                          : "bg-[#212121] border-gray-600"
+                          : "bg-panel border-gray-600"
                       }`}
                     >
                       <View className="flex-row items-center">
@@ -642,10 +643,10 @@ const AddModifierScreen: React.FC = () => {
         onRequestClose={() => setShowConfirmation(false)}
       >
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
-          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+          <View className="bg-surface rounded-2xl p-4 w-full max-w-md border border-gray-600">
             <View className="items-center mb-4">
               <View className="w-16 h-16 bg-blue-600/20 rounded-full items-center justify-center mb-3">
-                <Save size={32} color="#60A5FA" />
+                <Save size={32} color={colors.info} />
               </View>
               <Text className="text-2xl font-bold text-white text-center">
                 Save Modifier Group?
@@ -655,7 +656,7 @@ const AddModifierScreen: React.FC = () => {
               </Text>
             </View>
 
-            <View className="bg-[#212121] rounded-lg p-4 mb-4">
+            <View className="bg-panel rounded-lg p-4 mb-4">
               <View className="flex-row items-center justify-between mb-1.5">
                 <Text className="text-xl text-white font-medium">
                   {formData.name}
@@ -699,7 +700,7 @@ const AddModifierScreen: React.FC = () => {
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setShowConfirmation(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
+                className="flex-1 bg-panel border border-gray-600 rounded-lg py-3 items-center"
               >
                 <Text className="text-xl text-gray-300 font-medium">
                   Cancel

@@ -7,6 +7,7 @@ import { ModifierOption, RecipeItem } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { colors } from "@/lib/theme";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, ChefHat, Plus, Save, Trash2, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -402,11 +403,11 @@ const EditModifierScreen: React.FC = () => {
 
   if (!existing) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+      <View className="flex-1 bg-panel items-center justify-center p-4">
         <Text className="text-xl text-white">Modifier not found.</Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-3 px-4 py-2 bg-[#303030] rounded border border-gray-600"
+          className="mt-3 px-4 py-2 bg-surface rounded border border-gray-600"
         >
           <Text className="text-lg text-gray-300">Go Back</Text>
         </TouchableOpacity>
@@ -417,7 +418,7 @@ const EditModifierScreen: React.FC = () => {
   // Check if this is a global modifier (not local to this store)
   if (isGlobalModifier || !isLocalModifier) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+      <View className="flex-1 bg-panel items-center justify-center p-4">
         <Text className="text-2xl text-white font-bold mb-2">
           Global Modifier
         </Text>
@@ -436,13 +437,13 @@ const EditModifierScreen: React.FC = () => {
   }
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-[#212121]" behavior="padding">
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
+    <KeyboardAvoidingView className="flex-1 bg-panel" behavior="padding">
+      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-surface">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={20} color="#9CA3AF" />
+          <ArrowLeft size={20} color={colors.label} />
           <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
         </TouchableOpacity>
         <View className="flex-row gap-2">
@@ -451,7 +452,7 @@ const EditModifierScreen: React.FC = () => {
             className="px-4 py-2 rounded-lg border border-red-500 bg-red-900/30"
           >
             <View className="flex-row items-center">
-              <Trash2 size={20} color="#EF4444" />
+              <Trash2 size={20} color={colors.danger} />
               <Text className="text-xl text-red-400 ml-1.5">Delete</Text>
             </View>
           </TouchableOpacity>
@@ -478,7 +479,7 @@ const EditModifierScreen: React.FC = () => {
         <View className="mb-4">
           <Text className="text-xl font-semibold text-white mb-2">Name</Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+            className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
             value={formData.name}
             onChangeText={(text) =>
               setFormData((prev) => ({ ...prev, name: text }))
@@ -500,7 +501,7 @@ const EditModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.type === "optional"
                   ? "bg-blue-600 border-blue-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -518,7 +519,7 @@ const EditModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.type === "required"
                   ? "bg-red-600 border-red-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -544,7 +545,7 @@ const EditModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.selectionType === "single"
                   ? "bg-green-600 border-green-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -564,7 +565,7 @@ const EditModifierScreen: React.FC = () => {
               className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.selectionType === "multiple"
                   ? "bg-green-600 border-green-500"
-                  : "bg-[#303030] border-gray-600"
+                  : "bg-surface border-gray-600"
               }`}
             >
               <Text
@@ -586,7 +587,7 @@ const EditModifierScreen: React.FC = () => {
               Max Selections
             </Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
               keyboardType="numeric"
               value={formData.maxSelections?.toString() || ""}
               onChangeText={(text) =>
@@ -605,7 +606,7 @@ const EditModifierScreen: React.FC = () => {
             Description
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+            className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
             placeholder="Optional description"
             value={formData.description}
             onChangeText={(text) =>
@@ -627,7 +628,7 @@ const EditModifierScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
           {formData.options.length === 0 ? (
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+            <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
               <Text className="text-lg text-gray-400">No options yet.</Text>
             </View>
           ) : (
@@ -635,7 +636,7 @@ const EditModifierScreen: React.FC = () => {
               {formData.options.map((option, index) => (
                 <View
                   key={option.id}
-                  className="bg-[#303030] border border-gray-600 rounded-lg p-4"
+                  className="bg-surface border border-gray-600 rounded-lg p-4"
                 >
                   <View className="flex-row items-center justify-between mb-2">
                     <Text className="text-xl text-white font-medium">
@@ -645,14 +646,14 @@ const EditModifierScreen: React.FC = () => {
                       onPress={() => removeOption(index)}
                       className="p-1.5"
                     >
-                      <Trash2 size={20} color="#EF4444" />
+                      <Trash2 size={20} color={colors.danger} />
                     </TouchableOpacity>
                   </View>
                   <View className="flex-row gap-3">
                     <View className="flex-1">
                       <Text className="text-lg text-gray-300 mb-1.5">Name</Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
+                        className="bg-panel border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
                         value={option.name}
                         onChangeText={(text) =>
                           updateOption(index, "name", text)
@@ -664,7 +665,7 @@ const EditModifierScreen: React.FC = () => {
                         Price
                       </Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
+                        className="bg-panel border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
                         value={option.price.toString()}
                         onChangeText={(text) =>
                           updateOption(index, "price", parseFloat(text) || 0)
@@ -680,7 +681,7 @@ const EditModifierScreen: React.FC = () => {
                       className={`flex-1 flex-row items-center p-3 rounded-lg border ${
                         option.isDefault
                           ? "bg-green-600/20 border-green-500"
-                          : "bg-[#212121] border-gray-600"
+                          : "bg-panel border-gray-600"
                       }`}
                     >
                       <View className="flex-row items-center">
@@ -712,15 +713,15 @@ const EditModifierScreen: React.FC = () => {
                       className={`flex-1 flex-row items-center justify-center p-3 rounded-lg border ${
                         formData.recipeMap[option.id]?.length
                           ? "bg-blue-600/20 border-blue-500"
-                          : "bg-[#212121] border-gray-600"
+                          : "bg-panel border-gray-600"
                       }`}
                     >
                       <ChefHat
                         size={20}
                         color={
                           formData.recipeMap[option.id]?.length
-                            ? "#60A5FA"
-                            : "#9CA3AF"
+                            ? colors.info
+                            : colors.label
                         }
                       />
                       <Text
@@ -757,7 +758,7 @@ const EditModifierScreen: React.FC = () => {
         onRequestClose={() => setShowConfirm(false)}
       >
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
-          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+          <View className="bg-surface rounded-2xl p-4 w-full max-w-md border border-gray-600">
             <Text className="text-2xl text-white font-bold mb-1.5">
               Save changes?
             </Text>
@@ -767,7 +768,7 @@ const EditModifierScreen: React.FC = () => {
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setShowConfirm(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
+                className="flex-1 bg-panel border border-gray-600 rounded-lg py-3 items-center"
               >
                 <Text className="text-xl text-gray-300">Cancel</Text>
               </TouchableOpacity>
@@ -792,7 +793,7 @@ const EditModifierScreen: React.FC = () => {
         onRequestClose={() => setShowDeleteConfirm(false)}
       >
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
-          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+          <View className="bg-surface rounded-2xl p-4 w-full max-w-md border border-gray-600">
             <Text className="text-2xl text-white font-bold mb-1.5">
               Delete Modifier?
             </Text>
@@ -803,7 +804,7 @@ const EditModifierScreen: React.FC = () => {
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setShowDeleteConfirm(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
+                className="flex-1 bg-panel border border-gray-600 rounded-lg py-3 items-center"
               >
                 <Text className="text-xl text-gray-300">Cancel</Text>
               </TouchableOpacity>
@@ -829,9 +830,9 @@ const EditModifierScreen: React.FC = () => {
         presentationStyle="pageSheet"
         onRequestClose={() => setSelectedOptionIdForRecipe(null)}
       >
-        <GestureHandlerRootView className="flex-1 bg-[#212121]">
-          <View className="flex-1 bg-[#212121]">
-            <View className="flex-row items-center justify-between p-4 border-b border-gray-800 bg-[#212121]">
+        <GestureHandlerRootView className="flex-1 bg-panel">
+          <View className="flex-1 bg-panel">
+            <View className="flex-row items-center justify-between p-4 border-b border-gray-800 bg-panel">
               <View>
                 <Text className="text-xl font-bold text-white">
                   Manage Recipe
@@ -850,7 +851,7 @@ const EditModifierScreen: React.FC = () => {
                 onPress={() => setSelectedOptionIdForRecipe(null)}
                 className="p-2 bg-gray-800 rounded-full"
               >
-                <X size={20} color="#9CA3AF" />
+                <X size={20} color={colors.label} />
               </TouchableOpacity>
             </View>
 

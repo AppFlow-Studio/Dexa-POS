@@ -14,6 +14,7 @@ import React, {
   useState,
 } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native"; // Import standard View
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import CardPaymentView from "./ paymentView/CardPaymentView";
 import CashPaymentView from "./ paymentView/CashPaymentView";
 import ItemsReviewView from "./ paymentView/ItemsReviewView";
@@ -154,8 +155,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         snapPoints={snapPoints}
         enablePanDownToClose={!isTransactionProcessing}
         onChange={handleSheetChanges}
-        backgroundStyle={{ backgroundColor: "#212121" }}
-        handleIndicatorStyle={{ backgroundColor: "#707070" }}
+        {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
         topInset={60}
         keyboardBehavior="interactive"
@@ -164,7 +164,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
       >
         <BottomSheetScrollView style={styles.container}>
           {/* Header */}
-          <View className="bg-[#212121] p-4 flex-row justify-between items-center border-b border-[#333]">
+          <View className="bg-panel p-4 flex-row justify-between items-center border-b border-border">
             <Text className="text-2xl font-bold text-white">Payment</Text>
             <TouchableOpacity onPress={handleAttemptClose} disabled={isTransactionProcessing} style={{ opacity: isTransactionProcessing ? 0.3 : 1 }}>
               <X size={24} color="#FFF" />
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   container: {
     height: "100%",
 
-    backgroundColor: "#212121", // Ensure bg color so it's not transparent
+    backgroundColor: colors.panel, // Ensure bg color so it's not transparent
   },
   content: {
     flex: 1, // Ensures child views can take up remaining space

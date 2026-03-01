@@ -11,6 +11,7 @@ import {
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Switch } from "~/components/ui/switch";
+import { colors } from "@/lib/theme";
 
 const TerminalManagementScreen = () => {
   const [terminals, setTerminals] = useState([
@@ -71,24 +72,24 @@ const TerminalManagementScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-[#353535] rounded-t-xl border-b border-gray-700"
+      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
     >
       <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">
+        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
           {icon}
         </View>
         <Text className="text-white font-bold text-lg">{title}</Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color="#9ca3af" />
+        <ChevronUp size={20} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color="#9ca3af" />
+        <ChevronDown size={20} color={colors.label} />
       )}
     </TouchableOpacity>
   );
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">
           Terminal Management
@@ -102,10 +103,10 @@ const TerminalManagementScreen = () => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Connected Devices */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Connected Devices",
-            <Tablet size={20} color="#60a5fa" />,
+            <Tablet size={20} color={colors.info} />,
             "list"
           )}
           {expandedSections.list && (
@@ -113,7 +114,7 @@ const TerminalManagementScreen = () => {
               {terminals.map((terminal) => (
                 <View
                   key={terminal.id}
-                  className="bg-[#404040] p-4 rounded-xl mb-3 flex-row items-center justify-between border border-gray-600"
+                  className="bg-surface p-4 rounded-xl mb-3 flex-row items-center justify-between border border-gray-600"
                 >
                   <View className="flex-row items-center flex-1">
                     <View
@@ -132,7 +133,7 @@ const TerminalManagementScreen = () => {
                     <View className="flex-row items-center">
                       <Battery
                         size={16}
-                        color={terminal.battery < 20 ? "#f87171" : "#9ca3af"}
+                        color={terminal.battery < 20 ? colors.danger : colors.label}
                       />
                       <Text
                         className={`ml-1 text-sm ${terminal.battery < 20 ? "text-red-400" : "text-gray-400"}`}
@@ -144,7 +145,7 @@ const TerminalManagementScreen = () => {
                       <Wifi
                         size={16}
                         color={
-                          terminal.status === "online" ? "#4ade80" : "#9ca3af"
+                          terminal.status === "online" ? colors.success : colors.label
                         }
                       />
                     </View>
@@ -156,10 +157,10 @@ const TerminalManagementScreen = () => {
         </View>
 
         {/* Software Updates */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Software Updates",
-            <RefreshCw size={20} color="#f97316" />,
+            <RefreshCw size={20} color={colors.warning} />,
             "updates"
           )}
           {expandedSections.updates && (
@@ -173,7 +174,7 @@ const TerminalManagementScreen = () => {
                     You are on the latest stable version.
                   </Text>
                 </View>
-                <TouchableOpacity className="bg-[#404040] border border-gray-600 px-4 py-2 rounded-lg">
+                <TouchableOpacity className="bg-surface border border-gray-600 px-4 py-2 rounded-lg">
                   <Text className="text-white font-medium">
                     Check for Updates
                   </Text>
@@ -181,7 +182,7 @@ const TerminalManagementScreen = () => {
               </View>
               <View className="p-4 bg-blue-900/20 border border-blue-900/50 rounded-lg">
                 <View className="flex-row items-start">
-                  <CheckCircle2 size={18} color="#60a5fa" className="mt-0.5" />
+                  <CheckCircle2 size={18} color={colors.info} className="mt-0.5" />
                   <View className="ml-2 flex-1">
                     <Text className="text-blue-200 font-bold mb-1">
                       Auto-Update Enabled
@@ -198,7 +199,7 @@ const TerminalManagementScreen = () => {
         </View>
 
         {/* Device Security */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
             "Device Security",
             <ShieldCheck size={20} color="#a78bfa" />,

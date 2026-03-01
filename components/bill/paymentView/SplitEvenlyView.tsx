@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
@@ -88,12 +89,12 @@ const SplitEvenlyView = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-[#333] shrink-0">
+      <View className="flex-row items-center p-4 border-b border-border shrink-0">
         <TouchableOpacity
           onPress={handleGoBack}
-          className="p-2 bg-[#333] rounded-lg mr-4"
+          className="p-2 bg-surface rounded-lg mr-4"
         >
           <ArrowLeft size={20} color="white" />
         </TouchableOpacity>
@@ -106,10 +107,10 @@ const SplitEvenlyView = () => {
       {/* Main Content - Side by Side Layout */}
       <View className="flex-1 flex-row p-6 gap-6">
         {/* LEFT: Controls (Input) */}
-        <View className="flex-1 bg-[#2A2A2A] rounded-3xl border border-[#333] justify-center items-center">
+        <View className="flex-1 bg-surface rounded-3xl border border-border justify-center items-center">
           <View className="items-center">
             <View className="w-16 h-16 bg-blue-900/20 rounded-full items-center justify-center mb-6">
-              <Users size={32} color="#60A5FA" />
+              <Users size={32} color={colors.info} />
             </View>
             <Text className="text-xl font-semibold text-gray-300 mb-8">
               Number of People
@@ -119,8 +120,8 @@ const SplitEvenlyView = () => {
               <TouchableOpacity
                 onPress={handleDecrement}
                 className={`w-20 h-20 rounded-full border-2 items-center justify-center ${numberOfPeople <= 2
-                  ? "border-[#444] bg-[#222]"
-                  : "border-gray-500 bg-[#333]"
+                  ? "border-border bg-[#222]"
+                  : "border-gray-500 bg-surface"
                   }`}
                 disabled={numberOfPeople <= 2}
               >
@@ -136,7 +137,7 @@ const SplitEvenlyView = () => {
 
               <TouchableOpacity
                 onPress={handleIncrement}
-                className="w-20 h-20 rounded-full border-2 border-gray-500 bg-[#333] items-center justify-center"
+                className="w-20 h-20 rounded-full border-2 border-gray-500 bg-surface items-center justify-center"
               >
                 <Plus size={36} color="white" />
               </TouchableOpacity>
@@ -147,9 +148,9 @@ const SplitEvenlyView = () => {
         {/* RIGHT: Financials & Action (Result) */}
         <View className="flex-1 justify-between">
           {/* Summary Card */}
-          <View className="bg-[#262626] rounded-3xl border border-[#333] p-8 flex-1 justify-center mb-6">
+          <View className="bg-surface rounded-3xl border border-border p-8 flex-1 justify-center mb-6">
             {/* Total Bill */}
-            <View className="flex-row justify-between items-end mb-6 pb-6 border-b border-[#333]">
+            <View className="flex-row justify-between items-end mb-6 pb-6 border-b border-border">
               <Text className="text-gray-400 font-medium text-lg">
                 Total Bill
               </Text>
@@ -173,7 +174,7 @@ const SplitEvenlyView = () => {
               </View>
 
               {/* Tax per person */}
-              <View className="flex-row justify-between items-center mb-4 pb-4 border-b border-[#333]">
+              <View className="flex-row justify-between items-center mb-4 pb-4 border-b border-border">
                 <Text className="text-gray-500 text-sm">Tax</Text>
                 <Text className="text-gray-300 text-lg">
                   ${taxPerPerson.toFixed(2)}
@@ -183,9 +184,9 @@ const SplitEvenlyView = () => {
               {/* Dual Pricing Display - Card vs Cash */}
               <View className="mb-4">
                 {/* Card Payment Option */}
-                <View className="flex-row justify-between items-center py-3 px-4 bg-[#1A1A1A] rounded-xl mb-2 border border-[#333]">
+                <View className="flex-row justify-between items-center py-3 px-4 bg-panel rounded-xl mb-2 border border-border">
                   <View className="flex-row items-center">
-                    <CreditCard size={20} color="#60A5FA" />
+                    <CreditCard size={20} color={colors.info} />
                     <Text className="text-gray-300 font-medium ml-3">
                       Card Payment
                     </Text>
@@ -196,9 +197,9 @@ const SplitEvenlyView = () => {
                 </View>
 
                 {/* Cash Payment Option */}
-                <View className="flex-row justify-between items-center py-3 px-4 bg-[#1A1A1A] rounded-xl border border-green-900/50">
+                <View className="flex-row justify-between items-center py-3 px-4 bg-panel rounded-xl border border-green-900/50">
                   <View className="flex-row items-center">
-                    <Banknote size={20} color="#10B981" />
+                    <Banknote size={20} color={colors.success} />
                     <Text className="text-gray-300 font-medium ml-3">
                       Cash Payment
                     </Text>

@@ -7313,6 +7313,7 @@ export const useOrderStore = create<OrderState>()(
                 // Still update order status if possible
                 Promise.resolve(supabase.rpc("update_order_status", {
                   p_order_id: currentOrder.db_order_id,
+                  p_reason: undefined,
                   p_new_status: backendStatus,
                 }))
                   .then(({ error }: { error: any }) => {

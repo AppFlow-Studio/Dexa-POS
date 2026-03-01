@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import {
   BarChart3,
@@ -41,7 +42,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
     <TouchableOpacity
       onPress={onPress}
       className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${
-        isHighlighted ? "bg-blue-50" : "bg-[#303030]"
+        isHighlighted ? "bg-blue-50" : "bg-surface"
       }`}
       style={{ minHeight: 140 }}
     >
@@ -97,7 +98,7 @@ const MainMenu: React.FC = () => {
   const menuItems = [
     {
       id: "home",
-      icon: <Home color="#3b82f6" size={48} />,
+      icon: <Home color={colors.info} size={48} />,
       title: "Sales",
       subtitle: "Process Orders",
       route: "/order-processing",
@@ -105,7 +106,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "tables",
-      icon: <Table color="#3b82f6" size={48} />,
+      icon: <Table color={colors.info} size={48} />,
       title: "Tables",
       subtitle: "Manage Seating",
       route: "/tables",
@@ -113,7 +114,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "previous-orders",
-      icon: <History color="#3b82f6" size={48} />,
+      icon: <History color={colors.info} size={48} />,
       title: "Previous Orders",
       subtitle: "Order History",
       route: "/previous-orders",
@@ -121,7 +122,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "online-orders",
-      icon: <ShoppingBag color="#3b82f6" size={48} />,
+      icon: <ShoppingBag color={colors.info} size={48} />,
       title: "Online Orders",
       subtitle: "Web & App Orders",
       route: "/online-orders",
@@ -129,7 +130,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "kds",
-      icon: <ChefHat color="#3b82f6" size={48} />,
+      icon: <ChefHat color={colors.info} size={48} />,
       title: "Kitchen Display",
       subtitle: "Manage Orders",
       route: "/kds",
@@ -153,7 +154,7 @@ const MainMenu: React.FC = () => {
     // },
     {
       id: "scheduling",
-      icon: <CalendarClock color="#3b82f6" size={48} />,
+      icon: <CalendarClock color={colors.info} size={48} />,
       title: "Scheduling",
       subtitle: "Time Management",
       route: "/scheduling",
@@ -172,7 +173,7 @@ const MainMenu: React.FC = () => {
 
     // {
     //     id: "customers",
-    //     icon: <Users color="#3b82f6" size={48} />,
+    //     icon: <Users color={colors.info} size={48} />,
     //     title: "Customers",
     //     subtitle: "Customer Database",
     //     route: "/customers-list",
@@ -180,7 +181,7 @@ const MainMenu: React.FC = () => {
     // },
     {
       id: "menu-management",
-      icon: <UtensilsCrossed color="#3b82f6" size={48} />,
+      icon: <UtensilsCrossed color={colors.info} size={48} />,
       title: "Menu Management",
       subtitle: "Edit Menu Items",
       route: "/menu",
@@ -189,7 +190,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "inventory",
-      icon: <Package color="#3b82f6" size={48} />,
+      icon: <Package color={colors.info} size={48} />,
       title: "Inventory",
       subtitle: "Stock Management",
       route: "/inventory",
@@ -198,7 +199,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "analytics",
-      icon: <BarChart3 color="#3b82f6" size={48} />,
+      icon: <BarChart3 color={colors.info} size={48} />,
       title: "Analytics",
       subtitle: "Sales Reports",
       route: "/analytics",
@@ -207,7 +208,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "settings",
-      icon: <Settings color="#3b82f6" size={48} />,
+      icon: <Settings color={colors.info} size={48} />,
       title: "Settings",
       subtitle: "System Config",
       route: "/settings",
@@ -217,7 +218,7 @@ const MainMenu: React.FC = () => {
   ];
 
   return (
-    <View className="w-full h-full flex-1 bg-[#212121]">
+    <View className="w-full h-full flex-1 bg-panel">
       <ScrollView
         className="w-full flex-1"
         contentContainerStyle={{
@@ -257,7 +258,7 @@ const MainMenu: React.FC = () => {
 
       {/* Manager PIN Dialog */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-        <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">
+        <DialogContent className="w-fit h-fit bg-surface border-gray-600 p-8">
           <DialogHeader>
             <DialogTitle className="text-center text-3xl font-semibold text-white">
               Manager Access Required

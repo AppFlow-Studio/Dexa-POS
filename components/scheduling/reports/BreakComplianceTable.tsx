@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { colors } from "@/lib/theme";
 import { AlertCircle, CheckCircle2, XCircle } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
@@ -51,11 +52,11 @@ const BreakComplianceTable = () => {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "compliant":
-        return <CheckCircle2 size={16} color={"#4ade80"} />;
+        return <CheckCircle2 size={16} color={colors.success} />;
       case "short":
-        return <AlertCircle size={16} color={"#facc15"} />;
+        return <AlertCircle size={16} color={colors.warning} />;
       case "missed":
-        return <XCircle size={16} color={"#ef4444"} />;
+        return <XCircle size={16} color={colors.danger} />;
       default:
         return null;
     }
@@ -77,7 +78,7 @@ const BreakComplianceTable = () => {
   };
 
   return (
-    <Card className="p-6 bg-[#303030] border-gray-700">
+    <Card className="p-6 bg-panel border-border">
       <View className="mb-6">
         <Text className="text-lg font-semibold text-white mb-1">
           Break Compliance
@@ -89,7 +90,7 @@ const BreakComplianceTable = () => {
 
       <View className="rounded-lg border border-gray-700 overflow-hidden">
         {/* Header */}
-        <View className="flex-row bg-[#212121] p-3 border-b border-gray-700 gap-4">
+        <View className="flex-row bg-screen p-3 border-b border-border gap-4">
           <Text className="flex-1 font-semibold text-white">Employee</Text>
           <Text className="flex-1 font-semibold text-white text-right">
             Shift Hours

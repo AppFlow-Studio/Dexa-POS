@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Modal, Text, TouchableOpacity, View } from "react-native";
@@ -82,11 +83,11 @@ export function PaymentErrorModal({
       statusBarTranslucent
     >
       <View className="flex-1 bg-black/70 items-center justify-center p-6">
-        <View className="bg-[#2b2b2b] rounded-2xl p-6 w-full max-w-md border-2 border-red-500">
+        <View className="bg-surface rounded-2xl p-6 w-full max-w-md border-2 border-red-500">
           {/* Icon */}
           <View className="items-center mb-4">
             <View className="bg-red-500/20 p-4 rounded-full">
-              <AlertTriangle size={48} color="#EF4444" />
+              <AlertTriangle size={48} color={colors.danger} />
             </View>
           </View>
 
@@ -101,7 +102,7 @@ export function PaymentErrorModal({
           </Text>
 
           {/* Countdown Progress Bar */}
-          <View className="bg-[#1A1A1A] rounded-full h-2 mb-2 overflow-hidden">
+          <View className="bg-panel rounded-full h-2 mb-2 overflow-hidden">
             <Animated.View
               className="bg-red-500 h-full rounded-full"
               style={{

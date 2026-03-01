@@ -1,4 +1,5 @@
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { POLineItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
@@ -27,7 +28,7 @@ const StatCard = ({
   label: string;
   value: string | number;
 }) => (
-  <View className="flex-1 bg-[#303030] border border-gray-700 rounded-2xl p-4 mr-3">
+  <View className="flex-1 bg-panel border border-border rounded-2xl p-4 mr-3">
     <Text className="text-lg font-semibold text-gray-400">{label}</Text>
     <Text className="text-2xl font-bold text-white mt-1">{value}</Text>
   </View>
@@ -243,7 +244,7 @@ const VendorDetailsScreen = () => {
 
   const renderPOBuilderHeader = () => (
     <View>
-      <View className="px-4 py-3 border-b border-gray-700 w-full mb-3">
+      <View className="px-4 py-3 border-b border-border w-full mb-3">
         <View className="flex flex-row gap-2 justify-between">
           <View className="flex flex-col gap-1">
             <Text className="text-white text-xl font-bold">Build PO</Text>
@@ -280,7 +281,7 @@ const VendorDetailsScreen = () => {
           Items ({poLineItems.length})
         </Text>
         {poLineItems.length === 0 && (
-          <View className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-4 items-center">
+          <View className="bg-screen border border-border rounded-lg p-4 items-center">
             <Text className="text-gray-400 text-sm">No items added yet</Text>
           </View>
         )}
@@ -292,13 +293,13 @@ const VendorDetailsScreen = () => {
     <View className="px-4 py-4">
       <Text className="text-white text-lg font-semibold mb-2">Add Items</Text>
       <View className="flex-row items-center gap-1.5 mb-2">
-        <Search color="#9CA3AF" size={16} />
+        <Search color={colors.label} size={16} />
         <BottomSheetTextInput
           value={itemSearchText}
           onChangeText={setItemSearchText}
           placeholder="Search items..."
-          className="flex-1 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 text-white text-sm"
-          placeholderTextColor="#9CA3AF"
+          className="flex-1 bg-screen border border-border rounded-lg px-2 py-1.5 text-white text-sm"
+          placeholderTextColor={colors.label}
         />
       </View>
       <View>
@@ -312,7 +313,7 @@ const VendorDetailsScreen = () => {
               // FIX: Use unique key
               key={`${item.id}-${index}`}
               onPress={() => addItemToPO(item)}
-              className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-2 mb-1.5"
+              className="bg-screen border border-border rounded-lg p-2 mb-1.5"
             >
               <View className="flex-row justify-between items-center">
                 <View className="flex-1 pr-2">
@@ -338,7 +339,7 @@ const VendorDetailsScreen = () => {
     const item = inventoryItems.find((i) => i.id === lineItem.inventoryItemId);
     const isEditing = isEditingItem === lineItem.inventoryItemId;
     return (
-      <View className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-3 mx-4 mb-2">
+      <View className="bg-screen border border-border rounded-lg p-3 mx-4 mb-2">
         <View className="flex-row justify-between items-center">
           <View className="flex-1 pr-2">
             <Text className="text-white text-base font-semibold">
@@ -355,7 +356,7 @@ const VendorDetailsScreen = () => {
                   value={editingQuantity}
                   onChangeText={setEditingQuantity}
                   keyboardType="number-pad"
-                  className="bg-[#1a1a1a] border border-gray-600 rounded px-2 py-1 text-white text-center w-14 text-sm"
+                  className="bg-screen border border-gray-600 rounded px-2 py-1 text-white text-center w-14 text-sm"
                 />
                 <TouchableOpacity
                   onPress={saveEditItem}
@@ -381,13 +382,13 @@ const VendorDetailsScreen = () => {
                   }
                   className="p-1.5"
                 >
-                  <Edit3 size={14} color="#9CA3AF" />
+                  <Edit3 size={14} color={colors.label} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => removeItemFromPO(lineItem.inventoryItemId)}
                   className="p-1.5"
                 >
-                  <Trash2 size={14} color="#EF4444" />
+                  <Trash2 size={14} color={colors.danger} />
                 </TouchableOpacity>
               </>
             )}
@@ -402,7 +403,7 @@ const VendorDetailsScreen = () => {
 
   if (!vendor) {
     return (
-      <View className="flex-1 justify-center items-center bg-[#212121] px-4">
+      <View className="flex-1 justify-center items-center bg-screen px-4">
         <Text className="text-2xl font-bold text-white mb-3">
           Vendor Not Found
         </Text>
@@ -425,10 +426,10 @@ const VendorDetailsScreen = () => {
 
   return (
     <>
-      <View className="flex-1 bg-[#212121]">
+      <View className="flex-1 bg-screen">
         <ScrollView className="flex-1" contentContainerStyle={{ padding: 12 }}>
           {/* Header */}
-          <View className="bg-[#303030] border border-gray-700 rounded-2xl p-4 mb-3">
+          <View className="bg-panel border border-border rounded-2xl p-4 mb-3">
             <View className="flex-row justify-between items-start">
               <View className="flex-1 pr-2 flex flex-row items-center">
                 <Text className="text-2xl font-bold text-white">
@@ -486,7 +487,7 @@ const VendorDetailsScreen = () => {
           </View>
 
           {/* Tab Bar */}
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-1 mb-3">
+          <View className="bg-panel border border-border rounded-xl p-1 mb-3">
             <View className="flex-row">
               <TouchableOpacity
                 onPress={() => setActiveTab("purchase-orders")}
@@ -529,17 +530,17 @@ const VendorDetailsScreen = () => {
 
           {/* Tab Content */}
           {activeTab === "purchase-orders" && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-3">
+            <View className="bg-panel border border-border rounded-xl p-3">
               <View className="flex-row justify-between items-center">
                 <Text className="text-base font-bold text-white mb-2">
                   Purchase Orders
                 </Text>
                 <View className="flex-row gap-1.5 items-center justify-center">
                   <TouchableOpacity
-                    className="border border-gray-700 rounded-lg p-1.5"
+                    className="border border-border rounded-lg p-1.5"
                     onPress={() => poSearchRef.current?.snapToIndex?.(1)}
                   >
-                    <Search size={20} color={"#9CA3AF"} />
+                    <Search size={20} color={colors.label} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     className="flex-row items-center gap-1.5 justify-center w-fit bg-blue-500 rounded-lg px-3 py-1.5"
@@ -575,7 +576,7 @@ const VendorDetailsScreen = () => {
                       // FIX: Safe Key
                       key={`${po.id}-${index}`}
                       href={`/inventory/purchase-orders/${po.id}`}
-                      className="border border-gray-700 py-2 rounded-lg my-1"
+                      className="border border-border py-2 rounded-lg my-1"
                     >
                       <View className="flex-row justify-between items-center p-1.5">
                         <View className="flex-1 pr-2">
@@ -612,17 +613,17 @@ const VendorDetailsScreen = () => {
           )}
 
           {activeTab === "associated-items" && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-3">
+            <View className="bg-panel border border-border rounded-xl p-3">
               <View className="flex-row justify-between items-center">
                 <Text className="text-base font-bold text-white mb-2">
                   Associated Items
                 </Text>
                 <View className="flex-row gap-1.5 items-center justify-center">
                   <TouchableOpacity
-                    className="border border-gray-700 rounded-lg p-1.5"
+                    className="border border-border rounded-lg p-1.5"
                     onPress={() => itemSearchRef.current?.snapToIndex?.(0)}
                   >
-                    <Search size={20} color={"#9CA3AF"} />
+                    <Search size={20} color={colors.label} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -641,7 +642,7 @@ const VendorDetailsScreen = () => {
                       // FIX: Safe Key
                       key={`${item.id}-${index}`}
                       href={`/inventory/ingredient-items/${item.id}`}
-                      className="border border-gray-700 py-2 rounded-lg my-0.5"
+                      className="border border-border py-2 rounded-lg my-0.5"
                     >
                       <View className="flex-row justify-between items-center px-3">
                         <View className="flex-1 pr-2">
@@ -690,8 +691,7 @@ const VendorDetailsScreen = () => {
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={(props) => (
           <BottomSheetBackdrop
             {...props}
@@ -705,14 +705,14 @@ const VendorDetailsScreen = () => {
         android_keyboardInputMode="adjustResize"
       >
         <View className="flex-row items-center rounded-2xl px-4">
-          <View className="flex-row items-center flex-1 border rounded-lg p-1.5 border-gray-700">
-            <Search color="#6b7280" size={20} />
+          <View className="flex-row items-center flex-1 border rounded-lg p-1.5 border-border">
+            <Search color={colors.muted} size={20} />
             <BottomSheetTextInput
               value={poSearchText}
               onChangeText={setPoSearchText}
               placeholder="Search POs"
               className="flex-1 py-3 ml-2 text-xl text-white"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.label}
             />
           </View>
           <TouchableOpacity
@@ -747,7 +747,7 @@ const VendorDetailsScreen = () => {
           renderItem={({ item: po }) => (
             <Link
               href={`/inventory/purchase-orders/${po.id}`}
-              className="px-4 py-3 border-b border-gray-700"
+              className="px-4 py-3 border-b border-border"
             >
               <View className="flex-row justify-between items-center">
                 <View className="flex-1 pr-2">
@@ -788,8 +788,7 @@ const VendorDetailsScreen = () => {
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={(props) => (
           <BottomSheetBackdrop
             {...props}
@@ -803,14 +802,14 @@ const VendorDetailsScreen = () => {
         android_keyboardInputMode="adjustResize"
       >
         <View className="flex-row items-center rounded-2xl px-4">
-          <View className="flex-row items-center flex-1 border rounded-lg p-1.5 border-gray-700">
-            <Search color="#6b7280" size={20} />
+          <View className="flex-row items-center flex-1 border rounded-lg p-1.5 border-border">
+            <Search color={colors.muted} size={20} />
             <BottomSheetTextInput
               value={itemSearchText}
               onChangeText={setItemSearchText}
               placeholder="Search Items"
               className="flex-1 py-3 ml-2 text-xl text-white"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.label}
             />
           </View>
           <TouchableOpacity
@@ -832,7 +831,7 @@ const VendorDetailsScreen = () => {
           renderItem={({ item: it }) => (
             <Link
               href={`/inventory/ingredient-items/${it.id}`}
-              className="px-4 py-3 border-b border-gray-700"
+              className="px-4 py-3 border-b border-border"
             >
               <View className="flex-row justify-between items-center">
                 <View className="flex-1 pr-2">
@@ -864,8 +863,7 @@ const VendorDetailsScreen = () => {
         index={-1}
         snapPoints={["60%", "90%"]}
         enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={(props) => (
           <BottomSheetBackdrop
             {...props}
@@ -875,7 +873,7 @@ const VendorDetailsScreen = () => {
           />
         )}
       >
-        <View className="px-4 py-3 border-b border-gray-700">
+        <View className="px-4 py-3 border-b border-border">
           <Text className="text-white text-xl font-bold">Create Purchase</Text>
           <Text className="text-gray-300 mt-0.5 text-sm">
             Vendor:
@@ -906,7 +904,7 @@ const VendorDetailsScreen = () => {
               // FIX: Safe Key Extractor
               keyExtractor={(po, index) => `${po.id}-${index}`}
               renderItem={({ item: po }) => (
-                <View className="border border-gray-700 rounded-lg mb-2 p-2">
+                <View className="border border-border rounded-lg mb-2 p-2">
                   <View className="flex-row justify-between items-center">
                     <View className="flex-1 pr-2">
                       <Text className="text-white text-base font-semibold">
@@ -920,7 +918,7 @@ const VendorDetailsScreen = () => {
                         {po.items.map((li, idx) => (
                           <View
                             key={`${po.id}_${idx}`}
-                            className="px-1.5 py-0.5 rounded-full bg-[#2a2a2a] border border-gray-700"
+                            className="px-1.5 py-0.5 rounded-full bg-screen border border-border"
                           >
                             <Text className="text-[10px] text-gray-200">
                               {getItemName(li.inventoryItemId)} x{li.quantity}
@@ -933,7 +931,7 @@ const VendorDetailsScreen = () => {
                       </Text>
                     </View>
                     <TouchableOpacity
-                      className="bg-[#3b82f6] px-2 py-1.5 rounded-lg"
+                      className="bg-blue-500 px-2 py-1.5 rounded-lg"
                       onPress={() => openPOBuilder(po)}
                     >
                       <Text className="text-white font-semibold text-sm">
@@ -962,8 +960,7 @@ const VendorDetailsScreen = () => {
         index={-1}
         snapPoints={["70%", "95%"]}
         enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        {...bottomSheetTheme}
         backdropComponent={(props) => (
           <BottomSheetBackdrop
             {...props}

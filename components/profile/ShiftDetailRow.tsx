@@ -1,5 +1,6 @@
 import { Shift } from "@/lib/types";
 import { format, parse, parseISO } from "date-fns";
+import { colors } from "@/lib/theme";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -112,7 +113,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`p-4 bg-[#212121] rounded-xl border ${
+      className={`p-4 bg-panel rounded-xl border ${
         shift.status === "open"
           ? "border-orange-500 bg-orange-500/10"
           : "border-gray-700"
@@ -125,7 +126,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       </View>
 
       <View className="flex-row items-center gap-2 mb-2">
-        <Clock size={16} color="#9CA3AF" />
+        <Clock size={16} color={colors.label} />
         <Text className="text-base text-white">
           {shift.startTime
             ? format(parseISO(shift.startTime), "h:mm a")
@@ -141,7 +142,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       </View>
 
       <View className="flex-row items-center gap-2 mb-3">
-        <MapPin size={16} color="#9CA3AF" />
+        <MapPin size={16} color={colors.label} />
         <Text className="text-base text-gray-400">{shift.location}</Text>
       </View>
 
@@ -151,7 +152,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
             onPress={handleNotePress}
             className="flex-row items-center gap-2 mb-3"
           >
-            <MessageSquare size={16} color="#60A5FA" />
+            <MessageSquare size={16} color={colors.info} />
             <Text className="text-sm text-blue-300 underline">
               Manager note
             </Text>
@@ -166,27 +167,27 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
 
       <View className="flex-row flex-wrap items-center gap-2 mb-4">
         <ComplianceBadge
-          icon={<Coffee size={14} color="#9CA3AF" />}
+          icon={<Coffee size={14} color={colors.label} />}
           text={`Meal break ${shift.breakMinutes}m required`}
           variant="default"
         />
         {shift.expectedPace && (
           <ComplianceBadge
-            icon={<TrendingUp size={14} color="#9CA3AF" />}
+            icon={<TrendingUp size={14} color={colors.label} />}
             text={`Expected: ${shift.expectedPace}`}
             variant={getPaceVariant(shift.expectedPace)}
           />
         )}
         {shift.staffingLevel && (
           <ComplianceBadge
-            icon={<Users size={14} color="#9CA3AF" />}
+            icon={<Users size={14} color={colors.label} />}
             text={shift.staffingLevel}
             variant={getStaffingVariant(shift.staffingLevel)}
           />
         )}
         {shift.isOvertimeRisk && (
           <ComplianceBadge
-            icon={<AlertTriangle size={14} color="#f59e0b" />}
+            icon={<AlertTriangle size={14} color={colors.warning} />}
             text="OT risk"
             variant="warning"
           />
@@ -218,7 +219,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
                 }}
                 className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
               >
-                <ArrowRightLeft size={16} color="#9CA3AF" />
+                <ArrowRightLeft size={16} color={colors.label} />
                 <Text className="text-base font-semibold text-white">
                   Request Swap
                 </Text>
@@ -230,7 +231,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
                 }}
                 className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
               >
-                <MinusCircle size={16} color="#9CA3AF" />
+                <MinusCircle size={16} color={colors.label} />
                 <Text className="text-base font-semibold text-gray-300">
                   Drop to Open
                 </Text>

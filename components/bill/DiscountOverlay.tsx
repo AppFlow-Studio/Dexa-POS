@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { CartItem, Discount } from "@/lib/types";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -121,7 +122,7 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
       <Pressable onPress={onClose} className="absolute inset-0 bg-black/60" />
       <Animated.View
         style={animatedStyle}
-        className="absolute bottom-0 left-0 right-0 h-[85%] bg-[#212121] rounded-t-3xl p-4 border-t border-gray-700"
+        className="absolute bottom-0 left-0 right-0 h-[85%] bg-panel rounded-t-3xl p-4 border-t border-gray-700"
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -131,17 +132,17 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
             <Text className="text-2xl font-bold text-white">Discounts</Text>
             <TouchableOpacity
               onPress={onClose}
-              className="p-2 bg-[#303030] rounded-full border border-gray-600"
+              className="p-2 bg-surface rounded-full border border-gray-600"
             >
-              <X color="#9CA3AF" size={20} />
+              <X color={colors.label} size={20} />
             </TouchableOpacity>
           </View>
 
-          <View className="flex-row bg-[#303030] border border-gray-700 p-1.5 rounded-xl self-start mb-4">
+          <View className="flex-row bg-surface border border-gray-700 p-1.5 rounded-xl self-start mb-4">
             <TouchableOpacity
               onPress={() => setActiveTab("check")}
               className={`py-2 px-3 rounded-lg ${
-                activeTab === "check" ? "bg-[#212121]" : ""
+                activeTab === "check" ? "bg-panel" : ""
               }`}
             >
               <Text
@@ -155,7 +156,7 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
             <TouchableOpacity
               onPress={() => setActiveTab("items")}
               className={`py-2 px-3 rounded-lg ${
-                activeTab === "items" ? "bg-[#212121]" : ""
+                activeTab === "items" ? "bg-panel" : ""
               }`}
             >
               <Text
@@ -175,7 +176,7 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
                   <TouchableOpacity
                     key={d.id}
                     onPress={() => handleApplyCheckDiscount(d)}
-                    className="w-[49%] p-1 border rounded-xl mb-2 items-center justify-center h-20 bg-[#303030] border-gray-600"
+                    className="w-[49%] p-1 border rounded-xl mb-2 items-center justify-center h-20 bg-surface border-gray-600"
                   >
                     <Text className="text-lg text-wrap w-full overflow-hidden font-bold text-center text-white">
                       {d.label}
@@ -196,7 +197,7 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
                         className={`p-4 border rounded-xl flex-row justify-between items-center ${
                           isApplied
                             ? "border-blue-500 bg-blue-900/20"
-                            : "bg-[#303030] border-gray-600"
+                            : "bg-surface border-gray-600"
                         }`}
                       >
                         <View>
@@ -236,8 +237,8 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
           <View className="flex-row items-center gap-3 mt-4 pt-4 border-t border-gray-700">
             <TextInput
               placeholder="Add promo or voucher"
-              className="flex-1 p-3 bg-[#303030] rounded-xl text-xl text-white border border-gray-600 h-16"
-              placeholderTextColor="#6B7280"
+              className="flex-1 p-3 bg-surface rounded-xl text-xl text-white border border-gray-600 h-16"
+              placeholderTextColor={colors.muted}
             />
             <TouchableOpacity className="px-5 py-3 bg-blue-600 rounded-xl">
               <Text className="text-white text-xl font-bold">Apply</Text>

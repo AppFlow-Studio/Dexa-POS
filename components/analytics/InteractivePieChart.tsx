@@ -141,14 +141,14 @@ const InteractivePieChart: React.FC<InteractivePieChartProps> = ({
 
     if (!data || data.length === 0) {
         return (
-            <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+            <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
                 <Text className="text-gray-400 text-lg">No data available</Text>
             </View>
         );
     }
 
     return (
-        <View className=" w-full bg-[#303030] flex items-center justify-center rounded-2xl border border-gray-600 p-6 ">
+        <View className=" w-full bg-panel flex items-center justify-center rounded-2xl border border-border p-6 ">
             <GestureDetector gesture={gesture}>
                 <Canvas style={{ width: size + 50, height: size + 20, alignSelf: 'center', overflow: 'visible' }}>
                     {/* Render non-selected slices first */}
@@ -199,7 +199,7 @@ const InteractivePieChart: React.FC<InteractivePieChartProps> = ({
                         zIndex: 1000,
                     }}
                 >
-                    <View className="bg-gray-800 border border-gray-600 rounded-lg p-3 items-center">
+                    <View className="bg-gray-800 border border-border rounded-lg p-3 items-center">
                         <Text className="text-white font-semibold text-lg text-center">
                             {slices[selectedSlice].label}
                         </Text>
@@ -253,7 +253,7 @@ const InteractivePieChart: React.FC<InteractivePieChartProps> = ({
             {/* Tooltip for selected slice */}
             {selectedSlice !== null && tooltipVisible && tooltipData && (
                 <View
-                    className="absolute bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-lg"
+                    className="absolute bg-gray-800 border border-border rounded-lg p-3 shadow-lg"
                     style={{
                         left: tooltipData.x,
                         top: tooltipData.y - 60,

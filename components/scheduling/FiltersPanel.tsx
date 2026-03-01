@@ -1,5 +1,6 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { colors } from "@/lib/theme";
 import { Role } from "@/lib/types"; // Import Role from lib/types
 import { Filter } from "lucide-react-native";
 import React from "react";
@@ -30,7 +31,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   return (
     <View className="gap-y-4">
       <View className="flex-row items-center gap-2 mb-4">
-        <Filter className="text-blue-400" size={16} color={"#60a5fa"} />
+        <Filter className="text-blue-400" size={16} color={colors.info} />
         <Text className="text-sm font-semibold text-white">Filters</Text>
       </View>
 

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useWasOrderRecentlyUpdated } from "@/stores/useConflictStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -6,6 +7,7 @@ import {
   CheckCircle,
   CreditCard,
   Eye,
+  Printer,
   RefreshCw,
   Repeat2,
   RotateCcw,
@@ -20,71 +22,76 @@ interface OrderBadgeProps {
   onViewItems: () => void;
   onRetrieve: () => void;
   onReopenCheck?: () => void;
+  onPrintReceipt?: () => void;
 }
 
 // ============================================================================
-// MEMOIZED COLOR HELPER - Extracted outside component to avoid recreation
+// DOT-CHIP COLOR HELPERS
 // ============================================================================
-const getStatusColor = (status: string, paidStatus: string, refundState?: { isFullyRefunded: boolean; isPartiallyRefunded: boolean }) => {
-  // Handle refund states first - they take priority
-  if (refundState?.isFullyRefunded) {
+const getOrderDotColor = (
+  status: string,
+  refundState?: { isFullyRefunded: boolean; isPartiallyRefunded: boolean },
+): string => {
+  if (refundState?.isFullyRefunded) return colors.orderCancelled;
+  if (refundState?.isPartiallyRefunded) return colors.paymentPartialRefund;
+  switch (status) {
+    case "sent_to_kitchen":
+      return colors.orderSentToKitchen;
+    case "preparing":
+      return colors.orderPreparing;
+    case "ready":
+      return colors.orderReady;
+    case "completed":
+      return colors.orderCompleted;
+    case "cancelled":
+    case "void":
+      return colors.orderCancelled;
+    default:
+      return colors.orderDefault;
+  }
+};
+
+const getPaidSuffix = (
+  paidStatus: string,
+  amountDue: number,
+  refundState: { isFullyRefunded: boolean; isPartiallyRefunded: boolean },
+): { text: string; color: string } => {
+  if (refundState.isFullyRefunded)
+    return { text: "Refunded", color: colors.paymentRefunded };
+  if (refundState.isPartiallyRefunded)
+    return { text: "Partial Refund", color: colors.paymentPartialRefund };
+  if (paidStatus === "Paid") return { text: "Paid", color: colors.paymentPaid };
+  if (paidStatus === "Partial")
+    return { text: "Partial", color: colors.paymentPartial };
+  if (amountDue > 0)
     return {
-      dot: "#ef4444",
-      bg: "#fef2f2",
-      border: "#f87171",
-      text: "#991b1b",
+      text: `$${amountDue.toFixed(2)} due`,
+      color: colors.paymentUnpaid,
     };
-  }
-  if (refundState?.isPartiallyRefunded) {
-    return {
-      dot: "#f97316",
-      bg: "#fff7ed",
-      border: "#fb923c",
-      text: "#9a3412",
-    };
-  }
-  
-  if (status === "sent_to_kitchen") {
-    return { dot: "#6366f1", bg: "#eef2ff", border: "#818cf8", text: "#3730a3" };
-  }
-  if (status === "preparing") {
-    if (paidStatus === "Paid") {
-      return {
-        dot: "#3b82f6",
-        bg: "#bae6fd",
-        border: "#2dd4bf",
-        text: "#134e4a",
-      };
-    } else if (paidStatus === "Partial") {
-      return {
-        dot: "#8b5cf6",
-        bg: "#f5f3ff",
-        border: "#c4b5fd",
-        text: "#581c87",
-      };
-    } else {
-      return {
-        dot: "#f97316",
-        bg: "#fef3c7",
-        border: "#fbbf24",
-        text: "#92400e",
-      };
-    }
-  }
-  if (status === "ready") {
-    return {
-      dot: "#10b981",
-      bg: "#d1fae5",
-      border: "#34d399",
-      text: "#065f46",
-    };
-  }
-  return {
-    dot: "#6b7280",
-    bg: "#f3f4f6",
-    border: "#d1d5db",
-    text: "#374151",
-  };
+  return { text: "Unpaid", color: colors.paymentUnpaid };
+};
+
+// ============================================================================
+// STATUS PILL HELPER — returns style for the popover header status pill
+// ============================================================================
+const getStatusPillStyle = (
+  paidStatus: string,
+  orderStatus: string,
+  refundState: { isFullyRefunded: boolean; isPartiallyRefunded: boolean },
+): { bg: string; textColor: string; label: string } => {
+  if (refundState.isFullyRefunded)
+    return { bg: "rgba(239,68,71,0.2)", textColor: colors.danger, label: "Refunded" };
+  if (refundState.isPartiallyRefunded)
+    return { bg: "rgba(249,115,22,0.2)", textColor: colors.paymentPartialRefund, label: "Partial Refund" };
+  if (paidStatus === "Paid")
+    return { bg: "rgba(34,197,94,0.15)", textColor: colors.paymentPaid, label: "Paid" };
+  if (paidStatus === "Partial")
+    return { bg: "rgba(249,115,22,0.15)", textColor: colors.paymentPartial, label: "Partial" };
+  if (orderStatus === "preparing" || orderStatus === "sent_to_kitchen")
+    return { bg: "rgba(251,191,36,0.15)", textColor: colors.warning, label: formatOrderStatus(orderStatus) };
+  if (orderStatus === "ready")
+    return { bg: "rgba(34,197,94,0.15)", textColor: colors.success, label: "Ready" };
+  return { bg: "rgba(156,163,175,0.15)", textColor: colors.muted, label: "Pending" };
 };
 
 // ============================================================================
@@ -97,6 +104,7 @@ interface PopoverContentProps {
   onViewItems: () => void;
   onRetrieve: () => void;
   onReopenCheck?: () => void;
+  onPrintReceipt?: () => void;
   onClose: () => void;
 }
 
@@ -108,45 +116,49 @@ const PopoverContent = React.memo<PopoverContentProps>(
     onViewItems,
     onRetrieve,
     onReopenCheck,
+    onPrintReceipt,
     onClose,
   }) => {
     // Memoize refund status
     const refundStatus = useMemo(() => {
       const payments = order.payments || [];
       if (payments.length === 0) {
-        return { hasRefund: false, isFullyRefunded: false, isPartiallyRefunded: false, totalRefunded: 0 };
+        return {
+          hasRefund: false,
+          isFullyRefunded: false,
+          isPartiallyRefunded: false,
+          totalRefunded: 0,
+        };
       }
-      
-      const totalRefunded = payments.reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
-      const hasRefund = totalRefunded > 0;
-      const isFullyRefunded = payments.length > 0 && payments.every(
-        p => (p.refundedAmount ?? 0) >= (p.amount ?? 0)
+
+      const totalRefunded = payments.reduce(
+        (sum, p) => sum + (p.refundedAmount ?? 0),
+        0,
       );
+      const hasRefund = totalRefunded > 0;
+      const isFullyRefunded =
+        payments.length > 0 &&
+        payments.every((p) => (p.refundedAmount ?? 0) >= (p.amount ?? 0));
       const isPartiallyRefunded = hasRefund && !isFullyRefunded;
-      
+
       return { hasRefund, isFullyRefunded, isPartiallyRefunded, totalRefunded };
     }, [order.payments]);
 
     // Memoize payment calculations
     const {
       amountDue,
-      amountPaid,
       isPartiallyPaid,
-      hasPayments,
       cashAmountDue,
       cashSavings,
     } = useMemo(() => {
       const due = order.amount_due ?? order.total_amount ?? 0;
       const paid = order.amount_paid ?? 0;
       const partial = paid > 0 && order.paid_status !== "Paid";
-      const payments = (order.payments?.length ?? 0) > 0;
       const cashDue = order.cash_amount_due ?? due;
       const savings = due - cashDue;
       return {
         amountDue: due,
-        amountPaid: paid,
         isPartiallyPaid: partial,
-        hasPayments: payments,
         cashAmountDue: cashDue,
         cashSavings: savings,
       };
@@ -155,15 +167,14 @@ const PopoverContent = React.memo<PopoverContentProps>(
       order.total_amount,
       order.amount_paid,
       order.paid_status,
-      order.payments?.length,
       order.cash_amount_due,
     ]);
 
-    // Memoize formatted time - expensive Date operation
+    // Memoize formatted time
     const formattedTime = useMemo(() => {
       if (!order.opened_at) return "";
       return new Date(order.opened_at).toLocaleTimeString("en-US", {
-        hour: "2-digit",
+        hour: "numeric",
         minute: "2-digit",
       });
     }, [order.opened_at]);
@@ -175,247 +186,309 @@ const PopoverContent = React.memo<PopoverContentProps>(
       );
     }, [order.display_number, order.order_number, order.id]);
 
+    // Status pill
+    const statusPill = useMemo(
+      () =>
+        getStatusPillStyle(order.paid_status, order.order_status, {
+          isFullyRefunded: refundStatus.isFullyRefunded,
+          isPartiallyRefunded: refundStatus.isPartiallyRefunded,
+        }),
+      [order.paid_status, order.order_status, refundStatus.isFullyRefunded, refundStatus.isPartiallyRefunded],
+    );
+
     // Check if from another station
     const isFromOtherStation =
       order._sourceStationName && order.station_id !== currentStationId;
 
+    const totalAmount = order.total_amount ?? 0;
+
     return (
-      <View className="bg-[#313131] rounded-xl shadow-lg border border-gray-600 w-[380px]">
-        <View className="p-4 border-b border-gray-600">
-          {/* Flexible Header that wraps */}
-          <View className="flex-row flex-wrap items-center gap-2 mb-3">
-            <Text
-              className="text-2xl font-bold text-white mr-2"
-              numberOfLines={1}
-            >
-              {order.customer_name || "Walk-In"}
-            </Text>
-            <View className="px-2 py-1 rounded-md bg-gray-700/80">
-              <Text className="text-sm font-semibold text-gray-300">
+      <View
+        className="rounded-xl shadow-lg border w-[340px]"
+        style={{ backgroundColor: colors.card, borderColor: colors.border }}
+      >
+        {/* ── Row 1: Order ID · Type · Status pill ── */}
+        <View className="px-4 pt-4 pb-2">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2 flex-1 mr-2">
+              <Text className="text-lg font-bold" style={{ color: colors.heading }}>
                 {displayId}
               </Text>
-            </View>
-            <View className="px-2 py-1 rounded-md bg-blue-900/50">
-              <Text className="text-sm font-semibold text-blue-400">
+              <Text style={{ color: colors.muted }}>·</Text>
+              <Text className="text-sm" style={{ color: colors.muted }}>
                 {order.order_type}
               </Text>
             </View>
             <View
-              className={`px-2 py-1 rounded-md ${
-                refundStatus.isFullyRefunded
-                  ? "bg-red-900/50"
-                  : refundStatus.isPartiallyRefunded
-                    ? "bg-orange-900/50"
-                    : order.paid_status === "Paid"
-                      ? "bg-green-900/50"
-                      : order.paid_status === "Partial" || isPartiallyPaid
-                        ? "bg-purple-900/50"
-                        : "bg-red-900/50"
-              }`}
+              className="px-2.5 py-1 rounded-full"
+              style={{ backgroundColor: statusPill.bg }}
             >
               <Text
-                className={`text-sm font-semibold ${
-                  refundStatus.isFullyRefunded
-                    ? "text-red-400"
-                    : refundStatus.isPartiallyRefunded
-                      ? "text-orange-400"
-                      : order.paid_status === "Paid"
-                        ? "text-green-400"
-                        : order.paid_status === "Partial" || isPartiallyPaid
-                          ? "text-purple-400"
-                          : "text-red-400"
-                }`}
+                className="text-xs font-semibold"
+                style={{ color: statusPill.textColor }}
               >
-                {refundStatus.isFullyRefunded
-                  ? "REFUNDED"
-                  : refundStatus.isPartiallyRefunded
-                    ? "Partial Refund"
-                    : order.paid_status === "Paid"
-                      ? "Paid"
-                      : order.paid_status === "Partial" || isPartiallyPaid
-                        ? "Partial"
-                        : order.paid_status}
-              </Text>
-            </View>
-            {/* Closed badge when check is closed */}
-            {order.check_status === "Closed" && (
-              <View className="px-2 py-1 rounded-md bg-gray-700/50">
-                <Text className="text-sm font-semibold text-gray-400">
-                  Closed
-                </Text>
-              </View>
-            )}
-            <View
-              className={`px-2 py-1 rounded-md ${
-                order.order_status === "preparing"
-                  ? "bg-orange-900/50"
-                  : "bg-gray-700/80"
-              }`}
-            >
-              <Text
-                className={`text-sm font-semibold ${
-                  order.order_status === "preparing"
-                    ? "text-orange-400"
-                    : "text-gray-300"
-                }`}
-              >
-                {formatOrderStatus(order.order_status)}
+                {statusPill.label}
               </Text>
             </View>
           </View>
 
-          {/* Show source station for orders from other stations */}
+          {/* ── Row 2: Customer · Items · Time ── */}
+          <View className="flex-row items-center justify-between mt-1.5">
+            <View className="flex-row items-center gap-1.5 flex-1">
+              <Text className="text-sm" style={{ color: colors.label }}>
+                {order.customer_name || "Walk-In"}
+              </Text>
+              <Text style={{ color: colors.muted }}>·</Text>
+              <Text className="text-sm" style={{ color: colors.muted }}>
+                {order.items.length} item{order.items.length !== 1 ? "s" : ""}
+              </Text>
+            </View>
+            <Text className="text-sm" style={{ color: colors.muted }}>
+              {formattedTime}
+            </Text>
+          </View>
+
+          {/* ── Row 3: Status chips ── */}
+          <View className="flex-row flex-wrap gap-1.5 mt-2">
+            {/* Order Type chip */}
+            {order.order_type ? (
+              <View
+                className="px-2 py-0.5 rounded-md"
+                style={{ backgroundColor: "rgba(96,165,250,0.15)" }}
+              >
+                <Text
+                  className="text-xs font-medium"
+                  style={{ color: colors.info }}
+                >
+                  {order.order_type}
+                </Text>
+              </View>
+            ) : null}
+            {/* Order Status chip */}
+            {order.order_status ? (
+              <View
+                className="px-2 py-0.5 rounded-md"
+                style={{
+                  backgroundColor:
+                    getOrderDotColor(order.order_status, refundStatus) + "26",
+                }}
+              >
+                <Text
+                  className="text-xs font-medium"
+                  style={{
+                    color: getOrderDotColor(order.order_status, refundStatus),
+                  }}
+                >
+                  {formatOrderStatus(order.order_status)}
+                </Text>
+              </View>
+            ) : null}
+            {/* Check Status chip */}
+            {order.check_status ? (
+              <View
+                className="px-2 py-0.5 rounded-md"
+                style={{
+                  backgroundColor:
+                    order.check_status === "Opened"
+                      ? "rgba(34,197,94,0.15)"
+                      : "rgba(156,163,175,0.15)",
+                }}
+              >
+                <Text
+                  className="text-xs font-medium"
+                  style={{
+                    color:
+                      order.check_status === "Opened"
+                        ? colors.success
+                        : colors.muted,
+                  }}
+                >
+                  {order.check_status}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Source station badge */}
           {isFromOtherStation && (
-            <View className="flex-row items-center mt-2 pt-2 border-t border-gray-700">
-              <Repeat2 color="#3b82f6" size={14} />
-              <Text className="text-blue-400 text-xs ml-1">
+            <View className="flex-row items-center mt-2">
+              <Repeat2 color={colors.info} size={13} />
+              <Text className="text-xs ml-1" style={{ color: colors.info }}>
                 From: {order._sourceStationName}
               </Text>
             </View>
           )}
-
-          <View className="flex-row justify-between items-center w-full">
-            <View>
-              <Text className="text-base text-gray-400">
-                {order.items.length} items - Total: $
-                {order.total_amount?.toFixed(2) || "0.00"}
-              </Text>
-              {refundStatus.totalRefunded > 0 && (
-                <Text className="text-sm text-red-400 font-medium">
-                  Refunded: ${refundStatus.totalRefunded.toFixed(2)}
-                </Text>
-              )}
-              {isPartiallyPaid && !refundStatus.isFullyRefunded && (
-                <Text className="text-sm text-green-400 font-medium">
-                  Paid: ${amountPaid.toFixed(2)}
-                </Text>
-              )}
-              {!refundStatus.isFullyRefunded && amountDue > 0.01 && (
-                <Text className="text-sm text-yellow-400 font-bold">
-                  Due: ${amountDue.toFixed(2)}
-                </Text>
-              )}
-              {order.paid_status !== "Paid" && !refundStatus.hasRefund && cashSavings > 0.01 && (
-                <Text className="text-xs text-green-400">
-                  Cash: ${cashAmountDue.toFixed(2)} (save $
-                  {cashSavings.toFixed(2)})
-                </Text>
-              )}
-              {order.paid_status === "Paid" && !refundStatus.hasRefund && (
-                <Text className="text-sm text-green-400 font-medium">
-                  Fully Paid
-                </Text>
-              )}
-              {refundStatus.isFullyRefunded && (
-                <Text className="text-sm text-red-400 font-medium">
-                  Order Refunded
-                </Text>
-              )}
-            </View>
-            <Text className="text-base text-gray-400">
-              Opened at {formattedTime}
-            </Text>
-          </View>
         </View>
 
-        {/* Payment Breakdown (show if there are payments) */}
-        {hasPayments && order.payments && order.payments.length > 0 && (
-          <View className="px-4 py-2 border-b border-gray-600">
-            <Text className="text-gray-500 text-xs uppercase mb-1 font-medium">
-              Payments
+        {/* ── Price section ── */}
+        <View
+          className="px-4 py-3 border-t"
+          style={{ borderColor: colors.border }}
+        >
+          <Text
+            className="text-2xl font-bold text-right"
+            style={{ color: colors.heading }}
+          >
+            ${totalAmount.toFixed(2)}
+          </Text>
+          {order.paid_status !== "Paid" &&
+            !refundStatus.hasRefund &&
+            cashSavings > 0.01 && (
+              <Text
+                className="text-sm text-right mt-0.5"
+                style={{ color: colors.success }}
+              >
+                Cash ${cashAmountDue.toFixed(2)} (save ${cashSavings.toFixed(2)})
+              </Text>
+            )}
+          {refundStatus.totalRefunded > 0 && (
+            <Text
+              className="text-sm text-right mt-0.5"
+              style={{ color: colors.danger }}
+            >
+              Refunded: ${refundStatus.totalRefunded.toFixed(2)}
             </Text>
-            {order.payments
-              .filter((p) => !p.isVoided)
-              .map((p, i) => (
-                <View
-                  key={i}
-                  className="flex-row justify-between items-center py-0.5"
-                >
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-gray-300 text-sm">{p.method}</Text>
-                    {p.last4 && (
-                      <Text className="text-gray-500 text-xs">
-                        ••••{p.last4}
-                      </Text>
-                    )}
-                  </View>
-                  <Text className="text-gray-300 text-sm font-medium">
-                    ${p.amount.toFixed(2)}
-                  </Text>
-                </View>
-              ))}
-          </View>
-        )}
+          )}
 
-        {/* Action Buttons with Dark Theme */}
-        <View className="flex-col gap-y-1 p-2">
-          {order.order_status === "preparing" || order.order_status === 'sent_to_kitchen' && (
+          {/* ── Payment method lines ── */}
+          {(order.payments || []).filter((p) => !p.isVoided).length > 0 && (
+            <View className="mt-1.5">
+              {(order.payments || [])
+                .filter((p) => !p.isVoided)
+                .map((payment, idx) => (
+                  <Text
+                    key={idx}
+                    className="text-sm text-right"
+                    style={{ color: colors.label }}
+                  >
+                    {payment.method === "Cash"
+                      ? `💵 Cash  $${(payment.amount ?? 0).toFixed(2)}`
+                      : payment.cardBrand || payment.last4
+                        ? `💳 ${payment.cardBrand || "Card"}${payment.last4 ? ` ••••${payment.last4}` : ""}  $${(payment.amount ?? 0).toFixed(2)}`
+                        : `💳 Card  $${(payment.amount ?? 0).toFixed(2)}`}
+                  </Text>
+                ))}
+            </View>
+          )}
+        </View>
+
+        {/* ── Action buttons ── */}
+        <View
+          className="px-2 pt-1 pb-2 border-t"
+          style={{ borderColor: colors.border }}
+        >
+          {/* Mark as Done */}
+          {(order.order_status === "preparing" ||
+            order.order_status === "sent_to_kitchen") && (
             <TouchableOpacity
               onPress={() => {
                 onMarkReady();
                 onClose();
               }}
-              className="flex-row items-center p-3 rounded-lg"
+              className="flex-row items-center px-3 py-2.5 rounded-lg"
             >
-              <CheckCircle color="#22c55e" size={20} />
-              <Text className="ml-3 font-semibold text-green-300 text-lg">
+              <CheckCircle color={colors.orderReady} size={18} />
+              <Text
+                className="ml-3 font-semibold text-base"
+                style={{ color: colors.success }}
+              >
                 Mark as Done
               </Text>
             </TouchableOpacity>
           )}
 
+          {/* Print Receipt */}
+          {onPrintReceipt && order.paid_status === "Paid" && (
+            <TouchableOpacity
+              onPress={() => {
+                onPrintReceipt();
+                onClose();
+              }}
+              className="flex-row items-center px-3 py-2.5 rounded-lg"
+            >
+              <Printer color={colors.label} size={18} />
+              <Text
+                className="ml-3 font-semibold text-base"
+                style={{ color: colors.label }}
+              >
+                Print Receipt
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* View Items */}
           <TouchableOpacity
             onPress={() => {
               onViewItems();
               onClose();
             }}
-            className="flex-row items-center p-3 rounded-lg"
+            className="flex-row items-center px-3 py-2.5 rounded-lg"
           >
-            <Eye color="#a1a1aa" size={20} />
-            <Text className="ml-3 font-semibold text-gray-300 text-lg">
+            <Eye color={colors.label} size={18} />
+            <Text
+              className="ml-3 font-semibold text-base"
+              style={{ color: colors.label }}
+            >
               View Items
             </Text>
           </TouchableOpacity>
 
-          {order.paid_status !== "Paid" && amountDue > 0.01 && order.check_status !== "Closed" ? (
+          {/* ── Bottom action: Retrieve / Reopen ── */}
+          {order.paid_status !== "Paid" &&
+          amountDue > 0.01 &&
+          order.check_status !== "Closed" ? (
             <TouchableOpacity
               onPress={() => {
                 onRetrieve();
                 onClose();
               }}
-              className="flex-row items-center justify-between p-3 rounded-lg bg-blue-600/20"
+              className="flex-row items-center justify-between px-3 py-2.5 rounded-lg mt-1"
+              style={{ backgroundColor: "rgba(96,165,250,0.12)" }}
             >
               <View className="flex-row items-center">
-                <CreditCard color="#60a5fa" size={20} />
-                <Text className="ml-3 font-semibold text-blue-400 text-lg">
+                <CreditCard color={colors.info} size={18} />
+                <Text
+                  className="ml-3 font-semibold text-base"
+                  style={{ color: colors.info }}
+                >
                   {isPartiallyPaid ? "Pay Remaining" : "Retrieve to Pay"}
                 </Text>
               </View>
-              <Text className="font-bold text-blue-400 text-lg">
+              <Text
+                className="font-bold text-base"
+                style={{ color: colors.info }}
+              >
                 ${amountDue.toFixed(2)}
               </Text>
             </TouchableOpacity>
-          ) :
-        order.paid_status !== "Paid" && amountDue >= 0.01 && order.check_status == "Closed" ? (
+          ) : order.paid_status !== "Paid" &&
+            amountDue >= 0.01 &&
+            order.check_status === "Closed" ? (
             <TouchableOpacity
               onPress={() => {
                 onReopenCheck?.();
                 onClose();
               }}
-              className="flex-row items-center justify-between p-3 rounded-lg bg-amber-600/20"
+              className="flex-row items-center justify-between px-3 py-2.5 rounded-lg mt-1"
+              style={{ backgroundColor: "rgba(251,191,36,0.12)" }}
             >
               <View className="flex-row items-center">
-                <RotateCcw color="#f59e0b" size={20} />
-                <Text className="ml-3 font-semibold text-amber-400 text-lg">
+                <RotateCcw color={colors.warning} size={18} />
+                <Text
+                  className="ml-3 font-semibold text-base"
+                  style={{ color: colors.warning }}
+                >
                   Reopen Check
                 </Text>
               </View>
-              <Text className="font-bold text-amber-400 text-lg">
+              <Text
+                className="font-bold text-base"
+                style={{ color: colors.warning }}
+              >
                 ${amountDue.toFixed(2)}
               </Text>
             </TouchableOpacity>
-          ) : null 
-        }
+          ) : null}
         </View>
       </View>
     );
@@ -431,12 +504,13 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   onViewItems,
   onRetrieve,
   onReopenCheck,
+  onPrintReceipt,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
   // PERFORMANCE: Get currentStationId via selector (not getState() during render)
   const currentStationId = useOrderStore((s) => s.currentStationId);
-  const activeOrderId = useOrderStore((s) => s.activeOrderId)
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
 
   // Phase 6: Check if order was recently updated by another station
   const wasRecentlyUpdated = useWasOrderRecentlyUpdated(
@@ -449,32 +523,38 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     if (payments.length === 0) {
       return { isFullyRefunded: false, isPartiallyRefunded: false };
     }
-    
-    const hasRefund = payments.some(p => (p.refundedAmount ?? 0) > 0);
-    const isFullyRefunded = payments.length > 0 && payments.every(
-      p => (p.refundedAmount ?? 0) >= (p.amount ?? 0)
-    );
+
+    const hasRefund = payments.some((p) => (p.refundedAmount ?? 0) > 0);
+    const isFullyRefunded =
+      payments.length > 0 &&
+      payments.every((p) => (p.refundedAmount ?? 0) >= (p.amount ?? 0));
     const isPartiallyRefunded = hasRefund && !isFullyRefunded;
-    
+
     return { isFullyRefunded, isPartiallyRefunded };
   }, [order.payments]);
 
-  // PERFORMANCE: Memoize colors calculation with refund state
-  const colors = useMemo(
-    () => getStatusColor(order.order_status, order.paid_status, refundState),
-    [order.order_status, order.paid_status, refundState],
+  // PERFORMANCE: Memoize dot color and paid suffix
+  const dotColor = useMemo(
+    () => getOrderDotColor(order.order_status, refundState),
+    [order.order_status, refundState],
   );
 
-  // PERFORMANCE: Memoize display text - include refund status if applicable
+  const paidInfo = useMemo(
+    () =>
+      getPaidSuffix(
+        order.paid_status,
+        order.amount_due ?? order.total_amount ?? 0,
+        refundState,
+      ),
+    [order.paid_status, order.amount_due, order.total_amount, refundState],
+  );
+
+  // PERFORMANCE: Memoize display text - name + order status only (paid suffix is separate)
   const badgeText = useMemo(() => {
     const name = order.customer_name
       ? order.customer_name
       : order.display_number || order.order_number || `#${order.id.slice(-4)}`;
-    const statusText = refundState.isFullyRefunded
-      ? "REFUNDED"
-      : refundState.isPartiallyRefunded
-        ? "Partial Refund"
-        : formatOrderStatus(order.order_status);
+    const statusText = formatOrderStatus(order.order_status);
     return `${name} - ${statusText}`;
   }, [
     order.customer_name,
@@ -482,12 +562,15 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     order.order_number,
     order.id,
     order.order_status,
-    refundState,
   ]);
 
   // PERFORMANCE: Memoize callbacks to prevent recreation
   const handleClose = useCallback(() => setShowTooltip(false), []);
   const handleOpen = useCallback(() => setShowTooltip(true), []);
+
+  // Badge elevation: active, recently updated, or popover open
+  const isActive = activeOrderId === order.id || wasRecentlyUpdated;
+  const isElevated = showTooltip || isActive;
 
   return (
     <Popover
@@ -495,32 +578,50 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
       onRequestClose={handleClose}
       // PERFORMANCE: Disable animation for instant appearance
       animationConfig={{ duration: 0 }}
-      popoverStyle={{ backgroundColor: "#313131", borderRadius: 12 }}
+      popoverStyle={{ backgroundColor: colors.card, borderRadius: 12 }}
       from={
         <TouchableOpacity
           onPress={handleOpen}
           className="flex-row items-center px-3 py-2 rounded-lg border"
           style={{
-            backgroundColor: colors.bg,
-            borderColor: activeOrderId == order.id || wasRecentlyUpdated ? "#3b82f6" : colors.border,
-            borderWidth: activeOrderId == order.id || wasRecentlyUpdated ? 3 : 1,
+            backgroundColor: isElevated ? colors.card : colors.panel,
+            borderColor: showTooltip
+              ? colors.teal
+              : isActive
+                ? colors.info
+                : colors.border,
+            borderWidth: isElevated ? 2 : 1,
+            // Shadow glow when popover is open
+            ...(showTooltip
+              ? {
+                  shadowColor: colors.teal,
+                  shadowOpacity: 0.35,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 0 },
+                  elevation: 8,
+                }
+              : {}),
           }}
         >
           {wasRecentlyUpdated && (
             <View className="mr-1.5">
-              <RefreshCw color="#3b82f6" size={14} />
+              <RefreshCw color={colors.info} size={14} />
             </View>
           )}
           <View
             className="w-2.5 h-2.5 rounded-full mr-2"
-            style={{ backgroundColor: colors.dot }}
+            style={{ backgroundColor: dotColor }}
           />
+          <Text className="font-medium text-sm text-gray-300" numberOfLines={1}>
+            {badgeText}
+          </Text>
+          <Text className="text-base text-gray-500 mx-1">·</Text>
           <Text
-            className="font-medium text-base"
-            style={{ color: colors.text }}
+            className="font-medium text-sm"
+            style={{ color: paidInfo.color }}
             numberOfLines={1}
           >
-            {badgeText}
+            {paidInfo.text}
           </Text>
         </TouchableOpacity>
       }
@@ -534,6 +635,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           onViewItems={onViewItems}
           onRetrieve={onRetrieve}
           onReopenCheck={onReopenCheck}
+          onPrintReceipt={onPrintReceipt}
           onClose={handleClose}
         />
       ) : null}
@@ -544,9 +646,9 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
   // Helper to calculate total refunded for comparison
-  const getTotalRefunded = (order: OrderProfile) => 
+  const getTotalRefunded = (order: OrderProfile) =>
     (order.payments || []).reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
-  
+
   // Return true if props are equal (skip re-render)
   return (
     prev.order.id === next.order.id &&

@@ -45,7 +45,7 @@ const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
             />
           ))
         ) : (
-          <View className="p-4 bg-[#303030] rounded-xl border border-gray-700 items-center justify-center min-h-[60px]">
+          <View className="p-4 bg-surface rounded-xl border border-gray-700 items-center justify-center min-h-[60px]">
             <Text className="text-gray-500">No shifts scheduled</Text>
           </View>
         )}

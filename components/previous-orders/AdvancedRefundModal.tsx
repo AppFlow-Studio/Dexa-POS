@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react-native";
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { bottomSheetTheme } from "@/lib/theme";
 
 interface AdvancedRefundModalProps {
   onClose: () => void;
@@ -235,7 +236,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
   const renderFooter = useCallback(
     (props: BottomSheetDefaultFooterProps) => (
       <BottomSheetFooter {...props} bottomInset={0}>
-        <View className="px-5 py-3 bg-[#212121] border-t border-gray-700">
+        <View className="px-5 py-3 bg-panel border-t border-gray-700">
           <TouchableOpacity
             onPress={refundType === "full" ? handleFullRefund : handlePartialRefund}
             className="w-full py-3 bg-blue-600 rounded-lg items-center"
@@ -258,14 +259,13 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
       enablePanDownToClose={true}
       backdropComponent={renderBackdrop}
       footerComponent={renderFooter}
-      backgroundStyle={{ backgroundColor: "#212121" }}
-      handleIndicatorStyle={{ backgroundColor: "#4B5563" }}
+      {...bottomSheetTheme}
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       onClose={onClose}
     >
-      <BottomSheetView className="flex-1 bg-[#212121]">
+      <BottomSheetView className="flex-1 bg-panel">
         {/* Header */}
         <View className="px-5 pb-3 border-b border-gray-700">
           <View className="flex-row justify-between items-center">
@@ -277,9 +277,9 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
             </View>
             <TouchableOpacity
               onPress={handleClose}
-              className="p-1.5 bg-[#303030] rounded-full border border-gray-600"
+              className="p-1.5 bg-surface rounded-full border border-gray-600"
             >
-              <X color="#9CA3AF" size={18} />
+              <X color={colors.label} size={18} />
             </TouchableOpacity>
           </View>
         </View>
@@ -301,7 +301,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                 className={`flex-1 p-3 rounded-lg border ${
                   refundType === "full"
                     ? "border-blue-500 bg-blue-900/40"
-                    : "border-gray-700 bg-[#2a2a2a]"
+                    : "border-gray-700 bg-surface"
                 } ${!canDoFullRefund && "opacity-50"}`}
               >
                 <Text className={`font-bold text-base text-center ${refundType === "full" ? "text-blue-400" : "text-white"}`}>
@@ -316,7 +316,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                 className={`flex-1 p-3 rounded-lg border ${
                   refundType === "partial"
                     ? "border-blue-500 bg-blue-900/40"
-                    : "border-gray-700 bg-[#2a2a2a]"
+                    : "border-gray-700 bg-surface"
                 }`}
               >
                 <View className="flex-row items-center justify-center gap-2">
@@ -346,7 +346,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                 className={`flex-1 py-3 px-4 rounded-lg border flex-row items-center justify-center gap-2 ${
                   paymentMethod === "Card"
                     ? "border-blue-500 bg-blue-900/40"
-                    : "border-gray-700 bg-[#2a2a2a]"
+                    : "border-gray-700 bg-surface"
                 }`}
               >
                 <Text className="text-base">💳</Text>
@@ -359,7 +359,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                 className={`flex-1 py-3 px-4 rounded-lg border flex-row items-center justify-center gap-2 ${
                   paymentMethod === "Cash"
                     ? "border-blue-500 bg-blue-900/40"
-                    : "border-gray-700 bg-[#2a2a2a]"
+                    : "border-gray-700 bg-surface"
                 }`}
               >
                 <Text className="text-base">💵</Text>
@@ -387,12 +387,12 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                   placeholderTextColor="#6B7280"
                   multiline
                   style={{
-                    backgroundColor: "#2a2a2a",
+                    backgroundColor: colors.card,
                     color: "white",
                     padding: 12,
                     borderRadius: 8,
                     borderWidth: 1,
-                    borderColor: "#374151",
+                    borderColor: colors.border,
                     fontSize: 14,
                     minHeight: 70,
                     textAlignVertical: "top",
@@ -425,7 +425,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                         className={`p-3 rounded-lg border ${
                           isSelected
                             ? "border-blue-500 bg-blue-900/20"
-                            : "border-gray-700 bg-[#2a2a2a]"
+                            : "border-gray-700 bg-surface"
                         }`}
                       >
                         <View className="flex-row items-center justify-between">
@@ -446,9 +446,9 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                             }`}
                           >
                             {isSelected ? (
-                              <X color="#f87171" size={16} />
+                              <X color={colors.danger} size={16} />
                             ) : (
-                              <Check color="#4ade80" size={16} />
+                              <Check color={colors.success} size={16} />
                             )}
                           </TouchableOpacity>
                         </View>
@@ -464,12 +464,12 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                                 keyboardType="numeric"
                                 style={{
                                   flex: 1,
-                                  backgroundColor: "#212121",
+                                  backgroundColor: colors.panel,
                                   color: "white",
                                   padding: 8,
                                   borderRadius: 6,
                                   borderWidth: 1,
-                                  borderColor: "#4B5563",
+                                  borderColor: colors.border,
                                   fontSize: 14,
                                   textAlign: "center",
                                 }}
@@ -482,12 +482,12 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                               placeholder="Reason..."
                               placeholderTextColor="#6B7280"
                               style={{
-                                backgroundColor: "#212121",
+                                backgroundColor: colors.panel,
                                 color: "white",
                                 padding: 8,
                                 borderRadius: 6,
                                 borderWidth: 1,
-                                borderColor: "#4B5563",
+                                borderColor: colors.border,
                                 fontSize: 14,
                               }}
                             />
@@ -508,7 +508,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
             <Text className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">
               Summary
             </Text>
-            <View className="p-3 bg-[#2a2a2a] rounded-lg border border-gray-700">
+            <View className="p-3 bg-surface rounded-lg border border-gray-700">
               <View className="flex-row justify-between mb-1">
                 <Text className="text-sm text-gray-400">Original Total</Text>
                 <Text className="text-sm font-semibold text-white">

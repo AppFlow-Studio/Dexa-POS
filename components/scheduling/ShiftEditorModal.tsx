@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { colors, switchTrackColors } from "@/lib/theme";
 import { Role, Shift, TemplateShift } from "@/lib/types"; // Import TemplateShift
 import BottomSheet from "@gorhom/bottom-sheet";
 import {
@@ -303,7 +304,7 @@ export function ShiftEditorModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[950px] bg-[#303030] border-gray-700 rounded-2xl">
+      <DialogContent className="w-[950px] bg-panel border-border rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-white">
             {templateMode
@@ -327,7 +328,7 @@ export function ShiftEditorModal({
                   <AlertCircle
                     size={16}
                     className="text-red-400 mt-1"
-                    color={"#f87171"}
+                    color={colors.danger}
                   />
                   <View className="gap-y-1">
                     {errors.map((error, i) => (
@@ -346,13 +347,13 @@ export function ShiftEditorModal({
                 onValueChange={(option) => setRole(option?.value as Role)}
                 value={{ label: role, value: role }}
               >
-                <SelectTrigger className="bg-[#212121]">
+                <SelectTrigger className="bg-screen">
                   <SelectValue
                     placeholder="Select a role..."
                     className="text-white"
                   />
                 </SelectTrigger>
-                <SelectContent className="bg-[#212121] border-gray-600">
+                <SelectContent className="bg-screen border-border">
                   {roles.map((r) => (
                     <SelectItem
                       key={r}
@@ -371,7 +372,7 @@ export function ShiftEditorModal({
                 {enableDateChange ? (
                   <TouchableOpacity
                     onPress={() => datePickerSheetRef.current?.expand()}
-                    className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                    className="p-4 h-14 bg-screen border border-border rounded-lg flex-row justify-between items-center"
                   >
                     <Text className="text-white text-base">
                       {date
@@ -383,7 +384,7 @@ export function ShiftEditorModal({
                     </Text>
                   </TouchableOpacity>
                 ) : (
-                  <View className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
+                  <View className="p-4 h-14 bg-screen border border-border rounded-lg flex-row justify-between items-center">
                     <Text className="text-white text-base">
                       {date
                         ? format(
@@ -404,7 +405,7 @@ export function ShiftEditorModal({
                 </Text>
                 <TouchableOpacity
                   onPress={() => startTimeSheetRef.current?.expand()}
-                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg justify-center"
+                  className="p-4 h-14 bg-screen border border-border rounded-lg justify-center"
                 >
                   <Text className="text-white text-base">
                     {formatTo12Hour(startTime)}
@@ -415,7 +416,7 @@ export function ShiftEditorModal({
                 <Text className="text-gray-300 font-semibold">End Time *</Text>
                 <TouchableOpacity
                   onPress={() => endTimeSheetRef.current?.expand()}
-                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg justify-center"
+                  className="p-4 h-14 bg-screen border border-border rounded-lg justify-center"
                 >
                   <Text className="text-white text-base">
                     {formatTo12Hour(endTime)}
@@ -435,7 +436,7 @@ export function ShiftEditorModal({
                 value={String(breakMinutes)}
                 onChangeText={(text) => setBreakMinutes(Number(text))}
                 keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white text-base"
+                className="p-3 bg-screen border border-border rounded-lg text-white text-base"
               />
             </View>
 
@@ -448,13 +449,13 @@ export function ShiftEditorModal({
                 }
                 value={{ label: expectedPace, value: expectedPace }}
               >
-                <SelectTrigger className="bg-[#212121]">
+                <SelectTrigger className="bg-screen">
                   <SelectValue
                     placeholder="Select a pace..."
                     className="text-white"
                   />
                 </SelectTrigger>
-                <SelectContent className="bg-[#212121] border-gray-600">
+                <SelectContent className="bg-screen border-border">
                   <SelectItem label="Moderate" value="Moderate" />
                   <SelectItem label="Busy" value="Busy" />
                   <SelectItem label="Calm" value="Calm" />
@@ -475,13 +476,13 @@ export function ShiftEditorModal({
                 }
                 value={{ label: staffingLevel, value: staffingLevel }}
               >
-                <SelectTrigger className="bg-[#212121]">
+                <SelectTrigger className="bg-screen">
                   <SelectValue
                     placeholder="Select a staffing level..."
                     className="text-white"
                   />
                 </SelectTrigger>
-                <SelectContent className="bg-[#212121] border-gray-600">
+                <SelectContent className="bg-screen border-border">
                   <SelectItem label="May need help" value="May need help" />
                   <SelectItem label="Fully staffed" value="Fully staffed" />
                 </SelectContent>
@@ -494,9 +495,9 @@ export function ShiftEditorModal({
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Add any special instructions..."
-                placeholderTextColor="#6B7280"
+                placeholderTextColor={colors.muted}
                 multiline
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white min-h-[80px]"
+                className="p-3 bg-screen border border-border rounded-lg text-white min-h-[80px]"
               />
             </View>
 
@@ -507,9 +508,9 @@ export function ShiftEditorModal({
                     Lock assignment (prevent changes)
                   </Label>
                   <Switch
-                    trackColor={{ false: "#3e3e3e", true: "#4f46e5" }}
+                    trackColor={switchTrackColors}
                     thumbColor={"#f4f4f5"}
-                    ios_backgroundColor="#3e3e3e"
+                    ios_backgroundColor={switchTrackColors.false}
                     onValueChange={setLockAssignment}
                     value={lockAssignment}
                     id="lock"
@@ -523,9 +524,9 @@ export function ShiftEditorModal({
                     Allow open shift claims
                   </Label>
                   <Switch
-                    trackColor={{ false: "#3e3e3e", true: "#4f46e5" }}
+                    trackColor={switchTrackColors}
                     thumbColor={"#f4f4f5"}
-                    ios_backgroundColor="#3e3e3e"
+                    ios_backgroundColor={switchTrackColors.false}
                     onValueChange={setAllowOpenClaims}
                     value={allowOpenClaims}
                     id="open-claims"
@@ -551,7 +552,7 @@ export function ShiftEditorModal({
                 onPress={handleSaveAndDuplicate}
                 className="gap-2 bg-transparent border-gray-600 flex-row"
               >
-                <Copy size={16} color="#FFFFFF" />
+                <Copy size={16} color={colors.heading} />
                 <Text className="text-white">Save & Duplicate</Text>
               </Button>
             )}

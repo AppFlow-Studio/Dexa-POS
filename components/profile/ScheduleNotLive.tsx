@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { addDays, format } from "date-fns";
 import { Calendar } from "lucide-react-native";
 import React from "react";
@@ -22,10 +23,10 @@ const ScheduleNotLive: React.FC<ScheduleNotLiveProps> = ({
 
   return (
     <View className="mt-4">
-      <View className="p-6 bg-[#212121] rounded-2xl border border-gray-700 flex-row items-center">
+      <View className="p-6 bg-panel rounded-2xl border border-gray-700 flex-row items-center">
         {/* Icon */}
         <View className="p-4 bg-gray-800 rounded-full">
-          <Calendar size={28} color="#9CA3AF" />
+          <Calendar size={28} color={colors.label} />
         </View>
 
         {/* Text Block */}

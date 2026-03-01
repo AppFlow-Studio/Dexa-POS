@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { PTORequest } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { AlertCircle, CheckCircle2, XCircle } from "lucide-react-native";
@@ -13,21 +14,21 @@ const getStatusStyles = (status: PTORequest["status"]) => {
   switch (status) {
     case "approved":
       return {
-        icon: <CheckCircle2 size={20} color="#22c55e" />,
+        icon: <CheckCircle2 size={20} color={colors.success} />,
         bg: "bg-green-500/10",
         border: "border-green-500/20",
         text: "text-green-400",
       };
     case "denied":
       return {
-        icon: <XCircle size={20} color="#ef4444" />,
+        icon: <XCircle size={20} color={colors.danger} />,
         bg: "bg-red-500/10",
         border: "border-red-500/20",
         text: "text-red-400",
       };
     case "pending":
       return {
-        icon: <AlertCircle size={20} color="#f59e0b" />,
+        icon: <AlertCircle size={20} color={colors.warning} />,
         bg: "bg-yellow-500/10",
         border: "border-yellow-500/20",
         text: "text-yellow-400",

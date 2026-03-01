@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { InventoryItem } from "@/lib/types";
 import { Upload } from "lucide-react-native";
 import React, { useState } from "react";
@@ -40,7 +41,7 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
             <View>
               <Text className="text-2xl font-bold mb-2">Item Image</Text>
               <TouchableOpacity className="border-2 border-dashed border-gray-300 rounded-lg h-48 items-center justify-center">
-                <Upload color="#6b7280" size={48} />
+                <Upload color={colors.muted} size={48} />
                 <Text className="text-xl text-gray-500 mt-2">
                   Click to upload
                 </Text>

@@ -64,7 +64,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[500px]">
+      <DialogContent className="bg-panel border-border w-[500px]">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
@@ -81,7 +81,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
               <TextInput
                 value={name}
                 onChangeText={setName}
-                className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
+                className="p-2 bg-screen border border-border rounded-lg text-lg text-white"
               />
             </View>
             <View>
@@ -91,7 +91,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
               <TextInput
                 value={contactPerson}
                 onChangeText={setContactPerson}
-                className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
+                className="p-2 bg-screen border border-border rounded-lg text-lg text-white"
               />
             </View>
             <View>
@@ -102,7 +102,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
-                className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
+                className="p-2 bg-screen border border-border rounded-lg text-lg text-white"
               />
             </View>
             <View>
@@ -113,7 +113,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
                 value={phone}
                 onChangeText={setPhone}
                 keyboardType="phone-pad"
-                className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
+                className="p-2 bg-screen border border-border rounded-lg text-lg text-white"
               />
             </View>
             <View>
@@ -123,14 +123,14 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
               <TextInput
                 value={desc}
                 onChangeText={setDesc}
-                className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
+                className="p-2 bg-screen border border-border rounded-lg text-lg text-white"
               />
             </View>
           </View>
           <DialogFooter className="flex-row gap-3">
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-2 bg-[#212121] border border-gray-600 rounded-lg"
+              className="flex-1 py-2 bg-screen border border-border rounded-lg"
             >
               <Text className="text-center text-lg font-bold text-gray-300">
                 Cancel

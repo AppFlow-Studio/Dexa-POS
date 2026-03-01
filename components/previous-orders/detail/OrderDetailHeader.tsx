@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { PreviousOrder } from "@/lib/types";
 import { ArrowLeft, ShoppingBag, Truck, Utensils } from "lucide-react-native";
 import React from "react";
@@ -60,14 +61,14 @@ const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
   const TypeIcon = typeStyle.icon;
 
   return (
-    <View className="bg-[#212121] px-4 py-3 border-b border-gray-700">
+    <View className="bg-screen px-4 py-3 border-b border-border">
       <View className="flex-row items-center">
         <TouchableOpacity
           onPress={onBack}
-          className="p-2 rounded-lg bg-[#303030] mr-3"
+          className="p-2 rounded-lg bg-panel mr-3"
           activeOpacity={0.7}
         >
-          <ArrowLeft color="#9CA3AF" size={22} />
+          <ArrowLeft color={colors.label} size={22} />
         </TouchableOpacity>
 
         <Text className="text-2xl font-bold text-white flex-1" numberOfLines={1}>

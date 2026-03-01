@@ -4,6 +4,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { colors } from "@/lib/theme";
 import { ScheduleTemplate } from "@/lib/types";
 import { differenceInDays } from "date-fns";
 import { Check, Copy, MoreVertical, Pencil, Trash2 } from "lucide-react-native";
@@ -55,7 +56,7 @@ const TemplateListItem: React.FC<TemplateListItemProps> = ({
   return (
     <TouchableOpacity
       onPress={handlePress}
-      className={`relative bg-[#2a2a2a] rounded-xl p-6 border-2 transition-all ${
+      className={`relative bg-panel rounded-xl p-6 border-2 transition-all ${
         isSelected ? "border-blue-600" : "border-gray-700"
       }`}
     >
@@ -65,7 +66,7 @@ const TemplateListItem: React.FC<TemplateListItemProps> = ({
             className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${
               isSelected
                 ? "bg-blue-600 border-blue-600"
-                : "border-gray-500 bg-[#1a1a1a]"
+                : "border-gray-500 bg-screen"
             }`}
           >
             {isSelected && <Check className="w-4 h-4 text-white" />}
@@ -95,20 +96,20 @@ const TemplateListItem: React.FC<TemplateListItemProps> = ({
                 onPress={(e) => e.stopPropagation()}
                 className="p-2 -mt-2 -mr-2"
               >
-                <MoreVertical size={20} color="#9CA3AF" />
+                <MoreVertical size={20} color={colors.label} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 bg-[#2a2a2a] border-[#e5e5e5] rounded-lg">
+            <DropdownMenuContent className="w-56 bg-panel border-border rounded-lg">
               <DropdownMenuItem onPress={() => onEdit(template.id)}>
-                <Pencil className="mr-2 h-4 w-4" color="#9CA3AF" />
+                <Pencil className="mr-2 h-4 w-4" color={colors.label} />
                 <Text className="text-white">Edit Template</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={() => onDuplicate(template.id)}>
-                <Copy className="mr-2 h-4 w-4" color="#9CA3AF" />
+                <Copy className="mr-2 h-4 w-4" color={colors.label} />
                 <Text className="text-white">Duplicate</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={() => onDelete(template.id)}>
-                <Trash2 className="mr-2 h-4 w-4" color="#F87171" />
+                <Trash2 className="mr-2 h-4 w-4" color={colors.danger} />
                 <Text className="text-red-400">Delete</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -136,10 +137,10 @@ const TemplateListItem: React.FC<TemplateListItemProps> = ({
       </View>
 
       <View className="flex-row items-center justify-between text-sm">
-        <Text className="bg-[#1f2937] text-white px-3 py-1 rounded-md text-xs">
+        <Text className="bg-card text-white px-3 py-1 rounded-md text-xs">
           {template.shifts.length} shifts
         </Text>
-        <Text className="text-[#9ca3af] text-xs">
+        <Text className="text-label text-xs">
           Used {daysAgo} {daysAgo === 1 ? "day" : "days"} ago
         </Text>
       </View>

@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { ScheduleTemplate } from "@/lib/types";
 import { ChevronDown } from "lucide-react-native";
 import React, { useState } from "react";
@@ -22,7 +23,7 @@ const TemplateEditorHeader: React.FC<TemplateEditorHeaderProps> = ({
       : "No tags";
 
   return (
-    <View className="mb-4 bg-[#303030] border border-gray-700 rounded-xl">
+    <View className="mb-4 bg-panel border border-border rounded-xl">
       <TouchableOpacity
         onPress={() => setIsOpen(!isOpen)}
         className="p-4 flex-row justify-between items-center"
@@ -43,7 +44,7 @@ const TemplateEditorHeader: React.FC<TemplateEditorHeaderProps> = ({
           </Text>
         )}
         <ChevronDown
-          color="#9CA3AF"
+          color={colors.label}
           size={24}
           style={{ transform: [{ rotate: isOpen ? "180deg" : "0deg" }] }}
         />

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropZoneProvider } from "@/contexts/DropZoneContext";
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { PREDEFINED_TAGS, ScheduleTemplate, TemplateShift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { addTemplate } from "@/stores/useScheduleTemplateStore";
@@ -160,7 +161,7 @@ const CreateTemplateScreen = () => {
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
       >
-        <View className="flex-1 bg-[#212121]">
+        <View className="flex-1 bg-screen">
           {/* Form Area */}
           <View className="flex-1 p-4">
             <TemplateEditorHeader template={template} defaultOpen={true}>
@@ -168,10 +169,10 @@ const CreateTemplateScreen = () => {
                 <Text className="text-white text-base mb-2">Template Name</Text>
                 <Input
                   placeholder="e.g., Weekend Rush"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   value={template.name}
                   onChangeText={handleNameChange}
-                  className="bg-[#212121] border-gray-600 text-white"
+                  className="bg-screen border-gray-600 text-white"
                 />
               </View>
 
@@ -179,11 +180,11 @@ const CreateTemplateScreen = () => {
                 <Text className="text-white text-base mb-2">Description</Text>
                 <TextInput
                   placeholder="e.g., Full staffing for peak hours on weekends"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   value={template.description}
                   onChangeText={handleDescriptionChange}
                   multiline
-                  className="bg-[#212121] border border-gray-600 rounded-lg p-3 text-white min-h-[80px]"
+                  className="bg-screen border border-gray-600 rounded-lg p-3 text-white min-h-[80px]"
                 />
               </View>
 
@@ -217,11 +218,11 @@ const CreateTemplateScreen = () => {
 
               {/* Employee Search Input */}
               <View className="w-full border border-gray-600 rounded-lg p-3">
-                <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-full">
-                  <Search size={16} color="#9CA3AF" />
+                <View className="flex-row items-center bg-screen border border-gray-600 rounded-lg px-2 w-full">
+                  <Search size={16} color={colors.label} />
                   <TextInput
                     placeholder="Search employees..."
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.label}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     className="p-2 text-white flex-1"
@@ -232,11 +233,11 @@ const CreateTemplateScreen = () => {
 
             {/* Employee Search Input */}
             <View className="w-full border border-gray-600 rounded-lg p-3 mb-4">
-              <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-full">
-                <Search size={16} color="#9CA3AF" />
+              <View className="flex-row items-center bg-screen border border-gray-600 rounded-lg px-2 w-full">
+                <Search size={16} color={colors.label} />
                 <TextInput
                   placeholder="Search employees..."
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.label}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   className="p-2 text-white flex-1"
@@ -256,7 +257,7 @@ const CreateTemplateScreen = () => {
           </View>
 
           {/* Footer with Save/Cancel Buttons */}
-          <View className="flex-row justify-end p-4 border-t border-gray-700 bg-[#303030]">
+          <View className="flex-row justify-end p-4 border-t border-gray-700 bg-panel">
             <Button
               variant="outline"
               onPress={handleCancel}

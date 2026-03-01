@@ -1,5 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
+import { colors } from "@/lib/theme";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -69,7 +70,7 @@ const PurchaseOrderDetailScreen = () => {
 
   if (!po) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center">
+      <View className="flex-1 bg-screen items-center justify-center">
         <Text className="text-2xl text-white">Purchase Order not found.</Text>
       </View>
     );
@@ -264,12 +265,12 @@ const PurchaseOrderDetailScreen = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-[#212121]"
+      className="flex-1 bg-screen"
     >
       <ScrollView className="flex-1">
         <View className="p-6">
           {/* Section A: Order Summary */}
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+          <View className="bg-panel border border-border rounded-xl p-4 mb-4">
             <View className="flex-row justify-between items-center mb-3">
               <Text className="text-xl font-bold text-white">
                 PO Details: {po.poNumber}
@@ -337,7 +338,7 @@ const PurchaseOrderDetailScreen = () => {
                   (i) => i.id === item.inventoryItemId
                 );
                 return (
-                  <View className="flex-row justify-between p-2 border-b border-gray-600">
+                  <View className="flex-row justify-between p-2 border-b border-border">
                     <Text className="text-base text-white flex-1">
                       {invItem?.name}
                     </Text>
@@ -355,7 +356,7 @@ const PurchaseOrderDetailScreen = () => {
 
           {/* Draft Actions */}
           {po.status === "Draft" && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <Text className="text-lg font-bold text-white mb-2">
                 Draft Actions
               </Text>
@@ -381,9 +382,9 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {po.status === "Pending Delivery" && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <View className="flex-row items-center mb-3 gap-x-1.5">
-                <Calendar size={20} color="#9CA3AF" />
+                <Calendar size={20} color={colors.label} />
                 <Text className="text-lg font-bold text-white">
                   Log Delivery
                 </Text>
@@ -407,7 +408,7 @@ const PurchaseOrderDetailScreen = () => {
                     <TextInput
                       value={new Date(deliveryDate).toLocaleString()}
                       editable={false}
-                      className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                      className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
                     />
                   </View>
 
@@ -422,7 +423,7 @@ const PurchaseOrderDetailScreen = () => {
                       return (
                         <View
                           key={li.inventoryItemId}
-                          className="flex-row items-center gap-1.5 py-1.5 border-b border-gray-700"
+                          className="flex-row items-center gap-1.5 py-1.5 border-b border-border"
                         >
                           <Text className="flex-1 text-white text-sm">
                             {invItem?.name}
@@ -438,7 +439,7 @@ const PurchaseOrderDetailScreen = () => {
                                 )
                               )
                             }
-                            className="w-7 h-7 rounded-lg bg-[#212121] border border-gray-600 items-center justify-center"
+                            className="w-7 h-7 rounded-lg bg-screen border border-border items-center justify-center"
                           >
                             <Text className="text-white text-lg">-</Text>
                           </TouchableOpacity>
@@ -453,7 +454,7 @@ const PurchaseOrderDetailScreen = () => {
                               )
                             }
                             keyboardType="numeric"
-                            className="w-14 text-center bg-[#212121] border border-gray-600 rounded-lg p-1.5 text-white h-16 text-sm"
+                            className="w-14 text-center bg-screen border border-border rounded-lg p-1.5 text-white h-16 text-sm"
                           />
                           <TouchableOpacity
                             onPress={() =>
@@ -463,7 +464,7 @@ const PurchaseOrderDetailScreen = () => {
                                   li.quantity) + 1
                               )
                             }
-                            className="w-7 h-7 rounded-lg bg-[#212121] border border-gray-600 items-center justify-center"
+                            className="w-7 h-7 rounded-lg bg-screen border border-border items-center justify-center"
                           >
                             <Text className="text-white text-lg">+</Text>
                           </TouchableOpacity>
@@ -488,9 +489,9 @@ const PurchaseOrderDetailScreen = () => {
                     </Text>
                     <TouchableOpacity
                       onPress={handleAddPhoto}
-                      className="bg-[#212121] border border-gray-600 rounded-lg gap-x-1.5 p-3 items-center flex-row"
+                      className="bg-screen border border-border rounded-lg gap-x-1.5 p-3 items-center flex-row"
                     >
-                      <Camera size={18} color="#9CA3AF" />
+                      <Camera size={18} color={colors.label} />
                       <Text className="text-gray-400 text-sm">Add Photos</Text>
                     </TouchableOpacity>
                     {deliveryPhotos.length > 0 && (
@@ -528,7 +529,7 @@ const PurchaseOrderDetailScreen = () => {
                       onChangeText={setDeliveryNotes}
                       placeholder="e.g., Box damaged"
                       multiline
-                      className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white min-h-[60px] text-sm"
+                      className="bg-screen border border-border rounded-lg p-2 text-white min-h-[60px] text-sm"
                     />
                   </View>
 
@@ -556,9 +557,9 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {po.status === "Awaiting Payment" && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <View className="flex-row items-center mb-3">
-                <DollarSign size={20} color="#9CA3AF" className="mr-1.5" />
+                <DollarSign size={20} color={colors.label} className="mr-1.5" />
                 <Text className="text-lg font-bold text-white">
                   Log Payment
                 </Text>
@@ -585,14 +586,14 @@ const PurchaseOrderDetailScreen = () => {
                         className={`flex-1 p-2.5 rounded-lg border ${
                           paymentMethod === "Card"
                             ? "border-blue-500 bg-blue-500/20"
-                            : "border-gray-600"
+                            : "border-border"
                         }`}
                       >
                         <View className="flex-row items-center justify-center">
                           <CreditCard
                             size={18}
                             color={
-                              paymentMethod === "Card" ? "#3B82F6" : "#9CA3AF"
+                              paymentMethod === "Card" ? colors.info : colors.label
                             }
                             className="mr-1.5"
                           />
@@ -612,14 +613,14 @@ const PurchaseOrderDetailScreen = () => {
                         className={`flex-1 p-2.5 rounded-lg border ${
                           paymentMethod === "Cash"
                             ? "border-green-500 bg-green-500/20"
-                            : "border-gray-600"
+                            : "border-border"
                         }`}
                       >
                         <View className="flex-row items-center justify-center">
                           <DollarSign
                             size={18}
                             color={
-                              paymentMethod === "Cash" ? "#10B981" : "#9CA3AF"
+                              paymentMethod === "Cash" ? colors.success : colors.label
                             }
                             className="mr-1.5"
                           />
@@ -648,7 +649,7 @@ const PurchaseOrderDetailScreen = () => {
                         placeholder="1234"
                         keyboardType="numeric"
                         maxLength={4}
-                        className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                        className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
                       />
                     </View>
                   )}
@@ -662,7 +663,7 @@ const PurchaseOrderDetailScreen = () => {
                       onChangeText={setPaymentAmount}
                       placeholder="0.00"
                       keyboardType="numeric"
-                      className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                      className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
                     />
                   </View>
                   <View className="mb-3">
@@ -672,7 +673,7 @@ const PurchaseOrderDetailScreen = () => {
                     <TextInput
                       value={vendor?.name || ""}
                       editable={false}
-                      className="bg-[#404040] border border-gray-600 rounded-lg p-2 text-gray-300 h-16 text-sm"
+                      className="bg-card border border-border rounded-lg p-2 text-gray-300 h-16 text-sm"
                     />
                   </View>
                   <View className="mb-3">
@@ -683,7 +684,7 @@ const PurchaseOrderDetailScreen = () => {
                       value={paidToEmployee}
                       onChangeText={setPaidToEmployee}
                       placeholder="Employee name"
-                      className="bg-[#212121] border border-gray-600 rounded-lg p-2 text-white h-16 text-sm"
+                      className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
                     />
                   </View>
 
@@ -712,11 +713,11 @@ const PurchaseOrderDetailScreen = () => {
 
           {/* Delivery History */}
           {po.deliveryLoggedAt && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-6 mb-6">
+            <View className="bg-panel border border-border rounded-xl p-6 mb-6">
               <Text className="text-xl font-bold text-white mb-3">
                 Delivery History
               </Text>
-              <View className="bg-[#212121] border border-gray-600 rounded-lg p-4">
+              <View className="bg-screen border border-border rounded-lg p-4">
                 <View className="flex-row justify-between mb-2">
                   <Text className="text-white font-semibold">Delivered At</Text>
                   <Text className="text-white">
@@ -780,12 +781,12 @@ const PurchaseOrderDetailScreen = () => {
             const hasDiscrepancy = rows.some((r) => r.reqQty !== r.recQty);
             if (!hasDiscrepancy) return null;
             return (
-              <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+              <View className="bg-panel border border-border rounded-xl p-4 mb-4">
                 <Text className="text-lg font-bold text-white mb-2">
                   Discrepancy Report
                 </Text>
-                <View className="bg-[#212121] border border-gray-600 rounded-lg">
-                  <View className="flex-row px-3 py-2 border-b border-gray-700">
+                <View className="bg-screen border border-border rounded-lg">
+                  <View className="flex-row px-3 py-2 border-b border-border">
                     <Text className="text-gray-400 flex-1 text-sm">Item</Text>
                     <Text className="text-gray-400 w-16 text-right text-sm">
                       Req
@@ -839,11 +840,11 @@ const PurchaseOrderDetailScreen = () => {
           })()}
 
           {po.payment && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
               <Text className="text-lg font-bold text-white mb-2">
                 Payment History
               </Text>
-              <View className="bg-[#212121] border border-gray-600 rounded-lg p-3">
+              <View className="bg-screen border border-border rounded-lg p-3">
                 <View className="flex-row justify-between mb-1.5">
                   <Text className="text-white font-semibold text-sm">
                     Method
@@ -893,7 +894,7 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {po.status !== "Cancelled" && po.status !== "Paid" && (
-            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 w-fit">
+            <View className="bg-panel border border-border rounded-xl p-4 w-fit">
               <TouchableOpacity
                 onPress={() => setShowCancelDialog(true)}
                 className="bg-red-600 rounded-lg p-3 items-center w-fit"
@@ -907,7 +908,7 @@ const PurchaseOrderDetailScreen = () => {
 
           {showCancelDialog && (
             <View className="absolute inset-0 bg-black/50 items-center justify-center">
-              <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mx-4 w-full max-w-sm">
+              <View className="bg-panel border border-border rounded-xl p-4 mx-4 w-full max-w-sm">
                 <Text className="text-lg font-bold text-white mb-2">
                   Cancel PO
                 </Text>
@@ -938,7 +939,7 @@ const PurchaseOrderDetailScreen = () => {
 
           {showDeleteDraftDialog && (
             <View className="absolute inset-0 bg-black/50 items-center justify-center">
-              <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mx-4 w-full max-w-sm">
+              <View className="bg-panel border border-border rounded-xl p-4 mx-4 w-full max-w-sm">
                 <Text className="text-lg font-bold text-white mb-2">
                   Delete Draft
                 </Text>

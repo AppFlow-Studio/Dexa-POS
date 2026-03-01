@@ -9,6 +9,7 @@ import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Link, router, useLocalSearchParams } from "expo-router";
+import { colors, spinnerColor } from "@/lib/theme";
 import { ArrowLeft, Calendar, Menu } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -67,7 +68,7 @@ const MyProfileScreen = () => {
     if (activeTab === null) {
       return (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#0000ff" />
+          <ActivityIndicator size="large" color={spinnerColor} />
         </View>
       );
     }
@@ -87,34 +88,34 @@ const MyProfileScreen = () => {
   };
 
   return (
-    <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
-      <View className="flex-1 p-4 bg-[#212121]">
+    <SafeAreaView edges={["top"]} className="flex-1 bg-screen">
+      <View className="flex-1 p-4 bg-screen">
         <View className="flex-row items-center justify-between mb-4">
           <TouchableOpacity
             onPress={() => router.replace("/home")}
             className="flex-row items-center gap-2"
           >
-            <ArrowLeft color="#9CA3AF" size={24} />
+            <ArrowLeft color={colors.label} size={24} />
             <Text className="text-2xl font-bold text-white">My Profile</Text>
           </TouchableOpacity>
 
           <View className="flex-row items-center gap-3">
             <Link href="/pto" asChild>
-              <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-[#303030] border border-gray-700 rounded-xl">
-                <Calendar size={16} color="#9CA3AF" />
+              <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-panel border border-gray-700 rounded-xl">
+                <Calendar size={16} color={colors.label} />
                 <Text className="text-gray-300 font-semibold">PTO</Text>
               </TouchableOpacity>
             </Link>
             <Link href="/requests" asChild>
-              <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-[#303030] border border-gray-700 rounded-xl">
-                <Menu size={16} color="#9CA3AF" />
+              <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-panel border border-gray-700 rounded-xl">
+                <Menu size={16} color={colors.label} />
                 <Text className="text-gray-300 font-semibold">Requests</Text>
               </TouchableOpacity>
             </Link>
           </View>
         </View>
 
-        <View className="flex-1 bg-[#303030] p-4 rounded-2xl border border-gray-600">
+        <View className="flex-1 bg-panel p-4 rounded-2xl border border-gray-600">
           {/* Tab Bar */}
           <View className="bg-gray-700 p-1 rounded-xl w-full flex-row self-start">
             {TABS.map((tab) => (
@@ -122,7 +123,7 @@ const MyProfileScreen = () => {
                 key={tab}
                 onPress={() => setActiveTab(tab)}
                 className={`py-2 px-4 rounded-lg flex-1 ${
-                  activeTab === tab ? "bg-[#212121]" : ""
+                  activeTab === tab ? "bg-screen" : ""
                 }`}
               >
                 <Text

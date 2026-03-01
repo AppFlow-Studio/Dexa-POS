@@ -7,6 +7,7 @@ import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useRouter } from "expo-router";
+import { colors } from "@/lib/theme";
 import {
   ArrowLeftRight,
   Bell,
@@ -200,7 +201,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center p-1.5 rounded-full border bg-blue-600 border-blue-400">
-              <View className="w-8 h-8 bg-blue-500 rounded-full items-center justify-center">
+              <View className="w-5 h-5 bg-blue-500 rounded-full items-center justify-center">
                 <Text className="text-white text-sm font-bold">
                   {employee.fullName
                     .split(" ")
@@ -223,7 +224,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               </View>
             </TouchableOpacity>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-[300px] bg-[#181a1f] border border-[#2a2e35] rounded-2xl shadow-2xl mt-4">
+          <DropdownMenuContent className="w-[300px] bg-panel border border-border rounded-2xl shadow-2xl mt-4">
             {/* Header row like the design */}
             <View className="flex-row items-center px-4 py-4">
               <View className="w-10 h-10 bg-blue-600 rounded-full items-center justify-center mr-3">
@@ -264,9 +265,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 className="py-3"
               >
                 <View>
-                  <Bell size={24} color="#9CA3AF" />
+                  <Bell size={24} color={colors.label} />
                   {unreadCount > 0 && (
-                    <View className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 rounded-full items-center justify-center border-2 border-[#303030]">
+                    <View className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 rounded-full items-center justify-center border-2 border-surface">
                       <Text className="text-white text-xs font-bold">
                         {unreadCount}
                       </Text>
@@ -283,7 +284,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 <Text className="text-white text-base">Switch Account</Text>
               </DropdownMenuItem>
 
-              <View className="h-px bg-[#2a2e35] my-2" />
+              <View className="h-px bg-border my-2" />
 
               <DropdownMenuItem
                 onPress={handleStartBreak}
@@ -296,10 +297,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                 </Text>
               </DropdownMenuItem>
 
-              <View className="h-px bg-[#2a2e35] my-2" />
+              <View className="h-px bg-border my-2" />
 
               <DropdownMenuItem onPress={handleLogout} className="py-3">
-                <LogOut className="mr-3 h-5 w-5" color="#ef4444" />
+                <LogOut className="mr-3 h-5 w-5" color={colors.danger} />
                 <Text className="text-red-400 text-base">Sign out</Text>
               </DropdownMenuItem>
             </View>
@@ -414,14 +415,14 @@ const SessionDock = () => {
     <>
       <Animated.View
         layout={Layout.duration(220)}
-        className="flex-row items-center bg-[#303030] rounded-full border border-gray-700 overflow-hidden"
+        className="flex-row items-center bg-surface rounded-full border border-gray-700 overflow-hidden"
       >
         {isExpanded ? (
           <>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-2 p-1 items-center"
+              contentContainerClassName="gap-2 items-center"
             >
               {activeSessionId && <SessionChip sessionId={activeSessionId} />}
               {otherSessionIds.map((id) => (
@@ -430,7 +431,7 @@ const SessionDock = () => {
             </ScrollView>
             <TouchableOpacity
               onPress={() => setSwitchModalOpen(true)}
-              className="p-2 mx-1 bg-gray-600 rounded-full"
+              className="p-0.5 mx-1 bg-gray-600 rounded-full"
             >
               <Plus size={20} color="white" />
             </TouchableOpacity>

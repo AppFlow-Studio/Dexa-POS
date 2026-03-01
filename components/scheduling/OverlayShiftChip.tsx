@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { Role, TemplateShift } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { AlertTriangle } from "lucide-react-native";
@@ -46,13 +47,13 @@ const OverlayShiftChip: React.FC<OverlayShiftChipProps> = ({
       bg: "bg-gray-500/20",
       border: "border-gray-500/50",
     };
-  const roleTextColor = textColors[shift.role] || "#9ca3af";
+  const roleTextColor = textColors[shift.role] || colors.label;
 
   const containerClasses = isConflicting
     ? "p-2 rounded-lg bg-red-900/30 border-2 border-dashed border-red-500/50 mb-2"
     : `p-2 rounded-lg border-2 border-dashed mb-2 ${roleColor.bg} ${roleColor.border}`;
 
-  const textColor = isConflicting ? "#f87171" : roleTextColor;
+  const textColor = isConflicting ? colors.danger : roleTextColor;
 
   const opacity = useSharedValue(0.6);
 
@@ -79,7 +80,7 @@ const OverlayShiftChip: React.FC<OverlayShiftChipProps> = ({
         <Text style={{ color: textColor }} className="text-xs font-bold">
           {shift.role}
         </Text>
-        {isConflicting && <AlertTriangle size={14} color="#f87171" />}
+        {isConflicting && <AlertTriangle size={14} color={colors.danger} />}
       </View>
       <Text style={{ color: textColor }} className="text-xs">
         {startTime} - {endTime}

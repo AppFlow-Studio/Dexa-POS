@@ -30,7 +30,7 @@ const EditMenuScreen: React.FC = () => {
 
   if (existing && (isGlobalMenu || !isLocalMenu)) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+      <View className="flex-1 bg-panel items-center justify-center p-4">
         <Text className="text-2xl text-white font-bold mb-2">Global Menu</Text>
         <Text className="text-lg text-gray-400 text-center mb-6">
           This menu belongs to all locations and cannot be edited from here.
@@ -187,11 +187,11 @@ const EditMenuScreen: React.FC = () => {
 
   if (!existing) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+      <View className="flex-1 bg-panel items-center justify-center p-4">
         <Text className="text-xl text-white">Menu not found.</Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-3 px-4 py-2 bg-[#303030] rounded border border-gray-600"
+          className="mt-3 px-4 py-2 bg-surface rounded border border-gray-600"
         >
           <Text className="text-lg text-gray-300">Go Back</Text>
         </TouchableOpacity>
@@ -200,7 +200,7 @@ const EditMenuScreen: React.FC = () => {
   }
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <MenuForm
         initialData={existing}
         onSubmit={handleSubmit}

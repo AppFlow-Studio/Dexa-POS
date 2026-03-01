@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import ActivityFeedTab from "@/components/profile/ActivityFeedTab";
 import DropRequestsTab from "@/components/profile/DropRequestsTab";
 import SwapRequestsInTab from "@/components/profile/SwapRequestsInTab";
@@ -21,7 +22,7 @@ const StatCard = ({
   value: string;
   icon: React.ReactNode;
 }) => (
-  <View className="flex-1 bg-[#303030] p-4 rounded-2xl border border-gray-700">
+  <View className="flex-1 bg-panel p-4 rounded-2xl border border-gray-700">
     <View className="flex-row items-center gap-3 mb-2">{icon}</View>
     <Text className="text-2xl font-bold text-white">{value}</Text>
     <Text className="text-sm text-gray-400 mt-1">{label}</Text>
@@ -48,31 +49,31 @@ const RequestsPage = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-4">
+    <View className="flex-1 bg-screen p-4">
       <View className="flex-row gap-4 mb-6">
         <StatCard
           label="Drop Requests"
           value="1"
-          icon={<ArrowDownCircle size={20} color="#f59e0b" />}
+          icon={<ArrowDownCircle size={20} color={colors.warning} />}
         />
         <StatCard
           label="Swap Requests"
           value="1"
-          icon={<ArrowRightLeft size={20} color="#3b82f6" />}
+          icon={<ArrowRightLeft size={20} color={colors.info} />}
         />
         <StatCard
           label="Pending"
           value="2"
-          icon={<AlertCircle size={20} color="#f59e0b" />}
+          icon={<AlertCircle size={20} color={colors.warning} />}
         />
         <StatCard
           label="Completed"
           value="0"
-          icon={<CheckCircle2 size={20} color="#22c55e" />}
+          icon={<CheckCircle2 size={20} color={colors.success} />}
         />
       </View>
 
-      <View className="flex-row p-1 bg-[#303030] rounded-xl border border-gray-700 mb-6">
+      <View className="flex-row p-1 bg-panel rounded-xl border border-gray-700 mb-6">
         <TouchableOpacity
           onPress={() => setActiveTab("drops")}
           className={`flex-1 py-2 rounded-lg items-center ${activeTab === "drops" ? "bg-blue-600" : ""}`}

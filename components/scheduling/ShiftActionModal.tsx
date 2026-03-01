@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { colors } from "@/lib/theme";
 import { Shift, TemplateShift } from "@/lib/types";
 import { format, parse } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
@@ -48,7 +49,7 @@ export function ShiftActionModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[450px] bg-[#1C1C1E] border-gray-700 rounded-2xl">
+      <DialogContent className="w-[450px] bg-panel border-border rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-white">{title}</DialogTitle>
         </DialogHeader>
@@ -62,7 +63,7 @@ export function ShiftActionModal({
 
           <View className="gap-y-3">
             <View className="flex-row items-center gap-x-3">
-              <Clock size={20} color="#9CA3AF" />
+              <Clock size={20} color={colors.label} />
               <Text className="text-white text-base">
                 {shift.startTime
                   ? formatInTimeZone(shift.startTime, "UTC", "h:mm a")
@@ -75,13 +76,13 @@ export function ShiftActionModal({
             </View>
             {shift.location && (
               <View className="flex-row items-center gap-x-3">
-                <MapPin size={20} color="#9CA3AF" />
+                <MapPin size={20} color={colors.label} />
                 <Text className="text-white text-base">{shift.location}</Text>
               </View>
             )}
             {shift.managerNote && (
               <View className="flex-row items-center gap-x-3">
-                <FileText size={20} color="#9CA3AF" />
+                <FileText size={20} color={colors.label} />
                 <Text className="text-white text-base">Manager note</Text>
               </View>
             )}
@@ -94,11 +95,11 @@ export function ShiftActionModal({
             onPress={onDelete}
             className="flex-row gap-2"
           >
-            <Trash2 size={16} color="#FFFFFF" />
+            <Trash2 size={16} color={colors.heading} />
             <Text className="text-white font-semibold rounded-lg">Delete</Text>
           </Button>
           <Button onPress={onEdit} className="flex-row gap-2 bg-blue-600">
-            <Pencil size={16} color="#FFFFFF" />
+            <Pencil size={16} color={colors.heading} />
             <Text className="text-white font-semibold rounded-lg">Edit</Text>
           </Button>
         </DialogFooter>

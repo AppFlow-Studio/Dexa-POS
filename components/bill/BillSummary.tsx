@@ -64,8 +64,8 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   }, [cart, itemCourseMap]);
 
   return (
-    <View className="flex-1 bg-[#212121]">
-      <View className=" px-6 h-full">
+    <View className="flex-1 bg-background">
+      <View className=" px-4 h-full">
         <View className="mb-1">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center">

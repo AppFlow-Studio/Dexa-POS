@@ -1,5 +1,6 @@
 import { Shift } from "@/lib/types";
 import { format, parse, parseISO } from "date-fns";
+import { colors } from "@/lib/theme";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -132,18 +133,18 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[600px] bg-[#303030] border-gray-700 p-0 rounded-2xl">
+      <DialogContent className="w-[600px] bg-surface border-gray-700 p-0 rounded-2xl">
         <DialogHeader className="p-4 border-b border-gray-700 flex-row justify-between items-center">
           <DialogTitle className="text-white text-xl font-bold">
             {format(parseISO(shift.date), "EEEE, MMMM d")}
           </DialogTitle>
           <TouchableOpacity onPress={onClose} className="p-1">
-            <X size={20} color="#9CA3AF" />
+            <X size={20} color={colors.label} />
           </TouchableOpacity>
         </DialogHeader>
 
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <View className="p-4 bg-[#212121] rounded-xl border border-gray-700">
+          <View className="p-4 bg-panel rounded-xl border border-gray-700">
             <View className="flex-row items-center gap-3 mb-3">
               <Text className="text-base font-semibold text-white">
                 {shift.role}
@@ -153,7 +154,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             </View>
 
             <View className="flex-row items-center gap-2 mb-2">
-              <Clock size={16} color="#9CA3AF" />
+              <Clock size={16} color={colors.label} />
               <Text className="text-base text-white">
                 {shift.startTime ? format(parseISO(shift.startTime), "h:mm a") : "N/A"} –{" "}
                 {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
@@ -171,7 +172,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             </View>
 
             <View className="flex-row items-center gap-2 mb-4">
-              <MapPin size={16} color="#9CA3AF" />
+              <MapPin size={16} color={colors.label} />
               <Text className="text-base text-gray-400">{shift.location}</Text>
             </View>
 
@@ -181,7 +182,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   onPress={() => setNoteVisible(!isNoteVisible)}
                   className="flex-row items-center gap-2"
                 >
-                  <MessageSquare size={16} color="#60A5FA" />
+                  <MessageSquare size={16} color={colors.info} />
                   <Text className="text-sm text-blue-300 underline">
                     Manager note
                   </Text>
@@ -196,27 +197,27 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
 
             <View className="flex-row flex-wrap items-center gap-2">
               <ComplianceBadge
-                icon={<Coffee size={14} color="#9CA3AF" />}
+                icon={<Coffee size={14} color={colors.label} />}
                 text={`Meal break ${shift.breakMinutes}m required`}
                 variant="default"
               />
               {shift.expectedPace && (
                 <ComplianceBadge
-                  icon={<TrendingUp size={14} color="#9CA3AF" />}
+                  icon={<TrendingUp size={14} color={colors.label} />}
                   text={`Expected: ${shift.expectedPace}`}
                   variant={getPaceVariant(shift.expectedPace)}
                 />
               )}
               {shift.staffingLevel && (
                 <ComplianceBadge
-                  icon={<Users size={14} color="#9CA3AF" />}
+                  icon={<Users size={14} color={colors.label} />}
                   text={shift.staffingLevel}
                   variant={getStaffingVariant(shift.staffingLevel)}
                 />
               )}
               {shift.isOvertimeRisk && (
                 <ComplianceBadge
-                  icon={<AlertTriangle size={14} color="#f59e0b" />}
+                  icon={<AlertTriangle size={14} color={colors.warning} />}
                   text="OT risk"
                   variant="warning"
                 />
@@ -232,7 +233,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   onPress={handleRequestSwap}
                   className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
                 >
-                  <ArrowRightLeft size={16} color="#9CA3AF" />
+                  <ArrowRightLeft size={16} color={colors.label} />
                   <Text className="text-base font-semibold text-white">
                     Request Swap
                   </Text>
@@ -241,7 +242,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   onPress={handleRequestDrop}
                   className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
                 >
-                  <MinusCircle size={16} color="#9CA3AF" />
+                  <MinusCircle size={16} color={colors.label} />
                   <Text className="text-base font-semibold text-gray-300">
                     Drop to Open
                   </Text>

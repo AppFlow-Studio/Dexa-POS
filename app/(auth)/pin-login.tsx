@@ -3,6 +3,7 @@ import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { colors } from "@/lib/theme";
 import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { getDeviceName } from "@/lib/deviceName";
@@ -710,7 +711,7 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+            className={`flex-1 min-w-0 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center ${
               !canSubmit && "opacity-50"
             }`}
           >
@@ -720,7 +721,7 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockIn}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+            className={`flex-1 min-w-0 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center ${
               !canSubmit && "opacity-50"
             }`}
           >
@@ -730,7 +731,7 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockOut}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+            className={`flex-1 min-w-0 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center ${
               !canSubmit && "opacity-50"
             }`}
           >
@@ -740,7 +741,7 @@ const PinLoginScreen = () => {
 
         <TouchableOpacity
           onPress={handleOpenTimeclock}
-          className="self-center mt-6 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center flex-row"
+          className="self-center mt-6 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center flex-row"
         >
           <Text className="text-lg font-semibold text-white mr-2">
             Open Timeclock
@@ -754,14 +755,14 @@ const PinLoginScreen = () => {
           <View
             className="min-w-xl w-full rounded-2xl p-6"
             style={{
-              backgroundColor: "#2b2b2b",
+              backgroundColor: colors.card,
               borderWidth: 1,
               borderColor:
                 dialog.variant === "success"
-                  ? "#059669"
+                  ? colors.success
                   : dialog.variant === "warning"
-                    ? "#F59E0B"
-                    : "#EF4444",
+                    ? colors.warning
+                    : colors.danger,
             }}
           >
             <Text
@@ -809,7 +810,7 @@ const PinLoginScreen = () => {
                       ? "#065F46"
                       : dialog.variant === "warning"
                         ? "#92400E"
-                        : "#7F1D1D",
+                        : colors.danger,
                 }}
               >
                 <Text className="text-white text-lg font-medium">OK</Text>

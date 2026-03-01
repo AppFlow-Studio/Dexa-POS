@@ -111,7 +111,7 @@ const AddCategoryScreen: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-panel">
       <CategoryForm
         onSubmit={handleSubmit}
         isSaving={isSaving}

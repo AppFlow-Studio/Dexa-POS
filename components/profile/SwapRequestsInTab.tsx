@@ -2,6 +2,7 @@ import { Shift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { format, parseISO } from "date-fns";
+import { colors } from "@/lib/theme";
 import {
   AlertCircle,
   ArrowRightLeft,
@@ -23,7 +24,7 @@ const ShiftInfoCard = ({ shift }: { shift?: Shift }) => {
   }
 
   return (
-    <View className="p-4 bg-[#212121] rounded-xl border border-gray-700">
+    <View className="p-4 bg-panel rounded-xl border border-gray-700">
       <Text className="text-base font-semibold text-white mb-1">
         {shift.role}
       </Text>
@@ -32,13 +33,13 @@ const ShiftInfoCard = ({ shift }: { shift?: Shift }) => {
       </Text>
       <View className="flex-row gap-4">
         <View className="flex-row items-center gap-2">
-          <Clock size={16} color="#9CA3AF" />
+          <Clock size={16} color={colors.label} />
           <Text className="text-sm text-gray-400">
             {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
           </Text>
         </View>
         <View className="flex-row items-center gap-2">
-          <MapPin size={16} color="#9CA3AF" />
+          <MapPin size={16} color={colors.label} />
           <Text className="text-sm text-gray-400">{shift.location}</Text>
         </View>
       </View>
@@ -75,8 +76,8 @@ const SwapRequestsInTab = () => {
   return (
     <View className="gap-y-4">
       {incomingSwapRequests.length === 0 ? (
-        <View className="p-12 bg-[#303030] border border-gray-700 rounded-2xl items-center justify-center">
-          <ArrowRightLeft size={48} color="#6B7280" />
+        <View className="p-12 bg-surface border border-gray-700 rounded-2xl items-center justify-center">
+          <ArrowRightLeft size={48} color={colors.muted} />
           <Text className="text-lg font-semibold text-white mt-4">
             No Incoming Swap Requests
           </Text>
@@ -93,11 +94,11 @@ const SwapRequestsInTab = () => {
           return (
             <View
               key={request.id}
-              className="p-4 bg-[#303030] rounded-2xl border border-blue-500/20"
+              className="p-4 bg-surface rounded-2xl border border-blue-500/20"
             >
               <View className="flex-row items-start justify-between mb-3">
                 <View className="flex-row items-start gap-3">
-                  <AlertCircle size={20} color="#3b82f6" />
+                  <AlertCircle size={20} color={colors.info} />
                   <View className="flex-1">
                     <View className="flex-row justify-between mb-4">
                       <Text className="text-sm text-gray-400 mb-2">
@@ -115,7 +116,7 @@ const SwapRequestsInTab = () => {
                     </View>
                     <ShiftInfoCard shift={myShift} />
                     <View className="items-center my-4">
-                      <ArrowRightLeft size={20} color="#3b82f6" />
+                      <ArrowRightLeft size={20} color={colors.info} />
                     </View>
                     <Text className="text-sm text-gray-400 mb-2">
                       In exchange for your:

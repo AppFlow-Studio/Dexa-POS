@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { colors } from "@/lib/theme";
 import React from "react";
 import { Dimensions, Text, View } from "react-native";
 import { BarChart } from "react-native-gifted-charts";
@@ -15,7 +16,7 @@ const VarianceChart = () => {
     {
       value: 120,
       label: "Mon",
-      frontColor: "#3b82f6",
+      frontColor: colors.info,
     },
     {
       value: 118,
@@ -24,7 +25,7 @@ const VarianceChart = () => {
     {
       value: 115,
       label: "Tue",
-      frontColor: "#3b82f6",
+      frontColor: colors.info,
     },
     {
       value: 122,
@@ -33,7 +34,7 @@ const VarianceChart = () => {
     {
       value: 125,
       label: "Wed",
-      frontColor: "#3b82f6",
+      frontColor: colors.info,
     },
     {
       value: 120,
@@ -42,7 +43,7 @@ const VarianceChart = () => {
     {
       value: 130,
       label: "Thu",
-      frontColor: "#3b82f6",
+      frontColor: colors.info,
     },
     {
       value: 135,
@@ -51,7 +52,7 @@ const VarianceChart = () => {
     {
       value: 140,
       label: "Fri",
-      frontColor: "#3b82f6",
+      frontColor: colors.info,
     },
     {
       value: 145,
@@ -60,7 +61,7 @@ const VarianceChart = () => {
     {
       value: 150,
       label: "Sat",
-      frontColor: "#3b82f6",
+      frontColor: colors.info,
     },
     {
       value: 148,
@@ -69,7 +70,7 @@ const VarianceChart = () => {
     {
       value: 135,
       label: "Sun",
-      frontColor: "#3b82f6",
+      frontColor: colors.info,
     },
     {
       value: 130,
@@ -80,7 +81,7 @@ const VarianceChart = () => {
   const chartWidth = Dimensions.get("window").width - 70;
 
   return (
-    <Card className="p-6 bg-[#303030] border-gray-700 overflow-hidden">
+    <Card className="p-6 bg-panel border-border overflow-hidden">
       <View className="mb-6">
         <Text className="text-lg font-semibold text-white mb-1">
           Hours Variance
@@ -98,9 +99,9 @@ const VarianceChart = () => {
           barWidth={16}
           spacing={24}
           rulesType="solid"
-          rulesColor="#4B5563"
-          yAxisTextStyle={{ color: "#9CA3AF" }}
-          xAxisLabelTextStyle={{ color: "#9CA3AF" }}
+          rulesColor={colors.border}
+          yAxisTextStyle={{ color: colors.label }}
+          xAxisLabelTextStyle={{ color: colors.label }}
           noOfSections={4}
           pointerConfig={{
             pointerStripHeight: 160,
@@ -131,7 +132,7 @@ const VarianceChart = () => {
       </View>
 
       <View className="flex-row justify-center gap-6 mt-4">
-        <LegendItem color="#3b82f6" text="Scheduled" />
+        <LegendItem color={colors.info} text="Scheduled" />
         <LegendItem color="#82a6ff" text="Actual" />
       </View>
 

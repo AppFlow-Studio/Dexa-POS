@@ -24,7 +24,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, counts }) => {
   };
 
   return (
-    <View className="bg-[#303030] border border-gray-700 p-1 rounded-xl flex-row self-start">
+    <View className="bg-surface border border-gray-700 p-1 rounded-xl flex-row self-start">
       {TABS.map((tab) => {
         const isActive = activeWindow === tab;
         const tabCount = counts[tab];
@@ -33,7 +33,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, counts }) => {
             key={tab}
             onPress={() => handlePress(tab)}
             className={`py-2 px-4 rounded-lg flex-row items-center ${
-              isActive ? "bg-[#212121]" : ""
+              isActive ? "bg-panel" : ""
             }`}
           >
             <Text
