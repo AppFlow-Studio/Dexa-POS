@@ -12,7 +12,6 @@ import {
   DejavooRefundRequest,
   DejavooTipAdjustRequest,
   DejavooStatusRequest,
-  DejavooTerminalStatusResponse,
   DejavooSettleRequest,
   DejavooResponse,
   PaymentType,
@@ -51,8 +50,8 @@ export class DejavooService {
       }
 
       this.credentials = {
-        tpn: data.tpn,
         authKey: data.auth_key,
+        registerId: data.register_id,
         environment: data.api_environment,
         baseUrl: data.api_base_url,
         timeout: data.spin_proxy_timeout,
@@ -77,10 +76,10 @@ export class DejavooService {
     return this.credentials.baseUrl || SPIN_API_URLS[this.credentials.environment];
   }
 
-  private getAuthParams(): { Tpn: string; Authkey: string; SPInProxyTimeout?: number } {
+  private getAuthParams(): { RegisterId: string; Authkey: string; SPInProxyTimeout?: number } {
     if (!this.credentials) throw new Error('Credentials not loaded');
     return {
-      Tpn: this.credentials.tpn,
+      RegisterId: this.credentials.registerId,
       Authkey: this.credentials.authKey,
       SPInProxyTimeout: this.credentials.timeout,
     };
@@ -103,26 +102,31 @@ export class DejavooService {
     }
 
     try {
-      const url = `${this.getBaseUrl()}/v2/Common/TerminalStatus`;
-      const params = new URLSearchParams({
-        'request.tpn': this.credentials.tpn,
-        'request.authkey': this.credentials.authKey,
-      });
+      const url = `${this.getBaseUrl()}/v2/Report/Summary`;
+      const body = {
+        RegisterId: this.credentials.registerId,
+        Authkey: this.credentials.authKey,
+        SPInProxyTimeout: null,
+      };
 
-      const response = await fetch(`${url}?${params}`, {
-        method: 'GET',
+      const response = await fetch(url, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
 
-      const data: DejavooTerminalStatusResponse = await response.json();
+      const data = await response.json();
+
+      const isOnline = data?.GeneralResponse?.ResultCode === '0';
+      const status = isOnline ? 'Online' : 'Offline';
 
       // Update terminal status in database
-      await this.updateTerminalStatus(data.TerminalStatus, data.TerminalStatus === 'Online');
+      await this.updateTerminalStatus(status, isOnline);
 
       return {
-        success: response.ok,
-        status: data.TerminalStatus,
-        error: data.ErrorDescription,
+        success: isOnline,
+        status,
+        error: isOnline ? undefined : (data?.GeneralResponse?.Message || 'Terminal unreachable'),
       };
     } catch (err) {
       console.error('[Dejavoo] Terminal status check failed:', err);

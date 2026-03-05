@@ -18,13 +18,17 @@ import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { CastlesService } from "@/services/terminals/castles-service";
+import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { extractLast4, parseCastlesReturnCode } from "@/services/terminals/castles-response-mapper";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { CheckCircle2, Wifi } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     ScrollView,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -66,6 +70,7 @@ const CardPaymentView = () => {
     message: "",
   });
   const currentRefIdRef = useRef<string | null>(null);
+  const castlesServiceRef = useRef<CastlesService | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
   // Sync isTransactionProcessing with status and error modal
@@ -179,33 +184,107 @@ const CardPaymentView = () => {
     }
   }, [tipResponse]);
 
-  // Logic: Simulate terminal interaction
+  // Logic: Process terminal payment (Castles or Dejavoo)
   useEffect(() => {
     if (status === "processing") {
       const processPayment = async () => {
         if (!selectedStation?.payment_terminal) {
           throw new Error("No payment terminal selected");
         }
+        const terminal = selectedStation.payment_terminal;
+        const tipAmount = parseFloat(tipInput) || 0;
+
         try {
+          // ============ CASTLES BRANCH ============
+          if (terminal.terminal_type === 'castles') {
+            const host = terminal.ip_address;
+            if (!host) throw new Error("Castles terminal has no IP address configured");
+            const port = terminal.port ?? CASTLES_DEFAULT_PORT;
+
+            console.log("[CardPayment] Castles sale flow:", { host, port, totalToPay, tipAmount, grandTotal });
+
+            // 1. Connect + reset
+            const service = new CastlesService();
+            castlesServiceRef.current = service;
+            await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
+            await service.resetTerminalState();
+
+            // 2. Get counter for txnPosTxnId
+            const counter = getOrCreateCounter({
+              terminalId: terminal.id,
+              supabaseClient: supabase,
+            });
+            if (!counter.isInitialized) await counter.initialize();
+            const referenceId = counter.next();
+            currentRefIdRef.current = referenceId;
+
+            console.log("[CardPayment] Castles processSale:", { amount: totalToPay, tipAmount, referenceId });
+
+            // 3. Execute sale — amount is base (without tip); terminal adds tip separately
+            const result = await service.processSale({
+              amount: totalToPay,
+              tipAmount,
+              referenceId,
+            });
+
+            console.log("[CardPayment] Castles sale result:", {
+              success: result.success,
+              error: result.error,
+              hasRaw: !!result.raw,
+            });
+
+            // Clean up socket after sale
+            await service.gracefulDisconnect();
+            castlesServiceRef.current = null;
+
+            // 4. Handle failure
+            if (!result.success) {
+              const errorInfo = result.raw?.txnReturnCode
+                ? parseCastlesReturnCode(result.raw.txnReturnCode)
+                : { message: result.error || "Transaction failed" };
+              setErrorModal({
+                visible: true,
+                title: "Payment Declined",
+                message: errorInfo.message,
+              });
+              return;
+            }
+
+            // 5. Handle success
+            setStatus("success");
+            const castlesTx = result.terminalResponse?.castles_transaction as Record<string, string> | undefined;
+            handlePaymentCompletion({
+              method: "Card",
+              tipAmount,
+              transactionDetails: {
+                terminalType: "castles",
+                isCashPriced: false,
+                authorizationCode: castlesTx?.approvalCode,
+                cardType: castlesTx?.cardType,
+                last4: castlesTx?.cardLast4 ?? (result.raw ? extractLast4(result.raw.txnMaskedCardNum ?? result.raw.txnCardMaskedPan ?? '') : undefined),
+                transactionId: referenceId,
+                castlesTransaction: result.terminalResponse,
+              },
+              amountOverride: totalToPay,
+            });
+            return;
+          }
+
+          // ============ DEJAVOO BRANCH (default) ============
           const DejavooAPI = new DejavooSpinAPI(supabase);
-          // 2. Load terminal credentials (fast path with local credentials)
           console.log(
-            "[CashPayment] Loading terminal:",
-            selectedStation?.payment_terminal,
+            "[CardPayment] Loading Dejavoo terminal:",
+            terminal,
           );
           const loaded = await DejavooAPI.loadTerminal(
-            selectedStation?.payment_terminal?.id || "",
-            selectedStation?.payment_terminal, // Pass local credentials for fast path
+            terminal.id || "",
+            terminal,
           );
-          console.log("[CashPayment] Terminal loaded:", loaded);
+          console.log("[CardPayment] Terminal loaded:", loaded);
 
           if (!loaded) {
             throw new Error("Failed to load terminal credentials");
           }
-
-          // 3. Prepare transaction data
-          const tipAmount = parseFloat(tipInput) || 0;
-          // const amountTenderedNum = parseFloat(amountTendered) || 0;
 
           // Generate unique RefId
           const locSuffix = selectedStore?.id?.slice(-4) ?? '';
@@ -220,7 +299,7 @@ const CardPaymentView = () => {
             : generateRefId("CARD", undefined, locSuffix, staSuffix);
           currentRefIdRef.current = refId;
 
-          console.log("[CashPayment] Executing sale transaction...", {
+          console.log("[CardPayment] Executing Dejavoo sale transaction...", {
             grandTotal: grandTotal,
             amount: totalToPay,
             tip: tipAmount,
@@ -233,14 +312,9 @@ const CardPaymentView = () => {
             .tip(tipAmount)
             .paymentType("Credit")
             .refId(refId)
-            // .performedBy('cashier@pos.com') // TODO: Get from employee store
-            // .withTags(
-            //   activeSplit ? 'Split' : 'Full',
-            //   activeOrderId?.substring(0, 8) || 'ORDER'
-            // )
             .execute();
 
-          // 5. Log complete response
+          // Log complete response
           console.log("=== DEJAVOO SALE RESPONSE ===");
           console.log("Success:", result.success);
           console.log(
@@ -274,7 +348,7 @@ const CardPaymentView = () => {
           }
           console.log("=== END DEJAVOO RESPONSE ===");
 
-          // 6. Handle result
+          // Handle result
           // Check for terminal connectivity error first
           if (!result.success && isTerminalConnectivityError(result)) {
             const errorMsg = getTerminalErrorMessage(result);
@@ -367,8 +441,7 @@ const CardPaymentView = () => {
               method: "Card",
               tipAmount: tipAmount,
               transactionDetails: {
-                terminalType: "manual", // Default for now
-                // authorizationCode: "AUTH" + Math.floor(Math.random() * 10000),
+                terminalType: "dejavoo",
                 isCashPriced: false, // Explicit card pricing
                 authorizationCode: dejavooTransaction.authCode,
                 cardType: dejavooTransaction.cardType,
@@ -486,7 +559,7 @@ const CardPaymentView = () => {
                 {/* Custom Tip Input */}
                 <View className="flex-row items-center bg-surface border border-border rounded-xl px-4 h-16 w-full mb-8">
                   <Text className="text-gray-400 text-xl mr-2">$</Text>
-                  <BottomSheetTextInput
+                  <TextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
                     placeholder="0.00"
@@ -645,15 +718,23 @@ const CardPaymentView = () => {
                 if (status === "processing" && currentRefIdRef.current) {
                   // Abort in-flight transaction on terminal
                   setIsCancelling(true);
+                  const terminal = selectedStation?.payment_terminal;
                   try {
-                    const DejavooAPI = new DejavooSpinAPI(supabase);
-                    await DejavooAPI.loadTerminal(
-                      selectedStation?.payment_terminal?.id || "",
-                      selectedStation?.payment_terminal,
-                    );
-                    await DejavooAPI.abortTransaction()
-                      .referenceId(currentRefIdRef.current)
-                      .execute();
+                    if (terminal?.terminal_type === 'castles' && castlesServiceRef.current) {
+                      // Castles: graceful disconnect sends return2Idle + clean close
+                      await castlesServiceRef.current.gracefulDisconnect();
+                      castlesServiceRef.current = null;
+                    } else if (terminal && terminal.terminal_type !== 'castles') {
+                      // Dejavoo: abort via SPIN API
+                      const DejavooAPI = new DejavooSpinAPI(supabase);
+                      await DejavooAPI.loadTerminal(
+                        terminal.id || "",
+                        terminal,
+                      );
+                      await DejavooAPI.abortTransaction()
+                        .referenceId(currentRefIdRef.current)
+                        .execute();
+                    }
                   } catch (err) {
                     console.error("[CardPayment] Abort failed:", err);
                   }

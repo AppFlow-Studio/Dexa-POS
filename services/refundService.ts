@@ -1,5 +1,8 @@
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { OrderService } from "@/services/orderService";
+import { CastlesService } from "@/services/terminals/castles-service";
+import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { CASTLES_DEFAULT_PORT, CASTLES_SOCKET_TIMEOUT_MS } from "@/types/castles";
 import type { DejavooRefundResponse } from "@/types/dejavoo-spin-api";
 import type {
   ItemRefundAllocation,
@@ -580,7 +583,7 @@ export class RefundService {
     useVoid: boolean,
     terminalId: string,
     terminal: StationPaymentTerminal | undefined,
-  ): Promise<{ success: boolean; terminalResponse?: DejavooRefundResponse; error?: string }> {
+  ): Promise<{ success: boolean; terminalResponse?: DejavooRefundResponse | Record<string, unknown>; error?: string }> {
     // Cash payments don't go through the terminal — just succeed immediately
     if (payment.paymentMethod?.toLowerCase() === 'cash') {
       return { success: true };
@@ -599,6 +602,14 @@ export class RefundService {
     }
 
 
+    // Route to the correct terminal integration based on terminal type
+    const terminalType = terminal?.terminal_type ?? 'dejavoo';
+
+    if (terminalType === 'castles') {
+      return this.processCastlesTerminalRefund(payment, amount, useVoid, terminal!);
+    }
+
+    // Dejavoo flow
     const api = new DejavooSpinAPI(this.supabase);
     const loaded = await api.loadTerminal(terminalId, terminal);
     if (!loaded) {
@@ -608,7 +619,7 @@ export class RefundService {
     console.log('processTerminalRefund Loaded Terminal', loaded);
 
     if (useVoid) {
-      
+
       const result = await api
         .void()
         .amount(amount)
@@ -634,6 +645,61 @@ export class RefundService {
       terminalResponse: result.data as DejavooRefundResponse | undefined,
       error: result.error,
     };
+  }
+
+  private async processCastlesTerminalRefund(
+    payment: PaymentRefundContext,
+    amount: number,
+    useVoid: boolean,
+    terminal: StationPaymentTerminal,
+  ): Promise<{ success: boolean; terminalResponse?: Record<string, unknown>; error?: string }> {
+    if (!terminal.ip_address) {
+      return { success: false, error: "Castles terminal missing IP address." };
+    }
+
+    const castles = new CastlesService();
+    try {
+      await castles.connect({
+        host: terminal.ip_address,
+        port: terminal.port ?? CASTLES_DEFAULT_PORT,
+        timeout: CASTLES_SOCKET_TIMEOUT_MS,
+        terminalId: terminal.id,
+      });
+
+      const counter = getOrCreateCounter({
+        terminalId: terminal.id,
+        supabaseClient: this.supabase,
+      });
+      const referenceId = await counter.next();
+
+      if (useVoid) {
+        const result = await castles.processVoid({
+          rrn: payment.rrn || undefined,
+          referenceId,
+        });
+        return {
+          success: result.success,
+          terminalResponse: result.terminalResponse,
+          error: result.error,
+        };
+      }
+
+      const result = await castles.processRefund({
+        amount,
+        referenceId,
+      });
+      return {
+        success: result.success,
+        terminalResponse: result.terminalResponse,
+        error: result.error,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[RefundService] Castles terminal refund error:", message);
+      return { success: false, error: message };
+    } finally {
+      await castles.gracefulDisconnect();
+    }
   }
 
   private async buildItemRefundAllocation(

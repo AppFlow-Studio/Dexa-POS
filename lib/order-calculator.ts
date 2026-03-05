@@ -46,6 +46,21 @@ export function invalidateCalculationCache(): void {
 }
 
 /**
+ * Coalesced cache invalidation — batches multiple calls within the same microtask.
+ * Use for broadcast handlers and batch sync paths where multiple items may trigger
+ * invalidation in rapid succession.
+ */
+let _cacheInvalidationScheduled = false;
+export function scheduleCalculationCacheInvalidation(): void {
+  if (_cacheInvalidationScheduled) return;
+  _cacheInvalidationScheduled = true;
+  queueMicrotask(() => {
+    _cacheInvalidationScheduled = false;
+    invalidateCalculationCache();
+  });
+}
+
+/**
  * Prune expired entries from cache.
  * Called automatically during cache operations.
  */

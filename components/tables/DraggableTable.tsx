@@ -49,7 +49,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const updateTablePosition = useFloorPlanStore((s) => s.updateTablePosition);
   const removeTable = useFloorPlanStore((s) => s.removeTable);
   const saveSnapshot = useFloorPlanStore((s) => s.saveSnapshot);
-  const ordersById = useOrderStore((s) => s.ordersById);
   const { defaultSittingTimeMinutes } = useSettingsStore();
   const tick = useTableTimerTick();
 
@@ -63,18 +62,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const effectiveOrder = useMemo(() => {
     // Fast path: O(1) session-based lookup via getOrder (checks ordersById + dbOrderIdIndex)
-    console.log(table.session?.order_id)
     if (table.session?.order_id) {
       const found = getOrder(table.session.order_id);
       if (found) return found;
     }
 
-    // Fallback: scan by service_location_id (matches SeatedPanel's proven approach)
-    // Handles timing gaps where dbOrderIdIndex isn't populated yet
-    return Object.values(ordersById).find(
+    // Fallback: non-reactive scan by service_location_id
+    // Uses getState() to avoid subscribing to full ordersById
+    const allOrders = useOrderStore.getState().ordersById;
+    return Object.values(allOrders).find(
       (o) => o.service_location_id === table.id && o.order_status !== "void",
     );
-  }, [table.session?.order_id, getOrder, ordersById, table.id]);
+  }, [table.session?.order_id, getOrder, table.id]);
 
   const { duration, isOvertime } = useMemo(() => {
     // Determine if table is effectively "in use" based on session or order

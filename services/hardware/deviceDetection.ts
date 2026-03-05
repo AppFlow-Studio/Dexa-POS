@@ -591,7 +591,6 @@ export async function ensureDejavooPrinterProvisioned(
       station_id: stationId,
       metadata: {
         dejavooAuthKey: creds.auth_key,
-        dejavooTpn: creds.tpn,
         dejavooRegisterId: paymentTerminal.register_id,
         dejavooBaseUrl: creds.api_base_url,
         paymentTerminalId: paymentTerminal.id,

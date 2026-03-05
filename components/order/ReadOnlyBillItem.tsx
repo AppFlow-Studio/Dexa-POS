@@ -29,7 +29,7 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
           {item.name}
         </Text>
         <Text
-          className="text-xs mx-2"
+          className="text-sm mx-2"
           style={{ color: colors.muted }}
         >
           x{item.quantity}
@@ -53,7 +53,7 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
                     className="flex-row items-center"
                   >
                     <Text
-                      className="text-xs"
+                      className="text-sm"
                       numberOfLines={1}
                       style={{ color: colors.label, flex: 1 }}
                     >
@@ -61,7 +61,7 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
                     </Text>
                     {option.price > 0 && (
                       <Text
-                        className="text-xs font-medium ml-2"
+                        className="text-sm font-medium ml-2"
                         style={{
                           color: colors.success,
                           fontFamily: "monospace",
@@ -78,7 +78,7 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
           {/* Notes — italic */}
           {item.customizations.notes && (
             <Text
-              className="text-xs italic mt-0.5"
+              className="text-sm italic mt-0.5"
               style={{ color: colors.muted }}
             >
               "{item.customizations.notes}"

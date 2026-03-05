@@ -376,12 +376,8 @@ const StationsDevicesScreen = () => {
                 {station.payment_terminal.terminal_name}
               </Text>
               <View className="flex-row items-center mt-1">
-                <Text className="text-gray-400 text-sm">
-                  TPN: ****
-                  {station.payment_terminal.tpn.slice(-4)}
-                </Text>
                 {station.payment_terminal.register_id && (
-                  <Text className="text-gray-400 text-sm ml-3">
+                  <Text className="text-gray-400 text-sm">
                     Register: {station.payment_terminal.register_id}
                   </Text>
                 )}
@@ -470,12 +466,6 @@ const StationsDevicesScreen = () => {
         </View>
 
         <View className="bg-surface p-3 rounded-lg mb-3">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-gray-400 text-sm">Terminal ID (TPN)</Text>
-            <Text className="text-white font-mono">
-              ****{terminal.tpn.slice(-4)}
-            </Text>
-          </View>
           {terminal.register_id && (
             <View className="flex-row items-center justify-between mb-2">
               <Text className="text-gray-400 text-sm">Register ID</Text>

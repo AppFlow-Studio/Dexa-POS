@@ -4,6 +4,7 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
 import {
   ChefHat,
   DollarSign,
@@ -43,10 +44,21 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
   const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const { show } = useToast();
 
   // Get order (single index lookup - benefits from immer structural sharing)
   const order = useOrder(orderId);
+
+  // Check if active terminal matches the order's payment terminal type
+  const { canProcess: canTerminalRefund } = useMemo(
+    () =>
+      getTerminalMatchInfo(
+        order?.payments,
+        selectedStation?.payment_terminal?.terminal_type,
+      ),
+    [order?.payments, selectedStation?.payment_terminal?.terminal_type],
+  );
 
   // Handle add to bill
   const handleAddToBill = () => {
@@ -209,15 +221,17 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     },
     {
       icon: <ReceiptText size={18} color={colors.danger} />,
-      label: "Refund",
+      label: canTerminalRefund ? "Refund" : "Refund — wrong terminal",
       onPress: handleRefund,
       destructive: true,
+      disabled: !canTerminalRefund,
     },
     {
       icon: <Trash2 size={18} color={colors.danger} />,
-      label: "Void Order",
+      label: canTerminalRefund ? "Void Order" : "Void — wrong terminal",
       onPress: handleVoidOrder,
       destructive: true,
+      disabled: !canTerminalRefund,
     },
   ];
 

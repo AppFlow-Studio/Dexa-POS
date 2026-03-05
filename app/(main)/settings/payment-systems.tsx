@@ -1,6 +1,11 @@
 import { Switch } from "@/components/ui/switch";
+import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
+import { toastService } from "@/lib/toastService";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type { StationPaymentTerminal } from "@/types/station";
 import {
   AlertTriangle,
   Check,
@@ -15,13 +20,19 @@ import {
   Minus,
   Monitor,
   Plus,
+  Radio,
+  RefreshCw,
   Send,
   Shield,
+  Pencil,
   Trash2,
+  Wifi,
+  WifiOff,
   Zap,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   Text,
   TextInput,
@@ -65,6 +76,62 @@ const PaymentSystemsScreen = () => {
     autoAdjustPrepTimes,
     updateDiningSettings,
   } = useSettingsStore();
+
+  // Payment terminal stores & hooks
+  const supabase = useSupabaseClient();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+  const setSelectedStation = useStoreSettingsStore(
+    (s) => s.setSelectedStation
+  );
+  const {
+    terminals,
+    isTestingConnection,
+    loadTerminals,
+    setActiveTerminal,
+    testConnection,
+    testConnectionWithConfig,
+    diagnoseCastlesConnection,
+    registerTerminal,
+  } = usePaymentTerminal();
+
+  // Terminal UI state
+  const [showTerminalPicker, setShowTerminalPicker] = useState(false);
+  const [showRegisterForm, setShowRegisterForm] = useState(false);
+  const [registerFormType, setRegisterFormType] = useState<
+    "dejavoo" | "castles"
+  >("dejavoo");
+  const [registerForm, setRegisterForm] = useState({
+    name: "",
+    tpn: "",
+    authKey: "",
+    model: "",
+    environment: "sandbox" as "sandbox" | "production",
+    ipAddress: "",
+    port: "8080",
+  });
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isEditingTerminal, setIsEditingTerminal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    model: "",
+    tpn: "",
+    authKey: "",
+    ipAddress: "",
+    port: "8080",
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Derive current terminal from selectedStation
+  const currentTerminal = selectedStation?.payment_terminal ?? null;
+
+  // Load terminals on mount
+  useEffect(() => {
+    if (selectedStore?.id) {
+      loadTerminals(selectedStore.id);
+    }
+  }, [selectedStore?.id, loadTerminals]);
 
   // Local state for features not fully in store yet
   const [textToPayTestSent, setTextToPayTestSent] = useState(false);
@@ -120,7 +187,8 @@ const PaymentSystemsScreen = () => {
   ]);
 
   const [expandedSections, setExpandedSections] = useState({
-    dual: true,
+    terminal: true,
+    dual: false,
     surcharge: false,
     funding: false,
     token: false,
@@ -152,6 +220,376 @@ const PaymentSystemsScreen = () => {
     Massachusetts: false,
     Oklahoma: false,
   };
+
+  // ---- Terminal handlers ----
+
+  const handleTestConnection = async () => {
+    const online = await testConnection();
+
+    // Sync status to station store so terminal info card re-renders immediately
+    if (currentTerminal && selectedStation) {
+      setSelectedStation({
+        ...selectedStation,
+        payment_terminal: {
+          ...currentTerminal,
+          is_connected: online,
+          last_connection_status: online ? "Online" : "Offline",
+          last_connection_test_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    toastService.show({
+      title: online ? "Terminal Online" : "Terminal Offline",
+      message: online
+        ? "Connection to terminal verified."
+        : "Could not reach the terminal. Check network.",
+      type: online ? "success" : "error",
+    });
+  };
+
+  const handleDiagnoseCastles = async () => {
+    toastService.show({ title: 'Running TCP Diagnostics...', message: 'Check console for detailed output. Testing 4 delimiter formats (~35s).', type: 'warning' });
+    const result = await diagnoseCastlesConnection();
+    console.log('[CastlesDiag] Full result:', JSON.stringify(result, null, 2));
+    if (result.dataReceived) {
+      toastService.show({ title: 'Diagnosis: Data Received!', message: `Delimiter: ${result.delimiterUsed}. Response: ${result.rawResponse?.slice(0, 100)}`, type: 'success' });
+    } else if (result.tcpConnected) {
+      toastService.show({ title: 'Diagnosis: TCP OK, No Response', message: result.error ?? 'Terminal did not respond to any delimiter', type: 'warning' });
+    } else {
+      toastService.show({ title: 'Diagnosis: TCP Failed', message: result.error ?? 'Could not establish TCP connection', type: 'error' });
+    }
+  };
+
+  const handleAssignTerminal = async (terminal: (typeof terminals)[number]) => {
+    if (!selectedStation || !selectedStore) return;
+    setIsAssigning(true);
+    try {
+      // Deactivate current active terminal for this station
+      const { error: deactivateErr } = await supabase
+        .from("payment_terminals")
+        .update({ is_active: false })
+        .eq("station_id", selectedStation.id)
+        .eq("is_active", true);
+      if (deactivateErr) throw deactivateErr;
+
+      // Activate the new terminal and assign it to this station
+      const { error: activateErr } = await supabase
+        .from("payment_terminals")
+        .update({ is_active: true, station_id: selectedStation.id })
+        .eq("id", terminal.id);
+      if (activateErr) throw activateErr;
+
+      // Update payment terminal store
+      setActiveTerminal(terminal.id);
+
+      // Build StationPaymentTerminal and update station store
+      const newTerminalData: StationPaymentTerminal = {
+        id: terminal.id,
+        terminal_name: terminal.name,
+        register_id: null,
+        auth_key: null,
+        terminal_type: (terminal.terminalType as StationPaymentTerminal["terminal_type"]) || "dejavoo",
+        terminal_model: terminal.model || null,
+        is_connected: terminal.isConnected,
+        ip_address: terminal.ipAddress,
+        port: terminal.port,
+        last_connection_status: terminal.lastConnectionStatus || null,
+        last_connection_test_at: terminal.lastConnectionTest || null,
+      };
+
+      setSelectedStation({
+        ...selectedStation,
+        payment_terminal: newTerminalData,
+      });
+
+      toastService.show({
+        title: "Terminal Switched",
+        message: `Now using ${terminal.name}.`,
+        type: "success",
+      });
+      setShowTerminalPicker(false);
+    } catch (err) {
+      console.error("[PaymentSystems] assignTerminal error:", err);
+      toastService.show({
+        title: "Assignment Failed",
+        message:
+          err instanceof Error ? err.message : "Failed to switch terminal.",
+        type: "error",
+      });
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const handleRegisterTerminal = async () => {
+    if (!selectedStore || !selectedStation) return;
+    setIsRegistering(true);
+    let newTerminalId: string | undefined;
+
+    try {
+      if (registerFormType === "dejavoo") {
+        // Use the hook's registerTerminal (calls register_payment_terminal RPC)
+        const result = await registerTerminal({
+          locationId: selectedStore.id,
+          merchantId: selectedStore.merchant_id,
+          stationId: selectedStation.id,
+          terminalName: registerForm.name,
+          tpn: registerForm.tpn,
+          authKey: registerForm.authKey,
+          terminalModel: registerForm.model || undefined,
+          environment: registerForm.environment,
+        });
+
+        if (!result.success) throw new Error(result.error);
+
+        // Update station store with the new terminal
+        newTerminalId = result.terminalId;
+        if (result.terminalId) {
+          setActiveTerminal(result.terminalId);
+          const newTerminalData: StationPaymentTerminal = {
+            id: result.terminalId,
+            terminal_name: registerForm.name,
+            register_id: registerForm.tpn,
+            auth_key: null,
+            terminal_type: "dejavoo",
+            terminal_model: registerForm.model || null,
+            is_connected: false,
+            last_connection_status: null,
+            last_connection_test_at: null,
+          };
+          setSelectedStation({
+            ...selectedStation,
+            payment_terminal: newTerminalData,
+          });
+        }
+      } else {
+        // Castles path — direct inserts (RPC validates Dejavoo-specific fields)
+        const { data: terminalRow, error: termErr } = await supabase
+          .from("payment_terminals")
+          .insert({
+            location_id: selectedStore.id,
+            merchant_id: selectedStore.merchant_id,
+            station_id: selectedStation.id,
+            terminal_name: registerForm.name,
+            terminal_type: "castles",
+            terminal_model: registerForm.model || null,
+            register_id: "CASTLES",
+            auth_key: "CASTLES",
+            local_ip_address: registerForm.ipAddress,
+            local_port: parseInt(registerForm.port, 10) || 8080,
+            is_active: true,
+            is_connected: false,
+            api_environment: "production",
+          })
+          .select("id")
+          .single();
+
+        if (termErr) throw termErr;
+        newTerminalId = terminalRow.id;
+
+        // Deactivate any other active terminals for this station
+        await supabase
+          .from("payment_terminals")
+          .update({ is_active: false })
+          .eq("station_id", selectedStation.id)
+          .eq("is_active", true)
+          .neq("id", terminalRow.id);
+
+        // Reload and update stores
+        await loadTerminals(selectedStore.id);
+        setActiveTerminal(terminalRow.id);
+
+        const newTerminalData: StationPaymentTerminal = {
+          id: terminalRow.id,
+          terminal_name: registerForm.name,
+          register_id: null,
+          auth_key: null,
+          terminal_type: "castles",
+          terminal_model: registerForm.model || null,
+          is_connected: false,
+          ip_address: registerForm.ipAddress,
+          port: parseInt(registerForm.port, 10) || 8080,
+          last_connection_status: null,
+          last_connection_test_at: null,
+        };
+        setSelectedStation({
+          ...selectedStation,
+          payment_terminal: newTerminalData,
+        });
+      }
+
+      // Run connection test after registration
+      const testTargetId = newTerminalId || currentTerminal?.id;
+
+      if (testTargetId) {
+        const online = await testConnection(testTargetId);
+
+        // Sync status to station store so info card shows result
+        if (selectedStation?.payment_terminal) {
+          setSelectedStation({
+            ...selectedStation,
+            payment_terminal: {
+              ...selectedStation.payment_terminal,
+              is_connected: online,
+              last_connection_status: online ? "Online" : "Offline",
+              last_connection_test_at: new Date().toISOString(),
+            },
+          });
+        }
+
+        toastService.show({
+          title: online ? "Terminal Online" : "Terminal Registered (Offline)",
+          message: online
+            ? `${registerForm.name} is connected and ready.`
+            : `${registerForm.name} registered but could not connect. Check settings.`,
+          type: online ? "success" : "warning",
+        });
+      } else {
+        toastService.show({
+          title: "Terminal Registered",
+          message: `${registerForm.name} has been registered and assigned.`,
+          type: "success",
+        });
+      }
+
+      // Reset form
+      setShowRegisterForm(false);
+      setRegisterForm({
+        name: "",
+        tpn: "",
+        authKey: "",
+        model: "",
+        environment: "sandbox",
+        ipAddress: "",
+        port: "8080",
+      });
+    } catch (err) {
+      console.error("[PaymentSystems] registerTerminal error:", err);
+      toastService.show({
+        title: "Registration Failed",
+        message:
+          err instanceof Error ? err.message : "Failed to register terminal.",
+        type: "error",
+      });
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  const isRegisterFormValid =
+    registerFormType === "dejavoo"
+      ? registerForm.name.trim() &&
+        registerForm.tpn.trim() &&
+        registerForm.authKey.trim()
+      : registerForm.name.trim() && registerForm.ipAddress.trim();
+
+  const isEditFormValid =
+    currentTerminal?.terminal_type === "castles"
+      ? editForm.name.trim() && editForm.ipAddress.trim()
+      : editForm.name.trim() && editForm.tpn.trim();
+
+  const handleStartEdit = () => {
+    if (!currentTerminal) return;
+    setEditForm({
+      name: currentTerminal.terminal_name || "",
+      model: currentTerminal.terminal_model || "",
+      tpn: currentTerminal.register_id || "",
+      authKey: "", // Never pre-fill auth key
+      ipAddress: currentTerminal.ip_address || "",
+      port: String(currentTerminal.port || 8080),
+    });
+    setIsEditingTerminal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!currentTerminal || !selectedStore || !selectedStation) return;
+    setIsSavingEdit(true);
+
+    try {
+      // 1. Test connection with new config
+      const testResult = await testConnectionWithConfig({
+        terminalId: currentTerminal.id,
+        terminalType: currentTerminal.terminal_type as "castles" | "dejavoo",
+        ipAddress: editForm.ipAddress || undefined,
+        port: editForm.port ? parseInt(editForm.port, 10) : undefined,
+        tpn: editForm.tpn || undefined,
+        authKey: editForm.authKey || undefined,
+      });
+
+      toastService.show({
+        title: testResult.success ? "Terminal Online" : "Terminal Offline",
+        message: testResult.success
+          ? "Connection verified with new settings."
+          : `Could not connect: ${testResult.error || "Check settings."}. Settings will still be saved.`,
+        type: testResult.success ? "success" : "warning",
+      });
+
+      // 2. Build DB update payload
+      const updatePayload: Record<string, any> = {
+        terminal_name: editForm.name.trim(),
+        terminal_model: editForm.model.trim() || null,
+      };
+
+      if (currentTerminal.terminal_type === "castles") {
+        updatePayload.local_ip_address = editForm.ipAddress.trim();
+        updatePayload.local_port = parseInt(editForm.port, 10) || 8080;
+      } else {
+        updatePayload.tpn = editForm.tpn.trim();
+        updatePayload.register_id = editForm.tpn.trim();
+        if (editForm.authKey.trim()) {
+          updatePayload.auth_key = editForm.authKey.trim();
+        }
+      }
+
+      // 3. Update DB
+      const { error: dbErr } = await supabase
+        .from("payment_terminals")
+        .update(updatePayload)
+        .eq("id", currentTerminal.id);
+
+      if (dbErr) throw dbErr;
+
+      // 4. Update stores
+      const updatedTerminalData: StationPaymentTerminal = {
+        ...currentTerminal,
+        terminal_name: editForm.name.trim(),
+        terminal_model: editForm.model.trim() || null,
+        ...(currentTerminal.terminal_type === "castles"
+          ? {
+              ip_address: editForm.ipAddress.trim(),
+              port: parseInt(editForm.port, 10) || 8080,
+            }
+          : {
+              register_id: editForm.tpn.trim(),
+            }),
+        is_connected: testResult.success,
+        last_connection_status: testResult.success ? "Online" : "Offline",
+        last_connection_test_at: new Date().toISOString(),
+      };
+
+      setSelectedStation({
+        ...selectedStation,
+        payment_terminal: updatedTerminalData,
+      });
+
+      // Reload terminal list
+      await loadTerminals(selectedStore.id);
+
+      setIsEditingTerminal(false);
+    } catch (err) {
+      console.error("[PaymentSystems] saveEdit error:", err);
+      toastService.show({
+        title: "Save Failed",
+        message: err instanceof Error ? err.message : "Failed to save changes.",
+        type: "error",
+      });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // ---- Section rendering ----
 
   const renderSectionHeader = (
     title: string,
@@ -192,402 +630,651 @@ const PaymentSystemsScreen = () => {
       <View className="h-px w-full bg-gray-700 mb-6" />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* DUAL PRICING */}
+        {/* PAYMENT TERMINAL */}
         <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
-            "Dual Pricing & Cash Discount",
-            <DollarSign size={20} color={colors.success} />,
-            "dual"
+            "Payment Terminal",
+            <Radio size={20} color={colors.info} />,
+            "terminal"
           )}
-          {expandedSections.dual && (
+          {expandedSections.terminal && (
             <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-white font-medium">
-                    Enable Cash Discount
-                  </Text>
-                  <Text className="text-gray-400 text-sm">
-                    Offset processing fees for cash payments
-                  </Text>
-                </View>
-                <Switch
-                  checked={dualPricing.enabled}
-                  onCheckedChange={(v) => setDualPricing({ enabled: v })}
-                />
-              </View>
-
-              {dualPricing.enabled && (
-                <>
-                  <View className="mb-4">
-                    <Text className="text-gray-300 font-medium mb-2">
-                      Discount: {dualPricing.discount}%
+              {/* ---- Register form view ---- */}
+              {showRegisterForm ? (
+                <View>
+                  <View className="flex-row items-center justify-between mb-4">
+                    <Text className="text-white font-bold text-base">
+                      Register New Terminal
                     </Text>
-                    <View className="flex-row gap-2">
-                      {["1.0", "2.0", "2.5", "3.0", "3.5", "4.0"].map((val) => (
-                        <TouchableOpacity
-                          key={val}
-                          onPress={() => setDualPricing({ discount: val })}
-                          className={`flex-1 py-2 rounded-lg ${dualPricing.discount === val ? "bg-green-600" : "bg-surface"}`}
-                        >
-                          <Text
-                            className={`text-center font-bold ${dualPricing.discount === val ? "text-white" : "text-gray-400"}`}
-                          >
-                            {val}%
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    <TouchableOpacity
+                      onPress={() => setShowRegisterForm(false)}
+                    >
+                      <Text className="text-blue-400">Cancel</Text>
+                    </TouchableOpacity>
                   </View>
 
-                  <View className="bg-surface p-4 rounded-lg border border-gray-600 mb-4">
-                    <Text className="text-gray-400 text-xs mb-2 uppercase">
-                      Live Price Calculator
-                    </Text>
-                    <View className="flex-row items-center mb-3">
-                      <Text className="text-white mr-2">$</Text>
-                      <TextInput
-                        value={calculatorAmount}
-                        onChangeText={setCalculatorAmount}
-                        className="flex-1 bg-card p-2 rounded text-white text-lg"
-                        keyboardType="decimal-pad"
-                        placeholder="100"
-                        placeholderTextColor={colors.muted}
-                      />
-                    </View>
-                    <View className="flex-row justify-between mb-1">
-                      <Text className="text-gray-300">Cash Price</Text>
-                      <Text className="text-green-400 font-bold">
-                        ${parseFloat(calculatorAmount || "0").toFixed(2)}
+                  {/* Terminal type toggle */}
+                  <View className="flex-row mb-4 bg-surface rounded-lg overflow-hidden border border-gray-600">
+                    <TouchableOpacity
+                      onPress={() => setRegisterFormType("dejavoo")}
+                      className={`flex-1 py-3 items-center ${registerFormType === "dejavoo" ? "bg-blue-600" : ""}`}
+                    >
+                      <Text
+                        className={`font-bold ${registerFormType === "dejavoo" ? "text-white" : "text-gray-400"}`}
+                      >
+                        Dejavoo
                       </Text>
-                    </View>
-                    <View className="flex-row justify-between">
-                      <Text className="text-gray-300">Card Price</Text>
-                      <Text className="text-white font-bold">
-                        ${cardTotal.toFixed(2)}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setRegisterFormType("castles")}
+                      className={`flex-1 py-3 items-center ${registerFormType === "castles" ? "bg-purple-600" : ""}`}
+                    >
+                      <Text
+                        className={`font-bold ${registerFormType === "castles" ? "text-white" : "text-gray-400"}`}
+                      >
+                        Castles
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   </View>
 
-                  <View className="flex-row items-center bg-green-600/10 p-3 rounded-lg border border-green-600/30 mb-4">
-                    <Shield size={20} color={colors.success} />
-                    <View className="ml-3">
-                      <Text className="text-green-400 font-bold">
-                        Durbin Amendment Compliant
-                      </Text>
-                      <Text className="text-green-300/70 text-xs">
-                        Meets federal regulations
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="bg-surface p-4 rounded-lg border border-gray-600">
-                    <Text className="text-gray-300 font-medium mb-3">
-                      Signage Checklist
+                  {/* Common fields */}
+                  <View className="mb-3">
+                    <Text className="text-gray-300 text-sm mb-1">
+                      Terminal Name *
                     </Text>
-                    {Object.entries(dualPricing.signageChecklist).map(
-                      ([key, value]) => {
-                        const labels: Record<string, string> = {
-                          priceDisplay: "Price tags show cash price",
-                          registerSign: "Sign at register",
-                          entranceSign: "Sign at entrance",
-                          menuNote: "Note on menu",
-                        };
-                        return (
-                          <TouchableOpacity
-                            key={key}
-                            onPress={() =>
-                              setDualPricing({
-                                signageChecklist: {
-                                  ...dualPricing.signageChecklist,
-                                  [key]: !value,
-                                },
-                              })
-                            }
-                            className="flex-row items-center py-2"
-                          >
-                            <View
-                              className={`w-5 h-5 rounded border mr-3 items-center justify-center ${value ? "bg-green-600 border-green-500" : "border-gray-500"}`}
-                            >
-                              {value && <Check size={14} color="white" />}
-                            </View>
-                            <Text className="text-gray-300">{labels[key]}</Text>
-                          </TouchableOpacity>
-                        );
+                    <TextInput
+                      value={registerForm.name}
+                      onChangeText={(v) =>
+                        setRegisterForm((f) => ({ ...f, name: v }))
                       }
-                    )}
+                      placeholder="e.g. Front Counter"
+                      placeholderTextColor={colors.muted}
+                      className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                    />
                   </View>
-                </>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* SURCHARGING */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-          {renderSectionHeader(
-            "Credit Card Surcharging",
-            <CreditCard size={20} color={colors.danger} />,
-            "surcharge"
-          )}
-          {expandedSections.surcharge && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-white font-medium">
-                    Enable Surcharging
-                  </Text>
-                  <Text className="text-gray-400 text-sm">
-                    Pass processing fees to card customers
-                  </Text>
-                </View>
-                <Switch
-                  checked={surcharging.enabled}
-                  onCheckedChange={(v) => setSurcharging({ enabled: v })}
-                />
-              </View>
-
-              {surcharging.enabled && (
-                <>
-                  <View className="mb-4">
-                    <Text className="text-gray-300 font-medium mb-2">
-                      Surcharge Rate (%)
+                  <View className="mb-3">
+                    <Text className="text-gray-300 text-sm mb-1">
+                      Model (optional)
                     </Text>
-                    <View className="h-14 bg-surface border border-gray-600 rounded-lg flex-row items-center overflow-hidden">
-                      <TextInput
-                        value={surcharging.rate}
-                        onChangeText={(t) => setSurcharging({ rate: t })}
-                        className="flex-1 p-3 text-white text-base"
-                        keyboardType="decimal-pad"
-                      />
-                      <View className="px-4 bg-card h-full justify-center border-l border-gray-600">
-                        <Text className="text-white font-bold">%</Text>
+                    <TextInput
+                      value={registerForm.model}
+                      onChangeText={(v) =>
+                        setRegisterForm((f) => ({ ...f, model: v }))
+                      }
+                      placeholder="e.g. QD4"
+                      placeholderTextColor={colors.muted}
+                      className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                    />
+                  </View>
+
+                  {/* Dejavoo-specific fields */}
+                  {registerFormType === "dejavoo" && (
+                    <>
+                      <View className="mb-3">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          TPN *
+                        </Text>
+                        <TextInput
+                          value={registerForm.tpn}
+                          onChangeText={(v) =>
+                            setRegisterForm((f) => ({ ...f, tpn: v }))
+                          }
+                          placeholder="Terminal Point Number"
+                          placeholderTextColor={colors.muted}
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
                       </View>
-                    </View>
-                  </View>
-
-                  <View className="mb-4">
-                    <Text className="text-gray-300 font-medium mb-2">
-                      Your State
-                    </Text>
-                    <View className="flex-row flex-wrap gap-2">
-                      {Object.keys(stateCompliance)
-                        .slice(0, 6)
-                        .map((state) => (
+                      <View className="mb-3">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          Auth Key *
+                        </Text>
+                        <TextInput
+                          value={registerForm.authKey}
+                          onChangeText={(v) =>
+                            setRegisterForm((f) => ({ ...f, authKey: v }))
+                          }
+                          placeholder="Authentication Key"
+                          placeholderTextColor={colors.muted}
+                          secureTextEntry
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
+                      </View>
+                      <View className="mb-4">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          Environment
+                        </Text>
+                        <View className="flex-row bg-surface rounded-lg overflow-hidden border border-gray-600">
                           <TouchableOpacity
-                            key={state}
                             onPress={() =>
-                              setSurcharging({ selectedState: state })
+                              setRegisterForm((f) => ({
+                                ...f,
+                                environment: "sandbox",
+                              }))
                             }
-                            className={`px-3 py-2 rounded-lg ${surcharging.selectedState === state ? "bg-blue-600" : "bg-surface"}`}
+                            className={`flex-1 py-2.5 items-center ${registerForm.environment === "sandbox" ? "bg-yellow-600" : ""}`}
                           >
                             <Text
-                              className={`text-sm ${surcharging.selectedState === state ? "text-white font-bold" : "text-gray-400"}`}
+                              className={`text-sm font-medium ${registerForm.environment === "sandbox" ? "text-white" : "text-gray-400"}`}
                             >
-                              {state}
+                              Sandbox
                             </Text>
                           </TouchableOpacity>
-                        ))}
-                    </View>
-                    <View
-                      className={`mt-3 p-3 rounded-lg flex-row items-center ${stateCompliance[surcharging.selectedState] ? "bg-green-600/10 border border-green-600/30" : "bg-red-600/10 border border-red-600/30"}`}
+                          <TouchableOpacity
+                            onPress={() =>
+                              setRegisterForm((f) => ({
+                                ...f,
+                                environment: "production",
+                              }))
+                            }
+                            className={`flex-1 py-2.5 items-center ${registerForm.environment === "production" ? "bg-green-600" : ""}`}
+                          >
+                            <Text
+                              className={`text-sm font-medium ${registerForm.environment === "production" ? "text-white" : "text-gray-400"}`}
+                            >
+                              Production
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </>
+                  )}
+
+                  {/* Castles-specific fields */}
+                  {registerFormType === "castles" && (
+                    <>
+                      <View className="mb-3">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          IP Address *
+                        </Text>
+                        <TextInput
+                          value={registerForm.ipAddress}
+                          onChangeText={(v) =>
+                            setRegisterForm((f) => ({ ...f, ipAddress: v }))
+                          }
+                          placeholder="e.g. 192.168.1.100"
+                          placeholderTextColor={colors.muted}
+                          keyboardType="decimal-pad"
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
+                      </View>
+                      <View className="mb-4">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          Port
+                        </Text>
+                        <TextInput
+                          value={registerForm.port}
+                          onChangeText={(v) =>
+                            setRegisterForm((f) => ({ ...f, port: v }))
+                          }
+                          placeholder="8080"
+                          placeholderTextColor={colors.muted}
+                          keyboardType="number-pad"
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
+                      </View>
+                    </>
+                  )}
+
+                  {/* Register button */}
+                  <TouchableOpacity
+                    onPress={handleRegisterTerminal}
+                    disabled={!isRegisterFormValid || isRegistering}
+                    className={`py-3 rounded-lg items-center flex-row justify-center ${
+                      isRegisterFormValid && !isRegistering
+                        ? registerFormType === "dejavoo"
+                          ? "bg-blue-600"
+                          : "bg-purple-600"
+                        : "bg-gray-700"
+                    }`}
+                  >
+                    {isRegistering ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <>
+                        <Plus size={18} color="white" />
+                        <Text className="text-white font-bold ml-2">
+                          Register Terminal
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : showTerminalPicker ? (
+                /* ---- Terminal picker view ---- */
+                <View>
+                  <View className="flex-row items-center justify-between mb-4">
+                    <Text className="text-white font-bold text-base">
+                      Available Terminals
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setShowTerminalPicker(false)}
                     >
-                      {stateCompliance[surcharging.selectedState] ? (
-                        <>
-                          <Check size={18} color={colors.success} />
-                          <Text className="text-green-400 ml-2">
-                            Surcharging is LEGAL in {surcharging.selectedState}
-                          </Text>
-                        </>
+                      <Text className="text-blue-400">Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {terminals.length === 0 ? (
+                    <Text className="text-gray-400 text-center py-4">
+                      No terminals found for this location.
+                    </Text>
+                  ) : (
+                    terminals.map((t) => {
+                      const isCurrent = t.id === currentTerminal?.id;
+                      const isOtherStation =
+                        t.isActive &&
+                        t.stationId &&
+                        t.stationId !== selectedStation?.id;
+                      return (
+                        <TouchableOpacity
+                          key={t.id}
+                          onPress={() =>
+                            !isCurrent &&
+                            !isOtherStation &&
+                            handleAssignTerminal(t)
+                          }
+                          disabled={
+                            isCurrent || isAssigning || !!isOtherStation
+                          }
+                          className={`bg-surface p-3 rounded-lg border mb-2 flex-row items-center justify-between ${
+                            isCurrent
+                              ? "border-blue-500 bg-blue-600/10"
+                              : isOtherStation
+                                ? "border-gray-700 opacity-50"
+                                : "border-gray-600"
+                          }`}
+                        >
+                          <View className="flex-row items-center flex-1">
+                            <View
+                              className={`w-3 h-3 rounded-full mr-3 ${
+                                t.isConnected ? "bg-green-500" : "bg-gray-500"
+                              }`}
+                            />
+                            <View className="flex-1">
+                              <Text className="text-white font-medium">
+                                {t.name}
+                              </Text>
+                              <View className="flex-row items-center mt-0.5">
+                                <View
+                                  className={`px-1.5 py-0.5 rounded mr-2 ${
+                                    t.terminalType === "castles"
+                                      ? "bg-purple-600/30"
+                                      : "bg-blue-600/30"
+                                  }`}
+                                >
+                                  <Text
+                                    className={`text-xs font-medium ${
+                                      t.terminalType === "castles"
+                                        ? "text-purple-300"
+                                        : "text-blue-300"
+                                    }`}
+                                  >
+                                    {t.terminalType === "castles"
+                                      ? "Castles"
+                                      : "Dejavoo"}
+                                  </Text>
+                                </View>
+                                {t.model && (
+                                  <Text className="text-gray-500 text-xs">
+                                    {t.model}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                          </View>
+                          {isCurrent && (
+                            <View className="bg-blue-600 px-2 py-1 rounded">
+                              <Text className="text-white text-xs font-bold">
+                                Current
+                              </Text>
+                            </View>
+                          )}
+                          {isOtherStation && (
+                            <View className="bg-gray-600 px-2 py-1 rounded">
+                              <Text className="text-gray-300 text-xs font-bold">
+                                In Use
+                              </Text>
+                            </View>
+                          )}
+                          {isAssigning && !isCurrent && (
+                            <ActivityIndicator
+                              size="small"
+                              color={colors.label}
+                            />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowTerminalPicker(false);
+                      setShowRegisterForm(true);
+                    }}
+                    className="flex-row items-center justify-center mt-2 py-2"
+                  >
+                    <Plus size={16} color={colors.info} />
+                    <Text className="text-blue-400 font-medium ml-1">
+                      Register New Terminal
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : isEditingTerminal && currentTerminal ? (
+                /* ---- Edit terminal form ---- */
+                <View>
+                  <View className="flex-row items-center justify-between mb-4">
+                    <Text className="text-white font-bold text-base">
+                      Edit Terminal
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setIsEditingTerminal(false)}
+                    >
+                      <Text className="text-blue-400">Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Terminal type badge (read-only) */}
+                  <View className="flex-row mb-4">
+                    <View
+                      className={`px-3 py-1.5 rounded-lg ${
+                        currentTerminal.terminal_type === "castles"
+                          ? "bg-purple-600/30"
+                          : "bg-blue-600/30"
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm font-bold ${
+                          currentTerminal.terminal_type === "castles"
+                            ? "text-purple-300"
+                            : "text-blue-300"
+                        }`}
+                      >
+                        {currentTerminal.terminal_type === "castles"
+                          ? "Castles"
+                          : "Dejavoo"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Name */}
+                  <View className="mb-3">
+                    <Text className="text-gray-300 text-sm mb-1">
+                      Terminal Name *
+                    </Text>
+                    <TextInput
+                      value={editForm.name}
+                      onChangeText={(v) =>
+                        setEditForm((f) => ({ ...f, name: v }))
+                      }
+                      placeholder="e.g. Front Counter"
+                      placeholderTextColor={colors.muted}
+                      className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                    />
+                  </View>
+
+                  {/* Model */}
+                  <View className="mb-3">
+                    <Text className="text-gray-300 text-sm mb-1">
+                      Model (optional)
+                    </Text>
+                    <TextInput
+                      value={editForm.model}
+                      onChangeText={(v) =>
+                        setEditForm((f) => ({ ...f, model: v }))
+                      }
+                      placeholder="e.g. QD4"
+                      placeholderTextColor={colors.muted}
+                      className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                    />
+                  </View>
+
+                  {/* Castles-specific: IP + Port */}
+                  {currentTerminal.terminal_type === "castles" && (
+                    <>
+                      <View className="mb-3">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          IP Address *
+                        </Text>
+                        <TextInput
+                          value={editForm.ipAddress}
+                          onChangeText={(v) =>
+                            setEditForm((f) => ({ ...f, ipAddress: v }))
+                          }
+                          placeholder="e.g. 192.168.1.100"
+                          placeholderTextColor={colors.muted}
+                          keyboardType="decimal-pad"
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
+                      </View>
+                      <View className="mb-4">
+                        <Text className="text-gray-300 text-sm mb-1">Port</Text>
+                        <TextInput
+                          value={editForm.port}
+                          onChangeText={(v) =>
+                            setEditForm((f) => ({ ...f, port: v }))
+                          }
+                          placeholder="8080"
+                          placeholderTextColor={colors.muted}
+                          keyboardType="number-pad"
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
+                      </View>
+                    </>
+                  )}
+
+                  {/* Dejavoo-specific: TPN + AuthKey */}
+                  {currentTerminal.terminal_type !== "castles" && (
+                    <>
+                      <View className="mb-3">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          TPN *
+                        </Text>
+                        <TextInput
+                          value={editForm.tpn}
+                          onChangeText={(v) =>
+                            setEditForm((f) => ({ ...f, tpn: v }))
+                          }
+                          placeholder="Terminal Point Number"
+                          placeholderTextColor={colors.muted}
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
+                      </View>
+                      <View className="mb-4">
+                        <Text className="text-gray-300 text-sm mb-1">
+                          Auth Key
+                        </Text>
+                        <TextInput
+                          value={editForm.authKey}
+                          onChangeText={(v) =>
+                            setEditForm((f) => ({ ...f, authKey: v }))
+                          }
+                          placeholder="Leave blank to keep current"
+                          placeholderTextColor={colors.muted}
+                          secureTextEntry
+                          className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                        />
+                      </View>
+                    </>
+                  )}
+
+                  {/* Castles: Diagnose button */}
+                  {currentTerminal.terminal_type === "castles" && (
+                    <TouchableOpacity
+                      onPress={handleDiagnoseCastles}
+                      className="flex-row items-center justify-center py-3 rounded-lg border border-yellow-600 mb-3"
+                    >
+                      <RefreshCw size={16} color={colors.warning} />
+                      <Text className="text-yellow-400 font-medium ml-2">
+                        Run TCP Diagnostics
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Save button */}
+                  <TouchableOpacity
+                    onPress={handleSaveEdit}
+                    disabled={!isEditFormValid || isSavingEdit}
+                    className={`py-3 rounded-lg items-center flex-row justify-center ${
+                      isEditFormValid && !isSavingEdit
+                        ? currentTerminal.terminal_type === "castles"
+                          ? "bg-purple-600"
+                          : "bg-blue-600"
+                        : "bg-gray-700"
+                    }`}
+                  >
+                    {isSavingEdit ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <>
+                        <Check size={18} color="white" />
+                        <Text className="text-white font-bold ml-2">
+                          Save Changes
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : currentTerminal ? (
+                /* ---- Terminal info card (assigned) ---- */
+                <View>
+                  <View className="bg-surface p-4 rounded-lg border border-gray-600 mb-4">
+                    <View className="flex-row items-center justify-between mb-3">
+                      <Text className="text-white font-bold text-lg">
+                        {currentTerminal.terminal_name}
+                      </Text>
+                      <View
+                        className={`px-2 py-1 rounded ${
+                          currentTerminal.terminal_type === "castles"
+                            ? "bg-purple-600/30"
+                            : "bg-blue-600/30"
+                        }`}
+                      >
+                        <Text
+                          className={`text-xs font-bold ${
+                            currentTerminal.terminal_type === "castles"
+                              ? "text-purple-300"
+                              : "text-blue-300"
+                          }`}
+                        >
+                          {currentTerminal.terminal_type === "castles"
+                            ? "Castles"
+                            : "Dejavoo"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View className="flex-row items-center mb-2">
+                      {currentTerminal.is_connected ? (
+                        <Wifi size={14} color={colors.success} />
+                      ) : (
+                        <WifiOff size={14} color={colors.muted} />
+                      )}
+                      <Text
+                        className={`ml-2 text-sm ${
+                          currentTerminal.is_connected
+                            ? "text-green-400"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {currentTerminal.last_connection_status || "Not tested"}
+                      </Text>
+                    </View>
+
+                    {currentTerminal.terminal_model && (
+                      <Text className="text-gray-500 text-xs">
+                        Model: {currentTerminal.terminal_model}
+                      </Text>
+                    )}
+                    {currentTerminal.terminal_type === "castles" && currentTerminal.ip_address && (
+                      <Text className="text-gray-500 text-xs">
+                        {currentTerminal.ip_address}:{currentTerminal.port || 8080}
+                      </Text>
+                    )}
+                    {currentTerminal.terminal_type !== "castles" && currentTerminal.register_id && (
+                      <Text className="text-gray-500 text-xs">
+                        TPN: {currentTerminal.register_id}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Action buttons */}
+                  <View className="flex-row gap-3">
+                    <TouchableOpacity
+                      onPress={handleTestConnection}
+                      disabled={isTestingConnection}
+                      className="flex-1 bg-surface border border-gray-600 py-3 rounded-lg items-center flex-row justify-center"
+                    >
+                      {isTestingConnection ? (
+                        <ActivityIndicator size="small" color={colors.info} />
                       ) : (
                         <>
-                          <AlertTriangle size={18} color={colors.danger} />
-                          <Text className="text-red-400 ml-2">
-                            Surcharging is NOT ALLOWED in{" "}
-                            {surcharging.selectedState}
+                          <RefreshCw size={16} color={colors.info} />
+                          <Text className="text-blue-400 font-medium ml-2">
+                            Test
                           </Text>
                         </>
                       )}
-                    </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleStartEdit}
+                      className="flex-1 bg-surface border border-gray-600 py-3 rounded-lg items-center flex-row justify-center"
+                    >
+                      <Pencil size={16} color={colors.label} />
+                      <Text className="text-gray-300 font-medium ml-2">
+                        Edit
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setShowTerminalPicker(true)}
+                      className="flex-1 bg-surface border border-gray-600 py-3 rounded-lg items-center flex-row justify-center"
+                    >
+                      <CreditCard size={16} color={colors.label} />
+                      <Text className="text-gray-300 font-medium ml-2">
+                        Switch
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setShowRegisterForm(true)}
+                      className="flex-1 bg-surface border border-gray-600 py-3 rounded-lg items-center flex-row justify-center"
+                    >
+                      <Plus size={16} color={colors.success} />
+                      <Text className="text-green-400 font-medium ml-2">
+                        New
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-
-                  <View className="bg-blue-900/20 p-3 rounded-lg border border-blue-900/50 mb-4">
-                    <Text className="text-blue-300 text-sm">
-                      ℹ️ Debit cards are automatically excluded from surcharges.
-                    </Text>
+                </View>
+              ) : (
+                /* ---- Empty state (no terminal) ---- */
+                <View className="items-center py-6">
+                  <CreditCard size={40} color={colors.muted} />
+                  <Text className="text-gray-400 mt-3 text-center">
+                    No payment terminal assigned to this station.
+                  </Text>
+                  <View className="flex-row gap-3 mt-4">
+                    {terminals.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => setShowTerminalPicker(true)}
+                        className="bg-blue-600 px-4 py-2.5 rounded-lg flex-row items-center"
+                      >
+                        <CreditCard size={16} color="white" />
+                        <Text className="text-white font-bold ml-2">
+                          Assign Terminal
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => setShowRegisterForm(true)}
+                      className="bg-surface border border-gray-600 px-4 py-2.5 rounded-lg flex-row items-center"
+                    >
+                      <Plus size={16} color={colors.info} />
+                      <Text className="text-blue-400 font-bold ml-2">
+                        Register New
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                </>
+                </View>
               )}
-            </View>
-          )}
-        </View>
-
-        {/* REAL-TIME FUNDING */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-          {renderSectionHeader(
-            "Real-Time Funding",
-            <Zap size={20} color={colors.warning} />,
-            "funding"
-          )}
-          {expandedSections.funding && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-white font-medium">
-                    Enable Instant Deposits
-                  </Text>
-                  <Text className="text-gray-400 text-sm">
-                    Get funds in minutes (1.5% fee)
-                  </Text>
-                </View>
-                <Switch
-                  checked={funding.instant}
-                  onCheckedChange={(v) => setFunding({ instant: v })}
-                />
-              </View>
-
-              <View className="bg-surface rounded-lg border border-gray-600 mb-4 overflow-hidden">
-                <View className="flex-row border-b border-gray-600">
-                  <View className="flex-1 p-3 border-r border-gray-600">
-                    <Text className="text-gray-400 text-xs uppercase text-center">
-                      Feature
-                    </Text>
-                  </View>
-                  <View className="flex-1 p-3 border-r border-gray-600">
-                    <Text className="text-gray-400 text-xs uppercase text-center">
-                      Standard
-                    </Text>
-                  </View>
-                  <View className="flex-1 p-3 bg-yellow-600/10">
-                    <Text className="text-yellow-400 text-xs uppercase text-center">
-                      Instant
-                    </Text>
-                  </View>
-                </View>
-                <View className="flex-row border-b border-gray-600">
-                  <View className="flex-1 p-3 border-r border-gray-600">
-                    <Text className="text-gray-300 text-sm">Timing</Text>
-                  </View>
-                  <View className="flex-1 p-3 border-r border-gray-600">
-                    <Text className="text-white text-sm text-center">
-                      2-3 days
-                    </Text>
-                  </View>
-                  <View className="flex-1 p-3 bg-yellow-600/10">
-                    <Text className="text-white text-sm text-center font-bold">
-                      Minutes
-                    </Text>
-                  </View>
-                </View>
-                <View className="flex-row">
-                  <View className="flex-1 p-3 border-r border-gray-600">
-                    <Text className="text-gray-300 text-sm">Fee</Text>
-                  </View>
-                  <View className="flex-1 p-3 border-r border-gray-600">
-                    <Text className="text-green-400 text-sm text-center">
-                      Free
-                    </Text>
-                  </View>
-                  <View className="flex-1 p-3 bg-yellow-600/10">
-                    <Text className="text-yellow-400 text-sm text-center">
-                      1.5%
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              <View className="bg-blue-900/20 p-4 rounded-lg border border-blue-900/50">
-                <Text className="text-blue-200 font-bold mb-1">
-                  Available for Deposit
-                </Text>
-                <Text className="text-white text-3xl font-bold">
-                  $
-                  {funding.balance.toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                  })}
-                </Text>
-                <TouchableOpacity className="bg-blue-600 mt-3 py-3 rounded-lg items-center flex-row justify-center">
-                  <Zap size={18} color="white" />
-                  <Text className="text-white font-bold ml-2">
-                    Transfer Now
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* TOKENIZATION */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-          {renderSectionHeader(
-            "Card Vault / Tokenization",
-            <Lock size={20} color={colors.info} />,
-            "token"
-          )}
-          {expandedSections.token && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-white font-medium">
-                    Save Customer Cards
-                  </Text>
-                  <Text className="text-gray-400 text-sm">
-                    Securely store payment methods
-                  </Text>
-                </View>
-                <Switch
-                  checked={tokenizationEnabled}
-                  onCheckedChange={(v) =>
-                    updateDiningSettings({ tokenizationEnabled: v })
-                  }
-                />
-              </View>
-
-              <View className="flex-row gap-4 mb-4">
-                <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
-                  <Text className="text-gray-400 text-xs uppercase">
-                    Saved Cards
-                  </Text>
-                  <Text className="text-white text-xl font-bold">1,240</Text>
-                </View>
-                <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
-                  <Text className="text-gray-400 text-xs uppercase">
-                    Repeat Rate
-                  </Text>
-                  <Text className="text-white text-xl font-bold">45%</Text>
-                </View>
-              </View>
-
-              <Text className="text-gray-300 font-medium mb-2">
-                Recent Saved Cards
-              </Text>
-              {savedCards.map((card) => (
-                <View
-                  key={card.id}
-                  className="bg-surface p-3 rounded-lg border border-gray-600 mb-2 flex-row items-center justify-between"
-                >
-                  <View className="flex-row items-center">
-                    <CreditCard size={20} color={colors.label} />
-                    <View className="ml-3">
-                      <Text className="text-white font-medium">
-                        {card.brand} •••• {card.last4}
-                      </Text>
-                      <Text className="text-gray-500 text-xs">
-                        {card.customerName} • Exp {card.expiry}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity className="p-2">
-                    <Trash2 size={16} color={colors.danger} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-
-              <View className="flex-row items-center bg-blue-900/20 p-3 rounded-lg border border-blue-900/50 mt-2">
-                <Shield size={18} color={colors.info} />
-                <Text className="text-blue-300 text-sm ml-2">
-                  PCI-DSS Level 1 Compliant Vault
-                </Text>
-              </View>
             </View>
           )}
         </View>

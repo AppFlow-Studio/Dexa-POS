@@ -9,6 +9,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { getTerminalMatchInfo } from "@/utils/terminalMatchGuard";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "expo-router";
@@ -96,6 +97,7 @@ interface TipAdjustPaymentRow {
   orderAmount: number;
   currentTip: number;
   referenceId?: string;
+  rrn?: string;
   last4?: string;
   cardBrand?: string;
   entryMode?: string;
@@ -684,6 +686,8 @@ interface RightPaneSummaryProps {
   onTipAdjust: () => void;
   onRefund: () => void;
   formatTimestamp: (timestamp: string) => string;
+  terminalCanProcess: boolean;
+  terminalBlockReason?: string;
 }
 
 const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
@@ -697,6 +701,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
   onTipAdjust,
   onRefund,
   formatTimestamp,
+  terminalCanProcess,
+  terminalBlockReason,
 }) => {
   const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
     number | null
@@ -1143,17 +1149,17 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           />
           <ActionButton
             icon={<CircleDollarSign size={16} color={colors.info} />}
-            label="Tip Adjust"
+            label={terminalCanProcess ? "Tip Adjust" : "Tip Adjust — wrong terminal"}
             onPress={onTipAdjust}
             variant="primary"
-            disabled={!hasCardPayments}
+            disabled={!hasCardPayments || !terminalCanProcess}
           />
           <ActionButton
             icon={<RefreshCcw size={16} color={colors.danger} />}
-            label="Refund"
+            label={terminalCanProcess ? "Refund" : "Refund — wrong terminal"}
             onPress={onRefund}
             variant="danger"
-            disabled={paymentSummary.collected <= 0}
+            disabled={paymentSummary.collected <= 0 || !terminalCanProcess}
           />
         </View>
       </View>
@@ -1209,6 +1215,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
         orderAmount: p.orderAmount,
         currentTip: p.tipAmount,
         referenceId: p.referenceId || p.cardInfo?.referenceId,
+        rrn: p.cardInfo?.rrn,
         last4: p.last4 || p.cardInfo?.last4,
         cardBrand: p.cardBrand || p.cardInfo?.brand,
         entryMode: p.cardInfo?.entryMode,
@@ -1309,6 +1316,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
           currentTip: payment.currentTip,
           newTip: parseFloat(tipAmounts[payment.paymentIndex] || "0") || 0,
           referenceId: payment.referenceId,
+          rrn: payment.rrn,
           last4: payment.last4,
         })),
       });
@@ -2747,6 +2755,17 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     } as OrderProfile;
   }, [activeOrder, previousOrder, fetchedReversals, fetchedRefundItems]);
 
+  // Check if active terminal matches the order's payment terminal type
+  const { canProcess: terminalCanProcess, blockReason: terminalBlockReason } =
+    useMemo(
+      () =>
+        getTerminalMatchInfo(
+          order?.payments,
+          selectedStation?.payment_terminal?.terminal_type,
+        ),
+      [order?.payments, selectedStation?.payment_terminal?.terminal_type],
+    );
+
   // Reset view when sheet opens (Modal is controlled by isOpen state directly)
   useEffect(() => {
     if (isOpen && orderId) {
@@ -2793,24 +2812,37 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
         const isVoided = payment.isVoided || false;
         const collected = isVoided ? 0 : orderAmount + tipAmount;
         const txDetails = payment.transactionDetails?.dejavooTransaction;
+        const castlesTx = payment.transactionDetails?.castlesTransaction as Record<string, string> | undefined;
         const cardBrand = payment.cardBrand || txDetails?.cardType;
         const last4 = payment.last4 || txDetails?.cardLast4;
         const cardInfo =
-          payment.method === "Card" || txDetails
+          payment.method === "Card" || txDetails || castlesTx
             ? {
                 brand: cardBrand,
                 last4,
                 entryMode: txDetails?.entryMode
                   ? String(txDetails.entryMode)
-                  : undefined,
-                authCode: txDetails?.authCode ? String(txDetails.authCode) : undefined,
-                rrn: txDetails?.rrn ? String(txDetails.rrn) : undefined,
+                  : castlesTx?.entryMode
+                    ? String(castlesTx.entryMode)
+                    : undefined,
+                authCode: txDetails?.authCode
+                  ? String(txDetails.authCode)
+                  : castlesTx?.approvalCode
+                    ? String(castlesTx.approvalCode)
+                    : undefined,
+                rrn: txDetails?.rrn
+                  ? String(txDetails.rrn)
+                  : castlesTx?.rrn
+                    ? String(castlesTx.rrn)
+                    : undefined,
                 transactionNumber: txDetails?.transactionNumber
                   ? String(txDetails.transactionNumber)
                   : undefined,
                 referenceId: txDetails?.referenceId
                   ? String(txDetails.referenceId)
-                  : undefined,
+                  : castlesTx?.referenceId
+                    ? String(castlesTx.referenceId)
+                    : undefined,
                 invoiceNumber: txDetails?.invoiceNumber
                   ? String(txDetails.invoiceNumber)
                   : undefined,
@@ -2848,7 +2880,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           originalPaymentIndex: index,
           referenceId: txDetails?.referenceId
             ? String(txDetails.referenceId)
-            : undefined,
+            : castlesTx?.referenceId
+              ? String(castlesTx.referenceId)
+              : undefined,
           refundedAmount: payment.refundedAmount || 0,
           original_tip_amount: payment.original_tip_amount,
           tip_adjusted_at: payment.tip_adjusted_at,
@@ -3173,6 +3207,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                     onTipAdjust={handleTipAdjust}
                     onRefund={handleRefund}
                     formatTimestamp={formatTimestamp}
+                    terminalCanProcess={terminalCanProcess}
+                    terminalBlockReason={terminalBlockReason}
                   />
                 ) : rightPaneView === "refund" ? (
                   <RightPaneRefund

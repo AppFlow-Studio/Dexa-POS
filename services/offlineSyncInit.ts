@@ -11,31 +11,31 @@
  */
 
 import {
-  initIdRegistry,
-  isLocalId,
-  isValidUUID,
-  mapLocalToBackend,
-  resolveToBackendId,
+    initIdRegistry,
+    isLocalId,
+    isValidUUID,
+    mapLocalToBackend,
+    resolveToBackendId,
 } from "@/lib/offlineIdRegistry";
-import {
-  getFailedPayments,
-  getIsOnline,
-  getPendingPaymentsCount,
-  hasPendingOrderCreation,
-  initOfflineSyncService,
-  OfflineOperation,
-  OPERATION_PRIORITY,
-  queueDependentOperation,
-  queueOperation,
-} from "@/services/offlineSyncService";
 import { FloorPlanService } from "@/services/floorPlanService";
+import {
+    getFailedPayments,
+    getIsOnline,
+    getPendingPaymentsCount,
+    hasPendingOrderCreation,
+    initOfflineSyncService,
+    OfflineOperation,
+    OPERATION_PRIORITY,
+    queueDependentOperation,
+    queueOperation,
+} from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
-  calculatePaidStatusFromPayments,
-  useOrderStore,
+    calculatePaidStatusFromPayments,
+    useOrderStore,
 } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
@@ -740,7 +740,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         };
 
         console.log(
-          "[OfflineSync:payment] Calling process_payment_v5 with:",
+          "[OfflineSync:payment] Calling process_payment_v6 with:",
           JSON.stringify({
             orderId: finalParams.p_order_id,
             method: finalParams.p_payment_method,
@@ -1244,10 +1244,18 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           // Retroactively send to kitchen if item was fired during offline sync
           const latestStore = useOrderStore.getState();
           const latestOrder = latestStore.ordersById[localOrderId];
-          const latestItem = latestOrder?.items.find((i) => i.id === localItemId);
-          if (latestItem?.kitchen_status === 'sent' && data.order_item_id) {
-            console.log(`[OfflineSync:add_item] Item was fired during sync, retroactively sending to kitchen`);
-            await OrderService.bulkUpdateOrderItemStatus(_supabaseClient, [data.order_item_id], 'sent');
+          const latestItem = latestOrder?.items.find(
+            (i) => i.id === localItemId,
+          );
+          if (latestItem?.kitchen_status === "sent" && data.order_item_id) {
+            console.log(
+              `[OfflineSync:add_item] Item was fired during sync, retroactively sending to kitchen`,
+            );
+            await OrderService.bulkUpdateOrderItemStatus(
+              _supabaseClient,
+              [data.order_item_id],
+              "sent",
+            );
           }
         } else {
           console.log(
@@ -1345,9 +1353,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           }
 
           // Dispatch SESSION_CREATED for all tables with this local session
-          const { useTableSessionStore } = await import(
-            "@/stores/useTableSessionStore"
-          );
+          const { useTableSessionStore } =
+            await import("@/stores/useTableSessionStore");
           const sessionStore = useTableSessionStore.getState();
           const actions: Array<{
             tableId: string;
@@ -1375,7 +1382,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             sessionStore.batchDispatch(actions);
           }
 
-          console.log("[OfflineSync:seat_guests] Completed successfully:", data);
+          console.log(
+            "[OfflineSync:seat_guests] Completed successfully:",
+            data,
+          );
         }
 
         return true;
@@ -1483,11 +1493,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           // So we must transition the order out of 'draft' before updating items.
           const currentOrder = Object.values(
             useOrderStore.getState().ordersById,
-          ).find(
-            (o) => o.db_order_id === resolvedOrderId,
-          );
+          ).find((o) => o.db_order_id === resolvedOrderId);
           const backendStatus =
-            currentOrder?.order_status === "draft" || currentOrder?.order_status === "sent_to_kitchen"
+            currentOrder?.order_status === "draft" ||
+            currentOrder?.order_status === "sent_to_kitchen"
               ? "sent_to_kitchen"
               : "preparing";
 
@@ -1499,7 +1508,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
           if (statusError) {
             // P0001 or "already in" means the order is already in the target status - not an error
-            if (statusError.code === "P0001" || statusError.message?.includes("already in")) {
+            if (
+              statusError.code === "P0001" ||
+              statusError.message?.includes("already in")
+            ) {
               console.log(
                 `[OfflineSync:send_to_kitchen] Order already in target status, treating as success`,
               );

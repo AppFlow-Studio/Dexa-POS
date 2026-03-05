@@ -8,7 +8,6 @@ import { useKDSStore } from "@/stores/useKDSStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
 import { useAuth } from "@clerk/clerk-expo";
@@ -39,7 +38,6 @@ export default function MainLayout() {
   const isKDS = selectedStation?.station_type === "kds";
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
-  const paymentBottomSheetRef = useRef<BottomSheetMethods>(null);
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null);
   const { setSheetRef } = useNotificationSheetStore();
 
@@ -62,16 +60,6 @@ export default function MainLayout() {
       });
     }
   }, [isKDS]);
-
-  useEffect(() => {
-    if (!isKDS) {
-      usePaymentStore
-        .getState()
-        .setPaymentBottomSheetRef(
-          paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
-        );
-    }
-  }, [paymentBottomSheetRef, isKDS]);
 
   // Register PaymentDetailBottomSheet ref with store
   useEffect(() => {
@@ -198,20 +186,8 @@ export default function MainLayout() {
           }
           onClose={() => notificationSheetRef.current?.close()}
         />
-        {/* Payment sheet needs highest z-index to overlay header */}
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 100,
-          }}
-          pointerEvents="box-none"
-        >
-          <PaymentBottomSheet ref={paymentBottomSheetRef} />
-        </View>
+        {/* Payment sheet — Modal-based, self-manages visibility via isOpen */}
+        <PaymentBottomSheet />
         {/* PaymentDetailBottomSheet in separate container with higher z-index */}
         <View
           style={{

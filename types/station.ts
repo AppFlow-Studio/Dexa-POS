@@ -21,12 +21,15 @@ export interface StationCapabilities {
 export interface StationPaymentTerminal {
   id: string;
   terminal_name: string;
-  tpn: string;
   register_id: string | null;
   auth_key: string | null;
-  terminal_type: 'dejavoo' | 'clover' | 'square' | 'stripe_terminal';
+  terminal_type: 'dejavoo' | 'clover' | 'square' | 'stripe_terminal' | 'castles';
   terminal_model: string | null;
   is_connected: boolean;
+  /** Castles terminal IP address */
+  ip_address?: string;
+  /** Castles terminal port (default 8080) */
+  port?: number;
   last_connection_status: 'Online' | 'Offline' | 'NotFound' | null;
   last_connection_test_at: string | null;
   consecutive_failures?: number;

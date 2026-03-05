@@ -71,6 +71,15 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 
 ### Payment Processing
 - Dejavoo terminal integration via SPIN API (`lib/payments/dejavoo-spin-api.ts`)
+- Castles terminal integration via TCP socket (`services/terminals/castles-service.ts`)
+  - **TCP framing**: no delimiter (raw JSON, no framing suffix)
+  - **getData response**: has no `txnReturnCode` field; success = valid response with `txnType === 'getData'`
+  - Terminal runs as TCP server at configurable IP:port (default port 8080)
+  - **Command queue**: `async-mutex` serializes all commands (FIFO). Commands queue instead of rejecting.
+  - **`return2Idle` recovery** (per Castles spec §3.8, two strategies):
+    - **Success path** (`_tryReturn2Idle`): After completed transaction, send return2Idle on the same socket to dismiss the result screen (spec situation 1).
+    - **Error path** (`_forceReturn2Idle`): After timeout/error (terminal may be in swipe/tap state), close socket, reconnect on a fresh socket, then send return2Idle (spec situation 2 — same-socket return2Idle won't work during active txn).
+  - **Startup reset**: `resetTerminalState()` called after fresh connect to clear stuck-busy state.
 - Payment flow in `services/paymentService.ts`, refunds in `services/refundService.ts`
 - Hardware detection: `services/hardware/deviceDetection.ts`
 

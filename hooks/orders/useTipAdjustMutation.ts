@@ -5,6 +5,9 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { CastlesService } from "@/services/terminals/castles-service";
+import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { orderHistoryKeys } from "./useOrderHistory";
@@ -19,6 +22,7 @@ export interface TipAdjustPaymentInput {
   currentTip: number;
   newTip: number;
   referenceId?: string;
+  rrn?: string;
   last4?: string;
 }
 
@@ -42,38 +46,79 @@ export function useTipAdjustMutation() {
         throw new Error("No payment terminal configured.");
       }
 
-      const api = new DejavooSpinAPI(supabase);
-      const loaded = await api.loadTerminal(
-        selectedStation.payment_terminal.id,
-        selectedStation.payment_terminal
-      );
+      const terminal = selectedStation.payment_terminal;
 
-      if (!loaded) {
-        throw new Error("Failed to connect to terminal.");
-      }
+      if (terminal.terminal_type === "castles") {
+        // ──── CASTLES BRANCH ────
+        const host = terminal.ip_address;
+        if (!host) throw new Error("Castles terminal has no IP address configured");
+        const port = terminal.port ?? CASTLES_DEFAULT_PORT;
 
-      // Process terminal tip adjustments
-      for (const payment of input.payments) {
-        if (Math.abs(payment.newTip - payment.currentTip) < 0.001) continue;
+        const service = new CastlesService();
+        try {
+          await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
+          await service.resetTerminalState();
 
-        if (!payment.referenceId) {
-          show({
-            title: "Warning",
-            message: `Cannot adjust tip for payment without reference ID (••••${payment.last4 || "????"}).`,
-            type: "warning",
-          });
-          continue;
+          const counter = getOrCreateCounter({ terminalId: terminal.id, supabaseClient: supabase });
+          if (!counter.isInitialized) await counter.initialize();
+
+          for (const payment of input.payments) {
+            if (Math.abs(payment.newTip - payment.currentTip) < 0.001) continue;
+
+            if (!payment.rrn) {
+              show({
+                title: "Warning",
+                message: `Cannot adjust tip — missing RRN (••••${payment.last4 || "????"}).`,
+                type: "warning",
+              });
+              continue;
+            }
+
+            const referenceId = counter.next();
+            const result = await service.tipAdjust({
+              tipAmount: payment.newTip,
+              rrn: payment.rrn,
+              referenceId,
+            });
+
+            if (!result.success) {
+              throw new Error(result.error || "Castles tip adjust failed.");
+            }
+          }
+        } finally {
+          await service.gracefulDisconnect();
+        }
+      } else {
+        // ──── DEJAVOO BRANCH ────
+        const api = new DejavooSpinAPI(supabase);
+        const loaded = await api.loadTerminal(terminal.id, terminal);
+
+        if (!loaded) {
+          throw new Error("Failed to connect to terminal.");
         }
 
-        const result = await api
-          .tipAdjust()
-          .amount(payment.orderAmount)
-          .tipAmount(payment.newTip)
-          .referenceId(payment.referenceId)
-          .execute();
+        for (const payment of input.payments) {
+          if (Math.abs(payment.newTip - payment.currentTip) < 0.001) continue;
 
-        if (!result.success) {
-          throw new Error(result.error || "Tip adjust failed on terminal.");
+          if (!payment.referenceId) {
+            show({
+              title: "Warning",
+              message: `Cannot adjust tip for payment without reference ID (••••${payment.last4 || "????"}).`,
+              type: "warning",
+            });
+            continue;
+          }
+
+          const result = await api
+            .tipAdjust()
+            .amount(payment.orderAmount)
+            .tipAmount(payment.newTip)
+            .referenceId(payment.referenceId)
+            .execute();
+
+          if (!result.success) {
+            throw new Error(result.error || "Tip adjust failed on terminal.");
+          }
         }
       }
 

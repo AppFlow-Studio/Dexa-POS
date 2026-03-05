@@ -6,7 +6,6 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   ArrowLeft,
   Banknote,
@@ -438,7 +437,7 @@ const SplitByItemView = () => {
 
       {/* 4. Main Item List */}
       <View className="flex-1 bg-panel">
-        <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
           {itemData.map((item) => {
             const isSelected = item.qtyInCurrent > 0;
             const isFullyAssignedToOthers =
@@ -545,7 +544,7 @@ const SplitByItemView = () => {
               </View>
             );
           })}
-        </BottomSheetScrollView>
+        </ScrollView>
       </View>
 
       {/* 5. Footer Action: PAY ALL SPLITS */}

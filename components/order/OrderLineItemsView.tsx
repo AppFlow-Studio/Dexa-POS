@@ -3,7 +3,7 @@ import {
   ORDER_STATUS_COLORS,
   PAYMENT_STATUS_COLORS,
 } from "@/lib/theme";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useOrder } from "@/stores/selectors/orderSelectors";
 import { X } from "lucide-react-native";
 import { useMemo } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -27,7 +27,7 @@ const StatusChip = ({
     style={{ backgroundColor: color + "22" }}
   >
     <Text
-      className="text-xs font-semibold capitalize"
+      className="text-sm font-semibold capitalize"
       style={{ color }}
     >
       {label}
@@ -59,7 +59,7 @@ const formatOrderType = (type: string | undefined) => {
 };
 
 const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
-  const orderToView = useOrderStore((s) => s.ordersById[orderId || ""]);
+  const orderToView = useOrder(orderId);
   const items = orderToView?.items || [];
 
   // ── Totals ────────────────────────────────────────────────────
@@ -149,21 +149,13 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
               style={{ backgroundColor: paidStatusColor + "22" }}
             >
               <Text
-                className="text-xs font-semibold"
+                className="text-sm font-semibold"
                 style={{ color: paidStatusColor }}
               >
                 {orderToView.paid_status}
               </Text>
             </View>
           </View>
-          <TouchableOpacity
-            onPress={onClose}
-            hitSlop={12}
-            className="p-1 rounded-full"
-            style={{ backgroundColor: colors.border + "66" }}
-          >
-            <X size={18} color={colors.muted} />
-          </TouchableOpacity>
         </View>
 
         {/* Row 2: type · customer · count ... time */}
@@ -190,7 +182,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
           showsVerticalScrollIndicator={false}
         >
           <Text
-            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            className="text-sm font-semibold uppercase tracking-wider mb-2"
             style={{ color: colors.muted }}
           >
             Items
@@ -212,7 +204,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
         >
           {/* STATUS */}
           <Text
-            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            className="text-sm font-semibold uppercase tracking-wider mb-2"
             style={{ color: colors.muted }}
           >
             Status
@@ -233,7 +225,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
 
           {/* PRICING BREAKDOWN */}
           <Text
-            className="text-xs font-semibold uppercase tracking-wider mb-2"
+            className="text-sm font-semibold uppercase tracking-wider mb-2"
             style={{ color: colors.muted }}
           >
             Pricing Breakdown
@@ -262,7 +254,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
           >
             <View className="flex-row justify-between items-center">
               <Text
-                className="text-base font-bold"
+                className="text-lg font-bold"
                 style={{ color: colors.heading }}
               >
                 Total
@@ -325,7 +317,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
           {validPayments.length > 0 && (
             <View className="mt-4">
               <Text
-                className="text-xs font-semibold uppercase tracking-wider mb-2"
+                className="text-sm font-semibold uppercase tracking-wider mb-2"
                 style={{ color: colors.muted }}
               >
                 Payments
@@ -357,11 +349,11 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
                     {/* Timestamp + status */}
                     <View className="flex-row items-center gap-1 mt-0.5 pl-5">
                       {p.timestamp && (
-                        <Text className="text-xs" style={{ color: colors.muted }}>
+                        <Text className="text-sm" style={{ color: colors.muted }}>
                           {formatTime(p.timestamp)}
                         </Text>
                       )}
-                      <Text className="text-xs" style={{ color: colors.muted }}>
+                      <Text className="text-sm" style={{ color: colors.muted }}>
                         {p.timestamp ? " \u00B7 " : ""}
                         {p.status === "captured" ? "Captured" : p.status}
                       </Text>
@@ -369,7 +361,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
                     {/* Cash tendered / change */}
                     {p.method === "Cash" && p.amountTendered != null && (
                       <Text
-                        className="text-xs pl-5 mt-0.5"
+                        className="text-sm pl-5 mt-0.5"
                         style={{ color: colors.label }}
                       >
                         Tendered ${p.amountTendered.toFixed(2)}
@@ -379,7 +371,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
                     {/* Tip */}
                     {p.tip_amount > 0 && (
                       <Text
-                        className="text-xs pl-5 mt-0.5"
+                        className="text-sm pl-5 mt-0.5"
                         style={{ color: colors.label }}
                       >
                         Tip ${p.tip_amount.toFixed(2)}
@@ -395,7 +387,7 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
           {totalRefunded > 0 && (
             <View className="mt-3">
               <Text
-                className="text-xs font-semibold uppercase tracking-wider mb-1"
+                className="text-sm font-semibold uppercase tracking-wider mb-1"
                 style={{ color: colors.muted }}
               >
                 Refunds

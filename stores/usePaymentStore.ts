@@ -10,8 +10,6 @@ import {
 import { OrderService } from "@/services/orderService";
 import { useConflictStore } from "@/stores/useConflictStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
 import {
   calculateItemEffectiveCashPrice,
@@ -74,7 +72,6 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
 const totalSteps = 4;
 
 interface PaymentState {
-  paymentBottomSheetRef: React.RefObject<BottomSheetMethods> | null;
   paymentMethod: PaymentMethod | null;
   view: PaymentView;
   activeTableId: string | null;
@@ -160,9 +157,6 @@ interface PaymentState {
   updateSplitCustomerName: (splitId: string, newName: string) => void;
   setPaymentProgress: (step: number, total: number) => void;
   resetPaymentState: () => void;
-  setPaymentBottomSheetRef: (
-    ref: React.RefObject<BottomSheetMethods> | null,
-  ) => void; // New action to set ref
   setPaymentClean: () => void; // New action to set isDirty to false
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
   splitEvenly: (
@@ -171,10 +165,12 @@ interface PaymentState {
     cashAmountPerPerson?: number,
   ) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
-  handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
+  handleSuccessClose: () => void; // Action to run Done logic when success view is closed
   openPayForItems: () => void; // Action to open the pay-for-items split review view
-  expandSheetToFull: () => void; // Action to expand bottom sheet to 100% height
-  collapseSheetToDefault: () => void; // Action to collapse bottom sheet to default (~90%) height
+  /** @deprecated No-op — Modal is always full height. Kept for call-site compat. */
+  expandSheetToFull: () => void;
+  /** @deprecated No-op — Modal is always full height. Kept for call-site compat. */
+  collapseSheetToDefault: () => void;
 
   // Offline payment tracking
   pendingPaymentsCount: number;
@@ -200,7 +196,6 @@ interface PaymentState {
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
-  paymentBottomSheetRef: null,
   paymentMethod: null,
   view: "review",
   activeTableId: null,
@@ -223,8 +218,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   lockedOrderId: null,
   lockExpiresAt: null,
   isLocking: false,
-
-  setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }),
 
   open: (method, tableId, initialView) => {
     // Block payments for closed orders
@@ -258,21 +251,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         totalSteps: totalSteps,
       },
     });
-    // Expand sheet AFTER state update
-    get().paymentBottomSheetRef?.current?.expand();
   },
 
   close: () => {
     get().resetPaymentState();
-    get().paymentBottomSheetRef?.current?.close();
     set({ isOpen: false });
   },
 
   setView: (view: PaymentView) => {
-    // Auto-collapse sheet when going back to payment method selection
-    if (view === "payment-method-selection" || view === "split-options" || view === "cardOptions") {
-      get().collapseSheetToDefault();
-    }
     set((state) => ({
       view,
       progress: {
@@ -473,7 +459,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
   // Open the two-panel pay-for-items split review view
   openPayForItems: () => {
-    get().paymentBottomSheetRef?.current?.expand();
     set({
       isOpen: true,
       view: "pay-for-items",
@@ -488,26 +473,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     });
   },
 
-  // Expand bottom sheet to full height (100%)
-  // Used when entering payment input views (Card, Cash, Manual)
-  expandSheetToFull: () => {
-    const ref = get().paymentBottomSheetRef;
-    if (ref?.current) {
-      // snapToIndex with the highest index (typically 2 for 100%)
-      // This ensures the sheet expands to full height for payment input
-      ref.current.snapToIndex(2);
-    }
-  },
-
-  // Collapse bottom sheet to default height (~90%)
-  // Used when going back to payment method selection view
-  collapseSheetToDefault: () => {
-    const ref = get().paymentBottomSheetRef;
-    if (ref?.current) {
-      // snapToIndex 1 is typically ~90% height
-      ref.current.snapToIndex(1);
-    }
-  },
+  // No-ops — Modal is always full height. Kept for call-site compatibility.
+  expandSheetToFull: () => {},
+  collapseSheetToDefault: () => {},
 
   // --- PAYMENT LOOP LOGIC ---
 

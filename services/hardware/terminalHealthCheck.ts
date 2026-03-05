@@ -4,6 +4,8 @@
 import { AppState, AppStateStatus } from "react-native";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
+import { probeCastlesTerminal } from "@/services/terminals/castles-service";
+import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { useToastStore } from "@/stores/useToastStore";
 import type { StationPaymentTerminal } from "@/types/station";
@@ -39,11 +41,36 @@ async function performHealthCheck(): Promise<void> {
     return;
   }
 
+  if (currentPaymentTerminal.terminal_type === "castles") {
+    await performCastlesHealthCheck();
+  } else {
+    await performDejavooHealthCheck();
+  }
+}
+
+async function performCastlesHealthCheck(): Promise<void> {
+  const host = currentPaymentTerminal?.ip_address;
+  if (!host) {
+    handleFailure("Castles terminal IP address not configured");
+    return;
+  }
+
+  const port = currentPaymentTerminal?.port ?? CASTLES_DEFAULT_PORT;
+  const result = await probeCastlesTerminal(host, port);
+
+  if (result.online) {
+    handleSuccess();
+  } else {
+    handleFailure(result.error || "Terminal unreachable");
+  }
+}
+
+async function performDejavooHealthCheck(): Promise<void> {
   try {
-    const dejavooAPI = new DejavooSpinAPI(currentSupabase);
+    const dejavooAPI = new DejavooSpinAPI(currentSupabase!);
     const loaded = await dejavooAPI.loadTerminal(
-      currentTerminalId,
-      currentPaymentTerminal,
+      currentTerminalId!,
+      currentPaymentTerminal!,
     );
 
     if (!loaded) {

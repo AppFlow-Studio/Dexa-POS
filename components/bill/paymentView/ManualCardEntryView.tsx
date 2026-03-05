@@ -7,7 +7,6 @@ import {
 import { colors } from "@/lib/theme";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import {
     AlertCircle,
     ArrowLeft,
@@ -473,7 +472,7 @@ const ManualCardEntryView = () => {
                 {/* Custom Tip Input */}
                 <View className="flex-row items-center bg-surface rounded-xl border border-border px-4 w-1/2">
                   <DollarSign size={18} color={colors.muted} />
-                  <BottomSheetTextInput
+                  <TextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
                     placeholder="0.00"

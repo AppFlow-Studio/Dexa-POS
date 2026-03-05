@@ -749,6 +749,8 @@ export interface OrderPaymentTransactionDetails {
   isCash?: boolean;
   // Full Dejavoo response details (sanitized, no First4/BIN/IPosToken)
   dejavooTransaction?: DejavooSaleTransactionResponse;
+  // Full Castles response JSONB (from buildCastlesTerminalResponse)
+  castlesTransaction?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

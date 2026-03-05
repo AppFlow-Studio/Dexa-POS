@@ -1,5 +1,7 @@
 import { useSupabaseClient } from '@/hooks/useSupabaseClient';
 import { DejavooSpinAPI } from '@/lib/payments/dejavoo-spin-api';
+import { probeCastlesTerminal } from '@/services/terminals/castles-service';
+import { CASTLES_DEFAULT_PORT } from '@/types/castles';
 import type { StationPaymentTerminal } from '@/types/station';
 import { useEffect, useRef, useState } from 'react';
 
@@ -59,9 +61,32 @@ export function useTerminalStatus(
     setErrorMessage(null);
 
     try {
+      // --- Castles branch: lightweight TCP probe ---
+      if (paymentTerminal.terminal_type === 'castles') {
+        const host = paymentTerminal.ip_address;
+        if (!host) {
+          setStatus('offline');
+          setErrorMessage('Castles terminal has no IP address configured');
+          lastCheckTimeRef.current = now;
+          return;
+        }
+        const port = paymentTerminal.port ?? CASTLES_DEFAULT_PORT;
+        const probe = await probeCastlesTerminal(host, port);
+        lastCheckTimeRef.current = now;
+        if (probe.online) {
+          setStatus('online');
+          setErrorMessage(null);
+        } else {
+          setStatus('offline');
+          setErrorMessage(probe.error || 'Castles terminal is unreachable');
+        }
+        return;
+      }
+
+      // --- Dejavoo branch (default) ---
       // Initialize Dejavoo API
       const dejavooAPI = new DejavooSpinAPI(supabase);
-    
+
       // Load terminal credentials (fast path with local credentials)
       const loaded = await dejavooAPI.loadTerminal(terminalId, paymentTerminal);
       if (!loaded) {

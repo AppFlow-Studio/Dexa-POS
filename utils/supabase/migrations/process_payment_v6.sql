@@ -519,6 +519,23 @@ BEGIN
     END IF;
 
     -- ============================================
+    -- 6.7 Castles Terminal Response
+    -- Reuses v_dejavoo_* variables so the INSERT path below works unchanged.
+    -- ============================================
+    IF p_terminal_response ? 'castles_transaction' THEN
+        v_has_dejavoo_transaction := true;
+        v_dejavoo_reference_id := p_terminal_response->'castles_transaction'->>'referenceId';
+        v_dejavoo_transaction_number := p_terminal_response->'castles_transaction'->>'referenceId';
+        v_dejavoo_auth_code := p_terminal_response->'castles_transaction'->>'approvalCode';
+        v_dejavoo_batch_number := p_terminal_response->'castles_transaction'->>'batchNumber';
+        v_dejavoo_rrn := p_terminal_response->'castles_transaction'->>'rrn';
+        v_dejavoo_entry_mode := p_terminal_response->'castles_transaction'->>'entryMode';
+        v_dejavoo_result_code := p_terminal_response->'castles_transaction'->>'resultCode';
+        v_dejavoo_status_code := p_terminal_response->'castles_transaction'->>'resultCode';
+        v_dejavoo_last_four := p_terminal_response->'castles_transaction'->>'cardLast4';
+    END IF;
+
+    -- ============================================
     -- 7. Create Payment Record
     -- ============================================
     INSERT INTO public.order_payments (
@@ -552,7 +569,10 @@ BEGIN
         captured_at,
         initiated_at,
         merchant_id,
-        location_id
+        location_id,
+        rrn,
+        result_code,
+        result_message
     ) VALUES (
         p_order_id,
         p_payment_method::payment_method,
@@ -573,7 +593,11 @@ BEGIN
         p_split_portion_index,
         p_split_count,
         'captured',
-        CASE WHEN v_is_cash THEN 'cash_drawer' ELSE 'dejavoo' END::terminal_type,
+        CASE
+            WHEN v_is_cash THEN 'cash_drawer'
+            WHEN p_terminal_response ? 'castles_transaction' THEN 'castles'
+            ELSE 'dejavoo'
+        END::terminal_type,
         p_staff_id,
         p_terminal_response,
         COALESCE(v_dejavoo_reference_id, p_terminal_response->>'transaction_id'),
@@ -582,12 +606,22 @@ BEGIN
         v_dejavoo_status_code,
         v_dejavoo_batch_number,
         v_dejavoo_invoice_number,
-        COALESCE(p_terminal_response->'dejavoo_transaction'->>'cardType', p_terminal_response->>'card_type'),
+        COALESCE(
+            p_terminal_response->'dejavoo_transaction'->>'cardType',
+            p_terminal_response->'castles_transaction'->>'cardType',
+            p_terminal_response->>'card_type'
+        ),
         v_dejavoo_last_four,
         now(),
         now(),
         v_order.merchant_id,
-        v_order.location_id
+        v_order.location_id,
+        v_dejavoo_rrn,
+        v_dejavoo_result_code,
+        COALESCE(
+            p_terminal_response->'dejavoo_transaction'->>'resultMessage',
+            p_terminal_response->'castles_transaction'->>'statusMessage'
+        )
     )
     RETURNING id INTO v_payment_id;
 
@@ -608,6 +642,7 @@ BEGIN
         p_auth_code := v_dejavoo_auth_code,
         p_staff_id := p_staff_id,
         p_terminal_id := COALESCE(
+            p_terminal_response->'castles_transaction'->>'terminalId',
             p_terminal_response->'dejavoo_transaction'->>'terminalId',
             p_terminal_response->>'terminal_id'
         ),
@@ -616,6 +651,7 @@ BEGIN
             WHEN v_is_cash THEN 'Cash payment captured'
             ELSE COALESCE(
                 p_terminal_response->'dejavoo_transaction'->>'resultMessage',
+                p_terminal_response->'castles_transaction'->>'statusMessage',
                 'Card payment captured successfully'
             )
         END,

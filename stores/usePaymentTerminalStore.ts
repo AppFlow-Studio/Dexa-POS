@@ -19,10 +19,15 @@ const mmkvStorage = {
 interface PaymentTerminal {
   id: string;
   name: string;
-  tpn: string;
   model?: string;
+  terminalType?: string;
+  /** Castles terminal IP address */
+  ipAddress?: string;
+  /** Castles terminal port */
+  port?: number;
   isActive: boolean;
   isConnected: boolean;
+  stationId?: string | null;
   lastConnectionTest?: string;
   lastConnectionStatus?: 'Online' | 'Offline' | 'NotFound';
   consecutiveFailures?: number;

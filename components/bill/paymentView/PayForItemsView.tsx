@@ -7,7 +7,6 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
     ArrowLeft,
     Banknote,
@@ -549,7 +548,7 @@ const PayForItemsView: React.FC = () => {
                     </View>
 
                     {/* Items List */}
-                    <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+                    <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
                         {unpaidItems.length === 0 ? (
                             <View className="p-4 items-center">
                                 <CheckCircle size={40} color={colors.success} />
@@ -623,7 +622,7 @@ const PayForItemsView: React.FC = () => {
                                 );
                             })
                         )}
-                    </BottomSheetScrollView>
+                    </ScrollView>
                 </View>
 
                 {/* RIGHT PANEL - Split Review */}

@@ -95,7 +95,7 @@ export interface RefundResult {
   success: boolean;
   reversalId?: string;
   reversals?: Array<{ reversalId: string; paymentId: string; amount: number }>;
-  terminalResponse?: DejavooRefundResponse;
+  terminalResponse?: DejavooRefundResponse | Record<string, unknown>;
   error?: string;
 }
 

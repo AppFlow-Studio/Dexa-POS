@@ -72,8 +72,7 @@ export type SigCaptureOption = 'Yes' | 'No';
 
 export interface DejavooCredentials {
   authKey: string;       // Authorization password (10 chars)
-  registerId: string;   // Alternative to TPN (2-50 chars)
-  tpn?: string;         // Terminal Profile Number (required for Void and CheckStatus)
+  registerId: string;   // Terminal identifier (2-50 chars)
   environment: DejavooEnvironment;
   baseUrl: string;
   timeout?: number;      // SPIn proxy timeout (1-720 seconds)
@@ -291,7 +290,6 @@ export interface DejavooVoidV2Request {
   MerchantNumber?: string | null;
   CaptureSignature?: boolean;
   GetExtendedData?: boolean;
-  Tpn?: string;
   SPInProxyTimeout?: number | null;
   CallbackInfo?: { Url: string };
   CustomFields?: Record<string, any>;
@@ -446,12 +444,6 @@ export interface DejavooTipAdjustRequest {
   CallbackInfo?: {
     Url: string;
   };
-
-  /**
-   * Terminal Profile Number
-   * @optional
-   */
-  Tpn?: string;
 
   /**
    * Custom timeout in seconds (1-720)
@@ -1142,7 +1134,6 @@ export interface DejavooReturnRequest {
   // Auth fields (required by Dejavoo API)
   Authkey: string;
   RegisterId: string;
-  Tpn?: string;
 
   // Transaction fields
   Amount: number;
@@ -1344,6 +1335,48 @@ export interface DejavooTerminalStatusResponse {
    * Error description if terminal is offline
    */
   ErrorDescription?: string;
+}
+
+// ============================================================
+// SUMMARY REPORT (used for terminal status check)
+// ============================================================
+
+/**
+ * Summary Report Request
+ * POST /spin/v2/Report/Summary
+ * Used as a reliable terminal reachability check
+ */
+export interface DejavooSummaryReportRequest {
+  RegisterId: string;
+  Authkey: string;
+  SPInProxyTimeout: number | null;
+}
+
+/**
+ * Summary Report Response
+ * A successful response with ResultCode "0" proves the terminal is reachable
+ */
+export interface DejavooSummaryReportResponse {
+  SummaryDetails?: Array<{
+    Application: string;
+    TransactionsSummaryReports?: {
+      TransactionsCount: number;
+      SaleAmount: number;
+      ReturnAmount: number;
+      VoidAmount: number;
+      AuthAmount: number;
+      TicketAmount: number;
+      ReversalAmount: number;
+      CashAdvanceAmount: number;
+      TotalAmount: number;
+    };
+  }>;
+  GeneralResponse: {
+    ResultCode: string;
+    StatusCode: string;
+    Message: string;
+    DetailedMessage: string;
+  };
 }
 
 // ============================================================

@@ -1,23 +1,23 @@
-import {
-  AddOrderItemParams,
-  AddOrderItemResult,
-  CalculateOrderTaxResult,
-  CalculateSplitPaymentResult,
-  CreateOrderParams,
-  DuplicateOrderItemResult,
-  GetOrderItemResult,
-  Order,
-  OrderItemModifier,
-  OrderStatus,
-  ProcessPaymentResult,
-  ProcessPaymentV2Params,
-  ReplaceOrderItemModifiersResult,
-  UpdateOrderItemParams,
-  UpdateOrderItemQuantityResult,
-  UpdateOrderItemResult,
-} from "@/types/db-order-management-types";
 import { getDeviceId } from "@/lib/deviceId";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import {
+    AddOrderItemParams,
+    AddOrderItemResult,
+    CalculateOrderTaxResult,
+    CalculateSplitPaymentResult,
+    CreateOrderParams,
+    DuplicateOrderItemResult,
+    GetOrderItemResult,
+    Order,
+    OrderItemModifier,
+    OrderStatus,
+    ProcessPaymentResult,
+    ProcessPaymentV2Params,
+    ReplaceOrderItemModifiersResult,
+    UpdateOrderItemParams,
+    UpdateOrderItemQuantityResult,
+    UpdateOrderItemResult,
+} from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export type AddOpenItemParams = {
@@ -67,9 +67,7 @@ export class OrderService {
    * This is a lightweight guard to prevent kicked devices from continuing
    * to perform operations if all realtime kick channels failed.
    */
-  static async ensureSessionValid(
-    client: SupabaseClient,
-  ): Promise<boolean> {
+  static async ensureSessionValid(client: SupabaseClient): Promise<boolean> {
     try {
       const deviceId = getDeviceId();
       const sessionId = useStoreSettingsStore.getState().stationSessionId;
@@ -79,13 +77,10 @@ export class OrderService {
         return true;
       }
 
-      const { data, error } = await client.rpc(
-        "check_device_session_status",
-        {
-          p_device_id: deviceId,
-          p_session_id: sessionId,
-        },
-      );
+      const { data, error } = await client.rpc("check_device_session_status", {
+        p_device_id: deviceId,
+        p_session_id: sessionId,
+      });
 
       if (error) {
         // Don't block on RPC errors (network issues) - fail open
@@ -106,7 +101,7 @@ export class OrderService {
       if (!result.is_valid) {
         console.error(
           `[OrderService] SESSION INVALID - status: ${result.status}, ` +
-          `kicked_by: ${result.kicked_by}. Blocking operation.`,
+            `kicked_by: ${result.kicked_by}. Blocking operation.`,
         );
         return false;
       }
@@ -114,7 +109,10 @@ export class OrderService {
       return true;
     } catch (err) {
       // Fail open on unexpected errors
-      console.warn("[OrderService] Session guard error (allowing operation):", err);
+      console.warn(
+        "[OrderService] Session guard error (allowing operation):",
+        err,
+      );
       return true;
     }
   }
@@ -135,7 +133,10 @@ export class OrderService {
     if (!sessionValid) {
       return {
         data: null,
-        error: { message: "Session has been kicked. Please log in again.", code: "SESSION_KICKED" },
+        error: {
+          message: "Session has been kicked. Please log in again.",
+          code: "SESSION_KICKED",
+        },
       };
     }
 
@@ -312,19 +313,22 @@ export class OrderService {
     if (!sessionValid) {
       return {
         data: null,
-        error: { message: "Session has been kicked. Please log in again.", code: "SESSION_KICKED" },
+        error: {
+          message: "Session has been kicked. Please log in again.",
+          code: "SESSION_KICKED",
+        },
       };
     }
 
     console.log(
-      `[OrderService:processPayment] ====== CALLING process_payment_v5 ======`,
+      `[OrderService:processPayment] ====== CALLING process_payment_v6 ======`,
     );
     console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
     console.log(
       `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`,
     );
 
-    const { data, error } = await client.rpc("process_payment_v5", params);
+    const { data, error } = await client.rpc("process_payment_v6", params);
 
     if (error) {
       console.error(`[OrderService:processPayment] FAILED:`, error);
@@ -391,7 +395,7 @@ export class OrderService {
       p_response_message: responseMessage ?? null,
       p_reversal_psp_reference: reversalPspReference ?? null,
     });
-    console.log('updateReversalStatus', data, error);
+    console.log("updateReversalStatus", data, error);
     return { data, error };
   }
 
@@ -423,7 +427,7 @@ export class OrderService {
       p_return_reason: returnDetails?.reason ?? null,
       p_initiated_by: returnDetails?.initiatedBy ?? null,
     });
-    console.log('applyRefundToPayment', data, error);
+    console.log("applyRefundToPayment", data, error);
     return { data, error };
   }
 
@@ -453,7 +457,7 @@ export class OrderService {
       "update_order_payment_status_after_refund",
       { p_order_id: orderId },
     );
-    console.log('updateOrderPaymentStatusAfterRefund', data, error);
+    console.log("updateOrderPaymentStatusAfterRefund", data, error);
     return { data, error };
   }
 
@@ -500,7 +504,10 @@ export class OrderService {
     if (!sessionValid) {
       return {
         data: null,
-        error: { message: "Session has been kicked. Please log in again.", code: "SESSION_KICKED" },
+        error: {
+          message: "Session has been kicked. Please log in again.",
+          code: "SESSION_KICKED",
+        },
       };
     }
 

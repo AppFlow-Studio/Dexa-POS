@@ -89,22 +89,16 @@ const QuickActionButton: React.FC<{
 };
 
 const useTableData = (table: FloorPlanObject) => {
-  // console.log(`[TableListItem] useTableData ${table.name}`, table)
-  const ordersById = useOrderStore((s) => s.ordersById);
+  const getOrder = useOrderStore((s) => s.getOrder);
   const tables = useFloorPlanStore((s) => s.tables);
 
-  // Get session order ID for payment calculations
+  // Get session order ID for payment calculations — O(1) via getOrder (uses dbOrderIdIndex)
   const sessionOrderId = table.session?.order_id || null;
   const orderIdForPayments = useMemo(() => {
     if (!sessionOrderId) return null;
-    // Try direct lookup first
-    if (ordersById[sessionOrderId]) return sessionOrderId;
-    // Fallback: search by db_order_id
-    const order = Object.values(ordersById).find(
-      (o) => o.db_order_id === sessionOrderId,
-    );
+    const order = getOrder(sessionOrderId);
     return order?.id || null;
-  }, [sessionOrderId, ordersById]);
+  }, [sessionOrderId, getOrder]);
 
   // Get payment-aware totals for this order
   const orderTotals = useOrderTotals(orderIdForPayments);
@@ -171,14 +165,8 @@ const useTableData = (table: FloorPlanObject) => {
       };
     }
 
-    // O(1) lookup using ordersById - try by id first, then by db_order_id
-    let order: OrderProfile | undefined = ordersById[sessionOrderId];
-    if (!order) {
-      // Fallback: search by db_order_id if session.order_id is the backend UUID
-      order = Object.values(ordersById).find(
-        (o) => o.db_order_id === sessionOrderId,
-      );
-    }
+    // O(1) lookup via getOrder (checks ordersById + dbOrderIdIndex)
+    let order: OrderProfile | undefined = getOrder(sessionOrderId) ?? undefined;
 
     // Get merged table names for display
     const groupIds = [table.id, ...mergedIds];
@@ -268,7 +256,7 @@ const useTableData = (table: FloorPlanObject) => {
       server: serverDisplay,
       orders: groupOrders,
     };
-  }, [table, ordersById, tables, orderTotals]);
+  }, [table, getOrder, tables, orderTotals]);
 };
 
 const ExpandedView: React.FC<{

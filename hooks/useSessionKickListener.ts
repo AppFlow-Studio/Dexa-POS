@@ -254,9 +254,9 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
           console.log("[KickListener] Layer 1: Broadcast channel connected");
           reconnectAttemptRef.current = 0;
         } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
-          console.warn(
-            `[KickListener] Layer 1: Broadcast channel ${status}`
-          );
+          // console.warn(
+          //   `[KickListener] Layer 1: Broadcast channel ${status}`
+          // );
           // Validate session on reconnection gap
           validateSession();
         }

@@ -9,6 +9,7 @@ import {
   Lock,
   Package,
   Settings,
+  Shield,
   ShoppingBag,
   Table,
   UtensilsCrossed,
@@ -215,6 +216,15 @@ const MainMenu: React.FC = () => {
       isLocked: true,
       isHighlighted: false,
     },
+    {
+      id: 'castlestest',
+      icon : <Shield />,
+      title: 'Castles Test',
+      subtitle:'Castles device test',
+      route : '/castlestest',
+      isLocked : false,
+      isHighlighted : false
+    }
   ];
 
   return (
