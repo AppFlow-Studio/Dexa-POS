@@ -14,10 +14,12 @@ export { type CastlesRawResponse } from '@/services/terminals/castles-response-m
 // ============================================================
 
 export interface CastlesConnectionConfig {
-  /** Terminal IP address */
-  host: string;
+  /** Transport type — defaults to 'local_socket' (TCP WiFi) */
+  connectionType?: import('@/services/terminals/castles-transport.types').CastlesTransportType;
+  /** Terminal IP address (required for local_socket, ignored for USB) */
+  host?: string;
   /** Terminal TCP port (default 8080) */
-  port: number;
+  port?: number;
   /** Socket timeout in ms (default 120000) */
   timeout: number;
   /** payment_terminals.id — used for counter + DB ops */

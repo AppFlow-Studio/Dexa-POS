@@ -34,7 +34,7 @@ export interface StationPaymentTerminal {
   last_connection_test_at: string | null;
   consecutive_failures?: number;
   health_check_interval?: number;
-  connection_type?: 'cloud' | 'local';
+  connection_type?: 'cloud' | 'local' | 'local_socket' | 'usb';
 }
 
 // Station as returned from get_location_stations_with_status RPC

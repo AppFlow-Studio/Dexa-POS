@@ -1,10 +1,13 @@
 // ============================================================
-// Castles TCP Socket Service — Sale Flow
+// Castles Payment Terminal Service
 // File: services/terminals/castles-service.ts
 // ============================================================
 // POS is TCP client. Castles terminal is TCP server at IP:port.
 // Socket kept alive between transactions (persistent connection).
 // One request at a time — mutex guards concurrent calls.
+// ============================================================
+// Transport abstraction: CastlesService talks to ICastlesTransport,
+// never raw sockets. See castles-transport.types.ts.
 // ============================================================
 
 import type {
@@ -32,14 +35,13 @@ import {
   CASTLES_SUCCESS_CODE,
 } from "@/types/castles";
 import { Mutex } from "async-mutex";
-import TcpSocket from "react-native-tcp-socket";
+import type { ICastlesTransport, CastlesTransportConfig } from "./castles-transport.types";
+import { createCastlesTransport } from "./castles-transport-factory";
 import {
   type CastlesRawResponse,
   buildCastlesTerminalResponse,
   parseCastlesReturnCode,
 } from "./castles-response-mapper";
-
-type TcpSocketInstance = ReturnType<typeof TcpSocket.createConnection>;
 
 export type CastlesStatusCallback = (notification: {
   txnStatus?: string;
@@ -47,15 +49,14 @@ export type CastlesStatusCallback = (notification: {
 }) => void;
 
 export class CastlesService {
-  private socket: TcpSocketInstance | null = null;
+  private transport: ICastlesTransport | null = null;
   private config: CastlesConnectionConfig | null = null;
-  private connected = false;
   private readonly _mutex = new Mutex();
   private _onStatusNotification: CastlesStatusCallback | null = null;
 
   // ── Connection tuning (for diagnostics) ──
   private _delimiter = "";           // Appended after JSON write ("", "\n", "\r\n", "\0")
-  private _noDelay = false;          // TCP_NODELAY (disable Nagle)
+  private _noDelay = false;          // TCP_NODELAY (disable Nagle) — diagnostic only
   private _skipReturn2Idle = false;  // Skip return2Idle during connect()
   private _postConnectDelayMs = 0;   // Delay after TCP connect before first write
 
@@ -71,8 +72,7 @@ export class CastlesService {
   async connect(config: CastlesConnectionConfig): Promise<void> {
     // If already connected to same host:port, verify with getData
     if (
-      this.connected &&
-      this.socket &&
+      this.transport?.isOpen &&
       this.config?.host === config.host &&
       this.config?.port === config.port
     ) {
@@ -91,7 +91,7 @@ export class CastlesService {
     }
 
     // Graceful disconnect gives terminal time to release previous session
-    if (this.connected || this.socket) {
+    if (this.transport?.isOpen) {
       await this.gracefulDisconnect();
     } else {
       this.disconnect(); // cleanup just in case
@@ -101,8 +101,9 @@ export class CastlesService {
 
     for (let attempt = 1; attempt <= CASTLES_CONNECT_MAX_RETRIES; attempt++) {
       try {
-        // Step 1: TCP connect
-        await this._attemptConnect(config);
+        // Step 1: Create transport and connect
+        this._createAndConnectTransport(config);
+        await this.transport!.connect();
 
         // Step 1b: Optional post-connect delay (diagnostic tuning)
         if (this._postConnectDelayMs > 0) {
@@ -181,46 +182,30 @@ export class CastlesService {
   }
 
   /**
-   * Disconnect and clean up the socket.
-   * Delays destroy() so the TCP FIN from end() can propagate to the terminal.
-   * Without this delay, CastlesPay thinks the session is still alive and
-   * ignores commands on the next connection.
+   * Disconnect and clean up the transport.
    */
   disconnect(): void {
-    const oldSocket = this.socket;
-    // Null out references FIRST to prevent race conditions
-    this.socket = null;
-    this.connected = false;
-
-    if (oldSocket) {
-      try {
-        oldSocket.removeAllListeners();
-        oldSocket.end(); // Send TCP FIN (graceful close)
-        // Delay destroy to let FIN reach the terminal before force-closing
-        setTimeout(() => {
-          try { oldSocket.destroy(); } catch { /* already closed */ }
-        }, 500);
-      } catch {
-        // Socket may already be destroyed
-      }
+    if (this.transport) {
+      this.transport.disconnect();
+      this.transport = null;
     }
     console.log("[CastlesService] Disconnected");
   }
 
   /**
    * Graceful disconnect: send return2Idle to reset terminal state,
-   * then close the socket cleanly. This gives CastlesPay the best
+   * then close the transport cleanly. This gives CastlesPay the best
    * chance to release the session so it accepts new connections.
    */
   async gracefulDisconnect(): Promise<void> {
-    if (this.connected && this.socket) {
+    if (this.transport?.isOpen) {
       console.log("[CastlesService] Graceful disconnect: sending return2Idle before close...");
       try {
         const payload = JSON.stringify({
           txnPosTxnId: "000000",
           txnType: "return2Idle",
         });
-        this.socket.write(payload + this._delimiter);
+        this.transport.write(payload + this._delimiter);
         // Wait for terminal to process return2Idle
         await this._delay(1000);
       } catch {
@@ -233,10 +218,10 @@ export class CastlesService {
   }
 
   /**
-   * Check if socket is currently connected.
+   * Check if transport is currently connected.
    */
   isConnected(): boolean {
-    return this.connected && this.socket != null;
+    return this.transport?.isOpen ?? false;
   }
 
   setOnStatusNotification(callback: CastlesStatusCallback | null): void {
@@ -280,7 +265,8 @@ export class CastlesService {
       // Force fresh connection for diagnosis
       this.disconnect();
       this.config = config;
-      await this._attemptConnect(config);
+      this._createAndConnectTransport(config);
+      await this.transport!.connect();
       addLog("TCP connection established successfully");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -288,12 +274,12 @@ export class CastlesService {
       return { tcpConnected: false, dataReceived: false, error: msg, log };
     }
 
-    if (!this.socket) {
-      addLog("Socket is null after connect — unexpected");
+    if (!this.transport?.isOpen) {
+      addLog("Transport is not open after connect — unexpected");
       return {
         tcpConnected: false,
         dataReceived: false,
-        error: "Socket null",
+        error: "Transport not open",
         log,
       };
     }
@@ -337,10 +323,11 @@ export class CastlesService {
       await this._delay(500);
 
       // Re-establish connection if closed
-      if (!this.connected || !this.socket) {
-        addLog("Socket closed — reconnecting for next attempt...");
+      if (!this.transport?.isOpen) {
+        addLog("Transport closed — reconnecting for next attempt...");
         try {
-          await this._attemptConnect(config);
+          this._createAndConnectTransport(config);
+          await this.transport!.connect();
           addLog("Reconnected");
         } catch (err) {
           addLog(
@@ -370,11 +357,12 @@ export class CastlesService {
     timeoutMs: number,
   ): Promise<{ received: boolean; data: string }> {
     return new Promise((resolve) => {
-      if (!this.socket) {
+      if (!this.transport?.isOpen) {
         resolve({ received: false, data: "" });
         return;
       }
 
+      const transport = this.transport;
       let buffer = "";
       let settled = false;
 
@@ -386,8 +374,8 @@ export class CastlesService {
         }
       }, timeoutMs);
 
-      const onData = (data: string | Buffer) => {
-        buffer += typeof data === "string" ? data : data.toString("utf8");
+      const onData = (chunk: string) => {
+        buffer += chunk;
         // Wait a brief moment for full message, then resolve
         setTimeout(() => {
           if (!settled) {
@@ -416,16 +404,16 @@ export class CastlesService {
 
       const cleanup = () => {
         clearTimeout(timer);
-        this.socket?.removeListener("data", onData);
-        this.socket?.removeListener("error", onError);
-        this.socket?.removeListener("close", onClose);
+        transport.offData(onData);
+        transport.offError(onError);
+        transport.offClose(onClose);
       };
 
-      this.socket.on("data", onData);
-      this.socket.on("error", onError);
-      this.socket.on("close", onClose);
+      transport.onData(onData);
+      transport.onError(onError);
+      transport.onClose(onClose);
 
-      this.socket.write(payload);
+      transport.write(payload);
     });
   }
 
@@ -442,7 +430,7 @@ export class CastlesService {
     tipAmount?: number;
     referenceId: string;
   }): Promise<CastlesSaleResult> {
-    if (!this.connected || !this.socket) {
+    if (!this.transport?.isOpen) {
       return { success: false, error: "Not connected to terminal" };
     }
 
@@ -499,7 +487,7 @@ export class CastlesService {
     rrn: string;
     referenceId: string;
   }): Promise<CastlesTipAdjustResult> {
-    if (!this.connected || !this.socket) {
+    if (!this.transport?.isOpen) {
       return { success: false, error: "Not connected to terminal" };
     }
 
@@ -554,7 +542,7 @@ export class CastlesService {
     stan?: string;
     referenceId: string;
   }): Promise<CastlesVoidResult> {
-    if (!this.connected || !this.socket) {
+    if (!this.transport?.isOpen) {
       return { success: false, error: "Not connected to terminal" };
     }
 
@@ -611,7 +599,7 @@ export class CastlesService {
     amount: number;
     referenceId: string;
   }): Promise<CastlesRefundResult> {
-    if (!this.connected || !this.socket) {
+    if (!this.transport?.isOpen) {
       return { success: false, error: "Not connected to terminal" };
     }
 
@@ -661,7 +649,7 @@ export class CastlesService {
    * Commands are queued via mutex — concurrent calls wait instead of rejecting.
    */
   async getTerminalData(referenceId: string): Promise<CastlesGetDataResult> {
-    if (!this.connected || !this.socket) {
+    if (!this.transport?.isOpen) {
       return { success: false, error: "Not connected to terminal" };
     }
 
@@ -707,7 +695,7 @@ export class CastlesService {
   // ============================================================
 
   /**
-   * Send return2Idle on the EXISTING socket to reset the terminal display.
+   * Send return2Idle on the EXISTING transport to reset the terminal display.
    * Used after a completed transaction (success path) where the terminal
    * already responded — situation 1 in Castles spec §3.8.
    *
@@ -718,7 +706,7 @@ export class CastlesService {
    * won't respond to return2Idle if it's already idle (per Castles spec §3.8).
    */
   private async _tryReturn2Idle(startup = false): Promise<boolean> {
-    if (!this.connected || !this.socket) return false;
+    if (!this.transport?.isOpen) return false;
 
     try {
       const request: CastlesReturn2IdleRequest = {
@@ -752,7 +740,7 @@ export class CastlesService {
   }
 
   /**
-   * Force return2Idle by closing the socket and reconnecting on a fresh one.
+   * Force return2Idle by closing the transport and reconnecting on a fresh one.
    * Per Castles spec §3.8 situation 2: if the terminal is still in the
    * "Swipe/Insert/Tap card" period (e.g. command timed out), return2Idle
    * must be sent on a NEW socket — the old socket is stuck in the txn context.
@@ -764,14 +752,15 @@ export class CastlesService {
     if (!this.config) return false;
 
     const config = this.config;
-    console.log("[CastlesService] Force return2Idle: closing socket and reconnecting...");
+    console.log("[CastlesService] Force return2Idle: closing transport and reconnecting...");
 
-    // Step 1: Tear down the current socket
+    // Step 1: Tear down the current transport
     this.disconnect();
 
-    // Step 2: Reconnect on a fresh socket
+    // Step 2: Reconnect on a fresh transport
     try {
-      await this._attemptConnect(config);
+      this._createAndConnectTransport(config);
+      await this.transport!.connect();
     } catch (err) {
       console.warn(
         "[CastlesService] Force return2Idle: reconnect failed:",
@@ -780,7 +769,7 @@ export class CastlesService {
       return false;
     }
 
-    // Step 3: Send return2Idle on the new socket
+    // Step 3: Send return2Idle on the new transport
     try {
       const request: CastlesReturn2IdleRequest = {
         txnPosTxnId: "000000",
@@ -823,81 +812,25 @@ export class CastlesService {
   // PRIVATE HELPERS
   // ============================================================
 
-  private _attemptConnect(config: CastlesConnectionConfig): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      let settled = false;
+  /**
+   * Create a new transport instance from the connection config.
+   * Does NOT call connect() — caller must do that.
+   */
+  private _createAndConnectTransport(config: CastlesConnectionConfig): void {
+    // Clean up any existing transport
+    if (this.transport) {
+      this.transport.disconnect();
+      this.transport = null;
+    }
 
-      const timeout = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          try {
-            socket?.destroy();
-          } catch {
-            /* ignore */
-          }
-          reject(new Error("Connection timed out"));
-        }
-      }, CASTLES_CONNECT_TIMEOUT_MS);
-
-      const socket = TcpSocket.createConnection(
-        { host: config.host, port: config.port },
-        () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-
-          this.socket = socket;
-          this.connected = true;
-
-          // Apply TCP_NODELAY if diagnostic tuning requests it
-          if (this._noDelay) {
-            try { socket.setNoDelay(true); } catch { /* ignore */ }
-          }
-
-          // ── Persistent lifecycle listeners ──
-          // These stay for the life of the socket.
-          // Per-command data listeners are added/removed in _sendAndReceive.
-
-          // ── CRITICAL: Guard against stale socket events ──
-          // The close/error handlers must check that THIS socket
-          // is still the active one. Without this check, a delayed
-          // close event from a PREVIOUS socket nulls out the new one.
-
-          socket.on("close", (hadError: boolean) => {
-            if (this.socket !== socket) {
-              console.log("[CastlesService] Ignoring close from stale socket");
-              return; // ← This is the fix
-            }
-            console.warn(
-              `[CastlesService] Socket closed (hadError: ${hadError})`,
-            );
-            this.connected = false;
-            this.socket = null;
-          });
-
-          socket.on("error", (err: Error) => {
-            if (this.socket !== socket) {
-              console.log("[CastlesService] Ignoring error from stale socket");
-              return; // ← This too
-            }
-            console.error("[CastlesService] Socket error:", err.message);
-            this.connected = false;
-          });
-
-          resolve();
-        },
-      );
-
-      // Error during initial connection attempt
-      socket.on("error", (err: Error) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timeout);
-          reject(err);
-        }
-      });
+    this.transport = createCastlesTransport({
+      connectionType: config.connectionType ?? "local_socket",
+      host: config.host,
+      port: config.port,
+      connectTimeoutMs: CASTLES_CONNECT_TIMEOUT_MS,
     });
   }
+
   /**
    * Send a JSON request and wait for the matching response.
    *
@@ -912,14 +845,12 @@ export class CastlesService {
     timeoutMs: number,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      if (!this.socket) {
-        reject(new Error("Socket not available"));
+      if (!this.transport?.isOpen) {
+        reject(new Error("Transport not available"));
         return;
       }
 
-      // Capture reference — if socket changes during this command,
-      // we're operating on a stale connection
-      const activeSocket = this.socket;
+      const transport = this.transport;
 
       // ── Stream parser state ──
       let buffer = "";
@@ -975,8 +906,6 @@ export class CastlesService {
           } catch (cbErr) {
             console.warn("[CastlesService] Status callback error:", cbErr);
           }
-          // NOTE: We do NOT touch the buffer here — brace parser
-          // already extracted this object cleanly. No data loss.
           return;
         }
 
@@ -986,10 +915,8 @@ export class CastlesService {
         resolve(parsed as T);
       };
 
-      const onData = (data: string | Buffer) => {
+      const onData = (chunk: string) => {
         if (settled) return;
-
-        const chunk = typeof data === "string" ? data : data.toString("utf8");
 
         console.log(
           `[CastlesService] Chunk (${chunk.length} bytes):`,
@@ -997,19 +924,16 @@ export class CastlesService {
         );
 
         // ── Character-by-character brace-depth scanner ──
-        // This is the ONLY reliable way to parse unframed JSON over TCP.
         for (let i = 0; i < chunk.length; i++) {
           const char = chunk[i];
           buffer += char;
 
           if (escaped) {
-            // Previous char was \, this char is escaped — skip it
             escaped = false;
             continue;
           }
 
           if (char === "\\" && inString) {
-            // Next char is escaped
             escaped = true;
             continue;
           }
@@ -1019,11 +943,9 @@ export class CastlesService {
             continue;
           }
 
-          // Only count braces outside of string literals
           if (!inString) {
             if (char === "{") {
               if (depth === 0) {
-                // Start of a new top-level JSON object
                 objectStart = buffer.length - 1;
               }
               depth++;
@@ -1031,17 +953,13 @@ export class CastlesService {
               depth--;
 
               if (depth === 0 && objectStart >= 0) {
-                // Complete top-level JSON object found
                 const jsonStr = buffer.slice(objectStart);
-
-                // Reset buffer: keep only what's after this object
-                // (there shouldn't be anything, but defensive)
                 buffer = "";
                 objectStart = -1;
 
                 processCompleteObject(jsonStr);
 
-                if (settled) return; // response found, stop processing
+                if (settled) return;
               }
             }
           }
@@ -1060,25 +978,25 @@ export class CastlesService {
         if (!settled) {
           settled = true;
           cleanup();
-          reject(new Error("Socket closed before response was received"));
+          reject(new Error("Transport closed before response was received"));
         }
       };
 
       const cleanup = () => {
         clearTimeout(timer);
-        activeSocket?.removeListener("data", onData);
-        activeSocket?.removeListener("error", onError);
-        activeSocket?.removeListener("close", onClose);
+        transport.offData(onData);
+        transport.offError(onError);
+        transport.offClose(onClose);
       };
 
-      activeSocket.on("data", onData);
-      activeSocket.on("error", onError);
-      activeSocket.on("close", onClose);
+      transport.onData(onData);
+      transport.onError(onError);
+      transport.onClose(onClose);
 
       // Send JSON request — delimiter configurable for diagnostics
       const payload = JSON.stringify(request);
       console.log("[CastlesService] Sending:", payload);
-      activeSocket.write(payload + this._delimiter);
+      transport.write(payload + this._delimiter);
     });
   }
 
@@ -1093,43 +1011,26 @@ export class CastlesService {
 
 /**
  * Lightweight TCP reachability probe for health checks.
- * Creates an ephemeral socket (connect → immediate disconnect),
+ * Creates an ephemeral transport (connect → immediate disconnect),
  * independent of the CastlesService class instance.
  * Never throws — always resolves { online, error? }.
  */
 export async function probeCastlesTerminal(
-  host: string,
-  port: number,
+  config: CastlesTransportConfig,
   timeoutMs = 5000,
 ): Promise<{ online: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      try {
-        socket?.destroy();
-      } catch {
-        /* ignore */
-      }
-      resolve({ online: false, error: "Connection timed out" });
-    }, timeoutMs);
-
-    const socket = TcpSocket.createConnection({ host, port }, () => {
-      clearTimeout(timer);
-      try {
-        socket.destroy();
-      } catch {
-        /* ignore */
-      }
-      resolve({ online: true });
+  try {
+    const transport = createCastlesTransport({
+      ...config,
+      connectTimeoutMs: timeoutMs,
     });
-
-    socket.on("error", (err: Error) => {
-      clearTimeout(timer);
-      try {
-        socket.destroy();
-      } catch {
-        /* ignore */
-      }
-      resolve({ online: false, error: err.message });
-    });
-  });
+    await transport.connect();
+    transport.disconnect();
+    return { online: true };
+  } catch (err) {
+    return {
+      online: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

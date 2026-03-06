@@ -56,7 +56,7 @@ async function performCastlesHealthCheck(): Promise<void> {
   }
 
   const port = currentPaymentTerminal?.port ?? CASTLES_DEFAULT_PORT;
-  const result = await probeCastlesTerminal(host, port);
+  const result = await probeCastlesTerminal({ connectionType: 'local_socket', host, port });
 
   if (result.online) {
     handleSuccess();

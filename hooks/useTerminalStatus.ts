@@ -71,7 +71,7 @@ export function useTerminalStatus(
           return;
         }
         const port = paymentTerminal.port ?? CASTLES_DEFAULT_PORT;
-        const probe = await probeCastlesTerminal(host, port);
+        const probe = await probeCastlesTerminal({ connectionType: 'local_socket', host, port });
         lastCheckTimeRef.current = now;
         if (probe.online) {
           setStatus('online');

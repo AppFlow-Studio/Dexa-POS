@@ -13,6 +13,8 @@ import {
     CastlesService,
     probeCastlesTerminal,
 } from "@/services/terminals/castles-service";
+import type { CastlesTransportType } from "@/services/terminals/castles-transport.types";
+import { listDevices } from "@/modules/castles-usb";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -98,9 +100,11 @@ const STATUS_DISPLAY: Record<string, string> = {
 
 export default function CastlesTerminalTestScreen() {
   // Config
+  const [connectionMode, setConnectionMode] = useState<CastlesTransportType>("local_socket");
   const [host, setHost] = useState("192.168.1.");
   const [port, setPort] = useState("8080");
   const [saleAmount, setSaleAmount] = useState("1.00");
+  const isUsb = connectionMode === "usb";
 
   // State
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -188,7 +192,7 @@ export default function CastlesTerminalTestScreen() {
     setTest("probe", "running");
     addLog(`Probing TCP ${host}:${port}...`);
 
-    const result = await probeCastlesTerminal(host, parseInt(port, 10), 5000);
+    const result = await probeCastlesTerminal({ connectionType: 'local_socket', host, port: parseInt(port, 10) }, 5000);
 
     if (result.online) {
       addLog(`TCP port is OPEN — terminal is reachable`, "success");
@@ -216,7 +220,8 @@ export default function CastlesTerminalTestScreen() {
 
   const runConnect = useCallback(async (): Promise<boolean> => {
     setTest("tcp", "running");
-    addLog(`Connecting to ${host}:${port} with handshake verification...`);
+    const modeLabel = isUsb ? "USB" : `TCP ${host}:${port}`;
+    addLog(`Connecting via ${modeLabel} with handshake verification...`);
 
     try {
       const service = serviceRef.current;
@@ -224,35 +229,45 @@ export default function CastlesTerminalTestScreen() {
       await service.gracefulDisconnect();
 
       await service.connect({
-        host,
-        port: parseInt(port, 10),
+        connectionType: connectionMode,
+        ...(isUsb ? {} : { host, port: parseInt(port, 10) }),
+        timeout: 120_000,
+        terminalId: "diag",
       });
 
-      addLog("TCP connected + getData handshake succeeded", "success");
+      addLog(`${isUsb ? "USB" : "TCP"} connected + getData handshake succeeded`, "success");
       setTest("tcp", "pass");
       return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       addLog(`Connect FAILED: ${msg}`, "error");
 
-      if (msg.includes("timed out") && msg.includes("Buffer")) {
-        addLog(
-          "→ TCP connected but CastlesPay did not respond to getData",
-          "warn",
-        );
-        addLog(
-          "→ Check: is the CMD SERVICE actually started (green status)?",
-          "warn",
-        );
-        addLog("→ Try restarting CastlesPay app on the Saturn1000", "warn");
-      } else if (msg.includes("timed out")) {
-        addLog("→ Could not establish TCP connection within timeout", "warn");
+      if (isUsb) {
+        if (msg.includes("not found")) {
+          addLog("→ Saturn1000 not detected on USB. Check cable.", "warn");
+        } else if (msg.includes("permission")) {
+          addLog("→ USB permission denied. Tap Allow when prompted.", "warn");
+        }
+      } else {
+        if (msg.includes("timed out") && msg.includes("Buffer")) {
+          addLog(
+            "→ TCP connected but CastlesPay did not respond to getData",
+            "warn",
+          );
+          addLog(
+            "→ Check: is the CMD SERVICE actually started (green status)?",
+            "warn",
+          );
+          addLog("→ Try restarting CastlesPay app on the Saturn1000", "warn");
+        } else if (msg.includes("timed out")) {
+          addLog("→ Could not establish TCP connection within timeout", "warn");
+        }
       }
 
       setTest("tcp", "fail");
       return false;
     }
-  }, [host, port, addLog, setTest]);
+  }, [host, port, connectionMode, isUsb, addLog, setTest]);
 
   // ── Test 3: getData ──
 
@@ -388,23 +403,29 @@ export default function CastlesTerminalTestScreen() {
     clearLogs();
 
     addLog("═══════════════════════════════════════", "info");
-    addLog("  CastlesPay Terminal Diagnostic Suite", "info");
+    addLog(`  CastlesPay Diagnostic Suite (${isUsb ? "USB" : "TCP"})`, "info");
     addLog("═══════════════════════════════════════", "info");
     addLog("");
 
-    // Test 1: Probe
-    addLog("── Step 1/4: TCP Port Probe ──");
-    const probeOk = await runProbe();
-    if (!probeOk) {
+    // Test 1: Probe (TCP only — USB has no network probe)
+    if (!isUsb) {
+      addLog("── Step 1/4: TCP Port Probe ──");
+      const probeOk = await runProbe();
+      if (!probeOk) {
+        addLog("");
+        addLog("STOPPED: Cannot reach terminal. Fix network first.", "error");
+        setIsRunning(false);
+        return;
+      }
       addLog("");
-      addLog("STOPPED: Cannot reach terminal. Fix network first.", "error");
-      setIsRunning(false);
-      return;
+    } else {
+      addLog("── Step 1/4: TCP Probe — skipped (USB mode) ──");
+      setTest("probe", "idle");
+      addLog("");
     }
-    addLog("");
 
     // Test 2: Connect + handshake
-    addLog("── Step 2/4: TCP Connect + getData Handshake ──");
+    addLog(`── Step 2/4: ${isUsb ? "USB" : "TCP"} Connect + getData Handshake ──`);
     const connectOk = await runConnect();
     if (!connectOk) {
       addLog("");
@@ -456,6 +477,7 @@ export default function CastlesTerminalTestScreen() {
     setIsRunning(false);
   }, [
     isRunning,
+    isUsb,
     clearLogs,
     addLog,
     runProbe,
@@ -549,6 +571,8 @@ export default function CastlesTerminalTestScreen() {
       const result = await serviceRef.current.diagnoseTcpConnection({
         host,
         port: parseInt(port, 10),
+        timeout: 120_000,
+        terminalId: "diag",
       });
 
       // Dump diagnostic log entries
@@ -577,6 +601,38 @@ export default function CastlesTerminalTestScreen() {
     setIsRunning(false);
   }, [isRunning, host, port, addLog]);
 
+  // ── List USB Devices (debug) ──
+
+  const runListUsbDevices = useCallback(async () => {
+    if (isRunning) return;
+    setIsRunning(true);
+    addLog("Scanning USB serial devices...");
+    try {
+      const devices = await listDevices();
+      if (devices.length === 0) {
+        addLog("No USB serial devices found. Check cable.", "warn");
+      } else {
+        addLog(`Found ${devices.length} USB serial device(s):`, "success");
+        for (const d of devices) {
+          addLog(
+            `  deviceId=${d.deviceId} vendor=0x${d.vendorId.toString(16)} product=0x${d.productId.toString(16)}`,
+            "data",
+          );
+          addLog(
+            `    name="${d.productName}" mfr="${d.manufacturerName}" driver=${d.driverName}`,
+            "data",
+          );
+        }
+      }
+    } catch (err) {
+      addLog(
+        `USB scan error: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+    }
+    setIsRunning(false);
+  }, [isRunning, addLog]);
+
   // ── Render ──
 
   return (
@@ -588,32 +644,66 @@ export default function CastlesTerminalTestScreen() {
         <Text style={styles.subtitle}>Test connection layer by layer</Text>
       </View>
 
+      {/* Connection mode toggle */}
+      <View style={[styles.settingsRow, { marginBottom: 12 }]}>
+        <Text style={styles.settingsLabel}>Transport</Text>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {([
+            { label: "WiFi (TCP)", value: "local_socket" as CastlesTransportType },
+            { label: "USB Serial", value: "usb" as CastlesTransportType },
+          ]).map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.pill, connectionMode === opt.value && styles.pillActive]}
+              onPress={() => setConnectionMode(opt.value)}
+              disabled={isRunning}
+            >
+              <Text style={[styles.pillText, connectionMode === opt.value && styles.pillTextActive]}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       {/* Config row */}
       <View style={styles.configRow}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Terminal IP</Text>
-          <TextInput
-            style={styles.input}
-            value={host}
-            onChangeText={setHost}
-            placeholder="192.168.1.XX"
-            placeholderTextColor={COLORS.textMuted}
-            keyboardType="decimal-pad"
-            editable={!isRunning}
-          />
-        </View>
-        <View style={[styles.inputGroup, { width: 100 }]}>
-          <Text style={styles.inputLabel}>Port</Text>
-          <TextInput
-            style={styles.input}
-            value={port}
-            onChangeText={setPort}
-            placeholder="8080"
-            placeholderTextColor={COLORS.textMuted}
-            keyboardType="number-pad"
-            editable={!isRunning}
-          />
-        </View>
+        {!isUsb && (
+          <>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Terminal IP</Text>
+              <TextInput
+                style={styles.input}
+                value={host}
+                onChangeText={setHost}
+                placeholder="192.168.1.XX"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="decimal-pad"
+                editable={!isRunning}
+              />
+            </View>
+            <View style={[styles.inputGroup, { width: 100 }]}>
+              <Text style={styles.inputLabel}>Port</Text>
+              <TextInput
+                style={styles.input}
+                value={port}
+                onChangeText={setPort}
+                placeholder="8080"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="number-pad"
+                editable={!isRunning}
+              />
+            </View>
+          </>
+        )}
+        {isUsb && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>USB (auto-detect Saturn1000)</Text>
+            <Text style={[styles.input, { color: COLORS.textDim }]}>
+              Vendor 0x0CA6 · 115200 baud
+            </Text>
+          </View>
+        )}
         <View style={[styles.inputGroup, { width: 120 }]}>
           <Text style={styles.inputLabel}>Sale amount</Text>
           <TextInput
@@ -632,8 +722,8 @@ export default function CastlesTerminalTestScreen() {
       <View style={styles.statusRow}>
         {(
           [
-            ["probe", "TCP probe"],
-            ["tcp", "Connect"],
+            ["probe", isUsb ? "Probe (N/A)" : "TCP probe"],
+            ["tcp", isUsb ? "USB Connect" : "TCP Connect"],
             ["getData", "getData"],
             ["sale", "Sale"],
           ] as const
@@ -667,10 +757,10 @@ export default function CastlesTerminalTestScreen() {
           style={[
             styles.btn,
             styles.btnSecondary,
-            isRunning && styles.btnDisabled,
+            (isRunning || isUsb) && styles.btnDisabled,
           ]}
           onPress={() => runSingleTest(runProbe)}
-          disabled={isRunning}
+          disabled={isRunning || isUsb}
         >
           <Text style={styles.btnTextSecondary}>Probe only</Text>
         </TouchableOpacity>
@@ -704,13 +794,28 @@ export default function CastlesTerminalTestScreen() {
             styles.btn,
             styles.btnSecondary,
             { borderColor: COLORS.amber + "80" },
-            isRunning && styles.btnDisabled,
+            (isRunning || isUsb) && styles.btnDisabled,
           ]}
           onPress={runDiagnose}
-          disabled={isRunning}
+          disabled={isRunning || isUsb}
         >
           <Text style={[styles.btnTextSecondary, { color: COLORS.amber }]}>Diagnose</Text>
         </TouchableOpacity>
+
+        {isUsb && (
+          <TouchableOpacity
+            style={[
+              styles.btn,
+              styles.btnSecondary,
+              { borderColor: COLORS.teal + "60" },
+              isRunning && styles.btnDisabled,
+            ]}
+            onPress={runListUsbDevices}
+            disabled={isRunning}
+          >
+            <Text style={[styles.btnTextSecondary, { color: COLORS.teal }]}>List USB</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={[
@@ -867,8 +972,9 @@ export default function CastlesTerminalTestScreen() {
       >
         {logs.length === 0 ? (
           <Text style={styles.logPlaceholder}>
-            Enter the Saturn1000 IP from the CMD SERVICE screen and tap "Run all
-            tests"
+            {isUsb
+              ? 'Select USB mode, plug in Saturn1000, and tap "Run all tests"'
+              : 'Enter the Saturn1000 IP from the CMD SERVICE screen and tap "Run all tests"'}
           </Text>
         ) : (
           logs.map((entry) => (
