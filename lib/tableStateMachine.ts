@@ -21,6 +21,32 @@ export type TableEvent =
   | "BEGIN_CLOSING"
   | "CANCEL_INTERMEDIATE";
 
+/** Context passed to guard functions for precondition checks */
+export interface TransitionContext {
+  order?: {
+    paid_status?: string;
+    items?: { id: string }[];
+    order_status?: string;
+  };
+  session?: {
+    id?: string;
+    status?: TableStatus;
+  };
+  tableId?: string;
+  stationId?: string;
+}
+
+/** Audit entry for transition logging */
+export interface TransitionAuditEntry {
+  from: TableStatus;
+  to: TableStatus;
+  event: TableEvent;
+  timestamp: string;
+  tableId?: string;
+  stationId?: string;
+  guardPassed: boolean;
+}
+
 /** Local-only statuses that are never synced to the backend DB */
 const LOCAL_ONLY_STATUSES: ReadonlySet<TableStatus> = new Set([
   "seating",
@@ -39,6 +65,101 @@ const ACTIVE_STATUSES: ReadonlySet<TableStatus> = new Set([
   "check_presented",
   "paying",
 ]);
+
+// ============================================================================
+// TRANSITION GUARDS
+// ============================================================================
+
+type GuardFn = (ctx: TransitionContext) => boolean;
+
+const TRANSITION_GUARDS: Partial<Record<TableEvent, GuardFn>> = {
+  SEND_TO_KITCHEN: (ctx) => (ctx.order?.items?.length ?? 0) > 0,
+  FULL_PAYMENT: (ctx) =>
+    ctx.order?.paid_status === "Paid" ||
+    ctx.order?.paid_status === "PartiallyPaid",
+  CLEAR_TABLE: (ctx) => ctx.session?.status !== "seating",
+};
+
+// ============================================================================
+// AUDIT TRAIL (circular buffer)
+// ============================================================================
+
+const AUDIT_BUFFER_SIZE = 200;
+let auditBuffer: TransitionAuditEntry[] = [];
+let auditWriteIndex = 0;
+let auditCount = 0;
+
+function recordAudit(entry: TransitionAuditEntry): void {
+  if (auditBuffer.length < AUDIT_BUFFER_SIZE) {
+    auditBuffer.push(entry);
+  } else {
+    auditBuffer[auditWriteIndex] = entry;
+  }
+  auditWriteIndex = (auditWriteIndex + 1) % AUDIT_BUFFER_SIZE;
+  auditCount++;
+}
+
+/**
+ * Get recent transition audit entries (most recent last).
+ */
+export function getTransitionAuditLog(
+  maxCount: number = AUDIT_BUFFER_SIZE,
+): TransitionAuditEntry[] {
+  const total = Math.min(auditCount, AUDIT_BUFFER_SIZE);
+  const requested = Math.min(maxCount, total);
+
+  if (total < AUDIT_BUFFER_SIZE) {
+    return auditBuffer.slice(Math.max(0, total - requested));
+  }
+  const result: TransitionAuditEntry[] = [];
+  const startIdx =
+    (auditWriteIndex - requested + AUDIT_BUFFER_SIZE) % AUDIT_BUFFER_SIZE;
+  for (let i = 0; i < requested; i++) {
+    result.push(auditBuffer[(startIdx + i) % AUDIT_BUFFER_SIZE]);
+  }
+  return result;
+}
+
+// ============================================================================
+// STUCK-STATE WATCHDOG
+// ============================================================================
+
+const STUCK_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
+export interface StuckSession {
+  tableId: string;
+  status: TableStatus;
+  resolvedStatus: TableStatus;
+  stuckSinceMs: number;
+}
+
+/**
+ * Detect tables stuck in local-only statuses beyond the threshold.
+ * Returns sessions that should be auto-recovered.
+ */
+export function detectStuckSessions(
+  sessions: Record<string, { status: TableStatus; updatedAt?: string }>,
+): StuckSession[] {
+  const now = Date.now();
+  const stuck: StuckSession[] = [];
+
+  for (const [tableId, session] of Object.entries(sessions)) {
+    if (!isLocalOnlyStatus(session.status)) continue;
+    const updatedAt = session.updatedAt
+      ? new Date(session.updatedAt).getTime()
+      : 0;
+    const elapsed = now - updatedAt;
+    if (elapsed > STUCK_THRESHOLD_MS) {
+      stuck.push({
+        tableId,
+        status: session.status,
+        resolvedStatus: resolveToSyncableStatus(session.status),
+        stuckSinceMs: elapsed,
+      });
+    }
+  }
+  return stuck;
+}
 
 /**
  * Transition map: [currentStatus][event] -> nextStatus
@@ -121,28 +242,84 @@ const TRANSITIONS: Partial<
 /**
  * Pure function: compute next table status given current status and event.
  * Throws on invalid transitions so callers can handle gracefully.
+ *
+ * When a TransitionContext is provided, guard functions are evaluated
+ * and the transition is recorded in the audit trail.
  */
 export function transitionTableStatus(
   current: TableStatus,
   event: TableEvent,
+  ctx?: TransitionContext,
 ): TableStatus {
   const next = TRANSITIONS[current]?.[event];
   if (!next) {
+    if (ctx) {
+      recordAudit({
+        from: current,
+        to: current,
+        event,
+        timestamp: new Date().toISOString(),
+        tableId: ctx.tableId,
+        stationId: ctx.stationId,
+        guardPassed: false,
+      });
+    }
     throw new Error(
       `Invalid table transition: "${current}" + ${event}. No valid next state.`,
     );
   }
+
+  // Evaluate guard if context provided
+  let guardPassed = true;
+  if (ctx) {
+    const guard = TRANSITION_GUARDS[event];
+    if (guard) {
+      guardPassed = guard(ctx);
+      if (!guardPassed) {
+        recordAudit({
+          from: current,
+          to: current,
+          event,
+          timestamp: new Date().toISOString(),
+          tableId: ctx.tableId,
+          stationId: ctx.stationId,
+          guardPassed: false,
+        });
+        throw new Error(
+          `Transition guard failed: "${current}" + ${event}. Precondition not met.`,
+        );
+      }
+    }
+
+    recordAudit({
+      from: current,
+      to: next,
+      event,
+      timestamp: new Date().toISOString(),
+      tableId: ctx.tableId,
+      stationId: ctx.stationId,
+      guardPassed: true,
+    });
+  }
+
   return next;
 }
 
 /**
  * Check if a transition is valid without throwing.
+ * Optionally evaluates guard functions if context provided.
  */
 export function canTransition(
   current: TableStatus,
   event: TableEvent,
+  ctx?: TransitionContext,
 ): boolean {
-  return TRANSITIONS[current]?.[event] !== undefined;
+  if (TRANSITIONS[current]?.[event] === undefined) return false;
+  if (ctx) {
+    const guard = TRANSITION_GUARDS[event];
+    if (guard && !guard(ctx)) return false;
+  }
+  return true;
 }
 
 /**

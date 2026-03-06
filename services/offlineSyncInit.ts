@@ -737,6 +737,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           ...(finalTerminalResponse && {
             p_terminal_response: finalTerminalResponse,
           }),
+          // Pass idempotency key to prevent double-processing on retries
+          ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }),
         };
 
         console.log(
@@ -991,7 +993,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         const { data, error } = await OrderService.createOrder(
           _supabaseClient,
-          createOrderParams,
+          { ...createOrderParams, ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }) },
         );
 
         if (error) {
@@ -1392,12 +1394,39 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       }
 
       case "update_session_status": {
-        const { sessionId, status } = op.params;
-        console.log("[OfflineSync] update_session_status operation:", {
-          sessionId,
-          status,
-        });
-        // This will be implemented when FloorPlanService is available
+        const { sessionId, status, staffId } = op.params;
+
+        if (!sessionId || !status) {
+          console.warn("[OfflineSync] update_session_status: missing params");
+          return true;
+        }
+
+        const resolvedSessionId = resolveSessionId(sessionId) ?? sessionId;
+
+        if (!isValidUUID(resolvedSessionId)) {
+          console.log(
+            `[OfflineSync] update_session_status: session ${sessionId} not synced yet`,
+          );
+          return false;
+        }
+
+        const { error } = await FloorPlanService.updateTableSessionStatus(
+          _supabaseClient,
+          {
+            p_session_id: resolvedSessionId,
+            p_status: status,
+            p_staff_id: staffId ?? undefined,
+          },
+        );
+
+        if (error) {
+          console.error("[OfflineSync] update_session_status failed:", error);
+          return false;
+        }
+
+        console.log(
+          `[OfflineSync] update_session_status: ${resolvedSessionId} → ${status}`,
+        );
         return true;
       }
 

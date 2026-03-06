@@ -28,6 +28,9 @@ export class CastlesTcpTransport implements ICastlesTransport {
    */
   private _currentSocket: TcpSocketInstance | null = null;
 
+  /** Timestamp of last data received — used for stale connection detection */
+  private _lastDataReceivedAt = 0;
+
   // ── Callback arrays ──
   private _dataCallbacks: Array<(chunk: string) => void> = [];
   private _errorCallbacks: Array<(error: Error) => void> = [];
@@ -43,6 +46,11 @@ export class CastlesTcpTransport implements ICastlesTransport {
 
   get isOpen(): boolean {
     return this._isOpen && this._socket != null;
+  }
+
+  secondsSinceLastData(): number {
+    if (this._lastDataReceivedAt === 0) return Infinity;
+    return (Date.now() - this._lastDataReceivedAt) / 1000;
   }
 
   connect(): Promise<void> {
@@ -67,6 +75,12 @@ export class CastlesTcpTransport implements ICastlesTransport {
           this._socket = socket;
           this._currentSocket = socket;
           this._isOpen = true;
+          this._lastDataReceivedAt = Date.now();
+
+          // Disable Nagle — flush JSON commands to wire immediately
+          try { (socket as any).setNoDelay(true); } catch { /* best-effort */ }
+          // Detect dead connections via OS-level keepalive probes (every 15s)
+          try { (socket as any).setKeepAlive(true, 15_000); } catch { /* best-effort */ }
 
           // ── Persistent lifecycle listeners ──
           // Guard against stale socket events: only process if this socket
@@ -99,6 +113,7 @@ export class CastlesTcpTransport implements ICastlesTransport {
 
           socket.on("data", (data: string | Buffer) => {
             if (this._currentSocket !== socket) return;
+            this._lastDataReceivedAt = Date.now();
             const chunk = typeof data === "string" ? data : data.toString("utf8");
             for (const cb of [...this._dataCallbacks]) {
               try { cb(chunk); } catch { /* ignore callback errors */ }
@@ -147,11 +162,21 @@ export class CastlesTcpTransport implements ICastlesTransport {
     }
   }
 
-  write(data: string): void {
-    if (!this._isOpen || !this._socket) {
-      throw new Error("Transport is not open");
-    }
-    this._socket.write(data);
+  write(data: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (!this._isOpen || !this._socket) {
+        reject(new Error("Transport is not open"));
+        return;
+      }
+      try {
+        this._socket.write(data, "utf8", (err?: Error) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
   }
 
   // ── Listener add/remove ──

@@ -1,6 +1,6 @@
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { OrderService } from "@/services/orderService";
-import { CastlesService } from "@/services/terminals/castles-service";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { CASTLES_DEFAULT_PORT, CASTLES_SOCKET_TIMEOUT_MS } from "@/types/castles";
 import type { DejavooRefundResponse } from "@/types/dejavoo-spin-api";
@@ -657,7 +657,7 @@ export class RefundService {
       return { success: false, error: "Castles terminal missing IP address." };
     }
 
-    const castles = new CastlesService();
+    const castles = getSharedCastlesService();
     try {
       await castles.connect({
         host: terminal.ip_address,
@@ -697,8 +697,6 @@ export class RefundService {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[RefundService] Castles terminal refund error:", message);
       return { success: false, error: message };
-    } finally {
-      await castles.gracefulDisconnect();
     }
   }
 

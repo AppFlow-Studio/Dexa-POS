@@ -1,5 +1,4 @@
 import { ClerkVerificationScreen } from "@/components/tests/ClerkVerificationScreen";
-// import { DebugSignInScreen } from "@/components/tests/DebugSigninScreen";
 import { colors } from "@/lib/theme";
 import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
@@ -95,17 +94,29 @@ const MerchantLoginScreen = () => {
     setError(null);
 
     try {
+      console.log('[Auth Debug] signIn object:', {
+        exists: !!signIn,
+        supportedIdentifiers: signIn?.supportedIdentifiers,
+        supportedFirstFactors: signIn?.supportedFirstFactors,
+      });
+
       const signInAttempt = await signIn.create({
         identifier: trimmedEmail,
         password,
       });
-  
+
+      console.log('[Auth Debug] signInAttempt:', {
+        status: signInAttempt.status,
+        supportedIdentifiers: signInAttempt.supportedIdentifiers,
+        supportedFirstFactors: signInAttempt.supportedFirstFactors,
+        createdSessionId: signInAttempt.createdSessionId,
+      });
+
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
         router.replace("/store-select");
       } else {
-        console.error(JSON.stringify(signInAttempt, null, 2));
-        // console.log(signInAttempt)
+        console.error('[Auth Debug] Incomplete sign-in:', JSON.stringify(signInAttempt, null, 2));
         setError("Sign-in incomplete. Please try again.");
       }
     } catch (err: any) {

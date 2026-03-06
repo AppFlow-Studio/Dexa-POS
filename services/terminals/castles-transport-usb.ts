@@ -38,6 +38,7 @@ const SATURN_BAUD_RATE = 115200;
 export class CastlesUsbTransport implements ICastlesTransport {
   private _isOpen = false;
   private _connectedDeviceId: number | null = null;
+  private _lastDataReceivedAt = 0;
 
   // ── Callback arrays (same pattern as TCP transport) ──
   private _dataCallbacks: Array<(chunk: string) => void> = [];
@@ -51,6 +52,11 @@ export class CastlesUsbTransport implements ICastlesTransport {
 
   get isOpen(): boolean {
     return this._isOpen;
+  }
+
+  secondsSinceLastData(): number {
+    if (this._lastDataReceivedAt === 0) return Infinity;
+    return (Date.now() - this._lastDataReceivedAt) / 1000;
   }
 
   /**
@@ -95,6 +101,7 @@ export class CastlesUsbTransport implements ICastlesTransport {
     // Step 5: Subscribe to native events
     this._subscriptions.push(
       addDataListener((event) => {
+        this._lastDataReceivedAt = Date.now();
         for (const cb of [...this._dataCallbacks]) {
           try { cb(event.data); } catch { /* ignore callback errors */ }
         }
@@ -129,6 +136,7 @@ export class CastlesUsbTransport implements ICastlesTransport {
 
     this._connectedDeviceId = device.deviceId;
     this._isOpen = true;
+    this._lastDataReceivedAt = Date.now();
 
     console.log(
       `[CastlesUsbTransport] Connected: deviceId=${device.deviceId}, baud=${SATURN_BAUD_RATE}`,
@@ -163,21 +171,22 @@ export class CastlesUsbTransport implements ICastlesTransport {
 
   /**
    * Write a UTF-8 string to the open serial port.
-   * The native module handles buffering and the 2s write timeout.
+   * Resolves when the native module accepts the write; rejects on failure.
    */
-  write(data: string): void {
+  async write(data: string): Promise<void> {
     if (!this._isOpen) {
       throw new Error('Transport is not open');
     }
-    // Native write is async but we fire-and-forget per spec.
-    // Errors propagate through the onError event channel.
-    usbWrite(data).catch((err: unknown) => {
+    try {
+      await usbWrite(data);
+    } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       console.error('[CastlesUsbTransport] Write error:', error.message);
       for (const cb of [...this._errorCallbacks]) {
         try { cb(error); } catch { /* ignore */ }
       }
-    });
+      throw error;
+    }
   }
 
   // ── Listener management ──

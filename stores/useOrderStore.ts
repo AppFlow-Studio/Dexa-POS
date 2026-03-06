@@ -396,7 +396,11 @@ const pendingSyncOperations = new Map<string, Promise<boolean>>();
 // ============================================================================
 const DRAFT_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const DRAFT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const ORDER_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const COMPLETED_ORDER_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MAX_COMPLETED_ORDERS = 50;
 let draftCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let orderPruneInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Queues an item addition to run after any pending additions complete.
@@ -2260,8 +2264,17 @@ const pendingThrottledBroadcast: Record<string, OrderBroadcastPayload> = {};
 const throttleTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // Timeout for pending-items broadcast blocking (Step 4)
+// Dynamic: min 3s, max 10s, scales with pending item count
 const pendingItemsBlockStart: Record<string, number> = {};
-const PENDING_ITEMS_BLOCK_TIMEOUT_MS = 5000;
+const PENDING_ITEMS_BLOCK_MIN_MS = 3000;
+const PENDING_ITEMS_BLOCK_MAX_MS = 10000;
+
+function getPendingItemsBlockTimeout(pendingItemCount: number): number {
+  return Math.min(
+    PENDING_ITEMS_BLOCK_MAX_MS,
+    PENDING_ITEMS_BLOCK_MIN_MS + pendingItemCount * 500,
+  );
+}
 
 const createDebouncedOrderRefresh = (get: () => OrderState) => {
   return (orderId: string) => {
@@ -2603,18 +2616,19 @@ export const useOrderStore = create<OrderState>()(
             // This prevents cascading re-renders during rapid item additions
             // Timeout after 15s to prevent permanent blocking if item sync fails
             if (isOwnStationOrder && localOrder) {
-              const hasPendingItems = localOrder.items.some(
+              const pendingItems = localOrder.items.filter(
                 (item) => !item.db_order_item_id && !item.isDraft,
               );
+              const hasPendingItems = pendingItems.length > 0;
               if (hasPendingItems) {
                 if (!pendingItemsBlockStart[dbOrderId]) {
                   pendingItemsBlockStart[dbOrderId] = Date.now();
                 }
+                const dynamicTimeout = getPendingItemsBlockTimeout(pendingItems.length);
                 if (
                   Date.now() - pendingItemsBlockStart[dbOrderId] <
-                  PENDING_ITEMS_BLOCK_TIMEOUT_MS
+                  dynamicTimeout
                 ) {
-                  // Let local sync complete first - broadcast will arrive again after sync
                   return;
                 }
                 // Timeout — allow broadcast through, trigger full sync to reconcile
@@ -6718,22 +6732,27 @@ export const useOrderStore = create<OrderState>()(
           clearInactiveOrders: () => {
             const state = get();
             const keepSet = new Set<string>();
+            const now = Date.now();
 
             if (state.activeOrderId) keepSet.add(state.activeOrderId);
             for (const id of state.workingSetOrderIds) keepSet.add(id);
             for (const id of state.unsyncedOrderIds) keepSet.add(id);
 
-            // Single pass: keep orders with pending items OR non-completed own-station orders
             const inactiveStatuses = new Set([
               "completed",
               "voided",
               "cancelled",
               "void",
             ]);
+
+            // Collect completed orders to enforce LRU cap
+            const completedOrders: { id: string; time: number }[] = [];
+
             for (const id of state.orderIds) {
               if (keepSet.has(id)) continue;
               const order = state.ordersById[id];
               if (!order) continue;
+
               // Keep if has pending items
               if (
                 order.items.some(
@@ -6743,13 +6762,32 @@ export const useOrderStore = create<OrderState>()(
                 keepSet.add(id);
                 continue;
               }
+
               // Keep if non-completed own-station order
               if (
                 order.station_id === state.currentStationId &&
                 !inactiveStatuses.has(order.order_status ?? "")
               ) {
                 keepSet.add(id);
+                continue;
               }
+
+              // Evict completed orders older than max age
+              if (inactiveStatuses.has(order.order_status ?? "")) {
+                const orderTime = new Date(order.opened_at || 0).getTime();
+                if (now - orderTime > COMPLETED_ORDER_MAX_AGE_MS) {
+                  continue; // Don't add to keepSet — will be removed
+                }
+                completedOrders.push({ id, time: orderTime });
+              } else {
+                keepSet.add(id);
+              }
+            }
+
+            // LRU: keep only MAX_COMPLETED_ORDERS most recent completed orders
+            completedOrders.sort((a, b) => b.time - a.time);
+            for (let i = 0; i < Math.min(completedOrders.length, MAX_COMPLETED_ORDERS); i++) {
+              keepSet.add(completedOrders[i].id);
             }
 
             const removedCount = state.orderIds.length - keepSet.size;
@@ -6758,7 +6796,6 @@ export const useOrderStore = create<OrderState>()(
             set((draft) => {
               for (const id of draft.orderIds) {
                 if (!keepSet.has(id)) {
-                  // Surgical dbOrderIdIndex maintenance
                   const order = draft.ordersById[id];
                   if (order?.db_order_id) {
                     delete draft.dbOrderIdIndex[order.db_order_id];
@@ -6780,10 +6817,14 @@ export const useOrderStore = create<OrderState>()(
           startDraftCleanup: () => {
             // Run initial cleanup
             get().cleanupAbandonedDrafts();
+            get().clearInactiveOrders();
 
-            // Clear any existing interval
+            // Clear any existing intervals
             if (draftCleanupInterval) {
               clearInterval(draftCleanupInterval);
+            }
+            if (orderPruneInterval) {
+              clearInterval(orderPruneInterval);
             }
 
             // Schedule periodic cleanup
@@ -6791,7 +6832,12 @@ export const useOrderStore = create<OrderState>()(
               get().cleanupAbandonedDrafts();
             }, DRAFT_CLEANUP_INTERVAL_MS);
 
-            console.log("[startDraftCleanup] Started (runs every 15 minutes)");
+            // Schedule periodic order pruning (every 5 min)
+            orderPruneInterval = setInterval(() => {
+              get().clearInactiveOrders();
+            }, ORDER_PRUNE_INTERVAL_MS);
+
+            console.log("[startDraftCleanup] Started (drafts: 15min, pruning: 5min)");
           },
 
           /**
@@ -6801,8 +6847,12 @@ export const useOrderStore = create<OrderState>()(
             if (draftCleanupInterval) {
               clearInterval(draftCleanupInterval);
               draftCleanupInterval = null;
-              console.log("[stopDraftCleanup] Stopped");
             }
+            if (orderPruneInterval) {
+              clearInterval(orderPruneInterval);
+              orderPruneInterval = null;
+            }
+            console.log("[stopDraftCleanup] Stopped");
           },
 
           /**

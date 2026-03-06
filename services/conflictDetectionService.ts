@@ -28,8 +28,7 @@ export function detectConflict(
 ): ConflictInfo | null {
   const localVersion = getOrderVersion(localOrder);
   const serverVersion = serverOrder.sync_version ?? 0;
- console.log("localVersion [detectConflict] localVersion", localVersion);
- console.log("serverVersion [detectConflict] serverVersion", serverVersion);
+
   // No conflict if versions match or server is older
   if (serverVersion <= localVersion) {
     return null;

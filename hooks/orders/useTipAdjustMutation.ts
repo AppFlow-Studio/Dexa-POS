@@ -5,7 +5,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
-import { CastlesService } from "@/services/terminals/castles-service";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
@@ -54,39 +54,35 @@ export function useTipAdjustMutation() {
         if (!host) throw new Error("Castles terminal has no IP address configured");
         const port = terminal.port ?? CASTLES_DEFAULT_PORT;
 
-        const service = new CastlesService();
-        try {
-          await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
-          await service.resetTerminalState();
+        const service = getSharedCastlesService();
+        await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
+        await service.resetTerminalState();
 
-          const counter = getOrCreateCounter({ terminalId: terminal.id, supabaseClient: supabase });
-          if (!counter.isInitialized) await counter.initialize();
+        const counter = getOrCreateCounter({ terminalId: terminal.id, supabaseClient: supabase });
+        if (!counter.isInitialized) await counter.initialize();
 
-          for (const payment of input.payments) {
-            if (Math.abs(payment.newTip - payment.currentTip) < 0.001) continue;
+        for (const payment of input.payments) {
+          if (Math.abs(payment.newTip - payment.currentTip) < 0.001) continue;
 
-            if (!payment.rrn) {
-              show({
-                title: "Warning",
-                message: `Cannot adjust tip — missing RRN (••••${payment.last4 || "????"}).`,
-                type: "warning",
-              });
-              continue;
-            }
-
-            const referenceId = counter.next();
-            const result = await service.tipAdjust({
-              tipAmount: payment.newTip,
-              rrn: payment.rrn,
-              referenceId,
+          if (!payment.rrn) {
+            show({
+              title: "Warning",
+              message: `Cannot adjust tip — missing RRN (••••${payment.last4 || "????"}).`,
+              type: "warning",
             });
-
-            if (!result.success) {
-              throw new Error(result.error || "Castles tip adjust failed.");
-            }
+            continue;
           }
-        } finally {
-          await service.gracefulDisconnect();
+
+          const referenceId = counter.next();
+          const result = await service.tipAdjust({
+            tipAmount: payment.newTip,
+            rrn: payment.rrn,
+            referenceId,
+          });
+
+          if (!result.success) {
+            throw new Error(result.error || "Castles tip adjust failed.");
+          }
         }
       } else {
         // ──── DEJAVOO BRANCH ────

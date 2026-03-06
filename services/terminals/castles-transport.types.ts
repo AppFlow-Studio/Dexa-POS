@@ -17,7 +17,12 @@ export interface ICastlesTransport {
   connect(): Promise<void>;
   disconnect(): void;
   readonly isOpen: boolean;
-  write(data: string): void;
+
+  /** Write data. Resolves when flushed to kernel buffer; rejects on write failure. */
+  write(data: string): Promise<void>;
+
+  /** Seconds since last data received (Infinity if never). For stale-connection detection. */
+  secondsSinceLastData(): number;
 
   // ── Listener management ──
   onData(cb: (chunk: string) => void): void;

@@ -6,7 +6,7 @@
 import { useCallback, useRef } from 'react';
 import { useSupabaseClient } from '@/hooks/useSupabaseClient';
 import { DejavooService } from '@/services/payments/dejavoo';
-import { CastlesService } from '@/services/terminals/castles-service';
+import { getSharedCastlesService } from '@/services/terminals/castles-service';
 import { getOrCreateCounter } from '@/services/terminals/castles-txn-counter';
 import { extractLast4 } from '@/services/terminals/castles-response-mapper';
 import { CASTLES_DEFAULT_PORT, CASTLES_SOCKET_TIMEOUT_MS } from '@/types/castles';
@@ -15,7 +15,6 @@ import { usePaymentTerminalStore } from '@/stores/usePaymentTerminalStore';
 export function usePaymentTerminal() {
   const supabase = useSupabaseClient();
   const dejavooServiceRef = useRef<DejavooService | null>(null);
-  const castlesServiceRef = useRef<CastlesService | null>(null);
 
   const {
     terminals,
@@ -37,13 +36,7 @@ export function usePaymentTerminal() {
     return dejavooServiceRef.current;
   }, [supabase]);
 
-  // Get or create Castles service instance
-  const getCastlesService = useCallback(() => {
-    if (!castlesServiceRef.current) {
-      castlesServiceRef.current = new CastlesService();
-    }
-    return castlesServiceRef.current;
-  }, []);
+  const getCastlesService = useCallback(() => getSharedCastlesService(), []);
 
   // Load terminals for the current station
   const loadTerminals = useCallback(async (locationId: string) => {

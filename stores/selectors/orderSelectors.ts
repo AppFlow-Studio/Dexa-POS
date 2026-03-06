@@ -11,10 +11,43 @@
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { OrderProfile } from "@/lib/types";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useOrderStore } from "../useOrderStore";
 import { useSettingsStore } from "../useSettingsStore";
 import { useStoreSettingsStore } from "../useStoreSettingsStore";
+
+/**
+ * Shallow-compare two arrays of order IDs (string[]).
+ * Returns true if the arrays are referentially or value-equal.
+ */
+function orderIdsEqual(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Stable equality for filtered order arrays.
+ * Compares by order ID list and each order's updatedAt/sync_version.
+ */
+function useStableOrderList(orders: OrderProfile[]): OrderProfile[] {
+  const prev = useRef<OrderProfile[]>(orders);
+  const prevIds = useRef<string>("");
+
+  const fingerprint = orders
+    .map((o) => `${o.id}:${o.sync_version ?? 0}`)
+    .join("|");
+
+  if (fingerprint !== prevIds.current) {
+    prev.current = orders;
+    prevIds.current = fingerprint;
+  }
+
+  return prev.current;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SELECTOR: Active Order Totals (Phase 7 - Derived State)
@@ -215,19 +248,25 @@ export function useOrderTotals(
 // Orders the user is actively working on (persisted across restarts)
 
 export function useWorkingSetOrders(): OrderProfile[] {
-  const ordersById = useOrderStore((s) => s.ordersById);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
+  const orders = useOrderStore((s) => {
+    const result: OrderProfile[] = [];
+    for (const dbId of s.workingSetOrderIds) {
+      const order = s.ordersById[dbId];
+      if (order) result.push(order);
+    }
+    return result;
+  });
 
-  return useMemo(() => {
-    return workingSetOrderIds
-      .map((dbId) => ordersById[dbId])
-      .filter(Boolean)
-      .sort((a, b) => {
-        const aTime = new Date(a.opened_at || 0).getTime();
-        const bTime = new Date(b.opened_at || 0).getTime();
-        return bTime - aTime;
-      });
-  }, [ordersById, workingSetOrderIds]);
+  const sorted = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const aTime = new Date(a.opened_at || 0).getTime();
+      const bTime = new Date(b.opened_at || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [orders]);
+
+  return useStableOrderList(sorted);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -239,64 +278,56 @@ export function useWorkingSetOrders(): OrderProfile[] {
 // - order_status NOT IN ('completed', 'voided', 'cancelled', 'void')
 // - Must have items
 
+const INACTIVE_STATUSES = new Set(["completed", "voided", "cancelled", "void"]);
+const DINE_IN_TYPES = new Set(["Dine In", "dine_in"]);
+
 export function useStationOrders(): OrderProfile[] {
   const ordersById = useOrderStore((s) => s.ordersById);
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
 
-  return useMemo(() => {
+  const cutoffTime = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysToShow);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }, [daysToShow]);
+
+  const filtered = useMemo(() => {
     if (!currentStationId) return [];
 
-    const inactiveStatuses = new Set([
-      "completed",
-      "voided",
-      "cancelled",
-      "void",
-    ]);
-    const dineInTypes = new Set(["Dine In", "dine_in"]);
     const workingSet = new Set(workingSetOrderIds);
 
-    // Calculate the cutoff date based on daysToShow setting
-    // 0 = today only, 1 = today + yesterday, etc.
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
-    cutoffDate.setHours(0, 0, 0, 0);
-    const cutoffTime = cutoffDate.getTime();
+    const result: OrderProfile[] = [];
+    const keys = Object.keys(ordersById);
+    for (let i = 0; i < keys.length; i++) {
+      const order = ordersById[keys[i]];
+      if (DINE_IN_TYPES.has(order.order_type ?? "")) continue;
+      if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
+      if (!order.items || order.items.length === 0) continue;
+      if (order.order_status === "draft") continue;
 
-    // Filter relevant orders directly
-    return Object.values(ordersById)
-      .filter((order) => {
-        // Exclude Dine In orders (handled by table/floor plan flow)
-        if (dineInTypes.has(order.order_type ?? "")) return false;
+      const orderTime = new Date(order.opened_at || 0).getTime();
+      if (orderTime < cutoffTime) continue;
 
-        // Must not be inactive
-        if (inactiveStatuses.has(order.order_status ?? "")) return false;
+      const isInWorkingSet =
+        order.db_order_id && workingSet.has(order.db_order_id);
+      const isOurStationOrder = order.station_id === currentStationId;
+      if (isInWorkingSet || isOurStationOrder) {
+        result.push(order);
+      }
+    }
 
-        // Must have items
-        if (!order.items || order.items.length === 0) return false;
+    result.sort((a, b) => {
+      const aTime = new Date(a.opened_at || 0).getTime();
+      const bTime = new Date(b.opened_at || 0).getTime();
+      return bTime - aTime;
+    });
+    return result;
+  }, [ordersById, currentStationId, workingSetOrderIds, cutoffTime]);
 
-        // Must not be draft status
-        if (order.order_status === "draft") return false;
-
-        // Filter by date - only show orders within the configured day range
-        const orderTime = new Date(order.opened_at || 0).getTime();
-        if (orderTime < cutoffTime) return false;
-
-        // Include if: in working set OR our station's order
-        const isInWorkingSet =
-          order.db_order_id && workingSet.has(order.db_order_id);
-        const isOurStationOrder = order.station_id === currentStationId;
-
-        return isInWorkingSet || isOurStationOrder;
-      })
-      .sort((a, b) => {
-        // Most recent first
-        const aTime = new Date(a.opened_at || 0).getTime();
-        const bTime = new Date(b.opened_at || 0).getTime();
-        return bTime - aTime;
-      });
-  }, [ordersById, currentStationId, workingSetOrderIds, daysToShow]);
+  return useStableOrderList(filtered);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -319,37 +350,30 @@ export function useOtherStationOrders(): OrderProfile[] {
   const currentStationId = useOrderStore((s) => s.currentStationId);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
 
-  return useMemo(() => {
+  const filtered = useMemo(() => {
     if (!currentStationId) return [];
 
     const workingSet = new Set(workingSetOrderIds);
-    const inactiveStatuses = new Set([
-      "completed",
-      "voided",
-      "cancelled",
-      "void",
-    ]);
+    const result: OrderProfile[] = [];
+    const keys = Object.keys(ordersById);
 
-    return Object.values(ordersById)
-      .filter((order) => {
-        // Must be from another station
-        if (order.station_id === currentStationId) return false;
+    for (let i = 0; i < keys.length; i++) {
+      const order = ordersById[keys[i]];
+      if (order.station_id === currentStationId) continue;
+      if (order.db_order_id && workingSet.has(order.db_order_id)) continue;
+      if (INACTIVE_STATUSES.has(order.order_status ?? "")) continue;
+      result.push(order);
+    }
 
-        // Must not be in working set (those show in StationOrders)
-        if (order.db_order_id && workingSet.has(order.db_order_id))
-          return false;
-
-        // Must not be inactive
-        if (inactiveStatuses.has(order.order_status ?? "")) return false;
-
-        return true;
-      })
-      .sort((a, b) => {
-        const aTime = new Date(a.opened_at || 0).getTime();
-        const bTime = new Date(b.opened_at || 0).getTime();
-        return bTime - aTime;
-      });
+    result.sort((a, b) => {
+      const aTime = new Date(a.opened_at || 0).getTime();
+      const bTime = new Date(b.opened_at || 0).getTime();
+      return bTime - aTime;
+    });
+    return result;
   }, [ordersById, currentStationId, workingSetOrderIds]);
+
+  return useStableOrderList(filtered);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -395,7 +419,7 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
   const currentStation = useOrderStore((s) => s.currentStation);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
 
-  return useMemo(() => {
+  const filtered = useMemo(() => {
     if (!currentStationId || !currentStation) return [];
 
     const inactiveStatuses = new Set([
@@ -483,11 +507,12 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     }
 
     // Sort by created_at descending (most recent first)
-    return result.sort((a, b) => {
+    result.sort((a, b) => {
       const aTime = new Date(a.opened_at || 0).getTime();
       const bTime = new Date(b.opened_at || 0).getTime();
       return bTime - aTime;
     });
+    return result;
   }, [
     ordersById,
     currentStationId,
@@ -495,6 +520,8 @@ export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
     workingSetOrderIds,
     filters,
   ]);
+
+  return useStableOrderList(filtered);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

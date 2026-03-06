@@ -10,7 +10,7 @@
 // ============================================================
 
 import {
-    CastlesService,
+    getSharedCastlesService,
     probeCastlesTerminal,
 } from "@/services/terminals/castles-service";
 import type { CastlesTransportType } from "@/services/terminals/castles-transport.types";
@@ -122,14 +122,12 @@ export default function CastlesTerminalTestScreen() {
   const [terminalStatus, setTerminalStatus] = useState<string | null>(null);
 
   // Diagnostic tuning
-  const [delimiter, setDelimiterState] = useState<string>("");
-  const [noDelay, setNoDelay] = useState(false);
   const [skipR2I, setSkipR2I] = useState(false);
   const [postConnectDelay, setPostConnectDelay] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Refs
-  const serviceRef = useRef<CastlesService>(new CastlesService());
+  const serviceRef = useRef(getSharedCastlesService());
   const scrollRef = useRef<ScrollView>(null);
   const logIdRef = useRef(0);
 
@@ -164,11 +162,9 @@ export default function CastlesTerminalTestScreen() {
 
   useEffect(() => {
     const s = serviceRef.current;
-    s.setDelimiter(delimiter);
-    s.setNoDelay(noDelay);
     s.setSkipReturn2Idle(skipR2I);
     s.setPostConnectDelay(postConnectDelay);
-  }, [delimiter, noDelay, skipR2I, postConnectDelay]);
+  }, [skipR2I, postConnectDelay]);
 
   // ── Status notification callback ──
 
@@ -185,6 +181,14 @@ export default function CastlesTerminalTestScreen() {
       service.setOnStatusNotification(null);
     };
   }, [addLog]);
+
+  // ── Unmount cleanup: release the terminal session ──
+
+  useEffect(() => {
+    return () => {
+      serviceRef.current.gracefulDisconnect();
+    };
+  }, []);
 
   // ── Test 1: TCP Probe ──
 
@@ -583,15 +587,15 @@ export default function CastlesTerminalTestScreen() {
       }
 
       if (result.dataReceived) {
-        addLog(`Working delimiter: ${result.delimiterUsed}`, "success");
+        addLog(`Terminal responded successfully`, "success");
         if (result.rawResponse) {
           addLog(`Raw response: ${result.rawResponse.slice(0, 300)}`, "data");
         }
       } else {
-        addLog("No delimiter produced a response from the terminal", "error");
+        addLog("Terminal did not respond to getData command", "error");
         if (result.tcpConnected) {
           addLog("→ TCP connects fine — the issue is at the application layer", "warn");
-          addLog("→ Try toggling noDelay, skip return2Idle, or post-connect delay", "warn");
+          addLog("→ Try toggling skip return2Idle or post-connect delay", "warn");
         }
       }
     } catch (err) {
@@ -863,47 +867,6 @@ export default function CastlesTerminalTestScreen() {
       {/* Diagnostic settings panel */}
       {settingsOpen && (
         <View style={styles.settingsPanel}>
-          {/* Delimiter */}
-          <View style={styles.settingsRow}>
-            <Text style={styles.settingsLabel}>Delimiter</Text>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {([
-                { label: "None", value: "" },
-                { label: "\\n", value: "\n" },
-                { label: "\\r\\n", value: "\r\n" },
-                { label: "\\0", value: "\0" },
-              ] as const).map((opt) => (
-                <TouchableOpacity
-                  key={opt.label}
-                  style={[styles.pill, delimiter === opt.value && styles.pillActive]}
-                  onPress={() => setDelimiterState(opt.value)}
-                >
-                  <Text style={[styles.pillText, delimiter === opt.value && styles.pillTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* TCP_NODELAY */}
-          <View style={styles.settingsRow}>
-            <Text style={styles.settingsLabel}>TCP_NODELAY</Text>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {([false, true] as const).map((val) => (
-                <TouchableOpacity
-                  key={String(val)}
-                  style={[styles.pill, noDelay === val && styles.pillActive]}
-                  onPress={() => setNoDelay(val)}
-                >
-                  <Text style={[styles.pillText, noDelay === val && styles.pillTextActive]}>
-                    {val ? "On" : "Off"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
           {/* Skip return2Idle */}
           <View style={styles.settingsRow}>
             <Text style={styles.settingsLabel}>Skip return2Idle</Text>

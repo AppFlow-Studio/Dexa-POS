@@ -18,7 +18,7 @@ import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
-import { CastlesService } from "@/services/terminals/castles-service";
+import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { extractLast4, parseCastlesReturnCode } from "@/services/terminals/castles-response-mapper";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
@@ -70,7 +70,6 @@ const CardPaymentView = () => {
     message: "",
   });
   const currentRefIdRef = useRef<string | null>(null);
-  const castlesServiceRef = useRef<CastlesService | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
   // Sync isTransactionProcessing with status and error modal
@@ -203,9 +202,8 @@ const CardPaymentView = () => {
 
             console.log("[CardPayment] Castles sale flow:", { host, port, totalToPay, tipAmount, grandTotal });
 
-            // 1. Connect + reset
-            const service = new CastlesService();
-            castlesServiceRef.current = service;
+            // 1. Connect + reset (shared singleton — one socket to the terminal)
+            const service = getSharedCastlesService();
             await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
             await service.resetTerminalState();
 
@@ -232,10 +230,6 @@ const CardPaymentView = () => {
               error: result.error,
               hasRaw: !!result.raw,
             });
-
-            // Clean up socket after sale
-            await service.gracefulDisconnect();
-            castlesServiceRef.current = null;
 
             // 4. Handle failure
             if (!result.success) {
@@ -720,11 +714,9 @@ const CardPaymentView = () => {
                   setIsCancelling(true);
                   const terminal = selectedStation?.payment_terminal;
                   try {
-                    if (terminal?.terminal_type === 'castles' && castlesServiceRef.current) {
-                      // Castles: graceful disconnect sends return2Idle + clean close
-                      await castlesServiceRef.current.gracefulDisconnect();
-                      castlesServiceRef.current = null;
-                    } else if (terminal && terminal.terminal_type !== 'castles') {
+                    if (terminal?.terminal_type === 'castles') {
+                      await getSharedCastlesService().gracefulDisconnect();
+                    } else if (terminal) {
                       // Dejavoo: abort via SPIN API
                       const DejavooAPI = new DejavooSpinAPI(supabase);
                       await DejavooAPI.loadTerminal(

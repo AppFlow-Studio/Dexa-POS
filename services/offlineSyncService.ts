@@ -18,6 +18,7 @@ import {
   isSynced,
 } from "@/lib/offlineIdRegistry";
 import { isLocalOrder } from "@/utils/orderIdHelpers";
+import { v4 as uuidv4 } from "uuid";
 // @ts-ignore - NetInfo types not recognized but package is installed
 import NetInfo from "@react-native-community/netinfo";
 // @ts-ignore
@@ -109,6 +110,7 @@ export interface OfflineOperation {
   bundleSequence?: number;     // Order within bundle (0-indexed)
   rollbackOnBundleFailure?: boolean; // Whether to rollback if bundle fails
   expectedVersion?: number;    // For optimistic locking checks
+  idempotencyKey?: string;      // UUID for server-side dedup, auto-generated if not provided
 }
 
 export interface SyncResult {
@@ -123,8 +125,49 @@ export interface SyncResult {
 // ============================================================================
 
 const STORAGE_KEY = "offline_operations_queue";
+const DEAD_LETTER_STORAGE_KEY = "offline_dead_letter_queue";
 const MAX_RETRY_ATTEMPTS = 5;
 const DEBOUNCE_MS = 3000;
+const MAX_QUEUE_SIZE = 500;
+const OPERATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const PAYMENT_TYPES: OperationType[] = [
+  "process_payment",
+  "process_cash_payment",
+  "process_card_payment",
+];
+
+// ============================================================================
+// ERROR CLASSIFICATION
+// ============================================================================
+
+/**
+ * Classify an error as transient (retry-safe) or permanent (should dead-letter).
+ *
+ * Transient: network timeouts, 5xx, 408, 429
+ * Permanent: 400, 401, 403, 404, 409, 422 (validation/auth errors)
+ */
+export function isTransientError(error: any): boolean {
+  if (!error) return true; // No error info → assume transient
+  const status =
+    error.status ?? error.code ?? error.statusCode ?? error.httpStatus;
+  if (typeof status === "number") {
+    if (status >= 500) return true;
+    if (status === 408 || status === 429) return true;
+    return false; // 4xx are permanent
+  }
+  const msg = (error.message ?? error.msg ?? "").toLowerCase();
+  if (
+    msg.includes("network") ||
+    msg.includes("timeout") ||
+    msg.includes("econnrefused") ||
+    msg.includes("enotfound") ||
+    msg.includes("fetch failed")
+  ) {
+    return true;
+  }
+  return true; // Default: assume transient so we retry
+}
 
 // ============================================================================
 // AUTO-RETRY CONFIGURATION (Exponential Backoff)
@@ -158,6 +201,7 @@ let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 let isOnline = true;
 let pendingOperations: OfflineOperation[] = [];
+let deadLetterQueue: OfflineOperation[] = [];
 let syncInProgress = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeNetInfo: (() => void) | null = null;
@@ -429,6 +473,7 @@ export async function queueOperation(
     status: "pending",
     priority,
     entityKey,
+    idempotencyKey: op.idempotencyKey || uuidv4(),
   };
 
   pendingOperations.push(operation);
@@ -506,6 +551,7 @@ export async function queueOperationBundle(
       status: "pending",
       priority,
       entityKey,
+      idempotencyKey: op.idempotencyKey || uuidv4(),
       // Bundle-specific fields
       bundleId,
       bundleSequence: i,
@@ -820,6 +866,147 @@ export function logQueueStatus(): void {
 }
 
 // ============================================================================
+// DEAD LETTER QUEUE MANAGEMENT
+// ============================================================================
+
+function moveToDeadLetter(operation: OfflineOperation): void {
+  deadLetterQueue.push({
+    ...operation,
+    status: "failed" as const,
+  });
+  saveDeadLetterToStorage();
+}
+
+function loadDeadLetterFromStorage(): void {
+  try {
+    const stored = getSyncJSON<OfflineOperation[]>(DEAD_LETTER_STORAGE_KEY);
+    if (stored) {
+      deadLetterQueue = stored;
+    }
+  } catch (error) {
+    console.error("[OfflineSync] Failed to load dead letter queue:", error);
+    deadLetterQueue = [];
+  }
+}
+
+function saveDeadLetterToStorage(): void {
+  try {
+    setSyncJSON(DEAD_LETTER_STORAGE_KEY, deadLetterQueue);
+  } catch (error) {
+    console.error("[OfflineSync] Failed to save dead letter queue:", error);
+  }
+}
+
+/**
+ * Get all dead-lettered operations for operator inspection.
+ */
+export function getDeadLetterOperations(): OfflineOperation[] {
+  return [...deadLetterQueue];
+}
+
+/**
+ * Get count of dead-lettered operations.
+ */
+export function getDeadLetterCount(): number {
+  return deadLetterQueue.length;
+}
+
+/**
+ * Retry a dead-lettered operation by moving it back to the pending queue.
+ */
+export async function retryDeadLetterOperation(operationId: string): Promise<void> {
+  const idx = deadLetterQueue.findIndex((op) => op.id === operationId);
+  if (idx === -1) return;
+
+  const op = deadLetterQueue[idx];
+  deadLetterQueue.splice(idx, 1);
+  saveDeadLetterToStorage();
+
+  op.status = "pending";
+  op.retryCount = 0;
+  pendingOperations.push(op);
+  await saveQueueToStorage();
+  onQueueChange?.(getActivePendingCount());
+
+  if (isOnline) scheduleSync();
+}
+
+/**
+ * Permanently discard a dead-lettered operation.
+ */
+export function discardDeadLetterOperation(operationId: string): void {
+  deadLetterQueue = deadLetterQueue.filter((op) => op.id !== operationId);
+  saveDeadLetterToStorage();
+}
+
+/**
+ * Prune expired operations from the pending queue.
+ * Non-payment ops older than OPERATION_TTL_MS are discarded.
+ * Payment ops are moved to dead letter for manual review.
+ */
+export async function pruneExpiredOperations(): Promise<number> {
+  const cutoff = Date.now() - OPERATION_TTL_MS;
+  let pruned = 0;
+
+  pendingOperations = pendingOperations.filter((op) => {
+    if (op.status === "discarded") return false;
+    const opTime = new Date(op.timestamp).getTime();
+    if (opTime >= cutoff) return true;
+
+    pruned++;
+    if (PAYMENT_TYPES.includes(op.type)) {
+      moveToDeadLetter(op);
+      console.log(`[OfflineSync] Expired payment op moved to dead letter: ${op.id}`);
+    } else {
+      console.log(`[OfflineSync] Expired op discarded: ${op.type} (${op.id})`);
+    }
+    return false;
+  });
+
+  if (pruned > 0) {
+    await saveQueueToStorage();
+    onQueueChange?.(getActivePendingCount());
+  }
+  return pruned;
+}
+
+/**
+ * Enforce queue size limit. Drops oldest non-critical operations when exceeded.
+ */
+async function enforceQueueSizeLimit(): Promise<void> {
+  const active = pendingOperations.filter(
+    (op) => op.status !== "discarded" && op.status !== "failed"
+  );
+  if (active.length <= MAX_QUEUE_SIZE) return;
+
+  const excess = active.length - MAX_QUEUE_SIZE;
+  const nonCriticalTypes: OperationType[] = [
+    "update_order_status",
+    "fire_course",
+    "update_session_status",
+  ];
+
+  let dropped = 0;
+  pendingOperations = pendingOperations.map((op) => {
+    if (
+      dropped < excess &&
+      op.status === "pending" &&
+      nonCriticalTypes.includes(op.type)
+    ) {
+      dropped++;
+      return { ...op, status: "discarded" as const };
+    }
+    return op;
+  });
+
+  if (dropped > 0) {
+    console.warn(`[OfflineSync] Queue size limit exceeded, dropped ${dropped} non-critical ops`);
+    await saveQueueToStorage();
+    onQueueChange?.(getActivePendingCount());
+  }
+}
+
+// ============================================================================
 // QUEUE PROCESSING
 // ============================================================================
 
@@ -974,6 +1161,36 @@ async function updateBlockedOperations(): Promise<void> {
 }
 
 /**
+ * Handle a failed operation: classify the error and decide between
+ * retry (transient), dead-letter (permanent or max retries), or discard.
+ */
+async function handleOperationFailure(
+  operation: OfflineOperation,
+  error: any,
+): Promise<void> {
+  const permanent = error && !isTransientError(error);
+
+  if (permanent || operation.retryCount >= MAX_RETRY_ATTEMPTS) {
+    const reason = permanent ? "permanent error" : "max retries";
+    console.log(
+      `[OfflineSync] ✗ DEAD-LETTERED (${reason}): ${operation.type} (${operation.id})`
+    );
+    // Remove from active queue and move to dead letter
+    pendingOperations = pendingOperations.filter((op) => op.id !== operation.id);
+    moveToDeadLetter(operation);
+    await saveQueueToStorage();
+    onOperationFailed?.(operation);
+  } else {
+    operation.status = "pending";
+    await saveQueueToStorage();
+    console.log(
+      `[OfflineSync] ⟳ RETRY: ${operation.type} (${operation.id}) - attempt ${operation.retryCount}/${MAX_RETRY_ATTEMPTS}`
+    );
+    scheduleAutoRetry(operation);
+  }
+}
+
+/**
  * Process all pending operations in priority order with dependency tracking.
  */
 async function processQueue(): Promise<void> {
@@ -1068,28 +1285,9 @@ async function processQueue(): Promise<void> {
         // After completing an operation, unblock dependent operations
         await updateBlockedOperations();
       } else {
-        // Increment retry count
         operation.retryCount++;
         failCount++;
-
-        if (operation.retryCount >= MAX_RETRY_ATTEMPTS) {
-          // Max retries reached - mark as failed for manual intervention
-          console.log(`[OfflineSync] ✗ FAILED (max retries): ${operation.type} (${operation.id})`);
-          console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`);
-          operation.status = "failed";
-          await saveQueueToStorage();
-
-          // Notify about failed operation (especially for payments)
-          onOperationFailed?.(operation);
-        } else {
-          // Reset to pending for next retry with exponential backoff
-          operation.status = "pending";
-          await saveQueueToStorage();
-          console.log(`[OfflineSync] ⟳ RETRY: ${operation.type} (${operation.id}) - attempt ${operation.retryCount}/${MAX_RETRY_ATTEMPTS}`);
-
-          // Schedule automatic retry with exponential backoff
-          scheduleAutoRetry(operation);
-        }
+        handleOperationFailure(operation, null);
       }
     } catch (error) {
       console.error(
@@ -1099,17 +1297,7 @@ async function processQueue(): Promise<void> {
       );
       operation.retryCount++;
       failCount++;
-
-      if (operation.retryCount >= MAX_RETRY_ATTEMPTS) {
-        operation.status = "failed";
-        await saveQueueToStorage();
-        onOperationFailed?.(operation);
-      } else {
-        operation.status = "pending";
-        await saveQueueToStorage();
-        // Schedule automatic retry with exponential backoff
-        scheduleAutoRetry(operation);
-      }
+      handleOperationFailure(operation, error);
     }
   }
 
@@ -1140,15 +1328,32 @@ async function loadQueueFromStorage(): Promise<void> {
     if (stored) {
       pendingOperations = stored;
       // Reset any "processing" status to "pending" (in case app crashed during sync)
-      pendingOperations = pendingOperations.map((op) =>
-        op.status === "processing" ? { ...op, status: "pending" as const } : op
-      );
+      // Also backfill idempotencyKey for operations loaded from storage pre-upgrade
+      pendingOperations = pendingOperations.map((op) => ({
+        ...op,
+        status: op.status === "processing" ? ("pending" as const) : op.status,
+        idempotencyKey: op.idempotencyKey || uuidv4(),
+      }));
       console.log(
         "[OfflineSync] Loaded",
         pendingOperations.length,
         "operations from storage"
       );
     }
+
+    // Load dead letter queue
+    loadDeadLetterFromStorage();
+    if (deadLetterQueue.length > 0) {
+      console.log(
+        "[OfflineSync] Dead letter queue:",
+        deadLetterQueue.length,
+        "operations"
+      );
+    }
+
+    // Prune expired operations on load
+    await pruneExpiredOperations();
+    await enforceQueueSizeLimit();
   } catch (error) {
     console.error("[OfflineSync] Failed to load queue from storage:", error);
     pendingOperations = [];

@@ -59,11 +59,15 @@ export const syncStorage = createMMKV({
  */
 const debouncedWriters: Record<string, ReturnType<typeof debounce>> = {};
 
+const ORDER_STORE_KEY = "order-store-storage";
+
 function debouncedSetItem(name: string, value: string): void {
+  // Use longer debounce for the order store (large payload)
+  const delay = name === ORDER_STORE_KEY ? 500 : 300;
   if (!debouncedWriters[name]) {
     debouncedWriters[name] = debounce((v: string) => {
       storage.set(name, v);
-    }, 300);
+    }, delay);
   }
   debouncedWriters[name](value);
 }
