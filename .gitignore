@@ -57,3 +57,4 @@ android/local.properties
 android/*.iml
 android/.idea/
 android/.cxx
+android/gradle.properties

@@ -16,11 +16,6 @@ import com.facebook.soloader.SoLoader
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
-import com.temurappflowstudios.dexapos.tcpserver.TcpServerPackage
-import com.temurappflowstudios.dexapos.hardware.HardwareDetectionPackage
-import com.temurappflowstudios.dexapos.printer.LandiPrinterPackage
-import com.temurappflowstudios.dexapos.secondarydisplay.SecondaryDisplayPackage
-
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
@@ -30,10 +25,6 @@ class MainApplication : Application(), ReactApplication {
             val packages = PackageList(this).packages
             // Packages that cannot be autolinked yet can be added manually here, for example:
             // packages.add(MyReactNativePackage())
-            packages.add(TcpServerPackage())
-            packages.add(HardwareDetectionPackage())
-            packages.add(LandiPrinterPackage())
-            packages.add(SecondaryDisplayPackage())
             return packages
           }
 

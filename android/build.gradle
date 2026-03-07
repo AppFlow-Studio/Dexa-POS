@@ -26,11 +26,9 @@ allprojects {
       // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
       url(reactNativeAndroidDir)
     }
-
-    flatDir {
-      dirs "$rootDir/../node_modules/react-native-star-io10/android/src/lib"
-    }
-
+flatDir {
+            dirs "$rootDir/../node_modules/react-native-star-io10/android/src/lib"
+        }
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
