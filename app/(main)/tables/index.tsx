@@ -4,6 +4,7 @@ import Sidebar from "@/components/tables/Sidebar";
 import WaitlistBottomSheet from "@/components/tables/WaitlistBottomSheet";
 import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
+import TableContextSheet from "@/components/tables/TableContextSheet";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -36,13 +37,15 @@ import { useShallow } from "zustand/react/shallow";
 const TablesScreen = () => {
   const router = useRouter();
   // Grouped data selectors (shallow compare — one re-render instead of 4)
-  const { floorPlans, activeFloorPlanId, tables, floorPlanLoading } =
+  const { floorPlans, activeFloorPlanId, tables, floorPlanLoading, sections, sectionsById } =
     useFloorPlanStore(
       useShallow((s) => ({
         floorPlans: s.floorPlans,
         activeFloorPlanId: s.activeFloorPlanId,
         tables: s.tables,
         floorPlanLoading: s.isLoading,
+        sections: s.sections,
+        sectionsById: s.sectionsById,
       })),
     );
 
@@ -68,6 +71,8 @@ const TablesScreen = () => {
   const [searchText, setSearchText] = useState("");
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
   const [isMergeMode, setMergeMode] = useState(false);
+  const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -105,10 +110,16 @@ const TablesScreen = () => {
 
   // Filter tables by search (uses debounced searchText)
   const filteredTables = useMemo(() => {
-    if (!searchText.trim()) return tables;
-    const query = searchText.toLowerCase();
-    return tables.filter((t) => t.name?.toLowerCase().includes(query));
-  }, [tables, searchText]);
+    let result = tables;
+    if (searchText.trim()) {
+      const query = searchText.toLowerCase();
+      result = result.filter((t) => t.name?.toLowerCase().includes(query));
+    }
+    if (activeSectionId) {
+      result = result.filter((t) => t.section_id === activeSectionId);
+    }
+    return result;
+  }, [tables, searchText, activeSectionId]);
 
   const handleTablePress = useCallback((table: FloorPlanObject) => {
     if (!isClockedIn) {
@@ -116,49 +127,78 @@ const TablesScreen = () => {
       return;
     }
 
-    const status = (table.session?.status || "available").toLowerCase();
-
     // MERGE MODE: Multi-select behavior
     if (isMergeMode) {
       toggleTableSelection(table.id);
       return;
     }
 
-    // NORMAL MODE: Original behavior
-    switch (status) {
-      case "available":
-        clearSelection();
-        toggleTableSelection(table.id);
-        setGuestModalOpen(true);
-        break;
-      case "seated":
-      case "ordered":
-      case "served":
-      case "in use":
-      case "check_presented":
-      case "paid":
-        // OPTIMIZED: Prefetch order before navigation for faster table view load
-        // This sets the active order immediately so the table view doesn't need to look it up
-        // Phase 2.2: Use universal getOrder() for O(1) lookup
-        if (table.session?.order_id) {
-          const existingOrder = getOrder(table.session.order_id);
-          if (existingOrder) {
-            setActiveOrder(existingOrder.id);
-          }
+    // NORMAL MODE: Open context sheet
+    setContextTable(table);
+  }, [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection]);
+
+  const handleSheetSeatGuests = useCallback((table: FloorPlanObject) => {
+    setContextTable(null);
+    clearSelection();
+    toggleTableSelection(table.id);
+    setGuestModalOpen(true);
+  }, [clearSelection, toggleTableSelection]);
+
+  const handleSheetNavigate = useCallback(
+    (tableId: string) => {
+      setContextTable(null);
+      const table = tables.find((t) => t.id === tableId);
+      if (table?.session?.order_id) {
+        const existingOrder = getOrder(table.session.order_id);
+        if (existingOrder) {
+          setActiveOrder(existingOrder.id);
         }
-        // Use replace to avoid stacking table screens
-        router.replace({
-          pathname: "/tables/[tableId]",
-          params: { tableId: table.id },
-        });
-        break;
-      case "cleaning":
-        router.replace(`/tables/clean-table/${table.id}`);
-        break;
-      default:
-        break;
-    }
-  }, [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection, clearSelection, getOrder, setActiveOrder, router]);
+      }
+      router.replace({
+        pathname: "/tables/[tableId]",
+        params: { tableId },
+      });
+    },
+    [tables, getOrder, setActiveOrder, router],
+  );
+
+  const handleTableLongPress = useCallback(
+    (table: FloorPlanObject) => {
+      if (!isClockedIn) {
+        showClockInWall();
+        return;
+      }
+
+      // If table is occupied, navigate directly to the order to add items
+      if (table.session && table.session.status !== "available") {
+        // First try to get order by order_id
+        let existingOrder = table.session.order_id ? getOrder(table.session.order_id) : null;
+
+        // Fallback: scan for order by service_location_id (table id)
+        if (!existingOrder) {
+          const allOrders = useOrderStore.getState().ordersById;
+          existingOrder = Object.values(allOrders).find(
+            (o) => o.service_location_id === table.id && o.order_status !== "void"
+          );
+        }
+
+        if (existingOrder) {
+          setActiveOrder(existingOrder.id);
+          router.replace({
+            pathname: "/tables/[tableId]",
+            params: { tableId: table.id },
+          });
+          return;
+        }
+      }
+
+      // For available tables, show guest count modal
+      clearSelection();
+      toggleTableSelection(table.id);
+      setGuestModalOpen(true);
+    },
+    [isClockedIn, showClockInWall, clearSelection, toggleTableSelection, getOrder, setActiveOrder, router],
+  );
 
   // OPTIMIZED: Use Set for O(1) membership tests instead of .includes() O(n)
   const selectedTableIdsSet = useMemo(
@@ -432,6 +472,56 @@ const TablesScreen = () => {
             </TouchableOpacity>
           </View>
 
+          {/* Section Filter Pills */}
+          {sections.length > 0 && (
+            <View
+              className="flex-row gap-2 px-4 py-3 overflow-x-auto"
+              style={{ marginHorizontal: -8 }}
+            >
+              <TouchableOpacity
+                onPress={() => setActiveSectionId(null)}
+                className={`px-3 py-1.5 rounded-full border ${
+                  !activeSectionId
+                    ? "bg-teal border-teal"
+                    : "border-border bg-transparent"
+                }`}
+              >
+                <Text
+                  className={`text-sm font-semibold ${
+                    !activeSectionId ? "text-black" : "text-label"
+                  }`}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+              {sections.map((section) => (
+                <TouchableOpacity
+                  key={section.id}
+                  onPress={() =>
+                    setActiveSectionId(
+                      activeSectionId === section.id ? null : section.id,
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-full border"
+                  style={{
+                    borderColor: section.color,
+                    backgroundColor:
+                      activeSectionId === section.id ? section.color : "transparent",
+                  }}
+                >
+                  <Text
+                    className="text-sm font-semibold text-white"
+                    style={{
+                      color: activeSectionId === section.id ? "#000" : section.color,
+                    }}
+                  >
+                    {section.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {/* Map Container */}
           <View className="bg-screen border border-border rounded-xl flex-1 relative">
             {!isReady || (floorPlanLoading && tables.length === 0) ? (
@@ -443,6 +533,8 @@ const TablesScreen = () => {
                 onTableSelect={handleTablePress}
                 showConnections={true}
                 layoutId={activeFloorPlanId || ""}
+                sectionsById={sectionsById}
+                onTableLongPress={handleTableLongPress}
               />
             )}
 
@@ -462,29 +554,61 @@ const TablesScreen = () => {
 
             {/* Status Indicators (Bottom Center) */}
             <View className="absolute bottom-3 left-0 right-0 flex-row justify-center">
-            <View className="flex-row items-center gap-4 p-2 rounded-full bg-screen/90 border border-border">
+            <View className="flex-row items-center gap-4 p-3 rounded-full bg-screen/90 border border-border flex-wrap">
+              {/* Available */}
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.Available }} />
-                <Text className="text-base font-semibold text-label">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.available }} />
+                <Text className="text-sm font-semibold text-label">
                   Available
                 </Text>
               </View>
+              {/* Seated */}
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS["In Use"] }} />
-                <Text className="text-base font-semibold text-label">
-                  In Use
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.seated }} />
+                <Text className="text-sm font-semibold text-label">
+                  Seated
                 </Text>
               </View>
+              {/* Ordered */}
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS["Needs Cleaning"] }} />
-                <Text className="text-base font-semibold text-label">
-                  Needs Cleaning
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.ordered }} />
+                <Text className="text-sm font-semibold text-label">
+                  Ordered
                 </Text>
               </View>
+              {/* Served */}
               <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.Overtime }} />
-                <Text className="text-base font-semibold text-label">
-                  Overtime
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.served }} />
+                <Text className="text-sm font-semibold text-label">
+                  Served
+                </Text>
+              </View>
+              {/* Check Presented */}
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.check_presented }} />
+                <Text className="text-sm font-semibold text-label">
+                  Check
+                </Text>
+              </View>
+              {/* Paid */}
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.paid }} />
+                <Text className="text-sm font-semibold text-label">
+                  Paid
+                </Text>
+              </View>
+              {/* Cleaning */}
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.cleaning }} />
+                <Text className="text-sm font-semibold text-label">
+                  Cleaning
+                </Text>
+              </View>
+              {/* Not in Service */}
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.not_in_service }} />
+                <Text className="text-sm font-semibold text-label">
+                  Blocked
                 </Text>
               </View>
             </View>
@@ -493,6 +617,12 @@ const TablesScreen = () => {
         </View>
         <WaitlistBottomSheet />
       </View>
+      <TableContextSheet
+        table={contextTable}
+        onClose={() => setContextTable(null)}
+        onSeatGuests={handleSheetSeatGuests}
+        onNavigate={handleSheetNavigate}
+      />
       <GuestCountModal
         isOpen={isGuestModalOpen}
         onClose={() => {

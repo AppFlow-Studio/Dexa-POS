@@ -1,8 +1,9 @@
 // /components/tables/TableLayoutView.tsx
 
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { FloorPlanObject } from "@/types/db-floor-plan-types";
+import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { colors } from "@/lib/theme";
+import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -17,8 +18,9 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  withSpring,
 } from "react-native-reanimated";
-import Svg, { Line } from "react-native-svg";
+import Svg, { Line, Rect as SvgRect, Text as SvgText } from "react-native-svg";
 import DraggableTable from "./DraggableTable";
 import TableLayoutSkeleton from "./TableLayoutSkeleton";
 
@@ -32,6 +34,8 @@ interface TableLayoutViewProps {
   onTableSelect?: (table: FloorPlanObject) => void;
   selectedTableId?: string; // Added to handle selection state from parent
   activeOrderId?: string | null;
+  sectionsById?: Record<string, ServerSection>;
+  onTableLongPress?: (table: FloorPlanObject) => void;
 }
 
 const TableLayoutView: React.FC<TableLayoutViewProps> = ({
@@ -44,6 +48,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   onTableSelect,
   selectedTableId, // Consuming the new prop
   activeOrderId,
+  sectionsById,
+  onTableLongPress,
 }) => {
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
   const globallySelectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
@@ -55,6 +61,52 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       return acc;
     }, {} as Record<string, FloorPlanObject>);
   }, [tables]);
+
+  // Sort tables by z_index for correct layering (zones/backgrounds render behind tables)
+  const sortedTables = useMemo(() => {
+    return [...tables].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0));
+  }, [tables]);
+
+  // Compute section overlay bounding boxes from tables grouped by section_id
+  const sectionOverlays = useMemo(() => {
+    if (!sectionsById || Object.keys(sectionsById).length === 0) return [];
+
+    const sectionBounds: Record<string, { minX: number; minY: number; maxX: number; maxY: number }> = {};
+
+    tables.forEach((table) => {
+      if (!table.section_id) return;
+      const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+      const w = table.width ?? shapeDef?.width ?? 100;
+      const h = table.height ?? shapeDef?.height ?? 100;
+
+      if (!sectionBounds[table.section_id]) {
+        sectionBounds[table.section_id] = {
+          minX: table.x,
+          minY: table.y,
+          maxX: table.x + w,
+          maxY: table.y + h,
+        };
+      } else {
+        const b = sectionBounds[table.section_id];
+        b.minX = Math.min(b.minX, table.x);
+        b.minY = Math.min(b.minY, table.y);
+        b.maxX = Math.max(b.maxX, table.x + w);
+        b.maxY = Math.max(b.maxY, table.y + h);
+      }
+    });
+
+    const PADDING = 20;
+    return Object.entries(sectionBounds)
+      .filter(([sectionId]) => sectionsById[sectionId])
+      .map(([sectionId, bounds]) => ({
+        sectionId,
+        section: sectionsById[sectionId],
+        x: bounds.minX - PADDING,
+        y: bounds.minY - PADDING,
+        width: bounds.maxX - bounds.minX + PADDING * 2,
+        height: bounds.maxY - bounds.minY + PADDING * 2,
+      }));
+  }, [tables, sectionsById]);
 
   // Use the correct selection state:
   // - In selection mode: use global store (supports multi-select for merge)
@@ -93,9 +145,10 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       let maxX = 0;
       let maxY = 0;
       tables.forEach((table) => {
-        // Approximate width/height of a table for bounding box calculation
-        const tableWidth = table.width || 100;
-        const tableHeight = table.height || 100;
+        // Use DB override → shape default → fallback
+        const shapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+        const tableWidth = table.width ?? shapeDef?.width ?? 100;
+        const tableHeight = table.height ?? shapeDef?.height ?? 100;
         if (table.x + tableWidth > maxX) {
           maxX = table.x + tableWidth;
         }
@@ -152,6 +205,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   };
 
   const panGesture = Gesture.Pan()
+    .minDistance(10)  // Require 10px movement to start pan
+    .activeOffsetX([-10, 10])
+    .activeOffsetY([-10, 10])
     .onUpdate((event) => {
       translateX.value = savedTranslateX.value + event.translationX;
       translateY.value = savedTranslateY.value + event.translationY;
@@ -163,12 +219,16 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate((event) => {
-      scale.value = savedScale.value * event.scale;
+      // Clamp scale between 0.5x and 3x
+      const newScale = Math.max(0.5, Math.min(3, savedScale.value * event.scale));
+      scale.value = newScale;
     })
     .onEnd(() => {
       savedScale.value = scale.value;
     });
 
+  // Use Simultaneous with minDistance to allow both gestures
+  // Pan requires 10px movement, so pinch can work independently
   const combinedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
   const canvasAnimatedStyle = useAnimatedStyle(() => ({
@@ -196,23 +256,145 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   }));
 
   return (
-    // 3. Add onLayout prop to the container
     <View
       onLayout={onLayout}
       className={`flex-1 relative overflow-hidden ${className}`}
+      style={{ backgroundColor: "transparent" }}
     >
       {/* Skeleton Crossfade Layer */}
       <Animated.View style={skeletonAnimatedStyle}>
         <TableLayoutSkeleton tableCount={8} showControls={false} />
       </Animated.View>
 
-      {/* Main Content with Crossfade */}
-      <Animated.View style={contentAnimatedStyle}>
-        <View className="absolute top-2 left-2 flex flex-col z-20 gap-y-2">
+      {/* Gesture Detector wraps entire canvas - must be at top level to catch touches */}
+      <GestureDetector gesture={combinedGesture}>
+        {/* Main Content with Crossfade */}
+        <Animated.View style={contentAnimatedStyle}>
+          <Animated.View
+            style={[
+              canvasAnimatedStyle,
+              {
+                backgroundColor: "transparent",
+                flex: 1,
+                position: "relative" as const,
+              },
+            ]}
+          >
+            {/* Section overlay wash + merge connection lines */}
+            {(sectionOverlays.length > 0 || showConnections) && (
+              <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                {/* Section color wash overlays */}
+                {sectionOverlays.map((overlay) => (
+                  <React.Fragment key={`section-${overlay.sectionId}`}>
+                    <SvgRect
+                      x={overlay.x}
+                      y={overlay.y}
+                      width={overlay.width}
+                      height={overlay.height}
+                      rx={12}
+                      fill={overlay.section.color + "20"}
+                      stroke={overlay.section.color + "40"}
+                      strokeWidth={1}
+                    />
+                    <SvgText
+                      x={overlay.x + 8}
+                      y={overlay.y + 16}
+                      fill={overlay.section.color + "99"}
+                      fontSize={12}
+                      fontWeight="600"
+                    >
+                      {overlay.section.name}
+                    </SvgText>
+                  </React.Fragment>
+                ))}
+                {sortedTables.map((table) => {
+                  const mergedTableIds = table.session?.merged_tables;
+                  if (mergedTableIds && mergedTableIds.length > 0) {
+                    // Compute primary table center using actual dimensions
+                    const primaryShapeDef = TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES];
+                    const primaryW = table.width ?? primaryShapeDef?.width ?? 100;
+                    const primaryH = table.height ?? primaryShapeDef?.height ?? 100;
+                    const primaryCenter = { x: table.x + primaryW / 2, y: table.y + primaryH / 2 };
+
+                    return mergedTableIds.map((mergedId) => {
+                      // Only draw if this table ID is "less than" the other ID to avoid double drawing
+                      if (table.id >= mergedId) return null;
+
+                      const mergedTable = tablesById[mergedId];
+                      if (!mergedTable) return null;
+
+                      // Compute merged table center using actual dimensions
+                      const mergedShapeDef = TABLE_SHAPES[mergedTable.shape_id as keyof typeof TABLE_SHAPES];
+                      const mergedW = mergedTable.width ?? mergedShapeDef?.width ?? 100;
+                      const mergedH = mergedTable.height ?? mergedShapeDef?.height ?? 100;
+                      const mergedCenter = {
+                        x: mergedTable.x + mergedW / 2,
+                        y: mergedTable.y + mergedH / 2,
+                      };
+                      return (
+                        <Line
+                          key={`${table.id}-${mergedId}`}
+                          x1={primaryCenter.x}
+                          y1={primaryCenter.y}
+                          x2={mergedCenter.x}
+                          y2={mergedCenter.y}
+                          stroke="#F59E0B"
+                          strokeWidth="4"
+                          strokeDasharray="8, 4"
+                        />
+                      );
+                    });
+                  }
+                  return null;
+                })}
+              </Svg>
+            )}
+            {sortedTables.map((table, index) => (
+              <DraggableTable
+                key={table.id}
+                table={table}
+                layoutId={layoutId}
+                isEditMode={isEditMode}
+                isSelected={selectedTableIdsSet.has(table.id)}
+                onSelect={
+                  isSelectionMode
+                    ? () => onTableSelect && onTableSelect(table)
+                    : () => toggleTableSelection(table.id)
+                }
+                onPress={
+                  isSelectionMode
+                    ? () => onTableSelect && onTableSelect(table)
+                    : () => toggleTableSelection(table.id)
+                }
+                canvasScale={scale}
+                index={index}
+                sectionColor={table.section_id ? sectionsById?.[table.section_id]?.color : undefined}
+                onLongPress={onTableLongPress ? () => onTableLongPress(table) : undefined}
+              />
+            ))}
+          </Animated.View>
+        </Animated.View>
+      </GestureDetector>
+
+      {/* Zoom Buttons - fixed at top of container */}
+      <View
+        style={{
+          position: "absolute",
+          top: 16,
+          left: 16,
+          zIndex: 20,
+          pointerEvents: "box-none",
+        }}
+      >
         <TouchableOpacity
           onPress={() => {
-            scale.value += 0.1;
-            savedScale.value = scale.value;
+            const newScale = Math.min(3, scale.value + 0.2);
+            scale.value = withSpring(newScale, { damping: 12, mass: 1, stiffness: 100 });
+            savedScale.value = newScale;
+          }}
+          style={{
+            marginBottom: 8,
+            pointerEvents: "auto",
           }}
           className={`flex-row items-center bg-surface border border-gray-600 rounded-lg px-4 py-3 justify-start`}
         >
@@ -220,74 +402,18 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
-            scale.value -= 0.1;
-            savedScale.value = scale.value;
+            const newScale = Math.max(0.5, scale.value - 0.2);
+            scale.value = withSpring(newScale, { damping: 12, mass: 1, stiffness: 100 });
+            savedScale.value = newScale;
           }}
-          className={`flex-row items-center bg-surface border border-gray-600 rounded-lg px-4 py-3 justify-start `}
+          style={{
+            pointerEvents: "auto",
+          }}
+          className={`flex-row items-center bg-surface border border-gray-600 rounded-lg px-4 py-3 justify-start`}
         >
           <Minus color={colors.label} size={24} />
         </TouchableOpacity>
       </View>
-      <GestureDetector gesture={combinedGesture}>
-        <Animated.View style={canvasAnimatedStyle} className="w-full h-full">
-          {showConnections && (
-            <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-              {tables.map((table) => {
-                const mergedTableIds = table.session?.merged_tables;
-                if (mergedTableIds && mergedTableIds.length > 0) {
-                  const primaryCenter = { x: table.x + 50, y: table.y + 50 };
-                  return mergedTableIds.map((mergedId) => {
-                    // Only draw if this table ID is "less than" the other ID to avoid double drawing
-                    if (table.id >= mergedId) return null;
-
-                    const mergedTable = tablesById[mergedId];
-                    if (!mergedTable) return null;
-                    const mergedCenter = {
-                      x: mergedTable.x + 50,
-                      y: mergedTable.y + 50,
-                    };
-                    return (
-                      <Line
-                        key={`${table.id}-${mergedId}`}
-                        x1={primaryCenter.x}
-                        y1={primaryCenter.y}
-                        x2={mergedCenter.x}
-                        y2={mergedCenter.y}
-                        stroke="#F59E0B"
-                        strokeWidth="4"
-                        strokeDasharray="8, 4"
-                      />
-                    );
-                  });
-                }
-                return null;
-              })}
-            </Svg>
-          )}
-          {tables.map((table, index) => (
-            <DraggableTable
-              key={table.id}
-              table={table}
-              layoutId={layoutId} // Retained but unused
-              isEditMode={isEditMode}
-              isSelected={selectedTableIdsSet.has(table.id)}
-              onSelect={
-                isSelectionMode
-                  ? () => onTableSelect && onTableSelect(table)
-                  : () => toggleTableSelection(table.id)
-              }
-              onPress={
-                isSelectionMode
-                  ? () => onTableSelect && onTableSelect(table)
-                  : () => toggleTableSelection(table.id)
-              }
-              canvasScale={scale}
-              index={index}
-            />
-          ))}
-        </Animated.View>
-      </GestureDetector>
-      </Animated.View>
     </View>
   );
 };

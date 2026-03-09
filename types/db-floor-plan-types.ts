@@ -288,3 +288,11 @@ export interface CheckAvailabilityParams {
   p_time: string;
   p_party_size: number;
 }
+
+export interface ServerSection {
+  id: string;
+  name: string;
+  color: string;
+  assigned_staff_id: string | null;
+  floor_plan_id: string;
+}

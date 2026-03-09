@@ -829,6 +829,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
         for (const [tableId, session] of Object.entries(currentSessions)) {
           if (session.id === sessionId) {
+            console.log(
+              "[updateSessionStatus] Found matching session for tableId",
+              tableId,
+            );
             actions.push({
               tableId,
               action: { type: 'SET', session: { ...session, status } },
@@ -836,6 +840,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }
         }
 
+        console.log(
+          "[updateSessionStatus] Dispatching",
+          actions.length,
+          "actions"
+        );
         if (actions.length > 0) {
           get().batchDispatch(actions);
         }
@@ -1020,7 +1029,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               {
                 p_session_id: sessionId,
                 p_status: "available",
-                p_notes: "Order voided",
                 p_staff_id,
               },
             );

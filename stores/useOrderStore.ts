@@ -37,6 +37,7 @@ import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
+import { useTableSessionStore } from "./useTableSessionStore";
 // import {
 //   mapLocalToBackend,
 //   registerLocalId
@@ -3506,6 +3507,7 @@ export const useOrderStore = create<OrderState>()(
               service_location_id: serverOrder.table_number ?? null,
               // table_number IS the table name (e.g., "T1"), use it directly for display
               service_location_name: serverOrder.table_number || undefined,
+              session_id: serverOrder.session_id ?? undefined,
               customer_name: "",
 
               // Financial - use server values
@@ -4877,12 +4879,14 @@ export const useOrderStore = create<OrderState>()(
             });
 
             let newOrderStatus = order.order_status;
+            let allItemsServed = false;
+
             if (
               order.order_type === "Dine In" &&
               order.order_status !== "draft" &&
               order.service_location_id !== null
             ) {
-              const allItemsServed = updatedItems.every(
+              allItemsServed = updatedItems.every(
                 (item) => item.item_status === "served",
               );
               const allItemsReady = updatedItems.every(
@@ -4908,6 +4912,27 @@ export const useOrderStore = create<OrderState>()(
               order.items = updatedItems;
               order.order_status = newOrderStatus;
             });
+
+            // Update table session status when all items are served
+            if (
+              allItemsServed &&
+              updatedItems.length > 0 &&
+              activeOrder.service_location_id
+            ) {
+              const tableSessionStore = useTableSessionStore.getState();
+              const session = tableSessionStore.sessions[activeOrder.service_location_id];
+              if (session && session.status === "ordered") {
+                // Update table session to "served" status (persists to database)
+                tableSessionStore.updateSessionStatus(session.id, "served").catch(
+                  (err) => {
+                    console.error(
+                      "[updateItemStatusInActiveOrder] Failed to mark table as served:",
+                      err,
+                    );
+                  },
+                );
+              }
+            }
 
             // recalculateTotals(activeOrderId);
           },
@@ -8646,6 +8671,14 @@ export const useOrderStore = create<OrderState>()(
                 "[syncOrderFromDatabase] No Supabase client available",
               );
               return null;
+            }
+
+            // If input is already a local order ID, just return it
+            if (dbOrderIdOrLocalId.startsWith("order_")) {
+              console.log(
+                `[syncOrderFromDatabase] Already a local order ID: ${dbOrderIdOrLocalId}, skipping database fetch`,
+              );
+              return dbOrderIdOrLocalId;
             }
 
             // O(1) order resolution via direct key or dbOrderIdIndex

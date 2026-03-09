@@ -6,7 +6,13 @@
  */
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { colors: _colors } = require("./theme-colors");
+let _colors: any;
+try {
+  _colors = require("./theme-colors").colors;
+} catch (err) {
+  console.error("[theme.ts] Failed to load theme-colors:", err);
+  _colors = {};
+}
 
 /** Full typed palette — mirrors lib/theme-colors.js exactly. */
 export const colors = _colors as {

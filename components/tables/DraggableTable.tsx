@@ -8,17 +8,20 @@ import { useTableTimerTick } from "@/hooks/useTableTimerTick";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { BrushCleaning, RotateCcw, Sparkles, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  cancelAnimation,
   runOnJS,
   SharedValue,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -33,6 +36,8 @@ interface DraggableTableProps {
   canvasScale: SharedValue<number>;
   onPress?: () => void;
   index?: number; // For staggered entry animation
+  sectionColor?: string;
+  onLongPress?: () => void;
 }
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
@@ -44,6 +49,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   canvasScale,
   onPress,
   index = 0,
+  sectionColor,
+  onLongPress,
 }) => {
   const tablesById = useFloorPlanStore((s) => s.tablesById);
   const updateTablePosition = useFloorPlanStore((s) => s.updateTablePosition);
@@ -57,6 +64,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES] ||
     TABLE_SHAPES["square-4"];
   const TableComponent = shapeDef?.component;
+
+  // --- COMPUTE EFFECTIVE DIMENSIONS ---
+  const effectiveWidth = table.width ?? shapeDef?.width ?? 100;
+  const effectiveHeight = table.height ?? shapeDef?.height ?? 100;
 
   const getOrder = useOrderStore((s) => s.getOrder);
 
@@ -108,6 +119,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     defaultSittingTimeMinutes,
   ]);
 
+  const serverInitials = useMemo(() => {
+    const staffId = table.session?.server_staff_id;
+    if (!staffId) return null;
+    const emp = useEmployeeStore.getState().getEmployeeByStaffId(staffId);
+    if (!emp?.fullName) return null;
+    const parts = emp.fullName.trim().split(" ");
+    return parts.length >= 2
+      ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }, [table.session?.server_staff_id]);
+
   const displayName = useMemo(() => {
     if (
       table.session &&
@@ -141,6 +163,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Pulse animation for realtime updates
   const pulseScale = useSharedValue(1);
 
+  // Attention pulse animation (for needs_attention)
+  const attentionOpacity = useSharedValue(0);
+
   // Staggered entry animation on mount
   useEffect(() => {
     const delay = index * 30; // 30ms stagger per table
@@ -161,6 +186,23 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       withSpring(1, { damping: 10 }),
     );
   }, [table.session?.status, table.session?.order_id]);
+
+  // Attention pulsing border animation for needs_attention
+  useEffect(() => {
+    if (table.session?.needs_attention) {
+      attentionOpacity.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 500 }),
+          withTiming(0.3, { duration: 500 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      cancelAnimation(attentionOpacity);
+      attentionOpacity.value = 0;
+    }
+  }, [table.session?.needs_attention]);
 
   // --- SYNC WITH UNDO/REDO ---
   useAnimatedReaction(
@@ -187,6 +229,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
+    .minDistance(5)
+    .activeOffsetX([-5, 5])
+    .activeOffsetY([-5, 5])
     .onStart(() => {
       runOnJS(saveSnapshot)();
       dragContext.value = { x: translateX.value, y: translateY.value };
@@ -208,6 +253,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const rotateGesture = Gesture.Pan()
     .enabled(isEditMode)
+    .minDistance(5)
+    .activeOffsetX([-5, 5])
+    .activeOffsetY([-5, 5])
     .onStart(() => {
       runOnJS(saveSnapshot)();
       rotateContext.value = rotation.value;
@@ -228,6 +276,24 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       );
     });
 
+  // Long-press enabled on all tables in normal mode
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .enabled(!isEditMode)
+    .onStart(() => {
+      if (onLongPress) runOnJS(onLongPress)();
+    });
+
+  const tapGesture = Gesture.Tap()
+    .onEnd(() => {
+      if (isEditMode) runOnJS(onSelect)();
+      else if (onPress) runOnJS(onPress)();
+    });
+
+  const composedGesture = isEditMode
+    ? Gesture.Simultaneous(dragGesture, rotateGesture)
+    : Gesture.Exclusive(longPressGesture, tapGesture);
+
   const handleDelete = () => {
     removeTable(table.id);
   };
@@ -237,6 +303,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       table.session &&
       table.session.merged_tables &&
       table.session.merged_tables.length > 0;
+    const hasAttention = table.session?.needs_attention ?? false;
+
     return {
       position: "absolute",
       top: 0,
@@ -248,12 +316,16 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         { scale: entryScale.value * pulseScale.value },
       ],
       opacity: entryOpacity.value,
-      borderWidth: 2,
+      borderWidth: isSelected || isMerged || hasAttention || !!sectionColor ? 2 : 0,
       borderColor: isSelected
         ? colors.info
         : isMerged
           ? colors.warning
-          : "transparent",
+          : hasAttention
+            ? `rgba(239,68,68,${attentionOpacity.value})`
+            : sectionColor
+              ? sectionColor + "99"
+              : "transparent",
       borderRadius: 18,
       padding: 4,
     };
@@ -265,31 +337,42 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       0,
     ) || 0;
 
-  const tableStatus = table.session?.status || "available"; // Fallback
+  const isReservedSoon = !table.session && !!table.next_reservation && (() => {
+    const resTime = new Date(table.next_reservation!.time).getTime();
+    return resTime > Date.now() && resTime - Date.now() <= 30 * 60 * 1000;
+  })();
+
+  // Determine table status: session status, or check table-level status
+  const tableStatus =
+    table.session?.status ||
+    (table.is_active === false && "not_in_service") ||
+    "available"; // Fallback
+
   const tableColor = isOvertime
     ? TABLE_STATUS_COLORS.Overtime
-    : TABLE_STATUS_COLORS[tableStatus];
+    : isReservedSoon
+      ? colors.info // blue for reserved soon
+      : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available;
 
   // Type check for category is effective if we trust the object
   const isTableType = table.category === "table" || table.category === "booth";
 
   return (
-    <GestureDetector gesture={dragGesture}>
+    <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
-        <TouchableOpacity
-          onPress={isEditMode ? onSelect : onPress}
-          activeOpacity={0.8}
-        >
+        <View style={{ width: effectiveWidth, height: effectiveHeight }}>
           {TableComponent ? (
             <TableComponent
               color={isTableType ? tableColor : colors.label}
               chairColor={isTableType ? tableColor : colors.label}
+              width={effectiveWidth}
+              height={effectiveHeight}
             />
           ) : (
             <View
               style={{
-                width: 100,
-                height: 100,
+                width: effectiveWidth,
+                height: effectiveHeight,
                 backgroundColor: isTableType ? tableColor : colors.label,
                 borderRadius: 16,
               }}
@@ -334,6 +417,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                       <Text className="text-white font-bold text-base">
                         ${orderTotal.toFixed(2)}
                       </Text>
+                      {table.session?.party_size ? (
+                        <Text className="text-white/70 font-semibold text-[9px]">
+                          {table.session.party_size} guests
+                        </Text>
+                      ) : null}
                       <Text className="text-white font-semibold text-base">
                         {duration}
                       </Text>
@@ -347,7 +435,36 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 <BrushCleaning size={16} color="rgba(255,255,255,0.6)" />
               )}
           </View>
-        </TouchableOpacity>
+
+          {/* Server initials badge */}
+          {serverInitials && (
+            <View
+              style={{
+                position: "absolute",
+                top: 4,
+                right: 4,
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                backgroundColor: sectionColor
+                  ? sectionColor + "99"
+                  : "rgba(0,0,0,0.4)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: "white",
+                  fontSize: 8,
+                  fontWeight: "700",
+                }}
+              >
+                {serverInitials}
+              </Text>
+            </View>
+          )}
+        </View>
 
         {isSelected && isEditMode && (
           <View className="absolute -top-16 left-1/2 flex-row bg-white p-2 rounded-full z-50">

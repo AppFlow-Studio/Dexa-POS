@@ -2,8 +2,9 @@ import TableListItem from "@/components/tables/TableListItem";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { colors } from "@/lib/theme";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight, Filter } from "lucide-react-native";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import React, { useMemo, useState } from "react";
 import {
@@ -62,7 +63,10 @@ const TablesPanel: React.FC = () => {
   const floorPlans = useFloorPlanStore((s) => s.floorPlans);
   const tables = useFloorPlanStore((s) => s.tables);
   const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const sectionsById = useFloorPlanStore((s) => s.sectionsById);
   const [sections, setSections] = useState<{ [key: string]: boolean }>({});
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
 
   const activePlanName = useMemo(() => {
     return (
@@ -82,11 +86,39 @@ const TablesPanel: React.FC = () => {
   const isSeatable = (t: FloorPlanObject) =>
     t.category === "table" || t.category === "booth";
 
+  // Get unique sections and servers from tables
+  const getEmployeeByStaffId = useEmployeeStore((s) => s.getEmployeeByStaffId);
+
+  const { uniqueSections, uniqueServers, serverNames } = useMemo(() => {
+    const sectionSet = new Set<string>();
+    const serverSet = new Set<string>();
+    const nameMap: Record<string, string> = {};
+
+    activeTables.forEach((table) => {
+      if (table.section_id) sectionSet.add(table.section_id);
+      if (table.session?.server_staff_id) {
+        const staffId = table.session.server_staff_id;
+        serverSet.add(staffId);
+        // Get server name if not already cached
+        if (!nameMap[staffId]) {
+          const employee = getEmployeeByStaffId(staffId);
+          nameMap[staffId] = employee?.fullName || staffId.substring(0, 8);
+        }
+      }
+    });
+
+    return {
+      uniqueSections: Array.from(sectionSet),
+      uniqueServers: Array.from(serverSet),
+      serverNames: nameMap,
+    };
+  }, [activeTables, getEmployeeByStaffId]);
+
   // Deduplicate merged tables: when T1+T2 are merged, both have the same
   // session — only show the first one encountered per session id.
   const displayTables = useMemo(() => {
     const seenSessionIds = new Set<string>();
-    return activeTables.filter((table) => {
+    let filtered = activeTables.filter((table) => {
       if (!isSeatable(table)) return false;
       // No merge — always show
       if (!table.session?.merged_tables?.length) return true;
@@ -96,7 +128,19 @@ const TablesPanel: React.FC = () => {
       seenSessionIds.add(sid);
       return true;
     });
-  }, [activeTables]);
+
+    // Apply section filter
+    if (selectedSectionId) {
+      filtered = filtered.filter((table) => table.section_id === selectedSectionId);
+    }
+
+    // Apply server filter
+    if (selectedServerId) {
+      filtered = filtered.filter((table) => table.session?.server_staff_id === selectedServerId);
+    }
+
+    return filtered;
+  }, [activeTables, selectedSectionId, selectedServerId]);
 
   const occupiedTables = useMemo(() => {
     // Active session statuses (Phase 4.1: Include paid but not closed tables)
@@ -166,6 +210,90 @@ const TablesPanel: React.FC = () => {
             className="h-full bg-blue-500"
           />
         </View>
+      </View>
+
+      {/* Filters */}
+      <View className="p-3 border-b border-gray-700">
+        {/* Section Filter */}
+        {uniqueSections.length > 0 && (
+          <View className="mb-3">
+            <Text className="text-xs text-gray-500 font-semibold mb-2">Section</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => setSelectedSectionId(null)}
+                className={`px-3 py-1.5 rounded-full ${
+                  selectedSectionId === null ? "bg-teal" : "bg-gray-700"
+                }`}
+              >
+                <Text className={`text-xs font-semibold ${selectedSectionId === null ? "text-white" : "text-gray-300"}`}>
+                  All
+                </Text>
+              </TouchableOpacity>
+              {uniqueSections.map((sectionId) => {
+                const section = sectionsById[sectionId];
+                return (
+                  <TouchableOpacity
+                    key={sectionId}
+                    onPress={() => setSelectedSectionId(sectionId)}
+                    className={`px-3 py-1.5 rounded-full border ${
+                      selectedSectionId === sectionId
+                        ? "bg-teal border-teal"
+                        : "bg-gray-700 border-gray-600"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${
+                        selectedSectionId === sectionId ? "text-white" : "text-gray-300"
+                      }`}
+                      numberOfLines={1}
+                    >
+                      {section?.name || sectionId.substring(0, 6)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Server Filter */}
+        {uniqueServers.length > 0 && (
+          <View>
+            <Text className="text-xs text-gray-500 font-semibold mb-2">Server</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => setSelectedServerId(null)}
+                className={`px-3 py-1.5 rounded-full ${
+                  selectedServerId === null ? "bg-teal" : "bg-gray-700"
+                }`}
+              >
+                <Text className={`text-xs font-semibold ${selectedServerId === null ? "text-white" : "text-gray-300"}`}>
+                  All
+                </Text>
+              </TouchableOpacity>
+              {uniqueServers.map((serverId) => (
+                <TouchableOpacity
+                  key={serverId}
+                  onPress={() => setSelectedServerId(serverId)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    selectedServerId === serverId
+                      ? "bg-teal border-teal"
+                      : "bg-gray-700 border-gray-600"
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-semibold ${
+                      selectedServerId === serverId ? "text-white" : "text-gray-300"
+                    }`}
+                    numberOfLines={1}
+                  >
+                    {serverNames[serverId] || serverId.substring(0, 8)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
       {/* Table Sections (Just one for active plan now) */}

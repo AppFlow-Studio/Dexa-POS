@@ -8,6 +8,7 @@ import {
   FloorPlanObject,
   LocationTableStatusRow,
   Reservation,
+  ServerSection,
   TableSession,
   TableStatus,
   WaitlistEntry,
@@ -53,6 +54,8 @@ interface FloorPlanState {
   tablesById: Record<string, FloorPlanObject>; // O(1) lookup map
   waitlist: WaitlistEntry[];
   reservations: Reservation[];
+  sections: ServerSection[];
+  sectionsById: Record<string, ServerSection>;
 
   // Realtime State
   realtimeStatus: "connected" | "reconnecting" | "disconnected";
@@ -230,6 +233,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         tablesById: {}, // O(1) lookup map
         waitlist: [],
         reservations: [],
+        sections: [],
+        sectionsById: {},
         selectedTableIds: [],
         isDesignMode: false,
         isLoading: false,
@@ -637,19 +642,22 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           _loadFloorPlanPromise = (async () => {
             try {
-              const { data, error } = await FloorPlanService.getFloorPlanStatus(
-                supabase,
-                floorPlanId,
-              );
+              // Parallel fetch: all floor plan objects + sections
+              const [objectsResult, sectionsResult] = await Promise.all([
+                FloorPlanService.getAllFloorPlanObjects(supabase, floorPlanId),
+                FloorPlanService.getServerSections(supabase, floorPlanId),
+              ]);
+
+              const { data: freshObjects, error } = objectsResult;
 
               if (error) {
                 set({ error: error.message });
                 return;
               }
-              const freshTables = data?.tables || [];
+              const freshTables = freshObjects || [];
               const currentTablesById = get().tablesById;
 
-              // Preserve local-only states: if a table currently has a local-only
+              // Preserve local-only states: if an object currently has a local-only
               // status with the same session ID, keep the local session
               const mergedTables = freshTables.map((freshTable) => {
                 const currentTable = currentTablesById[freshTable.id];
@@ -664,9 +672,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 return freshTable;
               });
 
+              // Build sectionsById map
+              const freshSections = sectionsResult.data || [];
+              const newSectionsById = freshSections.reduce(
+                (acc, section) => {
+                  acc[section.id] = section;
+                  return acc;
+                },
+                {} as Record<string, ServerSection>,
+              );
+
               set({
                 tables: mergedTables,
                 tablesById: buildTablesById(mergedTables),
+                sections: freshSections,
+                sectionsById: newSectionsById,
                 lastSyncAt: new Date().toISOString(),
                 error: null,
               });
