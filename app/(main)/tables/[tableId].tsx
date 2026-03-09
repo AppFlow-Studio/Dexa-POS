@@ -680,10 +680,9 @@ const UpdateTableScreen = () => {
 
           <MoreOptionsBottomSheet
             ref={moreOptionsSheetRef}
-            onVoidSuccess={async () => {
+            onVoidSuccess={() => {
               markNavigatingAway();
-              useOrderStore.getState().setActiveOrder(null);
-              await useTableSessionStore.getState().clearTableSession(currentTableId);
+              // Session already cleared locally by voidOrderEffect; RPC closed backend session
               show({
                 title: "Check Voided",
                 message:

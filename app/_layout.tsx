@@ -155,11 +155,11 @@ export default function RootLayout() {
         <TanstackProvider>
           <PosSyncProvider>
             <GestureHandlerRootView>
-              <BottomSheetModalProvider>
-                <SafeAreaProvider>
-                  <ThemeProvider
-                    value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
-                  >
+              <SafeAreaProvider>
+                <ThemeProvider
+                  value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
+                >
+                  <BottomSheetModalProvider>
                     <ToastProvider>
                       <LoadingProvider>
                         <SessionKickListenerProvider>
@@ -201,9 +201,9 @@ export default function RootLayout() {
                         </SessionKickListenerProvider>
                       </LoadingProvider>
                     </ToastProvider>
-                  </ThemeProvider>
-                </SafeAreaProvider>
-              </BottomSheetModalProvider>
+                  </BottomSheetModalProvider>
+                </ThemeProvider>
+              </SafeAreaProvider>
             </GestureHandlerRootView>
           </PosSyncProvider>
         </TanstackProvider>

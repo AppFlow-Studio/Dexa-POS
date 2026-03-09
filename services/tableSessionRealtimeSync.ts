@@ -3,6 +3,7 @@
  * Periodically fetches floor_plan_objects with sessions and updates store without Supabase Realtime
  */
 
+import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -61,50 +62,44 @@ export function startTableSessionRealtimeSync(locationId: string) {
 
       // Update each table's session in both stores
       const sessionStore = useTableSessionStore.getState();
-      const floorPlanStore = useFloorPlanStore.getState();
 
       const dispatchActions: Array<{ tableId: string; action: any }> = [];
-      const tableUpdates: Record<string, any> = {};
 
       objects.forEach((object) => {
-        if (!object.session) return;
-
         const currentSession = sessionStore.sessions[object.id];
+
+        if (!object.session) {
+          // Session was closed on backend — clear local session if one exists
+          if (currentSession && !isLocalOnlyStatus(currentSession.status)) {
+            console.log(`[TableSessionRealtimeSync] CLEAR stale session for table ${object.name || object.id}: local status="${currentSession.status}", no backend session`);
+            dispatchActions.push({
+              tableId: object.id,
+              action: { type: "CLEAR" as const },
+            });
+          }
+          return;
+        }
 
         // Only update if session changed
         if (
           !currentSession ||
           JSON.stringify(currentSession) !== JSON.stringify(object.session)
         ) {
+          if (currentSession) {
+            console.log(`[TableSessionRealtimeSync] UPDATE table ${object.name || object.id}: "${currentSession.status}" → "${object.session.status}" (session ${object.session.id})`);
+          } else {
+            console.log(`[TableSessionRealtimeSync] NEW session for table ${object.name || object.id}: status="${object.session.status}" (session ${object.session.id})`);
+          }
           dispatchActions.push({
             tableId: object.id,
-            action: {
-              type: "SYNC" as const,
-              session: object.session,
-            },
+            action: { type: "SYNC" as const, session: object.session },
           });
-
-          // Track table updates for floor plan store
-          tableUpdates[object.id] = object.session;
-
-          console.log(
-            `[TableSessionRealtimeSync] Updated session for table ${object.id}`,
-          );
         }
       });
 
-      // Batch dispatch all session updates
+      // batchDispatch handles both session store + floor plan store sync via _syncToFloorPlanStore
       if (dispatchActions.length > 0) {
         sessionStore.batchDispatch(dispatchActions);
-      }
-
-      // Update floor plan store tables with new session data
-      if (Object.keys(tableUpdates).length > 0) {
-        const currentTables = useFloorPlanStore.getState().tables;
-        const updatedTables = currentTables.map((t: any) =>
-          tableUpdates[t.id] ? { ...t, session: tableUpdates[t.id] } : t
-        );
-        useFloorPlanStore.setState({ tables: updatedTables });
       }
     } catch (err) {
       console.error("[TableSessionRealtimeSync] Poll error:", err);

@@ -72,6 +72,7 @@ export interface TableSessionData {
   food_served_at: string | null;
   check_presented_at: string | null;
   paid_at: string | null;
+  is_active: boolean | null;
 }
 
 export interface TableAssignment {

@@ -117,18 +117,34 @@ export class FloorPlanService {
       console.log(`[getAllFloorPlanObjects] Found ${allObjects.length} total objects`);
 
       // 2. Fetch session data for tables that have sessions
+      // Scope junction query to only tables in this floor plan to avoid cross-plan pollution
+      const tableIds = allObjects.map((obj: any) => obj.id);
       const { data: junctionData, error: junctionError } = await client
         .from("table_session_tables")
         .select(`table_id, session_id, seated_position`)
-        .eq("is_active", true);
-
-      const { data: sessionsData, error: sessionsError } = await client
-        .from("table_sessions")
-        .select(
-          `id, session_number, status, party_size, guest_name, order_id, server_staff_id, seated_at, current_course, needs_attention, is_vip`
-        )
         .eq("is_active", true)
-        .not("status", "eq", "cleaning");
+        .in("table_id", tableIds);
+
+      // Collect unique session IDs from junctions, then fetch only those sessions
+      const sessionIdsFromJunctions = new Set<string>();
+      if (junctionData) {
+        junctionData.forEach((row: any) => sessionIdsFromJunctions.add(row.session_id));
+      }
+
+      let sessionsData: any[] | null = null;
+      let sessionsError: any = null;
+
+      if (sessionIdsFromJunctions.size > 0) {
+        const result = await client
+          .from("table_sessions")
+          .select(
+            `id, session_number, status, party_size, guest_name, order_id, server_staff_id, seated_at, current_course, needs_attention, is_vip`
+          )
+          .eq("is_active", true)
+          .in("id", Array.from(sessionIdsFromJunctions));
+        sessionsData = result.data;
+        sessionsError = result.error;
+      }
 
       if (junctionError) {
         console.warn("[getAllFloorPlanObjects] Warning: error fetching junctions:", junctionError);
@@ -150,8 +166,19 @@ export class FloorPlanService {
       }
 
       // Map tables to sessions and collect merged tables
+      // Only map junctions whose session actually exists in sessionMap (is_active=true)
       if (junctionData) {
+        const staleJunctionCount = junctionData.filter(
+          (row: any) => !sessionMap.has(row.session_id)
+        ).length;
+        if (staleJunctionCount > 0) {
+          console.warn(`[getAllFloorPlanObjects] ${staleJunctionCount} stale junction(s) pointing to inactive sessions`);
+        }
+
         junctionData.forEach((row: any) => {
+          // Skip junctions whose session is no longer active
+          if (!sessionMap.has(row.session_id)) return;
+
           tableToSessionId.set(row.table_id, row.session_id);
 
           if (!mergedTablesBySession.has(row.session_id)) {
@@ -278,6 +305,17 @@ export class FloorPlanService {
       updated_at: new Date().toISOString(),
     };
 
+    // When cleaning or marking available, close the session (is_active = false)
+    if (params.p_status === "cleaning" || params.p_status === "available") {
+      const now = new Date().toISOString();
+      updateData.is_active = false;
+      updateData.cleared_at = now;
+      updateData.closed_at = now;
+      if (params.p_staff_id) {
+        updateData.closed_by = params.p_staff_id;
+      }
+    }
+
     // Only add notes if it exists and the column exists
     if (params.p_notes) {
       updateData.notes = params.p_notes;
@@ -288,7 +326,7 @@ export class FloorPlanService {
       .update(updateData)
       .eq("id", params.p_session_id);
 
-    console.log("updateTableSessionStatus", params.p_session_id, params.p_status, error);
+    console.log("[updateTableSessionStatus]", params.p_session_id, params.p_status, error);
 
     return { error };
   }

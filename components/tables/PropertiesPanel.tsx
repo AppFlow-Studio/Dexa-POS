@@ -1,8 +1,7 @@
-import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import debounce from "lodash.debounce";
-import { Trash2, X } from "lucide-react-native";
+import { RotateCcw, RotateCw, Trash2, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
@@ -22,7 +21,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   table,
   layoutId, // Kept but unused to avoid breaking prop interface if parent passes it
 }) => {
-  const { updateTableName, removeTable, clearSelection } = useFloorPlanStore();
+  const { updateTableName, removeTable, clearSelection, updateTablePosition } = useFloorPlanStore();
   const [name, setName] = useState(table.name);
 
   const debouncedUpdateName = useCallback(
@@ -50,6 +49,15 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     }
   };
 
+  const handleRotate = (direction: "left" | "right") => {
+    const currentRotation = table.rotation || 0;
+    const newRotation = direction === "left"
+      ? currentRotation - 45
+      : currentRotation + 45;
+    const snappedRotation = Math.round(newRotation / 45) * 45;
+    updateTablePosition(table.id, table.x, table.y, snappedRotation);
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -60,7 +68,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         onPress={clearSelection}
         className="absolute -top-2 -right-2 bg-zinc-900/80 rounded-full p-1.5 z-10"
       >
-        <X size={18} color={colors.heading} />
+        <X size={18} color="#E2E8F0" />
       </TouchableOpacity>
 
       <View className="flex-row justify-between items-center pb-3 border-b border-zinc-700">
@@ -81,6 +89,26 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           placeholder="Enter object name"
           placeholderTextColor="#999"
         />
+      </View>
+
+      <View className="gap-2">
+        <Text className="text-sm font-medium text-zinc-400">Rotation</Text>
+        <View className="flex-row gap-2">
+          <TouchableOpacity
+            className="flex-1 bg-blue-600 flex-row items-center justify-center py-2.5 rounded-lg gap-1"
+            onPress={() => handleRotate("left")}
+          >
+            <RotateCcw size={16} color="#fff" />
+            <Text className="text-white text-sm font-semibold">-45°</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="flex-1 bg-blue-600 flex-row items-center justify-center py-2.5 rounded-lg gap-1"
+            onPress={() => handleRotate("right")}
+          >
+            <RotateCw size={16} color="#fff" />
+            <Text className="text-white text-sm font-semibold">+45°</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <TouchableOpacity

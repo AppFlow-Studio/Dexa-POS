@@ -113,7 +113,7 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
                 >
                   <View className="p-3 rounded-xl items-center justify-center h-[110px] bg-surface">
                     <View className="flex-1 items-center justify-center">
-                      <ShapeComponent color={colors.label} height={50} />
+                      <ShapeComponent color="#94A3B8" height={50} />
                     </View>
                     <Text
                       className="mt-2 h-5 font-semibold text-xs text-center text-gray-300"

@@ -1,14 +1,15 @@
 /**
  * Side effect: VOID_ORDER
  *
- * After the store transitions the session to "cleaning":
- * 1. Deduct inventory (backend RPC)
- * 2. Decrement local inventory stock
- * 3. Void the order (local + backend sync)
- * 4. Clear active order if matched
+ * The void_order RPC handles all backend cleanup:
+ *   - Voids order items and payments
+ *   - Sets table_sessions.is_active=false, closed_at, closed_by via order_id FK
  *
- * This is the single source of truth for void logic — fixes the bug where
- * ExpandedTableDetails/TableListItem voided without inventory deduction.
+ * This effect only handles local side effects:
+ * 1. Deduct inventory (separate backend RPC)
+ * 2. Decrement local inventory stock
+ * 3. Void the order locally (useOrderStore.voidOrder triggers the RPC)
+ * 4. Clear local session store for the table
  */
 
 import type { SideEffectContext } from "@/lib/sessionSideEffects";
@@ -54,7 +55,7 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
     useInventoryStore.getState().decrementStockFromSale(order.items);
   }
 
-  // 3. Void the order
+  // 3. Void the order locally + triggers void_order RPC which closes the backend session
   orderState.voidOrder(orderId);
 
   // 4. Clear active order if it was this one
@@ -62,11 +63,12 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
     orderState.setActiveOrder(null);
   }
 
-  // 5. Transition table to cleaning via updateSessionStatus (handles backend sync)
-  const session = useTableSessionStore.getState().getSession(tableId);
+  // 5. Clear local session store — backend session already closed by void_order RPC
+  const store = useTableSessionStore.getState();
+  const session = store.getSession(tableId);
   if (session) {
-    await useTableSessionStore
-      .getState()
-      .updateSessionStatus(session.id, "cleaning");
+    store.dispatch(tableId, { type: "CLEAR" });
+  } else {
+    console.warn("[voidOrderEffect] No session found for tableId:", tableId);
   }
 }

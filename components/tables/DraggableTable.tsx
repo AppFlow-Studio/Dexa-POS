@@ -3,6 +3,7 @@ import {
   registerTablePosition,
   unregisterTablePosition,
 } from "@/lib/tablePositionRegistry";
+import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { useTableTimerTick } from "@/hooks/useTableTimerTick";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -251,19 +252,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       );
     });
 
-  const rotateGesture = Gesture.Pan()
-    .enabled(isEditMode)
-    .minDistance(5)
-    .activeOffsetX([-5, 5])
-    .activeOffsetY([-5, 5])
+  // Rotation gesture: disabled in favor of UI buttons in PropertiesPanel
+  const rotateGesture = Gesture.Rotation()
+    .enabled(false)
     .onStart(() => {
       runOnJS(saveSnapshot)();
       rotateContext.value = rotation.value;
     })
     .onUpdate((event) => {
-      const angle = Math.atan2(event.translationY, event.translationX);
-      const angleInDegrees = angle * (180 / Math.PI);
-      rotation.value = rotateContext.value + angleInDegrees;
+      rotation.value = rotateContext.value + event.rotation;
     })
     .onEnd(() => {
       const snappedRotation = Math.round(rotation.value / 45) * 45;
@@ -291,7 +288,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     });
 
   const composedGesture = isEditMode
-    ? Gesture.Simultaneous(dragGesture, rotateGesture)
+    ? Gesture.Simultaneous(dragGesture, rotateGesture, tapGesture)
     : Gesture.Exclusive(longPressGesture, tapGesture);
 
   const handleDelete = () => {
@@ -342,11 +339,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return resTime > Date.now() && resTime - Date.now() <= 30 * 60 * 1000;
   })();
 
-  // Determine table status: session status, or check table-level status
+  // Determine table color status from DB-synced session status only (skip local-only intermediates)
+  const sessionStatus = table.session?.status;
   const tableStatus =
-    table.session?.status ||
+    (sessionStatus && !isLocalOnlyStatus(sessionStatus) ? sessionStatus : null) ||
     (table.is_active === false && "not_in_service") ||
-    "available"; // Fallback
+    "available";
 
   const tableColor = isOvertime
     ? TABLE_STATUS_COLORS.Overtime

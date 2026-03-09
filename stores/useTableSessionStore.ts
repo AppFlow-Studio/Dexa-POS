@@ -367,6 +367,19 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           nextStatus = get().sessions[tableId]?.status ?? null;
 
+          // Update floor plan store's tables with new session status
+          if (nextStatus && nextStatus !== previousStatus) {
+            const newSession = get().sessions[tableId];
+            if (newSession) {
+              const floorPlanStore = useFloorPlanStore.getState();
+              const currentTables = floorPlanStore.tables;
+              const updatedTables = currentTables.map((t: any) =>
+                t.id === tableId ? { ...t, session: newSession } : t
+              );
+              useFloorPlanStore.setState({ tables: updatedTables });
+            }
+          }
+
           // Backend sync for non-local statuses
           if (nextStatus && !isLocalOnlyStatus(nextStatus) && session) {
             // Fire-and-forget backend sync (non-blocking)
@@ -598,6 +611,20 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
         if (operation === "DELETE" || !data?.session) {
           useFloorPlanStore.getState()._debouncedRefresh();
+          return;
+        }
+
+        // If the session is no longer active, clear all tables associated with it
+        if (data.session.is_active === false) {
+          const sessionId = data.session.id;
+          const currentSessions = get().sessions;
+          const actions: Array<{ tableId: string; action: SessionAction }> = [];
+          for (const [tId, sess] of Object.entries(currentSessions)) {
+            if (sess.id === sessionId) {
+              actions.push({ tableId: tId, action: { type: 'CLEAR' } });
+            }
+          }
+          if (actions.length > 0) get().batchDispatch(actions);
           return;
         }
 

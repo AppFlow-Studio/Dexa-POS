@@ -1,4 +1,3 @@
-import { colors } from "@/lib/theme";
 import { AddTableBottomSheet } from "@/components/tables/AddTableBottomSheet";
 import DraggableTable from "@/components/tables/DraggableTable";
 import PropertiesPanel from "@/components/tables/PropertiesPanel";
@@ -358,19 +357,19 @@ const LayoutEditorScreenContent = () => {
               onPress={() => handleZoom("in")}
               className="p-3 bg-panel border border-gray-600 rounded-lg"
             >
-              <Plus color={colors.label} size={24} />
+              <Plus color="#94A3B8" size={24} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleZoom("out")}
               className="p-3 bg-panel border border-gray-600 rounded-lg"
             >
-              <Minus color={colors.label} size={24} />
+              <Minus color="#94A3B8" size={24} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={recenterCanvas}
               className="p-3 bg-panel border border-gray-600 rounded-lg"
             >
-              <Maximize color={colors.label} size={24} />
+              <Maximize color="#94A3B8" size={24} />
             </TouchableOpacity>
           </View>
         </View>
@@ -401,7 +400,7 @@ const LayoutEditorScreenContent = () => {
               currentId={draggedShapeId}
             >
               <ShapeComp
-                color={colors.label}
+                color="#94A3B8"
                 height={SHAPE_SIZE}
                 width={SHAPE_SIZE}
               />
