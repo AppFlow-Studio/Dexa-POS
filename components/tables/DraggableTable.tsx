@@ -8,12 +8,13 @@ import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { useTableTimerTick } from "@/hooks/useTableTimerTick";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { BrushCleaning, RotateCcw, Sparkles, Trash2 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { BrushCleaning } from "lucide-react-native";
+import React, { useEffect, useMemo } from "react";
+import { Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   cancelAnimation,
@@ -55,10 +56,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 }) => {
   const tablesById = useFloorPlanStore((s) => s.tablesById);
   const updateTablePosition = useFloorPlanStore((s) => s.updateTablePosition);
-  const removeTable = useFloorPlanStore((s) => s.removeTable);
   const saveSnapshot = useFloorPlanStore((s) => s.saveSnapshot);
   const { defaultSittingTimeMinutes } = useSettingsStore();
   const tick = useTableTimerTick();
+
+  // Subscribe directly to live session so table color/status updates without needing
+  // the floor plan store sync (matches how Sidebar's TableListItem works)
+  const liveSession = useTableSessionStore((s) => s.sessions[table.id]) ?? table.session;
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =
@@ -74,8 +78,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const effectiveOrder = useMemo(() => {
     // Fast path: O(1) session-based lookup via getOrder (checks ordersById + dbOrderIdIndex)
-    if (table.session?.order_id) {
-      const found = getOrder(table.session.order_id);
+    if (liveSession?.order_id) {
+      const found = getOrder(liveSession.order_id);
       if (found) return found;
     }
 
@@ -85,11 +89,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return Object.values(allOrders).find(
       (o) => o.service_location_id === table.id && o.order_status !== "void",
     );
-  }, [table.session?.order_id, getOrder, table.id]);
+  }, [liveSession?.order_id, getOrder, table.id]);
 
   const { duration, isOvertime } = useMemo(() => {
     // Determine if table is effectively "in use" based on session or order
-    const status = table.session?.status?.toLowerCase();
+    const status = liveSession?.status?.toLowerCase();
     const isInUse =
       status === "seating" ||
       status === "seated" ||
@@ -115,13 +119,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     };
   }, [
     tick,
-    table.session,
+    liveSession,
     effectiveOrder,
     defaultSittingTimeMinutes,
   ]);
 
   const serverInitials = useMemo(() => {
-    const staffId = table.session?.server_staff_id;
+    const staffId = liveSession?.server_staff_id;
     if (!staffId) return null;
     const emp = useEmployeeStore.getState().getEmployeeByStaffId(staffId);
     if (!emp?.fullName) return null;
@@ -129,15 +133,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return parts.length >= 2
       ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
       : parts[0].slice(0, 2).toUpperCase();
-  }, [table.session?.server_staff_id]);
+  }, [liveSession?.server_staff_id]);
 
   const displayName = useMemo(() => {
     if (
-      table.session &&
-      table.session.merged_tables &&
-      table.session.merged_tables.length > 0
+      liveSession &&
+      liveSession.merged_tables &&
+      liveSession.merged_tables.length > 0
     ) {
-      const otherTableNames = table.session.merged_tables
+      const otherTableNames = liveSession.merged_tables
         .filter((id) => id !== table.id)
         .map((id) => tablesById[id]?.name)
         .filter(Boolean)
@@ -166,6 +170,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Attention pulse animation (for needs_attention)
   const attentionOpacity = useSharedValue(0);
+  const previousAttentionShared = useSharedValue<boolean | null>(null);
 
   // Staggered entry animation on mount
   useEffect(() => {
@@ -186,24 +191,35 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       withTiming(1.05, { duration: 100 }),
       withSpring(1, { damping: 10 }),
     );
-  }, [table.session?.status, table.session?.order_id]);
+  }, [liveSession?.status, liveSession?.order_id]);
 
   // Attention pulsing border animation for needs_attention
-  useEffect(() => {
-    if (table.session?.needs_attention) {
-      attentionOpacity.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 500 }),
-          withTiming(0.3, { duration: 500 }),
-        ),
-        -1,
-        false,
-      );
-    } else {
-      cancelAnimation(attentionOpacity);
-      attentionOpacity.value = 0;
-    }
-  }, [table.session?.needs_attention]);
+  useAnimatedReaction(
+    () => liveSession?.needs_attention ?? false,
+    (hasAttention) => {
+      const prevAttention = previousAttentionShared.value;
+
+      // Only start/stop animation on actual state change
+      if (hasAttention === prevAttention) return;
+
+      previousAttentionShared.value = hasAttention;
+
+      if (hasAttention) {
+        attentionOpacity.value = withRepeat(
+          withSequence(
+            withTiming(1, { duration: 500 }),
+            withTiming(0.3, { duration: 500 }),
+          ),
+          -1,
+          false,
+        );
+      } else {
+        cancelAnimation(attentionOpacity);
+        attentionOpacity.value = 0;
+      }
+    },
+    [],
+  );
 
   // --- SYNC WITH UNDO/REDO ---
   useAnimatedReaction(
@@ -291,16 +307,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ? Gesture.Simultaneous(dragGesture, rotateGesture, tapGesture)
     : Gesture.Exclusive(longPressGesture, tapGesture);
 
-  const handleDelete = () => {
-    removeTable(table.id);
-  };
-
   const animatedStyle = useAnimatedStyle(() => {
     const isMerged =
-      table.session &&
-      table.session.merged_tables &&
-      table.session.merged_tables.length > 0;
-    const hasAttention = table.session?.needs_attention ?? false;
+      liveSession &&
+      liveSession.merged_tables &&
+      liveSession.merged_tables.length > 0;
+    const hasAttention = liveSession?.needs_attention ?? false;
 
     return {
       position: "absolute",
@@ -334,13 +346,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       0,
     ) || 0;
 
-  const isReservedSoon = !table.session && !!table.next_reservation && (() => {
+  const isReservedSoon = !liveSession && !!table.next_reservation && (() => {
     const resTime = new Date(table.next_reservation!.time).getTime();
     return resTime > Date.now() && resTime - Date.now() <= 30 * 60 * 1000;
   })();
 
   // Determine table color status from DB-synced session status only (skip local-only intermediates)
-  const sessionStatus = table.session?.status;
+  const sessionStatus = liveSession?.status;
   const tableStatus =
     (sessionStatus && !isLocalOnlyStatus(sessionStatus) ? sessionStatus : null) ||
     (table.is_active === false && "not_in_service") ||
@@ -362,7 +374,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           {TableComponent ? (
             <TableComponent
               color={isTableType ? tableColor : colors.label}
-              chairColor={isTableType ? tableColor : colors.label}
+              {...(isTableType && { chairColor: tableColor })}
               width={effectiveWidth}
               height={effectiveHeight}
             />
@@ -406,7 +418,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 tableStatus === "paying" ||
                 tableStatus === "paid") && (
                 <>
-                  {!effectiveOrder && table.session ? (
+                  {!effectiveOrder && liveSession ? (
                     <Text className="text-white/60 font-semibold text-sm">
                       Loading...
                     </Text>
@@ -415,9 +427,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                       <Text className="text-white font-bold text-base">
                         ${orderTotal.toFixed(2)}
                       </Text>
-                      {table.session?.party_size ? (
+                      {liveSession?.party_size ? (
                         <Text className="text-white/70 font-semibold text-[9px]">
-                          {table.session.party_size} guests
+                          {liveSession.party_size} guests
                         </Text>
                       ) : null}
                       <Text className="text-white font-semibold text-base">
@@ -464,24 +476,41 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           )}
         </View>
 
-        {isSelected && isEditMode && (
-          <View className="absolute -top-16 left-1/2 flex-row bg-white p-2 rounded-full z-50">
-            <GestureDetector gesture={rotateGesture}>
-              <View className="p-2 bg-gray-100 rounded-full cursor-grab">
-                <RotateCcw color="black" size={24} />
-              </View>
-            </GestureDetector>
-            <TouchableOpacity
-              onPress={handleDelete}
-              className="p-2 ml-1 bg-black/10 rounded-full"
-            >
-              <Trash2 color="red" size={24} />
-            </TouchableOpacity>
-          </View>
-        )}
       </Animated.View>
     </GestureDetector>
   );
 };
 
-export default React.memo(DraggableTable);
+export default React.memo(DraggableTable, (prev, next) => {
+  // Re-render if dimensions change
+  if (prev.table.width !== next.table.width || prev.table.height !== next.table.height) {
+    return false;
+  }
+  // Re-render if position/rotation changes (for dragging)
+  if (
+    prev.table.x !== next.table.x ||
+    prev.table.y !== next.table.y ||
+    prev.table.rotation !== next.table.rotation
+  ) {
+    return false;
+  }
+  // Re-render if selected state changes
+  if (prev.isSelected !== next.isSelected) {
+    return false;
+  }
+  // Re-render if session changed (status, party size, etc.)
+  // Session updates come from polling and should trigger visual updates
+  if (prev.table.session?.id !== next.table.session?.id ||
+      prev.table.session?.status !== next.table.session?.status ||
+      prev.table.session?.party_size !== next.table.session?.party_size ||
+      prev.table.session?.guest_name !== next.table.session?.guest_name ||
+      prev.table.session?.server_staff_id !== next.table.session?.server_staff_id ||
+      prev.table.session?.current_course !== next.table.session?.current_course ||
+      prev.table.session?.needs_attention !== next.table.session?.needs_attention ||
+      prev.table.session?.is_vip !== next.table.session?.is_vip ||
+      prev.table.session?.merged_tables?.length !== next.table.session?.merged_tables?.length) {
+    return false;
+  }
+  // Otherwise skip re-render
+  return true;
+});

@@ -539,7 +539,7 @@ const UpdateTableScreen = () => {
 
   // --- Render ---
 
-  if (!isReady && phase !== "ready" && phase !== "payment_syncing") {
+  if (!isReady && renderStage === 0) {
     return <TableDetailSkeleton />;
   }
 

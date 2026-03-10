@@ -8,10 +8,11 @@ import TableContextSheet from "@/components/tables/TableContextSheet";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { getDeviceId } from "@/lib/deviceId";
 import { OrderProfile } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useFloorPlanStore, buildTablesById } from "@/stores/useFloorPlanStore";
 import {
   registerPendingOrderCreation,
   useOrderStore,
@@ -36,18 +37,18 @@ import { useShallow } from "zustand/react/shallow";
 
 const TablesScreen = () => {
   const router = useRouter();
-  // Grouped data selectors (shallow compare — one re-render instead of 4)
-  const { floorPlans, activeFloorPlanId, tables, floorPlanLoading, sections, sectionsById } =
-    useFloorPlanStore(
-      useShallow((s) => ({
-        floorPlans: s.floorPlans,
-        activeFloorPlanId: s.activeFloorPlanId,
-        tables: s.tables,
-        floorPlanLoading: s.isLoading,
-        sections: s.sections,
-        sectionsById: s.sectionsById,
-      })),
-    );
+  // Subscribe to tables directly to ensure real-time updates
+  const tables = useFloorPlanStore((s) => s.tables);
+  const floorPlans = useFloorPlanStore((s) => s.floorPlans);
+  const activeFloorPlanId = useFloorPlanStore((s) => s.activeFloorPlanId);
+  const floorPlanLoading = useFloorPlanStore((s) => s.isLoading);
+  const sections = useFloorPlanStore((s) => s.sections);
+  const sectionsById = useFloorPlanStore((s) => s.sectionsById);
+
+  // DON'T sync sessions into floor plan store tables.
+  // DraggableTable reads liveSession directly from useTableSessionStore (line 65),
+  // which is the single source of truth. The floor plan store's table.session field
+  // is only for persistence, not runtime rendering.
 
   // Selection state — separate (changes on every tap in merge mode)
   const selectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
@@ -64,6 +65,7 @@ const TablesScreen = () => {
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
   const getOrder = useOrderStore((s) => s.getOrder);
+  const syncOrderFromDatabase = useOrderStore((s) => s.syncOrderFromDatabase);
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -91,6 +93,10 @@ const TablesScreen = () => {
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
   const { loggedInEmployee } = useEmployeeStore();
+
+  // Subscribe to realtime floor updates to trigger visual refresh
+  // This ensures the floor plan immediately reflects changes from other stations
+  const { floor } = useLocationRealtime();
 
   useEffect(() => {
     if (!activeFloorPlanId && floorPlans.length > 0) {
@@ -133,16 +139,45 @@ const TablesScreen = () => {
       return;
     }
 
-    // NORMAL MODE: Open context sheet
+    // NORMAL MODE: If table has an active session, navigate directly to the order page
+    const liveSession = useTableSessionStore.getState().sessions[table.id] ?? table.session;
+    if (liveSession && liveSession.status !== "available") {
+      if (liveSession.order_id) {
+        const existingOrder = getOrder(liveSession.order_id);
+        if (existingOrder) setActiveOrder(existingOrder.id);
+      }
+      router.replace({
+        pathname: "/tables/[tableId]",
+        params: { tableId: table.id },
+      });
+      return;
+    }
+
+    // No active session — open context sheet to seat guests
     setContextTable(table);
-  }, [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection]);
+  }, [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection, getOrder, setActiveOrder, router]);
 
   const handleSheetSeatGuests = useCallback((table: FloorPlanObject) => {
+    // Look up the fresh table data from store to get latest session
+    const freshTable = useFloorPlanStore.getState().getTableById(table.id);
+    if (!freshTable) return;
+
+    // Only allow seating on available tables — check live session store too (floor plan store can lag)
+    const liveSession = useTableSessionStore.getState().sessions[table.id];
+    const activeSession = liveSession ?? freshTable.session;
+    if (activeSession && activeSession.status !== "available") {
+      show({
+        title: "Table Occupied",
+        message: "This table is already in use. View the existing order instead.",
+        type: "warning",
+      });
+      return;
+    }
     setContextTable(null);
     clearSelection();
     toggleTableSelection(table.id);
     setGuestModalOpen(true);
-  }, [clearSelection, toggleTableSelection]);
+  }, [clearSelection, toggleTableSelection, show]);
 
   const handleSheetNavigate = useCallback(
     (tableId: string) => {
@@ -169,27 +204,33 @@ const TablesScreen = () => {
         return;
       }
 
-      // If table is occupied, navigate directly to the order to add items
-      if (table.session && table.session.status !== "available") {
-        // First try to get order by order_id
-        let existingOrder = table.session.order_id ? getOrder(table.session.order_id) : null;
-
-        // Fallback: scan for order by service_location_id (table id)
-        if (!existingOrder) {
-          const allOrders = useOrderStore.getState().ordersById;
-          existingOrder = Object.values(allOrders).find(
-            (o) => o.service_location_id === table.id && o.order_status !== "void"
-          );
-        }
-
-        if (existingOrder) {
-          setActiveOrder(existingOrder.id);
+      // If table is occupied, sync the order from DB (to get fresh items) then navigate
+      const liveSessionLP = useTableSessionStore.getState().sessions[table.id];
+      const activeSessionLP = liveSessionLP ?? table.session;
+      if (activeSessionLP && activeSessionLP.status !== "available") {
+        const orderId = activeSessionLP.order_id;
+        if (orderId) {
+          // Sync from DB to ensure items are up-to-date, then navigate
+          syncOrderFromDatabase(orderId).then((localOrderId) => {
+            if (localOrderId) setActiveOrder(localOrderId);
+            router.replace({
+              pathname: "/tables/[tableId]",
+              params: { tableId: table.id },
+            });
+          }).catch(() => {
+            // Fallback: navigate anyway
+            router.replace({
+              pathname: "/tables/[tableId]",
+              params: { tableId: table.id },
+            });
+          });
+        } else {
           router.replace({
             pathname: "/tables/[tableId]",
             params: { tableId: table.id },
           });
-          return;
         }
+        return;
       }
 
       // For available tables, show guest count modal
@@ -197,7 +238,7 @@ const TablesScreen = () => {
       toggleTableSelection(table.id);
       setGuestModalOpen(true);
     },
-    [isClockedIn, showClockInWall, clearSelection, toggleTableSelection, getOrder, setActiveOrder, router],
+    [isClockedIn, showClockInWall, clearSelection, toggleTableSelection, syncOrderFromDatabase, setActiveOrder, router],
   );
 
   // OPTIMIZED: Use Set for O(1) membership tests instead of .includes() O(n)
@@ -336,6 +377,20 @@ const TablesScreen = () => {
   const handleGuestCountSubmit = async (guestCount: number) => {
     const primaryTableId = selectedTableIds[0];
     if (!primaryTableId) return;
+
+    // Double-check table is still available
+    const freshTable = useFloorPlanStore.getState().getTableById(primaryTableId);
+    if (freshTable?.session && freshTable.session.status !== "available") {
+      show({
+        title: "Table Occupied",
+        message: "This table is no longer available. It was occupied by another station.",
+        type: "error",
+      });
+      setGuestModalOpen(false);
+      clearSelection();
+      return;
+    }
+
     const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId];
 
     // 1. Create local order immediately (synchronous — ~0ms)

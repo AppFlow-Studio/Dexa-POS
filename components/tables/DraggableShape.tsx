@@ -17,7 +17,11 @@ export const DraggableShape: React.FC<DraggableShapeProps> = ({
     useDragToAddContext();
 
   const panGesture = Gesture.Pan()
-    .minDistance(10) // Only activate after moving 10 pixels
+    .minDistance(15) // Require 15px movement to start dragging (prevents accidental activation on scroll)
+    .activeOffsetX([-15, 15])
+    .activeOffsetY([-15, 15])
+    .failOffsetX([-5, 5]) // Scrolling within ±5px X cancels drag
+    .shouldCancelWhenOutside(false) // Allow dragging outside the shape
     .onStart((e) => {
       // Set values on the UI thread directly
       draggedShapeId.value = shapeId;

@@ -2774,6 +2774,9 @@ export const useOrderStore = create<OrderState>()(
                       const existingOrder = state.ordersById[localOrderId];
                       if (!existingOrder) return;
 
+                      // Never overwrite a locally-voided order with a stale broadcast
+                      if (existingOrder.order_status === "void") return;
+
                       // Phase 2.5: Merge broadcast items with local items
                       // Strategy: Keep pending local items, update synced items from broadcast
                       let mergedItems = existingOrder.items;
@@ -8040,7 +8043,7 @@ export const useOrderStore = create<OrderState>()(
               }
             });
 
-            // 2. Sync to backend first (fire-and-forget)
+            // 2. Sync to backend (fire-and-forget)
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order?.db_order_id) {
               OrderService.voidOrder(
@@ -8066,51 +8069,14 @@ export const useOrderStore = create<OrderState>()(
                     });
                     return false;
                   }
+                  // void_order RPC confirmed — session is closed on backend.
+                  // Realtime broadcast (_handleSessionChange with is_active=false) will
+                  // keep local state in sync. No refetch needed here.
                 })
                 .catch((err) => console.error("Void order sync failed:", err));
             }
-            // 3. Archive the order
+            // 4. Archive the order
             archiveOrder(orderId);
-            // Offline mode - queue for sync
-            // const syncQueue = get()._syncQueue || [];
-            // set({
-            //   _syncQueue: [
-            //     ...syncQueue,
-            //     {
-            //       type: "VOID_ORDER",
-            //       orderId,
-            //       voidReason,
-            //       timestamp: Date.now(),
-            //     },
-            //   ],
-            // });
-
-            // OPTIMISTIC UPDATE (Phase 1.3): Instead of full refresh, update affected table optimistically
-            // Find and clear the table session for this order
-            const { tablesById } = useFloorPlanStore.getState();
-            const affectedTable = Object.values(tablesById).find(
-              (t) => t.session?.order_id === order.db_order_id,
-            );
-            if (affectedTable) {
-              useFloorPlanStore.setState((state) => {
-                const newTables = state.tables.map((t) =>
-                  t.id === affectedTable.id
-                    ? { ...t, session: undefined } // Clear session
-                    : t,
-                );
-                return {
-                  tables: newTables,
-                  tablesById: newTables.reduce(
-                    (acc, table) => {
-                      acc[table.id] = table;
-                      return acc;
-                    },
-                    {} as Record<string, (typeof newTables)[0]>,
-                  ),
-                };
-              });
-            }
-            // Let realtime sync handle the rest (debounced)
             return true;
           },
 

@@ -28,6 +28,7 @@ import {
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { handleSeatingEffect } from "@/services/sessionEffects/handleSeatingEffect";
+import { recordVoidedSession } from "@/services/tableSessionRealtimeSync";
 import {
   FloorPlanObject,
   TableSession,
@@ -201,7 +202,6 @@ interface TableSessionStoreState {
   sessions: Record<string, TableSession>;
   /** sessionId → tableId[] (for merged tables) */
   sessionTableIndex: Record<string, string[]>;
-
   // ---- Dispatch API ----
 
   dispatch: (tableId: string, action: SessionAction) => boolean;
@@ -1046,6 +1046,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // 1. Optimistic local clear
         get().dispatch(tableId, { type: 'CLEAR' });
 
+        // Record this session as voided so polling won't re-sync it
+        if (sessionId) {
+          recordVoidedSession(tableId, sessionId);
+        }
+
         // 2. Try backend if online and session exists
         if (isOnline && supabase && sessionId) {
           try {
@@ -1070,6 +1075,15 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                 `Failed to clear session: ${error.message || error}`,
               );
             }
+
+            // Force refresh from backend after 4 seconds to ensure cleared state is synced
+            setTimeout(async () => {
+              const floorPlanState = useFloorPlanStore.getState();
+              if (floorPlanState.activeFloorPlanId) {
+                console.log("[clearTableSession] Force refreshing table status after void");
+                await floorPlanState.loadFloorPlanStatus();
+              }
+            }, 4000);
           } catch (err) {
             console.error("[clearTableSession] Exception:", err);
             // ROLLBACK (only if not already rolled back above)

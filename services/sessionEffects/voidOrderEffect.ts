@@ -14,12 +14,14 @@
 
 import type { SideEffectContext } from "@/lib/sessionSideEffects";
 import { InventoryService } from "@/services/inventoryService";
+import { recordVoidedSession, recordTableCleared } from "@/services/tableSessionRealtimeSync";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import {
   getOrderStoreSupabaseClient,
   useOrderStore,
 } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 
 export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
   if (ctx.action.type !== "VOID_ORDER") return;
@@ -64,10 +66,24 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
   }
 
   // 5. Clear local session store — backend session already closed by void_order RPC
-  const store = useTableSessionStore.getState();
-  const session = store.getSession(tableId);
+  const sessionStore = useTableSessionStore.getState();
+  const session = sessionStore.getSession(tableId);
   if (session) {
-    store.dispatch(tableId, { type: "CLEAR" });
+    const sessionId = session.id;
+
+    // Clear from session store
+    sessionStore.dispatch(tableId, { type: "CLEAR" });
+
+    // Sync clear to floor plan store so UI updates immediately
+    sessionStore._syncToFloorPlanStore(tableId);
+
+    // Record as voided so polling won't restore it
+    recordVoidedSession(tableId, sessionId);
+
+    // Also record as recently cleared to give backend RPC time to update
+    recordTableCleared(tableId);
+
+    console.log(`[voidOrderEffect] Cleared table ${tableId} session ${sessionId}`);
   } else {
     console.warn("[voidOrderEffect] No session found for tableId:", tableId);
   }

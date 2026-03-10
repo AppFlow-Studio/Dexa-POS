@@ -1,6 +1,8 @@
 // /components/tables/TableLayoutView.tsx
 
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useShallow } from "zustand/react/shallow";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { colors } from "@/lib/theme";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
@@ -53,6 +55,10 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 }) => {
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
   const globallySelectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
+
+  // Subscribe to sessions to force re-render when any session changes
+  // This ensures tables reflect the latest session state from useTableSessionStore
+  useTableSessionStore(useShallow((s) => s.sessions));
 
   // Create O(1) lookup map for tables
   const tablesById = useMemo(() => {
@@ -418,25 +424,4 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   );
 };
 
-export default React.memo(TableLayoutView, (prev, next) => {
-  if (prev.layoutId !== next.layoutId) return false;
-  if (prev.isEditMode !== next.isEditMode) return false;
-  if (prev.isSelectionMode !== next.isSelectionMode) return false;
-  if (prev.showConnections !== next.showConnections) return false;
-  if (prev.selectedTableId !== next.selectedTableId) return false;
-  if (prev.activeOrderId !== next.activeOrderId) return false;
-  if (prev.onTableSelect !== next.onTableSelect) return false;
-  const pt = prev.tables,
-    nt = next.tables;
-  if (pt.length !== nt.length) return false;
-  for (let i = 0; i < pt.length; i++) {
-    if (
-      pt[i].id !== nt[i].id ||
-      pt[i].session?.status !== nt[i].session?.status ||
-      pt[i].session?.order_id !== nt[i].session?.order_id ||
-      pt[i].name !== nt[i].name
-    )
-      return false;
-  }
-  return true;
-});
+export default React.memo(TableLayoutView);

@@ -138,7 +138,7 @@ export class FloorPlanService {
         const result = await client
           .from("table_sessions")
           .select(
-            `id, session_number, status, party_size, guest_name, order_id, server_staff_id, seated_at, current_course, needs_attention, is_vip`
+            `id, session_number, status, party_size, guest_name, order_id, server_staff_id, seated_at, current_course, needs_attention, is_vip, is_active`
           )
           .eq("is_active", true)
           .in("id", Array.from(sessionIdsFromJunctions));
@@ -308,6 +308,20 @@ export class FloorPlanService {
     // When cleaning or marking available, close the session (is_active = false)
     if (params.p_status === "cleaning" || params.p_status === "available") {
       const now = new Date().toISOString();
+
+      // First, mark all junctions as inactive so polling won't re-attach the session
+      // This must happen before we mark the session inactive
+      const { error: junctionError } = await client
+        .from("table_session_tables")
+        .update({ is_active: false })
+        .eq("session_id", params.p_session_id);
+
+      if (junctionError) {
+        console.warn("[updateTableSessionStatus] Failed to deactivate junctions:", junctionError);
+      } else {
+        console.log("[updateTableSessionStatus] Deactivated junctions for session:", params.p_session_id);
+      }
+
       updateData.is_active = false;
       updateData.cleared_at = now;
       updateData.closed_at = now;

@@ -4,6 +4,14 @@ import debounce from "lodash.debounce";
 import { RotateCcw, RotateCw, Trash2, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   KeyboardAvoidingView, // <--- Imported
   Platform,
   Text,
@@ -21,8 +29,11 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   table,
   layoutId, // Kept but unused to avoid breaking prop interface if parent passes it
 }) => {
-  const { updateTableName, removeTable, clearSelection, updateTablePosition } = useFloorPlanStore();
+  const { updateTableName, removeTable, clearSelection, updateTablePosition, updateTableSize } = useFloorPlanStore();
   const [name, setName] = useState(table.name);
+  const [width, setWidth] = useState(String(table.width || 100));
+  const [height, setHeight] = useState(String(table.height || 100));
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const debouncedUpdateName = useCallback(
     debounce((newName: string) => {
@@ -37,12 +48,18 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     setName(table.name);
   }, [table.name]);
 
+  useEffect(() => {
+    setWidth(String(table.width || 100));
+    setHeight(String(table.height || 100));
+  }, [table.width, table.height]);
+
   const handleNameChange = (newName: string) => {
     setName(newName);
     debouncedUpdateName(newName);
   };
 
   const handleDelete = () => {
+    setShowDeleteConfirm(false);
     if (table.id) {
       removeTable(table.id);
       clearSelection();
@@ -56,6 +73,31 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       : currentRotation + 45;
     const snappedRotation = Math.round(newRotation / 45) * 45;
     updateTablePosition(table.id, table.x, table.y, snappedRotation);
+  };
+
+  const debouncedUpdateSize = useCallback(
+    debounce((w: number, h: number) => {
+      if (table.id && w > 0 && h > 0) {
+        updateTableSize(table.id, w, h);
+      }
+    }, 300),
+    [table.id, updateTableSize]
+  );
+
+  const handleWidthChange = (value: string) => {
+    setWidth(value);
+    const num = parseInt(value, 10);
+    if (!isNaN(num)) {
+      debouncedUpdateSize(num, parseInt(height, 10) || 100);
+    }
+  };
+
+  const handleHeightChange = (value: string) => {
+    setHeight(value);
+    const num = parseInt(value, 10);
+    if (!isNaN(num)) {
+      debouncedUpdateSize(parseInt(width, 10) || 100, num);
+    }
   };
 
   return (
@@ -92,6 +134,34 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       </View>
 
       <View className="gap-2">
+        <Text className="text-sm font-medium text-zinc-400">Size</Text>
+        <View className="flex-row gap-2">
+          <View className="flex-1">
+            <Text className="text-xs text-zinc-500 mb-1">Width</Text>
+            <TextInput
+              className="bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white"
+              value={width}
+              onChangeText={handleWidthChange}
+              placeholder="Width"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+            />
+          </View>
+          <View className="flex-1">
+            <Text className="text-xs text-zinc-500 mb-1">Height</Text>
+            <TextInput
+              className="bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white"
+              value={height}
+              onChangeText={handleHeightChange}
+              placeholder="Height"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
+      </View>
+
+      <View className="gap-2">
         <Text className="text-sm font-medium text-zinc-400">Rotation</Text>
         <View className="flex-row gap-2">
           <TouchableOpacity
@@ -113,11 +183,28 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
       <TouchableOpacity
         className="bg-red-600 flex-row items-center justify-center py-3 rounded-lg gap-2"
-        onPress={handleDelete}
+        onPress={() => setShowDeleteConfirm(true)}
       >
         <Trash2 size={18} color="#fff" />
         <Text className="text-white text-base font-bold">Delete Element</Text>
       </TouchableOpacity>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent className="bg-zinc-800 border-zinc-700 w-[300px]">
+          <AlertDialogTitle className="text-white text-lg">Delete Element?</AlertDialogTitle>
+          <AlertDialogDescription className="text-zinc-400">
+            Are you sure you want to delete "{table.name}"? This action cannot be undone.
+          </AlertDialogDescription>
+          <View className="flex-row gap-2 justify-end pt-2">
+            <AlertDialogCancel className="bg-zinc-700 px-4 py-2 rounded-lg">
+              <Text className="text-white font-semibold">Cancel</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 px-4 py-2 rounded-lg" onPress={handleDelete}>
+              <Text className="text-white font-semibold">Delete</Text>
+            </AlertDialogAction>
+          </View>
+        </AlertDialogContent>
+      </AlertDialog>
     </KeyboardAvoidingView>
   );
 };

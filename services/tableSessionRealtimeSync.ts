@@ -16,6 +16,16 @@ let supabaseClient: SupabaseClient | null = null;
 const POLL_INTERVAL = 3000; // Poll every 3 seconds
 const MIN_SYNC_INTERVAL = 1000; // Minimum 1 second between syncs
 
+// Track voided sessions to prevent re-syncing the same session that was just cleared
+// Maps tableId -> sessionId that was voided
+const voidedSessions = new Map<string, string>();
+const VOID_BLOCK_DURATION = 5000; // Block restore for 5 seconds
+
+// Track when tables were last cleared locally to prevent polling from immediately restoring them
+// Maps tableId -> timestamp when session was cleared
+const lastClearedTables = new Map<string, number>();
+const CLEAR_BLOCK_DURATION = 5000; // Block restore for 5 seconds after local clear
+
 /**
  * Register Supabase client for use in polling
  */
@@ -68,6 +78,30 @@ export function startTableSessionRealtimeSync(locationId: string) {
       objects.forEach((object) => {
         const currentSession = sessionStore.sessions[object.id];
 
+        // If local session is cleared, ALWAYS keep it cleared to respect user actions
+        // (void, checkout, etc). Only restore if it's a different session (new guest).
+        if (!currentSession && object.session) {
+          const voidedSessionId = voidedSessions.get(object.id);
+
+          // ALWAYS skip if same voided session
+          if (voidedSessionId === object.session.id) {
+            console.log(`[TableSessionRealtimeSync] SKIP restore for table ${object.name || object.id}: same voided session`);
+            return;
+          }
+
+          // NEW: Also skip if the table was JUST cleared (within last 5 seconds)
+          // This prevents polling from immediately restoring a cleared session before
+          // the backend RPC has time to update is_active=false
+          const lastClearedTime = lastClearedTables.get(object.id);
+          if (lastClearedTime && now - lastClearedTime < 5000) {
+            console.log(`[TableSessionRealtimeSync] SKIP restore for table ${object.name || object.id}: recently cleared locally (${now - lastClearedTime}ms ago)`);
+            return;
+          }
+
+          // Different session ID + not recently cleared = new guest, allow it to be synced
+          console.log(`[TableSessionRealtimeSync] NEW guest for table ${object.name || object.id}: different session`);
+        }
+
         if (!object.session) {
           // Session was closed on backend — clear local session if one exists
           if (currentSession && !isLocalOnlyStatus(currentSession.status)) {
@@ -80,20 +114,26 @@ export function startTableSessionRealtimeSync(locationId: string) {
           return;
         }
 
-        // Only update if session changed
-        if (
-          !currentSession ||
-          JSON.stringify(currentSession) !== JSON.stringify(object.session)
-        ) {
-          if (currentSession) {
-            console.log(`[TableSessionRealtimeSync] UPDATE table ${object.name || object.id}: "${currentSession.status}" → "${object.session.status}" (session ${object.session.id})`);
-          } else {
-            console.log(`[TableSessionRealtimeSync] NEW session for table ${object.name || object.id}: status="${object.session.status}" (session ${object.session.id})`);
+        // Only update if session actually changed (for existing sessions)
+        if (currentSession) {
+          const sessionChanged =
+            currentSession.id !== object.session.id ||
+            currentSession.status !== object.session.status ||
+            currentSession.party_size !== object.session.party_size ||
+            currentSession.guest_name !== object.session.guest_name ||
+            currentSession.order_id !== object.session.order_id ||
+            currentSession.server_staff_id !== object.session.server_staff_id ||
+            currentSession.current_course !== object.session.current_course ||
+            currentSession.needs_attention !== object.session.needs_attention ||
+            currentSession.is_vip !== object.session.is_vip;
+
+          if (sessionChanged) {
+            console.log(`[TableSessionRealtimeSync] UPDATE table ${object.name || object.id}: "${currentSession.status}" → "${object.session.status}"`);
+            dispatchActions.push({
+              tableId: object.id,
+              action: { type: "SYNC" as const, session: object.session },
+            });
           }
-          dispatchActions.push({
-            tableId: object.id,
-            action: { type: "SYNC" as const, session: object.session },
-          });
         }
       });
 
@@ -113,6 +153,29 @@ export function startTableSessionRealtimeSync(locationId: string) {
   poll();
 
   console.log("[TableSessionRealtimeSync] Started with interval:", POLL_INTERVAL);
+}
+
+/**
+ * Record a voided session so polling won't restore it
+ */
+export function recordVoidedSession(tableId: string, sessionId: string) {
+  voidedSessions.set(tableId, sessionId);
+  // Auto-cleanup after void block duration
+  setTimeout(() => {
+    voidedSessions.delete(tableId);
+  }, VOID_BLOCK_DURATION);
+}
+
+/**
+ * Record a table as recently cleared so polling won't immediately restore it
+ * Called when a session is cleared locally (void, checkout, etc)
+ */
+export function recordTableCleared(tableId: string) {
+  lastClearedTables.set(tableId, Date.now());
+  // Auto-cleanup after clear block duration
+  setTimeout(() => {
+    lastClearedTables.delete(tableId);
+  }, CLEAR_BLOCK_DURATION);
 }
 
 /**

@@ -28,6 +28,7 @@ let _supabaseClient: SupabaseClient | null = null;
 
 // Dedup concurrent loadFloorPlanStatus calls (module-level to avoid re-renders)
 let _loadFloorPlanPromise: Promise<void> | null = null;
+let _loadFloorPlanId: string | null = null; // Track which plan is being loaded
 
 export const setFloorPlanSupabaseClient = (client: SupabaseClient | null) => {
   _supabaseClient = client;
@@ -107,6 +108,7 @@ interface FloorPlanState {
     rotation?: number,
   ) => Promise<void>;
   updateTableName: (tableId: string, name: string) => Promise<void>; // Added
+  updateTableSize: (tableId: string, width: number, height: number) => Promise<void>;
   updateTablePositionsBatch: (
     updates: Array<{ id: string; x: number; y: number; rotation?: number }>,
   ) => Promise<void>;
@@ -273,70 +275,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           // IMPORTANT: Set auth for private channels
           await supabase.realtime.setAuth();
 
+          // NOTE: Realtime subscriptions are now handled ENTIRELY by useFloorRealtime hook
+          // (in LocationRealtimeProvider). Creating duplicate subscriptions here caused
+          // race conditions where multiple listeners tried to update the same state.
+          // The hook calls _handleSessionChange() and loadFloorPlanStatus() in the correct order.
           const channel = supabase
             .channel(`location:${locationId}:tables`, {
               config: { private: true }, // Use private channel with RLS
-            })
-            // Listen for session changes (INSERT/UPDATE/DELETE)
-            .on("broadcast", { event: "INSERT" }, (payload) => {
-              console.log("[Realtime] Session INSERT:", payload.payload);
-              get()._handleSessionChange(
-                payload.payload as TableSessionPayload,
-              );
-              useTableSessionStore
-                .getState()
-                ._handleSessionChange(
-                  payload.payload as TableSessionPayload,
-                );
-            })
-            .on("broadcast", { event: "UPDATE" }, (payload) => {
-              console.log("[Realtime] Session UPDATE:", payload.payload);
-              get()._handleSessionChange(
-                payload.payload as TableSessionPayload,
-              );
-              useTableSessionStore
-                .getState()
-                ._handleSessionChange(
-                  payload.payload as TableSessionPayload,
-                );
-            })
-            .on("broadcast", { event: "DELETE" }, (payload) => {
-              console.log("[Realtime] Session DELETE:", payload.payload);
-              get()._handleSessionChange(
-                payload.payload as TableSessionPayload,
-              );
-              useTableSessionStore
-                .getState()
-                ._handleSessionChange(
-                  payload.payload as TableSessionPayload,
-                );
-            })
-            // Listen for table assignment changes
-            .on(
-              "broadcast",
-              { event: "TABLE_ASSIGNMENT_INSERT" },
-              (payload) => {
-                get()._debouncedRefresh();
-              },
-            )
-            .on(
-              "broadcast",
-              { event: "TABLE_ASSIGNMENT_UPDATE" },
-              (payload) => {
-                get()._debouncedRefresh();
-              },
-            )
-            .on(
-              "broadcast",
-              { event: "TABLE_ASSIGNMENT_DELETE" },
-              (payload) => {
-                get()._debouncedRefresh();
-              },
-            )
-            // Listen for order updates linked to sessions
-            .on("broadcast", { event: "SESSION_ORDER_UPDATE" }, (payload) => {
-              // Notify order store if needed
-              get()._debouncedRefresh();
             })
             .subscribe((status, err) => {
               console.log("[Realtime] Status:", status, err);
@@ -394,7 +339,27 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           if (operation === "DELETE" || !data?.session) {
             // Full refresh for deletes (simpler)
+            // NOTE: Cancel pending load to prevent stale data from overwriting cleared state
+            _loadFloorPlanPromise = null;
+            _loadFloorPlanId = null;
             get()._debouncedRefresh();
+            return;
+          }
+
+          // If session is no longer active, clear it from all tables
+          if (data.session.is_active === false) {
+            const sessionId = data.session.id;
+            set((state) => {
+              const newTables = state.tables.map((t) =>
+                t.session?.id === sessionId ? { ...t, session: undefined } : t,
+              );
+              return { tables: newTables, tablesById: buildTablesById(newTables) };
+            });
+            // NOTE: Don't call _debouncedRefresh here - state is already cleared.
+            // The realtime UPDATE with is_active=false means the DB is already updated.
+            // If we refresh, we might re-fetch the session before it's marked inactive server-side,
+            // causing it to briefly re-appear. Instead, let the clear stand and any future
+            // updates will come via realtime.
             return;
           }
 
@@ -634,12 +599,16 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         loadFloorPlanStatus: async () => {
-          if (_loadFloorPlanPromise) return _loadFloorPlanPromise;
-
           const supabase = getClient();
           const floorPlanId = get().activeFloorPlanId;
           if (!floorPlanId || !supabase) return;
 
+          // Only reuse promise if loading same floor plan (avoid stale data on plan switch)
+          if (_loadFloorPlanPromise && _loadFloorPlanId === floorPlanId) {
+            return _loadFloorPlanPromise;
+          }
+
+          _loadFloorPlanId = floorPlanId;
           _loadFloorPlanPromise = (async () => {
             try {
               // Parallel fetch: all floor plan objects + sections
@@ -659,8 +628,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
               // Preserve local-only states: if an object currently has a local-only
               // status with the same session ID, keep the local session
+              // Also don't restore inactive sessions (is_active=false) that were just cleared
               const mergedTables = freshTables.map((freshTable) => {
                 const currentTable = currentTablesById[freshTable.id];
+
+                // Preserve local-only status if still same session
                 if (
                   currentTable?.session &&
                   isLocalOnlyStatus(currentTable.session.status) &&
@@ -669,6 +641,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 ) {
                   return { ...freshTable, session: currentTable.session };
                 }
+
+                // Don't restore an inactive session (is_active=false) that was cleared locally
+                if (
+                  !currentTable?.session &&
+                  freshTable.session?.is_active === false
+                ) {
+                  return { ...freshTable, session: undefined };
+                }
+
                 return freshTable;
               });
 
@@ -699,6 +680,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               // Order prefetch is now handled by services/tableOrderPrefetch.ts subscriber
             } finally {
               _loadFloorPlanPromise = null;
+              _loadFloorPlanId = null;
             }
           })();
 
@@ -924,6 +906,31 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             supabase,
             tableId,
             { name }, // Assuming 'name' column exists and is updateable
+          );
+
+          if (error) {
+            await get().loadFloorPlanStatus();
+            throw error;
+          }
+        },
+
+        updateTableSize: async (tableId: string, width: number, height: number) => {
+          const supabase = getClient();
+          // Optimistic update
+          set((state) => {
+            const newTables = state.tables.map((t) =>
+              t.id === tableId ? { ...t, width, height } : t,
+            );
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
+
+          const { error } = await FloorPlanService.updateFloorPlanObject(
+            supabase,
+            tableId,
+            { width, height },
           );
 
           if (error) {

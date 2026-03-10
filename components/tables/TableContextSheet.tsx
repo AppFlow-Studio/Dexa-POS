@@ -176,7 +176,8 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     setTimeout(() => onClose(), 300);
   }, [onClose]);
 
-  const status = table?.session?.status || "available";
+  const liveSession = useTableSessionStore((s) => table ? s.sessions[table.id] : undefined);
+  const status = (liveSession?.status ?? table?.session?.status) || "available";
   const tableColor = TABLE_STATUS_COLORS[status] || colors.info;
 
   const actions = useMemo(
