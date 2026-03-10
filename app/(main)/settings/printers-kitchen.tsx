@@ -257,6 +257,9 @@ const PrintersKitchenScreen = () => {
     };
   }, []);
 
+  // Retry connection state
+  const [retryingPrinterId, setRetryingPrinterId] = useState<string | null>(null);
+
   // Derived
   const paymentTerminal = selectedStation?.payment_terminal ?? null;
   const hasDejavooPrinter = storedPrinters.some((p) => p.printerType === "dejavoo_spin_p");
@@ -265,6 +268,8 @@ const PrintersKitchenScreen = () => {
   const kitchenPrinters = storedPrinters.filter(
     (p) => p.printerRole === "kitchen" || p.printerRole === "bar",
   );
+  const connectedCount = storedPrinters.filter((p) => p.isActive && p.isConnected).length;
+  const totalActive = storedPrinters.filter((p) => p.isActive).length;
 
   // Receipt settings state
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>({
@@ -499,6 +504,38 @@ const PrintersKitchenScreen = () => {
     }
   };
 
+  const handleRetryConnection = async (printer: PrinterConfig) => {
+    setRetryingPrinterId(printer.id);
+    try {
+      if (printer.printerType === "star_micronics" && printer.networkAddress) {
+        const verified = await verifyStarPrinter(supabase, printer.id);
+        if (selectedStore?.id) await fetchPrinters(selectedStore.id);
+        Alert.alert(
+          verified ? "Printer Online" : "Connection Failed",
+          verified
+            ? `${printer.printerName} is connected and ready.`
+            : `Could not reach ${printer.printerName}. Check that the printer is powered on and connected to the network.`,
+        );
+      } else if (printer.printerType === "dejavoo_spin_p") {
+        const verified = await verifyDejavooPrinter(supabase, printer.id);
+        if (selectedStore?.id) await fetchPrinters(selectedStore.id);
+        Alert.alert(
+          verified ? "Printer Online" : "Connection Failed",
+          verified
+            ? `${printer.printerName} is connected and ready.`
+            : `Could not reach ${printer.printerName}. Check terminal connection.`,
+        );
+      } else {
+        await PrinterService.printTestPage(printer);
+        if (selectedStore?.id) await fetchPrinters(selectedStore.id);
+      }
+    } catch (e: any) {
+      Alert.alert("Connection Failed", e.message || "Unable to connect to printer.");
+    } finally {
+      setRetryingPrinterId(null);
+    }
+  };
+
   const handleUpdatePrinter = async (
     printerId: string,
     updates: {
@@ -638,10 +675,28 @@ const PrintersKitchenScreen = () => {
                     {printer.errorCount} error{printer.errorCount > 1 ? "s" : ""}
                   </Text>
                 )}
+                {printer.lastStatusAt && (
+                  <Text className="text-gray-600 text-[10px] ml-3">
+                    Checked {getRelativeTime(printer.lastStatusAt)}
+                  </Text>
+                )}
               </View>
             </View>
           </View>
           <View className="flex-row items-center">
+            {!printer.isConnected && (
+              <TouchableOpacity
+                onPress={() => handleRetryConnection(printer)}
+                disabled={retryingPrinterId === printer.id}
+                className="ml-2 p-2.5 bg-amber-600/20 rounded-lg"
+              >
+                {retryingPrinterId === printer.id ? (
+                  <ActivityIndicator size="small" color={colors.warning} />
+                ) : (
+                  <RefreshCw size={18} color={colors.warning} />
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => setEditingPrinterId(isEditing ? null : printer.id)}
               className="ml-2 p-2.5 bg-card rounded-lg"
@@ -775,6 +830,36 @@ const PrintersKitchenScreen = () => {
           Configure receipt printers, kitchen display systems, and ticket routing.
         </Text>
       </View>
+
+      {/* Quick Status Summary */}
+      {totalActive > 0 && (
+        <View className="flex-row items-center bg-panel rounded-xl border border-gray-700 px-4 py-3 mb-6">
+          <View className={`w-3 h-3 rounded-full mr-3 ${connectedCount === totalActive ? "bg-green-400" : connectedCount > 0 ? "bg-amber-400" : "bg-red-400"}`} />
+          <Text className="text-white font-medium">
+            {connectedCount}/{totalActive} printer{totalActive !== 1 ? "s" : ""} connected
+          </Text>
+          {connectedCount < totalActive && (
+            <Text className="text-gray-400 text-sm ml-3">
+              {totalActive - connectedCount} offline
+            </Text>
+          )}
+          <View className="flex-1" />
+          <TouchableOpacity
+            onPress={handleScanStarPrinters}
+            disabled={isScanningStar}
+            className="bg-blue-600/20 px-3 py-1.5 rounded-lg flex-row items-center"
+          >
+            {isScanningStar ? (
+              <ActivityIndicator size="small" color={colors.info} />
+            ) : (
+              <>
+                <Wifi size={14} color={colors.info} />
+                <Text className="text-blue-400 font-medium ml-1.5 text-sm">Scan</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View className="h-px w-full bg-gray-700 mb-6" />
 

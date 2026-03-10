@@ -4,13 +4,12 @@ import {
   unregisterTablePosition,
 } from "@/lib/tablePositionRegistry";
 import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
-import { useTableTimerTick } from "@/hooks/useTableTimerTick";
+import { useTableDuration } from "@/hooks/useTableDuration";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { BrushCleaning, RotateCcw, Sparkles, Trash2 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import { BrushCleaning, RotateCcw, Trash2 } from "lucide-react-native";
+import React, { useEffect, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -45,12 +44,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   onPress,
   index = 0,
 }) => {
-  const tablesById = useFloorPlanStore((s) => s.tablesById);
   const updateTablePosition = useFloorPlanStore((s) => s.updateTablePosition);
   const removeTable = useFloorPlanStore((s) => s.removeTable);
   const saveSnapshot = useFloorPlanStore((s) => s.saveSnapshot);
-  const { defaultSittingTimeMinutes } = useSettingsStore();
-  const tick = useTableTimerTick();
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =
@@ -61,52 +57,33 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const getOrder = useOrderStore((s) => s.getOrder);
 
   const effectiveOrder = useMemo(() => {
-    // Fast path: O(1) session-based lookup via getOrder (checks ordersById + dbOrderIdIndex)
     if (table.session?.order_id) {
       const found = getOrder(table.session.order_id);
       if (found) return found;
     }
 
-    // Fallback: non-reactive scan by service_location_id
-    // Uses getState() to avoid subscribing to full ordersById
     const allOrders = useOrderStore.getState().ordersById;
     return Object.values(allOrders).find(
       (o) => o.service_location_id === table.id && o.order_status !== "void",
     );
   }, [table.session?.order_id, getOrder, table.id]);
 
-  const { duration, isOvertime } = useMemo(() => {
-    // Determine if table is effectively "in use" based on session or order
-    const status = table.session?.status?.toLowerCase();
-    const isInUse =
-      status === "seating" ||
-      status === "seated" ||
-      status === "ordering" ||
-      status === "ordered" ||
-      status === "served" ||
-      status === "check_presented" ||
-      status === "paying" ||
-      status === "paid" ||
-      status === "closing" ||
-      effectiveOrder;
+  const tableSessionStatus = table.session?.status?.toLowerCase();
+  const isTableInUse =
+    tableSessionStatus === "seating" ||
+    tableSessionStatus === "seated" ||
+    tableSessionStatus === "ordering" ||
+    tableSessionStatus === "ordered" ||
+    tableSessionStatus === "served" ||
+    tableSessionStatus === "check_presented" ||
+    tableSessionStatus === "paying" ||
+    tableSessionStatus === "paid" ||
+    tableSessionStatus === "closing";
 
-    if (!isInUse || !effectiveOrder?.opened_at) {
-      return { duration: "", isOvertime: false };
-    }
-
-    const startTime = new Date(effectiveOrder.opened_at).getTime();
-    const diffMins = Math.floor((Date.now() - startTime) / 60000);
-
-    return {
-      duration: `${diffMins} min`,
-      isOvertime: defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes,
-    };
-  }, [
-    tick,
-    table.session,
-    effectiveOrder,
-    defaultSittingTimeMinutes,
-  ]);
+  const { duration, isOvertime } = useTableDuration(
+    effectiveOrder?.opened_at,
+    isTableInUse || !!effectiveOrder,
+  );
 
   const displayName = useMemo(() => {
     if (
@@ -114,6 +91,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       table.session.merged_tables &&
       table.session.merged_tables.length > 0
     ) {
+      const tablesById = useFloorPlanStore.getState().tablesById;
       const otherTableNames = table.session.merged_tables
         .filter((id) => id !== table.id)
         .map((id) => tablesById[id]?.name)
@@ -125,7 +103,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       }
     }
     return table.name;
-  }, [table, tablesById]);
+  }, [table.session?.merged_tables, table.id, table.name]);
 
   // --- ANIMATED VALUES ---
   const translateX = useSharedValue(table.x);
@@ -259,11 +237,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     };
   });
 
-  const orderTotal =
-    effectiveOrder?.items?.reduce(
-      (acc: number, item: any) => acc + item.price * item.quantity,
-      0,
-    ) || 0;
+  const orderTotal = useMemo(
+    () =>
+      effectiveOrder?.items?.reduce(
+        (acc: number, item: any) => acc + item.price * item.quantity,
+        0,
+      ) || 0,
+    [effectiveOrder?.items],
+  );
 
   const tableStatus = table.session?.status || "available"; // Fallback
   const tableColor = isOvertime

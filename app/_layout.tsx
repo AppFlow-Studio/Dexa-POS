@@ -5,6 +5,7 @@ import ClockInWallModal from "@/components/auth/ClockInWallModal";
 import ManagerPinModal from "@/components/auth/ManagerPinModal";
 import CustomerSheet from "@/components/bill/CustomerSheet";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
+import { NoPrinterModal } from "@/components/printing/NoPrinterModal";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 // SyncStatusBar removed - now using NetworkStatusBadge in Header
 // import { SyncStatusBar } from "@/components/SyncStatusBar";
@@ -23,6 +24,10 @@ import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePtoStore } from "@/stores/usePtoStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
+import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
 import { ClerkLoaded, ClerkProvider, TokenCache } from "@clerk/clerk-expo";
@@ -86,8 +91,13 @@ export default function RootLayout() {
   const hasMounted = React.useRef(false);
   const { colorScheme, isDarkColorScheme } = useColorScheme();
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false);
-  const { isClockInWallOpen, hideClockInWall } = useTimeclockStore();
+  const isClockInWallOpen = useTimeclockStore((s) => s.isClockInWallOpen);
+  const hideClockInWall = useTimeclockStore((s) => s.hideClockInWall);
   const isKDS = useStoreSettingsStore((s) => s.selectedStation?.station_type === "kds");
+  const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
+  const isCustomerSheetOpen = useCustomerSheetStore((s) => s.isOpen);
+  const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
+  const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
 
   useIsomorphicLayoutEffect(() => {
     if (hasMounted.current) {
@@ -169,15 +179,16 @@ export default function RootLayout() {
                             <Stack screenOptions={{ headerShown: false }} />
                             <PortalHost />
                             {!isKDS && <SearchBottomSheet />}
-                            {!isKDS && <ItemCustomizationDialog />}
-                            {!isKDS && (
+                            {!isKDS && isCustomizationOpen && <ItemCustomizationDialog />}
+                            {!isKDS && isClockInWallOpen && (
                               <ClockInWallModal
                                 isOpen={isClockInWallOpen}
                                 onClose={hideClockInWall}
                               />
                             )}
-                            {!isKDS && <ManagerPinModal />}
-                            {!isKDS && <CustomerSheet />}
+                            {!isKDS && isPinModalOpen && <ManagerPinModal />}
+                            {!isKDS && isCustomerSheetOpen && <CustomerSheet />}
+                            {!isKDS && isNoPrinterModalVisible && <NoPrinterModal />}
                             <Toasts
                               defaultStyle={{
                                 view: {

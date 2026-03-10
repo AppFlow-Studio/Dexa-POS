@@ -80,9 +80,9 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   };
 
   return (
-    <View className="flex-row justify-between items-start gap-4">
+    <View className="flex-row justify-between items-start gap-4 border-r border-border w-[43%]">
       <View className="bg-background w-full p-1.5 rounded-xl flex-shrink flex flex-row items-center justify-between">
-        <View className="flex-1 flex-row items-center gap-2">
+        <View className="flex-row items-center gap-2">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -108,16 +108,12 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   onPress={() => handleCategoryPress(tab, isAvailable)}
                   className={`py-2 px-4 rounded-full flex-row items-center gap-2 ${
                     activeCategory === tab
-                      ? "bg-card font-semibold "
+                      ? "bg-card font-semibold"
                       : !isAvailable
                       ? "bg-gray-700 opacity-60"
-                      : "bg-transparent"
+                      : "bg-panel"
                   }`}
                 >
-                  {/* <View
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: dotColor }}
-                  /> */}
                   <Text
                     className={` text-lg ${
                       activeCategory === tab

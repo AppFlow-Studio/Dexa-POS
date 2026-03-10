@@ -6,12 +6,12 @@ import { useOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { BrushCleaning, CheckCircle, ChevronDown, ChevronUp, Clock, Pencil, Send, Sparkles } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import { useTableDuration } from "@/hooks/useTableDuration";
+import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   Easing,
@@ -513,39 +513,30 @@ const TableListItem: React.FC<{
   handleTablePress,
 }) => {
   const tableData = useTableData(table);
-  const [isOvertime, setIsOvertime] = useState(false);
-  const [duration, setDuration] = useState("");
-  const { defaultSittingTimeMinutes } = useSettingsStore();
 
-  useEffect(() => {
-    // Check various active statuses
+  const isActiveStatus = useMemo(() => {
     const status = tableData?.status?.toLowerCase();
-    const isActive =
+    return (
       status === "seated" ||
       status === "ordered" ||
       status === "served" ||
       status === "check_presented" ||
       status === "paying" ||
       status === "paid" ||
-      status === "in use";
+      status === "in use"
+    );
+  }, [tableData?.status]);
 
-    if (!isActive || !tableData.seatedTime) {
-      setIsOvertime(false);
-      setDuration("");
-      return;
-    }
-    const update = () => {
-      const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
-      setDuration(formatDuration(diffMs));
-      setIsOvertime(
-        defaultSittingTimeMinutes > 0 &&
-          Math.floor(diffMs / 60000) > defaultSittingTimeMinutes,
-      );
-    };
-    update();
-    const timer = setInterval(update, 1000);
-    return () => clearInterval(timer);
-  }, [tableData, defaultSittingTimeMinutes]);
+  const { duration: rawDuration, isOvertime } = useTableDuration(
+    tableData?.seatedTime?.toISOString() ?? null,
+    isActiveStatus && !!tableData?.seatedTime,
+  );
+
+  const duration = useMemo(() => {
+    if (!isActiveStatus || !tableData?.seatedTime) return "";
+    const diffMs = Date.now() - tableData.seatedTime.getTime();
+    return formatDuration(diffMs);
+  }, [isActiveStatus, tableData?.seatedTime, rawDuration]);
 
   const handlePress = () => {
     const status = tableData?.status?.toLowerCase();

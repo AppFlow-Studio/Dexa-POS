@@ -29,21 +29,33 @@ function orderIdsEqual(a: string[], b: string[]): boolean {
   return true;
 }
 
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
 /**
  * Stable equality for filtered order arrays.
- * Compares by order ID list and each order's updatedAt/sync_version.
+ * Uses a numeric hash instead of string concatenation to avoid O(N)
+ * string allocations on every call.
  */
 function useStableOrderList(orders: OrderProfile[]): OrderProfile[] {
   const prev = useRef<OrderProfile[]>(orders);
-  const prevIds = useRef<string>("");
+  const prevHash = useRef<number>(0);
 
-  const fingerprint = orders
-    .map((o) => `${o.id}:${o.sync_version ?? 0}`)
-    .join("|");
+  let hash = orders.length;
+  for (let i = 0; i < orders.length; i++) {
+    const o = orders[i];
+    hash = ((hash << 5) - hash + hashStr(o.id)) | 0;
+    hash = ((hash << 5) - hash + (o.sync_version ?? 0)) | 0;
+  }
 
-  if (fingerprint !== prevIds.current) {
+  if (hash !== prevHash.current) {
     prev.current = orders;
-    prevIds.current = fingerprint;
+    prevHash.current = hash;
   }
 
   return prev.current;
@@ -249,22 +261,21 @@ export function useOrderTotals(
 
 export function useWorkingSetOrders(): OrderProfile[] {
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
-  const orders = useOrderStore((s) => {
-    const result: OrderProfile[] = [];
-    for (const dbId of s.workingSetOrderIds) {
-      const order = s.ordersById[dbId];
-      if (order) result.push(order);
-    }
-    return result;
-  });
+  const ordersById = useOrderStore((s) => s.ordersById);
 
   const sorted = useMemo(() => {
-    return [...orders].sort((a, b) => {
+    const result: OrderProfile[] = [];
+    for (const dbId of workingSetOrderIds) {
+      const order = ordersById[dbId];
+      if (order) result.push(order);
+    }
+    result.sort((a, b) => {
       const aTime = new Date(a.opened_at || 0).getTime();
       const bTime = new Date(b.opened_at || 0).getTime();
       return bTime - aTime;
     });
-  }, [orders]);
+    return result;
+  }, [workingSetOrderIds, ordersById]);
 
   return useStableOrderList(sorted);
 }
@@ -382,19 +393,19 @@ export function useOtherStationOrders(): OrderProfile[] {
 
 export function useOrderTypeCounts(): Record<string, number> {
   const stationOrders = useStationOrders();
-  const OnlyUncomplete = stationOrders.filter(
-    (o) =>
-      o.order_status !== "completed" &&
-      o.order_status !== "ready" &&
-      o.paid_status !== "Paid",
-  );
   return useMemo(() => {
+    const uncomplete = stationOrders.filter(
+      (o) =>
+        o.order_status !== "completed" &&
+        o.order_status !== "ready" &&
+        o.paid_status !== "Paid",
+    );
     return {
-      All: OnlyUncomplete.length,
-      Takeaway: OnlyUncomplete.filter(
+      All: uncomplete.length,
+      Takeaway: uncomplete.filter(
         (o) => o.order_type === "takeout" || o.order_type === "Takeaway",
       ).length,
-      Delivery: OnlyUncomplete.filter(
+      Delivery: uncomplete.filter(
         (o) => o.order_type === "delivery" || o.order_type === "Delivery",
       ).length,
     };

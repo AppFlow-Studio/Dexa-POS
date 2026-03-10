@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
@@ -234,7 +235,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       if (success) {
         show({ title: "Receipt Sent", message: "Receipt sent to printer.", type: "success" });
       } else {
-        show({ title: "Print Failed", message: "No receipt printer configured.", type: "error" });
+        useNoPrinterModalStore.getState().show("receipt");
       }
     } catch (e: any) {
       show({ title: "Print Error", message: e?.message || "Failed to print receipt.", type: "error" });
@@ -262,7 +263,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       if (success) {
         show({ title: "Kitchen Ticket Sent", message: "Kitchen ticket sent to printer.", type: "success" });
       } else {
-        show({ title: "Print Failed", message: "No kitchen printer configured.", type: "error" });
+        useNoPrinterModalStore.getState().show("kitchen");
       }
     } catch (e: any) {
       show({ title: "Print Error", message: e?.message || "Failed to print kitchen ticket.", type: "error" });

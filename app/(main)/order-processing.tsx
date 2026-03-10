@@ -3,13 +3,6 @@ import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
-import OrderLineSection from "@/components/order/OrderLineSection";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -26,6 +19,7 @@ import { FlatList, Text, View } from "react-native";
 import { useShallow } from "zustand/react/shallow";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
+const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const;
 
 const OrderProcessing = () => {
   // FIXED: Use individual selectors to prevent subscribing to entire ordersById
@@ -132,33 +126,29 @@ const OrderProcessing = () => {
     }
   }, [activeOrderId, setActiveOrder, startNewOrder]);
 
-  const handleViewItems = (orderId: string) => {
+  const handleViewItems = useCallback((orderId: string) => {
     setSelectedOrderId(orderId);
     setItemsModalOpen(true);
-  };
+  }, []);
 
-  const handleMarkReady = (order: OrderProfile) => {
+  const handleMarkReady = useCallback((order: OrderProfile) => {
     markAllItemsAsReady(order.id);
-    console.log("we are readying", order.order_type, order.paid_status);
 
-    // Then, check if it's a Takeaway order and archive it
-    // Note: archiveOrder now handles inventory deduction automatically
     if (order.order_type === "Takeaway" && order.paid_status === "Paid" ||  order.check_status !== "Closed") {
-      // A small delay can improve UX, ensuring the user sees the status change before it disappears.
       setTimeout(() => {
         archiveOrder(order.id);
       }, 500);
     }
-  };
+  }, [markAllItemsAsReady, archiveOrder]);
 
-  const handleRetrieve = (orderId: string) => {
+  const handleRetrieve = useCallback((orderId: string) => {
     setActiveOrder(orderId);
-  };
+  }, [setActiveOrder]);
 
-  const handleReopenCheck = (orderId: string) => {
+  const handleReopenCheck = useCallback((orderId: string) => {
     updateOrderCheckStatus(orderId, "Opened");
     setActiveOrder(orderId);
-  };
+  }, [updateOrderCheckStatus, setActiveOrder]);
 
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
@@ -249,8 +239,30 @@ const OrderProcessing = () => {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Defer FlatList data until stage 2 to avoid rendering OrderBadge components early
   const displayOrders = renderStage >= 2 ? reversedFilteredOrders : EMPTY_ORDERS;
+
+  const renderOrderBadge = useCallback(
+    ({ item }: { item: OrderProfile }) => (
+      <OrderBadge
+        order={item}
+        onMarkReady={() => handleMarkReady(item)}
+        onViewItems={() => handleViewItems(item.id)}
+        onRetrieve={() => handleRetrieve(item.id)}
+        onReopenCheck={() => handleReopenCheck(item.id)}
+        onPrintReceipt={() => handlePrintReceipt(item)}
+      />
+    ),
+    [handleMarkReady, handleViewItems, handleRetrieve, handleReopenCheck, handlePrintReceipt],
+  );
+
+  const badgeKeyExtractor = useCallback((item: OrderProfile) => item.id, []);
+
+  const handleAccordionChange = useCallback(
+    (value: string | undefined) => setIsAccordionOpen(!!value),
+    [],
+  );
+
+  const handleCloseItemsModal = useCallback(() => setItemsModalOpen(false), []);
 
   return (
     <View className="flex-1 flex-col bg-background">
@@ -277,32 +289,31 @@ const OrderProcessing = () => {
           </View>
         )}
 
-        <View className="flex-1 py-4 px-2 pt-0 bg-background rounded-tl-3xl ">
-          <Accordion
+        <View className="flex-1 px-2 pt-0 bg-background rounded-tl-3xl ">
+          {/* <Accordion
             type="single"
             collapsible
-            onValueChange={(value: string | undefined) =>
-              setIsAccordionOpen(!!value)
-            }
+            onValueChange={handleAccordionChange}
+            className="border-none p-0"         
           >
-            <AccordionItem value="orders">
-              <AccordionTrigger className="py-3">
+            <AccordionItem value="orders" className="border-none p-0 =" >
+              <AccordionTrigger className="p-2 border-none">
                 <View className="flex-row items-center gap-x-2">
-                  <Text className="text-2xl font-bold text-white">
+                  <Text className="text-xl font-bold text-white">
                     Order Line
                   </Text>
                   {displayOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-1 h-8 w-8">
-                      <Text className="text-base font-bold text-white">
+                    <Badge className="ml-1 bg-gray-700 rounded-md px-2 py-0.5 justify-center items-center">
+                      <Text className="text-sm font-semibold text-gray-300">
                         {displayOrders.length}
                       </Text>
                     </Badge>
                   )}
                 </View>
               </AccordionTrigger>
-              <AccordionContent>
+              <AccordionContent > */}
                 {/* Defer rendering of heavy list */}
-                {renderStage >= 2 ? (
+                {/* {renderStage >= 2 ? (
                   <OrderLineSection />
                 ) : (
                   <View className="h-64 items-center justify-center">
@@ -311,7 +322,19 @@ const OrderProcessing = () => {
                 )}
               </AccordionContent>
             </AccordionItem>
-          </Accordion>
+          </Accordion> */}
+           <View className="flex-row items-center gap-x-2 py-4 px-2" >
+            <Text className="text-2xl font-bold text-white">
+              Order Line
+            </Text>
+            {displayOrders?.length > 0 && (
+              <Badge className="ml-1 bg-gray-700 rounded-full px-4 py-0.5 justify-center items-center">
+                <Text className="text-sm font-semibold text-gray-300">
+                  {displayOrders.length}
+                </Text>
+              </Badge>
+            )}
+          </View>
 
           <View
             className={
@@ -328,25 +351,15 @@ const OrderProcessing = () => {
             <FlatList
               horizontal
               data={displayOrders}
-              keyExtractor={(item) => item.id}
-              className="mt-2 max-h-16"
-              contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
+              keyExtractor={badgeKeyExtractor}
+              className="mt-1 max-h-12"
+              contentContainerStyle={badgeContentStyle}
               showsHorizontalScrollIndicator={false}
-              // OPTIMIZED: Performance props for badge list
               initialNumToRender={10}
               maxToRenderPerBatch={10}
               windowSize={3}
               removeClippedSubviews={true}
-              renderItem={({ item }) => (
-                <OrderBadge
-                  order={item}
-                  onMarkReady={() => handleMarkReady(item)}
-                  onViewItems={() => handleViewItems(item.id)}
-                  onRetrieve={() => handleRetrieve(item.id)}
-                  onReopenCheck={() => handleReopenCheck(item.id)}
-                  onPrintReceipt={() => handlePrintReceipt(item)}
-                />
-              )}
+              renderItem={renderOrderBadge}
             />
           </View>
 
@@ -382,11 +395,13 @@ const OrderProcessing = () => {
         />
       )}
 
-      <OrderLineItemsModal
-        isOpen={isItemsModalOpen}
-        onClose={() => setItemsModalOpen(false)}
-        orderId={selectedOrderId}
-      />
+      {isItemsModalOpen && (
+        <OrderLineItemsModal
+          isOpen={isItemsModalOpen}
+          onClose={handleCloseItemsModal}
+          orderId={selectedOrderId}
+        />
+      )}
     </View>
   );
 };

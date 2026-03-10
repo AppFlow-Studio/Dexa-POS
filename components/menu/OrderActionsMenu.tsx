@@ -1,6 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -130,7 +131,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     if (success) {
       show({ title: "Receipt Sent", message: "Receipt sent to printer.", type: "success" });
     } else {
-      show({ title: "No Printer", message: "No receipt printer configured for this location.", type: "warning" });
+      useNoPrinterModalStore.getState().show("receipt");
     }
   };
 
@@ -159,7 +160,7 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
     if (success) {
       show({ title: "Kitchen Ticket Sent", message: "Kitchen ticket sent to printer.", type: "success" });
     } else {
-      show({ title: "No Printer", message: "No kitchen printer configured for this location.", type: "warning" });
+      useNoPrinterModalStore.getState().show("kitchen");
     }
   };
 

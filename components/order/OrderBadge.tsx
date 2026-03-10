@@ -51,26 +51,6 @@ const getOrderDotColor = (
   }
 };
 
-const getPaidSuffix = (
-  paidStatus: string,
-  amountDue: number,
-  refundState: { isFullyRefunded: boolean; isPartiallyRefunded: boolean },
-): { text: string; color: string } => {
-  if (refundState.isFullyRefunded)
-    return { text: "Refunded", color: colors.paymentRefunded };
-  if (refundState.isPartiallyRefunded)
-    return { text: "Partial Refund", color: colors.paymentPartialRefund };
-  if (paidStatus === "Paid") return { text: "Paid", color: colors.paymentPaid };
-  if (paidStatus === "Partial")
-    return { text: "Partial", color: colors.paymentPartial };
-  if (amountDue > 0)
-    return {
-      text: `$${amountDue.toFixed(2)} due`,
-      color: colors.paymentUnpaid,
-    };
-  return { text: "Unpaid", color: colors.paymentUnpaid };
-};
-
 // ============================================================================
 // STATUS PILL HELPER — returns style for the popover header status pill
 // ============================================================================
@@ -539,30 +519,17 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
     [order.order_status, refundState],
   );
 
-  const paidInfo = useMemo(
-    () =>
-      getPaidSuffix(
-        order.paid_status,
-        order.amount_due ?? order.total_amount ?? 0,
-        refundState,
-      ),
-    [order.paid_status, order.amount_due, order.total_amount, refundState],
-  );
+  const displayId = useMemo(() => {
+    return order.display_number || order.order_number || `#${order.id.slice(-4)}`;
+  }, [order.display_number, order.order_number, order.id]);
 
-  // PERFORMANCE: Memoize display text - name + order status only (paid suffix is separate)
-  const badgeText = useMemo(() => {
-    const name = order.customer_name
-      ? order.customer_name
-      : order.display_number || order.order_number || `#${order.id.slice(-4)}`;
-    const statusText = formatOrderStatus(order.order_status);
-    return `${name} - ${statusText}`;
-  }, [
-    order.customer_name,
-    order.display_number,
-    order.order_number,
-    order.id,
-    order.order_status,
-  ]);
+  const statusLabel = useMemo(() => {
+    if (refundState.isFullyRefunded) return "refunded";
+    if (refundState.isPartiallyRefunded) return "partial refund";
+    const status = order.order_status;
+    if (status === "sent_to_kitchen") return "sent to kitchen";
+    return status || "pending";
+  }, [order.order_status, refundState.isFullyRefunded, refundState.isPartiallyRefunded]);
 
   // PERFORMANCE: Memoize callbacks to prevent recreation
   const handleClose = useCallback(() => setShowTooltip(false), []);
@@ -582,7 +549,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
       from={
         <TouchableOpacity
           onPress={handleOpen}
-          className="flex-row items-center px-3 py-2 rounded-lg border"
+          className="flex-row items-center px-3 py-1.5 rounded-full border"
           style={{
             backgroundColor: isElevated ? colors.card : colors.panel,
             borderColor: showTooltip
@@ -591,7 +558,6 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
                 ? colors.info
                 : colors.border,
             borderWidth: isElevated ? 2 : 1,
-            // Shadow glow when popover is open
             ...(showTooltip
               ? {
                   shadowColor: colors.teal,
@@ -605,23 +571,22 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
         >
           {wasRecentlyUpdated && (
             <View className="mr-1.5">
-              <RefreshCw color={colors.info} size={14} />
+              <RefreshCw color={colors.info} size={12} />
             </View>
           )}
           <View
-            className="w-2.5 h-2.5 rounded-full mr-2"
+            className="w-2 h-2 rounded-full mr-1.5"
             style={{ backgroundColor: dotColor }}
           />
-          <Text className="font-medium text-sm text-gray-300" numberOfLines={1}>
-            {badgeText}
+          <Text className="font-semibold text-sm text-gray-200" numberOfLines={1}>
+            {displayId}
           </Text>
-          <Text className="text-base text-gray-500 mx-1">·</Text>
+          <Text className="text-sm text-gray-500 mx-1">·</Text>
           <Text
-            className="font-medium text-sm"
-            style={{ color: paidInfo.color }}
+            className="text-sm text-gray-400"
             numberOfLines={1}
           >
-            {paidInfo.text}
+            {statusLabel}
           </Text>
         </TouchableOpacity>
       }

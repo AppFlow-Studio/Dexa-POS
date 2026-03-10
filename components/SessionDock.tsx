@@ -202,7 +202,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center p-1.5 rounded-full border bg-blue-600 border-blue-400">
               <View className="w-5 h-5 bg-blue-500 rounded-full items-center justify-center">
-                <Text className="text-white text-sm font-bold">
+                <Text className="text-white text-xs font-bold">
                   {employee.fullName
                     .split(" ")
                     .map((name: string) => name.charAt(0))
@@ -433,11 +433,11 @@ const SessionDock = () => {
               onPress={() => setSwitchModalOpen(true)}
               className="p-0.5 mx-1 bg-gray-600 rounded-full"
             >
-              <Plus size={20} color="white" />
+              <Plus size={16} color="white" />
             </TouchableOpacity>
             <TouchableOpacity onPress={toggleExpand} className="p-2">
               <Animated.View style={rotateStyle}>
-                <ChevronRight size={20} color="white" />
+                <ChevronRight size={16} color="white" />
               </Animated.View>
             </TouchableOpacity>
           </>
@@ -448,7 +448,7 @@ const SessionDock = () => {
             </View>
             <TouchableOpacity onPress={toggleExpand} className="p-2">
               <Animated.View style={rotateStyle}>
-                <ChevronRight size={20} color="white" />
+                <ChevronRight size={16} color="white" />
               </Animated.View>
             </TouchableOpacity>
           </>

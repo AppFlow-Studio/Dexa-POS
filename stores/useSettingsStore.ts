@@ -123,6 +123,12 @@ interface SettingsState extends DiningRoomSettings, DeliverySettings {
   // Order Line
   orderLineSettings: OrderLineSettings;
 
+  // Menu Display
+  showMenuItemPrices: boolean;
+  setShowMenuItemPrices: (show: boolean) => void;
+  showMenuImages: boolean;
+  setShowMenuImages: (show: boolean) => void;
+
   // Actions
   setDefaultSittingTimeMinutes: (minutes: number) => void;
   setOrderLineSettings: (settings: Partial<OrderLineSettings>) => void;
@@ -253,6 +259,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   // Order Line
   orderLineSettings: { daysToShow: 0 },
+
+  // Menu Display
+  showMenuItemPrices: true,
+  setShowMenuItemPrices: (show) => set({ showMenuItemPrices: show }),
+  showMenuImages: true,
+  setShowMenuImages: (show) => set({ showMenuImages: show }),
 
   setDefaultSittingTimeMinutes: (minutes) => set({ defaultSittingTimeMinutes: minutes }),
 

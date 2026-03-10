@@ -87,7 +87,7 @@ const OrderLineSettingsScreen = () => {
                     }
                     className={`flex-row items-center justify-between p-4 rounded-lg mb-2 border ${
                       isSelected
-                        ? "bg-blue-600/10 border-blue-500"
+                        ? "bg-teal/10 border-teal"
                         : "bg-surface border-gray-600"
                     }`}
                   >
@@ -104,7 +104,7 @@ const OrderLineSettingsScreen = () => {
                       </Text>
                     </View>
                     {isSelected && (
-                      <View className="w-6 h-6 bg-blue-600 rounded-full items-center justify-center ml-3">
+                      <View className="w-6 h-6 bg-teal rounded-full items-center justify-center ml-3">
                         <Check size={14} color="#ffffff" />
                       </View>
                     )}

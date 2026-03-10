@@ -166,7 +166,7 @@ export default function MainLayout() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <SafeAreaView edges={["top"]} className="flex-1 bg-screen">
+      <SafeAreaView edges={["top"]} className="flex-1 bg-background">
         <StatusBar style={"light"} translucent />
 
         <View className="flex-1 flex-row">
@@ -174,7 +174,7 @@ export default function MainLayout() {
           {/* <Sidebar /> */}
           {/* <ModifierSidebar /> */}
           <View className="flex-1 flex-col">
-            <View className="py-3 px-4 z-50">
+            <View className="px-4 z-50">
               <Header />
             </View>
             <Slot />

@@ -4,7 +4,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { colors } from "@/lib/theme";
 import { Minus, Plus } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutChangeEvent,
   StyleSheet,
@@ -82,18 +82,26 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const savedTranslateY = useSharedValue(0);
   const opacity = useSharedValue(0);
 
-  // Crossfade animation shared values
   const skeletonOpacity = useSharedValue(1);
   const contentOpacity = useSharedValue(0);
 
-  // 1. Calculate the bounding box of the tables
+  // Position-only fingerprint: only recalc bounding box when tables move, not on session changes
+  const positionFingerprint = useMemo(
+    () => tables.map((t) => `${t.id}:${t.x}:${t.y}:${t.width}:${t.height}`).join("|"),
+    [tables],
+  );
+
+  const initialLoadDone = useRef(false);
+
   useEffect(() => {
-    setIsLoading(true);
+    if (!initialLoadDone.current) {
+      setIsLoading(true);
+      initialLoadDone.current = true;
+    }
     if (tables.length > 0) {
       let maxX = 0;
       let maxY = 0;
       tables.forEach((table) => {
-        // Approximate width/height of a table for bounding box calculation
         const tableWidth = table.width || 100;
         const tableHeight = table.height || 100;
         if (table.x + tableWidth > maxX) {
@@ -106,9 +114,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       setContentDims({ width: maxX, height: maxY });
     } else {
       setContentDims({ width: 0, height: 0 });
-      setIsLoading(false); // No tables, no need to load
+      setIsLoading(false);
     }
-  }, [tables]);
+  }, [positionFingerprint]);
 
   // 2. Calculate and set initial scale and position once we have dimensions
   useEffect(() => {
@@ -265,22 +273,15 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             </Svg>
           )}
           {tables.map((table, index) => (
-            <DraggableTable
+            <TableItem
               key={table.id}
               table={table}
-              layoutId={layoutId} // Retained but unused
+              layoutId={layoutId}
               isEditMode={isEditMode}
               isSelected={selectedTableIdsSet.has(table.id)}
-              onSelect={
-                isSelectionMode
-                  ? () => onTableSelect && onTableSelect(table)
-                  : () => toggleTableSelection(table.id)
-              }
-              onPress={
-                isSelectionMode
-                  ? () => onTableSelect && onTableSelect(table)
-                  : () => toggleTableSelection(table.id)
-              }
+              isSelectionMode={isSelectionMode}
+              onTableSelect={onTableSelect}
+              toggleTableSelection={toggleTableSelection}
               canvasScale={scale}
               index={index}
             />
@@ -291,6 +292,51 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     </View>
   );
 };
+
+const TableItem = React.memo(
+  ({
+    table,
+    layoutId,
+    isEditMode,
+    isSelected,
+    isSelectionMode,
+    onTableSelect,
+    toggleTableSelection,
+    canvasScale,
+    index,
+  }: {
+    table: FloorPlanObject;
+    layoutId: string;
+    isEditMode: boolean;
+    isSelected: boolean;
+    isSelectionMode: boolean;
+    onTableSelect?: (table: FloorPlanObject) => void;
+    toggleTableSelection: (id: string) => void;
+    canvasScale: any;
+    index: number;
+  }) => {
+    const handleSelect = useCallback(() => {
+      if (isSelectionMode) {
+        onTableSelect?.(table);
+      } else {
+        toggleTableSelection(table.id);
+      }
+    }, [isSelectionMode, onTableSelect, toggleTableSelection, table]);
+
+    return (
+      <DraggableTable
+        table={table}
+        layoutId={layoutId}
+        isEditMode={isEditMode}
+        isSelected={isSelected}
+        onSelect={handleSelect}
+        onPress={handleSelect}
+        canvasScale={canvasScale}
+        index={index}
+      />
+    );
+  },
+);
 
 export default React.memo(TableLayoutView, (prev, next) => {
   if (prev.layoutId !== next.layoutId) return false;

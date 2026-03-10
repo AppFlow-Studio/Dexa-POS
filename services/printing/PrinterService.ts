@@ -21,6 +21,7 @@ import {
   ReceiptPaymentData,
   ReceiptTemplateData,
 } from "@/types/printer";
+import { toastService } from "@/lib/toastService";
 import { getDriver } from "./DriverFactory";
 import { getReceiptPrinter, routeKitchenItems } from "./PrintRouter";
 import { buildReceiptCommands } from "./templates/ReceiptTemplate";
@@ -30,8 +31,10 @@ import { buildKitchenTicketDocument } from "./templates/KitchenTicketDocumentTem
 
 let processingInterval: ReturnType<typeof setInterval> | null = null;
 let isProcessing = false;
+let lastFailureToastAt = 0;
 
 const PROCESS_INTERVAL_MS = 500;
+const FAILURE_TOAST_DEDUP_MS = 30_000;
 
 // ============================================================================
 // PUBLIC API
@@ -422,6 +425,21 @@ async function processNextJob(): Promise<void> {
       console.error(
         `[PrinterService] Job ${job.id} exhausted retries, marking as failed`,
       );
+
+      const now = Date.now();
+      if (now - lastFailureToastAt > FAILURE_TOAST_DEDUP_MS) {
+        lastFailureToastAt = now;
+        const jobLabel =
+          job.jobType === "receipt" ? "Receipt" :
+          job.jobType === "kitchen_ticket" ? "Kitchen ticket" :
+          job.jobType === "void_ticket" ? "Void ticket" : "Print job";
+        toastService.show({
+          title: "Print Failed",
+          message: `${jobLabel} could not be printed. Check printer connection.`,
+          type: "error",
+          duration: 6000,
+        });
+      }
     }
 
     // Update printer error count

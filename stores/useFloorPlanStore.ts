@@ -1266,7 +1266,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         saveSnapshot: () => {
           set((state) => ({
-            past: [...state.past, state.tables],
+            past: [...state.past, state.tables].slice(-30),
             future: [],
           }));
         },

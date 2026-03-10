@@ -1436,7 +1436,7 @@ const ModifierScreen = () => {
               <TouchableOpacity
                 disabled={isReadOnly}
                 onPressIn={handleQuantityPress}
-                className="mx-6 w-14"
+                className="mx-4 w-14"
               >
                 <Text className="text-3xl border rounded-lg p-1 font-bold text-center" style={{ borderColor: colors.border, color: colors.heading }}>
                   {state.quantity}
@@ -1451,6 +1451,27 @@ const ModifierScreen = () => {
                 <Plus color={colors.onSolid} size={20} />
               </TouchableOpacity>
             </View>
+          </View>
+          <View className="flex-row items-center gap-2 mt-3">
+            {[3, 4, 5, 6, 7, 8].map((n) => (
+              <TouchableOpacity
+                key={n}
+                disabled={isReadOnly}
+                onPress={() => dispatch({ type: "SET_QUANTITY", payload: n })}
+                className="flex-1 py-2 rounded-lg items-center border"
+                style={{
+                  backgroundColor: state.quantity === n ? colors.teal : colors.panel,
+                  borderColor: state.quantity === n ? colors.teal : colors.border,
+                }}
+              >
+                <Text
+                  className="text-base font-bold"
+                  style={{ color: state.quantity === n ? colors.onSolid : colors.label }}
+                >
+                  {n}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 

@@ -12,7 +12,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Maximize, Minus, Plus, Redo2, Undo2 } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -23,6 +23,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import Svg, { Circle, Defs, Pattern, Rect } from "react-native-svg";
+import { useShallow } from "zustand/react/shallow";
 
 // --- CONSTANTS ---
 const SHAPE_SIZE = 100;
@@ -44,19 +45,24 @@ const LayoutEditorScreenContent = () => {
   const router = useRouter();
   const { layoutId } = useLocalSearchParams<{ layoutId: string }>();
 
-  const {
-    floorPlans,
-    tables: storeTables,
-    selectedTableIds,
-    toggleTableSelection,
-    clearSelection,
-    addTable,
-    undo,
-    redo,
-    past,
-    future,
-    setActiveFloorPlan,
-  } = useFloorPlanStore();
+  const { floorPlans, tables: storeTables, selectedTableIds } = useFloorPlanStore(
+    useShallow((s) => ({
+      floorPlans: s.floorPlans,
+      tables: s.tables,
+      selectedTableIds: s.selectedTableIds,
+    })),
+  );
+
+  const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
+  const clearSelection = useFloorPlanStore((s) => s.clearSelection);
+  const addTable = useFloorPlanStore((s) => s.addTable);
+  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
+
+  const hasHistory = useFloorPlanStore((s) => s.past.length > 0);
+  const hasFuture = useFloorPlanStore((s) => s.future.length > 0);
+
+  const handleUndo = useCallback(() => useFloorPlanStore.getState().undo(), []);
+  const handleRedo = useCallback(() => useFloorPlanStore.getState().redo(), []);
 
   const activeLayout = useMemo(
     () => floorPlans.find((l) => l.id === layoutId),
@@ -282,9 +288,6 @@ const LayoutEditorScreenContent = () => {
     );
   }
 
-  const hasHistory = past.length > 0;
-  const hasFuture = future.length > 0;
-
   return (
     <View className="flex-1 bg-screen">
       <View className="bg-panel p-4 flex-row justify-between items-center z-10">
@@ -296,7 +299,7 @@ const LayoutEditorScreenContent = () => {
           {hasHistory && (
             <View className="flex-row gap-1 ml-4 bg-[#424242] rounded-lg p-1">
               <TouchableOpacity
-                onPress={undo}
+                onPress={handleUndo}
                 className="p-2 rounded"
                 disabled={!hasHistory}
                 style={{ opacity: hasHistory ? 1 : 0.3 }}
@@ -305,7 +308,7 @@ const LayoutEditorScreenContent = () => {
               </TouchableOpacity>
               <View className="w-[1px] bg-gray-500 my-1" />
               <TouchableOpacity
-                onPress={redo}
+                onPress={handleRedo}
                 className="p-2 rounded"
                 disabled={!hasFuture}
                 style={{ opacity: hasFuture ? 1 : 0.3 }}

@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { CacheStats, clearCache, getCacheStats } from "@/services/cacheService";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useRouter } from "expo-router";
 import BottomSheet from "@gorhom/bottom-sheet";
@@ -180,6 +181,11 @@ const GeneralSettingsScreen = () => {
   const [taxLabel, setTaxLabel] = useState("Sales Tax");
   const [taxInclusive, setTaxInclusive] = useState(false);
   const [taxEnabled, setTaxEnabled] = useState(true);
+
+  const showMenuItemPrices = useSettingsStore((s) => s.showMenuItemPrices);
+  const setShowMenuItemPrices = useSettingsStore((s) => s.setShowMenuItemPrices);
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+  const setShowMenuImages = useSettingsStore((s) => s.setShowMenuImages);
 
   const [timePickerState, setTimePickerState] = useState<{
     dayIndex: number;
@@ -491,7 +497,7 @@ const GeneralSettingsScreen = () => {
                   ))
                 )}
 
-                <View className="flex-row items-center justify-between py-3 mt-4">
+                <View className="flex-row items-center justify-between py-3 mt-4 border-b border-gray-700">
                   <View>
                     <Text className="text-white font-medium">
                       Tax Included in Price
@@ -503,6 +509,36 @@ const GeneralSettingsScreen = () => {
                   <Switch
                     checked={taxInclusive}
                     onCheckedChange={setTaxInclusive}
+                  />
+                </View>
+
+                <View className="flex-row items-center justify-between py-3 mt-4 border-b border-gray-700">
+                  <View className="flex-1 mr-4">
+                    <Text className="text-white font-medium">
+                      Show Menu Item Prices
+                    </Text>
+                    <Text className="text-gray-400 text-sm">
+                      Display prices on menu items in the order screen
+                    </Text>
+                  </View>
+                  <Switch
+                    checked={showMenuItemPrices}
+                    onCheckedChange={setShowMenuItemPrices}
+                  />
+                </View>
+
+                <View className="flex-row items-center justify-between py-3 mt-4">
+                  <View className="flex-1 mr-4">
+                    <Text className="text-white font-medium">
+                      Show Menu Item Images
+                    </Text>
+                    <Text className="text-gray-400 text-sm">
+                      Display images on menu items in the order screen
+                    </Text>
+                  </View>
+                  <Switch
+                    checked={showMenuImages}
+                    onCheckedChange={setShowMenuImages}
                   />
                 </View>
               </View>

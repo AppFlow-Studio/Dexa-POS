@@ -105,12 +105,10 @@ export function useFloorRealtime({
         case 'TABLE_ASSIGNMENT_INSERT':
         case 'TABLE_ASSIGNMENT_UPDATE':
         case 'TABLE_ASSIGNMENT_DELETE': {
-          // Table assignments changed
           const assignmentPayload = payload as TableAssignmentPayload;
 
-          // UPDATE STORE STATE (NEW): Refresh table data when assignments change
           const store = useFloorPlanStore.getState();
-          store.loadFloorPlanStatus();
+          store._debouncedRefresh();
 
           queryClient.invalidateQueries({
             queryKey: floorQueryKeys.sessions(locationId),

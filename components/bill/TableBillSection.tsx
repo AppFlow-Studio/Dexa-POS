@@ -3,7 +3,7 @@ import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { X } from "lucide-react-native"; // Added X import
-import React, { useMemo, useRef } from "react";
+import React, { useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native"; // Added Text, TouchableOpacity
 import BottomActionBar from "./BottomActionBar";
 import CourseAccordion from "./CourseAccordion";
@@ -52,20 +52,15 @@ const TableBillSection = ({
   setCurrentCourse: (course: number) => void;
   isFullyPaid?: boolean; // LOCAL-FIRST: Use local calculation from parent
 }) => {
-  // O(1) lookups with individual selectors - only re-renders when specific values change
-  const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const ordersById = useOrderStore((state) => state.ordersById);
+  const storeActiveOrder = useOrderStore((state) =>
+    state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
+  );
   const removeCheckDiscount = useOrderStore(
     (state) => state.removeCheckDiscount
   );
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  // Prefer rekey-resilient prop (resolved via dbOrderIdIndex), fallback to store lookup
-  const activeOrder = useMemo(
-    () =>
-      passedActiveOrder ?? (activeOrderId ? ordersById[activeOrderId] : undefined),
-    [passedActiveOrder, activeOrderId, ordersById]
-  );
+  const activeOrder = passedActiveOrder ?? storeActiveOrder;
 
   // Derived check discount
   const appliedDiscount = activeOrder?.checkDiscount;
