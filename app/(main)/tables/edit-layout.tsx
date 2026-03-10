@@ -89,7 +89,9 @@ const LayoutEditorScreenContent = () => {
     useDragToAddContext()
 
   const panGesture = Gesture.Pan()
-    .minPointers(2)
+    .minDistance(8)
+    .activeOffsetX([-8, 8])
+    .activeOffsetY([-8, 8])
     .onUpdate(e => {
       translateX.value = savedTranslateX.value + e.translationX / scale.value
       translateY.value = savedTranslateY.value + e.translationY / scale.value
