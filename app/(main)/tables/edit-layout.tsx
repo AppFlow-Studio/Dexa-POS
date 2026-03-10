@@ -75,6 +75,7 @@ const LayoutEditorScreenContent = () => {
   }, [layoutId]);
 
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0);
+  const [canvasSize, setCanvasSize] = useState({ width: 1024, height: 768 });
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -183,10 +184,10 @@ const LayoutEditorScreenContent = () => {
     const actualWidth = shapeDef.width || 80;
     const actualHeight = shapeDef.height || 80;
 
-    const vW = 1024; // Fallback or measure properly
-    const vH = 768;
+    const vW = canvasSize.width;
+    const vH = canvasSize.height;
 
-    const localX = absX - 0;
+    const localX = absX;
     const localY = absY - FINGER_Y_OFFSET;
 
     const centerX = vW / 2;
@@ -335,7 +336,10 @@ const LayoutEditorScreenContent = () => {
       </View>
 
       <GestureDetector gesture={canvasInteractionGesture}>
-        <View className="flex-1 relative overflow-hidden z-0">
+        <View
+          className="flex-1 relative overflow-hidden z-0"
+          onLayout={(e) => setCanvasSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+        >
           <GridPattern />
           <Animated.View style={canvasAnimatedStyle} className="w-full h-full">
             {tables.map((table) => (

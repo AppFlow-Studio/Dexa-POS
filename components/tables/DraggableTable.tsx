@@ -13,21 +13,58 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { BrushCleaning } from "lucide-react-native";
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  cancelAnimation,
   runOnJS,
   SharedValue,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+
+/**
+ * Isolated pulsing border overlay — uses setInterval so it can't be killed by parent re-renders.
+ * Renders as an absolute overlay on top of the table.
+ */
+const PulsingBorder = React.memo(({ active, width, height }: { active: boolean; width: number; height: number }) => {
+  const [opacity, setOpacity] = useState(1);
+
+  useEffect(() => {
+    if (!active) return;
+    let rising = false;
+    const interval = setInterval(() => {
+      setOpacity((prev) => {
+        if (prev <= 0.3) rising = true;
+        if (prev >= 1) rising = false;
+        return rising ? prev + 0.07 : prev - 0.07;
+      });
+    }, 50);
+    return () => clearInterval(interval);
+  }, [active]);
+
+  if (!active) return null;
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width,
+        height,
+        borderRadius: 16,
+        borderWidth: 2.5,
+        borderColor: `rgba(239,68,68,${opacity})`,
+      }}
+    />
+  );
+});
 
 interface DraggableTableProps {
   table: FloorPlanObject;
@@ -154,6 +191,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return table.name;
   }, [table, tablesById]);
 
+
   // --- ANIMATED VALUES ---
   const translateX = useSharedValue(table.x);
   const translateY = useSharedValue(table.y);
@@ -168,9 +206,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Pulse animation for realtime updates
   const pulseScale = useSharedValue(1);
 
-  // Attention pulse animation (for needs_attention)
-  const attentionOpacity = useSharedValue(0);
-  const previousAttentionShared = useSharedValue<boolean | null>(null);
+  const isMergedShared = useSharedValue(false);
 
   // Staggered entry animation on mount
   useEffect(() => {
@@ -193,33 +229,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     );
   }, [liveSession?.status, liveSession?.order_id]);
 
-  // Attention pulsing border animation for needs_attention
-  useAnimatedReaction(
-    () => liveSession?.needs_attention ?? false,
-    (hasAttention) => {
-      const prevAttention = previousAttentionShared.value;
+  // Sync merged state to shared value
+  const newMerged = !!(liveSession?.merged_tables && liveSession.merged_tables.length > 0);
+  if (isMergedShared.value !== newMerged) {
+    isMergedShared.value = newMerged;
+  }
 
-      // Only start/stop animation on actual state change
-      if (hasAttention === prevAttention) return;
-
-      previousAttentionShared.value = hasAttention;
-
-      if (hasAttention) {
-        attentionOpacity.value = withRepeat(
-          withSequence(
-            withTiming(1, { duration: 500 }),
-            withTiming(0.3, { duration: 500 }),
-          ),
-          -1,
-          false,
-        );
-      } else {
-        cancelAnimation(attentionOpacity);
-        attentionOpacity.value = 0;
-      }
-    },
-    [],
-  );
+  const currentAttention = liveSession?.needs_attention ?? false;
 
   // --- SYNC WITH UNDO/REDO ---
   useAnimatedReaction(
@@ -246,9 +262,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
-    .minDistance(5)
-    .activeOffsetX([-5, 5])
-    .activeOffsetY([-5, 5])
+    .minDistance(12)
+    .activeOffsetX([-12, 12])
+    .activeOffsetY([-12, 12])
     .onStart(() => {
       runOnJS(saveSnapshot)();
       dragContext.value = { x: translateX.value, y: translateY.value };
@@ -308,11 +324,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     : Gesture.Exclusive(longPressGesture, tapGesture);
 
   const animatedStyle = useAnimatedStyle(() => {
-    const isMerged =
-      liveSession &&
-      liveSession.merged_tables &&
-      liveSession.merged_tables.length > 0;
-    const hasAttention = liveSession?.needs_attention ?? false;
+    const isMerged = isMergedShared.value;
+    const showStaticBorder = !currentAttention && (isSelected || isMerged || !!sectionColor);
 
     return {
       position: "absolute",
@@ -325,18 +338,16 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         { scale: entryScale.value * pulseScale.value },
       ],
       opacity: entryOpacity.value,
-      borderWidth: isSelected || isMerged || hasAttention || !!sectionColor ? 2 : 0,
+      borderWidth: showStaticBorder ? 2 : 0,
       borderColor: isSelected
         ? colors.info
         : isMerged
           ? colors.warning
-          : hasAttention
-            ? `rgba(239,68,68,${attentionOpacity.value})`
-            : sectionColor
-              ? sectionColor + "99"
-              : "transparent",
+          : sectionColor
+            ? sectionColor + "99"
+            : "transparent",
       borderRadius: 18,
-      padding: 4,
+      padding: showStaticBorder ? 4 : 0,
     };
   });
 
@@ -475,7 +486,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             </View>
           )}
         </View>
-
+        <PulsingBorder active={currentAttention} width={effectiveWidth} height={effectiveHeight} />
       </Animated.View>
     </GestureDetector>
   );

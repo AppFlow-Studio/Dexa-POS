@@ -1,8 +1,6 @@
 // /components/tables/TableLayoutView.tsx
 
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import { useShallow } from "zustand/react/shallow";
 import { FloorPlanObject, ServerSection } from "@/types/db-floor-plan-types";
 import { colors } from "@/lib/theme";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
@@ -55,10 +53,6 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 }) => {
   const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
   const globallySelectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
-
-  // Subscribe to sessions to force re-render when any session changes
-  // This ensures tables reflect the latest session state from useTableSessionStore
-  useTableSessionStore(useShallow((s) => s.sessions));
 
   // Create O(1) lookup map for tables
   const tablesById = useMemo(() => {

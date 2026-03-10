@@ -125,7 +125,9 @@ export function startTableSessionRealtimeSync(locationId: string) {
             currentSession.server_staff_id !== object.session.server_staff_id ||
             currentSession.current_course !== object.session.current_course ||
             currentSession.needs_attention !== object.session.needs_attention ||
-            currentSession.is_vip !== object.session.is_vip;
+            currentSession.is_vip !== object.session.is_vip ||
+            currentSession.session_number !== object.session.session_number ||
+            (currentSession.merged_tables?.length ?? 0) !== (object.session.merged_tables?.length ?? 0);
 
           if (sessionChanged) {
             console.log(`[TableSessionRealtimeSync] UPDATE table ${object.name || object.id}: "${currentSession.status}" → "${object.session.status}"`);

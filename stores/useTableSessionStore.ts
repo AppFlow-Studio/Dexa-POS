@@ -120,6 +120,19 @@ function _applyAction(
     if (current && action.session.id === current.id && isLocalOnlyStatus(current.status)) {
       return { session: current, changed: false };
     }
+    // Skip if session data is identical (prevents unnecessary re-renders from polling)
+    if (current && current.id === action.session.id &&
+        current.status === action.session.status &&
+        current.party_size === action.session.party_size &&
+        current.guest_name === action.session.guest_name &&
+        current.order_id === action.session.order_id &&
+        current.server_staff_id === action.session.server_staff_id &&
+        current.current_course === action.session.current_course &&
+        current.needs_attention === action.session.needs_attention &&
+        current.is_vip === action.session.is_vip &&
+        current.session_number === action.session.session_number) {
+      return { session: current, changed: false };
+    }
     return { session: action.session, changed: true };
   }
   if (action.type === 'CLEAR') {
@@ -257,7 +270,7 @@ interface TableSessionStoreState {
   _patchSessionsFromTables: (tables: FloorPlanObject[]) => void;
 
   /** Bridge: write session data back into useFloorPlanStore (removed in Phase 3) */
-  _syncToFloorPlanStore: (changedTableId?: string) => void;
+  _syncToFloorPlanStore: (changedTableId?: string | string[]) => void;
 
   // ---- Selectors ----
 
@@ -327,7 +340,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }
         });
 
-        get()._syncToFloorPlanStore();
+        // Selective sync — only patch changed tables instead of full rebuild
+        const changedTableIds = results.map(r => r.tableId);
+        get()._syncToFloorPlanStore(changedTableIds);
         for (const { tableId, action, prev, result } of results) {
           fireSideEffects(tableId, prev, result.session, action);
         }
@@ -554,29 +569,44 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       // _syncToFloorPlanStore — bridge write-back (Phase 1-2, removed in Phase 3)
       // ------------------------------------------------------------------
 
-      _syncToFloorPlanStore: (changedTableId?: string) => {
+      _syncToFloorPlanStore: (changedTableId?: string | string[]) => {
         const { sessions } = get();
         const floorPlanState = useFloorPlanStore.getState();
 
-        if (changedTableId) {
-          // Selective: patch only the affected table
-          const existingTable = floorPlanState.tablesById[changedTableId];
-          if (!existingTable) return;
+        // Selective sync for one or more specific table IDs
+        const changedIds = changedTableId
+          ? (Array.isArray(changedTableId) ? changedTableId : [changedTableId])
+          : null;
 
-          const session = sessions[changedTableId];
-          const needsUpdate = session
-            ? existingTable.session !== session
-            : !!existingTable.session;
+        if (changedIds) {
+          const changedSet = new Set(changedIds);
+          let anyChanged = false;
+          let newTablesById = floorPlanState.tablesById;
 
-          if (!needsUpdate) return;
+          for (const tableId of changedIds) {
+            const existingTable = newTablesById[tableId];
+            if (!existingTable) continue;
 
-          const updated = session
-            ? { ...existingTable, session }
-            : { ...existingTable, session: undefined };
+            const session = sessions[tableId];
+            const needsUpdate = session
+              ? existingTable.session !== session
+              : !!existingTable.session;
 
-          const newTablesById = { ...floorPlanState.tablesById, [changedTableId]: updated };
+            if (!needsUpdate) continue;
+
+            anyChanged = true;
+            const updated = session
+              ? { ...existingTable, session }
+              : { ...existingTable, session: undefined };
+            newTablesById = { ...newTablesById, [tableId]: updated };
+          }
+
+          if (!anyChanged) return;
+
           const newTables = floorPlanState.tables.map(
-            (t) => (t.id === changedTableId ? updated : t),
+            (t) => (changedSet.has(t.id) && newTablesById[t.id] !== floorPlanState.tablesById[t.id]
+              ? newTablesById[t.id]
+              : t),
           );
           useFloorPlanStore.setState({ tables: newTables, tablesById: newTablesById });
           return;
