@@ -41,7 +41,13 @@ const GridPattern = () => (
 
 const LayoutEditorScreenContent = () => {
   const router = useRouter()
-  const { layoutId } = useLocalSearchParams<{ layoutId: string }>()
+  const { layoutId: layoutIdParam } = useLocalSearchParams<{
+    layoutId?: string | string[]
+  }>()
+
+  const layoutId = Array.isArray(layoutIdParam)
+    ? layoutIdParam[0]
+    : layoutIdParam
 
   const {
     floorPlans,
@@ -54,7 +60,8 @@ const LayoutEditorScreenContent = () => {
     redo,
     past,
     future,
-    setActiveFloorPlan
+    setActiveFloorPlan,
+    activeFloorPlanId
   } = useFloorPlanStore()
 
   const activeLayout = useMemo(
@@ -72,7 +79,7 @@ const LayoutEditorScreenContent = () => {
       setActiveFloorPlan(layoutId)
     }
     return () => clearSelection()
-  }, [layoutId])
+  }, [layoutId, setActiveFloorPlan, clearSelection])
 
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0)
   const [canvasSize, setCanvasSize] = useState({ width: 1024, height: 768 })
@@ -103,7 +110,8 @@ const LayoutEditorScreenContent = () => {
 
   const pinchGesture = Gesture.Pinch()
     .onUpdate(e => {
-      scale.value = savedScale.value * e.scale
+      const nextScale = savedScale.value * e.scale
+      scale.value = Math.max(0.5, Math.min(3, nextScale))
     })
     .onEnd(() => {
       savedScale.value = scale.value
@@ -138,8 +146,9 @@ const LayoutEditorScreenContent = () => {
 
   const handleZoom = (direction: 'in' | 'out') => {
     const newScale = direction === 'in' ? scale.value * 1.2 : scale.value / 1.2
-    scale.value = withTiming(newScale)
-    savedScale.value = newScale
+    const clampedScale = Math.max(0.5, Math.min(3, newScale))
+    scale.value = withTiming(clampedScale)
+    savedScale.value = clampedScale
   }
 
   const recenterCanvas = () => {
@@ -187,6 +196,15 @@ const LayoutEditorScreenContent = () => {
     })
   }
 
+  const getCanvasMeasurements = () =>
+    new Promise<{ x: number; y: number; width: number; height: number }>(
+      resolve => {
+        canvasRef.current?.measureInWindow((x, y, width, height) => {
+          resolve({ x, y, width, height })
+        })
+      }
+    )
+
   const performDrop = async (
     shapeId: string,
     absX: number,
@@ -200,6 +218,19 @@ const LayoutEditorScreenContent = () => {
       return
     }
 
+    if (activeFloorPlanId !== layoutId) {
+      try {
+        await setActiveFloorPlan(layoutId)
+      } catch (error) {
+        console.error(
+          '[edit-layout] Failed to activate floor plan before drop',
+          error
+        )
+        resetDragToAddState()
+        return
+      }
+    }
+
     const shapeDef = TABLE_SHAPES[shapeId as keyof typeof TABLE_SHAPES]
     if (!shapeDef) {
       resetDragToAddState()
@@ -208,24 +239,20 @@ const LayoutEditorScreenContent = () => {
     const actualWidth = shapeDef.width || 80
     const actualHeight = shapeDef.height || 80
 
-    const vW = canvasSize.width
-    const vH = canvasSize.height
+    const measured = await getCanvasMeasurements()
+    const currentCanvasOriginX =
+      measured.width > 0 ? measured.x : canvasOrigin.x
+    const currentCanvasOriginY =
+      measured.height > 0 ? measured.y : canvasOrigin.y
 
-    const localX = absX - canvasOrigin.x
-    const localY = absY - canvasOrigin.y - FINGER_Y_OFFSET
+    const localX = absX - currentCanvasOriginX
+    const localY = absY - currentCanvasOriginY - FINGER_Y_OFFSET
 
-    const centerX = vW / 2
-    const centerY = vH / 2
+    const canvasX = localX / currentScale - currentTranslateX
+    const canvasY = localY / currentScale - currentTranslateY
 
-    const canvasCenterX =
-      (localX - centerX) / currentScale - currentTranslateX + centerX
-    const canvasCenterY =
-      (localY - centerY) / currentScale - currentTranslateY + centerY
-
-    const unclampedX = canvasCenterX - actualWidth / 2
-    const unclampedY = canvasCenterY - actualHeight / 2
-    const finalX = Math.max(0, Math.min(vW - actualWidth, unclampedX))
-    const finalY = Math.max(0, Math.min(vH - actualHeight, unclampedY))
+    const finalX = canvasX - actualWidth / 2
+    const finalY = canvasY - actualHeight / 2
 
     let defaultName = ''
     if (shapeDef.category === 'table') {
@@ -257,6 +284,7 @@ const LayoutEditorScreenContent = () => {
         x: finalX,
         y: finalY
       })
+      addTableSheetRef.current?.close()
     } catch (error) {
       console.error('[edit-layout] Failed to add dropped object', error)
     } finally {
@@ -367,10 +395,20 @@ const LayoutEditorScreenContent = () => {
         <View
           ref={canvasRef}
           className='flex-1 relative overflow-hidden z-0'
+          style={{ backgroundColor: 'rgba(127, 29, 29, 0.22)' }}
           onLayout={() => updateCanvasMeasurements()}
         >
-          <GridPattern />
-          <Animated.View style={canvasAnimatedStyle} className='w-full h-full'>
+          <Animated.View
+            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+            pointerEvents='auto'
+          >
+            <GridPattern />
+          </Animated.View>
+
+          <Animated.View
+            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
+            pointerEvents='box-none'
+          >
             {tables.map(table => (
               <DraggableTable
                 key={table.id}

@@ -13,12 +13,16 @@ export const DraggableShape: React.FC<DraggableShapeProps> = ({
   shapeId,
   children
 }) => {
+  const DRAG_HOLD_MS = 180
   const { draggedShapeId, isDraggingNewObject, dragPosition, dropPending } =
     useDragToAddContext()
   const didActivateDrag = useSharedValue(false)
 
   const panGesture = Gesture.Pan()
-    .minDistance(1)
+    .activateAfterLongPress(DRAG_HOLD_MS)
+    .minDistance(8)
+    .activeOffsetX([-8, 8])
+    .activeOffsetY([-8, 8])
     .shouldCancelWhenOutside(false) // Allow dragging outside the shape
     .onBegin(() => {
       didActivateDrag.value = false

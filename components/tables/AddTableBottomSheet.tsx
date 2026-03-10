@@ -29,8 +29,8 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
   onClose
 }) => {
   const snapPoints = useMemo(() => ['35%', '60%'], [])
-  const { isDraggingNewObject } = useDragToAddContext()
   const [activeTab, setActiveTab] = useState('table')
+  const { isDraggingNewObject } = useDragToAddContext()
 
   const closeSheet = () => {
     bottomSheetRef.current?.close()
@@ -41,7 +41,7 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
     [activeTab]
   )
 
-  // Close the bottom sheet when a drag starts
+  // Slide the catalog down as soon as drag-to-place starts.
   useAnimatedReaction(
     () => isDraggingNewObject.value,
     (isDragging, wasDragging) => {
@@ -58,7 +58,6 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
-      enableContentPanningGesture={false}
       onClose={onClose}
       {...bottomSheetTheme}
       backdropComponent={props => (
@@ -106,6 +105,7 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
 
         {/* Content Grid */}
         <ScrollView
+          nestedScrollEnabled
           showsVerticalScrollIndicator={false}
           className='flex-1 p-4'
           contentContainerStyle={{ paddingBottom: 40 }}
