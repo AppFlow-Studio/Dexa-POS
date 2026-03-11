@@ -7,6 +7,7 @@ import {
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Utensils } from "lucide-react-native";
 import React, { useCallback, useMemo } from "react";
@@ -28,7 +29,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
-    aspectRatio: 1,
     padding: 3
   },
   containerDisabled: {
@@ -232,6 +232,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
   // OPTIMIZED: Removed activeOrderId/activeOrder subscriptions - now read via getState() in handlePress
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
   const { show } = useToast();
+  const showMenuItemPrices = useSettingsStore((s) => s.showMenuItemPrices);
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
 
   const isClockedIn = useMemo(() => {
     if (!activeEmployeeId) return false;
@@ -332,47 +334,51 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <ModifierTriangle />
           </View>
         )}
-        <View style={styles.imageContainer}>
-          {imageSource ? (
-            <Image source={imageSource} style={styles.image} />
-          ) : (
-            <View style={styles.placeholderContainer}>
-              <PlaceholderIcon />
-            </View>
-          )}
-        </View>
+        {showMenuImages && (
+          <View style={styles.imageContainer}>
+            {imageSource ? (
+              <Image source={imageSource} style={styles.image} />
+            ) : (
+              <View style={styles.placeholderContainer}>
+                <PlaceholderIcon />
+              </View>
+            )}
+          </View>
+        )}
         {/* <View style={styles.divider} /> */}
         <View style={styles.contentContainer} >
           <View style={styles.nameContainer}>
             <Text style={styles.nameText}>{item.name}</Text>
           </View>
-          <View
-            style={styles.priceContainer}
-            className="flex-row flex items-center gap-1"
-          >
-            <Text
-              style={
-                priceData.hasCustomPricing
-                  ? styles.priceTextCustom
-                  : styles.priceText
-              }
-              className="flex-row items-center gap-1 w-fit "
+          {showMenuItemPrices && (
+            <View
+              style={styles.priceContainer}
+              className="flex-row flex items-center gap-1"
             >
-              ${priceData.displayPrice?.toFixed(2)}
-            </Text>
+              <Text
+                style={
+                  priceData.hasCustomPricing
+                    ? styles.priceTextCustom
+                    : styles.priceText
+                }
+                className="flex-row items-center gap-1 w-fit "
+              >
+                ${priceData.displayPrice?.toFixed(2)}
+              </Text>
 
-            {item.cashPrice && (
-              <View className="flex-row  items-center gap-1 w-fit rounded-full bg-emerald-900 p-0.5">
-                <Text style={styles.cashPriceTextCash}>Cash:</Text>
-                <Text
-                  style={styles.cashPriceText}
-                  className="flex-row items-center gap-1"
-                >
-                  ${item.cashPrice.toFixed(2)}
-                </Text>
-              </View>
-            )}
-          </View>
+              {item.cashPrice && (
+                <View className="flex-row  items-center gap-1 w-fit rounded-full bg-emerald-900 p-0.5">
+                  <Text style={styles.cashPriceTextCash}>Cash:</Text>
+                  <Text
+                    style={styles.cashPriceText}
+                    className="flex-row items-center gap-1"
+                  >
+                    ${item.cashPrice.toFixed(2)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
           {/* <View style={styles.stockContainer}>
             <StockStatus
               stockQuantity={item.stockQuantity}

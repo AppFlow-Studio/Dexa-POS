@@ -340,7 +340,6 @@ const LayoutEditorScreenContent = () => {
 
   const hasHistory = past.length > 0
   const hasFuture = future.length > 0
-
   return (
     <View className='flex-1 bg-screen'>
       <View className='bg-panel p-4 flex-row justify-between items-center z-10'>

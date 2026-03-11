@@ -6,10 +6,10 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { colors } from "@/lib/theme";
 import { ChevronDown, ChevronRight, Filter } from "lucide-react-native";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
+  FlatList,
   RefreshControl,
-  ScrollView,
   Text,
   TouchableOpacity,
   View,
@@ -194,9 +194,48 @@ const TablesPanel: React.FC = () => {
     }
   };
 
+  const isSectionOpen = activeFloorPlanId
+    ? (sections[activeFloorPlanId] ?? true)
+    : true;
+
+  const handleToggleSection = useCallback(() => {
+    if (activeFloorPlanId) {
+      setSections((s) => ({
+        ...s,
+        [activeFloorPlanId]: !s[activeFloorPlanId],
+      }));
+    }
+  }, [activeFloorPlanId]);
+
+  const noopFn = useCallback(() => {}, []);
+
+  const renderTableItem = useCallback(
+    ({ item }: { item: FloorPlanObject }) => (
+      <TableListItem
+        key={item.id}
+        table={item}
+        isExpanded={false}
+        onToggleExpand={noopFn}
+        onNavigateToOrder={noopFn}
+        handleTablePress={noopFn}
+      />
+    ),
+    [noopFn],
+  );
+
+  const keyExtractor = useCallback((item: FloorPlanObject) => item.id, []);
+
+  const ListEmptyComponent = useMemo(
+    () => (
+      <Text className="text-gray-400 text-sm p-2 italic">
+        No tables assigned
+      </Text>
+    ),
+    [],
+  );
+
   return (
     <View className="h-full flex-col bg-panel">
-      {/* Capacity Info */}
       <View className="p-4 border-b border-gray-700">
         <View className="flex-row items-center justify-between text-xs text-gray-400 font-medium">
           <Text className="text-gray-400">
@@ -311,33 +350,29 @@ const TablesPanel: React.FC = () => {
       >
         <Section
           title={activePlanName}
-          isOpen={
-            activeFloorPlanId ? (sections[activeFloorPlanId] ?? true) : true
-          }
-          onToggle={() =>
-            activeFloorPlanId &&
-            setSections((s) => ({
-              ...s,
-              [activeFloorPlanId]: !s[activeFloorPlanId],
-            }))
-          }
+          isOpen={isSectionOpen}
+          onToggle={handleToggleSection}
         >
-          {displayTables.length > 0 ? (
-            displayTables.map((table) => (
-                <TableListItem
-                  key={table.id}
-                  table={table}
-                  isExpanded={false}
-                  onToggleExpand={() => {}}
-                  onNavigateToOrder={() => {}}
-                  // activeLayoutId removed
-                  handleTablePress={() => {}}
+          {isSectionOpen && (
+            <FlatList
+              data={displayTables}
+              keyExtractor={keyExtractor}
+              renderItem={renderTableItem}
+              ListEmptyComponent={ListEmptyComponent}
+              initialNumToRender={8}
+              maxToRenderPerBatch={5}
+              windowSize={3}
+              removeClippedSubviews={true}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor="#ffffff"
+                  title="Syncing..."
+                  titleColor="#ffffff"
                 />
-              ))
-          ) : (
-            <Text className="text-gray-400 text-sm p-2 italic">
-              No tables assigned
-            </Text>
+              }
+            />
           )}
         </Section>
       </ScrollView>

@@ -181,7 +181,8 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
   for (const [key, roundItems] of byRound) {
     const courseNumber = roundItems[0].course_number ?? 1;
     const fireTime = roundItems[0].fire_time ?? null;
-    const fireTimeEpoch = fireTime ? Math.floor(new Date(fireTime).getTime() / 1000) : 0;
+    const fireTimeMs = fireTime ? new Date(fireTime).getTime() : 0;
+    const fireTimeEpoch = fireTimeMs ? Math.floor(fireTimeMs / 1000) : 0;
 
     // Derive ticket status (same logic as SQL: all ready → ready, any sent → pending, else cooking)
     const allReady = roundItems.every((i) => i.kitchen_status === "ready");
@@ -219,6 +220,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       table_name: order.table_number,
       customer_name: null,
       start_time: fireTime ?? order.sent_to_kitchen_at,
+      start_time_epoch: fireTimeMs || (order.sent_to_kitchen_at ? new Date(order.sent_to_kitchen_at).getTime() : 0),
       item_count: ticketItems.reduce((sum, i) => sum + i.quantity, 0),
       items: ticketItems,
     });
@@ -415,7 +417,11 @@ export const useKDSStore = create<KDSState>((set, get) => ({
         return;
       }
 
-      const tickets: KDSTicket[] = Array.isArray(data) ? data : data ?? [];
+      const raw: KDSTicket[] = Array.isArray(data) ? data : data ?? [];
+      const tickets = raw.map(t => ({
+        ...t,
+        start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
+      }));
       const bucketed = smartBucketTickets(tickets, get().ticketsByStatus);
 
       set({
@@ -453,7 +459,11 @@ export const useKDSStore = create<KDSState>((set, get) => ({
         return;
       }
 
-      const tickets: KDSTicket[] = Array.isArray(data) ? data : data ?? [];
+      const raw: KDSTicket[] = Array.isArray(data) ? data : data ?? [];
+      const tickets = raw.map(t => ({
+        ...t,
+        start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
+      }));
       const bucketed = smartBucketTickets(tickets, get().ticketsByStatus);
 
       set({
@@ -488,13 +498,14 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       // Served → remove ticket entirely
       updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
     } else {
+      const itemIdSet = new Set(itemIds);
       updatedTickets = tickets.map((t) =>
         t.ticket_id === ticketId
           ? {
               ...t,
               status: ticketStatus as KDSTicket["status"],
               items: t.items.map((item) =>
-                itemIds.includes(item.id)
+                itemIdSet.has(item.id)
                   ? { ...item, kitchen_status: newStatus }
                   : item,
               ),
@@ -616,11 +627,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     const merged = [...otherTickets, ...newTickets];
 
     // Sort by start_time ascending (match SQL ordering)
-    merged.sort((a, b) => {
-      const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
-      const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
-      return aTime - bTime;
-    });
+    merged.sort((a, b) => a.start_time_epoch - b.start_time_epoch);
 
     const bucketed = smartBucketTickets(merged, get().ticketsByStatus);
     set({ tickets: merged, ...bucketed });
@@ -671,17 +678,27 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   },
 
   bulkAdvanceTickets: (ticketIds: string[], locationId: string) => {
-    let { tickets } = get();
-    const backendUpdates: {
-      itemIds: string[];
-      newStatus: "preparing" | "ready" | "served";
-    }[] = [];
+    const { tickets } = get();
 
-    for (const ticketId of ticketIds) {
-      const ticket = tickets.find((t) => t.ticket_id === ticketId);
-      if (!ticket) continue;
+    // Phase 1: Build index of selected tickets in O(m) where m = selected count
+    const selectedSet = new Set(ticketIds);
+    const ticketIndex = new Map<string, KDSTicket>();
+    for (const t of tickets) {
+      if (selectedSet.has(t.ticket_id)) {
+        ticketIndex.set(t.ticket_id, t);
+      }
+    }
 
-      const itemIds = ticket.items.map((i) => i.id);
+    // Phase 2: Determine mutations and batch backend item IDs by newStatus
+    const removeIds = new Set<string>();
+    const mutations = new Map<string, { ticketStatus: KDSTicket["status"]; newStatus: "preparing" | "ready" | "served" }>();
+    const batchedItemIds: Record<"preparing" | "ready" | "served", string[]> = {
+      preparing: [],
+      ready: [],
+      served: [],
+    };
+
+    for (const [ticketId, ticket] of ticketIndex) {
       const newStatus: "preparing" | "ready" | "served" =
         ticket.status === "pending"
           ? "preparing"
@@ -689,42 +706,48 @@ export const useKDSStore = create<KDSState>((set, get) => ({
             ? "ready"
             : "served";
 
-      const ticketStatus: KDSTicket["status"] | null =
-        newStatus === "preparing"
-          ? "cooking"
-          : newStatus === "ready"
-            ? "ready"
-            : null;
-
-      if (ticketStatus === null) {
-        tickets = tickets.filter((t) => t.ticket_id !== ticketId);
+      if (newStatus === "served") {
+        removeIds.add(ticketId);
       } else {
-        tickets = tickets.map((t) =>
-          t.ticket_id === ticketId
-            ? {
-                ...t,
-                status: ticketStatus,
-                items: t.items.map((item) =>
-                  itemIds.includes(item.id)
-                    ? { ...item, kitchen_status: newStatus }
-                    : item,
-                ),
-              }
-            : t,
-        );
+        const ticketStatus: KDSTicket["status"] = newStatus === "preparing" ? "cooking" : "ready";
+        mutations.set(ticketId, { ticketStatus, newStatus });
       }
-      backendUpdates.push({ itemIds, newStatus });
+
+      for (const item of ticket.items) {
+        batchedItemIds[newStatus].push(item.id);
+      }
+    }
+
+    // Phase 3: Single pass over tickets to produce final array
+    const updatedTickets: KDSTicket[] = [];
+    for (const t of tickets) {
+      if (removeIds.has(t.ticket_id)) continue; // skip removed
+      const mutation = mutations.get(t.ticket_id);
+      if (mutation) {
+        updatedTickets.push({
+          ...t,
+          status: mutation.ticketStatus,
+          items: t.items.map((item) => ({
+            ...item,
+            kitchen_status: mutation.newStatus,
+          })),
+        });
+      } else {
+        updatedTickets.push(t);
+      }
     }
 
     // Single state update
-    const bucketed = smartBucketTickets(tickets, get().ticketsByStatus);
-    set({ tickets, ...bucketed, selectedTicketIds: new Set<string>() });
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus);
+    set({ tickets: updatedTickets, ...bucketed, selectedTicketIds: new Set<string>() });
 
-    // Backend syncs with retry — revert optimistic state only after all retries exhausted
+    // Phase 4: Fire at most 3 batched RPCs (one per status) instead of N
     const client = getClient();
     if (client) {
-      for (const { itemIds, newStatus } of backendUpdates) {
-        retryBackendUpdate(client, itemIds, newStatus, 0, () => {
+      for (const status of ["preparing", "ready", "served"] as const) {
+        const ids = batchedItemIds[status];
+        if (ids.length === 0) continue;
+        retryBackendUpdate(client, ids, status, 0, () => {
           const lastLoc = get()._lastLocationId;
           if (lastLoc) {
             get().scheduleRefetch(lastLoc);

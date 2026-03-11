@@ -2,7 +2,10 @@ import { mmkvStorage } from "@/lib/storage";
 import {
   PrinterConfig,
   type PrinterRole,
+  type PrinterRoutingMode,
   PrinterRouteRule,
+  PrinterRouteRuleV2,
+  PrinterRoutingConfig,
   printerRowToConfig,
 } from "@/types/printer";
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
@@ -12,6 +15,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 interface PrinterStoreState {
   printers: PrinterConfig[];
   routeRules: PrinterRouteRule[];
+  routingConfigs: Record<string, PrinterRoutingConfig>;
   lastFetchedAt: number | null;
 
   // Actions
@@ -37,6 +41,27 @@ interface PrinterStoreState {
       isActive?: boolean;
     },
   ) => Promise<void>;
+
+  // Routing V2 actions
+  fetchRoutingRules: (locationId: string) => Promise<void>;
+  setRoutingMode: (printerId: string, mode: PrinterRoutingMode) => Promise<void>;
+  setPrintModifiers: (printerId: string, value: boolean) => Promise<void>;
+  upsertRoutingRule: (
+    printerId: string,
+    ruleType: PrinterRouteRuleV2["rule_type"],
+    ruleValue: string,
+  ) => Promise<void>;
+  removeRoutingRule: (printerId: string, ruleId: string) => Promise<void>;
+  bulkSetRules: (
+    printerId: string,
+    ruleType: PrinterRouteRuleV2["rule_type"],
+    entries: { ruleValue: string; enabled: boolean }[],
+  ) => Promise<void>;
+  getRoutingConfig: (printerId: string) => PrinterRoutingConfig;
+}
+
+function defaultRoutingConfig(printerId: string): PrinterRoutingConfig {
+  return { printerId, routingMode: "all", printModifiers: true, rules: [] };
 }
 
 export const usePrinterStore = create<PrinterStoreState>()(
@@ -44,6 +69,7 @@ export const usePrinterStore = create<PrinterStoreState>()(
     (set, get) => ({
       printers: [],
       routeRules: [],
+      routingConfigs: {},
       lastFetchedAt: null,
 
       fetchPrinters: async (locationId: string) => {
@@ -67,6 +93,8 @@ export const usePrinterStore = create<PrinterStoreState>()(
           if (data) {
             const configs = data.map(printerRowToConfig);
             set({ printers: configs, lastFetchedAt: Date.now() });
+            // Also fetch routing rules
+            get().fetchRoutingRules(locationId);
           }
         } catch (e) {
           console.error("[PrinterStore] Error fetching printers:", e);
@@ -195,6 +223,285 @@ export const usePrinterStore = create<PrinterStoreState>()(
           throw e;
         }
       },
+
+      // ====================================================================
+      // ROUTING V2
+      // ====================================================================
+
+      fetchRoutingRules: async (locationId: string) => {
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) return;
+
+        try {
+          // Get all printer IDs for this location
+          const printers = get().printers.filter((p) => p.locationId === locationId);
+          const printerIds = printers.map((p) => p.id);
+
+          if (printerIds.length === 0) return;
+
+          const { data, error } = await supabase
+            .from("printer_routing_rules")
+            .select("*")
+            .in("printer_id", printerIds);
+
+          if (error) {
+            console.error("[PrinterStore] Failed to fetch routing rules:", error);
+            return;
+          }
+
+          // Build routingConfigs from printers + rules
+          const configs: Record<string, PrinterRoutingConfig> = {};
+          for (const printer of printers) {
+            const printerRules: PrinterRouteRuleV2[] = (data ?? [])
+              .filter((r: any) => r.printer_id === printer.id)
+              .map((r: any) => ({
+                id: r.id,
+                printer_id: r.printer_id,
+                rule_type: r.rule_type,
+                rule_value: r.rule_value,
+                is_enabled: r.is_enabled,
+              }));
+
+            configs[printer.id] = {
+              printerId: printer.id,
+              routingMode: printer.routingMode,
+              printModifiers: printer.printModifiers,
+              rules: printerRules,
+            };
+          }
+
+          set({ routingConfigs: configs });
+
+          // Legacy migration: if routingConfigs are all empty but legacy routeRules exist
+          const { routeRules } = get();
+          if (
+            routeRules.length > 0 &&
+            (data ?? []).length === 0
+          ) {
+            console.log("[PrinterStore] Migrating legacy route rules to V2...");
+            for (const rule of routeRules) {
+              if (!rule.isEnabled) continue;
+              const targetPrinter = printers.find((p) => p.id === rule.printerId);
+              if (!targetPrinter) continue;
+
+              try {
+                await supabase.from("printer_routing_rules").upsert(
+                  {
+                    printer_id: rule.printerId,
+                    rule_type: "category",
+                    rule_value: rule.categoryName,
+                    is_enabled: true,
+                  },
+                  { onConflict: "printer_id,rule_type,rule_value" },
+                );
+              } catch {
+                // Best-effort migration
+              }
+            }
+            // Re-fetch after migration
+            set({ routeRules: [] });
+            get().fetchRoutingRules(locationId);
+          }
+        } catch (e) {
+          console.error("[PrinterStore] Error fetching routing rules:", e);
+        }
+      },
+
+      setRoutingMode: async (printerId, mode) => {
+        // Optimistic update
+        set((state) => {
+          const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
+          return {
+            routingConfigs: {
+              ...state.routingConfigs,
+              [printerId]: { ...existing, routingMode: mode },
+            },
+            printers: state.printers.map((p) =>
+              p.id === printerId ? { ...p, routingMode: mode } : p,
+            ),
+          };
+        });
+
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) return;
+
+        try {
+          await supabase
+            .from("printers")
+            .update({ routing_mode: mode })
+            .eq("id", printerId);
+        } catch (e) {
+          console.error("[PrinterStore] Failed to set routing mode:", e);
+        }
+      },
+
+      setPrintModifiers: async (printerId, value) => {
+        // Optimistic update
+        set((state) => {
+          const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
+          return {
+            routingConfigs: {
+              ...state.routingConfigs,
+              [printerId]: { ...existing, printModifiers: value },
+            },
+            printers: state.printers.map((p) =>
+              p.id === printerId ? { ...p, printModifiers: value } : p,
+            ),
+          };
+        });
+
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) return;
+
+        try {
+          await supabase
+            .from("printers")
+            .update({ print_modifiers: value })
+            .eq("id", printerId);
+        } catch (e) {
+          console.error("[PrinterStore] Failed to set print modifiers:", e);
+        }
+      },
+
+      upsertRoutingRule: async (printerId, ruleType, ruleValue) => {
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) return;
+
+        try {
+          const { data, error } = await supabase
+            .from("printer_routing_rules")
+            .upsert(
+              {
+                printer_id: printerId,
+                rule_type: ruleType,
+                rule_value: ruleValue,
+                is_enabled: true,
+              },
+              { onConflict: "printer_id,rule_type,rule_value" },
+            )
+            .select()
+            .single();
+
+          if (error) {
+            console.error("[PrinterStore] Failed to upsert routing rule:", error);
+            return;
+          }
+
+          // Update local state
+          set((state) => {
+            const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
+            const newRule: PrinterRouteRuleV2 = {
+              id: data.id,
+              printer_id: data.printer_id,
+              rule_type: data.rule_type,
+              rule_value: data.rule_value,
+              is_enabled: data.is_enabled,
+            };
+            const rules = existing.rules.filter(
+              (r) => !(r.rule_type === ruleType && r.rule_value === ruleValue),
+            );
+            rules.push(newRule);
+            return {
+              routingConfigs: {
+                ...state.routingConfigs,
+                [printerId]: { ...existing, rules },
+              },
+            };
+          });
+        } catch (e) {
+          console.error("[PrinterStore] Error upserting routing rule:", e);
+        }
+      },
+
+      removeRoutingRule: async (printerId, ruleId) => {
+        // Optimistic remove
+        set((state) => {
+          const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
+          return {
+            routingConfigs: {
+              ...state.routingConfigs,
+              [printerId]: {
+                ...existing,
+                rules: existing.rules.filter((r) => r.id !== ruleId),
+              },
+            },
+          };
+        });
+
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) return;
+
+        try {
+          await supabase.from("printer_routing_rules").delete().eq("id", ruleId);
+        } catch (e) {
+          console.error("[PrinterStore] Failed to remove routing rule:", e);
+        }
+      },
+
+      bulkSetRules: async (printerId, ruleType, entries) => {
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) return;
+
+        try {
+          const toUpsert = entries.filter((e) => e.enabled);
+          const toRemove = entries.filter((e) => !e.enabled);
+
+          // Upsert enabled rules
+          if (toUpsert.length > 0) {
+            await supabase.from("printer_routing_rules").upsert(
+              toUpsert.map((e) => ({
+                printer_id: printerId,
+                rule_type: ruleType,
+                rule_value: e.ruleValue,
+                is_enabled: true,
+              })),
+              { onConflict: "printer_id,rule_type,rule_value" },
+            );
+          }
+
+          // Remove disabled rules
+          if (toRemove.length > 0) {
+            await supabase
+              .from("printer_routing_rules")
+              .delete()
+              .eq("printer_id", printerId)
+              .eq("rule_type", ruleType)
+              .in(
+                "rule_value",
+                toRemove.map((e) => e.ruleValue),
+              );
+          }
+
+          // Re-fetch to get accurate state
+          const { data } = await supabase
+            .from("printer_routing_rules")
+            .select("*")
+            .eq("printer_id", printerId);
+
+          set((state) => {
+            const existing = state.routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
+            const rules: PrinterRouteRuleV2[] = (data ?? []).map((r: any) => ({
+              id: r.id,
+              printer_id: r.printer_id,
+              rule_type: r.rule_type,
+              rule_value: r.rule_value,
+              is_enabled: r.is_enabled,
+            }));
+            return {
+              routingConfigs: {
+                ...state.routingConfigs,
+                [printerId]: { ...existing, rules },
+              },
+            };
+          });
+        } catch (e) {
+          console.error("[PrinterStore] Failed to bulk set rules:", e);
+        }
+      },
+
+      getRoutingConfig: (printerId) => {
+        return get().routingConfigs[printerId] ?? defaultRoutingConfig(printerId);
+      },
     }),
     {
       name: "printer-store-storage",
@@ -202,6 +509,7 @@ export const usePrinterStore = create<PrinterStoreState>()(
       partialize: (state) => ({
         printers: state.printers,
         routeRules: state.routeRules,
+        routingConfigs: state.routingConfigs,
         lastFetchedAt: state.lastFetchedAt,
       }),
     },

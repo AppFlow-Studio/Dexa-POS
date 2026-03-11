@@ -1137,6 +1137,47 @@ const PaymentSystemsScreen = () => {
               ) : currentTerminal ? (
                 /* ---- Terminal info card (assigned) ---- */
                 <View>
+                  {/* Connection Status Banner */}
+                  <View className={`flex-row items-center px-4 py-3 rounded-xl mb-4 border ${
+                    currentTerminal.is_connected
+                      ? "bg-green-600/10 border-green-600/30"
+                      : "bg-red-600/10 border-red-600/30"
+                  }`}>
+                    <View className={`w-3 h-3 rounded-full mr-3 ${
+                      currentTerminal.is_connected ? "bg-green-400" : "bg-red-400"
+                    }`} />
+                    <View className="flex-1">
+                      <Text className={`font-semibold ${
+                        currentTerminal.is_connected ? "text-green-400" : "text-red-400"
+                      }`}>
+                        {currentTerminal.is_connected ? "Terminal Online" : "Terminal Offline"}
+                      </Text>
+                      {currentTerminal.last_connection_test_at && (
+                        <Text className="text-gray-500 text-xs mt-0.5">
+                          Last checked: {new Date(currentTerminal.last_connection_test_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      onPress={handleTestConnection}
+                      disabled={isTestingConnection}
+                      className={`px-3 py-1.5 rounded-lg flex-row items-center ${
+                        currentTerminal.is_connected ? "bg-green-600/20" : "bg-red-600/20"
+                      }`}
+                    >
+                      {isTestingConnection ? (
+                        <ActivityIndicator size="small" color={currentTerminal.is_connected ? colors.success : colors.danger} />
+                      ) : (
+                        <>
+                          <RefreshCw size={14} color={currentTerminal.is_connected ? colors.success : colors.danger} />
+                          <Text className={`ml-1.5 text-sm font-medium ${
+                            currentTerminal.is_connected ? "text-green-400" : "text-red-400"
+                          }`}>Test</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
                   <View className="bg-surface p-4 rounded-lg border border-gray-600 mb-4">
                     <View className="flex-row items-center justify-between mb-3">
                       <Text className="text-white font-bold text-lg">
@@ -1161,23 +1202,6 @@ const PaymentSystemsScreen = () => {
                             : "Dejavoo"}
                         </Text>
                       </View>
-                    </View>
-
-                    <View className="flex-row items-center mb-2">
-                      {currentTerminal.is_connected ? (
-                        <Wifi size={14} color={colors.success} />
-                      ) : (
-                        <WifiOff size={14} color={colors.muted} />
-                      )}
-                      <Text
-                        className={`ml-2 text-sm ${
-                          currentTerminal.is_connected
-                            ? "text-green-400"
-                            : "text-gray-400"
-                        }`}
-                      >
-                        {currentTerminal.last_connection_status || "Not tested"}
-                      </Text>
                     </View>
 
                     {currentTerminal.terminal_model && (

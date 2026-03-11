@@ -1,10 +1,10 @@
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from "@/components/ui/dialog";
 import { colors } from "@/lib/theme";
 import { AlertTriangle } from "lucide-react-native";
@@ -65,7 +65,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             <TouchableOpacity
               onPress={onConfirm}
               className={`flex-1 py-3 rounded-lg ${
-                isDestructive ? "bg-red-600" : "bg-blue-600"
+                isDestructive ? "bg-red-600" : "bg-teal"
               }`}
             >
               <Text className="font-bold text-white text-lg text-center">

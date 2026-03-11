@@ -61,7 +61,6 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   // Menu-Aware Search Logic
   const searchResults = useMemo<SearchSection[]>(() => {
     const trimmedSearch = searchText.trim().toLowerCase();
-    if (!trimmedSearch) return [];
 
     const availableSections: SearchSection[] = [];
     const unavailableSections: SearchSection[] = [];
@@ -77,51 +76,53 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         const isCategoryAvailable = isScheduleActive(category.schedules);
 
         category.items?.forEach((item) => {
-          // 3. Match Search Text
-          const matchName = item.name.toLowerCase().includes(trimmedSearch);
-          const matchDesc = item.description
-            ?.toLowerCase()
-            .includes(trimmedSearch);
-
-          if (matchName || matchDesc) {
-            // 4. Calculate Price (Menu > Category > Item)
-            let price = item.price;
-            if (
-              item.menuPriceOverrides &&
-              item.menuPriceOverrides[menu.id] !== undefined
-            ) {
-              price = item.menuPriceOverrides[menu.id];
-            } else if (
-              item.categoryPriceOverrides &&
-              item.categoryPriceOverrides[category.id] !== undefined
-            ) {
-              price = item.categoryPriceOverrides[category.id];
-            }
-
-            // 5. Determine Availability
-            let isDisabled = false;
-            let disabledReason = undefined;
-
-            if (item.availability === false) {
-              isDisabled = true;
-              disabledReason = "Out of Stock";
-            } else if (!isMenuAvailable) {
-              isDisabled = true;
-              disabledReason = "Menu Unavailable";
-            } else if (!isCategoryAvailable) {
-              isDisabled = true;
-              disabledReason = "Category Unavailable";
-            }
-
-            menuItems.push({
-              ...item,
-              uniqueKey: `${menu.id}-${category.id}-${item.id}`, // Unique key for list
-              menuName: menu.name,
-              displayPrice: price,
-              isDisabled,
-              disabledReason,
-            });
+          // 3. Match Search Text (show all items when search is empty)
+          // 3. Match Search Text (show all items when search is empty)
+          if (trimmedSearch) {
+            const matchName = item.name.toLowerCase().includes(trimmedSearch);
+            const matchDesc = item.description
+              ?.toLowerCase()
+              .includes(trimmedSearch);
+            if (!matchName && !matchDesc) return;
           }
+
+          // 4. Calculate Price (Menu > Category > Item)
+          let price = item.price;
+          if (
+            item.menuPriceOverrides &&
+            item.menuPriceOverrides[menu.id] !== undefined
+          ) {
+            price = item.menuPriceOverrides[menu.id];
+          } else if (
+            item.categoryPriceOverrides &&
+            item.categoryPriceOverrides[category.id] !== undefined
+          ) {
+            price = item.categoryPriceOverrides[category.id];
+          }
+
+          // 5. Determine Availability
+          let isDisabled = false;
+          let disabledReason = undefined;
+
+          if (item.availability === false) {
+            isDisabled = true;
+            disabledReason = "Out of Stock";
+          } else if (!isMenuAvailable) {
+            isDisabled = true;
+            disabledReason = "Menu Unavailable";
+          } else if (!isCategoryAvailable) {
+            isDisabled = true;
+            disabledReason = "Category Unavailable";
+          }
+
+          menuItems.push({
+            ...item,
+            uniqueKey: `${menu.id}-${category.id}-${item.id}`,
+            menuName: menu.name,
+            displayPrice: price,
+            isDisabled,
+            disabledReason,
+          });
         });
       });
 
@@ -206,18 +207,12 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         <View className="px-4 mt-2">
           {searchResults.length === 0 ? (
             <View className="flex-1 items-center justify-center h-48 mt-10">
-              {searchText ? (
-                <>
-                  <Search size={48} color={colors.muted} />
-                  <Text className="text-gray-500 mt-4 text-center">
-                    No items found using "{searchText}"
-                  </Text>
-                </>
-              ) : (
-                <Text className="text-gray-500 mt-4 text-center">
-                  Start typing to search the menu...
-                </Text>
-              )}
+              <Search size={48} color={colors.muted} />
+              <Text className="text-gray-500 mt-4 text-center">
+                {searchText
+                  ? `No items found for "${searchText}"`
+                  : "No menu items available"}
+              </Text>
             </View>
           ) : (
             searchResults.map((section, sectionIndex) => (

@@ -114,7 +114,7 @@ export async function handleSeatingEffect(
     }
   }
 
-  // 3. Hydrate the order from the RPC response
+  // 3. Hydrate order from RPC response
   if (data.order_id) {
     useOrderStore.getState().hydrateOrderFromSeat({
       localOrderId: params.localOrderId,

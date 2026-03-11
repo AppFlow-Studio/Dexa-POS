@@ -18,8 +18,8 @@ export interface TextBlock {
 // CONSTANTS
 // ============================================================================
 
-const BASE_FONT_SIZE = 24;
-const LINE_SPACING = 4; // extra pixels between lines
+const BASE_FONT_SIZE = 28;
+const LINE_SPACING = 6; // extra pixels between lines
 const HORIZONTAL_PADDING = 4; // left/right margin in dots
 
 // Monospace font families to try (platform-dependent)
@@ -134,9 +134,35 @@ export async function renderTextBlocksToImage(
 
   let y = LINE_SPACING;
 
+  const maxContentWidth = printWidthDots - 2 * HORIZONTAL_PADDING;
+
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    const fontSize = block.doubleHeight ? BASE_FONT_SIZE * 2 : BASE_FONT_SIZE;
+
+    // Auto-reduce magnification if text would overflow the print width
+    let { doubleWidth, doubleHeight } = block;
+    const checkFont = Skia.Font(getTypeface(block.bold), doubleHeight ? BASE_FONT_SIZE * 2 : BASE_FONT_SIZE);
+    const rawWidth = checkFont.getTextWidth(block.text);
+    const effectiveWidth = doubleWidth ? rawWidth * 2 : rawWidth;
+    if (effectiveWidth > maxContentWidth) {
+      if (doubleWidth) {
+        // Drop doubleWidth first
+        doubleWidth = false;
+        // Re-check with just doubleHeight
+        if (rawWidth > maxContentWidth && doubleHeight) {
+          doubleHeight = false;
+        }
+      } else if (doubleHeight) {
+        // Re-measure at normal font size
+        const normalFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
+        const normalWidth = normalFont.getTextWidth(block.text);
+        if (normalWidth <= maxContentWidth) {
+          doubleHeight = false;
+        }
+      }
+    }
+
+    const fontSize = doubleHeight ? BASE_FONT_SIZE * 2 : BASE_FONT_SIZE;
 
     const typeface = getTypeface(block.bold);
     const font = Skia.Font(typeface, fontSize);
@@ -157,7 +183,7 @@ export async function renderTextBlocksToImage(
     const paint = block.inverted ? whitePaint : blackPaint;
 
     // Handle doubleWidth by scaling
-    if (block.doubleWidth) {
+    if (doubleWidth) {
       const textWidth = font.getTextWidth(block.text);
       const scaledWidth = textWidth * 2;
       let x = HORIZONTAL_PADDING;

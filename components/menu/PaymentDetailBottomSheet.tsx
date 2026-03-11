@@ -2,6 +2,7 @@ import { useToast, ToastRenderer } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, OrderRefundItemRecord, ReversalRecord } from "@/lib/types";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useRefundMutation, type PerPaymentRefundDetail } from "@/hooks/orders/useRefundMutation";
 import { useTipAdjustMutation } from "@/hooks/orders/useTipAdjustMutation";
 import { useOrderDetailsFetch } from "@/hooks/orders/useOrderDetailsFetch";
@@ -3007,7 +3008,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     if (success) {
       show({ title: "Receipt Sent", message: "Receipt sent to printer.", type: "success" });
     } else {
-      show({ title: "No Printer", message: "No receipt printer configured for this location.", type: "warning" });
+      useNoPrinterModalStore.getState().show("receipt");
     }
   }, [order, selectedStore, show]);
 
@@ -3025,7 +3026,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     if (success) {
       show({ title: "Kitchen Ticket Sent", message: "Kitchen ticket sent to printer.", type: "success" });
     } else {
-      show({ title: "No Printer", message: "No kitchen printer configured for this location.", type: "warning" });
+      useNoPrinterModalStore.getState().show("kitchen");
     }
   }, [order, selectedStore, show]);
 

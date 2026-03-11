@@ -21,6 +21,7 @@ import {
   ReceiptPaymentData,
   ReceiptTemplateData,
 } from "@/types/printer";
+import { toastService } from "@/lib/toastService";
 import { getDriver } from "./DriverFactory";
 import { getReceiptPrinter, routeKitchenItems } from "./PrintRouter";
 import { buildReceiptCommands } from "./templates/ReceiptTemplate";
@@ -28,10 +29,23 @@ import { buildKitchenTicketCommands } from "./templates/KitchenTicketTemplate";
 import { buildReceiptDocument } from "./templates/ReceiptDocumentTemplate";
 import { buildKitchenTicketDocument } from "./templates/KitchenTicketDocumentTemplate";
 
+/**
+ * Sanitize time strings from toLocaleTimeString() which may insert
+ * U+202F (Narrow No-Break Space) or other exotic spaces that thermal
+ * printers render as a square/box character.
+ */
+function safeTimeString(date: Date): string {
+  return date
+    .toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
+    .replace(/[\u00A0\u202F\u2009\u200A]/g, " ");
+}
+
 let processingInterval: ReturnType<typeof setInterval> | null = null;
 let isProcessing = false;
+let lastFailureToastAt = 0;
 
 const PROCESS_INTERVAL_MS = 500;
+const FAILURE_TOAST_DEDUP_MS = 30_000;
 
 // ============================================================================
 // PUBLIC API
@@ -72,7 +86,13 @@ export const PrinterService = {
     items: CartItem[],
     location: SelectedLocation,
   ): Promise<boolean> {
-    const routedItems = routeKitchenItems(items, location.id);
+    const routedItems = routeKitchenItems(items, location.id, {
+      orderType: order.order_type,
+    });
+
+    console.log(
+      `[PrinterService] printKitchenTickets: items=${items.length}, routedPrinters=${routedItems.size}`,
+    );
 
     if (routedItems.size === 0) {
       console.warn("[PrinterService] No kitchen printers configured");
@@ -83,12 +103,20 @@ export const PrinterService = {
       const printer = usePrinterStore.getState().getPrinterById(printerId);
       if (!printer) continue;
 
+      console.log(
+        `[PrinterService] Routing ${printerItems.length} items to ${printer.printerName} (${printer.printerType})`,
+      );
+
+      // Check if this printer should suppress modifiers
+      const routingConfig = usePrinterStore.getState().getRoutingConfig(printerId);
+
       const ticketData = buildKitchenTicketData(
         order,
         printerItems,
         printer,
         false,
         location,
+        routingConfig.printModifiers,
       );
       const job = createJobForPrinter(
         printer,
@@ -112,7 +140,9 @@ export const PrinterService = {
     voidedItems: CartItem[],
     location: SelectedLocation,
   ): Promise<boolean> {
-    const routedItems = routeKitchenItems(voidedItems, location.id);
+    const routedItems = routeKitchenItems(voidedItems, location.id, {
+      orderType: order.order_type,
+    });
 
     if (routedItems.size === 0) {
       return false;
@@ -122,12 +152,15 @@ export const PrinterService = {
       const printer = usePrinterStore.getState().getPrinterById(printerId);
       if (!printer) continue;
 
+      const routingConfig = usePrinterStore.getState().getRoutingConfig(printerId);
+
       const ticketData = buildKitchenTicketData(
         order,
         printerItems,
         printer,
         true,
         location,
+        routingConfig.printModifiers,
       );
       const job = createJobForPrinter(
         printer,
@@ -241,11 +274,7 @@ export const PrinterService = {
       day: "2-digit",
       year: "numeric",
     });
-    const timeStr = now.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const timeStr = safeTimeString(now);
 
     const sampleData: ReceiptTemplateData = {
       storeName: "Dexa POS — Sample Store",
@@ -290,11 +319,7 @@ export const PrinterService = {
    */
   async printTestKitchenTicket(targetPrinter: PrinterConfig): Promise<boolean> {
     const now = new Date();
-    const timestamp = now.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const timestamp = safeTimeString(now);
     const fullTimestamp =
       now.toLocaleDateString("en-US", {
         month: "2-digit",
@@ -303,11 +328,7 @@ export const PrinterService = {
       }) + " " + timestamp;
 
     const readyBy = new Date(now.getTime() + 15 * 60 * 1000);
-    const readyByTime = readyBy.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    const readyByTime = safeTimeString(readyBy);
 
     const sampleData: KitchenTicketData = {
       orderNumber: "#TEST-001",
@@ -384,9 +405,16 @@ async function processNextJob(): Promise<void> {
 
     const driver = getDriver(printer);
 
+    console.log(
+      `[PrinterService] Processing job ${job.id}: printer=${printer.printerName}, type=${printer.printerType}, connected=${driver.isConnected()}`,
+    );
+
     // Initialize driver if not connected
     if (!driver.isConnected()) {
       await driver.initialize(printer);
+      console.log(
+        `[PrinterService] Driver initialized for ${printer.printerName}`,
+      );
       await usePrinterStore.getState().syncPrinterStatus(printer.id, {
         isConnected: true,
         lastStatus: "connected",
@@ -422,6 +450,21 @@ async function processNextJob(): Promise<void> {
       console.error(
         `[PrinterService] Job ${job.id} exhausted retries, marking as failed`,
       );
+
+      const now = Date.now();
+      if (now - lastFailureToastAt > FAILURE_TOAST_DEDUP_MS) {
+        lastFailureToastAt = now;
+        const jobLabel =
+          job.jobType === "receipt" ? "Receipt" :
+          job.jobType === "kitchen_ticket" ? "Kitchen ticket" :
+          job.jobType === "void_ticket" ? "Void ticket" : "Print job";
+        toastService.show({
+          title: "Print Failed",
+          message: `${jobLabel} failed: ${errorMsg}`,
+          type: "error",
+          duration: 6000,
+        });
+      }
     }
 
     // Update printer error count
@@ -541,10 +584,22 @@ function buildReceiptTemplateData(
     order.total_tax ??
     nonVoidedItems.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
 
+  // Compute weighted-average tax rate from item-level rates (stored as whole numbers like 8.875)
+  const totalTaxableAmount = nonVoidedItems.reduce(
+    (sum, item) => sum + (item.is_tax_exempt ? 0 : calculateItemEffectiveCardPrice(item)),
+    0,
+  );
+  const weightedTaxRate = totalTaxableAmount > 0
+    ? nonVoidedItems.reduce((sum, item) => {
+        if (item.is_tax_exempt) return sum;
+        const weight = calculateItemEffectiveCardPrice(item) / totalTaxableAmount;
+        return sum + (item.taxRate ?? 0) * weight;
+      }, 0)
+    : 0;
+
   let cashTax = 0;
-  if (subtotal > 0 && tax > 0) {
-    const effectiveTaxRate = tax / subtotal;
-    cashTax = cashSubtotal * effectiveTaxRate;
+  if (cashSubtotal > 0 && weightedTaxRate > 0) {
+    cashTax = cashSubtotal * (weightedTaxRate / 100);
   }
 
   const discount = order.total_discount || 0;
@@ -594,11 +649,21 @@ function buildReceiptTemplateData(
   // Map payments
   const payments: ReceiptPaymentData[] = (order.payments ?? [])
     .filter((p) => !p.isVoided)
-    .map((p) => ({
-      method: getPaymentMethodName(p.method),
-      amount: p.amount,
-      last4: p.last4,
-    }));
+    .map((p) => {
+      const td = p.transactionDetails;
+      const dejavoo = td?.dejavooTransaction;
+      const castles = td?.castlesTransaction as Record<string, string> | undefined;
+
+      return {
+        method: getPaymentMethodName(p.method),
+        amount: p.amount,
+        last4: p.last4,
+        cardBrand: p.cardBrand ?? td?.cardType ?? dejavoo?.cardType ?? castles?.cardType,
+        authCode: td?.authorizationCode ?? dejavoo?.authCode ?? castles?.approvalCode,
+        rrn: dejavoo?.rrn ?? castles?.rrn,
+        entryMode: dejavoo?.entryMode ?? dejavoo?.entryType ?? castles?.entryMode,
+      };
+    });
 
   // Format date/time
   const orderDate = order.opened_at
@@ -609,11 +674,12 @@ function buildReceiptTemplateData(
     day: "2-digit",
     year: "numeric",
   });
-  const timeStr = orderDate.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const timeStr = safeTimeString(orderDate);
+
+  // Print timestamp
+  const now = new Date();
+  const printDateStr = now.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+  const printTimeStr = safeTimeString(now);
 
   // Build address
   const addressParts = [
@@ -636,6 +702,7 @@ function buildReceiptTemplateData(
     tableName: order.service_location_name ?? undefined,
     customerName: order.customer_name,
     serverName: order.server_name,
+    backendOrderNumber: order.order_number ?? undefined,
     items,
     subtotal,
     tax,
@@ -652,11 +719,13 @@ function buildReceiptTemplateData(
       template.footerText ?? printer.receiptFooter ?? "Thank you for your purchase!",
     headerMessage: template.headerText ?? undefined,
     maxCharsPerLine: printer.maxCharsPerLine,
-    taxRate: subtotal > 0 ? tax / subtotal : 0,
+    taxRate: weightedTaxRate / 100,  // Convert from 8.875 to 0.08875
     templateConfig: template,
     logoBase64: template.showLogo
       ? useReceiptTemplateStore.getState().cachedLogoBase64 ?? undefined
       : undefined,
+    printDate: printDateStr,
+    printTime: printTimeStr,
   };
 }
 
@@ -666,17 +735,14 @@ function buildKitchenTicketData(
   printer: PrinterConfig,
   isVoidTicket: boolean,
   location?: SelectedLocation,
+  printModifiers: boolean = true,
 ): KitchenTicketData {
   const template = location
     ? useReceiptTemplateStore.getState().getKitchenTemplate(location.id)
     : { ...DEFAULT_RECEIPT_TEMPLATE, templateType: "kitchen" };
 
   const now = new Date();
-  const timestamp = now.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const timestamp = safeTimeString(now);
   const fullTimestamp = now.toLocaleDateString("en-US", {
     month: "2-digit",
     day: "2-digit",
@@ -686,19 +752,21 @@ function buildKitchenTicketData(
   const kitchenItems: KitchenTicketItemData[] = items.map((item) => {
     const modifiers: string[] = [];
 
-    if (item.customizations?.size) {
-      modifiers.push(`Size: ${item.customizations.size.name}`);
-    }
+    if (printModifiers) {
+      if (item.customizations?.size) {
+        modifiers.push(`Size: ${item.customizations.size.name}`);
+      }
 
-    item.customizations?.modifiers?.forEach((modGroup) => {
-      modGroup.options.forEach((opt) => {
-        modifiers.push(opt.name);
+      item.customizations?.modifiers?.forEach((modGroup) => {
+        modGroup.options.forEach((opt) => {
+          modifiers.push(opt.name);
+        });
       });
-    });
 
-    item.customizations?.addOns?.forEach((addon) => {
-      modifiers.push(addon.name);
-    });
+      item.customizations?.addOns?.forEach((addon) => {
+        modifiers.push(addon.name);
+      });
+    }
 
     // Extract allergy info from notes if present
     const notes = item.customizations?.notes;
@@ -724,11 +792,7 @@ function buildKitchenTicketData(
 
   // Calculate ready-by time (current time + 15 minutes)
   const readyBy = new Date(now.getTime() + 15 * 60 * 1000);
-  const readyByTime = readyBy.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const readyByTime = safeTimeString(readyBy);
 
   return {
     orderNumber:

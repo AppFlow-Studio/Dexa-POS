@@ -21,11 +21,14 @@ import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { useShallow } from "zustand/react/shallow";
 
 const UpdateTableScreen = () => {
   const router = useRouter();
@@ -38,6 +41,8 @@ const UpdateTableScreen = () => {
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
   const { defaultSittingTimeMinutes } = useSettingsStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const autoPrintKitchenTickets = useStoreSettingsStore((s) => s.autoPrintKitchenTickets);
 
   // --- Extracted hooks ---
   const {
@@ -67,19 +72,19 @@ const UpdateTableScreen = () => {
   const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
   const openPaymentSheet = usePaymentStore((s) => s.open);
 
-  const updateActiveOrderDetails = useOrderStore(
-    (s) => s.updateActiveOrderDetails,
-  );
-  const updateItemStatusInActiveOrder = useOrderStore(
-    (s) => s.updateItemStatusInActiveOrder,
-  );
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const updateItemStatusInActiveOrder = useOrderStore((s) => s.updateItemStatusInActiveOrder);
   const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus);
   const syncOrderStatus = useOrderStore((s) => s.syncOrderStatus);
-  const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const storeActiveOrderOutstandingTotal = useOrderStore(
-    (s) => s.activeOrderOutstandingTotal,
-  );
-  const storeActiveOrderTotal = useOrderStore((s) => s.activeOrderTotal);
+
+  const { activeOrderId, storeActiveOrderOutstandingTotal, storeActiveOrderTotal } =
+    useOrderStore(
+      useShallow((s) => ({
+        activeOrderId: s.activeOrderId,
+        storeActiveOrderOutstandingTotal: s.activeOrderOutstandingTotal,
+        storeActiveOrderTotal: s.activeOrderTotal,
+      })),
+    );
 
   // --- Bottom sheet refs ---
   const pricingSheetRef = useRef<BottomSheetMethods>(null);
@@ -101,18 +106,27 @@ const UpdateTableScreen = () => {
     { id: string; name: string; quantity: number }[]
   >([]);
 
-  // --- Deferred rendering (same double-rAF pattern as order-processing) ---
-  const [renderStage, setRenderStage] = useState(0);
+  // --- Deferred rendering ---
+  // Skip skeleton (stage 0) when order data is already in the store (e.g. navigating from tables screen)
+  const [renderStage, setRenderStage] = useState(() => {
+    const orderState = useOrderStore.getState();
+    const oid = orderState.activeOrderId;
+    const hasOrder = oid && orderState.ordersById[oid]?.service_location_id === currentTableId;
+    return hasOrder ? 1 : 0;
+  });
   useEffect(() => {
     let cancelled = false;
+    if (renderStage >= 2) return;
     const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (cancelled) return;
+      if (cancelled) return;
+      if (renderStage < 1) {
         setRenderStage(1);
         requestAnimationFrame(() => {
           if (!cancelled) setRenderStage(2);
         });
-      });
+      } else {
+        setRenderStage(2);
+      }
     });
     return () => {
       cancelled = true;
@@ -150,7 +164,7 @@ const UpdateTableScreen = () => {
 
   // --- Action handlers ---
 
-  const handlePay = () => {
+  const handlePay = useCallback(() => {
     if (activeOrder) {
       const preparingItems = activeOrder.items.filter(
         (i) => !isItemReadyOrServed(i),
@@ -168,7 +182,7 @@ const UpdateTableScreen = () => {
       }
     }
     openPaymentSheet("Card", currentTableId, "payment-method-selection");
-  };
+  }, [activeOrder, openPaymentSheet, currentTableId]);
 
   const handleClearTable = async () => {
     if (!activeOrderId || !activeOrder) return;
@@ -470,6 +484,12 @@ const UpdateTableScreen = () => {
     if (result.success) {
       coursingHook.markCourseSent(activeOrder.id, course);
 
+      // Auto-print kitchen tickets for the sent items
+      if (autoPrintKitchenTickets && selectedStore) {
+        PrinterService.printKitchenTickets(activeOrder, itemsInCourse, selectedStore)
+          .catch((e) => console.warn("[TableView] Auto-print kitchen tickets failed:", e));
+      }
+
       if (activeOrder.order_status === "draft") {
         updateOrderStatus(activeOrder.id, "sent_to_kitchen");
       }
@@ -528,6 +548,45 @@ const UpdateTableScreen = () => {
     }
     return false;
   }, [isFullyPaid, activeOrder?.check_status]);
+
+  const handleSelectCourse = useCallback(
+    (courseId: number | null) => {
+      setSelectedCourseIdForTracker(courseId);
+      if (activeOrder && courseId !== null) {
+        coursingHook.setCurrentCourse(activeOrder.id, courseId);
+      }
+    },
+    [activeOrder?.id, coursingHook.setCurrentCourse],
+  );
+
+  const handleSetCurrentCourse = useCallback(
+    (course: number) => {
+      if (activeOrder?.id) {
+        coursingHook.setCurrentCourse(activeOrder.id, course);
+      }
+    },
+    [activeOrder?.id, coursingHook.setCurrentCourse],
+  );
+
+  const handlePressMore = useCallback(
+    () => moreOptionsSheetRef.current?.expand(),
+    [],
+  );
+
+  const handlePressTotal = useCallback(
+    () => pricingSheetRef.current?.expand(),
+    [],
+  );
+
+  const handleClosePricingSheet = useCallback(
+    () => pricingSheetRef.current?.close(),
+    [],
+  );
+
+  const handleProceedToPayment = useCallback(() => {
+    pricingSheetRef.current?.close();
+    handlePay();
+  }, [handlePay]);
 
   // --- Memoized course content ---
   const isCurrentCourseSent = useMemo(() => {
@@ -599,21 +658,12 @@ const UpdateTableScreen = () => {
               itemCourseMap={coursingHook.itemCourseMap}
               sentCourses={coursingHook.sentCourses}
               currentCourse={coursingHook.currentCourse}
-              onSelectCourse={(courseId: number | null) => {
-                setSelectedCourseIdForTracker(courseId);
-                if (activeOrder && courseId !== null) {
-                  coursingHook.setCurrentCourse(activeOrder.id, courseId);
-                }
-              }}
-              setCurrentCourse={(course) => {
-                if (activeOrder?.id) {
-                  coursingHook.setCurrentCourse(activeOrder.id, course);
-                }
-              }}
+              onSelectCourse={handleSelectCourse}
+              setCurrentCourse={handleSetCurrentCourse}
               onDoubleTapCourse={handleDoubleTapCourse}
               activeOrder={activeOrder}
-              onPressMore={() => moreOptionsSheetRef.current?.expand()}
-              onPressTotal={() => pricingSheetRef.current?.expand()}
+              onPressMore={handlePressMore}
+              onPressTotal={handlePressTotal}
               onPressReopenCheck={handleReopenCheck}
               onPressCloseCheck={handleCloseCheck}
               onPressClearTable={handleClearTable}
@@ -621,11 +671,8 @@ const UpdateTableScreen = () => {
               pricingSheetRef={
                 pricingSheetRef as React.RefObject<BottomSheetMethods>
               }
-              onClosePricingSheet={() => pricingSheetRef.current?.close()}
-              onPressProceedToPayment={() => {
-                pricingSheetRef.current?.close();
-                handlePay();
-              }}
+              onClosePricingSheet={handleClosePricingSheet}
+              onPressProceedToPayment={handleProceedToPayment}
               onPressStartNewCourse={finalizeCurrentCourse}
               isFullyPaid={isFullyPaid}
             />

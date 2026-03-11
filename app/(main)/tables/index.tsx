@@ -19,6 +19,7 @@ import {
 } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useWaitlistSheetStore } from "@/stores/useWaitlistSheetStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
@@ -66,6 +67,7 @@ const TablesScreen = () => {
   const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
   const getOrder = useOrderStore((s) => s.getOrder);
   const syncOrderFromDatabase = useOrderStore((s) => s.syncOrderFromDatabase);
+  const isWaitlistOpen = useWaitlistSheetStore((s) => s.isOpen);
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -126,6 +128,11 @@ const TablesScreen = () => {
     }
     return result;
   }, [tables, searchText, activeSectionId]);
+
+  const handleCloseGuestModal = useCallback(() => {
+    setGuestModalOpen(false);
+    clearSelection();
+  }, [clearSelection]);
 
   const handleTablePress = useCallback((table: FloorPlanObject) => {
     if (!isClockedIn) {
@@ -252,11 +259,13 @@ const TablesScreen = () => {
     () => tables.filter((t) => selectedTableIdsSet.has(t.id)), // O(1) per check
     [tables, selectedTableIdsSet],
   );
-  const availableSelectedTables = selectedTables.filter(
-    (t) => !t.session || t.session.status === "available",
+  const availableSelectedTables = useMemo(
+    () => selectedTables.filter((t) => !t.session || t.session.status === "available"),
+    [selectedTables],
   );
-  const inUseSelectedTables = selectedTables.filter(
-    (t) => t.session && t.session.status !== "available",
+  const inUseSelectedTables = useMemo(
+    () => selectedTables.filter((t) => t.session && t.session.status !== "available"),
+    [selectedTables],
   );
 
   // Determine which merge action is valid
@@ -670,7 +679,7 @@ const TablesScreen = () => {
             </View>
           </View>
         </View>
-        <WaitlistBottomSheet />
+        {isWaitlistOpen && <WaitlistBottomSheet />}
       </View>
       <TableContextSheet
         table={contextTable}
@@ -680,10 +689,7 @@ const TablesScreen = () => {
       />
       <GuestCountModal
         isOpen={isGuestModalOpen}
-        onClose={() => {
-          setGuestModalOpen(false);
-          clearSelection();
-        }}
+        onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
       />
     </View>

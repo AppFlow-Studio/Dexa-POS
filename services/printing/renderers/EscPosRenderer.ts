@@ -108,6 +108,7 @@ function applyFormat(b: EscPosBuilder, format?: PrintTextFormat): void {
   if (!format) return;
   if (format.bold) b.bold(true);
   if (format.underline) b.underline(true);
+  if (format.inverted) b.inverted(true);
   if (format.doubleHeight && format.doubleWidth) {
     b.doubleSize(true);
   } else if (format.doubleHeight) {
@@ -121,6 +122,7 @@ function resetFormat(b: EscPosBuilder, format?: PrintTextFormat): void {
   if (!format) return;
   if (format.bold) b.bold(false);
   if (format.underline) b.underline(false);
+  if (format.inverted) b.inverted(false);
   if (format.doubleHeight && format.doubleWidth) {
     b.doubleSize(false);
   } else if (format.doubleHeight) {

@@ -57,10 +57,10 @@ export function useReopenCheck() {
       dbOrderId: string;
       reason?: string;
     }) => {
-      const { activeEmployeeId } = useEmployeeStore.getState();
+      const { loggedInEmployee } = useEmployeeStore.getState();
       const { data, error } = await supabase.rpc("reopen_check", {
         p_order_id: dbOrderId,
-        p_staff_id: activeEmployeeId,
+        p_staff_id: loggedInEmployee?.profileId ?? null,
         p_reason: reason || null,
       });
       if (error) throw error;

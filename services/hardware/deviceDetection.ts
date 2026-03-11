@@ -11,10 +11,11 @@ import { getDeviceId } from "@/lib/deviceId";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { detectNativeHardware } from "@/native/HardwareDetection";
 import { StationPaymentTerminal } from "@/types/station";
-import { printerRowToConfig } from "@/types/printer";
+import { PrinterConfig, printerRowToConfig } from "@/types/printer";
 import { DejavooDriver } from "@/services/printing/drivers/DejavooDriver";
 import { StarMicronicsDriver } from "@/services/printing/drivers/StarMicronicsDriver";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
+import { usePrinterStore } from "@/stores/usePrinterStore";
 
 // ============================================================================
 // TYPES
@@ -691,8 +692,39 @@ export async function verifyDejavooPrinter(
 // ============================================================================
 
 /**
+ * Searches local PrinterConfig[] for a matching Star Micronics printer.
+ * 3-tier priority: MAC address → IP address → model name.
+ * Returns the matched config or null.
+ */
+function findMatchingStarPrinter(
+  printers: PrinterConfig[],
+  locationId: string,
+  discovered: DiscoveredStarPrinter,
+): PrinterConfig | null {
+  const candidates = printers.filter(
+    (p) => p.printerType === "star_micronics" && p.locationId === locationId,
+  );
+
+  // Tier 1: MAC address match (most reliable — identifies physical device regardless of IP)
+  if (discovered.macAddress) {
+    const macMatch = candidates.find(
+      (p) => (p.metadata as Record<string, unknown> | null)?.macAddress === discovered.macAddress,
+    );
+    if (macMatch) return macMatch;
+  }
+
+  // Tier 2: IP address match
+  const ipMatch = candidates.find(
+    (p) => p.networkAddress === discovered.ipAddress,
+  );
+  if (ipMatch) return ipMatch;
+
+  return null;
+}
+
+/**
  * Provisions a Star Micronics printer into the `printers` table.
- * Idempotent — if a star_micronics printer with the same network_address + location already exists, returns existing ID.
+ * Local-first: matches against usePrinterStore first, only hits DB if store is empty (first boot).
  */
 export async function provisionStarPrinter(
   supabase: SupabaseClient,
@@ -702,27 +734,75 @@ export async function provisionStarPrinter(
   discovered: DiscoveredStarPrinter,
   role: "receipt" | "kitchen",
 ): Promise<string | null> {
-  // Check for existing row by network address + location + printer type
-  const { data: existing, error: fetchError } = await supabase
-    .from("printers")
-    .select("id")
-    .eq("network_address", discovered.ipAddress)
-    .eq("location_id", locationId)
-    .eq("printer_type", "star_micronics")
-    .limit(1);
-
-  if (fetchError) {
-    console.error("[DeviceDetection] Failed to check existing Star printer:", fetchError.message);
-    return null;
-  }
-
-  if (existing && existing.length > 0) {
-    console.log("[DeviceDetection] Star printer already provisioned:", existing[0].id);
-    return existing[0].id;
-  }
-
   const caps = discovered.capabilities;
+  const storePrinters = usePrinterStore.getState().printers;
 
+  let existingId: string | null = null;
+
+  // 1. Local match — search the Zustand store (MMKV-persisted, already loaded)
+  if (storePrinters.length > 0) {
+    const localMatch = findMatchingStarPrinter(storePrinters, locationId, discovered);
+    if (localMatch) {
+      existingId = localMatch.id;
+      console.log(`[DeviceDetection] Star printer matched locally: ${existingId}`);
+    }
+  }
+
+  // 2. DB fallback — only if store is empty (first boot before fetchPrinters ran)
+  if (!existingId && storePrinters.length === 0) {
+    console.log("[DeviceDetection] Store empty (first boot), falling back to DB lookup");
+    const orConditions = [
+      `network_address.eq.${discovered.ipAddress}`,
+      ...(discovered.macAddress
+        ? [`metadata->>macAddress.eq.${discovered.macAddress}`]
+        : []),
+    ].join(",");
+
+    const { data, error: fetchError } = await supabase
+      .from("printers")
+      .select("id")
+      .eq("location_id", locationId)
+      .eq("printer_type", "star_micronics")
+      .or(orConditions)
+      .limit(1);
+
+    if (fetchError) {
+      console.error("[DeviceDetection] Failed to check existing Star printer:", fetchError.message);
+      return null;
+    }
+    if (data?.length) {
+      existingId = data[0].id;
+      console.log(`[DeviceDetection] Star printer matched via DB fallback: ${existingId}`);
+    }
+  }
+
+  // Match found — update existing row's IP/metadata (IP may have changed via DHCP)
+  if (existingId) {
+    console.log(
+      `[DeviceDetection] Updating Star printer ${existingId} IP → ${discovered.ipAddress}`,
+    );
+
+    await supabase
+      .from("printers")
+      .update({
+        network_address: discovered.ipAddress,
+        printer_name: `${discovered.modelName} (${discovered.ipAddress})`,
+        metadata: {
+          starModel: discovered.model,
+          macAddress: discovered.macAddress,
+          identifier: discovered.identifier,
+          graphicsOnly: caps.graphicsOnly || false,
+        },
+      })
+      .eq("id", existingId);
+
+    // Refresh store after mutation
+    usePrinterStore.getState().fetchPrinters(locationId);
+
+    return existingId;
+  }
+
+  // No match — insert new row
   const { data: inserted, error: insertError } = await supabase
     .from("printers")
     .insert({
@@ -761,7 +841,11 @@ export async function provisionStarPrinter(
     return null;
   }
 
-  console.log("[DeviceDetection] Provisioned Star printer:", inserted?.id);
+  console.log("[DeviceDetection] Provisioned new Star printer:", inserted?.id);
+
+  // Refresh store after insert
+  usePrinterStore.getState().fetchPrinters(locationId);
+
   return inserted?.id ?? null;
 }
 

@@ -246,6 +246,36 @@ async function renderNodesGraphicsOnly(
 // NODE RENDERING (text-based, for non-graphics-only printers)
 // ============================================================================
 
+/**
+ * Auto-reduce magnification format if text would exceed the line width.
+ * doubleWidth halves effective chars per line; doubleHeight doesn't affect width.
+ */
+function fitFormat(
+  text: string,
+  lineWidth: number,
+  format?: PrintTextFormat,
+): PrintTextFormat | undefined {
+  if (!format) return format;
+  if (!format.doubleWidth && !format.doubleHeight) return format;
+
+  const effectiveWidth = format.doubleWidth ? Math.floor(lineWidth / 2) : lineWidth;
+  if (text.length <= effectiveWidth) return format;
+
+  // Text overflows — try dropping doubleWidth first
+  if (format.doubleWidth) {
+    const reduced = { ...format, doubleWidth: undefined };
+    if (text.length <= lineWidth) return reduced;
+    // Still overflows — drop doubleHeight too
+    if (format.doubleHeight) {
+      return { ...reduced, doubleHeight: undefined };
+    }
+    return reduced;
+  }
+
+  // Only doubleHeight (doesn't affect char width, but drop if needed for consistency)
+  return format;
+}
+
 async function renderNode(
   pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
   node: PrintNode,
@@ -254,28 +284,31 @@ async function renderNode(
 ): Promise<void> {
   switch (node.type) {
     case "text": {
+      const fmt = fitFormat(node.content, lineWidth, node.format);
       applyAlignment(pb, node.align);
-      applyFormat(pb, node.format);
+      applyFormat(pb, fmt);
       pb.actionPrintText(node.content);
-      resetFormat(pb, node.format);
+      resetFormat(pb, fmt);
       break;
     }
 
     case "text_line": {
+      const fmt = fitFormat(node.content, lineWidth, node.format);
       applyAlignment(pb, node.align);
-      applyFormat(pb, node.format);
+      applyFormat(pb, fmt);
       pb.actionPrintText(node.content + "\n");
-      resetFormat(pb, node.format);
+      resetFormat(pb, fmt);
       applyAlignment(pb, "left");
       break;
     }
 
     case "two_column": {
       const w = node.lineWidth;
-      applyFormat(pb, node.format);
       const line = padTwoColumn(node.left, node.right, w);
+      const fmt = fitFormat(line, w, node.format);
+      applyFormat(pb, fmt);
       pb.actionPrintText(line + "\n");
-      resetFormat(pb, node.format);
+      resetFormat(pb, fmt);
       break;
     }
 

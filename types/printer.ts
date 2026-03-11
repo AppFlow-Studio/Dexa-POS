@@ -66,6 +66,8 @@ export interface PrinterConfig {
   isDefaultKitchen: boolean;
   autoPrintReceipt: boolean;
   printOrderTickets: boolean;
+  routingMode: PrinterRoutingMode;
+  printModifiers: boolean;
 
   // Status
   isActive: boolean;
@@ -148,7 +150,7 @@ export interface PrinterStatusResult {
 }
 
 // ============================================================================
-// ROUTE RULES
+// ROUTE RULES (legacy)
 // ============================================================================
 
 export interface PrinterRouteRule {
@@ -156,6 +158,32 @@ export interface PrinterRouteRule {
   categoryName: string;
   printerId: string;
   isEnabled: boolean;
+}
+
+// ============================================================================
+// PRINTER ROUTING V2 (per-printer routing config)
+// ============================================================================
+
+export type PrinterRoutingMode = "all" | "unassigned" | "custom";
+
+export type PrinterRouteRuleType =
+  | "category"    // rule_value = category ID
+  | "menu_item"   // rule_value = menu item ID
+  | "order_type"; // rule_value = "dine_in" | "takeout" | "delivery"
+
+export interface PrinterRouteRuleV2 {
+  id: string;
+  printer_id: string;
+  rule_type: PrinterRouteRuleType;
+  rule_value: string;
+  is_enabled: boolean;
+}
+
+export interface PrinterRoutingConfig {
+  printerId: string;
+  routingMode: PrinterRoutingMode;
+  printModifiers: boolean;
+  rules: PrinterRouteRuleV2[];
 }
 
 // ============================================================================
@@ -176,6 +204,7 @@ export interface ReceiptTemplateData {
   tableName?: string;
   customerName?: string;
   serverName?: string;
+  backendOrderNumber?: string; // "ORD-YYYYMMDD-XXXX" from orders table
 
   // Items
   items: ReceiptItemData[];
@@ -208,6 +237,10 @@ export interface ReceiptTemplateData {
 
   // Logo
   logoBase64?: string; // Pre-fetched logo image as base64 PNG for printing
+
+  // Print metadata
+  printDate?: string;  // Date string when receipt was printed
+  printTime?: string;  // Time string when receipt was printed
 }
 
 export interface ReceiptItemData {
@@ -224,6 +257,10 @@ export interface ReceiptPaymentData {
   method: string;
   amount: number;
   last4?: string;
+  cardBrand?: string;    // "VISA", "MASTERCARD", etc.
+  authCode?: string;     // Authorization/approval code
+  rrn?: string;          // Retrieval Reference Number
+  entryMode?: string;    // "chip", "swipe", "contactless", "manual"
 }
 
 export interface KitchenTicketData {
@@ -281,8 +318,8 @@ export function printerRowToConfig(row: PrinterRow): PrinterConfig {
     supportsLogo: row.supports_logo ?? false,
     graphicsOnly: !!(row.metadata as Record<string, unknown> | null)?.graphicsOnly
       || isGraphicsOnlyStarModel(row.printer_model),
-    paperWidth: row.paper_width ?? 80,
-    maxCharsPerLine: row.max_chars_per_line ?? 48,
+    paperWidth: row.paper_width ?? 58,
+    maxCharsPerLine: row.max_chars_per_line ?? 32,
     printDensity: row.print_density ?? 8,
     copies: row.copies ?? 1,
     printLogo: row.print_logo ?? false,
@@ -292,6 +329,8 @@ export function printerRowToConfig(row: PrinterRow): PrinterConfig {
     isDefaultKitchen: row.is_default_kitchen ?? false,
     autoPrintReceipt: row.auto_print_receipt ?? false,
     printOrderTickets: row.print_order_tickets ?? false,
+    routingMode: ((row as any).routing_mode as PrinterRoutingMode) || "all",
+    printModifiers: (row as any).print_modifiers ?? true,
     isActive: row.is_active ?? true,
     isConnected: row.is_connected ?? false,
     lastStatus: row.last_status,

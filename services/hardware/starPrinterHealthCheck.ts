@@ -207,12 +207,12 @@ function handlePrinterOffline(printer: PrinterConfig, errorMessage: string): voi
       ? `Consider switching to "${alt.printerName}" as an alternative.`
       : "Please check the printer connection.";
 
-    // useToastStore.getState().show({
-    //   title: "Printer Offline",
-    //   message: `Default ${role} printer "${printer.printerName}" has been unreachable for ${state.consecutiveFailures} consecutive checks. ${suggestion}`,
-    //   type: "warning",
-    //   duration: 8000,
-    // });
+    useToastStore.getState().show({
+      title: "Printer Offline",
+      message: `Default ${role} printer "${printer.printerName}" is unreachable. ${suggestion}`,
+      type: "warning",
+      duration: 8000,
+    });
   }
 }
 
