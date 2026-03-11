@@ -47,7 +47,7 @@ export function buildKitchenTicketDocument(
     type: "text_line",
     content: orderHeaderText,
     align: "center",
-    format: scaledFormat(orderHeaderText, w, { doubleWidth: true, doubleHeight: true }),
+    format: { bold: true, doubleWidth: true, doubleHeight: true },
   });
 
   // Combined order type + table on one line
@@ -78,6 +78,7 @@ export function buildKitchenTicketDocument(
     type: "text_line",
     content: data.fullTimestamp ?? data.timestamp,
     align: "center",
+    format: { bold: true },
   });
 
   // Ready-by time
@@ -138,15 +139,6 @@ function pushItemsGroupedByStation(
     }
     isFirst = false;
 
-    // Station header
-    nodes.push({
-      type: "text_line",
-      content: `-- ${station.toUpperCase()} --`,
-      align: "center",
-      format: { bold: true },
-    });
-    nodes.push({ type: "divider", style: "solid", lineWidth: w });
-
     for (const item of stationItems) {
       pushSingleItem(nodes, item, w, cfg);
     }
@@ -183,12 +175,11 @@ function pushSingleItem(
 
   // Modifiers (conditional)
   if (cfg?.showItemModifiers !== false) {
-    const useModsLarge = cfg?.showModsLarge === true;
     for (const mod of item.modifiers) {
       nodes.push({
         type: "text_line",
         content: `  + ${mod}`,
-        format: useModsLarge ? { bold: true } : undefined,
+        format: { bold: true, inverted: true },
       });
     }
   }

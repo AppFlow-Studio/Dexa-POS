@@ -719,12 +719,6 @@ function findMatchingStarPrinter(
   );
   if (ipMatch) return ipMatch;
 
-  // Tier 3: Model name match (for null MAC + IP changed)
-  const modelMatch = candidates.find(
-    (p) => p.printerModel === discovered.modelName,
-  );
-  if (modelMatch) return modelMatch;
-
   return null;
 }
 
@@ -758,7 +752,6 @@ export async function provisionStarPrinter(
   if (!existingId && storePrinters.length === 0) {
     console.log("[DeviceDetection] Store empty (first boot), falling back to DB lookup");
     const orConditions = [
-      `printer_model.eq.${discovered.modelName}`,
       `network_address.eq.${discovered.ipAddress}`,
       ...(discovered.macAddress
         ? [`metadata->>macAddress.eq.${discovered.macAddress}`]
@@ -802,22 +795,6 @@ export async function provisionStarPrinter(
         },
       })
       .eq("id", existingId);
-
-    // Deactivate stale entries with same model but different ID (cleans up duplicates from IP changes)
-    const { data: deactivated } = await supabase
-      .from("printers")
-      .update({ is_active: false, is_connected: false })
-      .eq("printer_model", discovered.modelName)
-      .eq("location_id", locationId)
-      .eq("printer_type", "star_micronics")
-      .neq("id", existingId)
-      .select("id");
-
-    if (deactivated?.length) {
-      console.log(
-        `[DeviceDetection] Deactivated ${deactivated.length} stale Star printer entry/entries: ${deactivated.map((d) => d.id).join(", ")}`,
-      );
-    }
 
     // Refresh store after mutation
     usePrinterStore.getState().fetchPrinters(locationId);

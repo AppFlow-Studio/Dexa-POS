@@ -267,6 +267,9 @@ const PrintersKitchenScreen = () => {
   const [isProbing, setIsProbing] = useState(false);
   const [manualIpError, setManualIpError] = useState<string | null>(null);
 
+  // Add printer inline panel state
+  const [addingForRole, setAddingForRole] = useState<"receipt" | "kitchen" | null>(null);
+
   // Edit panel state
   const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
   const [isSavingPrinter, setIsSavingPrinter] = useState(false);
@@ -304,15 +307,14 @@ const PrintersKitchenScreen = () => {
   const hasDejavooPrinter = visiblePrinters.some((p) => p.printerType === "dejavoo_spin_p");
   const dejavooPrinter = visiblePrinters.find((p) => p.printerType === "dejavoo_spin_p") ?? null;
   const builtinPrinter = visiblePrinters.find((p) => p.printerType === "builtin_landi") ?? null;
+  const receiptPrinters = visiblePrinters.filter(
+    (p) => p.printerRole === "receipt",
+  );
   const kitchenPrinters = visiblePrinters.filter(
     (p) => p.printerRole === "kitchen" || p.printerRole === "bar",
   );
   const connectedCount = visiblePrinters.filter((p) => p.isActive && p.isConnected).length;
   const totalActive = visiblePrinters.filter((p) => p.isActive).length;
-  const connectedPrinters = visiblePrinters.filter((p) => p.isActive && p.isConnected);
-
-  const defaultReceiptPrinter = visiblePrinters.find((p) => p.isDefaultReceipt) ?? null;
-  const defaultKitchenPrinter = visiblePrinters.find((p) => p.isDefaultKitchen) ?? null;
 
   // Receipt settings state
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>({
@@ -404,7 +406,7 @@ const PrintersKitchenScreen = () => {
     }
   };
 
-  const handleProvisionStar = async (discovered: DiscoveredStarPrinter) => {
+  const handleProvisionStar = async (discovered: DiscoveredStarPrinter, roleOverride?: "receipt" | "kitchen") => {
     if (!selectedStation || !selectedStore) return;
     setProvisioningStarIp(discovered.ipAddress);
     try {
@@ -414,7 +416,7 @@ const PrintersKitchenScreen = () => {
         selectedStore.id,
         selectedStore.merchant_id,
         discovered,
-        starRoleOverrides[discovered.ipAddress] ?? discovered.capabilities.suggestedRole,
+        roleOverride ?? starRoleOverrides[discovered.ipAddress] ?? discovered.capabilities.suggestedRole,
       );
       if (printerId) {
         const verified = await verifyStarPrinter(supabase, printerId);
@@ -471,6 +473,7 @@ const PrintersKitchenScreen = () => {
         await fetchPrinters(selectedStore.id);
         setManualIp("");
         setManualIpError(null);
+        setAddingForRole(null);
         if (verified) {
           Alert.alert(
             "Printer Connected",
@@ -564,6 +567,23 @@ const PrintersKitchenScreen = () => {
     }
   };
 
+  const handleStartAdding = (role: "receipt" | "kitchen") => {
+    setAddingForRole(role);
+    setManualIpRole(role);
+    setManualIp("");
+    setManualIpError(null);
+    setDiscoveredStarPrinters([]);
+    setStarScanError(null);
+  };
+
+  const handleCancelAdding = () => {
+    setAddingForRole(null);
+    setManualIp("");
+    setManualIpError(null);
+    setDiscoveredStarPrinters([]);
+    setStarScanError(null);
+  };
+
   // ---------------------------------------------------------------------------
   // RENDER HELPERS
   // ---------------------------------------------------------------------------
@@ -578,6 +598,187 @@ const PrintersKitchenScreen = () => {
       </Text>
     </View>
   );
+
+  const renderAddPrinterPanel = (forRole: "receipt" | "kitchen") => {
+    const isReceipt = forRole === "receipt";
+    return (
+      <View className="bg-surface p-4 rounded-xl border border-gray-600 mb-3">
+        {/* Header + Cancel */}
+        <View className="flex-row items-center justify-between mb-3">
+          <View className="flex-row items-center">
+            <Plus size={16} color={isReceipt ? colors.info : "#f97316"} />
+            <Text className="text-white font-bold ml-2">
+              Add {isReceipt ? "Receipt" : "Kitchen"} Printer by IP
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={handleCancelAdding}
+            className="p-1.5 bg-card rounded-lg"
+          >
+            <XCircle size={16} color={colors.label} />
+          </TouchableOpacity>
+        </View>
+        <Text className="text-gray-400 text-xs mb-3">
+          Enter the IP address from the printer's configuration receipt.
+        </Text>
+        <TextInput
+          value={manualIp}
+          onChangeText={(t) => {
+            setManualIp(t);
+            if (manualIpError) setManualIpError(null);
+          }}
+          placeholder="192.168.1.100"
+          placeholderTextColor={colors.muted}
+          keyboardType="numeric"
+          className="bg-card border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm mb-3"
+          editable={!isProbing}
+        />
+        {manualIpError && (
+          <View className="bg-red-600/10 border border-red-600/30 rounded-lg p-2.5 mb-3">
+            <Text className="text-red-400 text-xs">{manualIpError}</Text>
+          </View>
+        )}
+        <View className="flex-row mb-3">
+          <TouchableOpacity
+            onPress={handleManualIpAdd}
+            disabled={isProbing || !manualIp.trim()}
+            className={`flex-1 py-2.5 rounded-lg flex-row items-center justify-center mr-2 ${
+              isProbing || !manualIp.trim() ? "bg-gray-600" : isReceipt ? "bg-blue-600" : "bg-orange-600"
+            }`}
+          >
+            {isProbing ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <>
+                <Wifi size={16} color="white" />
+                <Text className="text-white font-medium ml-2 text-sm">Connect</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleScanStarPrinters}
+            disabled={isScanningStar}
+            className="bg-card border border-gray-600 px-4 py-2.5 rounded-lg flex-row items-center"
+          >
+            {isScanningStar ? (
+              <ActivityIndicator size="small" color={colors.info} />
+            ) : (
+              <>
+                <Wifi size={14} color={colors.info} />
+                <Text className="text-blue-400 font-medium ml-1.5 text-sm">Scan</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Star Discovery results (inline) */}
+        {isScanningStar && (
+          <View className="items-center py-4">
+            <ActivityIndicator size="large" color={isReceipt ? colors.info : "#f97316"} />
+            <Text className="text-gray-400 text-sm mt-3">Scanning for Star printers...</Text>
+          </View>
+        )}
+
+        {starScanError && (
+          <View className="bg-red-600/10 border border-red-600/30 rounded-lg p-2.5 mb-3">
+            <Text className="text-red-400 text-sm">{starScanError}</Text>
+          </View>
+        )}
+
+        {discoveredStarPrinters.map((dp) => {
+          const alreadyAdded = storedPrinters.some(
+            (p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress,
+          );
+          const isProvisioningThis = provisioningStarIp === dp.ipAddress;
+
+          return (
+            <View
+              key={dp.ipAddress}
+              className="bg-card p-3 rounded-lg border border-gray-600 mb-2"
+            >
+              <View className="flex-row items-center justify-between">
+                <View className="flex-1">
+                  <View className="flex-row items-center">
+                    <Printer size={16} color={isReceipt ? colors.info : "#f97316"} />
+                    <Text className="text-white font-medium ml-2 text-sm">{dp.modelName}</Text>
+                    {alreadyAdded && (
+                      <View className="bg-green-600/20 px-2 py-0.5 rounded ml-2">
+                        <Text className="text-green-400 text-[10px] font-medium">Added</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View className="flex-row items-center mt-1">
+                    <Wifi size={12} color={colors.label} />
+                    <Text className="text-gray-400 text-xs ml-1">{dp.ipAddress}</Text>
+                    {dp.macAddress && (
+                      <Text className="text-gray-500 text-xs ml-3">{dp.macAddress}</Text>
+                    )}
+                  </View>
+                  <View className="flex-row flex-wrap mt-1.5">
+                    <View className="bg-gray-700/50 px-2 py-0.5 rounded mr-2 mb-1">
+                      <Text className="text-gray-400 text-[10px]">
+                        {dp.capabilities.paperWidth}mm
+                      </Text>
+                    </View>
+                    <View className="bg-gray-700/50 px-2 py-0.5 rounded mr-2 mb-1">
+                      <Text className="text-gray-400 text-[10px]">
+                        {dp.capabilities.maxCharsPerLine} chars
+                      </Text>
+                    </View>
+                    <View className="bg-gray-700/50 px-2 py-0.5 rounded mr-2 mb-1">
+                      <Text className="text-gray-400 text-[10px]">
+                        {dp.capabilities.supportsAutoCut ? "Auto-cut" : "Tear-off"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {!alreadyAdded && (
+                  <TouchableOpacity
+                    onPress={() => handleProvisionStar(dp, forRole)}
+                    disabled={isProvisioningThis}
+                    className={`ml-3 px-4 py-2.5 rounded-lg ${isReceipt ? "bg-blue-600" : "bg-orange-600"}`}
+                  >
+                    {isProvisioningThis ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Text className="text-white font-medium text-sm">Add</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })}
+
+        {/* Dejavoo provisioning — only in receipt panel */}
+        {isReceipt && paymentTerminal?.terminal_type === "dejavoo" && !hasDejavooPrinter && (
+          <View className="bg-card p-3 rounded-lg border border-gray-600 mt-2">
+            <View className="flex-row items-center mb-2">
+              <CreditCard size={14} color="#a78bfa" />
+              <Text className="text-white font-medium ml-2 text-sm">Dejavoo Terminal Printer</Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleProvisionDejavoo}
+              disabled={isProvisioning}
+              className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center justify-center"
+            >
+              {isProvisioning ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <>
+                  <Plus size={14} color="white" />
+                  <Text className="text-white font-medium ml-2 text-sm">Provision Dejavoo</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {provisioningError && (
+              <Text className="text-red-400 text-xs mt-2">{provisioningError}</Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderPrinterCard = (printer: PrinterConfig) => {
     const role = getRoleBadge(printer.printerRole);
@@ -874,53 +1075,44 @@ const PrintersKitchenScreen = () => {
               </View>
             )}
 
-            {/* RECEIPT PRINTING default */}
-            <SectionHeader title="Receipt Printing" />
-            {defaultReceiptPrinter ? (
-              <View className="flex-row items-center bg-surface rounded-lg px-3 py-3 mb-1">
-                <Receipt size={16} color={colors.info} />
-                <Text className="text-white text-sm ml-2 flex-1">{defaultReceiptPrinter.printerName}</Text>
-                <View className="flex-row items-center">
-                  {getPrinterStatusIcon(defaultReceiptPrinter)}
-                  <Text className={`ml-1 text-xs ${getPrinterStatusColor(defaultReceiptPrinter)}`}>
-                    {getPrinterStatusLabel(defaultReceiptPrinter)}
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <View className="bg-surface rounded-lg px-3 py-3 mb-1">
-                <Text className="text-gray-500 text-sm">No default receipt printer assigned</Text>
+            {/* ── RECEIPT PRINTERS SECTION ── */}
+            <SectionHeader title="Receipt Printers" />
+            {receiptPrinters.length === 0 && addingForRole !== "receipt" && (
+              <View className="bg-surface rounded-lg px-3 py-3 mb-2">
+                <Text className="text-gray-500 text-sm">No receipt printers configured</Text>
               </View>
             )}
-
-            {/* ORDER / KITCHEN default */}
-            <SectionHeader title="Order / Kitchen" />
-            {defaultKitchenPrinter ? (
-              <View className="flex-row items-center bg-surface rounded-lg px-3 py-3 mb-1">
-                <ChefHat size={16} color="#f97316" />
-                <Text className="text-white text-sm ml-2 flex-1">{defaultKitchenPrinter.printerName}</Text>
-                <View className="flex-row items-center">
-                  {getPrinterStatusIcon(defaultKitchenPrinter)}
-                  <Text className={`ml-1 text-xs ${getPrinterStatusColor(defaultKitchenPrinter)}`}>
-                    {getPrinterStatusLabel(defaultKitchenPrinter)}
-                  </Text>
-                </View>
-              </View>
+            {receiptPrinters.map(renderPrinterCard)}
+            {addingForRole === "receipt" ? (
+              renderAddPrinterPanel("receipt")
             ) : (
-              <View className="bg-surface rounded-lg px-3 py-3 mb-1">
-                <Text className="text-gray-500 text-sm">No default kitchen printer assigned</Text>
-              </View>
+              <TouchableOpacity
+                onPress={() => handleStartAdding("receipt")}
+                className="border border-dashed border-blue-600/40 bg-blue-600/5 rounded-xl p-4 mb-3 flex-row items-center justify-center"
+              >
+                <Plus size={18} color="#3b82f6" />
+                <Text className="text-blue-400 font-medium ml-2 text-sm">Add Receipt Printer</Text>
+              </TouchableOpacity>
             )}
 
-            {/* AVAILABLE PRINTERS — connected only */}
-            <SectionHeader title="Available Printers" />
-            {connectedPrinters.length === 0 ? (
-              <View className="items-center py-6">
-                <Printer size={32} color={colors.muted} />
-                <Text className="text-gray-500 text-sm mt-2">No connected printers</Text>
+            {/* ── KITCHEN & BAR PRINTERS SECTION ── */}
+            <SectionHeader title="Kitchen & Bar Printers" />
+            {kitchenPrinters.length === 0 && addingForRole !== "kitchen" && (
+              <View className="bg-surface rounded-lg px-3 py-3 mb-2">
+                <Text className="text-gray-500 text-sm">No kitchen printers configured</Text>
               </View>
+            )}
+            {kitchenPrinters.map(renderPrinterCard)}
+            {addingForRole === "kitchen" ? (
+              renderAddPrinterPanel("kitchen")
             ) : (
-              connectedPrinters.map(renderPrinterCard)
+              <TouchableOpacity
+                onPress={() => handleStartAdding("kitchen")}
+                className="border border-dashed border-orange-600/40 bg-orange-600/5 rounded-xl p-4 mb-3 flex-row items-center justify-center"
+              >
+                <Plus size={18} color="#f97316" />
+                <Text className="text-orange-400 font-medium ml-2 text-sm">Add Kitchen Printer</Text>
+              </TouchableOpacity>
             )}
 
             {/* Test Print Type Selector */}
@@ -944,223 +1136,6 @@ const PrintersKitchenScreen = () => {
                 ))}
               </View>
             </View>
-
-            {/* ADD PRINTER — Star manual IP + discovery + Dejavoo */}
-            <SectionHeader title="Add Printer" />
-
-            {/* Manual IP Entry */}
-            <View className="bg-surface p-4 rounded-xl border border-gray-600 mb-3">
-              <View className="flex-row items-center mb-3">
-                <Plus size={16} color={colors.warning} />
-                <Text className="text-white font-bold ml-2">Add Printer by IP Address</Text>
-              </View>
-              <Text className="text-gray-400 text-xs mb-3">
-                Enter the IP address from the printer's configuration receipt.
-              </Text>
-              <TextInput
-                value={manualIp}
-                onChangeText={(t) => {
-                  setManualIp(t);
-                  if (manualIpError) setManualIpError(null);
-                }}
-                placeholder="192.168.1.100"
-                placeholderTextColor={colors.muted}
-                keyboardType="numeric"
-                className="bg-card border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm mb-3"
-                editable={!isProbing}
-              />
-              {/* Role Toggle */}
-              <View className="flex-row rounded-lg overflow-hidden border border-gray-600 mb-3">
-                <TouchableOpacity
-                  onPress={() => setManualIpRole("receipt")}
-                  disabled={isProbing}
-                  className={`flex-1 py-2 items-center ${manualIpRole === "receipt" ? "bg-blue-600" : "bg-card"}`}
-                >
-                  <Text className={`text-sm font-medium ${manualIpRole === "receipt" ? "text-white" : "text-gray-400"}`}>
-                    Receipt
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setManualIpRole("kitchen")}
-                  disabled={isProbing}
-                  className={`flex-1 py-2 items-center ${manualIpRole === "kitchen" ? "bg-orange-600" : "bg-card"}`}
-                >
-                  <Text className={`text-sm font-medium ${manualIpRole === "kitchen" ? "text-white" : "text-gray-400"}`}>
-                    Kitchen
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              {manualIpError && (
-                <View className="bg-red-600/10 border border-red-600/30 rounded-lg p-2.5 mb-3">
-                  <Text className="text-red-400 text-xs">{manualIpError}</Text>
-                </View>
-              )}
-              <TouchableOpacity
-                onPress={handleManualIpAdd}
-                disabled={isProbing || !manualIp.trim()}
-                className={`py-2.5 rounded-lg flex-row items-center justify-center ${
-                  isProbing || !manualIp.trim() ? "bg-gray-600" : "bg-blue-600"
-                }`}
-              >
-                {isProbing ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <>
-                    <Wifi size={16} color="white" />
-                    <Text className="text-white font-medium ml-2 text-sm">Connect Printer</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Star Discovery results */}
-            {isScanningStar && (
-              <View className="items-center py-6">
-                <ActivityIndicator size="large" color={colors.warning} />
-                <Text className="text-gray-400 text-sm mt-3">Scanning for Star printers...</Text>
-                <Text className="text-gray-500 text-xs mt-1">This may take up to 10 seconds</Text>
-              </View>
-            )}
-
-            {starScanError && (
-              <View className="bg-red-600/10 border border-red-600/30 rounded-xl p-3 mb-3">
-                <Text className="text-red-400 text-sm">{starScanError}</Text>
-              </View>
-            )}
-
-            {discoveredStarPrinters.map((dp) => {
-              const alreadyAdded = storedPrinters.some(
-                (p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress,
-              );
-              const isProvisioningThis = provisioningStarIp === dp.ipAddress;
-
-              return (
-                <View
-                  key={dp.ipAddress}
-                  className="bg-surface p-4 rounded-xl border border-gray-600 mb-3"
-                >
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-1">
-                      <View className="flex-row items-center">
-                        <Printer size={18} color={colors.warning} />
-                        <Text className="text-white font-bold ml-2">{dp.modelName}</Text>
-                        {alreadyAdded && (
-                          <View className="bg-green-600/20 px-2 py-0.5 rounded ml-2">
-                            <Text className="text-green-400 text-[10px] font-medium">Added</Text>
-                          </View>
-                        )}
-                      </View>
-                      <View className="flex-row items-center mt-1">
-                        <Wifi size={12} color={colors.label} />
-                        <Text className="text-gray-400 text-xs ml-1">{dp.ipAddress}</Text>
-                        {dp.macAddress && (
-                          <Text className="text-gray-500 text-xs ml-3">{dp.macAddress}</Text>
-                        )}
-                      </View>
-                      <View className="flex-row flex-wrap mt-2">
-                        <View className="bg-gray-700/50 px-2 py-0.5 rounded mr-2 mb-1">
-                          <Text className="text-gray-400 text-[10px]">
-                            {dp.capabilities.paperWidth}mm paper
-                          </Text>
-                        </View>
-                        <View className="bg-gray-700/50 px-2 py-0.5 rounded mr-2 mb-1">
-                          <Text className="text-gray-400 text-[10px]">
-                            {dp.capabilities.maxCharsPerLine} chars/line
-                          </Text>
-                        </View>
-                        <View className="bg-gray-700/50 px-2 py-0.5 rounded mr-2 mb-1">
-                          <Text className="text-gray-400 text-[10px]">
-                            {dp.capabilities.supportsAutoCut ? "Auto-cut" : "Tear-off"}
-                          </Text>
-                        </View>
-                        {dp.capabilities.graphicsOnly && (
-                          <View className="bg-amber-700/50 px-2 py-0.5 rounded mr-2 mb-1">
-                            <Text className="text-amber-400 text-[10px]">
-                              Graphics-only
-                            </Text>
-                          </View>
-                        )}
-                        {/* Role toggle */}
-                        {(() => {
-                          const selectedRole = starRoleOverrides[dp.ipAddress] ?? dp.capabilities.suggestedRole;
-                          return (
-                            <View className="flex-row rounded overflow-hidden mr-2 mb-1">
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setStarRoleOverrides((prev) => ({ ...prev, [dp.ipAddress]: "receipt" }))
-                                }
-                                className={`px-2 py-0.5 ${selectedRole === "receipt" ? "bg-blue-600/30" : "bg-gray-700/30"}`}
-                              >
-                                <Text
-                                  className={`text-[10px] font-medium ${selectedRole === "receipt" ? "text-blue-400" : "text-gray-500"}`}
-                                >
-                                  Receipt
-                                </Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setStarRoleOverrides((prev) => ({ ...prev, [dp.ipAddress]: "kitchen" }))
-                                }
-                                className={`px-2 py-0.5 ${selectedRole === "kitchen" ? "bg-orange-600/30" : "bg-gray-700/30"}`}
-                              >
-                                <Text
-                                  className={`text-[10px] font-medium ${selectedRole === "kitchen" ? "text-orange-400" : "text-gray-500"}`}
-                                >
-                                  Kitchen
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          );
-                        })()}
-                      </View>
-                    </View>
-                    {!alreadyAdded && (
-                      <TouchableOpacity
-                        onPress={() => handleProvisionStar(dp)}
-                        disabled={isProvisioningThis}
-                        className="ml-3 bg-blue-600 px-4 py-2.5 rounded-lg"
-                      >
-                        {isProvisioningThis ? (
-                          <ActivityIndicator size="small" color="white" />
-                        ) : (
-                          <Text className="text-white font-medium text-sm">Add</Text>
-                        )}
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-
-            {/* Dejavoo provisioning */}
-            {paymentTerminal?.terminal_type === "dejavoo" && !hasDejavooPrinter && (
-              <View className="bg-surface p-4 rounded-xl border border-gray-600 mb-3">
-                <View className="flex-row items-center mb-2">
-                  <CreditCard size={16} color="#a78bfa" />
-                  <Text className="text-white font-bold ml-2">Dejavoo Terminal Printer</Text>
-                </View>
-                <Text className="text-gray-400 text-xs mb-3">
-                  This terminal has a built-in printer that hasn't been set up yet.
-                </Text>
-                <TouchableOpacity
-                  onPress={handleProvisionDejavoo}
-                  disabled={isProvisioning}
-                  className="bg-blue-600 px-4 py-2.5 rounded-lg flex-row items-center justify-center"
-                >
-                  {isProvisioning ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <>
-                      <Plus size={16} color="white" />
-                      <Text className="text-white font-medium ml-2">Provision Printer</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                {provisioningError && (
-                  <Text className="text-red-400 text-xs mt-2">{provisioningError}</Text>
-                )}
-              </View>
-            )}
           </View>
         )}
 

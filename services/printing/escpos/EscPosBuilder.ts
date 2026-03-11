@@ -46,6 +46,18 @@ export class EscPosBuilder {
     return this;
   }
 
+  /**
+   * Set Print Density / Heating parameters (ESC 7 n1 n2 n3)
+   * Fixes faint or "see-through" text by increasing the burn time on the thermal paper.
+   * * @param maxHeatingDots (0-255) Default: 7. Number of dots heated at once.
+   * @param heatingTime (3-255) Default: 80. Increase for darker print. 120-150 is usually a solid black.
+   * @param heatingInterval (0-255) Default: 2. Time between heating cycles.
+   */
+  setPrintDensity(maxHeatingDots: number = 7, heatingTime: number = 150, heatingInterval: number = 2): this {
+    this.append([ESC, 0x37, maxHeatingDots, heatingTime, heatingInterval]);
+    return this;
+  }
+
   // ============================================================================
   // TEXT FORMATTING
   // ============================================================================
@@ -77,6 +89,12 @@ export class EscPosBuilder {
   /** Underline on/off (ESC - n) */
   underline(on: boolean = true): this {
     this.append([ESC, 0x2d, on ? 0x01 : 0x00]);
+    return this;
+  }
+
+  /** White-on-black inverted mode (GS B n) */
+  inverted(on: boolean = true): this {
+    this.append([GS, 0x42, on ? 0x01 : 0x00]);
     return this;
   }
 
@@ -157,12 +175,13 @@ export class EscPosBuilder {
    * Pads with spaces to fill the line width.
    */
   twoColumnRow(left: string, right: string, lineWidth: number): this {
-    const padding = lineWidth - left.length - right.length;
+    const effectiveWidth = lineWidth - 1; // 1-char safety margin to prevent right-column cutoff
+    const padding = effectiveWidth - left.length - right.length;
     if (padding > 0) {
       this.textLine(left + " ".repeat(padding) + right);
     } else {
-      // If combined text exceeds line width, truncate left side
-      const truncated = left.substring(0, lineWidth - right.length - 1);
+      // If combined text exceeds effective width, truncate left side
+      const truncated = left.substring(0, Math.max(0, effectiveWidth - right.length - 1));
       this.textLine(truncated + " " + right);
     }
     return this;

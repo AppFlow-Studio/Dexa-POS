@@ -204,6 +204,7 @@ export interface ReceiptTemplateData {
   tableName?: string;
   customerName?: string;
   serverName?: string;
+  backendOrderNumber?: string; // "ORD-YYYYMMDD-XXXX" from orders table
 
   // Items
   items: ReceiptItemData[];
@@ -236,6 +237,10 @@ export interface ReceiptTemplateData {
 
   // Logo
   logoBase64?: string; // Pre-fetched logo image as base64 PNG for printing
+
+  // Print metadata
+  printDate?: string;  // Date string when receipt was printed
+  printTime?: string;  // Time string when receipt was printed
 }
 
 export interface ReceiptItemData {
@@ -252,6 +257,10 @@ export interface ReceiptPaymentData {
   method: string;
   amount: number;
   last4?: string;
+  cardBrand?: string;    // "VISA", "MASTERCARD", etc.
+  authCode?: string;     // Authorization/approval code
+  rrn?: string;          // Retrieval Reference Number
+  entryMode?: string;    // "chip", "swipe", "contactless", "manual"
 }
 
 export interface KitchenTicketData {
@@ -309,8 +318,8 @@ export function printerRowToConfig(row: PrinterRow): PrinterConfig {
     supportsLogo: row.supports_logo ?? false,
     graphicsOnly: !!(row.metadata as Record<string, unknown> | null)?.graphicsOnly
       || isGraphicsOnlyStarModel(row.printer_model),
-    paperWidth: row.paper_width ?? 80,
-    maxCharsPerLine: row.max_chars_per_line ?? 48,
+    paperWidth: row.paper_width ?? 58,
+    maxCharsPerLine: row.max_chars_per_line ?? 32,
     printDensity: row.print_density ?? 8,
     copies: row.copies ?? 1,
     printLogo: row.print_logo ?? false,

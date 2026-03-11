@@ -30,7 +30,7 @@ export function buildKitchenTicketCommands(
   b.alignCenter();
   b.bold(true);
   b.doubleSize(true);
-  b.textLine(`ORDER #${data.orderNumber}`);
+  b.textLine(`ORDER ${data.orderNumber}`);
   b.doubleSize(false);
 
   // Combined order type + table on one line
@@ -47,11 +47,15 @@ export function buildKitchenTicketCommands(
 
   // Server name
   if (cfg?.showServerName !== false && data.serverName) {
+    b.bold(true);
     b.textLine(`Server: ${data.serverName}`);
+    b.bold(false);
   }
 
   // Full timestamp (date + time)
+  b.bold(true);
   b.textLine(data.fullTimestamp ?? data.timestamp);
+  b.bold(false);
 
   // Ready-by time
   if (cfg?.showReadyByTime !== false && data.readyByTime) {
@@ -75,7 +79,9 @@ export function buildKitchenTicketCommands(
   // ── Item count footer ──
   if (data.totalItemCount !== undefined) {
     b.alignCenter();
+    b.bold(true);
     b.textLine(`${data.totalItemCount} items total`);
+    b.bold(false);
     b.alignLeft();
   }
 
