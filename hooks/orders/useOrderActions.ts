@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useToast } from "@/contexts/ToastContext";
 import { orderHistoryKeys } from "./useOrderHistory";
 import * as Haptics from "expo-haptics";

@@ -37,6 +37,7 @@ import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
+import { useTableSessionStore } from "./useTableSessionStore";
 // import {
 //   mapLocalToBackend,
 //   registerLocalId
@@ -2773,6 +2774,9 @@ export const useOrderStore = create<OrderState>()(
                       const existingOrder = state.ordersById[localOrderId];
                       if (!existingOrder) return;
 
+                      // Never overwrite a locally-voided order with a stale broadcast
+                      if (existingOrder.order_status === "void") return;
+
                       // Phase 2.5: Merge broadcast items with local items
                       // Strategy: Keep pending local items, update synced items from broadcast
                       let mergedItems = existingOrder.items;
@@ -3506,6 +3510,7 @@ export const useOrderStore = create<OrderState>()(
               service_location_id: serverOrder.table_number ?? null,
               // table_number IS the table name (e.g., "T1"), use it directly for display
               service_location_name: serverOrder.table_number || undefined,
+              session_id: serverOrder.session_id ?? undefined,
               customer_name: "",
 
               // Financial - use server values
@@ -4877,12 +4882,14 @@ export const useOrderStore = create<OrderState>()(
             });
 
             let newOrderStatus = order.order_status;
+            let allItemsServed = false;
+
             if (
               order.order_type === "Dine In" &&
               order.order_status !== "draft" &&
               order.service_location_id !== null
             ) {
-              const allItemsServed = updatedItems.every(
+              allItemsServed = updatedItems.every(
                 (item) => item.item_status === "served",
               );
               const allItemsReady = updatedItems.every(
@@ -4908,6 +4915,27 @@ export const useOrderStore = create<OrderState>()(
               order.items = updatedItems;
               order.order_status = newOrderStatus;
             });
+
+            // Update table session status when all items are served
+            if (
+              allItemsServed &&
+              updatedItems.length > 0 &&
+              activeOrder.service_location_id
+            ) {
+              const tableSessionStore = useTableSessionStore.getState();
+              const session = tableSessionStore.sessions[activeOrder.service_location_id];
+              if (session && session.status === "ordered") {
+                // Update table session to "served" status (persists to database)
+                tableSessionStore.updateSessionStatus(session.id, "served").catch(
+                  (err) => {
+                    console.error(
+                      "[updateItemStatusInActiveOrder] Failed to mark table as served:",
+                      err,
+                    );
+                  },
+                );
+              }
+            }
 
             // recalculateTotals(activeOrderId);
           },
@@ -8015,7 +8043,7 @@ export const useOrderStore = create<OrderState>()(
               }
             });
 
-            // 2. Sync to backend first (fire-and-forget)
+            // 2. Sync to backend (fire-and-forget)
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order?.db_order_id) {
               OrderService.voidOrder(
@@ -8041,51 +8069,14 @@ export const useOrderStore = create<OrderState>()(
                     });
                     return false;
                   }
+                  // void_order RPC confirmed — session is closed on backend.
+                  // Realtime broadcast (_handleSessionChange with is_active=false) will
+                  // keep local state in sync. No refetch needed here.
                 })
                 .catch((err) => console.error("Void order sync failed:", err));
             }
-            // 3. Archive the order
+            // 4. Archive the order
             archiveOrder(orderId);
-            // Offline mode - queue for sync
-            // const syncQueue = get()._syncQueue || [];
-            // set({
-            //   _syncQueue: [
-            //     ...syncQueue,
-            //     {
-            //       type: "VOID_ORDER",
-            //       orderId,
-            //       voidReason,
-            //       timestamp: Date.now(),
-            //     },
-            //   ],
-            // });
-
-            // OPTIMISTIC UPDATE (Phase 1.3): Instead of full refresh, update affected table optimistically
-            // Find and clear the table session for this order
-            const { tablesById } = useFloorPlanStore.getState();
-            const affectedTable = Object.values(tablesById).find(
-              (t) => t.session?.order_id === order.db_order_id,
-            );
-            if (affectedTable) {
-              useFloorPlanStore.setState((state) => {
-                const newTables = state.tables.map((t) =>
-                  t.id === affectedTable.id
-                    ? { ...t, session: undefined } // Clear session
-                    : t,
-                );
-                return {
-                  tables: newTables,
-                  tablesById: newTables.reduce(
-                    (acc, table) => {
-                      acc[table.id] = table;
-                      return acc;
-                    },
-                    {} as Record<string, (typeof newTables)[0]>,
-                  ),
-                };
-              });
-            }
-            // Let realtime sync handle the rest (debounced)
             return true;
           },
 
@@ -8646,6 +8637,14 @@ export const useOrderStore = create<OrderState>()(
                 "[syncOrderFromDatabase] No Supabase client available",
               );
               return null;
+            }
+
+            // If input is already a local order ID, just return it
+            if (dbOrderIdOrLocalId.startsWith("order_")) {
+              console.log(
+                `[syncOrderFromDatabase] Already a local order ID: ${dbOrderIdOrLocalId}, skipping database fetch`,
+              );
+              return dbOrderIdOrLocalId;
             }
 
             // O(1) order resolution via direct key or dbOrderIdIndex

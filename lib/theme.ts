@@ -5,8 +5,7 @@
  *   import { colors, bottomSheetTheme, spinnerColor } from '@/lib/theme';
  */
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { colors: _colors } = require("./theme-colors");
+import { colors as _colors } from "./theme-colors";
 
 /** Full typed palette — mirrors lib/theme-colors.js exactly. */
 export const colors = _colors as {

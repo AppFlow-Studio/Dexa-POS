@@ -37,6 +37,7 @@ const Header = () => {
     pathname === "/kds" ||
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
+    pathname === "/host-station" ||
     pathname.startsWith("/settings") ||
     pathname === "/settings/floor-plan" ||
     pathname.startsWith("/analytics") ||
@@ -57,6 +58,7 @@ const Header = () => {
   const closeModifierSidebar = useModifierSidebarStore((state) => state.close);
   const title = useMemo(() => {
     if (pathname === "/" || pathname === "/home") return "Menu";
+    if (pathname === "/host-station") return "Host Station";
     if (pathname === "/scheduling/reports") return "Reports";
     if (pathname === "/scheduling/templates") return "Schdule Templates";
     if (pathname === "/scheduling/templates/create")

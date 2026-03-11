@@ -37,28 +37,57 @@ const formatDuration = (milliseconds: number): string => {
 
 const StatusIndicator = ({
   status,
+  tableId,
   isOvertime,
 }: {
   status: string; // Simplified type as string since DB status is lowercase but UI might expect Mixed
+  tableId?: string;
   isOvertime: boolean;
 }) => {
-  const normalizedStatus = status?.toLowerCase() || "available";
+  // Get the session directly from the store to ensure we have the latest status
+  const sessionStatus = tableId
+    ? useTableSessionStore((s) => s.sessions[tableId])?.status
+    : undefined;
+  const finalStatus = sessionStatus || status;
+  const normalizedStatus = finalStatus?.toLowerCase() || "available";
 
-  const color = isOvertime
-    ? "bg-yellow-500"
-    : normalizedStatus === "available"
-      ? "bg-green-500"
-      : normalizedStatus === "in use" ||
-          normalizedStatus === "seated" ||
-          normalizedStatus === "ordered" ||
-          normalizedStatus === "served"
-        ? "bg-blue-500"
-        : "bg-red-500"; // needs cleaning / etc
+  // Map to theme colors from theme-colors.js
+  let color: string;
+  if (isOvertime) {
+    color = colors.warning; // Amber for overtime
+  } else {
+    switch (normalizedStatus) {
+      case "available":
+        color = colors.tableAvailable; // Green
+        break;
+      case "seated":
+        color = colors.tableSeated; // Blue
+        break;
+      case "ordered":
+        color = colors.tableOrdered; // Orange
+        break;
+      case "served":
+        color = colors.tableServed; // Amber
+        break;
+      case "check_presented":
+        color = colors.tableCheckPresented; // Purple
+        break;
+      case "paid":
+        color = colors.tablePaid; // Red
+        break;
+      case "cleaning":
+        color = colors.tableCleaning; // Gray
+        break;
+      case "blocked":
+      case "not_in_service":
+        color = colors.tableNotInService; // Dark gray
+        break;
+      default:
+        color = colors.tableInUse; // Blue as fallback
+    }
+  }
 
-  // Note: Previous logic mapped "In Use" to blue.
-  // We should map DB usage statuses to blue properly.
-
-  return <View className={`w-2 h-2 rounded-full ${color}`} />;
+  return <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />;
 };
 
 const QuickActionButton: React.FC<{
@@ -583,6 +612,7 @@ const TableListItem: React.FC<{
           <View className="flex-row items-center w-full">
             <StatusIndicator
               status={tableData.status}
+              tableId={table.id}
               isOvertime={isOvertime}
             />
             <View className="ml-2 shrink">

@@ -13,6 +13,8 @@ import {
 } from "@/types/kds";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { useOrderStore } from "./useOrderStore";
+import { useTableSessionStore } from "./useTableSessionStore";
 
 // Global client reference (same pattern as other stores)
 let _supabaseClient: SupabaseClient | null = null;
@@ -479,6 +481,10 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   advanceTicketStatus: (ticketId, itemIds, newStatus) => {
     const { tickets } = get();
 
+    // Find the ticket to get the order ID
+    const ticket = tickets.find((t) => t.ticket_id === ticketId);
+    const orderId = ticket?.db_order_id;
+
     // Map newStatus to KDS ticket status for optimistic update
     const ticketStatus =
       newStatus === "preparing"
@@ -526,6 +532,43 @@ export const useKDSStore = create<KDSState>((set, get) => ({
           }
         },
       );
+
+      // When all items are marked as served in KDS, also update the table session to "served"
+      if (newStatus === "served" && orderId) {
+        const orderStore = useOrderStore.getState();
+        const order = orderStore.getOrder(orderId);
+        console.log(
+          "[KDSStore.advanceTicketStatus] Checking for table session update:",
+          { orderId, session_id: order?.session_id }
+        );
+        // Use session_id from the order if available (most reliable link to table session)
+        if (order && order.session_id) {
+          const sessionStore = useTableSessionStore.getState();
+          // Find the session directly by session_id using the sessionTableIndex
+          const tableIds = sessionStore.sessionTableIndex[order.session_id];
+          if (tableIds && tableIds.length > 0) {
+            // Get the session from the primary table's entry
+            const primaryTableId = tableIds[0];
+            const session = sessionStore.sessions[primaryTableId];
+            console.log(
+              "[KDSStore.advanceTicketStatus] Found session:",
+              { sessionId: session?.id, currentStatus: session?.status }
+            );
+            if (session && session.id === order.session_id) {
+              // Update table session to "served" status regardless of current status
+              console.log(
+                "[KDSStore.advanceTicketStatus] Calling updateSessionStatus with served"
+              );
+              sessionStore.updateSessionStatus(session.id, "served").catch((err) => {
+                console.error(
+                  "[KDSStore] Failed to update table session to served:",
+                  err,
+                );
+              });
+            }
+          }
+        }
+      }
     }
   },
 

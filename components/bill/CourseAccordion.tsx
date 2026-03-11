@@ -12,7 +12,7 @@ import Animated, {
   withSequence,
   withSpring,
 } from "react-native-reanimated";
-import { ChevronDown, ChevronRight, Plus } from "lucide-react-native";
+import { ChevronDown, ChevronRight, Plus, Send } from "lucide-react-native";
 import { colors } from "@/lib/theme";
 import BillItem from "./BillItem";
 
@@ -113,7 +113,7 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
           style={animatedHeaderStyle}
           className="flex-row items-center justify-between py-3 px-2"
         >
-          <View className="flex-row items-center">
+          <View className="flex-row items-center flex-1">
             <View
               className="w-2 h-2 rounded-full mr-2.5"
               style={{ backgroundColor: isCurrent ? colors.success : colors.muted }}
@@ -135,11 +135,24 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
               {courseItemCount} item{courseItemCount !== 1 ? "s" : ""}
             </Text>
           </View>
-          {isExpanded ? (
-            <ChevronDown size={18} color={colors.label} />
-          ) : (
-            <ChevronRight size={18} color={colors.label} />
-          )}
+
+          <View className="flex-row items-center gap-2">
+            {!isSent && courseItemCount > 0 && (
+              <TouchableOpacity
+                onPress={() => runOnJS(onDoubleTap)(courseId)}
+                className="px-4 py-2 bg-blue-500 rounded-lg flex-row items-center gap-2 border border-blue-400 shadow-lg"
+                activeOpacity={0.6}
+              >
+                <Send size={16} color="white" />
+                <Text className="text-white text-sm font-bold">Send Kitchen</Text>
+              </TouchableOpacity>
+            )}
+            {isExpanded ? (
+              <ChevronDown size={18} color={colors.label} />
+            ) : (
+              <ChevronRight size={18} color={colors.label} />
+            )}
+          </View>
         </Animated.View>
       </GestureDetector>
 

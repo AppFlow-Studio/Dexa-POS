@@ -1,17 +1,21 @@
-import { TABLE_SHAPES } from "@/lib/table-shapes";
+import { useTableTimerTick } from '@/hooks/useTableTimerTick'
+import { TABLE_SHAPES } from '@/lib/table-shapes'
 import {
   registerTablePosition,
-  unregisterTablePosition,
-} from "@/lib/tablePositionRegistry";
-import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
-import { useTableDuration } from "@/hooks/useTableDuration";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { BrushCleaning, RotateCcw, Trash2 } from "lucide-react-native";
-import React, { useEffect, useMemo } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+  unregisterTablePosition
+} from '@/lib/tablePositionRegistry'
+import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
+import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useOrderStore } from '@/stores/useOrderStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import { FloorPlanObject } from '@/types/db-floor-plan-types'
+import { BrushCleaning } from 'lucide-react-native'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Text, View } from 'react-native'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
   SharedValue,
@@ -20,18 +24,69 @@ import Animated, {
   useSharedValue,
   withSequence,
   withSpring,
-  withTiming,
-} from "react-native-reanimated";
+  withTiming
+} from 'react-native-reanimated'
+
+/**
+ * Isolated pulsing border overlay — uses setInterval so it can't be killed by parent re-renders.
+ * Renders as an absolute overlay on top of the table.
+ */
+const PulsingBorder = React.memo(
+  ({
+    active,
+    width,
+    height
+  }: {
+    active: boolean
+    width: number
+    height: number
+  }) => {
+    const [opacity, setOpacity] = useState(1)
+
+    useEffect(() => {
+      if (!active) return
+      let rising = false
+      const interval = setInterval(() => {
+        setOpacity(prev => {
+          if (prev <= 0.3) rising = true
+          if (prev >= 1) rising = false
+          return rising ? prev + 0.07 : prev - 0.07
+        })
+      }, 50)
+      return () => clearInterval(interval)
+    }, [active])
+
+    if (!active) return null
+
+    return (
+      <View
+        pointerEvents='none'
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width,
+          height,
+          borderRadius: 16,
+          borderWidth: 2.5,
+          borderColor: `rgba(239,68,68,${opacity})`
+        }}
+      />
+    )
+  }
+)
 
 interface DraggableTableProps {
-  table: FloorPlanObject;
-  layoutId: string; // Kept for prop compatibility, though unused
-  isEditMode: boolean;
-  isSelected: boolean;
-  onSelect: () => void;
-  canvasScale: SharedValue<number>;
-  onPress?: () => void;
-  index?: number; // For staggered entry animation
+  table: FloorPlanObject
+  layoutId: string // Kept for prop compatibility, though unused
+  isEditMode: boolean
+  isSelected: boolean
+  onSelect: () => void
+  canvasScale: SharedValue<number>
+  onPress?: () => void
+  index?: number // For staggered entry animation
+  sectionColor?: string
+  onLongPress?: () => void
 }
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
@@ -43,102 +98,153 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   canvasScale,
   onPress,
   index = 0,
+  sectionColor,
+  onLongPress
 }) => {
-  const updateTablePosition = useFloorPlanStore((s) => s.updateTablePosition);
-  const removeTable = useFloorPlanStore((s) => s.removeTable);
-  const saveSnapshot = useFloorPlanStore((s) => s.saveSnapshot);
+  const DRAG_HOLD_MS = 220
+  const tablesById = useFloorPlanStore(s => s.tablesById)
+  const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
+  const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
+  const { defaultSittingTimeMinutes } = useSettingsStore()
+  const tick = useTableTimerTick()
+
+  // Subscribe directly to live session so table color/status updates without needing
+  // the floor plan store sync (matches how Sidebar's TableListItem works)
+  const liveSession =
+    useTableSessionStore(s => s.sessions[table.id]) ?? table.session
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =
     TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES] ||
-    TABLE_SHAPES["square-4"];
-  const TableComponent = shapeDef?.component;
+    TABLE_SHAPES['square-4']
+  const TableComponent = shapeDef?.component
 
-  const getOrder = useOrderStore((s) => s.getOrder);
+  // --- COMPUTE EFFECTIVE DIMENSIONS ---
+  const effectiveWidth = table.width ?? shapeDef?.width ?? 100
+  const effectiveHeight = table.height ?? shapeDef?.height ?? 100
+
+  const getOrder = useOrderStore(s => s.getOrder)
 
   const effectiveOrder = useMemo(() => {
-    if (table.session?.order_id) {
-      const found = getOrder(table.session.order_id);
-      if (found) return found;
+    // Fast path: O(1) session-based lookup via getOrder (checks ordersById + dbOrderIdIndex)
+    if (liveSession?.order_id) {
+      const found = getOrder(liveSession.order_id)
+      if (found) return found
     }
 
-    const allOrders = useOrderStore.getState().ordersById;
+    // Fallback: non-reactive scan by service_location_id
+    // Uses getState() to avoid subscribing to full ordersById
+    const allOrders = useOrderStore.getState().ordersById
     return Object.values(allOrders).find(
-      (o) => o.service_location_id === table.id && o.order_status !== "void",
-    );
-  }, [table.session?.order_id, getOrder, table.id]);
+      o => o.service_location_id === table.id && o.order_status !== 'void'
+    )
+  }, [liveSession?.order_id, getOrder, table.id])
 
-  const tableSessionStatus = table.session?.status?.toLowerCase();
-  const isTableInUse =
-    tableSessionStatus === "seating" ||
-    tableSessionStatus === "seated" ||
-    tableSessionStatus === "ordering" ||
-    tableSessionStatus === "ordered" ||
-    tableSessionStatus === "served" ||
-    tableSessionStatus === "check_presented" ||
-    tableSessionStatus === "paying" ||
-    tableSessionStatus === "paid" ||
-    tableSessionStatus === "closing";
+  const { duration, isOvertime } = useMemo(() => {
+    // Determine if table is effectively "in use" based on session or order
+    const status = liveSession?.status?.toLowerCase()
+    const isInUse =
+      status === 'seating' ||
+      status === 'seated' ||
+      status === 'ordering' ||
+      status === 'ordered' ||
+      status === 'served' ||
+      status === 'check_presented' ||
+      status === 'paying' ||
+      status === 'paid' ||
+      status === 'closing' ||
+      effectiveOrder
 
-  const { duration, isOvertime } = useTableDuration(
-    effectiveOrder?.opened_at,
-    isTableInUse || !!effectiveOrder,
-  );
+    if (!isInUse || !effectiveOrder?.opened_at) {
+      return { duration: '', isOvertime: false }
+    }
+
+    const startTime = new Date(effectiveOrder.opened_at).getTime()
+    const diffMins = Math.floor((Date.now() - startTime) / 60000)
+
+    return {
+      duration: `${diffMins} min`,
+      isOvertime:
+        defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes
+    }
+  }, [tick, liveSession, effectiveOrder, defaultSittingTimeMinutes])
+
+  const serverInitials = useMemo(() => {
+    const staffId = liveSession?.server_staff_id
+    if (!staffId) return null
+    const emp = useEmployeeStore.getState().getEmployeeByStaffId(staffId)
+    if (!emp?.fullName) return null
+    const parts = emp.fullName.trim().split(' ')
+    return parts.length >= 2
+      ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase()
+  }, [liveSession?.server_staff_id])
 
   const displayName = useMemo(() => {
     if (
-      table.session &&
-      table.session.merged_tables &&
-      table.session.merged_tables.length > 0
+      liveSession &&
+      liveSession.merged_tables &&
+      liveSession.merged_tables.length > 0
     ) {
-      const tablesById = useFloorPlanStore.getState().tablesById;
-      const otherTableNames = table.session.merged_tables
-        .filter((id) => id !== table.id)
-        .map((id) => tablesById[id]?.name)
+      const otherTableNames = liveSession.merged_tables
+        .filter(id => id !== table.id)
+        .map(id => tablesById[id]?.name)
         .filter(Boolean)
-        .join(", ");
+        .join(', ')
 
       if (otherTableNames) {
-        return `${table.name} (Merged: ${otherTableNames})`;
+        return `${table.name} (Merged: ${otherTableNames})`
       }
     }
-    return table.name;
-  }, [table.session?.merged_tables, table.id, table.name]);
+    return table.name
+  }, [table, tablesById])
 
   // --- ANIMATED VALUES ---
-  const translateX = useSharedValue(table.x);
-  const translateY = useSharedValue(table.y);
-  const rotation = useSharedValue(table.rotation);
-  const dragContext = useSharedValue({ x: 0, y: 0 });
-  const rotateContext = useSharedValue(0);
+  const translateX = useSharedValue(table.x)
+  const translateY = useSharedValue(table.y)
+  const rotation = useSharedValue(table.rotation)
+  const dragContext = useSharedValue({ x: 0, y: 0 })
+  const rotateContext = useSharedValue(0)
 
   // Entry animation shared values
-  const entryScale = useSharedValue(0.8);
-  const entryOpacity = useSharedValue(0);
+  const entryScale = useSharedValue(0.8)
+  const entryOpacity = useSharedValue(0)
 
   // Pulse animation for realtime updates
-  const pulseScale = useSharedValue(1);
+  const pulseScale = useSharedValue(1)
+
+  const isMergedShared = useSharedValue(false)
 
   // Staggered entry animation on mount
   useEffect(() => {
-    const delay = index * 30; // 30ms stagger per table
+    const delay = index * 30 // 30ms stagger per table
     const timeout = setTimeout(() => {
-      entryScale.value = withSpring(1, { damping: 15, stiffness: 200 });
-      entryOpacity.value = withTiming(1, { duration: 200 });
-    }, delay);
-    return () => clearTimeout(timeout);
-  }, [index]);
+      entryScale.value = withSpring(1, { damping: 15, stiffness: 200 })
+      entryOpacity.value = withTiming(1, { duration: 200 })
+    }, delay)
+    return () => clearTimeout(timeout)
+  }, [index])
 
   // Pulse animation when session status changes
   useEffect(() => {
     // Skip initial render
-    if (entryOpacity.value === 0) return;
+    if (entryOpacity.value === 0) return
 
     pulseScale.value = withSequence(
       withTiming(1.05, { duration: 100 }),
-      withSpring(1, { damping: 10 }),
-    );
-  }, [table.session?.status, table.session?.order_id]);
+      withSpring(1, { damping: 10 })
+    )
+  }, [liveSession?.status, liveSession?.order_id])
+
+  // Sync merged state to shared value
+  const newMerged = !!(
+    liveSession?.merged_tables && liveSession.merged_tables.length > 0
+  )
+  if (isMergedShared.value !== newMerged) {
+    isMergedShared.value = newMerged
+  }
+
+  const currentAttention = liveSession?.needs_attention ?? false
 
   // --- SYNC WITH UNDO/REDO ---
   useAnimatedReaction(
@@ -150,172 +256,209 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         current.y !== prev.y ||
         current.r !== prev.r
       ) {
-        translateX.value = current.x;
-        translateY.value = current.y;
-        rotation.value = current.r || 0;
+        translateX.value = current.x
+        translateY.value = current.y
+        rotation.value = current.r || 0
       }
     },
-    [table.x, table.y, table.rotation],
-  );
+    [table.x, table.y, table.rotation]
+  )
 
   useEffect(() => {
-    registerTablePosition(table.id, translateX, translateY);
-    return () => unregisterTablePosition(table.id);
-  }, [table.id]);
+    registerTablePosition(table.id, translateX, translateY)
+    return () => unregisterTablePosition(table.id)
+  }, [table.id])
 
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
+    .activateAfterLongPress(DRAG_HOLD_MS)
+    .minDistance(12)
+    .activeOffsetX([-12, 12])
+    .activeOffsetY([-12, 12])
     .onStart(() => {
-      runOnJS(saveSnapshot)();
-      dragContext.value = { x: translateX.value, y: translateY.value };
+      runOnJS(saveSnapshot)()
+      dragContext.value = { x: translateX.value, y: translateY.value }
     })
-    .onUpdate((event) => {
+    .onUpdate(event => {
       translateX.value =
-        dragContext.value.x + event.translationX / canvasScale.value;
+        dragContext.value.x + event.translationX / canvasScale.value
       translateY.value =
-        dragContext.value.y + event.translationY / canvasScale.value;
+        dragContext.value.y + event.translationY / canvasScale.value
     })
     .onEnd(() => {
       runOnJS(updateTablePosition)(
         table.id,
         translateX.value,
         translateY.value,
-        rotation.value,
-      );
-    });
+        rotation.value
+      )
+    })
 
-  const rotateGesture = Gesture.Pan()
-    .enabled(isEditMode)
+  // Rotation gesture: disabled in favor of UI buttons in PropertiesPanel
+  const rotateGesture = Gesture.Rotation()
+    .enabled(false)
     .onStart(() => {
-      runOnJS(saveSnapshot)();
-      rotateContext.value = rotation.value;
+      runOnJS(saveSnapshot)()
+      rotateContext.value = rotation.value
     })
-    .onUpdate((event) => {
-      const angle = Math.atan2(event.translationY, event.translationX);
-      const angleInDegrees = angle * (180 / Math.PI);
-      rotation.value = rotateContext.value + angleInDegrees;
+    .onUpdate(event => {
+      rotation.value = rotateContext.value + event.rotation
     })
     .onEnd(() => {
-      const snappedRotation = Math.round(rotation.value / 45) * 45;
-      rotation.value = snappedRotation;
+      const snappedRotation = Math.round(rotation.value / 45) * 45
+      rotation.value = snappedRotation
       runOnJS(updateTablePosition)(
         table.id,
         translateX.value,
         translateY.value,
-        snappedRotation,
-      );
-    });
+        snappedRotation
+      )
+    })
 
-  const handleDelete = () => {
-    removeTable(table.id);
-  };
+  // Long-press enabled on all tables in normal mode
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .enabled(!isEditMode)
+    .onStart(() => {
+      if (onLongPress) runOnJS(onLongPress)()
+    })
+
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    if (isEditMode) runOnJS(onSelect)()
+    else if (onPress) runOnJS(onPress)()
+  })
+
+  const composedGesture = isEditMode
+    ? Gesture.Simultaneous(dragGesture, rotateGesture, tapGesture)
+    : Gesture.Exclusive(longPressGesture, tapGesture)
 
   const animatedStyle = useAnimatedStyle(() => {
-    const isMerged =
-      table.session &&
-      table.session.merged_tables &&
-      table.session.merged_tables.length > 0;
+    const isMerged = isMergedShared.value
+    const showStaticBorder =
+      !currentAttention && (isSelected || isMerged || !!sectionColor)
+
     return {
-      position: "absolute",
+      position: 'absolute',
       top: 0,
       left: 0,
       transform: [
         { translateX: translateX.value },
         { translateY: translateY.value },
         { rotate: `${rotation.value}deg` },
-        { scale: entryScale.value * pulseScale.value },
+        { scale: entryScale.value * pulseScale.value }
       ],
       opacity: entryOpacity.value,
-      borderWidth: 2,
+      borderWidth: showStaticBorder ? 2 : 0,
       borderColor: isSelected
         ? colors.info
         : isMerged
-          ? colors.warning
-          : "transparent",
+        ? colors.warning
+        : sectionColor
+        ? sectionColor + '99'
+        : 'transparent',
       borderRadius: 18,
-      padding: 4,
-    };
-  });
+      padding: showStaticBorder ? 4 : 0
+    }
+  })
 
-  const orderTotal = useMemo(
-    () =>
-      effectiveOrder?.items?.reduce(
-        (acc: number, item: any) => acc + item.price * item.quantity,
-        0,
-      ) || 0,
-    [effectiveOrder?.items],
-  );
+  const orderTotal =
+    effectiveOrder?.items?.reduce(
+      (acc: number, item: any) => acc + item.price * item.quantity,
+      0
+    ) || 0
 
-  const tableStatus = table.session?.status || "available"; // Fallback
+  const isReservedSoon =
+    !liveSession &&
+    !!table.next_reservation &&
+    (() => {
+      const resTime = new Date(table.next_reservation!.time).getTime()
+      return resTime > Date.now() && resTime - Date.now() <= 30 * 60 * 1000
+    })()
+
+  // Determine table color status from DB-synced session status only (skip local-only intermediates)
+  const sessionStatus = liveSession?.status
+  const tableStatus =
+    (sessionStatus && !isLocalOnlyStatus(sessionStatus)
+      ? sessionStatus
+      : null) ||
+    (table.is_active === false && 'not_in_service') ||
+    'available'
+
   const tableColor = isOvertime
     ? TABLE_STATUS_COLORS.Overtime
-    : TABLE_STATUS_COLORS[tableStatus];
+    : isReservedSoon
+    ? colors.info // blue for reserved soon
+    : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available
 
   // Type check for category is effective if we trust the object
-  const isTableType = table.category === "table" || table.category === "booth";
+  const isTableType = table.category === 'table' || table.category === 'booth'
 
   return (
-    <GestureDetector gesture={dragGesture}>
+    <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
-        <TouchableOpacity
-          onPress={isEditMode ? onSelect : onPress}
-          activeOpacity={0.8}
-        >
+        <View style={{ width: effectiveWidth, height: effectiveHeight }}>
           {TableComponent ? (
             <TableComponent
               color={isTableType ? tableColor : colors.label}
-              chairColor={isTableType ? tableColor : colors.label}
+              {...(isTableType && { chairColor: tableColor })}
+              width={effectiveWidth}
+              height={effectiveHeight}
             />
           ) : (
             <View
               style={{
-                width: 100,
-                height: 100,
+                width: effectiveWidth,
+                height: effectiveHeight,
                 backgroundColor: isTableType ? tableColor : colors.label,
-                borderRadius: 16,
+                borderRadius: 16
               }}
             />
           )}
-          <View className="absolute inset-0 items-center justify-center px-1">
+          <View className='absolute inset-0 items-center justify-center px-1'>
             <Text
               className={`text-base text-center font-bold ${
-                isTableType ? "text-white" : "text-hint"
+                isTableType ? 'text-white' : 'text-hint'
               }`}
               numberOfLines={1}
             >
               {displayName ? displayName : table.name}
             </Text>
 
-            {isTableType && tableStatus === "available" && (
-              <Text className="text-white font-semibold text-[9px]">
+            {isTableType && tableStatus === 'available' && (
+              <Text className='text-white font-semibold text-[9px]'>
                 {table.capacity ||
                   TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
                     ?.capacity ||
-                  0}{" "}
+                  0}{' '}
                 SEATS
               </Text>
             )}
 
             {isTableType &&
-              (tableStatus === "seating" ||
-                tableStatus === "seated" ||
-                tableStatus === "ordering" ||
-                tableStatus === "ordered" ||
-                tableStatus === "served" ||
-                tableStatus === "check_presented" ||
-                tableStatus === "paying" ||
-                tableStatus === "paid") && (
+              (tableStatus === 'seating' ||
+                tableStatus === 'seated' ||
+                tableStatus === 'ordering' ||
+                tableStatus === 'ordered' ||
+                tableStatus === 'served' ||
+                tableStatus === 'check_presented' ||
+                tableStatus === 'paying' ||
+                tableStatus === 'paid') && (
                 <>
-                  {!effectiveOrder && table.session ? (
-                    <Text className="text-white/60 font-semibold text-sm">
+                  {!effectiveOrder && liveSession ? (
+                    <Text className='text-white/60 font-semibold text-sm'>
                       Loading...
                     </Text>
                   ) : (
                     <>
-                      <Text className="text-white font-bold text-base">
+                      <Text className='text-white font-bold text-base'>
                         ${orderTotal.toFixed(2)}
                       </Text>
-                      <Text className="text-white font-semibold text-base">
+                      {liveSession?.party_size ? (
+                        <Text className='text-white/70 font-semibold text-[9px]'>
+                          {liveSession.party_size} guests
+                        </Text>
+                      ) : null}
+                      <Text className='text-white font-semibold text-base'>
                         {duration}
                       </Text>
                     </>
@@ -324,30 +467,88 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               )}
 
             {isTableType &&
-              (tableStatus === "cleaning" || tableStatus === "closing") && (
-                <BrushCleaning size={16} color="rgba(255,255,255,0.6)" />
+              (tableStatus === 'cleaning' || tableStatus === 'closing') && (
+                <BrushCleaning size={16} color='rgba(255,255,255,0.6)' />
               )}
           </View>
-        </TouchableOpacity>
 
-        {isSelected && isEditMode && (
-          <View className="absolute -top-16 left-1/2 flex-row bg-white p-2 rounded-full z-50">
-            <GestureDetector gesture={rotateGesture}>
-              <View className="p-2 bg-gray-100 rounded-full cursor-grab">
-                <RotateCcw color="black" size={24} />
-              </View>
-            </GestureDetector>
-            <TouchableOpacity
-              onPress={handleDelete}
-              className="p-2 ml-1 bg-black/10 rounded-full"
+          {/* Server initials badge */}
+          {serverInitials && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 4,
+                right: 4,
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                backgroundColor: sectionColor
+                  ? sectionColor + '99'
+                  : 'rgba(0,0,0,0.4)',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
             >
-              <Trash2 color="red" size={24} />
-            </TouchableOpacity>
-          </View>
-        )}
+              <Text
+                style={{
+                  color: 'white',
+                  fontSize: 8,
+                  fontWeight: '700'
+                }}
+              >
+                {serverInitials}
+              </Text>
+            </View>
+          )}
+        </View>
+        <PulsingBorder
+          active={currentAttention}
+          width={effectiveWidth}
+          height={effectiveHeight}
+        />
       </Animated.View>
     </GestureDetector>
-  );
-};
+  )
+}
 
-export default React.memo(DraggableTable);
+export default React.memo(DraggableTable, (prev, next) => {
+  // Re-render if dimensions change
+  if (
+    prev.table.width !== next.table.width ||
+    prev.table.height !== next.table.height
+  ) {
+    return false
+  }
+  // Re-render if position/rotation changes (for dragging)
+  if (
+    prev.table.x !== next.table.x ||
+    prev.table.y !== next.table.y ||
+    prev.table.rotation !== next.table.rotation
+  ) {
+    return false
+  }
+  // Re-render if selected state changes
+  if (prev.isSelected !== next.isSelected) {
+    return false
+  }
+  // Re-render if session changed (status, party size, etc.)
+  // Session updates come from polling and should trigger visual updates
+  if (
+    prev.table.session?.id !== next.table.session?.id ||
+    prev.table.session?.status !== next.table.session?.status ||
+    prev.table.session?.party_size !== next.table.session?.party_size ||
+    prev.table.session?.guest_name !== next.table.session?.guest_name ||
+    prev.table.session?.server_staff_id !==
+      next.table.session?.server_staff_id ||
+    prev.table.session?.current_course !== next.table.session?.current_course ||
+    prev.table.session?.needs_attention !==
+      next.table.session?.needs_attention ||
+    prev.table.session?.is_vip !== next.table.session?.is_vip ||
+    prev.table.session?.merged_tables?.length !==
+      next.table.session?.merged_tables?.length
+  ) {
+    return false
+  }
+  // Otherwise skip re-render
+  return true
+})

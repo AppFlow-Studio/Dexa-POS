@@ -21,7 +21,7 @@ function subscribe(listener: () => void) {
     intervalId = setInterval(() => {
       currentTick++;
       for (const l of listeners) l();
-    }, 1000);
+    }, 60_000);
   }
   return () => {
     listeners.delete(listener);

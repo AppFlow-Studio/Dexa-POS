@@ -1,28 +1,29 @@
-import MergeActionBar from "@/components/tables/MergeActionBar";
-import { GuestCountModal } from "@/components/tables/GuestCountModal";
-import Sidebar from "@/components/tables/Sidebar";
-import WaitlistBottomSheet from "@/components/tables/WaitlistBottomSheet";
-import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
-import TableLayoutView from "@/components/tables/TableLayoutView";
-import { colors, TABLE_STATUS_COLORS } from "@/lib/theme";
-import { useLoading } from "@/contexts/LoadingContext";
-import { useToast } from "@/contexts/ToastContext";
-import { getDeviceId } from "@/lib/deviceId";
-import { OrderProfile } from "@/lib/types";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { GuestCountModal } from '@/components/tables/GuestCountModal'
+import MergeActionBar from '@/components/tables/MergeActionBar'
+import Sidebar from '@/components/tables/Sidebar'
+import TableContextSheet from '@/components/tables/TableContextSheet'
+import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
+import TableLayoutView from '@/components/tables/TableLayoutView'
+import WaitlistBottomSheet from '@/components/tables/WaitlistBottomSheet'
+import { useLoading } from '@/contexts/LoadingContext'
+import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
+import { useToast } from '@/contexts/ToastContext'
+import { getDeviceId } from '@/lib/deviceId'
+import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
+import { useEmployeeStore } from '@/stores/useEmployeeStore'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
   registerPendingOrderCreation,
-  useOrderStore,
-} from "@/stores/useOrderStore";
-import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useWaitlistSheetStore } from "@/stores/useWaitlistSheetStore";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import { Href, useRouter } from "expo-router";
-import { GitMerge, Pencil, Search, X } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+  useOrderStore
+} from '@/stores/useOrderStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
+import { useTimeclockStore } from '@/stores/useTimeclockStore'
+import { useWaitlistSheetStore } from '@/stores/useWaitlistSheetStore'
+import { FloorPlanObject } from '@/types/db-floor-plan-types'
+import { Href, useRouter } from 'expo-router'
+import { GitMerge, Pencil, Search, X } from 'lucide-react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   InteractionManager,
   KeyboardAvoidingView,
@@ -30,302 +31,439 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-} from "react-native";
-import { useShallow } from "zustand/react/shallow";
+  View
+} from 'react-native'
 
 const TablesScreen = () => {
-  const router = useRouter();
-  // Grouped data selectors (shallow compare — one re-render instead of 4)
-  const { floorPlans, activeFloorPlanId, tables, floorPlanLoading } =
-    useFloorPlanStore(
-      useShallow((s) => ({
-        floorPlans: s.floorPlans,
-        activeFloorPlanId: s.activeFloorPlanId,
-        tables: s.tables,
-        floorPlanLoading: s.isLoading,
-      })),
-    );
+  const router = useRouter()
+  // Subscribe to tables directly to ensure real-time updates
+  const tables = useFloorPlanStore(s => s.tables)
+  const floorPlans = useFloorPlanStore(s => s.floorPlans)
+  const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
+  const floorPlanLoading = useFloorPlanStore(s => s.isLoading)
+  const sections = useFloorPlanStore(s => s.sections)
+  const sectionsById = useFloorPlanStore(s => s.sectionsById)
+
+  // DON'T sync sessions into floor plan store tables.
+  // DraggableTable reads liveSession directly from useTableSessionStore (line 65),
+  // which is the single source of truth. The floor plan store's table.session field
+  // is only for persistence, not runtime rendering.
 
   // Selection state — separate (changes on every tap in merge mode)
-  const selectedTableIds = useFloorPlanStore((s) => s.selectedTableIds);
+  const selectedTableIds = useFloorPlanStore(s => s.selectedTableIds)
 
   // Actions — stable refs, separate is fine
-  const setActiveFloorPlan = useFloorPlanStore((s) => s.setActiveFloorPlan);
-  const toggleTableSelection = useFloorPlanStore((s) => s.toggleTableSelection);
-  const clearSelection = useFloorPlanStore((s) => s.clearSelection);
-  const mergeTable = useTableSessionStore((s) => s.mergeTable);
-  const unmergeTable = useTableSessionStore((s) => s.unmergeTable);
-  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
-  const device_id = getDeviceId();
-  const startNewOrder = useOrderStore((s) => s.startNewOrder);
-  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
-  const getOrderByDbId = useOrderStore((s) => s.getOrderByDbId);
-  const getOrder = useOrderStore((s) => s.getOrder);
-  const isWaitlistOpen = useWaitlistSheetStore((s) => s.isOpen);
-  const { show } = useToast();
-  const { showLoading, hideLoading } = useLoading();
+  const setActiveFloorPlan = useFloorPlanStore(s => s.setActiveFloorPlan)
+  const toggleTableSelection = useFloorPlanStore(s => s.toggleTableSelection)
+  const clearSelection = useFloorPlanStore(s => s.clearSelection)
+  const mergeTable = useTableSessionStore(s => s.mergeTable)
+  const unmergeTable = useTableSessionStore(s => s.unmergeTable)
+  const selectedStation = useStoreSettingsStore(s => s.selectedStation)
+  const device_id = getDeviceId()
+  const startNewOrder = useOrderStore(s => s.startNewOrder)
+  const setActiveOrder = useOrderStore(s => s.setActiveOrder)
+  const getOrderByDbId = useOrderStore(s => s.getOrderByDbId)
+  const getOrder = useOrderStore(s => s.getOrder)
+  const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
+  const isWaitlistOpen = useWaitlistSheetStore(s => s.isOpen)
+  const { show } = useToast()
+  const { showLoading, hideLoading } = useLoading()
 
-  const [searchInput, setSearchInput] = useState("");
-  const [searchText, setSearchText] = useState("");
-  const [isGuestModalOpen, setGuestModalOpen] = useState(false);
-  const [isMergeMode, setMergeMode] = useState(false);
+  const [searchInput, setSearchInput] = useState('')
+  const [searchText, setSearchText] = useState('')
+  const [isGuestModalOpen, setGuestModalOpen] = useState(false)
+  const [isMergeMode, setMergeMode] = useState(false)
+  const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
 
   // Debounce search input
   useEffect(() => {
-    const timer = setTimeout(() => setSearchText(searchInput), 200);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
+    const timer = setTimeout(() => setSearchText(searchInput), 200)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   // DEFERRED RENDERING: Wait for navigation transition to complete
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(false)
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
-      setIsReady(true);
-    });
-    return () => handle.cancel();
-  }, []);
+      setIsReady(true)
+    })
+    return () => handle.cancel()
+  }, [])
 
-  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
-  const { loggedInEmployee } = useEmployeeStore();
+  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore()
+  const { loggedInEmployee } = useEmployeeStore()
+
+  // Subscribe to realtime floor updates to trigger visual refresh
+  // This ensures the floor plan immediately reflects changes from other stations
+  const { floor } = useLocationRealtime()
 
   useEffect(() => {
     if (!activeFloorPlanId && floorPlans.length > 0) {
-      setActiveFloorPlan(floorPlans[0].id);
+      setActiveFloorPlan(floorPlans[0].id)
     }
-    clearSelection();
-  }, [activeFloorPlanId, floorPlans, setActiveFloorPlan, clearSelection]);
+    clearSelection()
+  }, [activeFloorPlanId, floorPlans, setActiveFloorPlan, clearSelection])
 
   // activePlan logic is now handled by store loading 'tables' only for active plan.
   // tables = current active tables.
 
   const isClockedIn = useMemo(() => {
-    if (!activeEmployeeId) return false;
-    const session = getSession(activeEmployeeId);
-    return session?.status === "clockedIn";
-  }, [activeEmployeeId, getSession]);
+    if (!activeEmployeeId) return false
+    const session = getSession(activeEmployeeId)
+    return session?.status === 'clockedIn'
+  }, [activeEmployeeId, getSession])
 
   // Filter tables by search (uses debounced searchText)
   const filteredTables = useMemo(() => {
-    if (!searchText.trim()) return tables;
-    const query = searchText.toLowerCase();
-    return tables.filter((t) => t.name?.toLowerCase().includes(query));
-  }, [tables, searchText]);
+    let result = tables
+    if (searchText.trim()) {
+      const query = searchText.toLowerCase()
+      result = result.filter(t => t.name?.toLowerCase().includes(query))
+    }
+    if (activeSectionId) {
+      result = result.filter(t => t.section_id === activeSectionId)
+    }
+    return result
+  }, [tables, searchText, activeSectionId])
 
   const handleCloseGuestModal = useCallback(() => {
-    setGuestModalOpen(false);
-    clearSelection();
-  }, [clearSelection]);
+    setGuestModalOpen(false)
+    clearSelection()
+  }, [clearSelection])
 
-  const handleTablePress = useCallback((table: FloorPlanObject) => {
-    if (!isClockedIn) {
-      showClockInWall();
-      return;
-    }
+  const handleTablePress = useCallback(
+    (table: FloorPlanObject) => {
+      if (!isClockedIn) {
+        showClockInWall()
+        return
+      }
 
-    const status = (table.session?.status || "available").toLowerCase();
+      // MERGE MODE: Multi-select behavior
+      if (isMergeMode) {
+        toggleTableSelection(table.id)
+        return
+      }
 
-    // MERGE MODE: Multi-select behavior
-    if (isMergeMode) {
-      toggleTableSelection(table.id);
-      return;
-    }
-
-    // NORMAL MODE: Original behavior
-    switch (status) {
-      case "available":
-        clearSelection();
-        toggleTableSelection(table.id);
-        setGuestModalOpen(true);
-        break;
-      case "seated":
-      case "ordered":
-      case "served":
-      case "in use":
-      case "check_presented":
-      case "paid":
-        // OPTIMIZED: Prefetch order before navigation for faster table view load
-        // This sets the active order immediately so the table view doesn't need to look it up
-        // Phase 2.2: Use universal getOrder() for O(1) lookup
-        if (table.session?.order_id) {
-          const existingOrder = getOrder(table.session.order_id);
-          if (existingOrder) {
-            setActiveOrder(existingOrder.id);
-          }
+      // NORMAL MODE: If table has an active session, navigate directly to the order page
+      const liveSession =
+        useTableSessionStore.getState().sessions[table.id] ?? table.session
+      if (liveSession && liveSession.status !== 'available') {
+        if (liveSession.order_id) {
+          const existingOrder = getOrder(liveSession.order_id)
+          if (existingOrder) setActiveOrder(existingOrder.id)
         }
-        // Use replace to avoid stacking table screens
         router.replace({
-          pathname: "/tables/[tableId]",
-          params: { tableId: table.id },
-        });
-        break;
-      case "cleaning":
-        router.replace(`/tables/clean-table/${table.id}`);
-        break;
-      default:
-        break;
-    }
-  }, [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection, clearSelection, getOrder, setActiveOrder, router]);
+          pathname: '/tables/[tableId]',
+          params: { tableId: table.id }
+        })
+        return
+      }
+
+      // No active session — open context sheet to seat guests
+      setContextTable(table)
+    },
+    [
+      isClockedIn,
+      showClockInWall,
+      isMergeMode,
+      toggleTableSelection,
+      getOrder,
+      setActiveOrder,
+      router
+    ]
+  )
+
+  const handleSheetSeatGuests = useCallback(
+    (table: FloorPlanObject) => {
+      // Look up the fresh table data from store to get latest session
+      const freshTable = useFloorPlanStore.getState().getTableById(table.id)
+      if (!freshTable) return
+
+      // Only allow seating on available tables — check live session store too (floor plan store can lag)
+      const liveSession = useTableSessionStore.getState().sessions[table.id]
+      const activeSession = liveSession ?? freshTable.session
+      if (activeSession && activeSession.status !== 'available') {
+        show({
+          title: 'Table Occupied',
+          message:
+            'This table is already in use. View the existing order instead.',
+          type: 'warning'
+        })
+        return
+      }
+      setContextTable(null)
+      clearSelection()
+      toggleTableSelection(table.id)
+      setGuestModalOpen(true)
+    },
+    [clearSelection, toggleTableSelection, show]
+  )
+
+  const handleSheetNavigate = useCallback(
+    (tableId: string) => {
+      setContextTable(null)
+      const table = tables.find(t => t.id === tableId)
+      if (table?.session?.order_id) {
+        const existingOrder = getOrder(table.session.order_id)
+        if (existingOrder) {
+          setActiveOrder(existingOrder.id)
+        }
+      }
+      router.replace({
+        pathname: '/tables/[tableId]',
+        params: { tableId }
+      })
+    },
+    [tables, getOrder, setActiveOrder, router]
+  )
+
+  const handleTableLongPress = useCallback(
+    (table: FloorPlanObject) => {
+      if (!isClockedIn) {
+        showClockInWall()
+        return
+      }
+
+      // If table is occupied, sync the order from DB (to get fresh items) then navigate
+      const liveSessionLP = useTableSessionStore.getState().sessions[table.id]
+      const activeSessionLP = liveSessionLP ?? table.session
+      if (activeSessionLP && activeSessionLP.status !== 'available') {
+        const orderId = activeSessionLP.order_id
+        if (orderId) {
+          // Sync from DB to ensure items are up-to-date, then navigate
+          syncOrderFromDatabase(orderId)
+            .then(localOrderId => {
+              if (localOrderId) setActiveOrder(localOrderId)
+              router.replace({
+                pathname: '/tables/[tableId]',
+                params: { tableId: table.id }
+              })
+            })
+            .catch(() => {
+              // Fallback: navigate anyway
+              router.replace({
+                pathname: '/tables/[tableId]',
+                params: { tableId: table.id }
+              })
+            })
+        } else {
+          router.replace({
+            pathname: '/tables/[tableId]',
+            params: { tableId: table.id }
+          })
+        }
+        return
+      }
+
+      // For available tables, show guest count modal
+      clearSelection()
+      toggleTableSelection(table.id)
+      setGuestModalOpen(true)
+    },
+    [
+      isClockedIn,
+      showClockInWall,
+      clearSelection,
+      toggleTableSelection,
+      syncOrderFromDatabase,
+      setActiveOrder,
+      router
+    ]
+  )
 
   // OPTIMIZED: Use Set for O(1) membership tests instead of .includes() O(n)
   const selectedTableIdsSet = useMemo(
     () => new Set(selectedTableIds),
-    [selectedTableIds],
-  );
+    [selectedTableIds]
+  )
 
   // Analyze selected tables for merge actions
   const selectedTables = useMemo(
-    () => tables.filter((t) => selectedTableIdsSet.has(t.id)), // O(1) per check
-    [tables, selectedTableIdsSet],
-  );
+    () => tables.filter(t => selectedTableIdsSet.has(t.id)), // O(1) per check
+    [tables, selectedTableIdsSet]
+  )
   const availableSelectedTables = useMemo(
-    () => selectedTables.filter((t) => !t.session || t.session.status === "available"),
-    [selectedTables],
-  );
+    () =>
+      selectedTables.filter(
+        t => !t.session || t.session.status === 'available'
+      ),
+    [selectedTables]
+  )
   const inUseSelectedTables = useMemo(
-    () => selectedTables.filter((t) => t.session && t.session.status !== "available"),
-    [selectedTables],
-  );
+    () =>
+      selectedTables.filter(t => t.session && t.session.status !== 'available'),
+    [selectedTables]
+  )
 
   // Determine which merge action is valid
   const canMergeAndSeat =
-    availableSelectedTables.length >= 2 && inUseSelectedTables.length === 0;
+    availableSelectedTables.length >= 2 && inUseSelectedTables.length === 0
   const canAddToSession =
-    inUseSelectedTables.length === 1 && availableSelectedTables.length >= 1;
+    inUseSelectedTables.length === 1 && availableSelectedTables.length >= 1
   const canUnmerge =
     selectedTables.length === 1 &&
-    (selectedTables[0]?.session?.merged_tables?.length ?? 0) > 0;
+    (selectedTables[0]?.session?.merged_tables?.length ?? 0) > 0
 
   // Check if unmerge is blocked due to pending items
   const checkUnmergeAllowed = (): boolean => {
-    if (!canUnmerge) return false;
+    if (!canUnmerge) return false
 
     // If table is in "cleaning" status, always allow unmerge
-    const tableStatus = selectedTables[0]?.session?.status?.toLowerCase();
-    if (tableStatus === "cleaning") return true;
+    const tableStatus = selectedTables[0]?.session?.status?.toLowerCase()
+    if (tableStatus === 'cleaning') return true
 
-    const sessionOrderId = selectedTables[0]?.session?.order_id;
-    if (!sessionOrderId) return true;
+    const sessionOrderId = selectedTables[0]?.session?.order_id
+    if (!sessionOrderId) return true
 
     // Find the order - OPTIMIZED: Use getState() to avoid subscription
-    const currentOrdersById = useOrderStore.getState().ordersById;
-    let order = currentOrdersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
-    if (!order) return true;
+    const currentOrdersById = useOrderStore.getState().ordersById
+    let order =
+      currentOrdersById[sessionOrderId] || getOrderByDbId(sessionOrderId)
+    if (!order) return true
 
     // Check for pending items
     const hasPendingItems = order.items.some(
-      (item) =>
-        item.item_status !== "ready" &&
-        item.item_status !== "served" &&
-        item.item_status !== "Ready" &&
-        item.item_status !== "Served",
-    );
-    return !hasPendingItems;
-  };
+      item =>
+        item.item_status !== 'ready' &&
+        item.item_status !== 'served' &&
+        item.item_status !== 'Ready' &&
+        item.item_status !== 'Served'
+    )
+    return !hasPendingItems
+  }
 
   const handleMergeAndSeat = useCallback(() => {
     if (availableSelectedTables.length < 2) {
       show({
-        title: "Select More Tables",
-        message: "Please select at least 2 tables to merge.",
-        type: "warning",
-      });
-      return;
+        title: 'Select More Tables',
+        message: 'Please select at least 2 tables to merge.',
+        type: 'warning'
+      })
+      return
     }
-    setGuestModalOpen(true);
-  }, [availableSelectedTables.length, show]);
+    setGuestModalOpen(true)
+  }, [availableSelectedTables.length, show])
 
   const handleAddToSession = useCallback(async () => {
     if (inUseSelectedTables.length !== 1 || availableSelectedTables.length < 1)
-      return;
+      return
 
-    const targetSession = inUseSelectedTables[0].session;
-    if (!targetSession?.id) return;
+    const targetSession = inUseSelectedTables[0].session
+    if (!targetSession?.id) return
 
     try {
       for (const table of availableSelectedTables) {
-        await mergeTable(targetSession.id, table.id);
+        await mergeTable(targetSession.id, table.id)
       }
       show({
-        title: "Tables Merged",
+        title: 'Tables Merged',
         message: `Added ${availableSelectedTables.length} table(s) to the session.`,
-        type: "success",
-      });
-      clearSelection();
-      setMergeMode(false);
+        type: 'success'
+      })
+      clearSelection()
+      setMergeMode(false)
     } catch (err) {
-      console.error("Failed to merge tables:", err);
+      console.error('Failed to merge tables:', err)
       show({
-        title: "Merge Failed",
-        message: "Could not merge tables. Please try again.",
-        type: "error",
-      });
+        title: 'Merge Failed',
+        message: 'Could not merge tables. Please try again.',
+        type: 'error'
+      })
     }
-  }, [inUseSelectedTables, availableSelectedTables, mergeTable, show, clearSelection]);
+  }, [
+    inUseSelectedTables,
+    availableSelectedTables,
+    mergeTable,
+    show,
+    clearSelection
+  ])
 
   const handleUnmerge = useCallback(async () => {
-    if (!canUnmerge) return;
+    if (!canUnmerge) return
 
     if (!checkUnmergeAllowed()) {
       show({
-        title: "Cannot Unmerge",
-        message: "This table has pending items. Complete them first.",
-        type: "error",
-      });
-      return;
+        title: 'Cannot Unmerge',
+        message: 'This table has pending items. Complete them first.',
+        type: 'error'
+      })
+      return
     }
 
-    const table = selectedTables[0];
-    if (!table.session?.id) return;
+    const table = selectedTables[0]
+    if (!table.session?.id) return
 
     try {
-      await unmergeTable(table.session.id, table.id);
+      await unmergeTable(table.session.id, table.id)
       show({
-        title: "Table Unmerged",
+        title: 'Table Unmerged',
         message: `${table.name} has been removed from the session.`,
-        type: "success",
-      });
-      clearSelection();
-      setMergeMode(false);
+        type: 'success'
+      })
+      clearSelection()
+      setMergeMode(false)
     } catch (err) {
-      console.error("Failed to unmerge table:", err);
+      console.error('Failed to unmerge table:', err)
       show({
-        title: "Unmerge Failed",
-        message: "Could not unmerge table. Please try again.",
-        type: "error",
-      });
+        title: 'Unmerge Failed',
+        message: 'Could not unmerge table. Please try again.',
+        type: 'error'
+      })
     }
-  }, [canUnmerge, checkUnmergeAllowed, selectedTables, unmergeTable, show, clearSelection]);
+  }, [
+    canUnmerge,
+    checkUnmergeAllowed,
+    selectedTables,
+    unmergeTable,
+    show,
+    clearSelection
+  ])
 
   const handleCancelMerge = useCallback(() => {
-    clearSelection();
-    setMergeMode(false);
-  }, [clearSelection]);
+    clearSelection()
+    setMergeMode(false)
+  }, [clearSelection])
 
   const handleGuestCountSubmit = async (guestCount: number) => {
-    const primaryTableId = selectedTableIds[0];
-    if (!primaryTableId) return;
-    const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId];
+    const primaryTableId = selectedTableIds[0]
+    if (!primaryTableId) return
+
+    // Double-check table is still available
+    const freshTable = useFloorPlanStore.getState().getTableById(primaryTableId)
+    if (freshTable?.session && freshTable.session.status !== 'available') {
+      show({
+        title: 'Table Occupied',
+        message:
+          'This table is no longer available. It was occupied by another station.',
+        type: 'error'
+      })
+      setGuestModalOpen(false)
+      clearSelection()
+      return
+    }
+
+    const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId]
 
     // 1. Create local order immediately (synchronous — ~0ms)
-    const newOrder = startNewOrder({ tableId: primaryTableId, guestCount });
-    setActiveOrder(newOrder.id);
+    const newOrder = startNewOrder({ tableId: primaryTableId, guestCount })
+    setActiveOrder(newOrder.id)
 
     // 2. Navigate immediately — no loading spinner
-    setGuestModalOpen(false);
-    clearSelection();
-    setMergeMode(false);
+    setGuestModalOpen(false)
+    clearSelection()
+    setMergeMode(false)
     router.replace({
-      pathname: "/tables/[tableId]",
-      params: { tableId: primaryTableId },
-    });
+      pathname: '/tables/[tableId]',
+      params: { tableId: primaryTableId }
+    })
 
     // 3. Register pending creation to prevent ensureOrderCreated from duplicating
-    let resolveCreation: (dbOrderId: string | null) => void;
-    const creationPromise = new Promise<string | null>((resolve) => {
-      resolveCreation = resolve;
-    });
-    registerPendingOrderCreation(newOrder.id, creationPromise);
+    let resolveCreation: (dbOrderId: string | null) => void
+    const creationPromise = new Promise<string | null>(resolve => {
+      resolveCreation = resolve
+    })
+    registerPendingOrderCreation(newOrder.id, creationPromise)
 
     // 4. Fire seatGuests in background — don't block navigation
     try {
@@ -335,26 +473,26 @@ const TablesScreen = () => {
         createOrder: true,
         localOrderId: newOrder.id,
         selected_station: selectedStation?.id,
-        device_id: device_id,
-      });
+        device_id: device_id
+      })
 
       if (orderId && orderId !== newOrder.id) {
         // seatGuests already called updateOrderDbId — resolve the pending promise
         // hydrateOrderFromSeat already patched order_number/display_number from the RPC response
-        resolveCreation!(orderId);
+        resolveCreation!(orderId)
       } else {
-        resolveCreation!(null);
+        resolveCreation!(null)
       }
     } catch (err) {
-      console.error("[GuestCountSubmit] Background seatGuests failed:", err);
-      resolveCreation!(null);
+      console.error('[GuestCountSubmit] Background seatGuests failed:', err)
+      resolveCreation!(null)
       // Order still works locally — ensureOrderCreated will create backend order when first item is added
     }
-  };
+  }
 
   return (
-    <View className="flex-1 bg-screen px-2 py-1">
-      <View className="flex-1 flex-row bg-screen rounded-lg border border-border">
+    <View className='flex-1 bg-screen px-2 py-1'>
+      <View className='flex-1 flex-row bg-screen rounded-lg border border-border'>
         {/* NEW: Sidebar Component */}
         <Sidebar
           // layouts={layouts} REMOVED
@@ -363,23 +501,23 @@ const TablesScreen = () => {
         />
 
         {/* Right Side: Floor Plan */}
-        <View className="flex-1 p-4">
-          <View className="flex-row items-center mb-3 gap-3">
+        <View className='flex-1 p-4'>
+          <View className='flex-row items-center mb-3 gap-3'>
             {/* Layout Tabs */}
-            <View className="flex-row items-center bg-panel border border-border p-1 rounded-xl ml-2">
-              {floorPlans.map((layout) => (
+            <View className='flex-row items-center bg-panel border border-border p-1 rounded-xl ml-2'>
+              {floorPlans.map(layout => (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => setActiveFloorPlan(layout.id)}
                   className={`py-2 px-4 rounded-lg ${
-                    activeFloorPlanId === layout.id ? "bg-screen" : ""
+                    activeFloorPlanId === layout.id ? 'bg-screen' : ''
                   }`}
                 >
                   <Text
                     className={`text-lg font-semibold ${
                       activeFloorPlanId === layout.id
-                        ? "text-teal"
-                        : "text-label"
+                        ? 'text-teal'
+                        : 'text-label'
                     }`}
                   >
                     {layout.name}
@@ -390,16 +528,16 @@ const TablesScreen = () => {
 
             {/* Search Bar */}
             <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              className="flex-1 flex-row items-center bg-panel border border-border rounded-lg px-3 max-w-sm"
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              className='flex-1 flex-row items-center bg-panel border border-border rounded-lg px-3 max-w-sm'
             >
               <Search color={colors.label} size={20} />
               <TextInput
-                placeholder="Search table name..."
+                placeholder='Search table name...'
                 placeholderTextColor={colors.label}
                 value={searchInput}
                 onChangeText={setSearchInput}
-                className="ml-2 text-lg h-12 flex-1 text-white"
+                className='ml-2 text-lg h-12 flex-1 text-white'
               />
             </KeyboardAvoidingView>
 
@@ -407,42 +545,95 @@ const TablesScreen = () => {
             <TouchableOpacity
               onPress={() => {
                 if (isMergeMode) {
-                  handleCancelMerge();
+                  handleCancelMerge()
                 } else {
-                  clearSelection();
-                  setMergeMode(true);
+                  clearSelection()
+                  setMergeMode(true)
                 }
               }}
               className={`py-2 px-4 flex-row items-center justify-center rounded-lg border ${
                 isMergeMode
-                  ? "bg-gray-600 border-gray-500"
-                  : "bg-amber-600 border-amber-500"
+                  ? 'bg-gray-600 border-gray-500'
+                  : 'bg-amber-600 border-amber-500'
               }`}
             >
               {isMergeMode ? (
-                <X color="white" size={20} />
+                <X color='white' size={20} />
               ) : (
-                <GitMerge color="white" size={20} />
+                <GitMerge color='white' size={20} />
               )}
-              <Text className="text-lg font-bold text-white ml-2">
-                {isMergeMode ? "Cancel" : "Merge Tables"}
+              <Text className='text-lg font-bold text-white ml-2'>
+                {isMergeMode ? 'Cancel' : 'Merge Tables'}
               </Text>
             </TouchableOpacity>
 
             {/* Edit Layout Button */}
             <TouchableOpacity
               onPress={() => router.push(`/tables/floor-plan` as Href)}
-              className="py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 border border-blue-500"
+              className='py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 border border-blue-500'
             >
-              <Pencil color="white" size={18} />
-              <Text className="text-lg font-bold text-white ml-2">
+              <Pencil color='white' size={18} />
+              <Text className='text-lg font-bold text-white ml-2'>
                 Edit Layout
               </Text>
             </TouchableOpacity>
           </View>
 
+          {/* Section Filter Pills */}
+          {sections.length > 0 && (
+            <View
+              className='flex-row gap-2 px-4 py-3 overflow-x-auto'
+              style={{ marginHorizontal: -8 }}
+            >
+              <TouchableOpacity
+                onPress={() => setActiveSectionId(null)}
+                className={`px-3 py-1.5 rounded-full border ${
+                  !activeSectionId
+                    ? 'bg-teal border-teal'
+                    : 'border-border bg-transparent'
+                }`}
+              >
+                <Text
+                  className={`text-sm font-semibold ${
+                    !activeSectionId ? 'text-black' : 'text-label'
+                  }`}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+              {sections.map(section => (
+                <TouchableOpacity
+                  key={section.id}
+                  onPress={() =>
+                    setActiveSectionId(
+                      activeSectionId === section.id ? null : section.id
+                    )
+                  }
+                  className='px-3 py-1.5 rounded-full border'
+                  style={{
+                    borderColor: section.color,
+                    backgroundColor:
+                      activeSectionId === section.id
+                        ? section.color
+                        : 'transparent'
+                  }}
+                >
+                  <Text
+                    className='text-sm font-semibold text-white'
+                    style={{
+                      color:
+                        activeSectionId === section.id ? '#000' : section.color
+                    }}
+                  >
+                    {section.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {/* Map Container */}
-          <View className="bg-screen border border-border rounded-xl flex-1 relative">
+          <View className='bg-screen border border-border rounded-xl flex-1 relative'>
             {!isReady || (floorPlanLoading && tables.length === 0) ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
@@ -451,7 +642,9 @@ const TablesScreen = () => {
                 isSelectionMode={true}
                 onTableSelect={handleTablePress}
                 showConnections={true}
-                layoutId={activeFloorPlanId || ""}
+                layoutId={activeFloorPlanId || ''}
+                sectionsById={sectionsById}
+                onTableLongPress={handleTableLongPress}
               />
             )}
 
@@ -470,45 +663,109 @@ const TablesScreen = () => {
             )}
 
             {/* Status Indicators (Bottom Center) */}
-            <View className="absolute bottom-3 left-0 right-0 flex-row justify-center">
-            <View className="flex-row items-center gap-4 p-2 rounded-full bg-screen/90 border border-border">
-              <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.Available }} />
-                <Text className="text-base font-semibold text-label">
-                  Available
-                </Text>
+            <View className='absolute bottom-3 left-0 right-0 flex-row justify-center'>
+              <View className='flex-row items-center gap-4 p-3 rounded-full bg-screen/90 border border-border flex-wrap'>
+                {/* Available */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{ backgroundColor: TABLE_STATUS_COLORS.available }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>
+                    Available
+                  </Text>
+                </View>
+                {/* Seated */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{ backgroundColor: TABLE_STATUS_COLORS.seated }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>
+                    Seated
+                  </Text>
+                </View>
+                {/* Ordered */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{ backgroundColor: TABLE_STATUS_COLORS.ordered }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>
+                    Ordered
+                  </Text>
+                </View>
+                {/* Served */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{ backgroundColor: TABLE_STATUS_COLORS.served }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>
+                    Served
+                  </Text>
+                </View>
+                {/* Check Presented */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{
+                      backgroundColor: TABLE_STATUS_COLORS.check_presented
+                    }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>
+                    Check
+                  </Text>
+                </View>
+                {/* Paid */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{ backgroundColor: TABLE_STATUS_COLORS.paid }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>Paid</Text>
+                </View>
+                {/* Cleaning */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{ backgroundColor: TABLE_STATUS_COLORS.cleaning }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>
+                    Cleaning
+                  </Text>
+                </View>
+                {/* Not in Service */}
+                <View className='flex-row items-center gap-2'>
+                  <View
+                    className='w-3 h-3 rounded-full'
+                    style={{
+                      backgroundColor: TABLE_STATUS_COLORS.not_in_service
+                    }}
+                  />
+                  <Text className='text-sm font-semibold text-label'>
+                    Blocked
+                  </Text>
+                </View>
               </View>
-              <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS["In Use"] }} />
-                <Text className="text-base font-semibold text-label">
-                  In Use
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS["Needs Cleaning"] }} />
-                <Text className="text-base font-semibold text-label">
-                  Needs Cleaning
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-2">
-                <View className="w-3 h-3 rounded-full" style={{ backgroundColor: TABLE_STATUS_COLORS.Overtime }} />
-                <Text className="text-base font-semibold text-label">
-                  Overtime
-                </Text>
-              </View>
-            </View>
             </View>
           </View>
         </View>
         {isWaitlistOpen && <WaitlistBottomSheet />}
       </View>
+      <TableContextSheet
+        table={contextTable}
+        onClose={() => setContextTable(null)}
+        onSeatGuests={handleSheetSeatGuests}
+        onNavigate={handleSheetNavigate}
+      />
       <GuestCountModal
         isOpen={isGuestModalOpen}
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
       />
     </View>
-  );
-};
+  )
+}
 
-export default TablesScreen;
+export default TablesScreen

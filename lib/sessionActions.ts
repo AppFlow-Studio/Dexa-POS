@@ -65,7 +65,7 @@ export type SessionActionType = SessionAction["type"];
 
 export const ACTION_TO_EVENT: Partial<Record<SessionActionType, TableEvent>> = {
   SEND_TO_KITCHEN: "SEND_TO_KITCHEN",
-  VOID_ORDER: "VOID_ORDER",
+  // VOID_ORDER intentionally omitted — effect dispatches CLEAR directly after RPC closes session
   CLEAR_TABLE: "CLEAR_TABLE",
   MARK_SERVED: "MARK_SERVED",
   PRESENT_CHECK: "PRESENT_CHECK",

@@ -111,9 +111,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const onConfirmVoid = async () => {
     if (activeOrderId && activeOrder) {
       // Dispatch VOID_ORDER — the effect handles inventory deduction + void
-      const dispatchAction = useTableSessionStore.getState().dispatchAction;
-      // Find tableId from the order's service_location_id
-      const tableId = activeOrder.service_location_id || "";
+      const sessionStore = useTableSessionStore.getState();
+      const dispatchAction = sessionStore.dispatchAction;
+
+      // Resolve real table UUID via session_id → sessionTableIndex
+      const sessionId = activeOrder.session_id;
+      const tableId = sessionId
+        ? (sessionStore.sessionTableIndex[sessionId]?.[0] ?? "")
+        : "";
 
       if (tableId) {
         await dispatchAction({

@@ -28,6 +28,7 @@ import {
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { handleSeatingEffect } from "@/services/sessionEffects/handleSeatingEffect";
+import { recordVoidedSession } from "@/services/tableSessionRealtimeSync";
 import {
   FloorPlanObject,
   TableSession,
@@ -119,6 +120,19 @@ function _applyAction(
     if (current && action.session.id === current.id && isLocalOnlyStatus(current.status)) {
       return { session: current, changed: false };
     }
+    // Skip if session data is identical (prevents unnecessary re-renders from polling)
+    if (current && current.id === action.session.id &&
+        current.status === action.session.status &&
+        current.party_size === action.session.party_size &&
+        current.guest_name === action.session.guest_name &&
+        current.order_id === action.session.order_id &&
+        current.server_staff_id === action.session.server_staff_id &&
+        current.current_course === action.session.current_course &&
+        current.needs_attention === action.session.needs_attention &&
+        current.is_vip === action.session.is_vip &&
+        current.session_number === action.session.session_number) {
+      return { session: current, changed: false };
+    }
     return { session: action.session, changed: true };
   }
   if (action.type === 'CLEAR') {
@@ -201,7 +215,6 @@ interface TableSessionStoreState {
   sessions: Record<string, TableSession>;
   /** sessionId → tableId[] (for merged tables) */
   sessionTableIndex: Record<string, string[]>;
-
   // ---- Dispatch API ----
 
   dispatch: (tableId: string, action: SessionAction) => boolean;
@@ -257,7 +270,7 @@ interface TableSessionStoreState {
   _patchSessionsFromTables: (tables: FloorPlanObject[]) => void;
 
   /** Bridge: write session data back into useFloorPlanStore (removed in Phase 3) */
-  _syncToFloorPlanStore: (changedTableId?: string) => void;
+  _syncToFloorPlanStore: (changedTableId?: string | string[]) => void;
 
   // ---- Selectors ----
 
@@ -327,7 +340,9 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }
         });
 
-        get()._syncToFloorPlanStore();
+        // Selective sync — only patch changed tables instead of full rebuild
+        const changedTableIds = results.map(r => r.tableId);
+        get()._syncToFloorPlanStore(changedTableIds);
         for (const { tableId, action, prev, result } of results) {
           fireSideEffects(tableId, prev, result.session, action);
         }
@@ -366,6 +381,19 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }
 
           nextStatus = get().sessions[tableId]?.status ?? null;
+
+          // Update floor plan store's tables with new session status
+          if (nextStatus && nextStatus !== previousStatus) {
+            const newSession = get().sessions[tableId];
+            if (newSession) {
+              const floorPlanStore = useFloorPlanStore.getState();
+              const currentTables = floorPlanStore.tables;
+              const updatedTables = currentTables.map((t: any) =>
+                t.id === tableId ? { ...t, session: newSession } : t
+              );
+              useFloorPlanStore.setState({ tables: updatedTables });
+            }
+          }
 
           // Backend sync for non-local statuses
           if (nextStatus && !isLocalOnlyStatus(nextStatus) && session) {
@@ -541,29 +569,44 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       // _syncToFloorPlanStore — bridge write-back (Phase 1-2, removed in Phase 3)
       // ------------------------------------------------------------------
 
-      _syncToFloorPlanStore: (changedTableId?: string) => {
+      _syncToFloorPlanStore: (changedTableId?: string | string[]) => {
         const { sessions } = get();
         const floorPlanState = useFloorPlanStore.getState();
 
-        if (changedTableId) {
-          // Selective: patch only the affected table
-          const existingTable = floorPlanState.tablesById[changedTableId];
-          if (!existingTable) return;
+        // Selective sync for one or more specific table IDs
+        const changedIds = changedTableId
+          ? (Array.isArray(changedTableId) ? changedTableId : [changedTableId])
+          : null;
 
-          const session = sessions[changedTableId];
-          const needsUpdate = session
-            ? existingTable.session !== session
-            : !!existingTable.session;
+        if (changedIds) {
+          const changedSet = new Set(changedIds);
+          let anyChanged = false;
+          let newTablesById = floorPlanState.tablesById;
 
-          if (!needsUpdate) return;
+          for (const tableId of changedIds) {
+            const existingTable = newTablesById[tableId];
+            if (!existingTable) continue;
 
-          const updated = session
-            ? { ...existingTable, session }
-            : { ...existingTable, session: undefined };
+            const session = sessions[tableId];
+            const needsUpdate = session
+              ? existingTable.session !== session
+              : !!existingTable.session;
 
-          const newTablesById = { ...floorPlanState.tablesById, [changedTableId]: updated };
+            if (!needsUpdate) continue;
+
+            anyChanged = true;
+            const updated = session
+              ? { ...existingTable, session }
+              : { ...existingTable, session: undefined };
+            newTablesById = { ...newTablesById, [tableId]: updated };
+          }
+
+          if (!anyChanged) return;
+
           const newTables = floorPlanState.tables.map(
-            (t) => (t.id === changedTableId ? updated : t),
+            (t) => (changedSet.has(t.id) && newTablesById[t.id] !== floorPlanState.tablesById[t.id]
+              ? newTablesById[t.id]
+              : t),
           );
           useFloorPlanStore.setState({ tables: newTables, tablesById: newTablesById });
           return;
@@ -598,6 +641,20 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
         if (operation === "DELETE" || !data?.session) {
           useFloorPlanStore.getState()._debouncedRefresh();
+          return;
+        }
+
+        // If the session is no longer active, clear all tables associated with it
+        if (data.session.is_active === false) {
+          const sessionId = data.session.id;
+          const currentSessions = get().sessions;
+          const actions: Array<{ tableId: string; action: SessionAction }> = [];
+          for (const [tId, sess] of Object.entries(currentSessions)) {
+            if (sess.id === sessionId) {
+              actions.push({ tableId: tId, action: { type: 'CLEAR' } });
+            }
+          }
+          if (actions.length > 0) get().batchDispatch(actions);
           return;
         }
 
@@ -829,6 +886,10 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
         for (const [tableId, session] of Object.entries(currentSessions)) {
           if (session.id === sessionId) {
+            console.log(
+              "[updateSessionStatus] Found matching session for tableId",
+              tableId,
+            );
             actions.push({
               tableId,
               action: { type: 'SET', session: { ...session, status } },
@@ -836,6 +897,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           }
         }
 
+        console.log(
+          "[updateSessionStatus] Dispatching",
+          actions.length,
+          "actions"
+        );
         if (actions.length > 0) {
           get().batchDispatch(actions);
         }
@@ -1010,6 +1076,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // 1. Optimistic local clear
         get().dispatch(tableId, { type: 'CLEAR' });
 
+        // Record this session as voided so polling won't re-sync it
+        if (sessionId) {
+          recordVoidedSession(tableId, sessionId);
+        }
+
         // 2. Try backend if online and session exists
         if (isOnline && supabase && sessionId) {
           try {
@@ -1020,7 +1091,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               {
                 p_session_id: sessionId,
                 p_status: "available",
-                p_notes: "Order voided",
                 p_staff_id,
               },
             );
@@ -1035,6 +1105,15 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
                 `Failed to clear session: ${error.message || error}`,
               );
             }
+
+            // Force refresh from backend after 4 seconds to ensure cleared state is synced
+            setTimeout(async () => {
+              const floorPlanState = useFloorPlanStore.getState();
+              if (floorPlanState.activeFloorPlanId) {
+                console.log("[clearTableSession] Force refreshing table status after void");
+                await floorPlanState.loadFloorPlanStatus();
+              }
+            }, 4000);
           } catch (err) {
             console.error("[clearTableSession] Exception:", err);
             // ROLLBACK (only if not already rolled back above)
