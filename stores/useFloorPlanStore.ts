@@ -634,8 +634,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               const mergedTables = freshTables.map(freshTable => {
                 const currentTable = currentTablesById[freshTable.id]
                 const freshSessionIsInactive =
-                  (freshTable.session as unknown as { is_active?: boolean } | undefined)
-                    ?.is_active === false
+                  (
+                    freshTable.session as unknown as
+                      | { is_active?: boolean }
+                      | undefined
+                  )?.is_active === false
 
                 // Preserve local-only status if still same session
                 if (
@@ -648,10 +651,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 }
 
                 // Don't restore an inactive session (is_active=false) that was cleared locally
-                if (
-                  !currentTable?.session &&
-                  freshSessionIsInactive
-                ) {
+                if (!currentTable?.session && freshSessionIsInactive) {
                   return { ...freshTable, session: undefined }
                 }
 
@@ -1306,10 +1306,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         },
 
         saveSnapshot: () => {
-          set((state) => ({
+          set(state => ({
             past: [...state.past, state.tables].slice(-30),
-            future: [],
-          }));
+            future: []
+          }))
         },
 
         // O(1) Getter

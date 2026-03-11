@@ -415,12 +415,6 @@ BEGIN
             oi.id,
             LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity), oi.quantity),
             oi.price_paid,
-<<<<<<< HEAD
-            oi.quantity * oi.price_paid,
-            ROUND(oi.quantity * oi.price_paid * COALESCE(oi.tax_rate, 0) / 100, 2)
-        FROM public.order_items oi
-        WHERE oi.id = ANY(v_covered_items)
-=======
             LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity), oi.quantity) * oi.price_paid,
             ROUND(LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity), oi.quantity) * oi.price_paid * COALESCE(oi.tax_rate, 0) / 100, 2)
         FROM jsonb_array_elements(p_item_allocations) AS alloc
@@ -434,7 +428,6 @@ BEGIN
             updated_at = now()
         FROM jsonb_array_elements(p_item_allocations) AS alloc
         WHERE oi.id = (alloc.value->>'order_item_id')::uuid
->>>>>>> pos-speed-optimization
           AND oi.order_id = p_order_id
           AND oi.is_voided = false;
     END IF;
