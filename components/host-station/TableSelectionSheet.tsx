@@ -70,7 +70,6 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
       <Pressable
         onPress={() => {
           onSelectTable([item.id])
-          onClose()
         }}
         className='mx-3 mb-3 p-3 rounded-lg border border-border bg-card overflow-hidden'
       >

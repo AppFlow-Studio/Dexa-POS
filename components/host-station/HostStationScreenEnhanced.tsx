@@ -1,5 +1,6 @@
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
+import { useWaitlistDragState } from '@/hooks/useWaitlistDragState'
 import { colors } from '@/lib/theme'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
@@ -14,20 +15,10 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import Animated, {
-  SharedValue,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-  runOnJS
-} from 'react-native-reanimated'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { useWaitlistDragState } from '@/hooks/useWaitlistDragState'
+import { useSharedValue } from 'react-native-reanimated'
 import { AddWaitlistModal } from './AddWaitlistModal'
-import TableSelectionSheet from './TableSelectionSheet'
-import WaitlistQueueCard from './WaitlistQueueCard'
 import AnimatedCardItem from './AnimatedCardItem'
+import TableSelectionSheet from './TableSelectionSheet'
 
 interface HostStationScreenProps {
   location_id: string
@@ -128,7 +119,9 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
         let quotedWait = data.quoted_wait_minutes || 15
         if (!data.quoted_wait_minutes) {
           const calc = new WaitTimeCalculator(tables)
-          const queueDepth = waitlist.filter(e => ['waiting', 'notified', 'arrived'].includes(e.status)).length
+          const queueDepth = waitlist.filter(e =>
+            ['waiting', 'notified', 'arrived'].includes(e.status)
+          ).length
           quotedWait = calc.calculateWaitTime(data.party_size, queueDepth)
         }
 
@@ -227,13 +220,16 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
             type: 'success'
           })
           await fetchWaitlist(location_id)
+          return true
         }
+        return false
       } catch (error: any) {
         show({
           title: 'Error',
           message: error.message || 'Failed to seat party',
           type: 'error'
         })
+        return false
       } finally {
         hideLoading()
       }
@@ -353,15 +349,43 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
   return (
     <View style={{ flex: 1, backgroundColor: '#0C0F1A' }}>
       {/* Header */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#2A3050', backgroundColor: '#1E2340' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <Text style={{ color: 'white', fontSize: 28, fontWeight: 'bold' }}>Waitlist</Text>
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: '#2A3050',
+          backgroundColor: '#1E2340'
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8
+          }}
+        >
+          <Text style={{ color: 'white', fontSize: 28, fontWeight: 'bold' }}>
+            Waitlist
+          </Text>
           <TouchableOpacity
             onPress={() => setShowAddForm(true)}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6, backgroundColor: '#2DD4BF' }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 6,
+              backgroundColor: '#2DD4BF'
+            }}
           >
             <Plus size={16} color='#0C0F1A' />
-            <Text style={{ color: '#0C0F1A', fontWeight: '600', fontSize: 13 }}>Add Party</Text>
+            <Text style={{ color: '#0C0F1A', fontWeight: '600', fontSize: 13 }}>
+              Add Party
+            </Text>
           </TouchableOpacity>
         </View>
         <Text style={{ color: '#64748B', fontSize: 14 }}>
@@ -370,26 +394,77 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
       </View>
 
       {/* Legend */}
-      <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#0C0F1A', borderBottomWidth: 1, borderBottomColor: '#2A3050', alignItems: 'center' }}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' }}>
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingVertical: 8,
+          backgroundColor: '#0C0F1A',
+          borderBottomWidth: 1,
+          borderBottomColor: '#2A3050',
+          alignItems: 'center'
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 12,
+            justifyContent: 'center'
+          }}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ffffff' }} />
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#ffffff'
+              }}
+            />
             <Text style={{ color: '#94A3B8', fontSize: 12 }}>Waiting</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#3b82f6' }} />
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#3b82f6'
+              }}
+            />
             <Text style={{ color: '#94A3B8', fontSize: 12 }}>Notified</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981' }} />
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#10b981'
+              }}
+            />
             <Text style={{ color: '#94A3B8', fontSize: 12 }}>Arrived</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#f59e0b' }} />
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#f59e0b'
+              }}
+            />
             <Text style={{ color: '#94A3B8', fontSize: 12 }}>Approaching</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#ef4444'
+              }}
+            />
             <Text style={{ color: '#94A3B8', fontSize: 12 }}>Overdue</Text>
           </View>
         </View>
@@ -453,12 +528,18 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
       {selectedEntry && (
         <TableSelectionSheet
           isOpen={showTablePicker}
-          onClose={() => setShowTablePicker(false)}
+          onClose={() => {
+            setShowTablePicker(false)
+            setSelectedEntry(null)
+          }}
           entry={selectedEntry}
           tables={tables}
-          onSelectTable={(tableIds: string[]) => {
-            handleSeatParty(selectedEntry, tableIds)
-            setShowTablePicker(false)
+          onSelectTable={async (tableIds: string[]) => {
+            const didSeat = await handleSeatParty(selectedEntry, tableIds)
+            if (didSeat) {
+              setShowTablePicker(false)
+              setSelectedEntry(null)
+            }
           }}
         />
       )}
