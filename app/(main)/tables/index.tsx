@@ -148,12 +148,7 @@ const TablesScreen = () => {
       // NORMAL MODE: Open context sheet regardless of session state
       setContextTable(table)
     },
-    [
-      isClockedIn,
-      showClockInWall,
-      isMergeMode,
-      toggleTableSelection,
-    ]
+    [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection]
   )
 
   const handleSheetSeatGuests = useCallback(
