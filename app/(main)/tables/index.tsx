@@ -145,22 +145,7 @@ const TablesScreen = () => {
         return
       }
 
-      // NORMAL MODE: If table has an active session, navigate directly to the order page
-      const liveSession =
-        useTableSessionStore.getState().sessions[table.id] ?? table.session
-      if (liveSession && liveSession.status !== 'available') {
-        if (liveSession.order_id) {
-          const existingOrder = getOrder(liveSession.order_id)
-          if (existingOrder) setActiveOrder(existingOrder.id)
-        }
-        router.replace({
-          pathname: '/tables/[tableId]',
-          params: { tableId: table.id }
-        })
-        return
-      }
-
-      // No active session — open context sheet to seat guests
+      // NORMAL MODE: Open context sheet regardless of session state
       setContextTable(table)
     },
     [
@@ -168,9 +153,6 @@ const TablesScreen = () => {
       showClockInWall,
       isMergeMode,
       toggleTableSelection,
-      getOrder,
-      setActiveOrder,
-      router
     ]
   )
 
