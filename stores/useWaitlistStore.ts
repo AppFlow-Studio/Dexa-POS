@@ -89,7 +89,6 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
           const isSame =
             prev.status === entry.status &&
-            prev.position === entry.position &&
             prev.quoted_wait_minutes === entry.quoted_wait_minutes &&
             prev.party_name === entry.party_name &&
             prev.party_size === entry.party_size &&
@@ -99,7 +98,9 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
             prev.seating_preference === entry.seating_preference &&
             prev.notes === entry.notes
 
-          return isSame ? prev : entry
+          // Always preserve local position — reorderWaitlist sets it optimistically
+          // and persists to backend. Server position can lag during the write window.
+          return isSame ? prev : { ...entry, position: prev.position }
         })
 
         const isUnchanged =
@@ -283,6 +284,22 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
   reorderWaitlist: newWaitlist => {
     set({ waitlist: newWaitlist })
+
+    // Fire-and-forget: persist positions to backend
+    const client = getClient()
+    if (client) {
+      Promise.all(
+        newWaitlist.map(entry =>
+          client
+            .from('waitlist')
+            .update({ position_in_queue: entry.position })
+            .eq('id', entry.id)
+            .then(({ error }) => {
+              if (error) console.warn(`Failed to update position for ${entry.id}:`, error)
+            })
+        )
+      )
+    }
   },
 
   deleteFromWaitlist: entryId => {

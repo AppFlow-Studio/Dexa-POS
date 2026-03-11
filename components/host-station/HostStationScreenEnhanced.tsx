@@ -5,7 +5,7 @@ import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
-import { Bell, GripVertical, Plus } from 'lucide-react-native'
+import { Bell, Plus } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
@@ -14,9 +14,20 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
+import Animated, {
+  SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  runOnJS
+} from 'react-native-reanimated'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { useWaitlistDragState } from '@/hooks/useWaitlistDragState'
 import { AddWaitlistModal } from './AddWaitlistModal'
 import TableSelectionSheet from './TableSelectionSheet'
 import WaitlistQueueCard from './WaitlistQueueCard'
+import AnimatedCardItem from './AnimatedCardItem'
 
 interface HostStationScreenProps {
   location_id: string
@@ -47,7 +58,12 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
   const [selectedEntry, setSelectedEntry] = useState<WaitlistEntry | null>(null)
   const [showTablePicker, setShowTablePicker] = useState(false)
   const [now, setNow] = useState(Date.now())
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
+  const [scrollEnabled, setScrollEnabled] = useState(true)
+
+  // Drag-to-reorder state
+  const dragIndex = useSharedValue(-1)
+  const dragStartY = useSharedValue(0)
+  const cardHeight = useSharedValue(0)
 
   // Load waitlist on mount and poll every 15s for external updates
   useEffect(() => {
@@ -112,7 +128,8 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
         let quotedWait = data.quoted_wait_minutes || 15
         if (!data.quoted_wait_minutes) {
           const calc = new WaitTimeCalculator(tables)
-          quotedWait = calc.calculateWaitTime(data.party_size, location_id)
+          const queueDepth = waitlist.filter(e => ['waiting', 'notified', 'arrived'].includes(e.status)).length
+          quotedWait = calc.calculateWaitTime(data.party_size, queueDepth)
         }
 
         await addToWaitlistAsync({
@@ -294,8 +311,7 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
     ]
   )
 
-  // Handle drag-to-reorder using simple array manipulation
-  // In production, you'd use React Native DraggableFlatList or similar
+  // Handle drag-to-reorder
   const handleReorder = useCallback(
     (fromIndex: number, toIndex: number) => {
       // Get current active list
@@ -313,7 +329,6 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
       }))
 
       reorderWaitlist(updatedList)
-      setDraggedItemId(null)
     },
     [waitlist, reorderWaitlist]
   )
@@ -327,29 +342,56 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
     [waitlist]
   )
 
+  // Initialize drag states for each card
+  const cardDragStates = useWaitlistDragState(activeWaitlist.length)
+
   const waitingCount = useMemo(
     () => waitlist.filter(e => e.status === 'waiting').length,
     [waitlist]
   )
 
   return (
-    <View className='flex-1 bg-screen'>
+    <View style={{ flex: 1, backgroundColor: '#0C0F1A' }}>
       {/* Header */}
-      <View className='px-4 pt-4 pb-4 border-b border-border bg-card'>
-        <View className='flex-row items-center justify-between'>
-          <View>
-            <Text className='text-white text-2xl font-bold'>Waitlist</Text>
-            <Text className='text-muted text-sm mt-1'>
-              {waitingCount} parties waiting
-            </Text>
-          </View>
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#2A3050', backgroundColor: '#1E2340' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Text style={{ color: 'white', fontSize: 28, fontWeight: 'bold' }}>Waitlist</Text>
           <TouchableOpacity
             onPress={() => setShowAddForm(true)}
-            className='flex-row items-center gap-2 px-4 py-2.5 rounded-lg bg-teal'
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6, backgroundColor: '#2DD4BF' }}
           >
-            <Plus size={18} color='white' />
-            <Text className='text-white font-semibold'>Add Party</Text>
+            <Plus size={16} color='#0C0F1A' />
+            <Text style={{ color: '#0C0F1A', fontWeight: '600', fontSize: 13 }}>Add Party</Text>
           </TouchableOpacity>
+        </View>
+        <Text style={{ color: '#64748B', fontSize: 14 }}>
+          {waitingCount} parties waiting
+        </Text>
+      </View>
+
+      {/* Legend */}
+      <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#0C0F1A', borderBottomWidth: 1, borderBottomColor: '#2A3050', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ffffff' }} />
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Waiting</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#3b82f6' }} />
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Notified</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#10b981' }} />
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Arrived</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#f59e0b' }} />
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Approaching</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+            <Text style={{ color: '#94A3B8', fontSize: 12 }}>Overdue</Text>
+          </View>
         </View>
       </View>
 
@@ -370,30 +412,31 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
         </View>
       ) : (
         <ScrollView
+          scrollEnabled={scrollEnabled}
           contentContainerStyle={{ padding: 12, gap: 12 }}
           showsVerticalScrollIndicator
         >
           {activeWaitlist.map((item, index) => (
-            <View key={item.id} className='flex-row gap-2 items-center'>
-              <View className='flex-1'>
-                <WaitlistQueueCard
-                  entry={item}
-                  position={index + 1}
-                  now={now}
-                  onNotify={() => handleNotifyParty(item)}
-                  onSeat={() => {
-                    setSelectedEntry(item)
-                    setShowTablePicker(true)
-                  }}
-                  onCancel={() => handleCancelEntry(item)}
-                  onMarkNoShow={() => handleMarkNoShow(item)}
-                />
-              </View>
-              {/* Drag Handle for future enhancement */}
-              <View className='opacity-30 py-3'>
-                <GripVertical size={18} color={colors.label} />
-              </View>
-            </View>
+            <AnimatedCardItem
+              key={item.id}
+              item={item}
+              index={index}
+              now={now}
+              activeWaitlistLength={activeWaitlist.length}
+              cardDragStates={cardDragStates}
+              dragIndex={dragIndex}
+              dragStartY={dragStartY}
+              cardHeight={cardHeight}
+              setScrollEnabled={setScrollEnabled}
+              onReorder={handleReorder}
+              onNotify={() => handleNotifyParty(item)}
+              onSeat={() => {
+                setSelectedEntry(item)
+                setShowTablePicker(true)
+              }}
+              onCancel={() => handleCancelEntry(item)}
+              onMarkNoShow={() => handleMarkNoShow(item)}
+            />
           ))}
         </ScrollView>
       )}

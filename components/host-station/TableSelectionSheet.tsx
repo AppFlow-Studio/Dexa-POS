@@ -6,7 +6,7 @@ import BottomSheet, {
   BottomSheetView
 } from '@gorhom/bottom-sheet'
 import { Check, Users } from 'lucide-react-native'
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useMemo } from 'react'
 import { Pressable, Text, View } from 'react-native'
 
 interface TableSelectionSheetProps {
@@ -24,16 +24,7 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
   entry,
   tables
 }) => {
-  const sheetRef = useRef<BottomSheet>(null)
   const snapPoints = useMemo(() => ['55%'], [])
-
-  useEffect(() => {
-    if (isOpen) {
-      sheetRef.current?.expand()
-    } else {
-      sheetRef.current?.close()
-    }
-  }, [isOpen])
 
   // Filter available tables
   const availableTables = useMemo(
@@ -111,8 +102,7 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
 
   return (
     <BottomSheet
-      ref={sheetRef}
-      index={-1}
+      index={isOpen ? 0 : -1}
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}

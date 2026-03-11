@@ -1,10 +1,13 @@
 import { colors } from '@/lib/theme'
+import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { AlertCircle, ChevronDown } from 'lucide-react-native'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   KeyboardTypeOptions,
+  Modal,
   Platform,
   ScrollView,
   Text,
@@ -118,6 +121,8 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   onCancel,
   isLoading
 }) => {
+  const tables = useFloorPlanStore(s => s.tables)
+
   const [partyName, setPartyName] = useState('')
   const [partySize, setPartySize] = useState('2')
   const [phone, setPhone] = useState('')
@@ -130,6 +135,25 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   const [showSeatingDropdown, setShowSeatingDropdown] = useState(false)
   const [showSectionDropdown, setShowSectionDropdown] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+  const [autoCalculatedWait, setAutoCalculatedWait] = useState<number | null>(null)
+  const [isWaitOverridden, setIsWaitOverridden] = useState(false)
+
+  // Auto-calculate wait time when party size changes
+  useEffect(() => {
+    if (tables.length === 0) return
+
+    const size = parseInt(partySize, 10)
+    if (!isNaN(size) && size > 0) {
+      const calculator = new WaitTimeCalculator(tables)
+      const calculated = calculator.calculateWaitTime(size)
+      setAutoCalculatedWait(calculated)
+
+      // Only update quoted wait if not manually overridden
+      if (!isWaitOverridden) {
+        setQuotedWait(String(calculated))
+      }
+    }
+  }, [partySize, tables, isWaitOverridden])
 
   const validateForm = (): boolean => {
     const newErrors: string[] = []
@@ -255,25 +279,39 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                 </View>
 
                 <View className='flex-1'>
-                  <Text className='text-label text-sm font-medium mb-2'>
-                    Quoted Wait (min)
-                  </Text>
+                  <View className='flex-row items-center gap-1 mb-2'>
+                    <Text className='text-label text-sm font-medium'>
+                      Quoted Wait (min)
+                    </Text>
+                    {autoCalculatedWait && (
+                      <Text className='text-xs font-semibold' style={{ color: '#10b981' }}>
+                        auto: {Math.round(autoCalculatedWait)}m
+                      </Text>
+                    )}
+                  </View>
                   <TextInput
                     value={quotedWait}
-                    onChangeText={setQuotedWait}
-                    placeholder='15'
+                    onChangeText={text => {
+                      setQuotedWait(text)
+                      // Mark as overridden if user manually changes it
+                      if (text !== String(autoCalculatedWait)) {
+                        setIsWaitOverridden(true)
+                      } else {
+                        setIsWaitOverridden(false)
+                      }
+                    }}
                     placeholderTextColor={colors.muted}
                     keyboardType='number-pad'
                     maxLength={3}
                     style={{
                       backgroundColor: colors.screen,
-                      color: 'white',
+                      color: isWaitOverridden ? colors.warning : 'white',
                       fontSize: 16,
                       paddingHorizontal: 14,
                       paddingVertical: 14,
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: colors.border
+                      borderColor: isWaitOverridden ? colors.warning : colors.border
                     }}
                   />
                 </View>
@@ -328,44 +366,15 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                   Seating Preference
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setShowSeatingDropdown(prev => !prev)}
+                  onPress={() => setShowSeatingDropdown(true)}
                   className='flex-row items-center justify-between px-4 py-3 rounded-lg border border-border bg-screen'
                 >
                   <Text className='text-white'>{seatingPreference}</Text>
                   <ChevronDown
                     size={18}
                     color={colors.label}
-                    style={{
-                      transform: [
-                        { rotate: showSeatingDropdown ? '180deg' : '0deg' }
-                      ]
-                    }}
                   />
                 </TouchableOpacity>
-                {showSeatingDropdown && (
-                  <View className='absolute top-14 left-4 right-4 bg-card border border-border rounded-lg z-50 overflow-hidden'>
-                    {SEATING_PREFERENCES.map(item => (
-                      <TouchableOpacity
-                        key={item}
-                        onPress={() => {
-                          setSeatingPreference(item)
-                          setShowSeatingDropdown(false)
-                        }}
-                        className='px-4 py-3 border-b border-border'
-                      >
-                        <Text
-                          className={`text-base ${
-                            item === seatingPreference
-                              ? 'text-teal font-semibold'
-                              : 'text-label'
-                          }`}
-                        >
-                          {item}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
               </View>
 
               {/* Preferred Section Dropdown */}
@@ -374,44 +383,15 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                   Preferred Section
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setShowSectionDropdown(prev => !prev)}
+                  onPress={() => setShowSectionDropdown(true)}
                   className='flex-row items-center justify-between px-4 py-3 rounded-lg border border-border bg-screen'
                 >
                   <Text className='text-white'>{preferredSection}</Text>
                   <ChevronDown
                     size={18}
                     color={colors.label}
-                    style={{
-                      transform: [
-                        { rotate: showSectionDropdown ? '180deg' : '0deg' }
-                      ]
-                    }}
                   />
                 </TouchableOpacity>
-                {showSectionDropdown && (
-                  <View className='absolute top-14 left-4 right-4 bg-card border border-border rounded-lg z-50 overflow-hidden'>
-                    {SECTIONS.map(item => (
-                      <TouchableOpacity
-                        key={item}
-                        onPress={() => {
-                          setPreferredSection(item)
-                          setShowSectionDropdown(false)
-                        }}
-                        className='px-4 py-3 border-b border-border'
-                      >
-                        <Text
-                          className={`text-base ${
-                            item === preferredSection
-                              ? 'text-teal font-semibold'
-                              : 'text-label'
-                          }`}
-                        >
-                          {item}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
               </View>
             </View>
           )}
@@ -468,6 +448,96 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Seating Preference Modal */}
+      <Modal
+        visible={showSeatingDropdown}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setShowSeatingDropdown(false)}
+      >
+        <View className='flex-1 bg-black/50 items-center justify-center px-4'>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowSeatingDropdown(false)}
+            className='absolute inset-0'
+          />
+          <View className='bg-card border border-border rounded-2xl w-full max-w-xs overflow-hidden z-10'>
+            <View className='px-4 py-3 border-b border-border'>
+              <Text className='text-white font-semibold text-lg'>
+                Seating Preference
+              </Text>
+            </View>
+            <ScrollView nestedScrollEnabled style={{ maxHeight: 300 }}>
+              {SEATING_PREFERENCES.map(item => (
+                <TouchableOpacity
+                  key={item}
+                  onPress={() => {
+                    setSeatingPreference(item)
+                    setShowSeatingDropdown(false)
+                  }}
+                  className='px-4 py-3 border-b border-border/50'
+                >
+                  <Text
+                    className={`text-base ${
+                      item === seatingPreference
+                        ? 'text-teal font-semibold'
+                        : 'text-label'
+                    }`}
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Preferred Section Modal */}
+      <Modal
+        visible={showSectionDropdown}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setShowSectionDropdown(false)}
+      >
+        <View className='flex-1 bg-black/50 items-center justify-center px-4'>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowSectionDropdown(false)}
+            className='absolute inset-0'
+          />
+          <View className='bg-card border border-border rounded-2xl w-full max-w-xs overflow-hidden z-10'>
+            <View className='px-4 py-3 border-b border-border'>
+              <Text className='text-white font-semibold text-lg'>
+                Preferred Section
+              </Text>
+            </View>
+            <ScrollView nestedScrollEnabled style={{ maxHeight: 300 }}>
+              {SECTIONS.map(item => (
+                <TouchableOpacity
+                  key={item}
+                  onPress={() => {
+                    setPreferredSection(item)
+                    setShowSectionDropdown(false)
+                  }}
+                  className='px-4 py-3 border-b border-border/50'
+                >
+                  <Text
+                    className={`text-base ${
+                      item === preferredSection
+                        ? 'text-teal font-semibold'
+                        : 'text-label'
+                    }`}
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   )
 }
