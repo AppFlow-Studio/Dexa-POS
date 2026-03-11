@@ -290,82 +290,43 @@ const OrderProcessing = () => {
         )}
 
         <View className="flex-1 px-2 pt-0 bg-background rounded-tl-3xl ">
-          {/* <Accordion
-            type="single"
-            collapsible
-            onValueChange={handleAccordionChange}
-            className="border-none p-0"         
-          >
-            <AccordionItem value="orders" className="border-none p-0 =" >
-              <AccordionTrigger className="p-2 border-none">
+          {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
+          {renderStage >= 2 ? (
+            <MenuSection
+              headerLeft={
                 <View className="flex-row items-center gap-x-2">
-                  <Text className="text-xl font-bold text-white">
+                  <Text className="text-2xl font-bold text-white">
                     Order Line
                   </Text>
                   {displayOrders?.length > 0 && (
-                    <Badge className="ml-1 bg-gray-700 rounded-md px-2 py-0.5 justify-center items-center">
+                    <Badge className="ml-1 bg-gray-700 rounded-full px-4 py-0.5 justify-center items-center">
                       <Text className="text-sm font-semibold text-gray-300">
                         {displayOrders.length}
                       </Text>
                     </Badge>
                   )}
                 </View>
-              </AccordionTrigger>
-              <AccordionContent > */}
-                {/* Defer rendering of heavy list */}
-                {/* {renderStage >= 2 ? (
-                  <OrderLineSection />
-                ) : (
-                  <View className="h-64 items-center justify-center">
-                    <Text className="text-gray-500">Loading orders...</Text>
+              }
+              headerBelow={
+                !isAccordionOpen && displayOrders.length > 0 ? (
+                  <View className="px-2 border-b border-border py-1">
+                    <FlatList
+                      horizontal
+                      data={displayOrders}
+                      keyExtractor={badgeKeyExtractor}
+                      className="mt-1 max-h-12"
+                      contentContainerStyle={badgeContentStyle}
+                      showsHorizontalScrollIndicator={false}
+                      initialNumToRender={10}
+                      maxToRenderPerBatch={10}
+                      windowSize={3}
+                      removeClippedSubviews={true}
+                      renderItem={renderOrderBadge}
+                    />
                   </View>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion> */}
-           <View className="flex-row items-center gap-x-2 py-4 px-2" >
-            <Text className="text-2xl font-bold text-white">
-              Order Line
-            </Text>
-            {displayOrders?.length > 0 && (
-              <Badge className="ml-1 bg-gray-700 rounded-full px-4 py-0.5 justify-center items-center">
-                <Text className="text-sm font-semibold text-gray-300">
-                  {displayOrders.length}
-                </Text>
-              </Badge>
-            )}
-          </View>
-
-          <View
-            className={
-              !isAccordionOpen && displayOrders.length > 0
-                ? "opacity-100"
-                : "opacity-0"
-            }
-            style={
-              !isAccordionOpen && displayOrders.length > 0
-                ? { height: "auto" }
-                : { height: 0 }
-            }
-          >
-            <FlatList
-              horizontal
-              data={displayOrders}
-              keyExtractor={badgeKeyExtractor}
-              className="mt-1 max-h-12"
-              contentContainerStyle={badgeContentStyle}
-              showsHorizontalScrollIndicator={false}
-              initialNumToRender={10}
-              maxToRenderPerBatch={10}
-              windowSize={3}
-              removeClippedSubviews={true}
-              renderItem={renderOrderBadge}
+                ) : null
+              }
             />
-          </View>
-
-          {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
-          {renderStage >= 2 ? (
-            <MenuSection />
           ) : (
             // MenuSection skeleton: matches the grid layout
             <View className="flex-1 pt-2">

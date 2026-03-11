@@ -20,6 +20,7 @@ const PaymentSuccessView = () => {
   const { show } = useToast();
 
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const autoPrintReceipt = useStoreSettingsStore((s) => s.autoPrintReceipt);
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
 
@@ -32,6 +33,17 @@ const PaymentSuccessView = () => {
   useEffect(() => {
     usePaymentStore.getState().setPaymentClean();
   }, []);
+
+  // Auto-print receipt on mount when setting enabled
+  useEffect(() => {
+    if (autoPrintReceipt && activeOrderId) {
+      const order = useOrderStore.getState().ordersById[activeOrderId];
+      if (order && selectedStore) {
+        PrinterService.printReceipt(order, selectedStore)
+          .catch((e) => console.warn("[PaymentSuccessView] Auto-print receipt failed:", e));
+      }
+    }
+  }, []); // Run once on mount — payment just completed
 
   const activeOrder = useActiveOrder();
   const items = activeOrder?.items || [];

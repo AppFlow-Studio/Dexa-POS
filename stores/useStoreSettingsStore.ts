@@ -89,6 +89,10 @@ export interface StoreSettings {
   // Organization branding
   organizationLogoUrl: string | null;
 
+  // Auto-Print Settings
+  autoPrintKitchenTickets: boolean;
+  autoPrintReceipt: boolean;
+
   // KDS Settings
   kdsAutoFireEnabled: boolean;
   kdsAutoFireDelayMinutes: number; // Minutes before auto-firing pending items
@@ -184,6 +188,10 @@ const initialData: StoreSettings = {
   preOrderMaxDays: 30,
   preOrderMinAdvanceMinutes: 120, // 2 hours
   preOrderMaxDaily: 25,
+
+  // Auto-Print Settings
+  autoPrintKitchenTickets: true,   // ON by default (most restaurants want this)
+  autoPrintReceipt: false,          // OFF by default (many use digital receipts)
 
   // KDS Settings
   kdsAutoFireEnabled: false,
@@ -400,6 +408,9 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         preOrderMaxDays: state.preOrderMaxDays,
         preOrderMinAdvanceMinutes: state.preOrderMinAdvanceMinutes,
         preOrderMaxDaily: state.preOrderMaxDaily,
+        // Auto-Print Settings
+        autoPrintKitchenTickets: state.autoPrintKitchenTickets,
+        autoPrintReceipt: state.autoPrintReceipt,
         // KDS Settings
         kdsAutoFireEnabled: state.kdsAutoFireEnabled,
         kdsAutoFireDelayMinutes: state.kdsAutoFireDelayMinutes,

@@ -80,7 +80,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   };
 
   return (
-    <View className="flex-row justify-between items-start gap-4 border-r border-border w-[43%]">
+    <View className="flex-row justify-between items-start gap-4 w-full">
       <View className="bg-background w-full p-1.5 rounded-xl flex-shrink flex flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
           <ScrollView

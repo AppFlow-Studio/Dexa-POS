@@ -268,7 +268,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
               ? `#${activeOrder.order_number}`
               : activeOrder.db_order_id
                 ? `#${activeOrder.db_order_id.substring(0, 8)}`
-                : `#${activeOrder.id?.split("_").pop()?.substring(0, 8)}`}
+                : ""}
         </Text>
         <TouchableOpacity
           onPress={onPressStartNewCourse}

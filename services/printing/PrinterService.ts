@@ -75,7 +75,13 @@ export const PrinterService = {
     items: CartItem[],
     location: SelectedLocation,
   ): Promise<boolean> {
-    const routedItems = routeKitchenItems(items, location.id);
+    const routedItems = routeKitchenItems(items, location.id, {
+      orderType: order.order_type,
+    });
+
+    console.log(
+      `[PrinterService] printKitchenTickets: items=${items.length}, routedPrinters=${routedItems.size}`,
+    );
 
     if (routedItems.size === 0) {
       console.warn("[PrinterService] No kitchen printers configured");
@@ -86,12 +92,20 @@ export const PrinterService = {
       const printer = usePrinterStore.getState().getPrinterById(printerId);
       if (!printer) continue;
 
+      console.log(
+        `[PrinterService] Routing ${printerItems.length} items to ${printer.printerName} (${printer.printerType})`,
+      );
+
+      // Check if this printer should suppress modifiers
+      const routingConfig = usePrinterStore.getState().getRoutingConfig(printerId);
+
       const ticketData = buildKitchenTicketData(
         order,
         printerItems,
         printer,
         false,
         location,
+        routingConfig.printModifiers,
       );
       const job = createJobForPrinter(
         printer,
@@ -115,7 +129,9 @@ export const PrinterService = {
     voidedItems: CartItem[],
     location: SelectedLocation,
   ): Promise<boolean> {
-    const routedItems = routeKitchenItems(voidedItems, location.id);
+    const routedItems = routeKitchenItems(voidedItems, location.id, {
+      orderType: order.order_type,
+    });
 
     if (routedItems.size === 0) {
       return false;
@@ -125,12 +141,15 @@ export const PrinterService = {
       const printer = usePrinterStore.getState().getPrinterById(printerId);
       if (!printer) continue;
 
+      const routingConfig = usePrinterStore.getState().getRoutingConfig(printerId);
+
       const ticketData = buildKitchenTicketData(
         order,
         printerItems,
         printer,
         true,
         location,
+        routingConfig.printModifiers,
       );
       const job = createJobForPrinter(
         printer,
@@ -387,9 +406,16 @@ async function processNextJob(): Promise<void> {
 
     const driver = getDriver(printer);
 
+    console.log(
+      `[PrinterService] Processing job ${job.id}: printer=${printer.printerName}, type=${printer.printerType}, connected=${driver.isConnected()}`,
+    );
+
     // Initialize driver if not connected
     if (!driver.isConnected()) {
       await driver.initialize(printer);
+      console.log(
+        `[PrinterService] Driver initialized for ${printer.printerName}`,
+      );
       await usePrinterStore.getState().syncPrinterStatus(printer.id, {
         isConnected: true,
         lastStatus: "connected",
@@ -435,7 +461,7 @@ async function processNextJob(): Promise<void> {
           job.jobType === "void_ticket" ? "Void ticket" : "Print job";
         toastService.show({
           title: "Print Failed",
-          message: `${jobLabel} could not be printed. Check printer connection.`,
+          message: `${jobLabel} failed: ${errorMsg}`,
           type: "error",
           duration: 6000,
         });
@@ -684,6 +710,7 @@ function buildKitchenTicketData(
   printer: PrinterConfig,
   isVoidTicket: boolean,
   location?: SelectedLocation,
+  printModifiers: boolean = true,
 ): KitchenTicketData {
   const template = location
     ? useReceiptTemplateStore.getState().getKitchenTemplate(location.id)
@@ -704,19 +731,21 @@ function buildKitchenTicketData(
   const kitchenItems: KitchenTicketItemData[] = items.map((item) => {
     const modifiers: string[] = [];
 
-    if (item.customizations?.size) {
-      modifiers.push(`Size: ${item.customizations.size.name}`);
-    }
+    if (printModifiers) {
+      if (item.customizations?.size) {
+        modifiers.push(`Size: ${item.customizations.size.name}`);
+      }
 
-    item.customizations?.modifiers?.forEach((modGroup) => {
-      modGroup.options.forEach((opt) => {
-        modifiers.push(opt.name);
+      item.customizations?.modifiers?.forEach((modGroup) => {
+        modGroup.options.forEach((opt) => {
+          modifiers.push(opt.name);
+        });
       });
-    });
 
-    item.customizations?.addOns?.forEach((addon) => {
-      modifiers.push(addon.name);
-    });
+      item.customizations?.addOns?.forEach((addon) => {
+        modifiers.push(addon.name);
+      });
+    }
 
     // Extract allergy info from notes if present
     const notes = item.customizations?.notes;

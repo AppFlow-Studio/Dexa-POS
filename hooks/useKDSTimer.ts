@@ -49,12 +49,11 @@ export function useKDSTimer() {
 /**
  * Returns a stable bucketed elapsed string that only changes
  * at minute boundaries, preventing unnecessary re-renders.
+ * @param startTimeEpoch — milliseconds since epoch (0 = unknown)
  */
-export function getBucketedElapsed(startTime: string | null): string {
-  if (!startTime) return "Now";
-  const now = Date.now();
-  const opened = new Date(startTime).getTime();
-  const diffMs = now - opened;
+export function getBucketedElapsed(startTimeEpoch: number): string {
+  if (startTimeEpoch === 0) return "Now";
+  const diffMs = Date.now() - startTimeEpoch;
   const diffMins = Math.floor(diffMs / 60000);
 
   if (diffMins < 1) return "Now";
@@ -68,12 +67,11 @@ export function getBucketedElapsed(startTime: string | null): string {
 /**
  * Returns urgency level 0-3 based on elapsed time.
  * 0 = green (<5m), 1 = yellow (5-9m), 2 = orange (10-14m), 3 = red (15m+)
+ * @param startTimeEpoch — milliseconds since epoch (0 = unknown)
  */
-export function getUrgencyLevel(startTime: string | null): number {
-  if (!startTime) return 0;
-  const diffMins = Math.floor(
-    (Date.now() - new Date(startTime).getTime()) / 60000,
-  );
+export function getUrgencyLevel(startTimeEpoch: number): number {
+  if (startTimeEpoch === 0) return 0;
+  const diffMins = Math.floor((Date.now() - startTimeEpoch) / 60000);
   if (diffMins >= 15) return 3;
   if (diffMins >= 10) return 2;
   if (diffMins >= 5) return 1;
@@ -81,6 +79,6 @@ export function getUrgencyLevel(startTime: string | null): number {
 }
 
 /** Maps urgency level to color hex */
-export function getUrgencyColor(startTime: string | null): string {
-  return URGENCY_COLORS[getUrgencyLevel(startTime)];
+export function getUrgencyColor(startTimeEpoch: number): string {
+  return URGENCY_COLORS[getUrgencyLevel(startTimeEpoch)];
 }

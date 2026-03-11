@@ -1,5 +1,23 @@
-import { PrintDocument, PrintNode } from "@/types/print-document";
+import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
 import { KitchenTicketData, KitchenTicketItemData } from "@/types/printer";
+
+/**
+ * Build format that scales down magnification to fit content on one line.
+ * Priority: doubleWidth+doubleHeight → doubleHeight only → normal bold.
+ */
+function scaledFormat(
+  text: string,
+  lineWidth: number,
+  desired: { doubleWidth?: boolean; doubleHeight?: boolean },
+): PrintTextFormat {
+  if (desired.doubleWidth && text.length <= Math.floor(lineWidth / 2)) {
+    return { bold: true, doubleHeight: desired.doubleHeight, doubleWidth: true };
+  }
+  if (desired.doubleHeight && text.length <= lineWidth) {
+    return { bold: true, doubleHeight: true };
+  }
+  return { bold: true };
+}
 
 /**
  * Builds a PrintDocument for a kitchen ticket.
@@ -18,17 +36,18 @@ export function buildKitchenTicketDocument(
       type: "text_line",
       content: "** VOID **",
       align: "center",
-      format: { bold: true, doubleHeight: true, doubleWidth: true },
+      format: scaledFormat("** VOID **", w, { doubleWidth: true, doubleHeight: true }),
     });
     nodes.push({ type: "divider", style: "double", lineWidth: w });
   }
 
   // ── Order Header ──
+  const orderHeaderText = `ORDER ${data.orderNumber}`;
   nodes.push({
     type: "text_line",
-    content: `ORDER #${data.orderNumber}`,
+    content: orderHeaderText,
     align: "center",
-    format: { bold: true, doubleHeight: true, doubleWidth: true },
+    format: scaledFormat(orderHeaderText, w, { doubleWidth: true, doubleHeight: true }),
   });
 
   // Combined order type + table on one line
@@ -40,7 +59,7 @@ export function buildKitchenTicketDocument(
       type: "text_line",
       content: typeLine,
       align: "center",
-      format: { bold: true, doubleHeight: true },
+      format: scaledFormat(typeLine, w, { doubleHeight: true }),
     });
   }
 
@@ -50,6 +69,7 @@ export function buildKitchenTicketDocument(
       type: "text_line",
       content: `Server: ${data.serverName}`,
       align: "center",
+      format: { bold: true },
     });
   }
 
@@ -87,6 +107,7 @@ export function buildKitchenTicketDocument(
       type: "text_line",
       content: `${data.totalItemCount} items total`,
       align: "center",
+      format: { bold: true },
     });
   }
 
@@ -146,20 +167,18 @@ function pushItemsFlat(
 function pushSingleItem(
   nodes: PrintNode[],
   item: KitchenTicketItemData,
-  _w: number,
+  w: number,
   cfg: KitchenTicketData["templateConfig"],
 ): void {
   const useLargeText = cfg?.largeItemText !== false;
   const prefix = item.isVoided ? "VOID " : "";
   const qtyStr = `${item.quantity}x `;
+  const itemText = `${prefix}${qtyStr}${item.name}`;
 
   nodes.push({
     type: "text_line",
-    content: `${prefix}${qtyStr}${item.name}`,
-    format: {
-      bold: true,
-      doubleHeight: useLargeText ? true : undefined,
-    },
+    content: itemText,
+    format: scaledFormat(itemText, w, { doubleHeight: useLargeText }),
   });
 
   // Modifiers (conditional)

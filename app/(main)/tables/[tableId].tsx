@@ -21,6 +21,8 @@ import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
@@ -39,6 +41,8 @@ const UpdateTableScreen = () => {
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
   const { defaultSittingTimeMinutes } = useSettingsStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const autoPrintKitchenTickets = useStoreSettingsStore((s) => s.autoPrintKitchenTickets);
 
   // --- Extracted hooks ---
   const {
@@ -102,18 +106,27 @@ const UpdateTableScreen = () => {
     { id: string; name: string; quantity: number }[]
   >([]);
 
-  // --- Deferred rendering (same double-rAF pattern as order-processing) ---
-  const [renderStage, setRenderStage] = useState(0);
+  // --- Deferred rendering ---
+  // Skip skeleton (stage 0) when order data is already in the store (e.g. navigating from tables screen)
+  const [renderStage, setRenderStage] = useState(() => {
+    const orderState = useOrderStore.getState();
+    const oid = orderState.activeOrderId;
+    const hasOrder = oid && orderState.ordersById[oid]?.service_location_id === currentTableId;
+    return hasOrder ? 1 : 0;
+  });
   useEffect(() => {
     let cancelled = false;
+    if (renderStage >= 2) return;
     const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (cancelled) return;
+      if (cancelled) return;
+      if (renderStage < 1) {
         setRenderStage(1);
         requestAnimationFrame(() => {
           if (!cancelled) setRenderStage(2);
         });
-      });
+      } else {
+        setRenderStage(2);
+      }
     });
     return () => {
       cancelled = true;
@@ -470,6 +483,12 @@ const UpdateTableScreen = () => {
 
     if (result.success) {
       coursingHook.markCourseSent(activeOrder.id, course);
+
+      // Auto-print kitchen tickets for the sent items
+      if (autoPrintKitchenTickets && selectedStore) {
+        PrinterService.printKitchenTickets(activeOrder, itemsInCourse, selectedStore)
+          .catch((e) => console.warn("[TableView] Auto-print kitchen tickets failed:", e));
+      }
 
       if (activeOrder.order_status === "draft") {
         updateOrderStatus(activeOrder.id, "sent_to_kitchen");

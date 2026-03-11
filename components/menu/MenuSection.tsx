@@ -54,6 +54,8 @@ import PreviousOrdersSection from "./PreviousOrdersSection";
 interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
   isTableOrder?: boolean;
+  headerLeft?: React.ReactNode;
+  headerBelow?: React.ReactNode;
 }
 
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
@@ -112,6 +114,8 @@ SpacerItem.displayName = "SpacerItem";
 const MenuSectionContent: React.FC<MenuSectionProps> = ({
   onOrderClosedCheck,
   isTableOrder = false,
+  headerLeft,
+  headerBelow,
 }) => {
   // ============================================================
   // MENU BLOCKING - For inline overlay pattern
@@ -382,49 +386,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   return (
     <>
       <View
-        className={`mt-4 flex-1 bg-background ${isTableOrder ? "rounded-tl-3xl" : ""}`}
+        className={`mt-0 flex-1 bg-background ${isTableOrder ? "rounded-tl-3xl" : ""}`}
       >
+        {/* Row 1: Header (Order Line) + Toolbar */}
         <View
-          className={`${isTableOrder ? "px-3 py-2" : ""} flex flex-row items-center justify-between pb-3`}
+          className={`${isTableOrder ? "px-3 py-2" : "px-2 py-2"} flex-row items-center`}
         >
-          {/* <View className="flex-row items-center gap-3">
-            <Text className="text-xl font-bold text-white">Menu</Text>
-            {!isTableOrder && (
-              <TouchableOpacity
-                onPress={() => {}}
-                className="flex-row items-center bg-panel border border-gray-600 rounded-lg px-3 py-2"
-              >
-                <Text className="text-white font-medium mr-2 text-base">
-                  Order Type:
-                </Text>
-                <Text className="text-blue-400 font-semibold text-base">
-                  {typeof currentOrderType === "string"
-                    ? currentOrderType
-                    : (currentOrderType as any)?.label || "Takeaway"}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View> */}
-          {activeTab === "Menu" &&
-            (activeMeal ? (
-              <MenuControls
-                activeMeal={activeMeal}
-                onMealChange={handleMealChange}
-                activeCategory={activeCategory || ""}
-                onCategoryChange={setActiveCategory}
-              />
-            ) : (
-              <View className="flex-1 items-center justify-center mt-20">
-                <Clock size={64} color={colors.muted} />
-                <Text className="text-white text-2xl font-bold mt-4">
-                  No Menu Available
-                </Text>
-                <Text className="text-gray-400 text-base mt-2 text-center px-10">
-                  There are currently no menus scheduled for this time. Please
-                  check back later or select a different order type.
-                </Text>
-              </View>
-            ))}
+          {headerLeft}
           <View
             className={`flex-1 flex-row justify-end items-center gap-x-2 ${isTableOrder ? "px-3" : ""}`}
           >
@@ -436,13 +404,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   : ""
               }`}
             >
-              <Table color={colors.label} size={20} />
+              <Table color={colors.label} size={14} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={openSearch}
               className={`flex-row items-center bg-panel border  rounded-lg p-3 justify-start`}
             >
-              <Search color={colors.label} size={20} />
+              <Search color={colors.label} size={14} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleTabOpenItem}
@@ -452,7 +420,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   : ""
               }`}
             >
-              <PackagePlus color={colors.label} size={20} />
+              <PackagePlus color={colors.label} size={14} />
             </TouchableOpacity>
 
             {!isTableOrder && (
@@ -460,7 +428,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                 href="/tables"
                 className={`flex-row items-center bg-panel border rounded-lg p-3 justify-start`}
               >
-                <Sofa color={colors.label} size={20} />
+                <Sofa color={colors.label} size={14} />
               </Link>
             )}
 
@@ -473,8 +441,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                     : ""
                 }`}
               >
-                <Logs color={colors.label} size={20} />
-                <Text className="text-gray-300 ml-2 text-base">Orders</Text>
+                <Logs color={colors.label} size={14} />
+                <Text className="text-gray-300 ml-2 text-sm">Orders</Text>
               </TouchableOpacity>
             )}
 
@@ -482,13 +450,13 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
               <DialogTrigger asChild className="border-none">
                 <Button
                   variant="outline"
-                  className="w-fit bg-panel flex-row items-center gap-2 h-14"
+                  className="w-fit bg-panel flex-row items-center gap-2 h-14 p-0"
                 >
-                  <Text className="text-white font-medium text-lg">
+                  <Text className="text-white font-medium text-sm">
                     {activeMeal || "Select Menu"}
                   </Text>
 
-                  <ChevronDown color={colors.label} size={18} />
+                  <ChevronDown color={colors.label} size={14} />
                 </Button>
               </DialogTrigger>
               <DialogContent className="min-w-2xl w-[500px] aspect-square bg-card border-gray-700">
@@ -537,7 +505,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                       >
                         <View className="flex-row justify-between items-center">
                           <Text
-                            className={`font-bold text-lg ${
+                            className={`font-bold text-base ${
                               isSelected ? "text-white" : "text-gray-100"
                             }`}
                           >
@@ -585,6 +553,33 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             </Dialog>
           </View>
         </View>
+
+        {/* Row 2: Optional content below header (e.g. order badges) */}
+        {headerBelow}
+
+        {/* Row 3: Category controls */}
+        {activeTab === "Menu" &&
+          (activeMeal ? (
+            <View className={`${isTableOrder ? "px-3" : ""} pb-3`}>
+              <MenuControls
+                activeMeal={activeMeal}
+                onMealChange={handleMealChange}
+                activeCategory={activeCategory || ""}
+                onCategoryChange={setActiveCategory}
+              />
+            </View>
+          ) : (
+            <View className="flex-1 items-center justify-center mt-20">
+              <Clock size={64} color={colors.muted} />
+              <Text className="text-white text-2xl font-bold mt-4">
+                No Menu Available
+              </Text>
+              <Text className="text-gray-400 text-base mt-2 text-center px-10">
+                There are currently no menus scheduled for this time. Please
+                check back later or select a different order type.
+              </Text>
+            </View>
+          ))}
 
         <View className={`flex-1 ${isTableOrder ? "px-3" : ""}`}>
           

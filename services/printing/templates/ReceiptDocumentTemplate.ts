@@ -1,6 +1,24 @@
-import { PrintDocument, PrintNode } from "@/types/print-document";
+import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
 import { ReceiptTemplateData } from "@/types/printer";
 import { formatCurrency } from "@/utils/currency";
+
+/**
+ * Build format that scales down magnification to fit content on one line.
+ * Priority: doubleWidth+doubleHeight → doubleHeight only → normal bold.
+ */
+function scaledFormat(
+  text: string,
+  lineWidth: number,
+  desired: { doubleWidth?: boolean; doubleHeight?: boolean },
+): PrintTextFormat {
+  if (desired.doubleWidth && text.length <= Math.floor(lineWidth / 2)) {
+    return { bold: true, doubleHeight: desired.doubleHeight, doubleWidth: true };
+  }
+  if (desired.doubleHeight && text.length <= lineWidth) {
+    return { bold: true, doubleHeight: true };
+  }
+  return { bold: true };
+}
 
 /**
  * Builds a PrintDocument for a receipt.
@@ -22,7 +40,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     type: "text_line",
     content: data.storeName,
     align: "center",
-    format: { bold: true, doubleHeight: true },
+    format: scaledFormat(data.storeName, w, { doubleHeight: true }),
   });
 
   if (data.storeAddress) {
@@ -46,6 +64,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     left: `Order #${data.orderNumber}`,
     right: data.orderDate,
     lineWidth: w,
+    format: { bold: true },
   });
 
   // Combined order type + table on one line
@@ -53,7 +72,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     const typeLine = data.tableName
       ? `${data.orderType} - ${data.tableName}`
       : data.orderType;
-    nodes.push({ type: "text_line", content: typeLine });
+    nodes.push({ type: "text_line", content: typeLine, format: { bold: true } });
   }
 
   if (data.customerName) {
@@ -62,10 +81,11 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Customer:",
       right: data.customerName,
       lineWidth: w,
+      format: { bold: true },
     });
   }
   if (cfg?.showServerName !== false && data.serverName) {
-    nodes.push({ type: "text_line", content: `Server: ${data.serverName}` });
+    nodes.push({ type: "text_line", content: `Server: ${data.serverName}`, format: { bold: true } });
   }
 
   nodes.push({ type: "divider", style: "dotted", lineWidth: w });
@@ -111,6 +131,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     left: "Subtotal",
     right: formatCurrency(data.subtotal),
     lineWidth: w,
+    format: { bold: true },
   });
 
   if (data.tax > 0) {
@@ -123,6 +144,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: taxLabel,
       right: formatCurrency(data.tax),
       lineWidth: w,
+      format: { bold: true },
     });
   }
   if (data.discount > 0) {
@@ -131,6 +153,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Discount",
       right: `-${formatCurrency(data.discount)}`,
       lineWidth: w,
+      format: { bold: true },
     });
   }
   if (data.tip > 0) {
@@ -139,16 +162,18 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Tip",
       right: formatCurrency(data.tip),
       lineWidth: w,
+      format: { bold: true },
     });
   }
 
   nodes.push({ type: "divider", style: "double", lineWidth: w });
+  const totalLine = `Total  ${formatCurrency(data.total)}`;
   nodes.push({
     type: "two_column",
     left: "Total",
     right: formatCurrency(data.total),
     lineWidth: w,
-    format: { bold: true },
+    format: scaledFormat(totalLine, w, { doubleHeight: true }),
   });
 
   // Cash prices section (only if different)
@@ -159,6 +184,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Subtotal (Cash)",
       right: formatCurrency(data.cashSubtotal ?? 0),
       lineWidth: w,
+      format: { bold: true },
     });
 
     if ((data.cashTax ?? 0) > 0) {
@@ -171,6 +197,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         left: cashTaxLabel,
         right: formatCurrency(data.cashTax ?? 0),
         lineWidth: w,
+        format: { bold: true },
       });
     }
     if (data.discount > 0) {
@@ -179,6 +206,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         left: "Discount",
         right: `-${formatCurrency(data.discount)}`,
         lineWidth: w,
+        format: { bold: true },
       });
     }
     if (data.tip > 0) {
@@ -187,16 +215,18 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         left: "Tip",
         right: formatCurrency(data.tip),
         lineWidth: w,
+        format: { bold: true },
       });
     }
 
     nodes.push({ type: "divider", style: "double", lineWidth: w });
+    const cashTotalLine = `Total (Cash)  ${formatCurrency(data.cashTotal)}`;
     nodes.push({
       type: "two_column",
       left: "Total (Cash)",
       right: formatCurrency(data.cashTotal),
       lineWidth: w,
-      format: { bold: true },
+      format: scaledFormat(cashTotalLine, w, { doubleHeight: true }),
     });
   }
 
@@ -208,13 +238,15 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Tip:",
       right: "________",
       lineWidth: w,
+      format: { bold: true },
     });
+    const tipTotalLine = "Total w/ Tip:  ________";
     nodes.push({
       type: "two_column",
       left: "Total w/ Tip:",
       right: "________",
       lineWidth: w,
-      format: { bold: true },
+      format: scaledFormat(tipTotalLine, w, { doubleHeight: true }),
     });
   }
 
@@ -228,6 +260,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         left: `Paid: ${payment.method}`,
         right: formatCurrency(payment.amount),
         lineWidth: w,
+        format: { bold: true },
       });
       if (payment.last4) {
         nodes.push({
@@ -244,6 +277,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         left: "Amount Paid",
         right: formatCurrency(data.amountPaid),
         lineWidth: w,
+        format: { bold: true },
       });
     }
     if (data.amountDue && data.amountDue > 0) {
@@ -252,6 +286,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         left: "Amount Due",
         right: formatCurrency(data.amountDue),
         lineWidth: w,
+        format: { bold: true },
       });
     }
   }
@@ -259,7 +294,7 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   // ── Footer ──
   if (data.footerMessage) {
     nodes.push({ type: "divider", style: "dotted", lineWidth: w });
-    nodes.push({ type: "text_line", content: data.footerMessage, align: "center" });
+    nodes.push({ type: "text_line", content: data.footerMessage, align: "center", format: { bold: true } });
   }
 
   // ── Barcode ──

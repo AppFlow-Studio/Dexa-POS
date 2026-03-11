@@ -5,11 +5,13 @@ import {
   getAutoRetryCount,
   isAutoRetryInProgress,
 } from "@/services/offlineSyncService";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import {
@@ -108,6 +110,8 @@ const BillSectionContent = ({
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
   const { show } = useToast();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const autoPrintKitchenTickets = useStoreSettingsStore((s) => s.autoPrintKitchenTickets);
 
   // Memoize computed values to prevent unnecessary recalculations
   const cart = useMemo(() => activeOrderItems || [], [activeOrderItems]);
@@ -309,12 +313,27 @@ const BillSectionContent = ({
       return;
     }
 
+    // Capture new items BEFORE sendNewItemsToKitchen (which merges/mutates statuses)
+    const currentOrder = activeOrderId
+      ? useOrderStore.getState().ordersById[activeOrderId]
+      : null;
+    const newItems = currentOrder?.items.filter(
+      (item) => !item.kitchen_status || item.kitchen_status === "new",
+    ) || [];
+
     if (activeOrderType === "dine_in" && selectedTable) {
       assignOrderToTable(activeOrderId!, selectedTable.id);
       // Table session status updates are now handled through session-based APIs
       clearSelectedTable();
     }
     sendNewItemsToKitchen();
+
+    // Auto-print kitchen tickets for new items
+    if (autoPrintKitchenTickets && selectedStore && newItems.length > 0 && currentOrder) {
+      PrinterService.printKitchenTickets(currentOrder, newItems, selectedStore)
+        .catch((e) => console.warn("[BillSection] Auto-print kitchen tickets failed:", e));
+    }
+
     const newOrder = startNewOrder();
     setActiveOrder(newOrder.id);
   };

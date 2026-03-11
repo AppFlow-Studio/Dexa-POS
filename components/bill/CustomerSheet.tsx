@@ -22,9 +22,11 @@ import BottomSheet, {
     BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { ArrowLeft, Search, X } from "lucide-react-native";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, {
     useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -53,14 +55,19 @@ export const formatAddress = (address: string | null | undefined) => {
 };
 
 const CustomerSheet: React.FC = () => {
-  const sheetRef = useRef<BottomSheet>(null);
-  const { isOpen, closeSheet } = useCustomerSheetStore();
+  const sheetRef = useRef<BottomSheetMethods>(null);
+  const { isOpen, closeSheet, setSheetRef } = useCustomerSheetStore();
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const order = useActiveOrder();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { show } = useToast();
   const supabase = useSupabaseClient();
+
+  // Register ref with store so openSheet()/closeSheet() can call expand()/close() directly
+  useLayoutEffect(() => {
+    setSheetRef(sheetRef as React.RefObject<BottomSheetMethods>);
+  }, [setSheetRef]);
 
   // Mode: "search" or "add"
   const [viewMode, setViewMode] = useState<"search" | "add">("search");
@@ -80,14 +87,6 @@ const CustomerSheet: React.FC = () => {
 
   const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
   const isAssignDisabled = !activeOrderId;
-
-  useEffect(() => {
-    if (isOpen) {
-      sheetRef.current?.expand();
-    } else {
-      sheetRef.current?.close();
-    }
-  }, [isOpen]);
 
   // Use ref to access latest values without causing re-renders
   const storeRef = useRef({ selectedStore, supabase });

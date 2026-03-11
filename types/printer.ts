@@ -66,6 +66,8 @@ export interface PrinterConfig {
   isDefaultKitchen: boolean;
   autoPrintReceipt: boolean;
   printOrderTickets: boolean;
+  routingMode: PrinterRoutingMode;
+  printModifiers: boolean;
 
   // Status
   isActive: boolean;
@@ -148,7 +150,7 @@ export interface PrinterStatusResult {
 }
 
 // ============================================================================
-// ROUTE RULES
+// ROUTE RULES (legacy)
 // ============================================================================
 
 export interface PrinterRouteRule {
@@ -156,6 +158,32 @@ export interface PrinterRouteRule {
   categoryName: string;
   printerId: string;
   isEnabled: boolean;
+}
+
+// ============================================================================
+// PRINTER ROUTING V2 (per-printer routing config)
+// ============================================================================
+
+export type PrinterRoutingMode = "all" | "unassigned" | "custom";
+
+export type PrinterRouteRuleType =
+  | "category"    // rule_value = category ID
+  | "menu_item"   // rule_value = menu item ID
+  | "order_type"; // rule_value = "dine_in" | "takeout" | "delivery"
+
+export interface PrinterRouteRuleV2 {
+  id: string;
+  printer_id: string;
+  rule_type: PrinterRouteRuleType;
+  rule_value: string;
+  is_enabled: boolean;
+}
+
+export interface PrinterRoutingConfig {
+  printerId: string;
+  routingMode: PrinterRoutingMode;
+  printModifiers: boolean;
+  rules: PrinterRouteRuleV2[];
 }
 
 // ============================================================================
@@ -292,6 +320,8 @@ export function printerRowToConfig(row: PrinterRow): PrinterConfig {
     isDefaultKitchen: row.is_default_kitchen ?? false,
     autoPrintReceipt: row.auto_print_receipt ?? false,
     printOrderTickets: row.print_order_tickets ?? false,
+    routingMode: ((row as any).routing_mode as PrinterRoutingMode) || "all",
+    printModifiers: (row as any).print_modifiers ?? true,
     isActive: row.is_active ?? true,
     isConnected: row.is_connected ?? false,
     lastStatus: row.last_status,

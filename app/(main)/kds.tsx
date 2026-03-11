@@ -229,9 +229,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       useCallback(
         (s) => {
           void s.timerTick;
-          return getBucketedElapsed(ticket.start_time);
+          return getBucketedElapsed(ticket.start_time_epoch);
         },
-        [ticket.start_time],
+        [ticket.start_time_epoch],
       ),
     );
 
@@ -240,9 +240,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       useCallback(
         (s) => {
           void s.timerTick;
-          return getUrgencyLevel(ticket.start_time);
+          return getUrgencyLevel(ticket.start_time_epoch);
         },
-        [ticket.start_time],
+        [ticket.start_time_epoch],
       ),
     );
 
@@ -658,8 +658,8 @@ const KitchenDisplayScreen = () => {
       const delayMs = kdsAutoFireDelayMinutes * 60 * 1000;
 
       pendingTickets.forEach((ticket) => {
-        if (!ticket.start_time) return;
-        const elapsed = now - new Date(ticket.start_time).getTime();
+        if (ticket.start_time_epoch === 0) return;
+        const elapsed = now - ticket.start_time_epoch;
         if (elapsed >= delayMs) {
           advanceTicketStatus(
             ticket.ticket_id,

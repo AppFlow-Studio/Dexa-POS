@@ -25,7 +25,6 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePtoStore } from "@/stores/usePtoStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
-import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -95,7 +94,6 @@ export default function RootLayout() {
   const hideClockInWall = useTimeclockStore((s) => s.hideClockInWall);
   const isKDS = useStoreSettingsStore((s) => s.selectedStation?.station_type === "kds");
   const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
-  const isCustomerSheetOpen = useCustomerSheetStore((s) => s.isOpen);
   const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
   const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
 
@@ -187,7 +185,7 @@ export default function RootLayout() {
                               />
                             )}
                             {!isKDS && isPinModalOpen && <ManagerPinModal />}
-                            {!isKDS && isCustomerSheetOpen && <CustomerSheet />}
+                            {!isKDS && <CustomerSheet />}
                             {!isKDS && isNoPrinterModalVisible && <NoPrinterModal />}
                             <Toasts
                               defaultStyle={{

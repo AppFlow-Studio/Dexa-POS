@@ -31,6 +31,7 @@ export interface KDSTicket {
   table_name: string | null;
   customer_name: string | null;
   start_time: string | null;
+  start_time_epoch: number;
   item_count: number;
   items: KDSTicketItem[];
 }

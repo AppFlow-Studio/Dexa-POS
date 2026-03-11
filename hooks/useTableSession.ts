@@ -205,20 +205,25 @@ export function useTableSession(
         if (updatedSession?.order_id) {
           const sOrderId = updatedSession.order_id;
 
-          // Skip if already matched
+          // Skip if already matched by db_order_id
           if (activeOrder?.db_order_id === sOrderId) return;
+
+          // Skip if getOrder resolves to the already-active order
+          // (handles local ID → DB UUID transition where the underlying order is the same)
+          const orderState = useOrderStore.getState();
+          const resolved = orderState.getOrder(sOrderId);
+          if (resolved && resolved.id === orderState.activeOrderId) return;
 
           // Guard: If active order belongs to this table but hasn't received
           // its db_order_id yet, hydrateOrderFromSeat is still in-flight —
           // skip sync to prevent creating a duplicate order
-          const orderState = useOrderStore.getState();
           const activeOid = orderState.activeOrderId;
           const activeOrd = activeOid ? orderState.ordersById[activeOid] : undefined;
           if (activeOrd?.service_location_id === tableId && !activeOrd?.db_order_id) {
             return;
           }
 
-          const foundOrder = orderState.getOrder(sOrderId);
+          const foundOrder = resolved;
 
           if (foundOrder) {
             if (activeOrderId !== foundOrder.id) {
