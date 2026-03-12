@@ -210,19 +210,16 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
     async (entry: WaitlistEntry, tableIds: string[]) => {
       showLoading()
       try {
-        const result = await seatFromWaitlistAsync(entry.id, tableIds)
+        await seatFromWaitlistAsync(entry.id, tableIds)
 
-        if (result) {
-          await updateWaitlistStatus(entry.id, 'seated')
-          show({
-            title: 'Success',
-            message: `${entry.party_name} seated!`,
-            type: 'success'
-          })
-          await fetchWaitlist(location_id)
-          return true
-        }
-        return false
+        await updateWaitlistStatus(entry.id, 'seated')
+        show({
+          title: 'Success',
+          message: `${entry.party_name} seated!`,
+          type: 'success'
+        })
+        await fetchWaitlist(location_id)
+        return true
       } catch (error: any) {
         show({
           title: 'Error',
