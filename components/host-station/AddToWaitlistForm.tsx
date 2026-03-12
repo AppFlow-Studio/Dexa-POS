@@ -161,6 +161,13 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
     }
   }, [partySize, tables, isWaitOverridden])
 
+  // Clear stale validation errors as user edits fields.
+  useEffect(() => {
+    if (errors.length > 0) {
+      setErrors([])
+    }
+  }, [partyName, partySize, phone, email, quotedWait])
+
   const validateForm = (): boolean => {
     const newErrors: string[] = []
 
@@ -437,9 +444,9 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
 
           <TouchableOpacity
             onPress={handleSubmit}
-            disabled={isLoading || errors.length > 0}
+            disabled={isLoading}
             className={`flex-1 py-3.5 rounded-lg items-center ${
-              isLoading || errors.length > 0
+              isLoading
                 ? 'bg-teal/50 opacity-50'
                 : 'bg-teal'
             }`}
