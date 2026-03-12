@@ -437,8 +437,33 @@ export class FloorPlanService {
     } | null
     error: any
   }> {
-    const { data, error } = await client.rpc('add_to_waitlist', params)
+    // Keep RPC payload backward-compatible with the current DB function signature.
+    // estimated_ready_at is persisted via a follow-up table update.
+    const { data, error } = await client.rpc('add_to_waitlist', {
+      p_location_id: params.p_location_id,
+      p_party_name: params.p_party_name,
+      p_party_size: params.p_party_size,
+      p_phone: params.p_phone,
+      p_email: params.p_email,
+      p_notes: params.p_notes,
+      p_preferred_section: params.p_preferred_section,
+      p_seating_preference: params.p_seating_preference,
+      p_quoted_wait_minutes: params.p_quoted_wait_minutes
+    })
     return { data, error }
+  }
+
+  static async updateWaitlistEstimatedReadyAt (
+    client: SupabaseClient,
+    waitlistId: string,
+    estimatedReadyAt: string
+  ): Promise<{ data: { success: boolean } | null; error: any }> {
+    const { error } = await client
+      .from('waitlist')
+      .update({ estimated_ready_at: estimatedReadyAt })
+      .eq('id', waitlistId)
+
+    return { data: { success: !error }, error }
   }
 
   static async notifyWaitlistParty (
@@ -623,5 +648,28 @@ export class FloorPlanService {
       .eq('floor_plan_id', floorPlanId)
       .eq('is_active', true)
     return { data, error }
+  }
+
+  /**
+   * Record actual wait time for a waitlist entry that was just seated.
+   * Used for accuracy tracking and improving future estimates.
+   */
+  static async recordWaitAccuracy (
+    client: SupabaseClient,
+    waitlistId: string,
+    actualWaitMinutes: number
+  ): Promise<{ data: { success: boolean } | null; error: any }> {
+    // Update the waitlist entry with actual wait time
+    const { data, error } = await client
+      .from('waitlist')
+      .update({
+        actual_wait_minutes: actualWaitMinutes,
+        seated_at: new Date().toISOString()
+      })
+      .eq('id', waitlistId)
+      .select('id')
+
+    const success = !error && Array.isArray(data) && data.length > 0
+    return { data: { success }, error }
   }
 }

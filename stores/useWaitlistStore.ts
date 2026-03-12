@@ -169,6 +169,14 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
       if (error) throw error
 
+      if (params.p_estimated_ready_at && data?.waitlist_id) {
+        await FloorPlanService.updateWaitlistEstimatedReadyAt(
+          getClient(),
+          data.waitlist_id,
+          params.p_estimated_ready_at
+        )
+      }
+
       // Create local entry with the returned data
       const newEntry: WaitlistEntry = {
         id: data?.waitlist_id || `wl_${Date.now()}`,
@@ -178,6 +186,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         position: data?.position || get().waitlist.length + 1,
         quoted_wait_minutes:
           data?.quoted_wait_minutes || params.p_quoted_wait_minutes || 15,
+        estimated_ready_at: params.p_estimated_ready_at,
         party_name: params.p_party_name,
         party_size: params.p_party_size,
         phone: params.p_phone,
@@ -207,7 +216,8 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         seating_preference: params.p_seating_preference,
         preferred_section: params.p_preferred_section,
         notes: params.p_notes,
-        quoted_wait_minutes: params.p_quoted_wait_minutes
+        quoted_wait_minutes: params.p_quoted_wait_minutes,
+        estimated_ready_at: params.p_estimated_ready_at
       })
     }
   },
@@ -237,6 +247,21 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
   seatFromWaitlistAsync: async (entryId: string, tableIds: string[]) => {
     try {
+      // Get the entry before seating to calculate actual wait time
+      const entry = get().waitlist.find(e => e.id === entryId)
+      if (!entry) throw new Error('Waitlist entry not found')
+
+      const actualWaitMinutes = Math.floor(
+        (Date.now() - new Date(entry.created_at).getTime()) / 60000
+      )
+
+      // Try to persist accuracy before seat transition to avoid RLS/status policy issues.
+      const preSeatAccuracy = await FloorPlanService.recordWaitAccuracy(
+        getClient(),
+        entryId,
+        actualWaitMinutes
+      )
+
       const { data, error } = await FloorPlanService.seatFromWaitlist(
         getClient(),
         entryId,
@@ -244,6 +269,23 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
       )
 
       if (error) throw error
+
+      // Retry once post-seat only if pre-seat write did not persist.
+      if (!preSeatAccuracy.data?.success) {
+        const postSeatAccuracy = await FloorPlanService.recordWaitAccuracy(
+          getClient(),
+          entryId,
+          actualWaitMinutes
+        )
+
+        if (postSeatAccuracy.error || !postSeatAccuracy.data?.success) {
+          console.warn('Wait accuracy was not persisted for seated party', {
+            entryId,
+            actualWaitMinutes,
+            error: postSeatAccuracy.error || preSeatAccuracy.error
+          })
+        }
+      }
 
       // Remove from local state
       set(state => ({

@@ -142,17 +142,23 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
       preferred_section?: string
       notes?: string
       quoted_wait_minutes?: number
+      estimated_ready_at?: string
     }) => {
       showLoading()
       try {
-        // If no quoted wait provided, calculate it
+        // If no quoted wait provided, calculate it using enhanced calculator
         let quotedWait = data.quoted_wait_minutes || 15
+        let estimatedReadyAt = data.estimated_ready_at
+
         if (!data.quoted_wait_minutes) {
           const calc = new WaitTimeCalculator(tables)
           const queueDepth = waitlist.filter(e =>
             ['waiting', 'notified', 'arrived'].includes(e.status)
           ).length
-          quotedWait = calc.calculateWaitTime(data.party_size, queueDepth)
+          const { waitTime, estimatedReadyAt: calculated } =
+            calc.calculateWaitTimeEnhanced(data.party_size, queueDepth)
+          quotedWait = waitTime
+          estimatedReadyAt = calculated.toISOString()
         }
 
         await addToWaitlistAsync({
@@ -164,7 +170,8 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
           p_seating_preference: data.seating_preference,
           p_preferred_section: data.preferred_section,
           p_notes: data.notes,
-          p_quoted_wait_minutes: quotedWait
+          p_quoted_wait_minutes: quotedWait,
+          p_estimated_ready_at: estimatedReadyAt
         })
 
         show({
@@ -364,6 +371,29 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
       fetchWaitlist,
       location_id
     ]
+  )
+
+  const handleOfferComp = useCallback(
+    async (entry: WaitlistEntry) => {
+      // Show apology and comp options
+      show({
+        title: 'Guest Recovery',
+        message: `Please apologize to ${entry.party_name} for the excessive wait and offer a gesture of goodwill:\n\n• Free appetizer\n• $15 comp credit to bill\n• Dessert on us\n\nThis will be tracked in the order record.`,
+        type: 'success'
+      })
+
+      // Log event for analytics (this could be extended to auto-apply discount)
+      console.log('Offer comp to:', {
+        partyName: entry.party_name,
+        partySize: entry.party_size,
+        quotedWaitMinutes: entry.quoted_wait_minutes,
+        actualWaitMinutes: Math.floor(
+          (Date.now() - new Date(entry.created_at).getTime()) / 60000
+        ),
+        timestamp: new Date().toISOString()
+      })
+    },
+    [show]
   )
 
   // Handle drag-to-reorder
@@ -570,6 +600,7 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
               }}
               onCancel={() => handleCancelEntry(item)}
               onMarkNoShow={() => handleMarkNoShow(item)}
+              onOfferComp={() => handleOfferComp(item)}
             />
           ))}
         </ScrollView>

@@ -1,14 +1,14 @@
+import { DragCardState } from '@/hooks/useWaitlistDragState'
+import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import React, { useMemo } from 'react'
+import { Gesture } from 'react-native-gesture-handler'
 import Animated, {
+  runOnJS,
   SharedValue,
   useAnimatedStyle,
-  withSpring,
-  runOnJS
+  withSpring
 } from 'react-native-reanimated'
-import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import WaitlistQueueCard from './WaitlistQueueCard'
-import { Gesture } from 'react-native-gesture-handler'
-import { DragCardState } from '@/hooks/useWaitlistDragState'
 
 interface AnimatedCardItemProps {
   item: WaitlistEntry
@@ -25,6 +25,7 @@ interface AnimatedCardItemProps {
   onSeat: () => void
   onCancel: () => void
   onMarkNoShow: () => void
+  onOfferComp?: () => void
 }
 
 export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
@@ -41,7 +42,8 @@ export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
   onNotify,
   onSeat,
   onCancel,
-  onMarkNoShow
+  onMarkNoShow,
+  onOfferComp
 }) => {
   const dragGesture = useMemo(
     () =>
@@ -53,7 +55,11 @@ export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
           }),
         Gesture.Pan()
           .onStart(() => {
-            if (index >= 0 && index < cardDragStates.length && cardDragStates[index]) {
+            if (
+              index >= 0 &&
+              index < cardDragStates.length &&
+              cardDragStates[index]
+            ) {
               dragIndex.value = index
               dragStartY.value = 0
               cardDragStates[index].isDragging.value = true
@@ -64,7 +70,8 @@ export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
 
             const delta = e.absoluteY - dragStartY.value || e.translationY
             if (dragStartY.value === 0) {
-              dragStartY.value = e.absoluteY - (cardDragStates[index]?.translateY.value || 0)
+              dragStartY.value =
+                e.absoluteY - (cardDragStates[index]?.translateY.value || 0)
             }
 
             if (cardDragStates[index]) {
@@ -128,7 +135,16 @@ export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
             runOnJS(onReorder)(fromIndex, toIndex)
           })
       ),
-    [index, activeWaitlistLength, cardDragStates, dragIndex, dragStartY, cardHeight, setScrollEnabled, onReorder]
+    [
+      index,
+      activeWaitlistLength,
+      cardDragStates,
+      dragIndex,
+      dragStartY,
+      cardHeight,
+      setScrollEnabled,
+      onReorder
+    ]
   )
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -160,6 +176,7 @@ export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
         onSeat={onSeat}
         onCancel={onCancel}
         onMarkNoShow={onMarkNoShow}
+        onOfferComp={onOfferComp}
       />
     </Animated.View>
   )

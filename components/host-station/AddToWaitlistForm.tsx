@@ -26,6 +26,7 @@ interface AddToWaitlistFormProps {
     preferred_section?: string
     notes?: string
     quoted_wait_minutes?: number
+    estimated_ready_at?: string
   }) => void
   onCancel: () => void
   isLoading: boolean
@@ -135,8 +136,11 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
   const [showSeatingDropdown, setShowSeatingDropdown] = useState(false)
   const [showSectionDropdown, setShowSectionDropdown] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
-  const [autoCalculatedWait, setAutoCalculatedWait] = useState<number | null>(null)
+  const [autoCalculatedWait, setAutoCalculatedWait] = useState<number | null>(
+    null
+  )
   const [isWaitOverridden, setIsWaitOverridden] = useState(false)
+  const [estimatedReadyAt, setEstimatedReadyAt] = useState<Date | null>(null)
 
   // Auto-calculate wait time when party size changes
   useEffect(() => {
@@ -145,12 +149,14 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
     const size = parseInt(partySize, 10)
     if (!isNaN(size) && size > 0) {
       const calculator = new WaitTimeCalculator(tables)
-      const calculated = calculator.calculateWaitTime(size)
-      setAutoCalculatedWait(calculated)
+      const { waitTime, estimatedReadyAt: calculated } =
+        calculator.calculateWaitTimeEnhanced(size)
+      setAutoCalculatedWait(waitTime)
+      setEstimatedReadyAt(calculated)
 
       // Only update quoted wait if not manually overridden
       if (!isWaitOverridden) {
-        setQuotedWait(String(calculated))
+        setQuotedWait(String(waitTime))
       }
     }
   }, [partySize, tables, isWaitOverridden])
@@ -199,7 +205,8 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
       preferred_section:
         preferredSection !== 'No Preference' ? preferredSection : undefined,
       notes: notes.trim() || undefined,
-      quoted_wait_minutes: quotedWait ? parseInt(quotedWait, 10) : undefined
+      quoted_wait_minutes: quotedWait ? parseInt(quotedWait, 10) : undefined,
+      estimated_ready_at: estimatedReadyAt?.toISOString()
     })
   }
 
@@ -284,7 +291,10 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                       Quoted Wait (min)
                     </Text>
                     {autoCalculatedWait && (
-                      <Text className='text-xs font-semibold' style={{ color: '#10b981' }}>
+                      <Text
+                        className='text-xs font-semibold'
+                        style={{ color: '#10b981' }}
+                      >
                         auto: {Math.round(autoCalculatedWait)}m
                       </Text>
                     )}
@@ -311,7 +321,9 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                       paddingVertical: 14,
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: isWaitOverridden ? colors.warning : colors.border
+                      borderColor: isWaitOverridden
+                        ? colors.warning
+                        : colors.border
                     }}
                   />
                 </View>
@@ -370,10 +382,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                   className='flex-row items-center justify-between px-4 py-3 rounded-lg border border-border bg-screen'
                 >
                   <Text className='text-white'>{seatingPreference}</Text>
-                  <ChevronDown
-                    size={18}
-                    color={colors.label}
-                  />
+                  <ChevronDown size={18} color={colors.label} />
                 </TouchableOpacity>
               </View>
 
@@ -387,10 +396,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
                   className='flex-row items-center justify-between px-4 py-3 rounded-lg border border-border bg-screen'
                 >
                   <Text className='text-white'>{preferredSection}</Text>
-                  <ChevronDown
-                    size={18}
-                    color={colors.label}
-                  />
+                  <ChevronDown size={18} color={colors.label} />
                 </TouchableOpacity>
               </View>
             </View>
