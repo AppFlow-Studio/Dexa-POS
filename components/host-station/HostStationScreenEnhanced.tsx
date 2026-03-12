@@ -1,9 +1,11 @@
+import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useWaitlistDragState } from '@/hooks/useWaitlistDragState'
 import { colors } from '@/lib/theme'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import { Bell, Plus } from 'lucide-react-native'
@@ -43,6 +45,9 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
   const isLoading = useWaitlistStore(s => s.isLoading)
 
   const tables = useFloorPlanStore(s => s.tables)
+  const gracePeriodMinutes = useStoreSettingsStore(
+    s => s.waitlistNotificationGracePeriodMinutes
+  )
 
   // UI state
   const [showAddForm, setShowAddForm] = useState(false)
@@ -50,6 +55,11 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
   const [showTablePicker, setShowTablePicker] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [scrollEnabled, setScrollEnabled] = useState(true)
+  const [notice, setNotice] = useState<{
+    title: string
+    description: string
+    variant: 'info' | 'warning' | 'error'
+  } | null>(null)
 
   // Drag-to-reorder state
   const dragIndex = useSharedValue(-1)
@@ -68,10 +78,11 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
     return () => clearInterval(pollInterval)
   }, [fetchWaitlist, location_id])
 
-  // Auto-expire parties past 2x quoted wait
+  // Auto-expire parties past 2x quoted wait, and those notified past grace period
   useEffect(() => {
     const checkExpiry = async () => {
       for (const entry of waitlist) {
+        // Expire waiting parties past 2x quoted wait
         if (entry.status === 'waiting') {
           const elapsedMinutes = Math.floor(
             (Date.now() - new Date(entry.created_at).getTime()) / 60000
@@ -91,12 +102,31 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
             }
           }
         }
+
+        // Expire notified parties past grace period (10 minutes default)
+        if (entry.status === 'notified' && entry.notified_at) {
+          const gracePeriodMs = Math.max(1, gracePeriodMinutes || 10) * 60000
+          const elapsed = Date.now() - new Date(entry.notified_at).getTime()
+
+          if (elapsed > gracePeriodMs) {
+            try {
+              await updateWaitlistStatus(entry.id, 'no_show')
+              show({
+                title: 'No Show',
+                message: `${entry.party_name} did not check in within the grace period`,
+                type: 'warning'
+              })
+            } catch (error) {
+              console.error('Failed to mark no-show:', error)
+            }
+          }
+        }
       }
     }
 
     const expireInterval = setInterval(checkExpiry, 30000) // Check every 30 seconds
     return () => clearInterval(expireInterval)
-  }, [waitlist, updateWaitlistStatus, show])
+  }, [waitlist, updateWaitlistStatus, show, gracePeriodMinutes])
 
   const handleCloseAddForm = useCallback(() => {
     setShowAddForm(false)
@@ -167,25 +197,64 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
 
   const handleNotifyParty = useCallback(
     async (entry: WaitlistEntry) => {
+      const phoneDigits = entry.phone?.replace(/\D/g, '') ?? ''
+
+      // In-app alert only — no phone on file, skip notification flow
+      if (!phoneDigits) {
+        setNotice({
+          title: 'No Phone Number',
+          description: `Please call out "${entry.party_name}" — no phone on file`,
+          variant: 'warning'
+        })
+        return
+      }
+
       showLoading()
       try {
-        const FloorPlanService =
-          require('@/services/floorPlanService').FloorPlanService
-        const client = require('@/lib/supabaseClient').supabaseClient
-        const { error } = await FloorPlanService.notifyWaitlistParty(
-          client,
-          entry.id
-        )
+        const result = await useWaitlistStore
+          .getState()
+          .notifyWaitlistPartyAsync(entry.id)
 
-        if (error) throw error
+        if (!result.success) {
+          if (result.error === 'sms_failed') {
+            setNotice({
+              title: 'SMS Failed',
+              description:
+                result.message ||
+                'Could not send SMS. Failure logged. Please notify guest verbally.',
+              variant: 'error'
+            })
+          } else {
+            setNotice({
+              title: 'Could Not Notify',
+              description: result.error || 'Failed to notify party',
+              variant: 'error'
+            })
+          }
+        } else if (result.sms) {
+          show({
+            title: 'Notified',
+            message: `SMS sent to ${entry.party_name}`,
+            type: 'success'
+          })
+        } else if (result.reason === 'no_valid_phone') {
+          show({
+            title: 'Invalid Phone Number',
+            message: `Could not send SMS — invalid number on file. Please notify ${entry.party_name} verbally.`,
+            type: 'warning'
+          })
+        } else {
+          // Fallback: RPC succeeded but SMS was not sent for an unhandled reason
+          show({
+            title: 'Party Notified',
+            message: `${entry.party_name} has been notified`,
+            type: 'success'
+          })
+        }
 
-        await updateWaitlistStatus(entry.id, 'notified')
-        show({
-          title: 'Success',
-          message: `${entry.party_name} notified!`,
-          type: 'success'
-        })
-        await fetchWaitlist(location_id)
+        if (result.success) {
+          await fetchWaitlist(location_id)
+        }
       } catch (error: any) {
         show({
           title: 'Error',
@@ -196,14 +265,7 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
         hideLoading()
       }
     },
-    [
-      updateWaitlistStatus,
-      show,
-      showLoading,
-      hideLoading,
-      fetchWaitlist,
-      location_id
-    ]
+    [show, showLoading, hideLoading, fetchWaitlist, location_id]
   )
 
   const handleSeatParty = useCallback(
@@ -538,6 +600,16 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
               setSelectedEntry(null)
             }
           }}
+        />
+      )}
+
+      {notice && (
+        <AppNoticeModal
+          visible
+          onClose={() => setNotice(null)}
+          title={notice.title}
+          description={notice.description}
+          variant={notice.variant}
         />
       )}
     </View>

@@ -10,6 +10,7 @@ import {
   Lightbulb,
   Mail,
   Phone,
+  PhoneOff,
   StickyNote,
   Users,
   X
@@ -138,6 +139,7 @@ export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
   const isApproaching =
     elapsed > (entry.quoted_wait_minutes || 0) * 0.8 && !isOverdue
   const statusColor = getStatusColor(entry.status, isOverdue, isApproaching)
+  const hasPhone = Boolean(entry.phone?.replace(/\D/g, ''))
 
   const closeSwipe = () =>
     Animated.timing(swipeOffset, {
@@ -254,21 +256,31 @@ export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
               </View>
             </View>
 
-            {/* Status Badge */}
-            <View
-              className='px-2.5 py-1 rounded-lg ml-3'
-              style={{
-                backgroundColor: statusColor + '20',
-                borderWidth: 1,
-                borderColor: statusColor
-              }}
-            >
-              <Text
-                className='text-xs font-bold'
-                style={{ color: statusColor }}
+            {/* Status Badge + No-Phone Icon */}
+            <View className='flex-row items-center gap-1.5 ml-3'>
+              {(entry.notification_failures ?? 0) > 0 && (
+                <View className='px-2 py-1 rounded-lg bg-red-600 border border-red-500'>
+                  <Text className='text-white text-xs font-bold'>
+                    SMS FAIL {entry.notification_failures}
+                  </Text>
+                </View>
+              )}
+              <View
+                className='px-2.5 py-1 rounded-lg'
+                style={{
+                  backgroundColor: statusColor + '20',
+                  borderWidth: 1,
+                  borderColor: statusColor
+                }}
               >
-                {getStatusLabel(entry.status)}
-              </Text>
+                <Text
+                  className='text-xs font-bold'
+                  style={{ color: statusColor }}
+                >
+                  {getStatusLabel(entry.status)}
+                </Text>
+              </View>
+              {!hasPhone && <PhoneOff size={12} color={colors.muted} />}
             </View>
 
             {/* Chevron */}
@@ -388,6 +400,16 @@ export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
                 />
                 <Text className='text-red-400 text-sm flex-1'>
                   Party exceeded quoted wait time
+                </Text>
+              </View>
+            )}
+
+            {/* SMS Failure Alert */}
+            {(entry.notification_failures ?? 0) > 0 && (
+              <View className='flex-row items-center gap-2 px-3 py-2 rounded-lg bg-red-600 border border-red-500'>
+                <AlertCircle size={14} color='white' />
+                <Text className='text-white text-sm flex-1 font-semibold'>
+                  SMS failed {entry.notification_failures}x — notify by voice
                 </Text>
               </View>
             )}

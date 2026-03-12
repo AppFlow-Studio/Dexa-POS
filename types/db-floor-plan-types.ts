@@ -112,6 +112,9 @@ export interface WaitlistEntry {
   notes?: string
   created_at: string
   notified_at?: string
+  notification_count?: number
+  last_notification_type?: string
+  notification_failures?: number
   minutes_waiting?: number
 }
 
