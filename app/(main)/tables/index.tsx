@@ -1,3 +1,4 @@
+import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
 import MergeActionBar from '@/components/tables/MergeActionBar'
 import Sidebar from '@/components/tables/Sidebar'
@@ -20,14 +21,18 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { useWaitlistSheetStore } from '@/stores/useWaitlistSheetStore'
+import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { Href, useRouter } from 'expo-router'
-import { GitMerge, Pencil, Search, X } from 'lucide-react-native'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { GitMerge, Pencil, Search, UtensilsCrossed, X } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   InteractionManager,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  SafeAreaView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -69,12 +74,22 @@ const TablesScreen = () => {
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
 
+  const supabaseClient = useSupabaseClient()
+  const location_id = useStoreSettingsStore(s => s.selectedStore?.id || '')
+
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [isGuestModalOpen, setGuestModalOpen] = useState(false)
   const [isMergeMode, setMergeMode] = useState(false)
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
+  const [isHostStationOpen, setHostStationOpen] = useState(false)
+
+  useEffect(() => {
+    if (supabaseClient) {
+      setWaitlistSupabaseClient(supabaseClient)
+    }
+  }, [supabaseClient])
 
   // Debounce search input
   useEffect(() => {
@@ -544,6 +559,17 @@ const TablesScreen = () => {
               </Text>
             </TouchableOpacity>
 
+            {/* Host Station Button */}
+            <TouchableOpacity
+              onPress={() => setHostStationOpen(true)}
+              className='py-2 px-4 flex-row items-center justify-center rounded-lg bg-purple-600 border border-purple-500'
+            >
+              <UtensilsCrossed color='white' size={18} />
+              <Text className='text-lg font-bold text-white ml-2'>
+                Host Station
+              </Text>
+            </TouchableOpacity>
+
             {/* Edit Layout Button */}
             <TouchableOpacity
               onPress={() => router.push(`/tables/floor-plan` as Href)}
@@ -741,6 +767,32 @@ const TablesScreen = () => {
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
       />
+
+      {/* Host Station Modal */}
+      <Modal
+        visible={isHostStationOpen}
+        animationType='slide'
+        presentationStyle='pageSheet'
+        onRequestClose={() => setHostStationOpen(false)}
+      >
+        <SafeAreaView className='flex-1 bg-screen'>
+          <View className='flex-row items-center justify-between px-4 py-3 border-b border-border'>
+            <Text className='text-xl font-bold text-white'>Host Station</Text>
+            <TouchableOpacity onPress={() => setHostStationOpen(false)}>
+              <X color={colors.label} size={24} />
+            </TouchableOpacity>
+          </View>
+          <View className='flex-1'>
+            {location_id ? (
+              <HostStationScreenEnhanced location_id={location_id} />
+            ) : (
+              <View className='flex-1 items-center justify-center'>
+                <Text className='text-label'>Please select a location</Text>
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
     </View>
   )
 }
