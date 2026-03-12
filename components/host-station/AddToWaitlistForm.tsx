@@ -446,9 +446,7 @@ export const AddToWaitlistForm: React.FC<AddToWaitlistFormProps> = ({
             onPress={handleSubmit}
             disabled={isLoading}
             className={`flex-1 py-3.5 rounded-lg items-center ${
-              isLoading
-                ? 'bg-teal/50 opacity-50'
-                : 'bg-teal'
+              isLoading ? 'bg-teal/50 opacity-50' : 'bg-teal'
             }`}
           >
             {isLoading ? (
