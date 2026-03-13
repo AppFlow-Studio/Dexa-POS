@@ -94,7 +94,7 @@ export class FloorPlanService {
     error: any;
   }> {
     try {
-      console.log(`[getAllFloorPlanObjects] Fetching objects for floor plan: ${floorPlanId}`);
+      if (__DEV__) console.log(`[getAllFloorPlanObjects] Fetching objects for floor plan: ${floorPlanId}`);
 
       // 1. Fetch ALL active floor plan objects (not filtered by category)
       const { data: allObjects, error: objectsError } = await client
@@ -114,7 +114,7 @@ export class FloorPlanService {
         return { data: [], error: null };
       }
 
-      console.log(`[getAllFloorPlanObjects] Found ${allObjects.length} total objects`);
+      // console.log(`[getAllFloorPlanObjects] Found ${allObjects.length} total objects`);
 
       // 2. Fetch session data for tables that have sessions
       // Scope junction query to only tables in this floor plan to avoid cross-plan pollution
@@ -201,7 +201,7 @@ export class FloorPlanService {
         return { ...obj, session };
       });
 
-      console.log(`[getAllFloorPlanObjects] Returning ${result.length} objects with session data`);
+      if (__DEV__) console.log(`[getAllFloorPlanObjects] Returning ${result.length} objects with session data`);
       return { data: result, error: null };
     } catch (err: any) {
       console.error("[getAllFloorPlanObjects] Fatal error:", err);

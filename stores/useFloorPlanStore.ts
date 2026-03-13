@@ -752,10 +752,19 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           if (!data) return
 
+          // Pre-group table IDs by session for merged_tables
+          const tableIdsBySession: Record<string, string[]> = {}
+          for (const row of data) {
+            if (row.session_id) {
+              (tableIdsBySession[row.session_id] ??= []).push(row.table_id)
+            }
+          }
+
           // Build session lookup from flat rows: tableId → TableSession | null
           const sessionByTableId: Record<string, TableSession | null> = {}
           for (const row of data) {
             if (row.session_id && row.session_status) {
+              const mergedTables = tableIdsBySession[row.session_id]
               sessionByTableId[row.table_id] = {
                 id: row.session_id,
                 session_number: row.session_number,
@@ -768,7 +777,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 seated_at: row.seated_at ?? new Date().toISOString(),
                 current_course: row.current_course ?? 1,
                 needs_attention: row.needs_attention ?? false,
-                is_vip: row.is_vip ?? false
+                is_vip: row.is_vip ?? false,
+                merged_tables: (mergedTables?.length ?? 0) > 1 ? mergedTables : undefined
               }
             } else {
               sessionByTableId[row.table_id] = null

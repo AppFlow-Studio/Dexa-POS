@@ -1,20 +1,35 @@
 /**
  * Real-time sync for table_sessions via polling
- * Periodically fetches floor_plan_objects with sessions and updates store without Supabase Realtime
+ * Uses lightweight getLocationTableStatus RPC (1 query) instead of getAllFloorPlanObjects (3 queries)
+ * Adaptive polling: 5s base, extends to 10-15s when idle, resets on changes
  */
 
 import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { FloorPlanService } from "@/services/floorPlanService";
+import type { LocationTableStatusRow } from "@/types/db-floor-plan-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastSyncTimestamp = 0;
 let supabaseClient: SupabaseClient | null = null;
-const POLL_INTERVAL = 3000; // Poll every 3 seconds
-const MIN_SYNC_INTERVAL = 1000; // Minimum 1 second between syncs
+let activeLocationId: string | null = null;
+
+// Adaptive polling
+let consecutiveNoChangePolls = 0;
+const BASE_INTERVAL = 5000;
+const IDLE_THRESHOLD = 3;
+const MAX_INTERVAL = 15000;
+const MIN_SYNC_INTERVAL = 1000;
+
+function getNextInterval(): number {
+  if (consecutiveNoChangePolls < IDLE_THRESHOLD) return BASE_INTERVAL;
+  return Math.min(
+    BASE_INTERVAL + (consecutiveNoChangePolls - IDLE_THRESHOLD + 1) * 2500,
+    MAX_INTERVAL
+  );
+}
 
 // Track voided sessions to prevent re-syncing the same session that was just cleared
 // Maps tableId -> sessionId that was voided
@@ -33,128 +48,188 @@ export function setTableSessionSyncSupabaseClient(client: SupabaseClient | null)
   supabaseClient = client;
 }
 
+function scheduleNextPoll() {
+  if (pollTimeout === null && activeLocationId === null) return; // stopped
+  const interval = getNextInterval();
+  pollTimeout = setTimeout(poll, interval);
+}
+
+async function poll() {
+  try {
+    const now = Date.now();
+    if (now - lastSyncTimestamp < MIN_SYNC_INTERVAL) {
+      scheduleNextPoll();
+      return;
+    }
+
+    if (!supabaseClient) {
+      console.warn("[TableSessionRealtimeSync] Supabase client not initialized yet");
+      scheduleNextPoll();
+      return;
+    }
+
+    if (!activeLocationId) {
+      scheduleNextPoll();
+      return;
+    }
+
+    // Fetch session data only — 1 RPC instead of 3 queries
+    const { data: rows, error } = await FloorPlanService.getLocationTableStatus(
+      supabaseClient,
+      activeLocationId
+    );
+
+    if (error) {
+      console.error("[TableSessionRealtimeSync] Fetch error:", error);
+      scheduleNextPoll();
+      return;
+    }
+
+    if (!rows) {
+      scheduleNextPoll();
+      return;
+    }
+
+    lastSyncTimestamp = now;
+
+    // Pre-group table IDs by session for merged_tables
+    const tableIdsBySession: Record<string, string[]> = {};
+    for (const row of rows) {
+      if (row.session_id) {
+        (tableIdsBySession[row.session_id] ??= []).push(row.table_id);
+      }
+    }
+
+    // Build a set of table IDs in the response for detecting removed sessions
+    const responseTableIds = new Set<string>();
+
+    const sessionStore = useTableSessionStore.getState();
+    const dispatchActions: Array<{ tableId: string; action: any }> = [];
+
+    for (const row of rows) {
+      responseTableIds.add(row.table_id);
+      const currentSession = sessionStore.sessions[row.table_id];
+
+      if (!currentSession && row.session_id) {
+        // No local session but backend has one — check void/clear blocks
+        const voidedSessionId = voidedSessions.get(row.table_id);
+        if (voidedSessionId === row.session_id) {
+          if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP restore for table ${row.table_name || row.table_id}: same voided session`);
+          continue;
+        }
+
+        const lastClearedTime = lastClearedTables.get(row.table_id);
+        if (lastClearedTime && now - lastClearedTime < CLEAR_BLOCK_DURATION) {
+          if (__DEV__) console.log(`[TableSessionRealtimeSync] SKIP restore for table ${row.table_name || row.table_id}: recently cleared locally (${now - lastClearedTime}ms ago)`);
+          continue;
+        }
+
+        // New guest — sync it
+        if (__DEV__) console.log(`[TableSessionRealtimeSync] NEW guest for table ${row.table_name || row.table_id}: different session`);
+      }
+
+      if (!row.session_id || !row.session_status) {
+        // No session on backend — clear local session if one exists
+        if (currentSession && !isLocalOnlyStatus(currentSession.status)) {
+          if (__DEV__) console.log(`[TableSessionRealtimeSync] CLEAR stale session for table ${row.table_name || row.table_id}: local status="${currentSession.status}", no backend session`);
+          dispatchActions.push({
+            tableId: row.table_id,
+            action: { type: "CLEAR" as const },
+          });
+        }
+        continue;
+      }
+
+      // Build session object from row
+      const mergedTables = tableIdsBySession[row.session_id];
+      const incomingSession = {
+        id: row.session_id,
+        session_number: row.session_number,
+        status: row.session_status,
+        party_size: row.party_size ?? 0,
+        guest_name: row.guest_name,
+        order_id: row.order_id,
+        server_staff_id: row.server_staff_id ?? undefined,
+        seated_at: row.seated_at ?? new Date().toISOString(),
+        current_course: row.current_course ?? 1,
+        needs_attention: row.needs_attention ?? false,
+        is_vip: row.is_vip ?? false,
+        merged_tables: (mergedTables?.length ?? 0) > 1 ? mergedTables : undefined,
+      };
+
+      // Only update if session actually changed (for existing sessions)
+      if (currentSession) {
+        const sessionChanged =
+          currentSession.id !== incomingSession.id ||
+          currentSession.status !== incomingSession.status ||
+          currentSession.party_size !== incomingSession.party_size ||
+          currentSession.guest_name !== incomingSession.guest_name ||
+          currentSession.order_id !== incomingSession.order_id ||
+          currentSession.server_staff_id !== incomingSession.server_staff_id ||
+          currentSession.current_course !== incomingSession.current_course ||
+          currentSession.needs_attention !== incomingSession.needs_attention ||
+          currentSession.is_vip !== incomingSession.is_vip ||
+          currentSession.session_number !== incomingSession.session_number ||
+          (currentSession.merged_tables?.length ?? 0) !== (incomingSession.merged_tables?.length ?? 0);
+
+        if (sessionChanged) {
+          if (__DEV__) console.log(`[TableSessionRealtimeSync] UPDATE table ${row.table_name || row.table_id}: "${currentSession.status}" → "${incomingSession.status}"`);
+          dispatchActions.push({
+            tableId: row.table_id,
+            action: { type: "SYNC" as const, session: incomingSession },
+          });
+        }
+      } else {
+        // No local session — sync new session
+        dispatchActions.push({
+          tableId: row.table_id,
+          action: { type: "SYNC" as const, session: incomingSession },
+        });
+      }
+    }
+
+    // Check for tables that exist in session store but NOT in backend response
+    // These sessions may have been cleared on another station
+    for (const tableId of Object.keys(sessionStore.sessions)) {
+      if (!responseTableIds.has(tableId)) {
+        const currentSession = sessionStore.sessions[tableId];
+        if (currentSession && !isLocalOnlyStatus(currentSession.status)) {
+          if (__DEV__) console.log(`[TableSessionRealtimeSync] CLEAR orphaned session for table ${tableId}: not in backend response`);
+          dispatchActions.push({
+            tableId,
+            action: { type: "CLEAR" as const },
+          });
+        }
+      }
+    }
+
+    // batchDispatch handles both session store + floor plan store sync via _syncToFloorPlanStore
+    if (dispatchActions.length > 0) {
+      consecutiveNoChangePolls = 0; // Reset — changes detected
+      sessionStore.batchDispatch(dispatchActions);
+    } else {
+      consecutiveNoChangePolls++;
+    }
+  } catch (err) {
+    console.error("[TableSessionRealtimeSync] Poll error:", err);
+  }
+
+  scheduleNextPoll();
+}
+
 /**
  * Start polling for table_sessions changes
  */
 export function startTableSessionRealtimeSync(locationId: string) {
-  if (pollInterval) return; // Already running
+  if (pollTimeout) return; // Already running
 
-  const poll = async () => {
-    try {
-      const now = Date.now();
-      if (now - lastSyncTimestamp < MIN_SYNC_INTERVAL) {
-        return; // Skip if too soon
-      }
-
-      if (!supabaseClient) {
-        console.warn("[TableSessionRealtimeSync] Supabase client not initialized yet");
-        return;
-      }
-
-      // Get the active floor plan ID
-      const activeFloorPlanId = useFloorPlanStore.getState().activeFloorPlanId;
-      if (!activeFloorPlanId) return;
-
-      // Fetch all objects with session data for the active floor plan
-      const { data: objects, error } = await FloorPlanService.getAllFloorPlanObjects(
-        supabaseClient,
-        activeFloorPlanId
-      );
-
-      if (error) {
-        console.error("[TableSessionRealtimeSync] Fetch error:", error);
-        return;
-      }
-
-      if (!objects || objects.length === 0) return;
-
-      lastSyncTimestamp = now;
-
-      // Update each table's session in both stores
-      const sessionStore = useTableSessionStore.getState();
-
-      const dispatchActions: Array<{ tableId: string; action: any }> = [];
-
-      objects.forEach((object) => {
-        const currentSession = sessionStore.sessions[object.id];
-
-        // If local session is cleared, ALWAYS keep it cleared to respect user actions
-        // (void, checkout, etc). Only restore if it's a different session (new guest).
-        if (!currentSession && object.session) {
-          const voidedSessionId = voidedSessions.get(object.id);
-
-          // ALWAYS skip if same voided session
-          if (voidedSessionId === object.session.id) {
-            console.log(`[TableSessionRealtimeSync] SKIP restore for table ${object.name || object.id}: same voided session`);
-            return;
-          }
-
-          // NEW: Also skip if the table was JUST cleared (within last 5 seconds)
-          // This prevents polling from immediately restoring a cleared session before
-          // the backend RPC has time to update is_active=false
-          const lastClearedTime = lastClearedTables.get(object.id);
-          if (lastClearedTime && now - lastClearedTime < 5000) {
-            console.log(`[TableSessionRealtimeSync] SKIP restore for table ${object.name || object.id}: recently cleared locally (${now - lastClearedTime}ms ago)`);
-            return;
-          }
-
-          // Different session ID + not recently cleared = new guest, allow it to be synced
-          console.log(`[TableSessionRealtimeSync] NEW guest for table ${object.name || object.id}: different session`);
-        }
-
-        if (!object.session) {
-          // Session was closed on backend — clear local session if one exists
-          if (currentSession && !isLocalOnlyStatus(currentSession.status)) {
-            console.log(`[TableSessionRealtimeSync] CLEAR stale session for table ${object.name || object.id}: local status="${currentSession.status}", no backend session`);
-            dispatchActions.push({
-              tableId: object.id,
-              action: { type: "CLEAR" as const },
-            });
-          }
-          return;
-        }
-
-        // Only update if session actually changed (for existing sessions)
-        if (currentSession) {
-          const sessionChanged =
-            currentSession.id !== object.session.id ||
-            currentSession.status !== object.session.status ||
-            currentSession.party_size !== object.session.party_size ||
-            currentSession.guest_name !== object.session.guest_name ||
-            currentSession.order_id !== object.session.order_id ||
-            currentSession.server_staff_id !== object.session.server_staff_id ||
-            currentSession.current_course !== object.session.current_course ||
-            currentSession.needs_attention !== object.session.needs_attention ||
-            currentSession.is_vip !== object.session.is_vip ||
-            currentSession.session_number !== object.session.session_number ||
-            (currentSession.merged_tables?.length ?? 0) !== (object.session.merged_tables?.length ?? 0);
-
-          if (sessionChanged) {
-            console.log(`[TableSessionRealtimeSync] UPDATE table ${object.name || object.id}: "${currentSession.status}" → "${object.session.status}"`);
-            dispatchActions.push({
-              tableId: object.id,
-              action: { type: "SYNC" as const, session: object.session },
-            });
-          }
-        }
-      });
-
-      // batchDispatch handles both session store + floor plan store sync via _syncToFloorPlanStore
-      if (dispatchActions.length > 0) {
-        sessionStore.batchDispatch(dispatchActions);
-      }
-    } catch (err) {
-      console.error("[TableSessionRealtimeSync] Poll error:", err);
-    }
-  };
-
-  // Start polling
-  pollInterval = setInterval(poll, POLL_INTERVAL);
+  activeLocationId = locationId;
+  consecutiveNoChangePolls = 0;
 
   // Initial poll
   poll();
 
-  console.log("[TableSessionRealtimeSync] Started with interval:", POLL_INTERVAL);
+  if (__DEV__) console.log("[TableSessionRealtimeSync] Started with base interval:", BASE_INTERVAL);
 }
 
 /**
@@ -184,12 +259,14 @@ export function recordTableCleared(tableId: string) {
  * Stop polling for table_sessions changes
  */
 export function stopTableSessionRealtimeSync() {
-  if (pollInterval) {
-    clearInterval(pollInterval);
-    pollInterval = null;
-    lastSyncTimestamp = 0;
-    console.log("[TableSessionRealtimeSync] Stopped");
+  if (pollTimeout) {
+    clearTimeout(pollTimeout);
+    pollTimeout = null;
   }
+  activeLocationId = null;
+  lastSyncTimestamp = 0;
+  consecutiveNoChangePolls = 0;
+  if (__DEV__) console.log("[TableSessionRealtimeSync] Stopped");
 }
 
 /**
@@ -200,6 +277,7 @@ export function restartTableSessionRealtimeSync() {
 
   const locationId = useStoreSettingsStore.getState().selectedStore?.id;
   if (locationId) {
+    consecutiveNoChangePolls = 0; // Reset to fast polling on restart
     startTableSessionRealtimeSync(locationId);
   }
 }
