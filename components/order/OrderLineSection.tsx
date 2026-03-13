@@ -45,11 +45,8 @@ const OrderLineSectionContent: React.FC = () => {
       // Hide closed checks
       if (o.check_status === "Closed") return false;
 
-      // Hide orders that are ready/completed AND fully paid
-      if (
-        (o.order_status === "ready" || o.order_status === "completed") &&
-        o.paid_status === "Paid"
-      ) return false;
+      // Hide orders that are completed AND fully paid (ready+paid stay visible for "Mark Done")
+      if (o.order_status === "completed" && o.paid_status === "Paid") return false;
 
       // Show everything else (sent_to_kitchen, preparing, unpaid, refunded, etc.)
       return true;

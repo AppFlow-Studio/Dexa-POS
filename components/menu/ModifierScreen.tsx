@@ -8,7 +8,7 @@ import {
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import debounce from "lodash/debounce";
+
 import { ArrowLeft, Check, CheckCircle2, Minus, Plus, X } from "lucide-react-native";
 import {
   memo,
@@ -20,7 +20,6 @@ import {
 import { useImmerReducer } from "use-immer";
 import {
   Image,
-  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -321,6 +320,16 @@ const ModifierScreen = () => {
       useOrderStore.getState().removeItemFromActiveOrder(itemId, voidReason),
     [],
   );
+  const removeDraftItem = useCallback(
+    (draftItemId: string) =>
+      useOrderStore.getState().removeDraftItem(draftItemId),
+    [],
+  );
+  const removeDraftItems = useCallback(
+    (menuItemId: string) =>
+      useOrderStore.getState().removeDraftItems(menuItemId),
+    [],
+  );
   const generateCartItemId = useCallback(
     (menuItemId: string, customizations: any, isDraft?: boolean) =>
       useOrderStore
@@ -493,107 +502,6 @@ const ModifierScreen = () => {
   ]);
 
   // ============================================================================
-  // DEBOUNCED DRAFT UPDATE (Stabilized with useRef - no recreation on render)
-  // ============================================================================
-
-  const updateDraftItemRef = useRef<ReturnType<typeof debounce> | null>(null);
-
-  // Create stable debounce function once on mount
-  useEffect(() => {
-    updateDraftItemRef.current = debounce(
-      (
-        quantity: number,
-        modifierSelections: ModifierSelection,
-        notes: string,
-        item: any,
-        modifiers: ModifierCategory[] | undefined,
-        categoriesMap: Map<string, ModifierCategory>,
-        optionsMap: Map<
-          string,
-          { option: any; categoryId: string; categoryName: string }
-        >,
-        getPrice: (item: any) => number,
-      ) => {
-        const draftId = draftItemIdRef.current;
-        if (!draftId || !item) return;
-
-        const selectedModifiers = modifiers
-          ? Object.entries(modifierSelections).map(([catId, selections]) => {
-              const category = categoriesMap.get(catId);
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId]) => {
-                  const optionData = optionsMap.get(optionId);
-                  return {
-                    id: optionId,
-                    name: optionData?.option.name || "",
-                    price: optionData?.option.price || 0,
-                  };
-                });
-
-              return {
-                categoryId: catId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            })
-          : [];
-
-        let baseTotal = getPrice(item);
-        selectedModifiers.forEach((modifier) => {
-          modifier.options.forEach((option) => {
-            baseTotal += option.price;
-          });
-        });
-
-        // OPTIMIZED: Use lightweight updateDraftItem — direct immer mutation,
-        // no merge detection, no calculateOrderTotals, no sync (<1ms)
-        useOrderStore.getState().updateDraftItem(draftId, {
-          quantity,
-          price: baseTotal,
-          customizations: {
-            modifiers: selectedModifiers,
-            notes,
-          },
-        });
-      },
-      150, // 150ms debounce — well under 300ms perception threshold, reduces store writes ~3x on rapid toggles
-    );
-
-    return () => {
-      updateDraftItemRef.current?.cancel();
-    };
-  }, []); // Empty deps - stable reference
-
-  // Trigger debounced update when values change
-  useEffect(() => {
-    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
-
-    updateDraftItemRef.current?.(
-      state.quantity,
-      state.modifierSelections,
-      state.notes,
-      currentItem,
-      menuItemForModifiers?.modifiers,
-      modifierCategoriesById,
-      optionsById,
-      getCurrentItemPrice,
-    );
-  }, [
-    state.quantity,
-    state.modifierSelections,
-    state.notes,
-    currentItem,
-    isOpen,
-    mode,
-    cartItem,
-    menuItemForModifiers?.modifiers,
-    modifierCategoriesById,
-    optionsById,
-    getCurrentItemPrice,
-  ]);
-
-  // ============================================================================
   // INITIALIZATION (CONSOLIDATED - Single openKey-based effect replaces 3 effects)
   // Tracks a composite key of the open session; dispatches INITIALIZE only when
   // switching to a different item/mode.
@@ -753,7 +661,7 @@ const ModifierScreen = () => {
   useEffect(() => {
     return () => {
       if (!actionHandledRef.current && draftItemIdRef.current) {
-        removeItemFromActiveOrder(draftItemIdRef.current);
+        removeDraftItem(draftItemIdRef.current);
         draftItemIdRef.current = null;
       }
       // Safety: close store if still open on unmount (e.g., navigation away)
@@ -772,17 +680,7 @@ const ModifierScreen = () => {
       !!menuItem && menuItem.id !== previousDraftMenuItemId;
 
     if (switchedToEditExisting || switchedToDifferentMenuItem) {
-      const { activeOrderId, ordersById, removeItemFromActiveOrder } =
-        useOrderStore.getState();
-      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-      const draftItems = activeOrder?.items.filter(
-        (item) => item.isDraft && item.menuItemId === previousDraftMenuItemId,
-      );
-      if (draftItems && draftItems.length > 0) {
-        draftItems.forEach((draftItem) => {
-          removeItemFromActiveOrder(draftItem.id);
-        });
-      }
+      removeDraftItems(previousDraftMenuItemId);
       lastDraftMenuItemIdRef.current = null;
     }
   }, [mode, cartItem, menuItem]);
@@ -1005,9 +903,9 @@ const ModifierScreen = () => {
     // Safe because all needed state is already captured in latestStateRef/locals above.
     closeModal();
 
-    // Defer all save work until the close animation completes.
+    // Run save work concurrently with the native-driver close animation.
     // All needed state is captured in locals above — no stale closures.
-    InteractionManager.runAfterInteractions(() => {
+    queueMicrotask(() => {
       const selectedModifiers = modifiersItem?.modifiers
         ? Object.entries(currentState.modifierSelections)
             .map(([cId, selections]) => {
@@ -1114,18 +1012,7 @@ const ModifierScreen = () => {
       !cart &&
       item
     ) {
-      const { activeOrderId, ordersById } = useOrderStore.getState();
-      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-
-      const draftItems = activeOrder?.items.filter(
-        (i) => i.isDraft && i.menuItemId === item.id,
-      );
-
-      if (draftItems && draftItems.length > 0) {
-        draftItems.forEach((draftItem) => {
-          removeItemFromActiveOrder(draftItem.id);
-        });
-      }
+      removeDraftItems(item.id);
       lastDraftMenuItemIdRef.current = null;
     }
     closeModal();

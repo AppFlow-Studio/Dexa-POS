@@ -622,6 +622,9 @@ const KitchenDisplayScreen = () => {
   }, [isRealtimeConnected]);
 
   // Initial fetch + adaptive polling via setTimeout chain
+  // Display-filtered KDS stations use 30s polling as a safety net since
+  // client-side broadcast filtering may miss items that server-side routing includes.
+  const hasDisplayFilter = routingMode !== null && routingMode !== "all";
   useEffect(() => {
     if (!isReady || !locationId) return;
 
@@ -629,7 +632,9 @@ const KitchenDisplayScreen = () => {
 
     let timeoutId: ReturnType<typeof setTimeout>;
     const schedulePoll = () => {
-      const interval = isRealtimeConnectedRef.current ? 120_000 : 15_000;
+      const interval = isRealtimeConnectedRef.current
+        ? (hasDisplayFilter ? 30_000 : 120_000)
+        : 15_000;
       timeoutId = setTimeout(() => {
         backgroundFetchTickets(locationId);
         schedulePoll();
@@ -638,7 +643,7 @@ const KitchenDisplayScreen = () => {
     schedulePoll();
 
     return () => clearTimeout(timeoutId);
-  }, [isReady, locationId, fetchTickets, backgroundFetchTickets]);
+  }, [isReady, locationId, fetchTickets, backgroundFetchTickets, hasDisplayFilter]);
 
   // On reconnection (false -> true), trigger a single background fetch
   useEffect(() => {

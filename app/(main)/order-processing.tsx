@@ -60,7 +60,8 @@ const OrderProcessing = () => {
               o.order_status !== "completed" &&
               o.order_status !== "draft" &&
               o.order_status !== "void" &&
-              o.check_status !== "Closed"))
+              o.check_status !== "Closed") ||
+            (o.order_status === "ready" && o.paid_status === "Paid" && o.items.length > 0))
         ) {
           result.push(o);
         }
@@ -133,13 +134,12 @@ const OrderProcessing = () => {
 
   const handleMarkReady = useCallback((order: OrderProfile) => {
     markAllItemsAsReady(order.id);
+    // Don't auto-archive paid orders — cashier must explicitly mark done
+  }, [markAllItemsAsReady]);
 
-    if (order.order_type === "Takeaway" && order.paid_status === "Paid" ||  order.check_status !== "Closed") {
-      setTimeout(() => {
-        archiveOrder(order.id);
-      }, 500);
-    }
-  }, [markAllItemsAsReady, archiveOrder]);
+  const handleMarkDone = useCallback((orderId: string) => {
+    archiveOrder(orderId);
+  }, [archiveOrder]);
 
   const handleRetrieve = useCallback((orderId: string) => {
     setActiveOrder(orderId);
@@ -246,13 +246,14 @@ const OrderProcessing = () => {
       <OrderBadge
         order={item}
         onMarkReady={() => handleMarkReady(item)}
+        onMarkDone={() => handleMarkDone(item.id)}
         onViewItems={() => handleViewItems(item.id)}
         onRetrieve={() => handleRetrieve(item.id)}
         onReopenCheck={() => handleReopenCheck(item.id)}
         onPrintReceipt={() => handlePrintReceipt(item)}
       />
     ),
-    [handleMarkReady, handleViewItems, handleRetrieve, handleReopenCheck, handlePrintReceipt],
+    [handleMarkReady, handleMarkDone, handleViewItems, handleRetrieve, handleReopenCheck, handlePrintReceipt],
   );
 
   const badgeKeyExtractor = useCallback((item: OrderProfile) => item.id, []);

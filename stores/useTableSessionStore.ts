@@ -382,18 +382,8 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
           nextStatus = get().sessions[tableId]?.status ?? null;
 
-          // Update floor plan store's tables with new session status
-          if (nextStatus && nextStatus !== previousStatus) {
-            const newSession = get().sessions[tableId];
-            if (newSession) {
-              const floorPlanStore = useFloorPlanStore.getState();
-              const currentTables = floorPlanStore.tables;
-              const updatedTables = currentTables.map((t: any) =>
-                t.id === tableId ? { ...t, session: newSession } : t
-              );
-              useFloorPlanStore.setState({ tables: updatedTables });
-            }
-          }
+          // Note: _syncToFloorPlanStore() is already called by dispatch() above,
+          // so no manual floor plan update needed here.
 
           // Backend sync for non-local statuses
           if (nextStatus && !isLocalOnlyStatus(nextStatus) && session) {
@@ -647,12 +637,11 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // If the session is no longer active, clear all tables associated with it
         if (data.session.is_active === false) {
           const sessionId = data.session.id;
-          const currentSessions = get().sessions;
+          // O(1) lookup via sessionTableIndex instead of scanning all sessions
+          const tableIds = get().sessionTableIndex[sessionId] || [];
           const actions: Array<{ tableId: string; action: SessionAction }> = [];
-          for (const [tId, sess] of Object.entries(currentSessions)) {
-            if (sess.id === sessionId) {
-              actions.push({ tableId: tId, action: { type: 'CLEAR' } });
-            }
+          for (const tId of tableIds) {
+            actions.push({ tableId: tId, action: { type: 'CLEAR' } });
           }
           if (actions.length > 0) get().batchDispatch(actions);
           return;
@@ -1154,11 +1143,13 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
 function _resolveSeatingToSeated(localSessionId: string) {
   const store = useTableSessionStore.getState();
-  const currentSessions = store.sessions;
   const actions: Array<{ tableId: string; action: SessionAction }> = [];
 
-  for (const [tableId, session] of Object.entries(currentSessions)) {
-    if (session.id === localSessionId && session.status === "seating") {
+  // O(1) lookup via sessionTableIndex instead of scanning all sessions
+  const tableIds = store.sessionTableIndex[localSessionId] || [];
+  for (const tableId of tableIds) {
+    const session = store.sessions[tableId];
+    if (session && session.status === "seating") {
       actions.push({
         tableId,
         action: {

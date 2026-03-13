@@ -6,18 +6,18 @@
  */
 
 import type {
-  BroadcastModifierData,
-  BroadcastOrderData,
-  BroadcastOrderItemData,
-  BroadcastOrderPaymentData,
+    BroadcastModifierData,
+    BroadcastOrderData,
+    BroadcastOrderItemData,
+    BroadcastOrderPaymentData,
 } from "@/hooks/realtime/useOrdersRealtime";
 import type {
-  CartItem,
-  OrderPaymentItemCoverage,
-  OrderProfile,
-  OrderProfilePayment,
-  OrderRefundItemRecord,
-  ReversalRecord,
+    CartItem,
+    OrderPaymentItemCoverage,
+    OrderProfile,
+    OrderProfilePayment,
+    OrderRefundItemRecord,
+    ReversalRecord,
 } from "@/lib/types";
 
 /**
@@ -728,7 +728,7 @@ export interface FetchedOrderPayment {
   processor_response: Record<string, unknown> | null;
   reference_number: string | null;
 
-  // Dejavoo-specific columns (extracted by process_payment_v6.sql)
+  // Dejavoo-specific columns (extracted by process_payment_v7.sql)
   dejavoo_response_code: string | null;
   dejavoo_batch_number: string | null;
   dejavoo_invoice_number: string | null;

@@ -63,6 +63,7 @@ interface PreviousOrdersState {
   previousOrders: PreviousOrder[];
   refunds: RefundRecord[];
   newOrdersCount: number; // Tracks how many new orders are available on server
+  _orderLookup: Record<string, PreviousOrder>;
 
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
@@ -94,6 +95,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     previousOrders: [],
     refunds: [],
     newOrdersCount: 0,
+    _orderLookup: {},
 
     addOrderToHistory: (order: OrderProfile) => {
       // An order should be added to history if it has reached a final state.
@@ -117,11 +119,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         return;
       }
 
-      // Check if order already exists in history
-      const existingOrder = get().previousOrders.find(
-        (o) => o.orderId === order.id || o.db_order_id === order.db_order_id,
-      );
-      if (existingOrder) {
+      // Check if order already exists in history (O(1) lookup)
+      const lookup = get()._orderLookup;
+      const lookupKey = order.db_order_id || order.id;
+      if (lookup[lookupKey]) {
         return; // Don't add duplicates
       }
 
@@ -191,13 +192,19 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         order_refund_items: order.order_refund_items,
       };
 
-      set((state) => ({
-        previousOrders: [...state.previousOrders, previousOrder],
-      }));
+      set((state) => {
+        const key = previousOrder.db_order_id || previousOrder.orderId;
+        return {
+          previousOrders: [...state.previousOrders, previousOrder],
+          _orderLookup: { ...state._orderLookup, [key]: previousOrder },
+        };
+      });
     },
 
     getOrderById: (orderId: string) => {
-      return get().previousOrders.find((order) => order.orderId === orderId);
+      const lookup = get()._orderLookup;
+      // Try direct lookup first, then scan for orderId match
+      return lookup[orderId] ?? get().previousOrders.find((order) => order.orderId === orderId);
     },
 
     searchOrders: (query: string) => {
@@ -241,7 +248,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         return;
       }
 
-      console.log("Refreshing previous orders data from backend...");
+      if (__DEV__) console.log("Refreshing previous orders data from backend...");
 
       try {
         // Fetch last 50 orders with full history details
@@ -327,12 +334,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           },
         );
 
-        // Sort by timestamp descending (newest first)
-        // OrderService already sorts by created_at desc, but good to ensure
-        newPreviousOrders.sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-        );
+        // Skip pre-sort: the merged result is sorted below, and the Map merge
+        // loses ordering anyway.
 
         const existingPreviousOrders = get().previousOrders;
 
@@ -358,8 +361,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        set({ previousOrders: mergedPreviousOrders, newOrdersCount: 0 });
-        console.log(
+        const newLookup: Record<string, PreviousOrder> = {};
+        for (const order of mergedPreviousOrders) {
+          newLookup[order.db_order_id || order.orderId] = order;
+        }
+        set({ previousOrders: mergedPreviousOrders, newOrdersCount: 0, _orderLookup: newLookup });
+        if (__DEV__) console.log(
           `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded.`,
         );
       } catch (err) {
@@ -388,15 +395,13 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           return 0;
         }
 
-        // Get current local order IDs
-        const localOrderIds = new Set(
-          get().previousOrders.map((o) => o.db_order_id || o.orderId),
-        );
+        // Use O(1) lookup instead of building a Set
+        const lookup = get()._orderLookup;
 
         // Count how many fetched orders are NOT in local state
         let newCount = 0;
         for (const order of latestOrders) {
-          if (!localOrderIds.has(order.id)) {
+          if (!lookup[order.id]) {
             newCount++;
           }
         }
@@ -465,19 +470,31 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       };
 
       // Update the order to mark it as refunded
-      set((state) => ({
-        refunds: [...state.refunds, refundRecord],
-        previousOrders: state.previousOrders.map((o) =>
-          o.orderId === orderId
-            ? {
-                ...o,
-                refunded: true,
-                refundedAmount: o.total,
-                paymentStatus: "Refunded" as const,
-              }
-            : o,
-        ),
-      }));
+      set((state) => {
+        // Capture the updated order during the map pass (avoids redundant .find())
+        let updatedOrder: PreviousOrder | undefined;
+        const updatedOrders = state.previousOrders.map((o) => {
+          if (o.orderId === orderId) {
+            updatedOrder = {
+              ...o,
+              refunded: true,
+              refundedAmount: o.total,
+              paymentStatus: "Refunded" as const,
+            };
+            return updatedOrder;
+          }
+          return o;
+        });
+        const newLookup = { ...state._orderLookup };
+        if (updatedOrder) {
+          newLookup[updatedOrder.db_order_id || updatedOrder.orderId] = updatedOrder;
+        }
+        return {
+          refunds: [...state.refunds, refundRecord],
+          previousOrders: updatedOrders,
+          _orderLookup: newLookup,
+        };
+      });
     },
 
     refundItems: async (
@@ -573,6 +590,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       // 3. Update the state in a single `set` call
       set((state) => {
+        // Capture updated order during map pass (avoids redundant .find())
+        let updatedRefundOrder: PreviousOrder | undefined;
         const updatedPreviousOrders = state.previousOrders.map((o) => {
           if (o.orderId === orderId) {
             // Update the refunded quantities on the original order's items
@@ -594,7 +613,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               (o.refundedAmount || 0) + totalRefundedInThisTx;
             const isFullyRefunded = newTotalRefundedAmount >= o.total - 0.001; // Epsilon for float safety
 
-            return {
+            updatedRefundOrder = {
               ...o,
               items: updatedItems,
               refunded: true,
@@ -603,13 +622,19 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
                 ? ("Refunded" as const)
                 : ("Partially Refunded" as const),
             };
+            return updatedRefundOrder;
           }
           return o;
         });
 
+        const newLookup = { ...state._orderLookup };
+        if (updatedRefundOrder) {
+          newLookup[updatedRefundOrder.db_order_id || updatedRefundOrder.orderId] = updatedRefundOrder;
+        }
         return {
           previousOrders: updatedPreviousOrders,
           refunds: [...state.refunds, newRefundRecord],
+          _orderLookup: newLookup,
         };
       });
     },

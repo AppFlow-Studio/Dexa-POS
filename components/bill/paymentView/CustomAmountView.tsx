@@ -1,5 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
   ArrowLeft,
@@ -31,11 +32,18 @@ const CustomAmountView = () => {
   const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
   const activeOrderTotal = orderTotals?.total ?? 0;
 
-  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  // Check if order already has payments (for effectiveTotal fallback)
+  const activeOrder = useOrderStore((s) =>
+    s.activeOrderId ? s.ordersById[s.activeOrderId] : null
+  );
+  const hasPayments = (activeOrder?.payments ?? []).some(p => !p.isVoided);
+
+  // Fallback to activeOrderTotal only if no payments exist (handles async timing)
+  // If payments exist and outstanding is 0, the order is fully paid — don't show full total
   const effectiveTotal =
     activeOrderOutstandingTotal > 0
       ? activeOrderOutstandingTotal
-      : activeOrderTotal;
+      : hasPayments ? 0 : activeOrderTotal;
 
   // --- MATH LOGIC ---
   const totalAllocated = useMemo(() => {
@@ -47,6 +55,8 @@ const CustomAmountView = () => {
   // Logic to determine status color
   const isPerfect = Math.abs(remaining) < 0.01;
   const isOver = remaining < -0.01;
+  // Allow proceeding with any positive allocation that doesn't exceed total
+  const canProceed = totalAllocated > 0.01 && !isOver;
 
   const statusColor = isPerfect
     ? "text-green-400"
@@ -142,10 +152,17 @@ const CustomAmountView = () => {
           {/* Bottom Actions Area */}
           <View className="gap-4">
             {/* Hint */}
-            {!isPerfect && (
+            {!canProceed && (
               <View className="bg-surface p-4 rounded-xl">
                 <Text className="text-gray-400 text-sm text-center">
-                  Assign the remaining amount to enable payment.
+                  Assign amounts to enable payment.
+                </Text>
+              </View>
+            )}
+            {canProceed && !isPerfect && (
+              <View className="bg-surface p-4 rounded-xl">
+                <Text className="text-yellow-400 text-sm text-center">
+                  ${remaining.toFixed(2)} remaining will stay unpaid.
                 </Text>
               </View>
             )}
@@ -153,19 +170,19 @@ const CustomAmountView = () => {
             {/* Next Step Button */}
             <TouchableOpacity
               onPress={handleProceed}
-              disabled={!isPerfect}
-              className={`w-full py-4 rounded-xl flex-row items-center justify-center shadow-lg 
-                        ${isPerfect ? "bg-blue-600 shadow-blue-900/20 active:bg-blue-700" : "bg-surface opacity-80"}`}
+              disabled={!canProceed}
+              className={`w-full py-4 rounded-xl flex-row items-center justify-center shadow-lg
+                        ${canProceed ? "bg-blue-600 shadow-blue-900/20 active:bg-blue-700" : "bg-surface opacity-80"}`}
             >
-              {isPerfect ? (
+              {canProceed ? (
                 <Check size={20} color="white" className="mr-2" />
               ) : (
                 <ArrowRight size={20} color={colors.label} className="mr-2" />
               )}
               <Text
-                className={`font-bold text-lg ${isPerfect ? "text-white" : "text-gray-400"}`}
+                className={`font-bold text-lg ${canProceed ? "text-white" : "text-gray-400"}`}
               >
-                Finalize Split
+                {isPerfect ? "Finalize Split" : "Pay Allocated Amount"}
               </Text>
             </TouchableOpacity>
           </View>

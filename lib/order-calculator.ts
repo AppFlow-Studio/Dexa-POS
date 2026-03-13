@@ -400,270 +400,14 @@ export function distributeDiscountToItems(
  * @param input - OrderCalculationInput with items, discount, taxRates
  * @returns OrderTotals with all calculated values
  */
-// export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals {
-//   // =========================================================================
-//   // CACHE CHECK - Return cached result if valid
-//   // =========================================================================
-//   const cacheKey = hashCalculationInput(input);
-//   const cached = calculationCache.get(cacheKey);
-
-//   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-//     return cached.result;
-//   }
-
-//   // =========================================================================
-//   // CALCULATION - No valid cache, compute result
-//   // =========================================================================
-//   const { items, checkDiscount, taxRatesMap, payments = [] } = input;
-
-//   // Filter active items once
-//   const activeItems = items.filter((item) => !item.is_voided);
-
-//   // Empty order short-circuit
-//   if (activeItems.length === 0) {
-//     return createEmptyTotals();
-//   }
-
-//   // =========================================================================
-//   // FIRST PASS: Collect all item data
-//   // =========================================================================
-
-//   interface ItemTaxData {
-//     itemSubtotal: number;
-//     itemCashSubtotal: number;
-//     unpaidQty: number;
-//     unpaidSubtotal: number;
-//     unpaidCashSubtotal: number;
-//     taxRateDecimal: number;
-//     isTaxExempt: boolean;
-//   }
-
-//   let subtotal = 0;
-//   let itemDiscountsTotal = 0;
-//   let cashSubtotal = 0;
-//   const itemsData: ItemTaxData[] = [];
-
-//   for (const item of activeItems) {
-//     // Card price subtotal
-//     const effectiveCardPrice = calculateItemEffectiveCardPrice(item);
-//     // console.log("item [calculateOrderTotals]", item);
-//     const itemSubtotal = effectiveCardPrice * item.quantity;
-//     subtotal += itemSubtotal;
-
-//     // Item-level discounts (individual item discounts, not check discount)
-//     if (item.appliedDiscount) {
-//       itemDiscountsTotal +=
-//         item.originalPrice * item.appliedDiscount.value * item.quantity;
-//     }
-
-//     // Cash price subtotal
-//     const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
-//     // console.log("effectiveCashPrice [calculateOrderTotals]", effectiveCashPrice);
-//     const itemCashSubtotal = effectiveCashPrice * item.quantity;
-//     cashSubtotal += itemCashSubtotal;
-
-//     // Unpaid quantities
-//     const unpaidQty = item.quantity - (item.paidQuantity ?? 0);
-//     const unpaidSubtotal = unpaidQty > 0 ? unpaidQty * item.price : 0;
-//     const unpaidCashSubtotal =
-//       unpaidQty > 0 ? unpaidQty * effectiveCashPrice : 0;
-
-//     // Tax rate
-//     const taxCategory = item.tax_category ?? "standard";
-//     const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-//     const taxRateDecimal = taxRatePercent / 100;
-
-//     itemsData.push({
-//       itemSubtotal,
-//       itemCashSubtotal,
-//       unpaidQty,
-//       unpaidSubtotal,
-//       unpaidCashSubtotal,
-//       taxRateDecimal,
-//       isTaxExempt: item.is_tax_exempt ?? false,
-//     });
-//   }
-
-//   // =========================================================================
-//   // CALCULATE CHECK-LEVEL DISCOUNT
-//   // =========================================================================
-
-//   const subtotalAfterItemDiscounts = subtotal - itemDiscountsTotal;
-//   let checkDiscountAmount = 0;
-
-//   if (checkDiscount) {
-//     if (checkDiscount.type === "percentage") {
-//       checkDiscountAmount = subtotalAfterItemDiscounts * checkDiscount.value;
-//     } else {
-//       // Fixed amount - can't exceed subtotal
-//       checkDiscountAmount = Math.min(
-//         checkDiscount.value,
-//         subtotalAfterItemDiscounts
-//       );
-//     }
-//   }
-
-//   const totalDiscountAmount = round2(itemDiscountsTotal + checkDiscountAmount);
-
-//   // Calculate cash discount amount based on discount type
-//   // For percentage discounts: apply same percentage to cash subtotal
-//   // For fixed discounts: use same fixed amount (proportionally reduced if cash subtotal is lower)
-//   let cashDiscountAmount = 0;
-
-//   if (checkDiscount) {
-//     if (checkDiscount.type === "percentage") {
-//       // Apply the same percentage to cash subtotal
-//       const cashSubtotalAfterItemDiscounts = cashSubtotal - itemDiscountsTotal;
-//       cashDiscountAmount = cashSubtotalAfterItemDiscounts * checkDiscount.value;
-//     } else {
-//       // For fixed discounts, use the same amount but don't exceed cash subtotal
-//       cashDiscountAmount = Math.min(
-//         checkDiscountAmount,
-//         cashSubtotal - itemDiscountsTotal
-//       );
-//     }
-//   }
-
-//   const totalCashDiscountAmount = round2(itemDiscountsTotal + cashDiscountAmount);
-
-//   // =========================================================================
-//   // SECOND PASS: Calculate taxes and outstanding amounts
-//   // =========================================================================
-
-//   let taxAmount = 0;
-//   let outstandingSubtotal = 0;
-//   let outstandingTax = 0;
-//   let cashTaxAmount = 0;
-//   let cashOutstandingSubtotal = 0;
-//   let cashOutstandingTax = 0;
-
-//   for (const data of itemsData) {
-//     if (!data.isTaxExempt && data.taxRateDecimal > 0) {
-//       // Card price tax
-//       const itemDiscountProportion =
-//         subtotal > 0 ? data.itemSubtotal / subtotal : 0;
-//       const itemDiscountAmount = totalDiscountAmount * itemDiscountProportion;
-//       const itemTaxableAmount = Math.max(
-//         0,
-//         data.itemSubtotal - itemDiscountAmount
-//       );
-//       taxAmount += itemTaxableAmount * data.taxRateDecimal;
-
-//       // Cash price tax - use cash discount amount
-//       const cashDiscountProportion =
-//         cashSubtotal > 0 ? data.itemCashSubtotal / cashSubtotal : 0;
-//       const cashItemDiscountAmount =
-//         totalCashDiscountAmount * cashDiscountProportion;
-//       const cashItemTaxableAmount = Math.max(
-//         0,
-//         data.itemCashSubtotal - cashItemDiscountAmount
-//       );
-//       cashTaxAmount += cashItemTaxableAmount * data.taxRateDecimal;
-//     }
-
-//     // Outstanding calculations
-//     if (data.unpaidQty > 0) {
-//       outstandingSubtotal += data.unpaidSubtotal;
-//       cashOutstandingSubtotal += data.unpaidCashSubtotal;
-
-//       if (!data.isTaxExempt && data.taxRateDecimal > 0) {
-//         // Outstanding card tax
-//         const outDiscountProp =
-//           subtotal > 0 ? data.unpaidSubtotal / subtotal : 0;
-//         const outDiscountAmt = totalDiscountAmount * outDiscountProp;
-//         const outTaxableAmt = Math.max(0, data.unpaidSubtotal - outDiscountAmt);
-//         outstandingTax += outTaxableAmt * data.taxRateDecimal;
-
-//         // Outstanding cash tax - use cash discount amount
-//         const cashOutDiscountProp =
-//           cashSubtotal > 0 ? data.unpaidCashSubtotal / cashSubtotal : 0;
-//         const cashOutDiscountAmt = totalCashDiscountAmount * cashOutDiscountProp;
-//         const cashOutTaxableAmt = Math.max(
-//           0,
-//           data.unpaidCashSubtotal - cashOutDiscountAmt
-//         );
-//         cashOutstandingTax += cashOutTaxableAmt * data.taxRateDecimal;
-//       }
-//     }
-//   }
-
-//   // =========================================================================
-//   // ROUND AND CALCULATE TOTALS
-//   // =========================================================================
-
-//   taxAmount = round2(taxAmount);
-//   outstandingSubtotal = round2(outstandingSubtotal);
-//   outstandingTax = round2(outstandingTax);
-//   cashTaxAmount = round2(cashTaxAmount);
-//   cashOutstandingSubtotal = round2(cashOutstandingSubtotal);
-//   cashOutstandingTax = round2(cashOutstandingTax);
-
-//   // Card total
-//   const taxableAmount = Math.max(0, subtotal - totalDiscountAmount);
-//   const totalAmount = round2(taxableAmount + taxAmount);
-
-//   // Card outstanding total
-//   const proportionOutstanding =
-//     subtotal > 0 ? outstandingSubtotal / subtotal : 0;
-//   const outstandingDiscount = totalDiscountAmount * proportionOutstanding;
-//   const outstandingSubtotalAfterDiscount =
-//     outstandingSubtotal - outstandingDiscount;
-//   const outstandingTotal = round2(
-//     outstandingSubtotalAfterDiscount + outstandingTax
-//   );
-
-//   // Cash total - use the cash discount we calculated earlier
-//   const cashTaxableAmount = Math.max(0, cashSubtotal - totalCashDiscountAmount);
-//   const cashTotalAmount = round2(cashTaxableAmount + cashTaxAmount);
-
-//   // Cash outstanding total - use cash discount proportionally
-//   const cashProportionOutstanding =
-//     cashSubtotal > 0 ? cashOutstandingSubtotal / cashSubtotal : 0;
-//   const cashOutstandingDiscount =
-//     totalCashDiscountAmount * cashProportionOutstanding;
-//   const cashOutstandingSubtotalAfterDiscount =
-//     cashOutstandingSubtotal - cashOutstandingDiscount;
-//   const cashOutstandingTotal = round2(
-//     cashOutstandingSubtotalAfterDiscount + cashOutstandingTax
-//   );
-
-//   const result: OrderTotals = {
-//     subtotal: round2(subtotal),
-//     discount_amount: totalDiscountAmount,
-//     tax_amount: taxAmount,
-//     total_amount: totalAmount,
-//     outstanding_subtotal: outstandingSubtotal,
-//     outstanding_tax: outstandingTax,
-//     outstanding_total: outstandingTotal,
-//     cash_subtotal: round2(cashSubtotal),
-//     cash_tax_amount: cashTaxAmount,
-//     cash_total_amount: cashTotalAmount,
-//     cash_outstanding_subtotal: cashOutstandingSubtotal,
-//     cash_outstanding_tax: cashOutstandingTax,
-//     cash_outstanding_total: cashOutstandingTotal,
-//   };
-
-//   // =========================================================================
-//   // CACHE STORE - Save result for future calls
-//   // =========================================================================
-
-//   // Prune expired entries periodically
-//   if (calculationCache.size >= MAX_CACHE_SIZE) {
-//     pruneCache();
-//   }
-
-//   // If still at max after pruning, remove oldest entry
-//   if (calculationCache.size >= MAX_CACHE_SIZE) {
-//     const oldestKey = calculationCache.keys().next().value;
-//     if (oldestKey) calculationCache.delete(oldestKey);
-//   }
-
-//   calculationCache.set(cacheKey, { result, timestamp: Date.now() });
-
-//   return result;
-// }
-
 export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals {
+  // CACHE CHECK - Return cached result if valid
+  const cacheKey = hashCalculationInput(input);
+  const cached = calculationCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.result;
+  }
+
   const { items, checkDiscount, taxRatesMap, payments = [] } = input;
   const activeItems = items.filter((item) => !item.is_voided);
 
@@ -860,50 +604,68 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   // =========================================================================
   
   if (payments.length > 0) {
-    // Calculate effective paid from payments (amount - refundedAmount)
+    // Calculate effective paid using card-equivalent amounts (matches SQL §10)
+    // For cash-priced payments, amount is cash price but cashSavings = original_amount - amount
+    // So amount + cashSavings = original_amount = card equivalent
     const effectivePaid = payments
       .filter(p => !p.isVoided)
       .reduce((sum, p) => {
         const refunded = p.refundedAmount ?? 0;
-        return sum.plus(new Decimal(p.amount).minus(refunded));
+        // Use card-equivalent: for cash-priced payments, add cashSavings to get original_amount
+        const cardEquivalentAmount = p.isCashPriced && p.cashSavings
+          ? new Decimal(p.amount).plus(p.cashSavings)
+          : new Decimal(p.amount);
+        return sum.plus(cardEquivalentAmount.minus(refunded));
       }, new Decimal(0));
-    
+
     // Payment-based outstanding = total - effective_paid
     const paymentBasedOutstanding = Decimal.max(
       cardTotal.minus(effectivePaid),
       new Decimal(0)
     );
-    
-    // Custom refund balance = payment-based due NOT covered by item-level unpaid
-    // This is a flat monetary amount from custom refunds — same regardless of card/cash pricing
+
+    // Custom refund balance = payment-based due NOT covered by item-level unpaid (upward adjustment)
     const customRefundBalance = Decimal.max(
       paymentBasedOutstanding.minus(outstandingCardTotal),
       new Decimal(0)
     );
     outstandingCardTotal = outstandingCardTotal.plus(customRefundBalance);
     outstandingCashTotal = outstandingCashTotal.plus(customRefundBalance);
+
+    // Clamping: when payments exceed item-level tracking (e.g., split-evenly doesn't mark items),
+    // clamp outstanding down to payment-based remaining (matches SQL §10 lines 796-803)
+    if (paymentBasedOutstanding.lt(outstandingCardTotal)) {
+      if (outstandingCardTotal.gt(0)) {
+        outstandingCashTotal = outstandingCashTotal
+          .times(paymentBasedOutstanding)
+          .div(outstandingCardTotal)
+          .toDecimalPlaces(2);
+      }
+      outstandingCardTotal = paymentBasedOutstanding;
+    }
   }
 
-  return {
+  // CACHE STORE - Save result for future calls
+  const result: OrderTotals = {
     // Gross subtotals (pre-discount)
     subtotal: grossCardSubtotal.toDecimalPlaces(2).toNumber(),
     cash_subtotal: grossCashSubtotal.toDecimalPlaces(2).toNumber(),
-    
+
     // Discount
     discount_amount: totalDiscountAmount.toNumber(),
-    
+
     // Net subtotals (post-discount) - these match effective_subtotal in PostgreSQL
     // effective_subtotal: netCardSubtotal.toDecimalPlaces(2).toNumber(),
     // effective_cash_subtotal: netCashSubtotal.toDecimalPlaces(2).toNumber(),
-    
+
     // Tax
     tax_amount: totalCardTax.toNumber(),
     cash_tax_amount: totalCashTax.toNumber(),
-    
+
     // Totals
     total_amount: cardTotal.toDecimalPlaces(2).toNumber(),
     cash_total_amount: cashTotal.toDecimalPlaces(2).toNumber(),
-    
+
     // Outstanding (for payment UI)
     outstanding_subtotal: outstandingCardSubtotal.toDecimalPlaces(2).toNumber(),
     outstanding_tax: outstandingCardTax.toNumber(),
@@ -912,6 +674,15 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     cash_outstanding_tax: outstandingCashTax.toNumber(),
     cash_outstanding_total: outstandingCashTotal.toDecimalPlaces(2).toNumber(),
   };
+
+  if (calculationCache.size >= MAX_CACHE_SIZE) pruneCache();
+  if (calculationCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = calculationCache.keys().next().value;
+    if (oldestKey) calculationCache.delete(oldestKey);
+  }
+  calculationCache.set(cacheKey, { result, timestamp: Date.now() });
+
+  return result;
 }
 
 /**

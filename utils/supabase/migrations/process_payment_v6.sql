@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION process_payment_v6(
+CREATE OR REPLACE FUNCTION process_payment_v7(
     p_order_id uuid,
     p_payment_method text,
     p_amount numeric,
@@ -8,7 +8,8 @@ CREATE OR REPLACE FUNCTION process_payment_v6(
     p_staff_id uuid DEFAULT NULL,
     p_terminal_response jsonb DEFAULT NULL,
     p_split_count integer DEFAULT NULL,
-    p_split_portion_index integer DEFAULT NULL
+    p_split_portion_index integer DEFAULT NULL,
+    p_force_card_pricing boolean DEFAULT false
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -79,8 +80,10 @@ DECLARE
     v_dejavoo_status_code text;
     v_has_dejavoo_transaction boolean := false;
     v_dejavoo_last_four text;
+    v_use_cash_pricing boolean;
 BEGIN
     v_is_cash := p_payment_method = 'cash';
+    v_use_cash_pricing := v_is_cash AND NOT COALESCE(p_force_card_pricing, false);
     v_is_item_payment := p_item_allocations IS NOT NULL AND jsonb_array_length(p_item_allocations) > 0;
     v_is_split_payment := p_split_count IS NOT NULL AND p_split_count > 1;
 
@@ -173,9 +176,21 @@ BEGIN
     v_pre_unpaid_card_total := v_pre_unpaid_card_total + v_custom_refund_balance;
     v_pre_unpaid_cash_total := v_pre_unpaid_cash_total + v_custom_refund_balance;
 
+    -- Fix: Clamp item-based unpaid totals to payment-based due when partial payments exist.
+    -- Partial payments don't mark items as paid, so item-based totals stay at full amount.
+    -- payment_based_due tracks actual remaining after prior payments.
+    IF v_payment_based_due < v_pre_unpaid_card_total THEN
+        IF v_pre_unpaid_card_total > 0 THEN
+            v_pre_unpaid_cash_total := ROUND(
+                v_pre_unpaid_cash_total * v_payment_based_due / v_pre_unpaid_card_total, 2
+            );
+        END IF;
+        v_pre_unpaid_card_total := v_payment_based_due;
+    END IF;
+
     -- If nothing to pay, return early
     -- Allow payment when custom refund balance exists (payment-level refund debt)
-    IF v_unpaid_items_count = 0 AND v_custom_refund_balance <= 0 THEN
+    IF v_unpaid_items_count = 0 AND v_custom_refund_balance <= 0 AND v_payment_based_due <= 0 THEN
         RAISE EXCEPTION 'No unpaid items remaining on this order';
     END IF;
 
@@ -229,10 +244,10 @@ BEGIN
     -- 5. Determine Pricing Mode (for tracking only)
     -- ============================================
     IF v_current_pricing_mode IS NULL THEN
-        v_new_pricing_mode := CASE WHEN v_is_cash THEN 'cash' ELSE 'card' END;
-    ELSIF v_current_pricing_mode = 'card' AND v_is_cash THEN
+        v_new_pricing_mode := CASE WHEN v_use_cash_pricing THEN 'cash' ELSE 'card' END;
+    ELSIF v_current_pricing_mode = 'card' AND v_use_cash_pricing THEN
         v_new_pricing_mode := 'mixed';
-    ELSIF v_current_pricing_mode = 'cash' AND NOT v_is_cash THEN
+    ELSIF v_current_pricing_mode = 'cash' AND NOT v_use_cash_pricing THEN
         v_new_pricing_mode := 'mixed';
     ELSE
         v_new_pricing_mode := v_current_pricing_mode;
@@ -407,7 +422,7 @@ BEGIN
         -- ========================================
 
         -- Determine target unpaid amount (from items, source of truth)
-        v_target_unpaid := CASE WHEN v_is_cash
+        v_target_unpaid := CASE WHEN v_use_cash_pricing
             THEN v_pre_unpaid_cash_total
             ELSE v_pre_unpaid_card_total
         END;
@@ -427,7 +442,7 @@ BEGIN
             v_payment_total := v_target_unpaid;
 
             -- Pro-rate subtotal/tax based on order ratios
-            IF v_is_cash AND v_order.cash_total > 0 THEN
+            IF v_use_cash_pricing AND v_order.cash_total > 0 THEN
                 v_subtotal_portion := ROUND(v_payment_total * (v_order.cash_subtotal / v_order.cash_total), 2);
             ELSIF v_order.card_total > 0 THEN
                 v_subtotal_portion := ROUND(v_payment_total * (v_order.card_subtotal / v_order.card_total), 2);
@@ -450,7 +465,7 @@ BEGIN
             UPDATE public.order_items
             SET
                 paid_quantity = quantity + COALESCE(refunded_quantity, 0),
-                price_paid = CASE WHEN v_is_cash THEN cash_price ELSE unit_price END,
+                price_paid = CASE WHEN v_use_cash_pricing THEN cash_price ELSE unit_price END,
                 updated_at = now()
             WHERE order_id = p_order_id
               AND is_voided = false
@@ -478,7 +493,7 @@ BEGIN
             v_payment_total := GREATEST(v_payment_total, 0);
 
             -- Pro-rate subtotal/tax
-            IF v_is_cash AND v_order.cash_total > 0 THEN
+            IF v_use_cash_pricing AND v_order.cash_total > 0 THEN
                 v_subtotal_portion := ROUND(v_payment_total * (v_order.cash_subtotal / v_order.cash_total), 2);
             ELSIF v_order.card_total > 0 THEN
                 v_subtotal_portion := ROUND(v_payment_total * (v_order.card_subtotal / v_order.card_total), 2);
@@ -583,9 +598,9 @@ BEGIN
         v_tax_portion,
         CASE WHEN v_is_cash THEN COALESCE(p_amount_tendered, v_payment_total) END,
         v_change_given,
-        v_is_cash,
-        v_is_cash,
-        CASE WHEN v_is_cash
+        v_use_cash_pricing,
+        v_use_cash_pricing,
+        CASE WHEN v_use_cash_pricing
             THEN ROUND(v_payment_total * v_order.card_total / NULLIF(v_order.cash_total, 0), 2)
             ELSE v_payment_total
         END,
@@ -728,7 +743,7 @@ BEGIN
     -- ============================================
     -- 9. Update Payment Totals (include this payment)
     -- ============================================
-    IF v_is_cash THEN
+    IF v_use_cash_pricing THEN
         v_total_cash_paid := v_total_cash_paid + v_payment_total + COALESCE(p_tip_amount, 0);
     ELSE
         v_total_card_paid := v_total_card_paid + v_payment_total + COALESCE(p_tip_amount, 0);
@@ -775,6 +790,17 @@ BEGIN
     v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0);
     v_unpaid_card_total := v_unpaid_card_total + v_custom_refund_balance;
     v_unpaid_cash_total := v_unpaid_cash_total + v_custom_refund_balance;
+
+    -- Fix: Same clamping for post-payment unpaid totals.
+    -- After a partial payment, items are still "unpaid" but payment_based_due reflects actual remaining.
+    IF v_payment_based_due < v_unpaid_card_total THEN
+        IF v_unpaid_card_total > 0 THEN
+            v_unpaid_cash_total := ROUND(
+                v_unpaid_cash_total * v_payment_based_due / v_unpaid_card_total, 2
+            );
+        END IF;
+        v_unpaid_card_total := v_payment_based_due;
+    END IF;
 
     -- ============================================
     -- 11. Determine if Order is Fully Paid
@@ -862,7 +888,7 @@ BEGIN
         cash_amount_due = v_new_cash_amount_due,
         tip_amount = COALESCE(tip_amount, 0) + COALESCE(p_tip_amount, 0),
         payment_pricing_mode = v_new_pricing_mode::pricing_mode,
-        cash_discount_applied = COALESCE(cash_discount_applied, false) OR v_is_cash,
+        cash_discount_applied = COALESCE(cash_discount_applied, false) OR v_use_cash_pricing,
         payment_status = CASE
             WHEN v_order_fully_paid THEN 'paid'::payment_status
             WHEN v_new_amount_paid > 0 THEN 'partial'::payment_status
@@ -884,7 +910,7 @@ BEGIN
         'tip_amount', COALESCE(p_tip_amount, 0),
         'total_collected', v_payment_total + COALESCE(p_tip_amount, 0),
         'change_given', v_change_given,
-        'is_cash_priced', v_is_cash,
+        'is_cash_priced', v_use_cash_pricing,
         'pricing_mode', v_new_pricing_mode,
 
         'is_item_payment', v_is_item_payment,

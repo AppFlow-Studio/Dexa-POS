@@ -703,9 +703,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         transactionDetails: detailsWithSplitLabel,
         dejavooTransaction,
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
-        // Only pass split count/index for even splits - NOT for per-item payments
+        forceCardPricing: splitSourceView === "split-custom-amount", // Custom amounts always use card pricing
+        // Only pass split count/index for even splits - NOT for per-item or custom-amount payments
         // Per-item payments use itemAllocations to track what was paid
-        ...(isPerItemPayment
+        // Custom-amount payments use p_amount through the FULL/PARTIAL SQL path
+        ...(isPerItemPayment || splitSourceView === "split-custom-amount"
           ? {}
           : {
               splitCount: splits.length,
@@ -747,24 +749,30 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         );
 
         // ================================================================
-        // NEW (Phase 4.2): Emit order:paid event
+        // Emit order:paid event ONLY if order is actually fully paid
+        // Custom amount splits may not cover the full bill
         // ================================================================
-        // Subscribers will handle: sending to kitchen, updating table status, analytics, etc.
-        const eventPayload: OrderPaidEvent = {
-          orderId: activeOrderId,
-          orderType: finalOrder?.order_type || "unknown",
-          totalAmount: paymentsTotal,
-          cashAmount: (finalOrder?.payments || [])
-            .filter((p) => String(p.method).toLowerCase() === "cash")
-            .reduce((sum, p) => sum + (p.amount || 0), 0),
-          paymentMethod: method,
-          sessionId: finalOrder?.session_id ?? undefined,
-          tableId: finalOrder?.service_location_id ?? undefined,
-        };
+        const isOrderFullyPaid =
+          finalOrder?.paid_status === "Paid" ||
+          (finalOrder?.amount_due !== undefined && finalOrder.amount_due <= 0.01);
 
-        await eventBus.emit("order:paid", eventPayload);
+        if (isOrderFullyPaid) {
+          const eventPayload: OrderPaidEvent = {
+            orderId: activeOrderId,
+            orderType: finalOrder?.order_type || "unknown",
+            totalAmount: paymentsTotal,
+            cashAmount: (finalOrder?.payments || [])
+              .filter((p) => String(p.method).toLowerCase() === "cash")
+              .reduce((sum, p) => sum + (p.amount || 0), 0),
+            paymentMethod: method,
+            sessionId: finalOrder?.session_id ?? undefined,
+            tableId: finalOrder?.service_location_id ?? undefined,
+          };
 
-        // Order is fully paid - addPaymentToOrder already set the paid status
+          await eventBus.emit("order:paid", eventPayload);
+        }
+
+        // All configured splits are done — show success
         set({
           completedPaymentInfo: {
             totalPaid: paymentsTotal,
