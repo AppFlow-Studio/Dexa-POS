@@ -1,14 +1,15 @@
 import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
-import TableOrderView from '@/components/tables/TableOrderView'
 import MergeActionBar from '@/components/tables/MergeActionBar'
 import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
+import TableOrderView from '@/components/tables/TableOrderView'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -23,8 +24,13 @@ import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { Href, useRouter } from 'expo-router'
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { GitMerge, Pencil, Search, UtensilsCrossed, X } from 'lucide-react-native'
+import {
+  GitMerge,
+  Pencil,
+  Search,
+  UtensilsCrossed,
+  X
+} from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   InteractionManager,
@@ -637,7 +643,9 @@ const TablesScreen = () => {
                 showConnections={true}
                 layoutId={activeFloorPlanId || ''}
                 sectionsById={sectionsById}
-                onTableLongPress={isMergeMode ? undefined : handleTableLongPress}
+                onTableLongPress={
+                  isMergeMode ? undefined : handleTableLongPress
+                }
                 disableLongPress={isMergeMode}
                 interactionMode={isMergeMode ? 'merge' : 'normal'}
               />

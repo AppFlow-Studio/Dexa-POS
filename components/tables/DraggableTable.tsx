@@ -117,7 +117,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const sessionStoreSession = useTableSessionStore(s => s.sessions[table.id])
   const liveSession = sessionStoreSession ?? table.session
 
-  if (liveSession?.status === 'served' || liveSession?.status === 'check_presented') {
+  if (
+    liveSession?.status === 'served' ||
+    liveSession?.status === 'check_presented'
+  ) {
     console.log('[DraggableTable] Table with served/check_presented status:', {
       tableId: table.id,
       tableStatus: liveSession?.status,
@@ -125,7 +128,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       fromFloorPlan: !!table.session,
       sessionStoreSession: sessionStoreSession?.status,
       floorPlanSession: table.session?.status
-    });
+    })
   }
 
   // --- COMPONENT LOOKUP ---
@@ -174,8 +177,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       isOvertime:
         defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes
     }
-  // tick drives the 60s refresh; openedAt/liveSessionStatus are primitive deps
-  // so this only recomputes when data actually changes OR the minute ticks
+    // tick drives the 60s refresh; openedAt/liveSessionStatus are primitive deps
+    // so this only recomputes when data actually changes OR the minute ticks
   }, [tick, liveSessionStatus, openedAt, defaultSittingTimeMinutes])
 
   const serverInitials = useMemo(() => {
@@ -405,7 +408,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ? colors.info // blue for reserved soon
     : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available
 
-  if (liveSession?.status === 'served' || liveSession?.status === 'check_presented') {
+  if (
+    liveSession?.status === 'served' ||
+    liveSession?.status === 'check_presented'
+  ) {
     console.log('[DraggableTable] Color determination for', table.name, {
       sessionStatus,
       isLocalOnly: sessionStatus ? isLocalOnlyStatus(sessionStatus) : 'N/A',
@@ -413,7 +419,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       tableColor,
       fromCOLORSMap: TABLE_STATUS_COLORS[tableStatus],
       allColors: TABLE_STATUS_COLORS
-    });
+    })
   }
 
   // Type check for category is effective if we trust the object

@@ -75,7 +75,15 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   // not when session status/order changes. Prevents sectionOverlays from recomputing
   // on every realtime table session update.
   const tableGeometryKey = useMemo(
-    () => tables.map(t => `${t.id}:${t.x},${t.y},${t.width ?? ''},${t.height ?? ''},${t.section_id ?? ''}`).join('|'),
+    () =>
+      tables
+        .map(
+          t =>
+            `${t.id}:${t.x},${t.y},${t.width ?? ''},${t.height ?? ''},${
+              t.section_id ?? ''
+            }`
+        )
+        .join('|'),
     [tables]
   )
 
@@ -121,7 +129,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         width: bounds.maxX - bounds.minX + PADDING * 2,
         height: bounds.maxY - bounds.minY + PADDING * 2
       }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tableGeometryKey, sectionsById])
 
   // Use the correct selection state:
