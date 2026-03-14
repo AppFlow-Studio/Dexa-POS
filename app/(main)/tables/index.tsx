@@ -637,7 +637,9 @@ const TablesScreen = () => {
                 showConnections={true}
                 layoutId={activeFloorPlanId || ''}
                 sectionsById={sectionsById}
-                onTableLongPress={handleTableLongPress}
+                onTableLongPress={isMergeMode ? undefined : handleTableLongPress}
+                disableLongPress={isMergeMode}
+                interactionMode={isMergeMode ? 'merge' : 'normal'}
               />
             )}
 

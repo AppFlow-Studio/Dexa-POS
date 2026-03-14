@@ -81,12 +81,14 @@ interface DraggableTableProps {
   layoutId: string // Kept for prop compatibility, though unused
   isEditMode: boolean
   isSelected: boolean
+  interactionMode: 'normal' | 'selection'
   onSelect: () => void
   canvasScale: SharedValue<number>
   onPress?: () => void
   index?: number // For staggered entry animation
   sectionColor?: string
   onLongPress?: () => void
+  disableLongPress?: boolean
 }
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
@@ -94,12 +96,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   layoutId,
   isEditMode,
   isSelected,
+  interactionMode,
   onSelect,
   canvasScale,
   onPress,
   index = 0,
   sectionColor,
-  onLongPress
+  onLongPress,
+  disableLongPress = false
 }) => {
   const DRAG_HOLD_MS = 220
   const tablesById = useFloorPlanStore(s => s.tablesById)
@@ -326,7 +330,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Long-press enabled on all tables in normal mode
   const longPressGesture = Gesture.LongPress()
     .minDuration(300)
-    .enabled(!isEditMode)
+    .enabled(!isEditMode && !disableLongPress)
     .onStart(() => {
       if (onLongPress) runOnJS(onLongPress)()
     })
@@ -338,6 +342,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const composedGesture = isEditMode
     ? Gesture.Simultaneous(dragGesture, rotateGesture, tapGesture)
+    : disableLongPress
+    ? tapGesture
     : Gesture.Race(longPressGesture, tapGesture)
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -549,6 +555,9 @@ export default React.memo(DraggableTable, (prev, next) => {
   }
   // Re-render if selected state changes
   if (prev.isSelected !== next.isSelected) {
+    return false
+  }
+  if (prev.interactionMode !== next.interactionMode) {
     return false
   }
   // Re-render if session changed (status, party size, etc.)

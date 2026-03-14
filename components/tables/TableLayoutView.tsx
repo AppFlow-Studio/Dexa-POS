@@ -36,6 +36,8 @@ interface TableLayoutViewProps {
   activeOrderId?: string | null
   sectionsById?: Record<string, ServerSection>
   onTableLongPress?: (table: FloorPlanObject) => void
+  disableLongPress?: boolean
+  interactionMode?: 'normal' | 'selection' | 'merge'
 }
 
 const TableLayoutView: React.FC<TableLayoutViewProps> = ({
@@ -49,7 +51,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   selectedTableId, // Consuming the new prop
   activeOrderId,
   sectionsById,
-  onTableLongPress
+  onTableLongPress,
+  disableLongPress = false,
+  interactionMode = 'normal'
 }) => {
   const toggleTableSelection = useFloorPlanStore(s => s.toggleTableSelection)
   const globallySelectedTableIds = useFloorPlanStore(s => s.selectedTableIds)
@@ -393,6 +397,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 layoutId={layoutId}
                 isEditMode={isEditMode}
                 isSelected={selectedTableIdsSet.has(table.id)}
+                interactionMode={interactionMode}
                 onSelect={
                   isSelectionMode
                     ? () => onTableSelect && onTableSelect(table)
@@ -410,6 +415,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                     ? sectionsById?.[table.section_id]?.color
                     : undefined
                 }
+                disableLongPress={disableLongPress}
                 onLongPress={
                   onTableLongPress ? () => onTableLongPress(table) : undefined
                 }
