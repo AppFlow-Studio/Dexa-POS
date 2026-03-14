@@ -4,6 +4,7 @@ import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { ChevronDown, ChevronRight } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
@@ -65,6 +66,7 @@ const TablesPanel: React.FC = () => {
   const tables = useFloorPlanStore(s => s.tables)
   const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
   const sectionsById = useFloorPlanStore(s => s.sectionsById)
+  const liveSessions = useTableSessionStore(s => s.sessions)
   const [sections, setSections] = useState<{ [key: string]: boolean }>({})
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
     null
@@ -99,8 +101,9 @@ const TablesPanel: React.FC = () => {
 
     activeTables.forEach(table => {
       if (table.section_id) sectionSet.add(table.section_id)
-      if (table.session?.server_staff_id) {
-        const staffId = table.session.server_staff_id
+      const session = liveSessions[table.id] ?? table.session
+      if (session?.server_staff_id) {
+        const staffId = session.server_staff_id
         serverSet.add(staffId)
         // Get server name if not already cached
         if (!nameMap[staffId]) {
@@ -115,7 +118,7 @@ const TablesPanel: React.FC = () => {
       uniqueServers: Array.from(serverSet),
       serverNames: nameMap
     }
-  }, [activeTables, getEmployeeByStaffId])
+  }, [activeTables, getEmployeeByStaffId, liveSessions])
 
   // Deduplicate merged tables: when T1+T2 are merged, both have the same
   // session — only show the first one encountered per session id.
@@ -123,10 +126,11 @@ const TablesPanel: React.FC = () => {
     const seenSessionIds = new Set<string>()
     let filtered = activeTables.filter(table => {
       if (!isSeatable(table)) return false
+      const session = liveSessions[table.id] ?? table.session
       // No merge — always show
-      if (!table.session?.merged_tables?.length) return true
+      if (!session?.merged_tables?.length) return true
       // For merged tables, only show first per session
-      const sid = table.session.id
+      const sid = session.id
       if (seenSessionIds.has(sid)) return false
       seenSessionIds.add(sid)
       return true
@@ -141,13 +145,14 @@ const TablesPanel: React.FC = () => {
 
     // Apply server filter
     if (selectedServerId) {
-      filtered = filtered.filter(
-        table => table.session?.server_staff_id === selectedServerId
-      )
+      filtered = filtered.filter(table => {
+        const session = liveSessions[table.id] ?? table.session
+        return session?.server_staff_id === selectedServerId
+      })
     }
 
     return filtered
-  }, [activeTables, selectedSectionId, selectedServerId])
+  }, [activeTables, selectedSectionId, selectedServerId, liveSessions])
 
   const occupiedTables = useMemo(() => {
     // Active session statuses (Phase 4.1: Include paid but not closed tables)
@@ -159,10 +164,11 @@ const TablesPanel: React.FC = () => {
       'paid' // Include paid tables (not yet cleared/closed)
     ]
 
-    return displayTables.filter(table =>
-      activeSessionStatuses.includes(table.session?.status?.toLowerCase() || '')
-    )
-  }, [displayTables])
+    return displayTables.filter(table => {
+      const session = liveSessions[table.id] ?? table.session
+      return activeSessionStatuses.includes(session?.status?.toLowerCase() || '')
+    })
+  }, [displayTables, liveSessions])
 
   // Also include cleaning?
   // Previous logic: 'In Use' or 'Needs Cleaning'.

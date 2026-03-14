@@ -163,13 +163,10 @@ const LayoutEditorScreenContent = () => {
   const handleAddMultipleTables = (
     items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
   ) => {
-    items.forEach(async item => {
-      for (let i = 0; i < item.quantity; i++) {
-        await addTable({
-          shape_id: item.shapeId as string
-        })
-      }
-    })
+    const additions = items.flatMap(item =>
+      Array.from({ length: item.quantity }, () => addTable({ shape_id: item.shapeId as string }))
+    )
+    Promise.all(additions).catch(() => {})
     setQuickSetupOpen(false)
   }
 

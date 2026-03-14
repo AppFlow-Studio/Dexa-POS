@@ -28,7 +28,6 @@ import {
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { handleSeatingEffect } from "@/services/sessionEffects/handleSeatingEffect";
-import { recordVoidedSession } from "@/services/tableSessionRealtimeSync";
 import {
   FloorPlanObject,
   TableSession,
@@ -59,7 +58,7 @@ const getClient = () => getFloorPlanClient();
 export type SessionAction =
   | { type: TableEvent }                                  // state machine validated
   | { type: 'SET'; session: TableSession }                // optimistic/local, always applied
-  | { type: 'SYNC'; session: TableSession }               // from backend/realtime, respects local-only guard
+  | { type: 'SYNC'; session: TableSession }               // from backend/realtime, always applied (authoritative)
   | { type: 'CLEAR' }                                     // remove session
   | { type: 'PATCH'; updates: Partial<TableSession> }     // update fields only
   | { type: 'SESSION_CREATED'; session: TableSession }    // replace optimistic with real backend data
@@ -116,22 +115,33 @@ function _applyAction(
     return { session: action.session, changed: true };
   }
   if (action.type === 'SYNC') {
-    // Preserve local-only statuses from backend overwrite
-    if (current && action.session.id === current.id && isLocalOnlyStatus(current.status)) {
-      return { session: current, changed: false };
-    }
+    // Always apply SYNC from backend — these represent authoritative state changes
+    // Local-only intermediates (seating, ordering, paying, closing) are just transient states
+    // that will eventually transition to a backend-syncable status
+    // DO NOT preserve local-only statuses as this prevents legitimate DB updates from being applied
     // Skip if session data is identical (prevents unnecessary re-renders from polling)
-    if (current && current.id === action.session.id &&
-        current.status === action.session.status &&
-        current.party_size === action.session.party_size &&
-        current.guest_name === action.session.guest_name &&
-        current.order_id === action.session.order_id &&
-        current.server_staff_id === action.session.server_staff_id &&
-        current.current_course === action.session.current_course &&
-        current.needs_attention === action.session.needs_attention &&
-        current.is_vip === action.session.is_vip &&
-        current.session_number === action.session.session_number) {
-      return { session: current, changed: false };
+    if (current && current.id === action.session.id) {
+      const statusChanged = current.status !== action.session.status;
+      const partyChanged = current.party_size !== action.session.party_size;
+      const guestChanged = current.guest_name !== action.session.guest_name;
+      const orderChanged = current.order_id !== action.session.order_id;
+      const serverChanged = current.server_staff_id !== action.session.server_staff_id;
+      const courseChanged = current.current_course !== action.session.current_course;
+      const attentionChanged = current.needs_attention !== action.session.needs_attention;
+      const vipChanged = current.is_vip !== action.session.is_vip;
+      const sessionNumChanged = current.session_number !== action.session.session_number;
+
+      const currMerged = current.merged_tables || [];
+      const newMerged = action.session.merged_tables || [];
+      const mergedEqual = currMerged.length === newMerged.length &&
+        currMerged.every((id, idx) => id === newMerged[idx]);
+      const mergedChanged = !mergedEqual;
+
+      if (!statusChanged && !partyChanged && !guestChanged && !orderChanged &&
+          !serverChanged && !courseChanged && !attentionChanged && !vipChanged &&
+          !sessionNumChanged && !mergedChanged) {
+        return { session: current, changed: false };
+      }
     }
     return { session: action.session, changed: true };
   }
@@ -257,6 +267,7 @@ interface TableSessionStoreState {
   advanceCourse: (sessionId: string) => Promise<void>;
   linkOrderToSession: (sessionId: string, orderId: string) => Promise<void>;
   clearTableSession: (tableId: string) => Promise<void>;
+  finishCleaning: (tableId: string) => Promise<void>;
 
   // ---- Internal ----
 
@@ -318,14 +329,29 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
       batchDispatch: (actions: Array<{ tableId: string; action: SessionAction }>): number => {
         const currentSessions = get().sessions;
-        const results = actions
+        const allResults = actions
           .map(({ tableId, action }) => ({
             tableId,
             action,
             prev: currentSessions[tableId],
             result: _applyAction(currentSessions[tableId], action),
-          }))
-          .filter(r => r.result.changed);
+          }));
+
+        const results = allResults.filter(r => r.result.changed);
+
+        if (allResults.length > 0) {
+          console.log('[useTableSessionStore] batchDispatch:', {
+            actionCount: allResults.length,
+            changedCount: results.length,
+            actions: allResults.map(r => ({
+              tableId: r.tableId,
+              actionType: r.action.type,
+              prevStatus: r.prev?.status,
+              newStatus: r.result.session?.status,
+              changed: r.result.changed
+            }))
+          });
+        }
 
         if (results.length === 0) return 0;
 
@@ -531,7 +557,7 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           if (!table.session) continue;
           incomingTableIds.add(table.id);
 
-          // Use SYNC action — respects local-only guard automatically
+          // Use SYNC action — applies backend status updates
           actions.push({
             tableId: table.id,
             action: { type: 'SYNC', session: table.session },
@@ -629,6 +655,14 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
       _handleSessionChange: (payload: TableSessionPayload) => {
         const { operation, data } = payload;
 
+        console.log('[useTableSessionStore] _handleSessionChange:', {
+          operation,
+          sessionId: data?.session?.id,
+          status: data?.session?.status,
+          tableCount: data?.tables?.length ?? 0,
+          tables: data?.tables?.map(t => ({ id: t.table_id, label: t.table_label }))
+        });
+
         if (operation === "DELETE" || !data?.session) {
           useFloorPlanStore.getState()._debouncedRefresh();
           return;
@@ -667,6 +701,13 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         };
 
         // SYNC for tables in this session
+        console.log('[useTableSessionStore] Creating SYNC actions for tables:', {
+          sessionId,
+          tableIds,
+          status: incomingSession.status,
+          actionCount: tableIds.length
+        });
+
         for (const tableId of tableIds) {
           actions.push({
             tableId,
@@ -1062,12 +1103,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         // Capture for rollback
         const originalSession = session;
 
-        // 1. Optimistic local clear
-        get().dispatch(tableId, { type: 'CLEAR' });
-
-        // Record this session as voided so polling won't re-sync it
-        if (sessionId) {
-          recordVoidedSession(tableId, sessionId);
+        // 1. Optimistic local transition to cleaning
+        const transitioned = get().dispatch(tableId, { type: 'CLEAR_TABLE' });
+        if (!transitioned) {
+          // If local transition failed, the session may not be in a clearable state
+          console.warn("[clearTableSession] Could not transition to cleaning state");
+          return;
         }
 
         // 2. Try backend if online and session exists
@@ -1075,11 +1116,12 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
           try {
             const p_staff_id =
               useEmployeeStore.getState().loggedInEmployee?.profileId;
+            // Update to "cleaning" status, not directly to "available"
             const { error } = await FloorPlanService.updateTableSessionStatus(
               supabase,
               {
                 p_session_id: sessionId,
-                p_status: "available",
+                p_status: "cleaning",
                 p_staff_id,
               },
             );
@@ -1095,16 +1137,74 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
               );
             }
 
-            // Force refresh from backend after 4 seconds to ensure cleared state is synced
-            setTimeout(async () => {
-              const floorPlanState = useFloorPlanStore.getState();
-              if (floorPlanState.activeFloorPlanId) {
-                console.log("[clearTableSession] Force refreshing table status after void");
-                await floorPlanState.loadFloorPlanStatus();
-              }
-            }, 4000);
+            console.log("[clearTableSession] Table marked for cleaning:", {
+              tableId,
+              sessionId,
+            });
           } catch (err) {
             console.error("[clearTableSession] Exception:", err);
+            // ROLLBACK (only if not already rolled back above)
+            if (originalSession && !get().sessions[tableId]) {
+              get().dispatch(tableId, { type: 'SET', session: originalSession });
+            }
+            throw err;
+          }
+        }
+      },
+
+      // ------------------------------------------------------------------
+      // finishCleaning — mark table as available after cleaning
+      // ------------------------------------------------------------------
+
+      finishCleaning: async (tableId: string) => {
+        const isOnline = getIsOnline();
+        const supabase = getClient();
+        const session = get().sessions[tableId];
+        const sessionId = session?.id;
+
+        // Capture for rollback
+        const originalSession = session;
+
+        // 1. Optimistic local transition to available
+        const transitioned = get().dispatch(tableId, { type: 'FINISH_CLEANING' });
+        if (!transitioned) {
+          // If local transition failed, the session may not be in cleaning state
+          console.warn("[finishCleaning] Could not transition from cleaning to available");
+          return;
+        }
+
+        // 2. Try backend if online and session exists
+        if (isOnline && supabase && sessionId) {
+          try {
+            const p_staff_id =
+              useEmployeeStore.getState().loggedInEmployee?.profileId;
+            // Update to "available" status
+            const { error } = await FloorPlanService.updateTableSessionStatus(
+              supabase,
+              {
+                p_session_id: sessionId,
+                p_status: "available",
+                p_staff_id,
+              },
+            );
+
+            if (error) {
+              console.error("[finishCleaning] Backend error:", error);
+              // ROLLBACK
+              if (originalSession) {
+                get().dispatch(tableId, { type: 'SET', session: originalSession });
+              }
+              throw new Error(
+                `Failed to finish cleaning: ${error.message || error}`,
+              );
+            }
+
+            console.log("[finishCleaning] Table marked as available:", {
+              tableId,
+              sessionId,
+            });
+          } catch (err) {
+            console.error("[finishCleaning] Exception:", err);
             // ROLLBACK (only if not already rolled back above)
             if (originalSession && !get().sessions[tableId]) {
               get().dispatch(tableId, { type: 'SET', session: originalSession });

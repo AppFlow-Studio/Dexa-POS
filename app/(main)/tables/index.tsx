@@ -1,13 +1,15 @@
+import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
 import MergeActionBar from '@/components/tables/MergeActionBar'
 import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
-import WaitlistBottomSheet from '@/components/tables/WaitlistBottomSheet'
+import TableOrderView from '@/components/tables/TableOrderView'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { getDeviceId } from '@/lib/deviceId'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
@@ -19,15 +21,23 @@ import {
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
-import { useWaitlistSheetStore } from '@/stores/useWaitlistSheetStore'
+import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { Href, useRouter } from 'expo-router'
-import { GitMerge, Pencil, Search, X } from 'lucide-react-native'
+import {
+  GitMerge,
+  Pencil,
+  Search,
+  UtensilsCrossed,
+  X
+} from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   InteractionManager,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  SafeAreaView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -65,9 +75,11 @@ const TablesScreen = () => {
   const getOrderByDbId = useOrderStore(s => s.getOrderByDbId)
   const getOrder = useOrderStore(s => s.getOrder)
   const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
-  const isWaitlistOpen = useWaitlistSheetStore(s => s.isOpen)
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
+
+  const supabaseClient = useSupabaseClient()
+  const location_id = useStoreSettingsStore(s => s.selectedStore?.id || '')
 
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
@@ -75,6 +87,14 @@ const TablesScreen = () => {
   const [isMergeMode, setMergeMode] = useState(false)
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
+  const [isHostStationOpen, setHostStationOpen] = useState(false)
+  const [overlayTableId, setOverlayTableId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (supabaseClient) {
+      setWaitlistSupabaseClient(supabaseClient)
+    }
+  }, [supabaseClient])
 
   // Debounce search input
   useEffect(() => {
@@ -145,33 +165,10 @@ const TablesScreen = () => {
         return
       }
 
-      // NORMAL MODE: If table has an active session, navigate directly to the order page
-      const liveSession =
-        useTableSessionStore.getState().sessions[table.id] ?? table.session
-      if (liveSession && liveSession.status !== 'available') {
-        if (liveSession.order_id) {
-          const existingOrder = getOrder(liveSession.order_id)
-          if (existingOrder) setActiveOrder(existingOrder.id)
-        }
-        router.replace({
-          pathname: '/tables/[tableId]',
-          params: { tableId: table.id }
-        })
-        return
-      }
-
-      // No active session — open context sheet to seat guests
+      // NORMAL MODE: Open context sheet regardless of session state
       setContextTable(table)
     },
-    [
-      isClockedIn,
-      showClockInWall,
-      isMergeMode,
-      toggleTableSelection,
-      getOrder,
-      setActiveOrder,
-      router
-    ]
+    [isClockedIn, showClockInWall, isMergeMode, toggleTableSelection]
   )
 
   const handleSheetSeatGuests = useCallback(
@@ -210,10 +207,7 @@ const TablesScreen = () => {
           setActiveOrder(existingOrder.id)
         }
       }
-      router.replace({
-        pathname: '/tables/[tableId]',
-        params: { tableId }
-      })
+      setOverlayTableId(tableId)
     },
     [tables, getOrder, setActiveOrder, router]
   )
@@ -231,27 +225,21 @@ const TablesScreen = () => {
       if (activeSessionLP && activeSessionLP.status !== 'available') {
         const orderId = activeSessionLP.order_id
         if (orderId) {
-          // Sync from DB to ensure items are up-to-date, then navigate
+          // Set active order synchronously if already in store (avoids skeleton on destination screen)
+          const existing = useOrderStore.getState().getOrder(orderId)
+          if (existing) setActiveOrder(existing.id)
+
+          // Show overlay immediately — no routing latency
+          setOverlayTableId(table.id)
+
+          // Background sync for fresh data (no-op if order already current)
           syncOrderFromDatabase(orderId)
             .then(localOrderId => {
               if (localOrderId) setActiveOrder(localOrderId)
-              router.replace({
-                pathname: '/tables/[tableId]',
-                params: { tableId: table.id }
-              })
             })
-            .catch(() => {
-              // Fallback: navigate anyway
-              router.replace({
-                pathname: '/tables/[tableId]',
-                params: { tableId: table.id }
-              })
-            })
+            .catch(() => {})
         } else {
-          router.replace({
-            pathname: '/tables/[tableId]',
-            params: { tableId: table.id }
-          })
+          setOverlayTableId(table.id)
         }
         return
       }
@@ -567,6 +555,17 @@ const TablesScreen = () => {
               </Text>
             </TouchableOpacity>
 
+            {/* Host Station Button */}
+            <TouchableOpacity
+              onPress={() => setHostStationOpen(true)}
+              className='py-2 px-4 flex-row items-center justify-center rounded-lg bg-purple-600 border border-purple-500'
+            >
+              <UtensilsCrossed color='white' size={18} />
+              <Text className='text-lg font-bold text-white ml-2'>
+                Host Station
+              </Text>
+            </TouchableOpacity>
+
             {/* Edit Layout Button */}
             <TouchableOpacity
               onPress={() => router.push(`/tables/floor-plan` as Href)}
@@ -644,7 +643,11 @@ const TablesScreen = () => {
                 showConnections={true}
                 layoutId={activeFloorPlanId || ''}
                 sectionsById={sectionsById}
-                onTableLongPress={handleTableLongPress}
+                onTableLongPress={
+                  isMergeMode ? undefined : handleTableLongPress
+                }
+                disableLongPress={isMergeMode}
+                interactionMode={isMergeMode ? 'merge' : 'normal'}
               />
             )}
 
@@ -751,7 +754,6 @@ const TablesScreen = () => {
             </View>
           </View>
         </View>
-        {isWaitlistOpen && <WaitlistBottomSheet />}
       </View>
       <TableContextSheet
         table={contextTable}
@@ -764,6 +766,39 @@ const TablesScreen = () => {
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
       />
+
+      {overlayTableId && (
+        <TableOrderView
+          tableId={overlayTableId}
+          onClose={() => setOverlayTableId(null)}
+        />
+      )}
+
+      {/* Host Station Modal */}
+      <Modal
+        visible={isHostStationOpen}
+        animationType='slide'
+        presentationStyle='pageSheet'
+        onRequestClose={() => setHostStationOpen(false)}
+      >
+        <SafeAreaView className='flex-1 bg-screen'>
+          <View className='flex-row items-center justify-between px-4 py-3 border-b border-border'>
+            <Text className='text-xl font-bold text-white'>Host Station</Text>
+            <TouchableOpacity onPress={() => setHostStationOpen(false)}>
+              <X color={colors.label} size={24} />
+            </TouchableOpacity>
+          </View>
+          <View className='flex-1'>
+            {location_id ? (
+              <HostStationScreenEnhanced location_id={location_id} />
+            ) : (
+              <View className='flex-1 items-center justify-center'>
+                <Text className='text-label'>Please select a location</Text>
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
     </View>
   )
 }

@@ -2,6 +2,7 @@ import { FloorPlanService } from '@/services/floorPlanService'
 import { AddToWaitlistParams, WaitlistEntry } from '@/types/db-floor-plan-types'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
+import { useTableSessionStore } from './useTableSessionStore'
 
 // Global client reference (pattern used by other stores)
 let _supabaseClient: SupabaseClient | null = null
@@ -38,6 +39,13 @@ interface WaitlistState {
     tableIds: string[]
   ) => Promise<{ session_id: string; order_id?: string } | null>
   updateWaitlistStatus: (entryId: string, status: string) => Promise<void>
+  notifyWaitlistPartyAsync: (entryId: string) => Promise<{
+    success: boolean
+    sms?: boolean
+    error?: string
+    message?: string
+    reason?: string
+  }>
 
   // Local methods (for offline/fallback)
   addToWaitlist: (
@@ -87,6 +95,17 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
           const prev = prevById.get(entry.id)
           if (!prev) return entry
 
+          // Backend writes can lag briefly after notify/re-notify.
+          // Keep the highest local counters so UI does not regress.
+          const mergedNotificationCount = Math.max(
+            prev.notification_count ?? 0,
+            entry.notification_count ?? 0
+          )
+          const mergedNotificationFailures = Math.max(
+            prev.notification_failures ?? 0,
+            entry.notification_failures ?? 0
+          )
+
           const isSame =
             prev.status === entry.status &&
             prev.quoted_wait_minutes === entry.quoted_wait_minutes &&
@@ -96,11 +115,20 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
             prev.email === entry.email &&
             prev.preferred_section === entry.preferred_section &&
             prev.seating_preference === entry.seating_preference &&
-            prev.notes === entry.notes
+            prev.notes === entry.notes &&
+            prev.notification_count === mergedNotificationCount &&
+            prev.notification_failures === mergedNotificationFailures
 
           // Always preserve local position — reorderWaitlist sets it optimistically
           // and persists to backend. Server position can lag during the write window.
-          return isSame ? prev : { ...entry, position: prev.position }
+          return isSame
+            ? prev
+            : {
+                ...entry,
+                position: prev.position,
+                notification_count: mergedNotificationCount,
+                notification_failures: mergedNotificationFailures
+              }
         })
 
         const isUnchanged =
@@ -142,6 +170,14 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
       if (error) throw error
 
+      if (params.p_estimated_ready_at && data?.waitlist_id) {
+        await FloorPlanService.updateWaitlistEstimatedReadyAt(
+          getClient(),
+          data.waitlist_id,
+          params.p_estimated_ready_at
+        )
+      }
+
       // Create local entry with the returned data
       const newEntry: WaitlistEntry = {
         id: data?.waitlist_id || `wl_${Date.now()}`,
@@ -151,6 +187,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         position: data?.position || get().waitlist.length + 1,
         quoted_wait_minutes:
           data?.quoted_wait_minutes || params.p_quoted_wait_minutes || 15,
+        estimated_ready_at: params.p_estimated_ready_at,
         party_name: params.p_party_name,
         party_size: params.p_party_size,
         phone: params.p_phone,
@@ -180,7 +217,8 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         seating_preference: params.p_seating_preference,
         preferred_section: params.p_preferred_section,
         notes: params.p_notes,
-        quoted_wait_minutes: params.p_quoted_wait_minutes
+        quoted_wait_minutes: params.p_quoted_wait_minutes,
+        estimated_ready_at: params.p_estimated_ready_at
       })
     }
   },
@@ -210,20 +248,56 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
   seatFromWaitlistAsync: async (entryId: string, tableIds: string[]) => {
     try {
-      const { data, error } = await FloorPlanService.seatFromWaitlist(
-        getClient(),
-        entryId,
-        tableIds
+      // Get the entry before seating to calculate actual wait time
+      const entry = get().waitlist.find(e => e.id === entryId)
+      if (!entry) throw new Error('Waitlist entry not found')
+
+      const actualWaitMinutes = Math.floor(
+        (Date.now() - new Date(entry.created_at).getTime()) / 60000
       )
 
-      if (error) throw error
+      // Try to persist accuracy before seat transition to avoid RLS/status policy issues.
+      const preSeatAccuracy = await FloorPlanService.recordWaitAccuracy(
+        getClient(),
+        entryId,
+        actualWaitMinutes
+      )
+
+      // Use seatGuests to seat the party — this handles optimistic updates,
+      // session store hydration, and order creation so TableOrderView renders
+      // immediately without hitting the loading skeleton.
+      const result = await useTableSessionStore.getState().seatGuests({
+        tableIds,
+        partySize: entry.party_size,
+        guestName: entry.party_name,
+        guestPhone: entry.phone ?? undefined,
+        waitlistId: entryId,
+        createOrder: true,
+      })
+
+      // Retry accuracy tracking post-seat if pre-seat write did not persist.
+      if (!preSeatAccuracy.data?.success) {
+        const postSeatAccuracy = await FloorPlanService.recordWaitAccuracy(
+          getClient(),
+          entryId,
+          actualWaitMinutes
+        )
+
+        if (postSeatAccuracy.error || !postSeatAccuracy.data?.success) {
+          console.warn('Wait accuracy was not persisted for seated party', {
+            entryId,
+            actualWaitMinutes,
+            error: postSeatAccuracy.error || preSeatAccuracy.error
+          })
+        }
+      }
 
       // Remove from local state
       set(state => ({
         waitlist: state.waitlist.filter(entry => entry.id !== entryId)
       }))
 
-      return data
+      return result.sessionId ? { session_id: result.sessionId, order_id: result.orderId } : null
     } catch (err: any) {
       console.error('Failed to seat from waitlist:', err)
       // Still remove locally
@@ -261,6 +335,112 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
     }
   },
 
+  notifyWaitlistPartyAsync: async (entryId: string) => {
+    try {
+      const entry = get().waitlist.find(e => e.id === entryId)
+      if (!entry) return { success: false, error: 'Entry not found' }
+
+      const rpcResult = await FloorPlanService.notifyWaitlistParty(
+        getClient(),
+        entryId
+      )
+
+      if (!rpcResult.data?.success) {
+        return {
+          success: false,
+          error: rpcResult.data?.error || 'Failed to prepare notification'
+        }
+      }
+
+      const { phone, message_template } = rpcResult.data
+
+      if (!phone) {
+        return { success: true, sms: false, reason: 'in_app_only' }
+      }
+
+      const smsResult = await FloorPlanService.sendWaitlistSms(getClient(), {
+        phone,
+        message: message_template,
+        waitlist_id: entryId
+      })
+
+      const smsData = smsResult.data
+      const smsFailed =
+        !!smsResult.error ||
+        !smsData ||
+        !smsData.success ||
+        smsData.sms === false
+
+      if (smsData?.success && smsData.sms) {
+        set(state => ({
+          waitlist: state.waitlist.map(e =>
+            e.id === entryId
+              ? {
+                  ...e,
+                  status: 'notified',
+                  notified_at: new Date().toISOString()
+                }
+              : e
+          )
+        }))
+      } else if (smsFailed) {
+        set(state => ({
+          waitlist: state.waitlist.map(e =>
+            e.id === entryId
+              ? {
+                  ...e,
+                  notification_failures: (e.notification_failures ?? 0) + 1
+                }
+              : e
+          )
+        }))
+      }
+
+      if (smsFailed) {
+        const failureMessage =
+          smsData?.message ||
+          smsData?.twilio_error ||
+          (typeof smsResult.error?.message === 'string' &&
+            smsResult.error.message) ||
+          (typeof smsData?.error === 'string' && smsData.error !== 'sms_failed'
+            ? smsData.error
+            : undefined) ||
+          'Could not send SMS. Failure logged. Please notify guest verbally.'
+
+        return {
+          success: false,
+          error: 'sms_failed',
+          message: failureMessage,
+          reason: smsData?.reason
+        }
+      }
+
+      return smsData
+    } catch (err: any) {
+      console.error('Failed to notify waitlist party:', err)
+      const currentEntry = get().waitlist.find(e => e.id === entryId)
+      if (currentEntry?.phone?.replace(/\D/g, '')) {
+        set(state => ({
+          waitlist: state.waitlist.map(e =>
+            e.id === entryId
+              ? {
+                  ...e,
+                  notification_failures: (e.notification_failures ?? 0) + 1
+                }
+              : e
+          )
+        }))
+      }
+      return {
+        success: false,
+        error: 'sms_failed',
+        message:
+          err.message ||
+          'Could not send SMS. Failure logged. Please notify guest verbally.'
+      }
+    }
+  },
+
   // --- LOCAL METHODS (for offline/fallback) ---
 
   addToWaitlist: newEntryData => {
@@ -295,7 +475,11 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
             .update({ position_in_queue: entry.position })
             .eq('id', entry.id)
             .then(({ error }) => {
-              if (error) console.warn(`Failed to update position for ${entry.id}:`, error)
+              if (error)
+                console.warn(
+                  `Failed to update position for ${entry.id}:`,
+                  error
+                )
             })
         )
       )

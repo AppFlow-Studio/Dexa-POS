@@ -38,23 +38,46 @@ function getPhase(ref: React.MutableRefObject<SessionPhase>): SessionPhase {
 export function useTableSession(
   tableId: string,
   source?: string,
+  onClose?: () => void,
 ): UseTableSessionResult {
   const router = useRouter();
+  const navigateAway = useCallback(() => {
+    if (onClose) {
+      onClose();
+    } else if (source) {
+      router.replace(source as any);
+    } else {
+      router.replace("/tables");
+    }
+  }, [onClose, source, router]);
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
   const [phase, setPhase] = useState<SessionPhase>(() => {
     const t = useFloorPlanStore.getState().getTableById(tableId);
-    const oid = useOrderStore.getState().activeOrderId;
-    const ord = oid ? useOrderStore.getState().ordersById[oid] : undefined;
-    if (t && (ord || !useTableSessionStore.getState().sessions[tableId])) {
-      return "ready";
+    if (!t) return "initializing";
+
+    const session = useTableSessionStore.getState().sessions[tableId];
+
+    // No session → available table, auto-create will run, start ready
+    if (!session || session.status === "available") return "ready";
+
+    // Session has an order — check if we already have it locally
+    if (session.order_id) {
+      const orderState = useOrderStore.getState();
+      const found = orderState.getOrder(session.order_id);
+      if (found) return "ready"; // order in store, render immediately
     }
+
+    // Session exists but order not yet loaded
     return "initializing";
   });
   const phaseRef = useRef<SessionPhase>(phase);
   const hasAutoCreatedRef = useRef(false);
   const lastSetOrderIdRef = useRef<string | null>(null);
+  // If we started ready (order was already in store at mount), skip the first
+  // auto-session effect run — there is nothing to load.
+  const initiallyReadyRef = useRef(phase === "ready");
 
   const updatePhase = useCallback((newPhase: SessionPhase) => {
     phaseRef.current = newPhase;
@@ -116,7 +139,7 @@ export function useTableSession(
   useEffect(() => {
     if (tableStatus === "cleaning") {
       updatePhase("navigating_away");
-      router.replace("/tables");
+      navigateAway();
       return;
     }
     if (
@@ -126,7 +149,7 @@ export function useTableSession(
     ) {
       console.log("[useTableSession] Table cleared, navigating away");
       updatePhase("navigating_away");
-      router.replace("/tables");
+      navigateAway();
     }
   }, [tableStatus, session]);
 
@@ -143,6 +166,12 @@ export function useTableSession(
 
   // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {
+    // If the order was already in the store at mount, skip the first run entirely.
+    if (initiallyReadyRef.current) {
+      initiallyReadyRef.current = false;
+      return;
+    }
+
     const currentPhase = getPhase(phaseRef);
     if (currentPhase === "navigating_away") return;
     if (
@@ -183,7 +212,12 @@ export function useTableSession(
             return;
           }
 
-          await useFloorPlanStore.getState().loadFloorPlanStatusIfStale(1000);
+          // Only fetch from DB when there's truly no local session at all (cold open / stale cache).
+          // Skip when navigating from the floor plan — session is already in the store.
+          const freshSession = useTableSessionStore.getState().getSession(tableId);
+          if (!freshSession) {
+            await useFloorPlanStore.getState().loadFloorPlanStatusIfStale(1000);
+          }
         }
 
         // Re-fetch after potential status update
@@ -229,6 +263,7 @@ export function useTableSession(
             if (activeOrderId !== foundOrder.id) {
               setActiveOrder(foundOrder.id);
             }
+            updatePhase("ready");
           } else {
             if (
               getPhase(phaseRef) === "navigating_away" ||
@@ -236,6 +271,15 @@ export function useTableSession(
               updatedTableStatus === "available"
             )
               return;
+
+            // Before blocking on a DB fetch, check if the background sync
+            // (started from the long-press handler) already loaded the order.
+            const alreadyInStore = useOrderStore.getState().getOrder(sOrderId);
+            if (alreadyInStore) {
+              setActiveOrder(alreadyInStore.id);
+              updatePhase("ready");
+              return;
+            }
 
             updatePhase("loading_session");
             console.log(

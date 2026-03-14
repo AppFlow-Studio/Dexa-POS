@@ -36,6 +36,8 @@ interface TableLayoutViewProps {
   activeOrderId?: string | null
   sectionsById?: Record<string, ServerSection>
   onTableLongPress?: (table: FloorPlanObject) => void
+  disableLongPress?: boolean
+  interactionMode?: 'normal' | 'selection' | 'merge'
 }
 
 const TableLayoutView: React.FC<TableLayoutViewProps> = ({
@@ -49,7 +51,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   selectedTableId, // Consuming the new prop
   activeOrderId,
   sectionsById,
-  onTableLongPress
+  onTableLongPress,
+  disableLongPress = false,
+  interactionMode = 'normal'
 }) => {
   const toggleTableSelection = useFloorPlanStore(s => s.toggleTableSelection)
   const globallySelectedTableIds = useFloorPlanStore(s => s.selectedTableIds)
@@ -66,6 +70,22 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const sortedTables = useMemo(() => {
     return [...tables].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0))
   }, [tables])
+
+  // Stable geometry key — only changes when position/size/section assignment changes,
+  // not when session status/order changes. Prevents sectionOverlays from recomputing
+  // on every realtime table session update.
+  const tableGeometryKey = useMemo(
+    () =>
+      tables
+        .map(
+          t =>
+            `${t.id}:${t.x},${t.y},${t.width ?? ''},${t.height ?? ''},${
+              t.section_id ?? ''
+            }`
+        )
+        .join('|'),
+    [tables]
+  )
 
   // Compute section overlay bounding boxes from tables grouped by section_id
   const sectionOverlays = useMemo(() => {
@@ -109,7 +129,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         width: bounds.maxX - bounds.minX + PADDING * 2,
         height: bounds.maxY - bounds.minY + PADDING * 2
       }))
-  }, [tables, sectionsById])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableGeometryKey, sectionsById])
 
   // Use the correct selection state:
   // - In selection mode: use global store (supports multi-select for merge)
@@ -384,6 +405,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                 layoutId={layoutId}
                 isEditMode={isEditMode}
                 isSelected={selectedTableIdsSet.has(table.id)}
+                interactionMode={interactionMode}
                 onSelect={
                   isSelectionMode
                     ? () => onTableSelect && onTableSelect(table)
@@ -401,6 +423,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                     ? sectionsById?.[table.section_id]?.color
                     : undefined
                 }
+                disableLongPress={disableLongPress}
                 onLongPress={
                   onTableLongPress ? () => onTableLongPress(table) : undefined
                 }

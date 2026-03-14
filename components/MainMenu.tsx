@@ -12,7 +12,6 @@ import {
   Shield,
   ShoppingBag,
   Table,
-  Users,
   UtensilsCrossed
 } from 'lucide-react-native'
 import React, { useState } from 'react'
@@ -112,14 +111,6 @@ const MainMenu: React.FC = () => {
       title: 'Tables',
       subtitle: 'Manage Seating',
       route: '/tables',
-      isHighlighted: false
-    },
-    {
-      id: 'host-station',
-      icon: <Users color={colors.info} size={48} />,
-      title: 'Host Station',
-      subtitle: 'Manage Waitlist',
-      route: '/host-station',
       isHighlighted: false
     },
     {

@@ -81,12 +81,14 @@ interface DraggableTableProps {
   layoutId: string // Kept for prop compatibility, though unused
   isEditMode: boolean
   isSelected: boolean
+  interactionMode: 'normal' | 'selection'
   onSelect: () => void
   canvasScale: SharedValue<number>
   onPress?: () => void
   index?: number // For staggered entry animation
   sectionColor?: string
   onLongPress?: () => void
+  disableLongPress?: boolean
 }
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
@@ -94,12 +96,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   layoutId,
   isEditMode,
   isSelected,
+  interactionMode,
   onSelect,
   canvasScale,
   onPress,
   index = 0,
   sectionColor,
-  onLongPress
+  onLongPress,
+  disableLongPress = false
 }) => {
   const DRAG_HOLD_MS = 220
   const tablesById = useFloorPlanStore(s => s.tablesById)
@@ -110,8 +114,22 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Subscribe directly to live session so table color/status updates without needing
   // the floor plan store sync (matches how Sidebar's TableListItem works)
-  const liveSession =
-    useTableSessionStore(s => s.sessions[table.id]) ?? table.session
+  const sessionStoreSession = useTableSessionStore(s => s.sessions[table.id])
+  const liveSession = sessionStoreSession ?? table.session
+
+  if (
+    liveSession?.status === 'served' ||
+    liveSession?.status === 'check_presented'
+  ) {
+    console.log('[DraggableTable] Table with served/check_presented status:', {
+      tableId: table.id,
+      tableStatus: liveSession?.status,
+      fromSessionStore: !!sessionStoreSession,
+      fromFloorPlan: !!table.session,
+      sessionStoreSession: sessionStoreSession?.status,
+      floorPlanSession: table.session?.status
+    })
+  }
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =
@@ -126,23 +144,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const getOrder = useOrderStore(s => s.getOrder)
 
   const effectiveOrder = useMemo(() => {
-    // Fast path: O(1) session-based lookup via getOrder (checks ordersById + dbOrderIdIndex)
-    if (liveSession?.order_id) {
-      const found = getOrder(liveSession.order_id)
-      if (found) return found
-    }
+    if (!liveSession?.order_id) return undefined
+    return getOrder(liveSession.order_id) ?? undefined
+  }, [liveSession?.order_id, getOrder])
 
-    // Fallback: non-reactive scan by service_location_id
-    // Uses getState() to avoid subscribing to full ordersById
-    const allOrders = useOrderStore.getState().ordersById
-    return Object.values(allOrders).find(
-      o => o.service_location_id === table.id && o.order_status !== 'void'
-    )
-  }, [liveSession?.order_id, getOrder, table.id])
+  const openedAt = effectiveOrder?.opened_at ?? null
+  const liveSessionStatus = liveSession?.status ?? null
 
   const { duration, isOvertime } = useMemo(() => {
-    // Determine if table is effectively "in use" based on session or order
-    const status = liveSession?.status?.toLowerCase()
+    const status = liveSessionStatus?.toLowerCase()
     const isInUse =
       status === 'seating' ||
       status === 'seated' ||
@@ -153,13 +163,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       status === 'paying' ||
       status === 'paid' ||
       status === 'closing' ||
-      effectiveOrder
+      !!openedAt
 
-    if (!isInUse || !effectiveOrder?.opened_at) {
+    if (!isInUse || !openedAt) {
       return { duration: '', isOvertime: false }
     }
 
-    const startTime = new Date(effectiveOrder.opened_at).getTime()
+    const startTime = new Date(openedAt).getTime()
     const diffMins = Math.floor((Date.now() - startTime) / 60000)
 
     return {
@@ -167,7 +177,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       isOvertime:
         defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes
     }
-  }, [tick, liveSession, effectiveOrder, defaultSittingTimeMinutes])
+    // tick drives the 60s refresh; openedAt/liveSessionStatus are primitive deps
+    // so this only recomputes when data actually changes OR the minute ticks
+  }, [tick, liveSessionStatus, openedAt, defaultSittingTimeMinutes])
 
   const serverInitials = useMemo(() => {
     const staffId = liveSession?.server_staff_id
@@ -214,6 +226,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const pulseScale = useSharedValue(1)
 
   const isMergedShared = useSharedValue(false)
+  const attentionShared = useSharedValue(false)
 
   // Staggered entry animation on mount
   useEffect(() => {
@@ -236,15 +249,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     )
   }, [liveSession?.status, liveSession?.order_id])
 
-  // Sync merged state to shared value
+  // Sync merged + attention state to shared values (keeps useAnimatedStyle on UI thread)
   const newMerged = !!(
     liveSession?.merged_tables && liveSession.merged_tables.length > 0
   )
   if (isMergedShared.value !== newMerged) {
     isMergedShared.value = newMerged
   }
-
-  const currentAttention = liveSession?.needs_attention ?? false
+  const newAttention = liveSession?.needs_attention ?? false
+  if (attentionShared.value !== newAttention) {
+    attentionShared.value = newAttention
+  }
 
   // --- SYNC WITH UNDO/REDO ---
   useAnimatedReaction(
@@ -317,8 +332,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Long-press enabled on all tables in normal mode
   const longPressGesture = Gesture.LongPress()
-    .minDuration(500)
-    .enabled(!isEditMode)
+    .minDuration(300)
+    .enabled(!isEditMode && !disableLongPress)
     .onStart(() => {
       if (onLongPress) runOnJS(onLongPress)()
     })
@@ -330,12 +345,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const composedGesture = isEditMode
     ? Gesture.Simultaneous(dragGesture, rotateGesture, tapGesture)
-    : Gesture.Exclusive(longPressGesture, tapGesture)
+    : disableLongPress
+    ? tapGesture
+    : Gesture.Race(longPressGesture, tapGesture)
 
   const animatedStyle = useAnimatedStyle(() => {
     const isMerged = isMergedShared.value
+    const hasAttention = attentionShared.value
     const showStaticBorder =
-      !currentAttention && (isSelected || isMerged || !!sectionColor)
+      !hasAttention && (isSelected || isMerged || !!sectionColor)
 
     return {
       position: 'absolute',
@@ -389,6 +407,20 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     : isReservedSoon
     ? colors.info // blue for reserved soon
     : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available
+
+  if (
+    liveSession?.status === 'served' ||
+    liveSession?.status === 'check_presented'
+  ) {
+    console.log('[DraggableTable] Color determination for', table.name, {
+      sessionStatus,
+      isLocalOnly: sessionStatus ? isLocalOnlyStatus(sessionStatus) : 'N/A',
+      tableStatus,
+      tableColor,
+      fromCOLORSMap: TABLE_STATUS_COLORS[tableStatus],
+      allColors: TABLE_STATUS_COLORS
+    })
+  }
 
   // Type check for category is effective if we trust the object
   const isTableType = table.category === 'table' || table.category === 'booth'
@@ -502,7 +534,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           )}
         </View>
         <PulsingBorder
-          active={currentAttention}
+          active={newAttention}
           width={effectiveWidth}
           height={effectiveHeight}
         />
@@ -529,6 +561,9 @@ export default React.memo(DraggableTable, (prev, next) => {
   }
   // Re-render if selected state changes
   if (prev.isSelected !== next.isSelected) {
+    return false
+  }
+  if (prev.interactionMode !== next.interactionMode) {
     return false
   }
   // Re-render if session changed (status, party size, etc.)

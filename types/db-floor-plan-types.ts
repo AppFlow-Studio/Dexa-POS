@@ -112,6 +112,9 @@ export interface WaitlistEntry {
   notes?: string
   created_at: string
   notified_at?: string
+  notification_count?: number
+  last_notification_type?: string
+  notification_failures?: number
   minutes_waiting?: number
 }
 
@@ -270,6 +273,7 @@ export interface AddToWaitlistParams {
   p_preferred_section?: string
   p_seating_preference?: string
   p_quoted_wait_minutes?: number
+  p_estimated_ready_at?: string
 }
 
 export interface CreateReservationParams {

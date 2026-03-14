@@ -174,7 +174,10 @@ export default function RootLayout() {
                           <RemoteActionsProvider>
                           <CFDProvider>
                             <StatusBar style={"dark"} translucent />
-                            <Stack screenOptions={{ headerShown: false }} />
+                            <Stack screenOptions={{ headerShown: false }}>
+                              <Stack.Screen name="(main)/tables/[tableId]" options={{ animation: 'none' }} />
+                              <Stack.Screen name="(main)/tables/waitlist" options={{ animation: 'none' }} />
+                            </Stack>
                             <PortalHost />
                             {!isKDS && <SearchBottomSheet />}
                             {!isKDS && isCustomizationOpen && <ItemCustomizationDialog />}

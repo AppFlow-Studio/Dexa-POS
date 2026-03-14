@@ -1,3 +1,4 @@
+import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { colors } from '@/lib/theme'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import {
@@ -10,6 +11,7 @@ import {
   Lightbulb,
   Mail,
   Phone,
+  PhoneOff,
   StickyNote,
   Users,
   X
@@ -28,11 +30,11 @@ import { SharedValue } from 'react-native-reanimated'
 interface WaitlistQueueCardProps {
   entry: WaitlistEntry
   position: number
-  now: number
   onNotify: () => void
   onSeat: () => void
   onCancel: () => void
   onMarkNoShow: () => void
+  onOfferComp?: () => void
   dragGesture?: ReturnType<typeof Gesture.Simultaneous>
   isDragging?: SharedValue<boolean>
 }
@@ -92,11 +94,11 @@ function formatElapsed (minutes: number): string {
 export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
   entry,
   position,
-  now,
   onNotify,
   onSeat,
   onCancel,
   onMarkNoShow,
+  onOfferComp,
   dragGesture
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -130,14 +132,29 @@ export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
     })
   ).current
 
+  const tick = useTableTimerTick()
   const elapsed = useMemo(
     () => getElapsedMinutes(entry.created_at),
-    [entry.created_at, now]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entry.created_at, tick]
   )
   const isOverdue = elapsed > (entry.quoted_wait_minutes || 0)
   const isApproaching =
     elapsed > (entry.quoted_wait_minutes || 0) * 0.8 && !isOverdue
-  const statusColor = getStatusColor(entry.status, isOverdue, isApproaching)
+
+  // Calculate if wait exceeds quoted by >10 minutes
+  const overtimeMinutes = Math.max(
+    0,
+    elapsed - (entry.quoted_wait_minutes || 0)
+  )
+  const isSignificantlyOverdue = overtimeMinutes > 10
+
+  const statusColor = getStatusColor(
+    entry.status,
+    isOverdue || isSignificantlyOverdue,
+    isApproaching
+  )
+  const hasPhone = Boolean(entry.phone?.replace(/\D/g, ''))
 
   const closeSwipe = () =>
     Animated.timing(swipeOffset, {
@@ -254,21 +271,31 @@ export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
               </View>
             </View>
 
-            {/* Status Badge */}
-            <View
-              className='px-2.5 py-1 rounded-lg ml-3'
-              style={{
-                backgroundColor: statusColor + '20',
-                borderWidth: 1,
-                borderColor: statusColor
-              }}
-            >
-              <Text
-                className='text-xs font-bold'
-                style={{ color: statusColor }}
+            {/* Status Badge + No-Phone Icon */}
+            <View className='flex-row items-center gap-1.5 ml-3'>
+              {(entry.notification_failures ?? 0) > 0 && (
+                <View className='px-2 py-1 rounded-lg bg-red-600 border border-red-500'>
+                  <Text className='text-white text-xs font-bold'>
+                    SMS FAIL {entry.notification_failures}
+                  </Text>
+                </View>
+              )}
+              <View
+                className='px-2.5 py-1 rounded-lg'
+                style={{
+                  backgroundColor: statusColor + '20',
+                  borderWidth: 1,
+                  borderColor: statusColor
+                }}
               >
-                {getStatusLabel(entry.status)}
-              </Text>
+                <Text
+                  className='text-xs font-bold'
+                  style={{ color: statusColor }}
+                >
+                  {getStatusLabel(entry.status)}
+                </Text>
+              </View>
+              {!hasPhone && <PhoneOff size={12} color={colors.muted} />}
             </View>
 
             {/* Chevron */}
@@ -388,6 +415,49 @@ export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
                 />
                 <Text className='text-red-400 text-sm flex-1'>
                   Party exceeded quoted wait time
+                </Text>
+              </View>
+            )}
+
+            {/* Significantly Overdue Alert - RED for >10 mins overtime */}
+            {isSignificantlyOverdue && (
+              <View className='gap-2'>
+                <View className='flex-row items-start gap-2 px-3 py-3 rounded-lg bg-red-900/40 border-2 border-red-600'>
+                  <AlertCircle
+                    size={16}
+                    color='#ef4444'
+                    style={{ marginTop: 1 }}
+                  />
+                  <View className='flex-1'>
+                    <Text className='text-red-300 text-sm font-bold'>
+                      Critical: {overtimeMinutes}+ mins over quoted time
+                    </Text>
+                    <Text className='text-red-300/80 text-xs mt-1'>
+                      Customer is significantly late. Consider gesture of
+                      goodwill.
+                    </Text>
+                  </View>
+                </View>
+                {onOfferComp && (
+                  <TouchableOpacity
+                    onPress={onOfferComp}
+                    className='flex-row items-center justify-center gap-1.5 py-2.5 rounded-lg bg-amber-600/80 border border-amber-600'
+                  >
+                    <AlertCircle size={14} color='white' />
+                    <Text className='text-white font-semibold text-sm'>
+                      Apologize & Offer Comp
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* SMS Failure Alert */}
+            {(entry.notification_failures ?? 0) > 0 && (
+              <View className='flex-row items-center gap-2 px-3 py-2 rounded-lg bg-red-600 border border-red-500'>
+                <AlertCircle size={14} color='white' />
+                <Text className='text-white text-sm flex-1 font-semibold'>
+                  SMS failed {entry.notification_failures}x — notify by voice
                 </Text>
               </View>
             )}

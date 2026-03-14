@@ -11,6 +11,7 @@ import SortDropdown, {
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
@@ -20,6 +21,7 @@ import { FlatList, Text, TouchableOpacity, View } from "react-native";
 const SeatedPanel: React.FC = () => {
   const tables = useFloorPlanStore((s) => s.tables);
   const ordersById = useOrderStore((s) => s.ordersById);
+  const liveSessions = useTableSessionStore((s) => s.sessions);
   const { activeEmployeeId } = useTimeclockStore();
   const { employees } = useEmployeeStore();
 
@@ -95,7 +97,10 @@ const SeatedPanel: React.FC = () => {
     ];
 
     const seatedTables = tables.filter((table) => {
-      const status = (table.session?.status || "available").toLowerCase();
+      // Only show actual seatable objects (not walls, zones, decorations)
+      if (table.category !== "table" && table.category !== "booth") return false;
+      const session = liveSessions[table.id] ?? table.session;
+      const status = (session?.status || "available").toLowerCase();
       // Also check 'In Use' for legacy compatibility if DB not updated
       return activeStates.includes(status);
     });
@@ -122,7 +127,7 @@ const SeatedPanel: React.FC = () => {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [tables, getTableOrderData, sortOption, sortDirection]);
+  }, [tables, getTableOrderData, sortOption, sortDirection, liveSessions]);
 
   const serversWithTables = useMemo(() => {
     const serverTableMap: Record<string, FloorPlanObject[]> = {};

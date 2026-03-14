@@ -1,13 +1,16 @@
-import { bottomSheetTheme, colors } from '@/lib/theme'
+import { colors } from '@/lib/theme'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetFlatList,
-  BottomSheetView
-} from '@gorhom/bottom-sheet'
-import { Check, Users } from 'lucide-react-native'
+import { Check, Users, X } from 'lucide-react-native'
 import React, { useMemo } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import {
+  FlatList,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 
 interface TableSelectionSheetProps {
   isOpen: boolean
@@ -24,9 +27,6 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
   entry,
   tables
 }) => {
-  const snapPoints = useMemo(() => ['55%'], [])
-
-  // Filter available tables
   const availableTables = useMemo(
     () =>
       tables.filter(
@@ -37,15 +37,13 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
     [tables]
   )
 
-  // Sort by capacity, highlighting recommended tables for the party size
   const sortedTables = useMemo(() => {
     if (!entry) return availableTables
 
-    return availableTables.sort((a, b) => {
+    return [...availableTables].sort((a, b) => {
       const aCapacity = a.capacity || 0
       const bCapacity = b.capacity || 0
 
-      // Exact or slightly over match first
       const aIsIdeal =
         aCapacity >= entry.party_size && aCapacity <= entry.party_size + 2
       const bIsIdeal =
@@ -54,7 +52,6 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
       if (aIsIdeal && !bIsIdeal) return -1
       if (!aIsIdeal && bIsIdeal) return 1
 
-      // Then by capacity (smaller first)
       return aCapacity - bCapacity
     })
   }, [availableTables, entry])
@@ -68,9 +65,7 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
 
     return (
       <Pressable
-        onPress={() => {
-          onSelectTable([item.id])
-        }}
+        onPress={() => onSelectTable([item.id])}
         className='mx-3 mb-3 p-3 rounded-lg border border-border bg-card overflow-hidden'
       >
         <View className='flex-row items-center justify-between'>
@@ -100,47 +95,54 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
   }
 
   return (
-    <BottomSheet
-      index={isOpen ? 0 : -1}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      onClose={onClose}
-      {...bottomSheetTheme}
-      backdropComponent={props => (
-        <BottomSheetBackdrop {...props} disappearsOnIndex={-1} opacity={0.5} />
-      )}
+    <Modal
+      visible={isOpen}
+      transparent
+      animationType='slide'
+      onRequestClose={onClose}
     >
-      <BottomSheetView className='flex-1 bg-screen'>
-        <View className='px-4 pt-4 pb-4 border-b border-border'>
-          <Text className='text-white text-lg font-bold'>
-            Select Table for {entry?.party_name}
-          </Text>
-          <Text className='text-muted text-sm mt-1'>
-            {entry?.party_size} guest
-            {entry && entry.party_size !== 1 ? 's' : ''}
-          </Text>
-        </View>
+      <Pressable
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
+        onPress={onClose}
+      >
+        <Pressable onPress={e => e.stopPropagation()} style={{ maxHeight: '55%', backgroundColor: colors.panel, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+          <SafeAreaView style={{ backgroundColor: colors.panel, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+            {/* Header */}
+            <View className='px-4 pt-2 pb-4 border-b border-border flex-row items-start justify-between'>
+              <View>
+                <Text className='text-white text-lg font-bold'>
+                  Select Table for {entry?.party_name}
+                </Text>
+                <Text className='text-muted text-sm mt-1'>
+                  {entry?.party_size} guest{entry && entry.party_size !== 1 ? 's' : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={onClose} className='p-1'>
+                <X size={20} color={colors.label} />
+              </TouchableOpacity>
+            </View>
 
-        {availableTables.length === 0 ? (
-          <View className='flex-1 items-center justify-center px-4'>
-            <Text className='text-muted text-center text-base'>
-              No available tables
-            </Text>
-            <Text className='text-label text-center text-sm mt-2'>
-              All tables are currently occupied
-            </Text>
-          </View>
-        ) : (
-          <BottomSheetFlatList
-            data={sortedTables}
-            renderItem={renderTableItem}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{ paddingTop: 12, paddingBottom: 20 }}
-            scrollEnabled
-          />
-        )}
-      </BottomSheetView>
-    </BottomSheet>
+            {availableTables.length === 0 ? (
+              <View className='items-center justify-center px-4 py-12'>
+                <Text className='text-muted text-center text-base'>
+                  No available tables
+                </Text>
+                <Text className='text-label text-center text-sm mt-2'>
+                  All tables are currently occupied
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={sortedTables}
+                renderItem={renderTableItem}
+                keyExtractor={item => item.id}
+                contentContainerStyle={{ paddingTop: 12, paddingBottom: 20 }}
+              />
+            )}
+          </SafeAreaView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   )
 }
 
