@@ -230,6 +230,7 @@ BEGIN
       'station_id', NEW.station_id,
       'station_name', v_station_name,
       'order_type', NEW.order_type,
+      'order_source', NEW.order_source,
       'status', NEW.status,
       'table_number', NEW.table_number,
       'seat_number', NEW.seat_number,

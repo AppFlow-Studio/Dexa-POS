@@ -28,6 +28,7 @@ import {
   ShoppingBag,
   Square,
   Truck,
+  Globe,
   UtensilsCrossed,
   Wifi,
   WifiOff,
@@ -384,6 +385,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   {orderTypeLabel}
                 </Text>
               </View>
+              {ticket.order_source === "online" && (
+                <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(96,165,250,0.25)" }}>
+                  <Globe color="#60a5fa" size={11} />
+                  <Text style={{ color: "#60a5fa", fontSize: 10, fontWeight: "700", marginLeft: 2 }}>ONLINE</Text>
+                </View>
+              )}
             </View>
           </View>
 

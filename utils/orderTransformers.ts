@@ -561,6 +561,9 @@ export function transformBroadcastToOrder(
     sent_to_kitchen_at: backendOrder.sent_to_kitchen_at || undefined,
     closed_at: backendOrder.completed_at || undefined,
 
+    // Order source
+    order_source: backendOrder.order_source ?? undefined,
+
     // Sync status - already synced since from DB
     sync_status: "synced",
     sync_version: backendOrder.sync_version ?? 0,
@@ -598,6 +601,7 @@ export interface FetchedOrderData {
   station_name?: string | null;
   check_status?: string | null;
   session_id?: string | null;
+  order_source?: string | null;
   order_type: string;
   status: string;
   table_number?: string | null;
@@ -1009,6 +1013,9 @@ export function normalizeFetchedOrder(
     voided_by: fetchedOrder.voided_by ?? null,
     void_reason: fetchedOrder.void_reason ?? null,
     cancellation_reason: fetchedOrder.cancellation_reason ?? null,
+
+    // Order source
+    order_source: fetchedOrder.order_source ?? null,
 
     // Sync
     sync_version: fetchedOrder.sync_version ?? 1,

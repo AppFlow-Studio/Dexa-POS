@@ -155,6 +155,7 @@ export interface BroadcastOrderData {
   station_id: string | null;
   station_name: string | null;
   // Order info
+  order_source?: string | null;
   order_type: "dine_in" | "takeout" | "delivery";
   status:
     | "draft"

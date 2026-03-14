@@ -504,6 +504,7 @@ export interface PreviousOrder {
   // Check management
   checkStatus?: "Opened" | "Closed";
   db_order_id?: string; // For RPC calls
+  order_source?: string | null;
   reversals?: ReversalRecord[];
   order_refund_items?: OrderRefundItemRecord[];
 }
@@ -918,6 +919,9 @@ export interface OrderProfile {
   station_id?: string | null; // Station that created this order
   _sourceStationId?: string | null; // Original creating station ID (for display)
   _sourceStationName?: string | null; // Original creating station name (for display)
+
+  // === ORDER SOURCE ===
+  order_source?: string | null; // "pos" | "online" | null
 
   // === SYNC VERSION (for optimistic concurrency) ===
   sync_version?: number; // Backend sync version for conflict detection

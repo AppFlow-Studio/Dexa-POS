@@ -45,6 +45,7 @@ BEGIN
         ELSE 'cooking'
       END,
       'order_type', o.order_type,
+      'order_source', o.order_source,
       'table_name', o.table_number,
       'customer_name', o.customer_name,
       'start_time', COALESCE(oi_grouped.fire_time, o.sent_to_kitchen_at, o.created_at),

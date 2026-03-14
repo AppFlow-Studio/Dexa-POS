@@ -28,6 +28,7 @@ export interface KDSTicket {
   course_number: number;
   status: "pending" | "cooking" | "ready";
   order_type: string | null;
+  order_source?: string | null;
   table_name: string | null;
   customer_name: string | null;
   start_time: string | null;
