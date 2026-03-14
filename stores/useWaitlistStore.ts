@@ -2,6 +2,7 @@ import { FloorPlanService } from '@/services/floorPlanService'
 import { AddToWaitlistParams, WaitlistEntry } from '@/types/db-floor-plan-types'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
+import { useTableSessionStore } from './useTableSessionStore'
 
 // Global client reference (pattern used by other stores)
 let _supabaseClient: SupabaseClient | null = null
@@ -262,15 +263,19 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         actualWaitMinutes
       )
 
-      const { data, error } = await FloorPlanService.seatFromWaitlist(
-        getClient(),
-        entryId,
-        tableIds
-      )
+      // Use seatGuests to seat the party — this handles optimistic updates,
+      // session store hydration, and order creation so TableOrderView renders
+      // immediately without hitting the loading skeleton.
+      const result = await useTableSessionStore.getState().seatGuests({
+        tableIds,
+        partySize: entry.party_size,
+        guestName: entry.party_name,
+        guestPhone: entry.phone ?? undefined,
+        waitlistId: entryId,
+        createOrder: true,
+      })
 
-      if (error) throw error
-
-      // Retry once post-seat only if pre-seat write did not persist.
+      // Retry accuracy tracking post-seat if pre-seat write did not persist.
       if (!preSeatAccuracy.data?.success) {
         const postSeatAccuracy = await FloorPlanService.recordWaitAccuracy(
           getClient(),
@@ -292,7 +297,7 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
         waitlist: state.waitlist.filter(entry => entry.id !== entryId)
       }))
 
-      return data
+      return result.sessionId ? { session_id: result.sessionId, order_id: result.orderId } : null
     } catch (err: any) {
       console.error('Failed to seat from waitlist:', err)
       // Still remove locally
