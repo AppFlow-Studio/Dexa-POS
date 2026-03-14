@@ -65,6 +65,9 @@ export function useTableSession(
   const phaseRef = useRef<SessionPhase>(phase);
   const hasAutoCreatedRef = useRef(false);
   const lastSetOrderIdRef = useRef<string | null>(null);
+  // If we started ready (order was already in store at mount), skip the first
+  // auto-session effect run — there is nothing to load.
+  const initiallyReadyRef = useRef(phase === "ready");
 
   const updatePhase = useCallback((newPhase: SessionPhase) => {
     phaseRef.current = newPhase;
@@ -153,6 +156,12 @@ export function useTableSession(
 
   // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {
+    // If the order was already in the store at mount, skip the first run entirely.
+    if (initiallyReadyRef.current) {
+      initiallyReadyRef.current = false;
+      return;
+    }
+
     const currentPhase = getPhase(phaseRef);
     if (currentPhase === "navigating_away") return;
     if (

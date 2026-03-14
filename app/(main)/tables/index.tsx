@@ -5,7 +5,6 @@ import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
-import WaitlistBottomSheet from '@/components/tables/WaitlistBottomSheet'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
@@ -20,7 +19,6 @@ import {
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
-import { useWaitlistSheetStore } from '@/stores/useWaitlistSheetStore'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { Href, useRouter } from 'expo-router'
@@ -83,7 +81,6 @@ const TablesScreen = () => {
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [isHostStationOpen, setHostStationOpen] = useState(false)
-  const isWaitlistOpen = useWaitlistSheetStore(s => s.isOpen)
 
   useEffect(() => {
     if (supabaseClient) {
@@ -202,7 +199,7 @@ const TablesScreen = () => {
           setActiveOrder(existingOrder.id)
         }
       }
-      router.replace({
+      router.push({
         pathname: '/tables/[tableId]',
         params: { tableId }
       })
@@ -227,8 +224,8 @@ const TablesScreen = () => {
           const existing = useOrderStore.getState().getOrder(orderId)
           if (existing) setActiveOrder(existing.id)
 
-          // Navigate immediately
-          router.replace({
+          // Navigate immediately — push keeps floor plan mounted (faster than replace)
+          router.push({
             pathname: '/tables/[tableId]',
             params: { tableId: table.id }
           })
@@ -240,7 +237,7 @@ const TablesScreen = () => {
             })
             .catch(() => {})
         } else {
-          router.replace({
+          router.push({
             pathname: '/tables/[tableId]',
             params: { tableId: table.id }
           })
@@ -636,7 +633,7 @@ const TablesScreen = () => {
           )}
 
           {/* Map Container */}
-          <View className='bg-screen border border-border rounded-xl flex-1 relative' pointerEvents={isWaitlistOpen ? 'none' : 'auto'}>
+          <View className='bg-screen border border-border rounded-xl flex-1 relative'>
             {!isReady || (floorPlanLoading && tables.length === 0) ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
@@ -754,7 +751,6 @@ const TablesScreen = () => {
             </View>
           </View>
         </View>
-        <WaitlistBottomSheet />
       </View>
       <TableContextSheet
         table={contextTable}

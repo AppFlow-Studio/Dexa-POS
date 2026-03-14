@@ -3,8 +3,8 @@ import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { useWaitlistSheetStore } from '@/stores/useWaitlistSheetStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
+import { useRouter } from 'expo-router'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import {
   AlertCircle,
@@ -450,10 +450,12 @@ const WaitlistPanel: React.FC = () => {
     setExpandedId(prev => (prev === id ? null : id))
   }, [])
 
-  // Seat action — open the WaitlistBottomSheet table picker
+  const router = useRouter()
+
+  // Seat action — navigate to dedicated waitlist screen
   const handleSeat = useCallback(() => {
-    useWaitlistSheetStore.getState().openSheet()
-  }, [])
+    router.push('/tables/waitlist')
+  }, [router])
 
   // Notify action
   const handleNotify = useCallback(

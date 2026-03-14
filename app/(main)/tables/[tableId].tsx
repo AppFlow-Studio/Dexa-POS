@@ -113,31 +113,21 @@ const UpdateTableScreen = () => {
     const session = useTableSessionStore.getState().sessions[currentTableId];
     if (session?.order_id) {
       const found = useOrderStore.getState().getOrder(session.order_id);
-      if (found) return 1;
+      if (found) return 2; // order already in store — render everything immediately
     }
     // Fallback: check activeOrderId (available table or freshly created order)
     const orderState = useOrderStore.getState();
     const oid = orderState.activeOrderId;
     const hasOrder = oid && orderState.ordersById[oid]?.service_location_id === currentTableId;
-    return hasOrder ? 1 : 0;
+    return hasOrder ? 2 : 0;
   });
   useEffect(() => {
     let cancelled = false;
     if (renderStage >= 2) return;
-    if (renderStage === 1) {
-      // Already past skeleton — go straight to full render in one frame
-      const raf = requestAnimationFrame(() => {
-        if (!cancelled) setRenderStage(2);
-      });
-      return () => { cancelled = true; cancelAnimationFrame(raf); };
-    }
-    // Stage 0: show skeleton one frame, then stage 1, then stage 2
+    // Stage 0: show skeleton one frame, then render everything
     const raf = requestAnimationFrame(() => {
       if (cancelled) return;
-      setRenderStage(1);
-      requestAnimationFrame(() => {
-        if (!cancelled) setRenderStage(2);
-      });
+      setRenderStage(2);
     });
     return () => {
       cancelled = true;
@@ -628,8 +618,8 @@ const UpdateTableScreen = () => {
           headerLeft: () => (
             <TouchableOpacity
               onPress={() => {
-                if (source) {
-                  router.replace(source as any);
+                if (router.canGoBack()) {
+                  router.back();
                 } else {
                   router.replace("/tables");
                 }

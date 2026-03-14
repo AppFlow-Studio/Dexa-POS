@@ -314,7 +314,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Long-press enabled on all tables in normal mode
   const longPressGesture = Gesture.LongPress()
-    .minDuration(500)
+    .minDuration(300)
     .enabled(!isEditMode)
     .onStart(() => {
       if (onLongPress) runOnJS(onLongPress)()
