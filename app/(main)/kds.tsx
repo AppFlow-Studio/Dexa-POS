@@ -12,21 +12,29 @@ import { clearStationData } from "@/services/cacheService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import KDSSoundService, { DEFAULT_SOUND_CONFIG } from "@/services/kds/kdsSoundService";
+import KDSSettingsModal from "@/components/kds/KDSSettingsModal";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { useRouter } from "expo-router";
 import {
   AlertTriangle,
+  ArrowUpToLine,
   CheckSquare,
   ChefHat,
   CircleDotDashed,
   Clock,
+  Eye,
+  EyeOff,
   Flame,
   Layers,
   LogOut,
   RefreshCw,
+  RotateCcw,
+  Settings,
   ShoppingBag,
   Square,
+  Star,
   Truck,
   Globe,
   UtensilsCrossed,
@@ -42,6 +50,7 @@ import React, {
 } from "react";
 import {
   Animated as RNAnimated,
+  GestureResponderEvent,
   InteractionManager,
   Pressable,
   Text,
@@ -207,16 +216,30 @@ function matchesTypeFilter(ticket: KDSTicket, filter: OrderTypeFilter): boolean 
   return t === "dine_in" || t === "dine in" || t === "" || !ticket.order_type;
 }
 
+// ─── Display Settings Interface ───────────────────────────────────
+interface KDSTicketDisplaySettings {
+  highlightNotes: boolean;
+  itemNameLines: number; // 0 = unlimited
+  modifierGroupName: 'for_group_priced' | 'always' | 'never';
+  exclusionsAtTop: boolean;
+  alphabeticalSort: boolean;
+  aggregateIdenticalItems: boolean;
+}
+
 // ─── Ticket Card ──────────────────────────────────────────────────
 interface KDSTicketCardProps {
   ticket: KDSTicket;
   onAdvance: (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => void;
   bulkMode: boolean;
   onToggleSelect: (id: string) => void;
+  onLongPress?: (ticketId: string, ticket: KDSTicket, event: GestureResponderEvent) => void;
+  onItemPress?: (ticketId: string, itemId: string) => void;
+  hideDoneItems: boolean;
+  displaySettings: KDSTicketDisplaySettings;
 }
 
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
-  ({ ticket, onAdvance, bulkMode, onToggleSelect }) => {
+  ({ ticket, onAdvance, bulkMode, onToggleSelect, onLongPress, onItemPress, hideDoneItems, displaySettings }) => {
     // Subscribe to own selection state via Zustand selector — only the toggled card re-renders
     const isSelected = useKDSStore(
       useCallback(
@@ -273,14 +296,56 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       );
     };
 
+    const handleLongPress = (e: GestureResponderEvent) => {
+      if (bulkMode) return;
+      onLongPress?.(ticket.ticket_id, ticket, e);
+    };
+
     const urgencyColor = URGENCY_BORDER_COLORS[urgencyLevel];
-    const borderColor = bulkMode && isSelected ? colors.info : urgencyColor;
+    const borderColor = bulkMode && isSelected
+      ? colors.info
+      : ticket.prioritized
+        ? "#f59e0b" // amber for prioritized
+        : urgencyColor;
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
     const hasRush = ticket.items.some((item) => item.rush);
 
+    // Filter/track done items + apply display settings
+    const doneItemCount = ticket.items.filter((i) => i.kitchen_status === "ready").length;
+    let processedItems = hideDoneItems
+      ? ticket.items.filter((i) => i.kitchen_status !== "ready")
+      : [...ticket.items];
+
+    // Aggregate identical items (same name + modifiers + notes)
+    if (displaySettings.aggregateIdenticalItems) {
+      const aggregated: (KDSTicketItem & { _aggregatedIds?: string[] })[] = [];
+      const keyMap = new Map<string, number>();
+      for (const item of processedItems) {
+        const modKey = item.modifiers.map((m) => m.modifier_name).sort().join("|");
+        const key = `${item.name}__${modKey}__${item.special_instructions ?? ""}`;
+        const idx = keyMap.get(key);
+        if (idx !== undefined) {
+          const existing = aggregated[idx];
+          aggregated[idx] = { ...existing, quantity: existing.quantity + item.quantity };
+        } else {
+          keyMap.set(key, aggregated.length);
+          aggregated.push({ ...item });
+        }
+      }
+      processedItems = aggregated;
+    }
+
+    // Alphabetical sort
+    if (displaySettings.alphabeticalSort) {
+      processedItems = [...processedItems].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const visibleItems = processedItems;
+    const hasHiddenDoneItems = hideDoneItems && doneItemCount > 0;
+
     return (
-      <Pressable onPress={handlePress}>
+      <Pressable onPress={handlePress} onLongPress={handleLongPress} delayLongPress={400}>
         <Animated.View
           style={[
             {
@@ -314,6 +379,20 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               ) : (
                 <Square size={20} color={colors.label} />
               )}
+            </View>
+          )}
+
+          {/* Priority badge */}
+          {ticket.prioritized && (
+            <View
+              style={{
+                position: "absolute",
+                top: hasRush ? 18 : 0,
+                right: bulkMode ? 30 : 6,
+                zIndex: 10,
+              }}
+            >
+              <Star size={16} color="#f59e0b" fill="#f59e0b" />
             </View>
           )}
 
@@ -419,72 +498,114 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
           {/* Items list */}
           <View style={{ padding: 8, backgroundColor: colors.screen }}>
-            {ticket.items.map((item: KDSTicketItem, index: number) => (
-              <View
-                key={item.id}
-                style={index < ticket.items.length - 1 ? { marginBottom: 4 } : undefined}
-              >
-                <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-                  <View
-                    style={{
-                      backgroundColor: colors.border,
-                      width: 22,
-                      height: 22,
-                      borderRadius: 4,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginRight: 6,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
-                      {item.quantity}
+            {visibleItems.map((item: KDSTicketItem, index: number) => {
+              const isItemDone = item.kitchen_status === "ready";
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    if (!isItemDone && onItemPress) {
+                      onItemPress(ticket.ticket_id, item.id);
+                    }
+                  }}
+                  style={index < visibleItems.length - 1 ? { marginBottom: 4 } : undefined}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", opacity: isItemDone ? 0.4 : 1 }}>
+                    <View
+                      style={{
+                        backgroundColor: isItemDone ? colors.success : colors.border,
+                        width: 22,
+                        height: 22,
+                        borderRadius: 4,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 6,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+                        {item.quantity}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        color: "#fff",
+                        fontSize: 13,
+                        fontWeight: "500",
+                        flex: 1,
+                        textDecorationLine: isItemDone ? "line-through" : "none",
+                      }}
+                      numberOfLines={displaySettings.itemNameLines || undefined}
+                    >
+                      {item.name}
                     </Text>
                   </View>
-                  <Text
-                    style={{ color: "#fff", fontSize: 13, fontWeight: "500", flex: 1 }}
-                    numberOfLines={1}
-                  >
-                    {item.name}
-                  </Text>
-                </View>
-                {/* Modifiers */}
-                {item.modifiers.length > 0 &&
-                  item.modifiers.map((mod, mi) => {
-                    const isRemoval =
-                      mod.modifier_group_name?.toLowerCase().includes("remove") ||
-                      mod.modifier_name?.toLowerCase().startsWith("no ");
-                    return (
-                      <Text
-                        key={`${item.id}_m${mi}`}
-                        style={{
-                          color: isRemoval ? colors.danger : colors.success,
-                          fontSize: 11,
-                          marginLeft: 28,
-                          marginTop: 1,
-                        }}
-                      >
-                        {isRemoval ? "- " : "+ "}
-                        {mod.modifier_name}
-                      </Text>
-                    );
-                  })}
-                {/* Special instructions */}
-                {item.special_instructions && (
-                  <Text
-                    style={{
-                      color: colors.warning,
-                      fontSize: 11,
-                      fontStyle: "italic",
-                      marginLeft: 28,
-                      marginTop: 1,
-                    }}
-                    numberOfLines={2}
-                  >
-                    "{item.special_instructions}"
-                  </Text>
-                )}
-              </View>
-            ))}
+                  {/* Modifiers */}
+                  {item.modifiers.length > 0 &&
+                    (() => {
+                      let mods = [...item.modifiers];
+                      // Exclusions at top
+                      if (displaySettings.exclusionsAtTop) {
+                        mods.sort((a, b) => {
+                          const aRemoval = a.modifier_group_name?.toLowerCase().includes("remove") || a.modifier_name?.toLowerCase().startsWith("no ") ? 0 : 1;
+                          const bRemoval = b.modifier_group_name?.toLowerCase().includes("remove") || b.modifier_name?.toLowerCase().startsWith("no ") ? 0 : 1;
+                          return aRemoval - bRemoval;
+                        });
+                      }
+                      return mods.map((mod, mi) => {
+                        const isRemoval =
+                          mod.modifier_group_name?.toLowerCase().includes("remove") ||
+                          mod.modifier_name?.toLowerCase().startsWith("no ");
+                        // Modifier group name prefix
+                        let prefix = isRemoval ? "- " : "+ ";
+                        if (displaySettings.modifierGroupName === "always" && mod.modifier_group_name) {
+                          prefix = `${prefix}${mod.modifier_group_name}: `;
+                        } else if (displaySettings.modifierGroupName === "for_group_priced" && mod.modifier_group_name && mod.price_modifier !== 0) {
+                          prefix = `${prefix}${mod.modifier_group_name}: `;
+                        }
+                        return (
+                          <Text
+                            key={`${item.id}_m${mi}`}
+                            style={{
+                              color: isRemoval ? colors.danger : colors.success,
+                              fontSize: 11,
+                              marginLeft: 28,
+                              marginTop: 1,
+                              opacity: isItemDone ? 0.4 : 1,
+                              textDecorationLine: isItemDone ? "line-through" : "none",
+                            }}
+                          >
+                            {prefix}
+                            {mod.modifier_name}
+                          </Text>
+                        );
+                      });
+                    })()}
+                  {/* Special instructions */}
+                  {item.special_instructions && (
+                    <Text
+                      style={{
+                        color: displaySettings.highlightNotes ? colors.warning : colors.label,
+                        fontSize: 11,
+                        fontStyle: "italic",
+                        marginLeft: 28,
+                        marginTop: 1,
+                        opacity: isItemDone ? 0.4 : 1,
+                        textDecorationLine: isItemDone ? "line-through" : "none",
+                      }}
+                      numberOfLines={2}
+                    >
+                      "{item.special_instructions}"
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            })}
+            {/* Hidden done items indicator */}
+            {hasHiddenDoneItems && (
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4, textAlign: "center" }}>
+                {doneItemCount} done
+              </Text>
+            )}
           </View>
 
           {/* Customer name footer */}
@@ -511,7 +632,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     prev.ticket === next.ticket &&
     prev.onAdvance === next.onAdvance &&
     prev.bulkMode === next.bulkMode &&
-    prev.onToggleSelect === next.onToggleSelect,
+    prev.onToggleSelect === next.onToggleSelect &&
+    prev.onLongPress === next.onLongPress &&
+    prev.onItemPress === next.onItemPress &&
+    prev.hideDoneItems === next.hideDoneItems &&
+    prev.displaySettings === next.displaySettings,
 );
 
 // ─── Main Screen ──────────────────────────────────────────────────
@@ -525,6 +650,8 @@ const KitchenDisplayScreen = () => {
   const clearStationSession = useStoreSettingsStore((s) => s.clearStationSession);
   const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
   const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
+  const kdsHideDoneItems = useStoreSettingsStore((s) => s.kdsHideDoneItems);
+  const updateField = useStoreSettingsStore((s) => s.updateField);
 
   const tickets = useKDSStore((s) => s.tickets);
   const counts = useKDSStore((s) => s.counts);
@@ -546,6 +673,11 @@ const KitchenDisplayScreen = () => {
   const selectAllVisible = useKDSStore((s) => s.selectAllVisible);
   const clearSelection = useKDSStore((s) => s.clearSelection);
   const bulkAdvanceTickets = useKDSStore((s) => s.bulkAdvanceTickets);
+  const setOnNewOrderCallback = useKDSStore((s) => s.setOnNewOrderCallback);
+  const recallTicket = useKDSStore((s) => s.recallTicket);
+  const prioritizeTicket = useKDSStore((s) => s.prioritizeTicket);
+  const toggleRush = useKDSStore((s) => s.toggleRush);
+  const markItemDone = useKDSStore((s) => s.markItemDone);
 
   // Realtime connection status for adaptive polling
   const { orders: ordersChannel } = useLocationRealtime();
@@ -555,15 +687,43 @@ const KitchenDisplayScreen = () => {
   const findEmployeeByPin = useEmployeeStore((s) => s.findEmployeeByPin);
   const toast = useToast();
 
+  // KDS display settings
+  const kdsHighlightNotes = useStoreSettingsStore((s) => s.kdsHighlightNotes);
+  const kdsItemNameLines = useStoreSettingsStore((s) => s.kdsItemNameLines);
+  const kdsDisplayModifierGroupName = useStoreSettingsStore((s) => s.kdsDisplayModifierGroupName);
+  const kdsDisplayExclusionsAtTop = useStoreSettingsStore((s) => s.kdsDisplayExclusionsAtTop);
+  const kdsAlphabeticalSort = useStoreSettingsStore((s) => s.kdsAlphabeticalSort);
+  const kdsAggregateIdenticalItems = useStoreSettingsStore((s) => s.kdsAggregateIdenticalItems);
+
+  const displaySettings = useMemo<KDSTicketDisplaySettings>(
+    () => ({
+      highlightNotes: kdsHighlightNotes,
+      itemNameLines: kdsItemNameLines,
+      modifierGroupName: kdsDisplayModifierGroupName,
+      exclusionsAtTop: kdsDisplayExclusionsAtTop,
+      alphabeticalSort: kdsAlphabeticalSort,
+      aggregateIdenticalItems: kdsAggregateIdenticalItems,
+    }),
+    [kdsHighlightNotes, kdsItemNameLines, kdsDisplayModifierGroupName, kdsDisplayExclusionsAtTop, kdsAlphabeticalSort, kdsAggregateIdenticalItems],
+  );
+
   const [activeStatus, setActiveStatus] = useState<StatusFilter>("pending");
   const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [showDisconnected, setShowDisconnected] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingBulkAction, setPendingBulkAction] = useState<"selected" | "all" | null>(null);
+
+  // Action menu state (long-press)
+  const [actionMenu, setActionMenu] = useState<{
+    ticketId: string;
+    ticket: KDSTicket;
+    position: { x: number; y: number };
+  } | null>(null);
 
   // KDS logout handler
   const handleKDSLogout = useCallback(async () => {
@@ -684,6 +844,41 @@ const KitchenDisplayScreen = () => {
 
     return () => clearInterval(intervalId);
   }, [kdsAutoFireEnabled, kdsAutoFireDelayMinutes, pendingTickets, isReady, advanceTicketStatus]);
+
+  // ─── Sound notifications on new orders ────────────────────────
+  const soundServiceRef = useRef<KDSSoundService | null>(null);
+
+  // Initialize sound service and register callback
+  useEffect(() => {
+    const service = new KDSSoundService();
+    soundServiceRef.current = service;
+    service.init();
+
+    setOnNewOrderCallback((orderSource) => {
+      service.playForSource(orderSource);
+    });
+
+    return () => {
+      setOnNewOrderCallback(null);
+      service.dispose();
+      soundServiceRef.current = null;
+    };
+  }, [setOnNewOrderCallback]);
+
+  // Sync display config into sound service
+  useEffect(() => {
+    const service = soundServiceRef.current;
+    if (!service) return;
+
+    const soundEnabled = kdsDisplayConfig?.soundOnNewOrder ?? false;
+    service.setEnabled(soundEnabled);
+
+    if (kdsDisplayConfig?.soundConfig) {
+      service.updateConfig(kdsDisplayConfig.soundConfig);
+    } else {
+      service.updateConfig(DEFAULT_SOUND_CONFIG);
+    }
+  }, [kdsDisplayConfig?.soundOnNewOrder, kdsDisplayConfig?.soundConfig]);
 
   // Clear selection on tab switch
   const handleSetActiveStatus = useCallback(
@@ -818,6 +1013,50 @@ const KitchenDisplayScreen = () => {
     selectAllVisible(activeFilteredTickets.map((t) => t.ticket_id));
   }, [selectAllVisible, activeFilteredTickets]);
 
+  // ─── Long-Press Action Menu Handlers ────────────────────────────
+  const handleTicketLongPress = useCallback(
+    (ticketId: string, ticket: KDSTicket, event: GestureResponderEvent) => {
+      const { pageX, pageY } = event.nativeEvent;
+      setActionMenu({ ticketId, ticket, position: { x: pageX, y: pageY } });
+    },
+    [],
+  );
+
+  const handleDismissActionMenu = useCallback(() => {
+    setActionMenu(null);
+  }, []);
+
+  const handleRecall = useCallback(() => {
+    if (!actionMenu) return;
+    recallTicket(actionMenu.ticketId);
+    setActionMenu(null);
+  }, [actionMenu, recallTicket]);
+
+  const handlePrioritize = useCallback(() => {
+    if (!actionMenu) return;
+    prioritizeTicket(actionMenu.ticketId);
+    // Play alert sound for prioritize
+    soundServiceRef.current?.playPreview("alert");
+    setActionMenu(null);
+  }, [actionMenu, prioritizeTicket]);
+
+  const handleToggleRush = useCallback(() => {
+    if (!actionMenu) return;
+    toggleRush(actionMenu.ticketId);
+    setActionMenu(null);
+  }, [actionMenu, toggleRush]);
+
+  const handleItemPress = useCallback(
+    (ticketId: string, itemId: string) => {
+      markItemDone(ticketId, itemId);
+    },
+    [markItemDone],
+  );
+
+  const handleToggleHideDone = useCallback(() => {
+    updateField("kdsHideDoneItems", !kdsHideDoneItems);
+  }, [kdsHideDoneItems, updateField]);
+
   // ─── Render Helpers ─────────────────────────────────────────────
   const columnWidthPct = `${100 / columnCount}%` as const;
   const renderItem = useCallback(
@@ -832,10 +1071,14 @@ const KitchenDisplayScreen = () => {
           onAdvance={advanceTicketStatus}
           bulkMode={bulkMode}
           onToggleSelect={toggleTicketSelection}
+          onLongPress={handleTicketLongPress}
+          onItemPress={handleItemPress}
+          hideDoneItems={kdsHideDoneItems}
+          displaySettings={displaySettings}
         />
       </Animated.View>
     ),
-    [advanceTicketStatus, bulkMode, toggleTicketSelection, columnWidthPct],
+    [advanceTicketStatus, bulkMode, toggleTicketSelection, handleTicketLongPress, handleItemPress, kdsHideDoneItems, displaySettings, columnWidthPct],
   );
 
   const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, []);
@@ -962,6 +1205,35 @@ const KitchenDisplayScreen = () => {
             )}
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* Settings */}
+            <TouchableOpacity
+              onPress={() => {
+                setActionMenu(null);
+                setSettingsVisible(true);
+              }}
+              style={{
+                padding: 8,
+                backgroundColor: colors.skeletonHighlight,
+                borderRadius: 8,
+              }}
+            >
+              <Settings size={18} color={colors.label} />
+            </TouchableOpacity>
+            {/* Hide done items toggle */}
+            <TouchableOpacity
+              onPress={handleToggleHideDone}
+              style={{
+                padding: 8,
+                backgroundColor: kdsHideDoneItems ? colors.info : colors.skeletonHighlight,
+                borderRadius: 8,
+              }}
+            >
+              {kdsHideDoneItems ? (
+                <EyeOff size={18} color="#fff" />
+              ) : (
+                <Eye size={18} color={colors.label} />
+              )}
+            </TouchableOpacity>
             {/* Bulk mode toggle */}
             <TouchableOpacity
               onPress={toggleBulkMode}
@@ -1237,6 +1509,93 @@ const KitchenDisplayScreen = () => {
         </View>
       )}
 
+      {/* ─── Action Menu Overlay ─── */}
+      {actionMenu && (
+        <Pressable
+          onPress={handleDismissActionMenu}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 100,
+          }}
+        >
+          <View
+            style={{
+              position: "absolute",
+              top: Math.min(actionMenu.position.y, 400),
+              left: Math.min(actionMenu.position.x, 600),
+              backgroundColor: colors.panel,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingVertical: 4,
+              minWidth: 180,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.4,
+              shadowRadius: 12,
+              elevation: 10,
+              zIndex: 101,
+            }}
+          >
+            {/* Recall — only for ready tickets */}
+            {actionMenu.ticket.status === "ready" && (
+              <Pressable
+                onPress={handleRecall}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  gap: 10,
+                }}
+              >
+                <RotateCcw size={16} color={colors.info} />
+                <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>Recall</Text>
+              </Pressable>
+            )}
+
+            {/* Prioritize */}
+            <Pressable
+              onPress={handlePrioritize}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                gap: 10,
+              }}
+            >
+              <ArrowUpToLine size={16} color="#f59e0b" />
+              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>Prioritize</Text>
+            </Pressable>
+
+            {/* Rush / Un-Rush */}
+            <Pressable
+              onPress={handleToggleRush}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                gap: 10,
+              }}
+            >
+              <Flame
+                size={16}
+                color={actionMenu.ticket.items.some((i) => i.rush) ? colors.danger : colors.label}
+              />
+              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>
+                {actionMenu.ticket.items.some((i) => i.rush) ? "Un-Rush" : "Rush"}
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
+
       {/* ─── PIN Modal ─── */}
       <PinInputModal
         isOpen={showPinModal}
@@ -1245,6 +1604,9 @@ const KitchenDisplayScreen = () => {
         onConfirm={handlePinConfirm}
         onCancel={handlePinCancel}
       />
+
+      {/* ─── KDS Settings Modal ─── */}
+      <KDSSettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
     </View>
   );
 };

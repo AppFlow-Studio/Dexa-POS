@@ -812,6 +812,40 @@ export class OrderService {
   }
 
   /**
+   * Recall KDS items — resets kitchen_status to 'sent' and clears KDS item status records.
+   */
+  static async recallOrderItems(
+    client: SupabaseClient,
+    orderItemIds: string[],
+  ): Promise<{ data: any; error: any }> {
+    if (orderItemIds.length === 0) {
+      return { data: null, error: null };
+    }
+    const { data, error } = await client.rpc("recall_kds_items", {
+      p_order_item_ids: orderItemIds,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Toggle rush flag on order items.
+   */
+  static async toggleRushOnItems(
+    client: SupabaseClient,
+    orderItemIds: string[],
+    rush: boolean,
+  ): Promise<{ data: any; error: any }> {
+    if (orderItemIds.length === 0) {
+      return { data: null, error: null };
+    }
+    const { data, error } = await client.rpc("toggle_rush_order_items", {
+      p_order_item_ids: orderItemIds,
+      p_rush: rush,
+    });
+    return { data, error };
+  }
+
+  /**
    * Fetch pre-grouped KDS tickets from the server (denormalized)
    */
   static async getKDSTickets(

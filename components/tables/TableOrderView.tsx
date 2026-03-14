@@ -73,7 +73,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const updateItemStatusInActiveOrder = useOrderStore((s) => s.updateItemStatusInActiveOrder);
-  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus);
+
   const syncOrderStatus = useOrderStore((s) => s.syncOrderStatus);
 
   const { activeOrderId, storeActiveOrderOutstandingTotal, storeActiveOrderTotal } =
@@ -488,10 +488,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       if (autoPrintKitchenTickets && selectedStore) {
         PrinterService.printKitchenTickets(activeOrder, itemsInCourse, selectedStore)
           .catch((e) => console.warn("[TableView] Auto-print kitchen tickets failed:", e));
-      }
-
-      if (activeOrder.order_status === "draft") {
-        updateOrderStatus(activeOrder.id, "sent_to_kitchen");
       }
 
       show({

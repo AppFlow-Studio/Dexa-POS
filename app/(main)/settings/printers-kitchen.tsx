@@ -3,11 +3,13 @@ import {
   Bluetooth,
   CheckCircle2,
   ChefHat,
+  ChevronDown,
   Cpu,
   CreditCard,
   FileText,
   Minus,
   Monitor,
+  Play,
   Plus,
   Printer,
   Receipt,
@@ -15,12 +17,20 @@ import {
   Settings2,
   Smartphone,
   Usb,
+  Volume2,
   Wifi,
   XCircle,
   Zap,
   Route,
 } from "lucide-react-native";
 import { colors, spinnerColor } from "@/lib/theme";
+import KDSSoundService, {
+  DEFAULT_SOUND_CONFIG,
+  SOUND_PRESET_OPTIONS,
+  type KDSSoundConfig,
+  type SoundPreset,
+} from "@/services/kds/kdsSoundService";
+import { useKDSStore } from "@/stores/useKDSStore";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { PrinterRoutingModal } from "@/components/settings/PrinterRoutingModal";
 import { usePrinterStore } from "@/stores/usePrinterStore";
@@ -115,6 +125,62 @@ function ToggleRow({
     <View className="flex-row items-center justify-between py-3 px-3 bg-surface rounded-lg mb-2">
       <Text className="text-white text-sm flex-1 mr-3">{label}</Text>
       <Switch checked={value} onCheckedChange={onToggle} />
+    </View>
+  );
+}
+
+function SoundPresetRow({
+  label,
+  value,
+  onChange,
+  onTest,
+}: {
+  label: string;
+  value: SoundPreset;
+  onChange: (preset: SoundPreset) => void;
+  onTest: (preset: SoundPreset) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const currentLabel = SOUND_PRESET_OPTIONS.find((o) => o.value === value)?.label ?? value;
+
+  return (
+    <View className="flex-row items-center justify-between py-2.5">
+      <Text className="text-gray-300 text-sm flex-1">{label}</Text>
+      <View className="flex-row items-center gap-2">
+        <TouchableOpacity
+          onPress={() => setOpen(!open)}
+          className="flex-row items-center bg-card px-3 py-1.5 rounded-lg border border-gray-600"
+        >
+          <Text className="text-white text-sm mr-1">{currentLabel}</Text>
+          <ChevronDown size={14} color="#9ca3af" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => onTest(value)}
+          className="bg-card px-2.5 py-1.5 rounded-lg border border-gray-600"
+        >
+          <Play size={14} color={colors.info} />
+        </TouchableOpacity>
+      </View>
+      {open && (
+        <View className="absolute right-12 top-10 z-50 bg-card border border-gray-600 rounded-lg shadow-lg">
+          {SOUND_PRESET_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              className={`px-4 py-2.5 ${opt.value === value ? "bg-blue-600/20" : ""}`}
+            >
+              <Text
+                className={`text-sm ${opt.value === value ? "text-blue-400 font-medium" : "text-white"}`}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -277,6 +343,72 @@ const PrintersKitchenScreen = () => {
 
   // Routing modal state
   const [routingModalPrinter, setRoutingModalPrinter] = useState<PrinterConfig | null>(null);
+
+  // KDS Sound settings
+  const kdsDisplayId = useKDSStore((s) => s.kdsDisplayId);
+  const kdsDisplayConfig = useKDSStore((s) => s.kdsDisplayConfig);
+  const fetchKDSDisplay = useKDSStore((s) => s.fetchKDSDisplay);
+  const [soundOnNewOrder, setSoundOnNewOrder] = useState(false);
+  const [soundConfig, setSoundConfig] = useState<KDSSoundConfig>({ ...DEFAULT_SOUND_CONFIG });
+  const [soundServicePreview] = useState(() => new KDSSoundService());
+  const [isSavingSound, setIsSavingSound] = useState(false);
+
+  // Sync sound state from KDS display config
+  useEffect(() => {
+    if (kdsDisplayConfig) {
+      setSoundOnNewOrder(kdsDisplayConfig.soundOnNewOrder ?? false);
+      if (kdsDisplayConfig.soundConfig) {
+        setSoundConfig(kdsDisplayConfig.soundConfig);
+      }
+    }
+  }, [kdsDisplayConfig]);
+
+  // Init preview sound service + fetch KDS display
+  useEffect(() => {
+    soundServicePreview.init();
+    if (selectedStation?.id) {
+      fetchKDSDisplay(selectedStation.id);
+    }
+    return () => soundServicePreview.dispose();
+  }, [selectedStation?.id]);
+
+  // Save sound config to Supabase
+  const saveSoundConfig = async (
+    newSoundOn: boolean,
+    newConfig: KDSSoundConfig,
+  ) => {
+    if (!kdsDisplayId) return;
+    setIsSavingSound(true);
+    try {
+      await supabase
+        .from("kds_displays")
+        .update({
+          sound_on_new_order: newSoundOn,
+          sound_config: newConfig as any,
+        })
+        .eq("id", kdsDisplayId);
+
+      // Refresh the display config in the store
+      if (selectedStation?.id) {
+        fetchKDSDisplay(selectedStation.id);
+      }
+    } catch (err) {
+      console.error("[Settings] saveSoundConfig error:", err);
+    } finally {
+      setIsSavingSound(false);
+    }
+  };
+
+  const handleSoundToggle = (val: boolean) => {
+    setSoundOnNewOrder(val);
+    saveSoundConfig(val, soundConfig);
+  };
+
+  const handleSoundPresetChange = (key: keyof KDSSoundConfig, preset: SoundPreset) => {
+    const updated = { ...soundConfig, [key]: preset };
+    setSoundConfig(updated);
+    saveSoundConfig(soundOnNewOrder, updated);
+  };
 
   // Test print loading per printer
   const [testPrintingId, setTestPrintingId] = useState<string | null>(null);
@@ -1355,6 +1487,60 @@ const PrintersKitchenScreen = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
+              </View>
+            )}
+
+            <SectionHeader title="Sound Notifications" />
+            {!kdsDisplayId ? (
+              <View className="bg-surface p-4 rounded-xl border border-gray-600 mb-2">
+                <Text className="text-gray-400 text-xs">
+                  No KDS display configured for this station. Sound settings are per-display.
+                </Text>
+              </View>
+            ) : (
+              <View>
+                <ToggleRow
+                  label="Sound on New Order"
+                  value={soundOnNewOrder}
+                  onToggle={handleSoundToggle}
+                />
+                {soundOnNewOrder && (
+                  <View className="bg-surface rounded-xl border border-gray-600 p-3 mb-2">
+                    <SoundPresetRow
+                      label="POS Orders"
+                      value={soundConfig.pos}
+                      onChange={(v) => handleSoundPresetChange("pos", v)}
+                      onTest={(v) => soundServicePreview.playPreview(v)}
+                    />
+                    <SoundPresetRow
+                      label="Online Orders"
+                      value={soundConfig.online}
+                      onChange={(v) => handleSoundPresetChange("online", v)}
+                      onTest={(v) => soundServicePreview.playPreview(v)}
+                    />
+                    <SoundPresetRow
+                      label="Kiosk Orders"
+                      value={soundConfig.kiosk}
+                      onChange={(v) => handleSoundPresetChange("kiosk", v)}
+                      onTest={(v) => soundServicePreview.playPreview(v)}
+                    />
+                    <SoundPresetRow
+                      label="Third-party Orders"
+                      value={soundConfig.third_party}
+                      onChange={(v) => handleSoundPresetChange("third_party", v)}
+                      onTest={(v) => soundServicePreview.playPreview(v)}
+                    />
+                    <SoundPresetRow
+                      label="Default (Unknown)"
+                      value={soundConfig.default}
+                      onChange={(v) => handleSoundPresetChange("default", v)}
+                      onTest={(v) => soundServicePreview.playPreview(v)}
+                    />
+                    {isSavingSound && (
+                      <ActivityIndicator size="small" color={colors.info} style={{ marginTop: 8 }} />
+                    )}
+                  </View>
+                )}
               </View>
             )}
 

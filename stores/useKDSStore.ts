@@ -58,6 +58,9 @@ interface KDSState {
   bulkMode: boolean;
   selectedTicketIds: Set<string>;
 
+  // Priority tracking (local-only)
+  prioritizedTicketIds: Set<string>;
+
   // Actions
   fetchKDSDisplay: (stationId: string) => Promise<void>;
   fetchTickets: (locationId: string) => Promise<void>;
@@ -70,6 +73,16 @@ interface KDSState {
   handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
   incrementTimerTick: () => void;
   scheduleRefetch: (locationId: string) => void;
+
+  // New-order callback (for sound notifications)
+  _onNewOrderCallback: ((orderSource: string | null) => void) | null;
+  setOnNewOrderCallback: (cb: ((orderSource: string | null) => void) | null) => void;
+
+  // Long-press actions
+  recallTicket: (ticketId: string) => void;
+  prioritizeTicket: (ticketId: string) => void;
+  toggleRush: (ticketId: string) => void;
+  markItemDone: (ticketId: string, itemId: string) => void;
 
   // Bulk actions
   toggleBulkMode: () => void;
@@ -89,7 +102,7 @@ const MAX_RETRIES = RETRY_DELAYS.length;
 function retryBackendUpdate(
   client: SupabaseClient,
   itemIds: string[],
-  newStatus: "preparing" | "ready" | "served",
+  newStatus: "sent" | "preparing" | "ready" | "served",
   retryCount: number,
   onFinalFailure: () => void,
 ) {
@@ -242,10 +255,28 @@ function arraysShallowEqual(a: KDSTicket[], b: KDSTicket[]): boolean {
   return true;
 }
 
+/** Stable sort: prioritized tickets float to front within each bucket */
+function prioritySortBucket(
+  bucket: KDSTicket[],
+  prioritizedIds: Set<string>,
+): KDSTicket[] {
+  if (prioritizedIds.size === 0) return bucket;
+  // Stable sort — prioritized first, then preserve existing order
+  const prioritized: KDSTicket[] = [];
+  const normal: KDSTicket[] = [];
+  for (const t of bucket) {
+    if (prioritizedIds.has(t.ticket_id)) prioritized.push(t);
+    else normal.push(t);
+  }
+  if (prioritized.length === 0) return bucket;
+  return [...prioritized, ...normal];
+}
+
 /** Bucket tickets into status groups, reusing unchanged array references */
 function smartBucketTickets(
   tickets: KDSTicket[],
   prev: KDSState["ticketsByStatus"],
+  prioritizedIds?: Set<string>,
 ) {
   const pending: KDSTicket[] = [];
   const cooking: KDSTicket[] = [];
@@ -257,15 +288,21 @@ function smartBucketTickets(
     else if (t.status === "ready") ready.push(t);
   }
 
-  const finalPending = arraysShallowEqual(pending, prev.pending)
+  // Apply priority sorting if we have prioritized tickets
+  const pIds = prioritizedIds ?? new Set<string>();
+  const sortedPending = prioritySortBucket(pending, pIds);
+  const sortedCooking = prioritySortBucket(cooking, pIds);
+  const sortedReady = prioritySortBucket(ready, pIds);
+
+  const finalPending = arraysShallowEqual(sortedPending, prev.pending)
     ? prev.pending
-    : pending;
-  const finalCooking = arraysShallowEqual(cooking, prev.cooking)
+    : sortedPending;
+  const finalCooking = arraysShallowEqual(sortedCooking, prev.cooking)
     ? prev.cooking
-    : cooking;
-  const finalReady = arraysShallowEqual(ready, prev.ready)
+    : sortedCooking;
+  const finalReady = arraysShallowEqual(sortedReady, prev.ready)
     ? prev.ready
-    : ready;
+    : sortedReady;
 
   return {
     ticketsByStatus: {
@@ -291,6 +328,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   timerTick: 0,
   bulkMode: false,
   selectedTicketIds: new Set<string>(),
+  prioritizedTicketIds: new Set<string>(),
 
   // Display awareness state
   kdsDisplayId: null,
@@ -300,6 +338,10 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   prepStations: {},
   enrichedRules: [],
   _lastLocationId: null,
+
+  // New-order callback
+  _onNewOrderCallback: null,
+  setOnNewOrderCallback: (cb) => set({ _onNewOrderCallback: cb }),
 
   // ─── Fetch KDS Display Config ─────────────────────────────────
   fetchKDSDisplay: async (stationId: string) => {
@@ -375,6 +417,9 @@ export const useKDSStore = create<KDSState>((set, get) => ({
         autoBumpMinutes: display.auto_bump_minutes ?? null,
         soundOnNewOrder: display.sound_on_new_order ?? null,
         soundOnRush: display.sound_on_rush ?? null,
+        soundConfig: display.sound_config
+          ? (display.sound_config as import("@/services/kds/kdsSoundService").KDSSoundConfig)
+          : null,
         showAllergyFlags: display.show_allergy_flags ?? null,
         showOrderNotes: display.show_order_notes ?? null,
         showServerName: display.show_server_name ?? null,
@@ -426,7 +471,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
         ...t,
         start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
       }));
-      const bucketed = smartBucketTickets(tickets, get().ticketsByStatus);
+      const bucketed = smartBucketTickets(tickets, get().ticketsByStatus, get().prioritizedTicketIds);
 
       set({
         tickets,
@@ -468,7 +513,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
         ...t,
         start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
       }));
-      const bucketed = smartBucketTickets(tickets, get().ticketsByStatus);
+      const bucketed = smartBucketTickets(tickets, get().ticketsByStatus, get().prioritizedTicketIds);
 
       set({
         tickets,
@@ -518,7 +563,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       );
     }
 
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
     set({ tickets: updatedTickets, ...bucketed });
 
     // Backend sync with retry — revert optimistic state only after all retries exhausted
@@ -527,7 +572,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       retryBackendUpdate(
         client,
         itemIds,
-        newStatus as "preparing" | "ready" | "served",
+        newStatus,
         0,
         () => {
           const lastLoc = get()._lastLocationId;
@@ -599,7 +644,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     if (TERMINAL_ORDER_STATUSES.has(order.status)) {
       const filtered = tickets.filter((t) => t.db_order_id !== order.id);
       if (filtered.length !== tickets.length) {
-        const bucketed = smartBucketTickets(filtered, get().ticketsByStatus);
+        const bucketed = smartBucketTickets(filtered, get().ticketsByStatus, get().prioritizedTicketIds);
         set({ tickets: filtered, ...bucketed });
       }
       return;
@@ -631,6 +676,9 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       // Existing tickets: trust server routing, process full broadcast
     }
 
+    // Detect if this is a NEW order (no existing tickets for this db_order_id)
+    const hadExistingTickets = tickets.some((t) => t.db_order_id === order.id);
+
     // Build new tickets from broadcast
     const newTickets = buildTicketsFromBroadcast(filteredOrder);
 
@@ -641,8 +689,14 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     // Sort by start_time ascending (match SQL ordering)
     merged.sort((a, b) => a.start_time_epoch - b.start_time_epoch);
 
-    const bucketed = smartBucketTickets(merged, get().ticketsByStatus);
+    const bucketed = smartBucketTickets(merged, get().ticketsByStatus, get().prioritizedTicketIds);
     set({ tickets: merged, ...bucketed });
+
+    // Fire new-order callback (for sound notifications)
+    if (!hadExistingTickets && newTickets.length > 0) {
+      const cb = get()._onNewOrderCallback;
+      if (cb) cb(order.order_source ?? null);
+    }
   },
 
   incrementTimerTick: () => {
@@ -654,6 +708,136 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     _refetchTimeout = setTimeout(() => {
       get()._backgroundFetchTickets(locationId);
     }, 5000);
+  },
+
+  // ─── Long-Press Actions ─────────────────────────────────────────
+
+  recallTicket: (ticketId: string) => {
+    const { tickets } = get();
+    const ticket = tickets.find((t) => t.ticket_id === ticketId);
+    if (!ticket || ticket.status !== "ready") return;
+
+    const itemIds = ticket.items.map((i) => i.id);
+
+    // Optimistic: reset all items to "sent", ticket to "pending"
+    const updatedTickets = tickets.map((t) =>
+      t.ticket_id === ticketId
+        ? {
+            ...t,
+            status: "pending" as KDSTicket["status"],
+            items: t.items.map((item) => ({
+              ...item,
+              kitchen_status: "sent",
+            })),
+          }
+        : t,
+    );
+
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    set({ tickets: updatedTickets, ...bucketed });
+
+    // Backend: recall via RPC
+    const client = getClient();
+    if (client && itemIds.length > 0) {
+      OrderService.recallOrderItems(client, itemIds).catch((err) => {
+        console.error("[KDSStore] recallTicket backend error:", err);
+        const lastLoc = get()._lastLocationId;
+        if (lastLoc) get().scheduleRefetch(lastLoc);
+      });
+    }
+  },
+
+  prioritizeTicket: (ticketId: string) => {
+    const { tickets, prioritizedTicketIds } = get();
+    const ticket = tickets.find((t) => t.ticket_id === ticketId);
+    if (!ticket) return;
+
+    // Add to prioritized set
+    const nextPrioritized = new Set(prioritizedTicketIds);
+    nextPrioritized.add(ticketId);
+
+    // Mark ticket with prioritized flag
+    const updatedTickets = tickets.map((t) =>
+      t.ticket_id === ticketId ? { ...t, prioritized: true } : t,
+    );
+
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, nextPrioritized);
+    set({ tickets: updatedTickets, prioritizedTicketIds: nextPrioritized, ...bucketed });
+    // No backend call — local only
+  },
+
+  toggleRush: (ticketId: string) => {
+    const { tickets } = get();
+    const ticket = tickets.find((t) => t.ticket_id === ticketId);
+    if (!ticket) return;
+
+    const currentRush = ticket.items.some((i) => i.rush);
+    const newRush = !currentRush;
+    const itemIds = ticket.items.map((i) => i.id);
+
+    // Optimistic: toggle rush on all items
+    const updatedTickets = tickets.map((t) =>
+      t.ticket_id === ticketId
+        ? {
+            ...t,
+            items: t.items.map((item) => ({ ...item, rush: newRush })),
+          }
+        : t,
+    );
+
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    set({ tickets: updatedTickets, ...bucketed });
+
+    // Backend: toggle rush via RPC
+    const client = getClient();
+    if (client && itemIds.length > 0) {
+      OrderService.toggleRushOnItems(client, itemIds, newRush).catch((err) => {
+        console.error("[KDSStore] toggleRush backend error:", err);
+        const lastLoc = get()._lastLocationId;
+        if (lastLoc) get().scheduleRefetch(lastLoc);
+      });
+    }
+  },
+
+  markItemDone: (ticketId: string, itemId: string) => {
+    const { tickets } = get();
+    const ticket = tickets.find((t) => t.ticket_id === ticketId);
+    if (!ticket) return;
+
+    const item = ticket.items.find((i) => i.id === itemId);
+    if (!item || item.kitchen_status === "ready") return;
+
+    // Optimistic: mark item as "ready"
+    const updatedItems = ticket.items.map((i) =>
+      i.id === itemId ? { ...i, kitchen_status: "ready" } : i,
+    );
+
+    // Re-derive ticket status
+    const allReady = updatedItems.every((i) => i.kitchen_status === "ready");
+    const anySent = updatedItems.some((i) => i.kitchen_status === "sent");
+    const newTicketStatus: KDSTicket["status"] = allReady
+      ? "ready"
+      : anySent
+        ? "pending"
+        : "cooking";
+
+    const updatedTickets = tickets.map((t) =>
+      t.ticket_id === ticketId
+        ? { ...t, status: newTicketStatus, items: updatedItems }
+        : t,
+    );
+
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    set({ tickets: updatedTickets, ...bucketed });
+
+    // Backend: mark item ready
+    const client = getClient();
+    if (client) {
+      retryBackendUpdate(client, [itemId], "ready", 0, () => {
+        const lastLoc = get()._lastLocationId;
+        if (lastLoc) get().scheduleRefetch(lastLoc);
+      });
+    }
   },
 
   // ─── Bulk Actions ───────────────────────────────────────────────
@@ -743,7 +927,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     }
 
     // Single state update
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
     set({ tickets: updatedTickets, ...bucketed, selectedTicketIds: new Set<string>() });
 
     // Phase 4: Fire at most 3 batched RPCs (one per status) instead of N

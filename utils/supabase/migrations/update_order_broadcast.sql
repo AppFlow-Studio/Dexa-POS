@@ -174,13 +174,14 @@ BEGIN
       'voided_at', NEW.voided_at
     );
 
-    -- Part 5: Void info, sync info, and order items
+    -- Part 5: Void info, sync info, order source, and order items
     order_data := order_data || jsonb_build_object(
       'voided_by', NEW.voided_by,
       'void_reason', NEW.void_reason,
       'cancellation_reason', NEW.cancellation_reason,
       'sync_version', NEW.sync_version,
       'is_offline', NEW.is_offline,
+      'order_source', NEW.order_source,
       'order_items', order_items_data
     );
 

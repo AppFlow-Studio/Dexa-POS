@@ -594,7 +594,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
         >
           {wasRecentlyUpdated && (
             <View className="mr-1.5">
-              <RefreshCw color={colors.info} size={12} />
+              <RefreshCw color={colors.info} size={8} />
             </View>
           )}
           <View

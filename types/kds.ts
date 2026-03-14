@@ -35,6 +35,7 @@ export interface KDSTicket {
   start_time_epoch: number;
   item_count: number;
   items: KDSTicketItem[];
+  prioritized?: boolean;
 }
 
 export interface KDSDisplayConfig {
@@ -45,6 +46,7 @@ export interface KDSDisplayConfig {
   autoBumpMinutes: number | null;
   soundOnNewOrder: boolean | null;
   soundOnRush: boolean | null;
+  soundConfig: import("@/services/kds/kdsSoundService").KDSSoundConfig | null;
   showAllergyFlags: boolean | null;
   showOrderNotes: boolean | null;
   showServerName: boolean | null;

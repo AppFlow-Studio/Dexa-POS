@@ -69,6 +69,7 @@
     "decimal.js": "^10.6.0",
     "expo": "~53.0.25",
     "expo-application": "~6.1.5",
+    "expo-audio": "~0.4.9",
     "expo-auth-session": "~6.2.1",
     "expo-battery": "~9.1.4",
     "expo-blur": "~14.1.5",
