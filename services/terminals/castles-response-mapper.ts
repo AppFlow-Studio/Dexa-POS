@@ -3,7 +3,7 @@
 // File: services/terminals/castles-response-mapper.ts
 // ============================================================
 // Maps raw Castles TCP JSON responses into the JSONB shape
-// expected by process_payment_v6 (terminal_vendor: 'castles').
+// expected by process_payment_v7 (terminal_vendor: 'castles').
 // ============================================================
 
 /**
@@ -139,7 +139,7 @@ function normalizeCardType(raw: string): string {
  * Build the JSONB payload stored alongside the payment record.
  * Shape: { terminal_vendor, castles_transaction, raw_castles_response }
  *
- * This is what gets passed to process_payment_v6's terminal_response parameter.
+ * This is what gets passed to process_payment_v7's terminal_response parameter.
  */
 export function buildCastlesTerminalResponse(raw: CastlesRawResponse, dbTerminalId?: string): Record<string, unknown> {
   // Use spec field names with legacy fallbacks

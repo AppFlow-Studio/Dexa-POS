@@ -146,13 +146,13 @@ export class OrderService {
       console.error(`[OrderService:createOrder] FAILED:`, error);
     } else {
       const orderData = Array.isArray(data) ? data[0] : data;
-      console.log(`[OrderService:createOrder] SUCCESS!`);
-      console.log(
+      if (__DEV__) console.log(`[OrderService:createOrder] SUCCESS!`);
+      if (__DEV__) console.log(
         `[OrderService:createOrder] Order ID: ${
           orderData?.order_id || orderData?.id
         }`,
       );
-      console.log(
+      if (__DEV__) console.log(
         `[OrderService:createOrder] Order Number: ${
           orderData?.order_number || orderData?.display_number
         }`,
@@ -169,7 +169,7 @@ export class OrderService {
     client: SupabaseClient,
     params: AddOpenItemParams,
   ): Promise<{ data: AddOpenItemResult | null; error: any }> {
-    console.log(
+    if (__DEV__) console.log(
       `[OrderService:addOpenItem] ====== ADDING OPEN ITEM ======`,
       params,
     );
@@ -178,7 +178,7 @@ export class OrderService {
       console.error(`[OrderService:addOpenItem] FAILED:`, error);
       return { data: data as any, error };
     }
-    console.log(
+    if (__DEV__) console.log(
       `[OrderService:addOpenItem] SUCCESS! order_item_id: ${data.order_item_id}`,
     );
     return { data: data as AddOpenItemResult, error };
@@ -217,9 +217,9 @@ export class OrderService {
       applied_to_item_ids?: string[] | null;
     },
   ): Promise<{ data: any; error: any }> {
-    console.log(`[OrderService:addOrderDiscount] order_id:`, params.order_id);
-    console.log(client);
-    console.log(
+    if (__DEV__) console.log(`[OrderService:addOrderDiscount] order_id:`, params.order_id);
+    if (__DEV__) console.log(client);
+    if (__DEV__) console.log(
       `[OrderService:addOrderDiscount] ====== ADDING ORDER DISCOUNT `,
       params,
     );
@@ -252,7 +252,7 @@ export class OrderService {
     client: SupabaseClient,
     params: AddOrderItemParams,
   ): Promise<{ data: AddOrderItemResult | null; error: any }> {
-    console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`);
+    if (__DEV__) console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`);
     // console.log(`[OrderService:addOrderItem] Order: ${params.p_order_id}`);
     // console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
     // console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
@@ -320,20 +320,20 @@ export class OrderService {
       };
     }
 
-    console.log(
-      `[OrderService:processPayment] ====== CALLING process_payment_v6 ======`,
+    if (__DEV__) console.log(
+      `[OrderService:processPayment] ====== CALLING process_payment_v7 ======`,
     );
-    console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
-    console.log(
+    if (__DEV__) console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
+    if (__DEV__) console.log(
       `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`,
     );
 
-    const { data, error } = await client.rpc("process_payment_v6", params);
+    const { data, error } = await client.rpc("process_payment_v7", params);
 
     if (error) {
       console.error(`[OrderService:processPayment] FAILED:`, error);
     } else {
-      console.log(
+      if (__DEV__) console.log(
         `[OrderService:processPayment] SUCCESS:`,
         JSON.stringify(data, null, 2),
       );
@@ -395,7 +395,7 @@ export class OrderService {
       p_response_message: responseMessage ?? null,
       p_reversal_psp_reference: reversalPspReference ?? null,
     });
-    console.log("updateReversalStatus", data, error);
+    if (__DEV__) console.log("updateReversalStatus", data, error);
     return { data, error };
   }
 
@@ -427,7 +427,7 @@ export class OrderService {
       p_return_reason: returnDetails?.reason ?? null,
       p_initiated_by: returnDetails?.initiatedBy ?? null,
     });
-    console.log("applyRefundToPayment", data, error);
+    if (__DEV__) console.log("applyRefundToPayment", data, error);
     return { data, error };
   }
 
@@ -457,7 +457,7 @@ export class OrderService {
       "update_order_payment_status_after_refund",
       { p_order_id: orderId },
     );
-    console.log("updateOrderPaymentStatusAfterRefund", data, error);
+    if (__DEV__) console.log("updateOrderPaymentStatusAfterRefund", data, error);
     return { data, error };
   }
 
@@ -739,7 +739,7 @@ export class OrderService {
     client: SupabaseClient,
     orderItemId: string,
   ): Promise<{ data: any; error: any }> {
-    console.log("we are removing it hard ");
+    if (__DEV__) console.log("we are removing it hard ");
 
     const { data, error } = await client.rpc("remove_order_item", {
       p_order_item_id: orderItemId,
@@ -956,9 +956,9 @@ export class OrderService {
     orderId: string,
     staffId?: string | null,
   ): Promise<{ success: boolean; error?: string }> {
-    console.log(`[OrderService:closeCheck] ====== CLOSING CHECK ======`);
-    console.log(`[OrderService:closeCheck] Order ID: ${orderId}`);
-    console.log(`[OrderService:closeCheck] Staff ID: ${staffId || "none"}`);
+    if (__DEV__) console.log(`[OrderService:closeCheck] ====== CLOSING CHECK ======`);
+    if (__DEV__) console.log(`[OrderService:closeCheck] Order ID: ${orderId}`);
+    if (__DEV__) console.log(`[OrderService:closeCheck] Staff ID: ${staffId || "none"}`);
 
     const { data, error } = await client.rpc("close_check", {
       p_order_id: orderId,
@@ -974,7 +974,7 @@ export class OrderService {
     if (!result.success) {
       console.error("[OrderService:closeCheck] Failed:", result.error);
     } else {
-      console.log("[OrderService:closeCheck] SUCCESS!");
+      if (__DEV__) console.log("[OrderService:closeCheck] SUCCESS!");
     }
 
     return result;
@@ -994,10 +994,10 @@ export class OrderService {
     staffId: string,
     reason?: string,
   ): Promise<{ success: boolean; error?: string }> {
-    console.log(`[OrderService:reopenCheck] ====== REOPENING CHECK ======`);
-    console.log(`[OrderService:reopenCheck] Order ID: ${orderId}`);
-    console.log(`[OrderService:reopenCheck] Staff ID: ${staffId}`);
-    console.log(
+    if (__DEV__) console.log(`[OrderService:reopenCheck] ====== REOPENING CHECK ======`);
+    if (__DEV__) console.log(`[OrderService:reopenCheck] Order ID: ${orderId}`);
+    if (__DEV__) console.log(`[OrderService:reopenCheck] Staff ID: ${staffId}`);
+    if (__DEV__) console.log(
       `[OrderService:reopenCheck] Reason: ${reason || "No reason provided"}`,
     );
 
@@ -1016,7 +1016,7 @@ export class OrderService {
     if (!result.success) {
       console.error("[OrderService:reopenCheck] Failed:", result.error);
     } else {
-      console.log("[OrderService:reopenCheck] SUCCESS!");
+      if (__DEV__) console.log("[OrderService:reopenCheck] SUCCESS!");
     }
 
     return result;

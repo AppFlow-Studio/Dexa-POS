@@ -9,12 +9,12 @@
 // REMOVE THIS SCREEN BEFORE PRODUCTION RELEASE.
 // ============================================================
 
+import { listDevices } from "@/modules/castles-usb";
 import {
     getSharedCastlesService,
     probeCastlesTerminal,
 } from "@/services/terminals/castles-service";
 import type { CastlesTransportType } from "@/services/terminals/castles-transport.types";
-import { listDevices } from "@/modules/castles-usb";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -370,7 +370,7 @@ export default function CastlesTerminalTestScreen() {
         addLog(`  Amount: ${result.raw.txnAmtTrans ?? "N/A"}`, "data");
 
         if (result.terminalResponse) {
-          addLog("  Terminal response JSONB (for process_payment_v6):", "data");
+          addLog("  Terminal response JSONB (for process_payment_v7):", "data");
           addLog(
             `  ${JSON.stringify(result.terminalResponse).slice(0, 300)}`,
             "data",

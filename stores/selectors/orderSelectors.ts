@@ -394,21 +394,16 @@ export function useOtherStationOrders(): OrderProfile[] {
 export function useOrderTypeCounts(): Record<string, number> {
   const stationOrders = useStationOrders();
   return useMemo(() => {
-    const uncomplete = stationOrders.filter(
-      (o) =>
-        o.order_status !== "completed" &&
-        o.order_status !== "ready" &&
-        o.paid_status !== "Paid",
-    );
-    return {
-      All: uncomplete.length,
-      Takeaway: uncomplete.filter(
-        (o) => o.order_type === "takeout" || o.order_type === "Takeaway",
-      ).length,
-      Delivery: uncomplete.filter(
-        (o) => o.order_type === "delivery" || o.order_type === "Delivery",
-      ).length,
-    };
+    // Single-pass counting instead of 1 filter + 2 sub-filters
+    let all = 0, takeaway = 0, delivery = 0;
+    for (const o of stationOrders) {
+      if (o.check_status === "Closed") continue;
+      if (o.order_status === "completed" && o.paid_status === "Paid") continue;
+      all++;
+      if (o.order_type === "takeout" || o.order_type === "Takeaway") takeaway++;
+      else if (o.order_type === "delivery" || o.order_type === "Delivery") delivery++;
+    }
+    return { All: all, Takeaway: takeaway, Delivery: delivery };
   }, [stationOrders]);
 }
 

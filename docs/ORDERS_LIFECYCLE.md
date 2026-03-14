@@ -81,7 +81,7 @@ flow of orders from creation to completion.
 ### SQL/RPCs
 - `utils/supabase/migrations/create_order_v2.sql` - Order creation
 - `utils/supabase/migrations/add_order_item_v2.sql` - Add items
-- `utils/supabase/migrations/process_payment_v6.sql` - Payment processing
+- `utils/supabase/migrations/process_payment_v7.sql` - Payment processing
 - `utils/supabase/migrations/broadcast_order_changes.sql` - Real-time broadcasts
 
 ---

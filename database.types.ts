@@ -15457,10 +15457,11 @@ export type Database = {
         }
         Returns: Json
       }
-      process_payment_v6: {
+      process_payment_v7: {
         Args: {
           p_amount?: number
           p_amount_tendered?: number
+          p_force_card_pricing?: boolean
           p_item_allocations?: Json
           p_order_id: string
           p_payment_method: string

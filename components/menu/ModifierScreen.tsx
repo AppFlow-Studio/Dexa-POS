@@ -8,7 +8,7 @@ import {
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import debounce from "lodash/debounce";
+
 import { ArrowLeft, Check, CheckCircle2, Minus, Plus, X } from "lucide-react-native";
 import {
   memo,
@@ -320,6 +320,16 @@ const ModifierScreen = () => {
       useOrderStore.getState().removeItemFromActiveOrder(itemId, voidReason),
     [],
   );
+  const removeDraftItem = useCallback(
+    (draftItemId: string) =>
+      useOrderStore.getState().removeDraftItem(draftItemId),
+    [],
+  );
+  const removeDraftItems = useCallback(
+    (menuItemId: string) =>
+      useOrderStore.getState().removeDraftItems(menuItemId),
+    [],
+  );
   const generateCartItemId = useCallback(
     (menuItemId: string, customizations: any, isDraft?: boolean) =>
       useOrderStore
@@ -423,6 +433,7 @@ const ModifierScreen = () => {
   const menuItemForModifiersRef = useRef<{ item: any; mods: any; result: MenuItemWithModifiers } | null>(null);
 
   const menuItemForModifiers = useMemo((): MenuItemWithModifiers | null => {
+    if (!isOpen) return null;
     if (!baseMenuItem) return null;
     if (precomputedModifiers) {
       // Return cached object if inputs haven't changed (prevents downstream Map rebuilds)
@@ -441,9 +452,10 @@ const ModifierScreen = () => {
       .map((id: string) => allGroups.find((mg: ModifierCategory) => mg.id === id))
       .filter((mg): mg is ModifierCategory => !!mg);
     return { ...baseMenuItem, modifiers } as MenuItemWithModifiers;
-  }, [baseMenuItem, precomputedModifiers]);
+  }, [isOpen, baseMenuItem, precomputedModifiers]);
 
   const { modifierCategoriesById, optionsById } = useMemo(() => {
+    if (!isOpen) return { modifierCategoriesById: new Map<string, ModifierCategory>(), optionsById: new Map<string, { option: any; categoryId: string; categoryName: string }>() };
     const categoriesMap = new Map<string, ModifierCategory>();
     const optionsMap = new Map<
       string,
@@ -462,10 +474,10 @@ const ModifierScreen = () => {
     });
 
     return { modifierCategoriesById: categoriesMap, optionsById: optionsMap };
-  }, [menuItemForModifiers?.modifiers]);
+  }, [isOpen, menuItemForModifiers?.modifiers]);
 
   const total = useMemo(() => {
-    if (!currentItem) return 0;
+    if (!isOpen || !currentItem) return 0;
     let baseTotal = getCurrentItemPrice(currentItem);
 
     Object.values(state.modifierSelections).forEach((categorySelections) => {
@@ -481,110 +493,10 @@ const ModifierScreen = () => {
 
     return baseTotal * state.quantity;
   }, [
-    state.quantity,
-    state.modifierSelections,
-    currentItem,
-    optionsById,
-    getCurrentItemPrice,
-  ]);
-
-  // ============================================================================
-  // DEBOUNCED DRAFT UPDATE (Stabilized with useRef - no recreation on render)
-  // ============================================================================
-
-  const updateDraftItemRef = useRef<ReturnType<typeof debounce> | null>(null);
-
-  // Create stable debounce function once on mount
-  useEffect(() => {
-    updateDraftItemRef.current = debounce(
-      (
-        quantity: number,
-        modifierSelections: ModifierSelection,
-        notes: string,
-        item: any,
-        modifiers: ModifierCategory[] | undefined,
-        categoriesMap: Map<string, ModifierCategory>,
-        optionsMap: Map<
-          string,
-          { option: any; categoryId: string; categoryName: string }
-        >,
-        getPrice: (item: any) => number,
-      ) => {
-        const draftId = draftItemIdRef.current;
-        if (!draftId || !item) return;
-
-        const selectedModifiers = modifiers
-          ? Object.entries(modifierSelections).map(([catId, selections]) => {
-              const category = categoriesMap.get(catId);
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId]) => {
-                  const optionData = optionsMap.get(optionId);
-                  return {
-                    id: optionId,
-                    name: optionData?.option.name || "",
-                    price: optionData?.option.price || 0,
-                  };
-                });
-
-              return {
-                categoryId: catId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            })
-          : [];
-
-        let baseTotal = getPrice(item);
-        selectedModifiers.forEach((modifier) => {
-          modifier.options.forEach((option) => {
-            baseTotal += option.price;
-          });
-        });
-
-        // OPTIMIZED: Use lightweight updateDraftItem — direct immer mutation,
-        // no merge detection, no calculateOrderTotals, no sync (<1ms)
-        useOrderStore.getState().updateDraftItem(draftId, {
-          quantity,
-          price: baseTotal,
-          customizations: {
-            modifiers: selectedModifiers,
-            notes,
-          },
-        });
-      },
-      50, // 50ms debounce — still feels instant, reduces call frequency on rapid toggles
-    );
-
-    return () => {
-      updateDraftItemRef.current?.cancel();
-    };
-  }, []); // Empty deps - stable reference
-
-  // Trigger debounced update when values change
-  useEffect(() => {
-    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
-
-    updateDraftItemRef.current?.(
-      state.quantity,
-      state.modifierSelections,
-      state.notes,
-      currentItem,
-      menuItemForModifiers?.modifiers,
-      modifierCategoriesById,
-      optionsById,
-      getCurrentItemPrice,
-    );
-  }, [
-    state.quantity,
-    state.modifierSelections,
-    state.notes,
-    currentItem,
     isOpen,
-    mode,
-    cartItem,
-    menuItemForModifiers?.modifiers,
-    modifierCategoriesById,
+    state.quantity,
+    state.modifierSelections,
+    currentItem,
     optionsById,
     getCurrentItemPrice,
   ]);
@@ -639,26 +551,24 @@ const ModifierScreen = () => {
     addItemToActiveOrder,
   });
 
-  // Keep ref updated
-  useEffect(() => {
-    draftCreationRef.current = {
-      currentItem,
-      categoryId,
-      menuId,
-      getCurrentItemPrice,
-      getCurrentItemCashPrice,
-      addItemToActiveOrder,
-    };
-  });
+  // Direct assignment — ref is only read inside callbacks/microtasks, safe per React docs
+  draftCreationRef.current = {
+    currentItem,
+    categoryId,
+    menuId,
+    getCurrentItemPrice,
+    getCurrentItemCashPrice,
+    addItemToActiveOrder,
+  };
 
   useEffect(() => {
     if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
 
-    // Use queueMicrotask for truly non-blocking draft creation
-    // Microtasks execute after current task but before next render
+    // Defer draft creation past the open spring animation (~80ms)
+    // to avoid bill re-renders during the first frames
     let cancelled = false;
 
-    queueMicrotask(() => {
+    const timeoutId = setTimeout(() => {
       if (cancelled) return;
 
       const {
@@ -736,10 +646,11 @@ const ModifierScreen = () => {
         draftItemIdRef.current = draftItem.id;
         lastDraftMenuItemIdRef.current = item.id;
       }
-    });
+    }, 100);
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [isOpen, currentItem?.id, mode, cartItem]); // Minimal dependencies
 
@@ -750,7 +661,7 @@ const ModifierScreen = () => {
   useEffect(() => {
     return () => {
       if (!actionHandledRef.current && draftItemIdRef.current) {
-        removeItemFromActiveOrder(draftItemIdRef.current);
+        removeDraftItem(draftItemIdRef.current);
         draftItemIdRef.current = null;
       }
       // Safety: close store if still open on unmount (e.g., navigation away)
@@ -769,17 +680,7 @@ const ModifierScreen = () => {
       !!menuItem && menuItem.id !== previousDraftMenuItemId;
 
     if (switchedToEditExisting || switchedToDifferentMenuItem) {
-      const { activeOrderId, ordersById, removeItemFromActiveOrder } =
-        useOrderStore.getState();
-      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-      const draftItems = activeOrder?.items.filter(
-        (item) => item.isDraft && item.menuItemId === previousDraftMenuItemId,
-      );
-      if (draftItems && draftItems.length > 0) {
-        draftItems.forEach((draftItem) => {
-          removeItemFromActiveOrder(draftItem.id);
-        });
-      }
+      removeDraftItems(previousDraftMenuItemId);
       lastDraftMenuItemIdRef.current = null;
     }
   }, [mode, cartItem, menuItem]);
@@ -806,25 +707,23 @@ const ModifierScreen = () => {
     show,
   });
 
-  // Keep ref updated (no deps array = runs every render, but is cheap)
-  useEffect(() => {
-    latestStateRef.current = {
-      state,
-      total,
-      menuItem,
-      cartItem,
-      menuItemForModifiers,
-      modifierCategoriesById,
-      optionsById,
-      mode,
-      categoryId,
-      menuId,
-      isReadOnly,
-      currentItem,
-      close,
-      show,
-    };
-  });
+  // Direct assignment — ref is only read inside callbacks, safe per React docs
+  latestStateRef.current = {
+    state,
+    total,
+    menuItem,
+    cartItem,
+    menuItemForModifiers,
+    modifierCategoriesById,
+    optionsById,
+    mode,
+    categoryId,
+    menuId,
+    isReadOnly,
+    currentItem,
+    close,
+    show,
+  };
 
   // Stable handler - never recreates, reads from ref
   const handleModifierToggle = useCallback(
@@ -1004,162 +903,73 @@ const ModifierScreen = () => {
     // Safe because all needed state is already captured in latestStateRef/locals above.
     closeModal();
 
-    const selectedModifiers = modifiersItem?.modifiers
-      ? Object.entries(currentState.modifierSelections)
-          .map(([cId, selections]) => {
-            const category = categoriesMap.get(cId);
-            const selectedOptions = Object.entries(selections)
-              .filter(([_, isSelected]) => isSelected)
-              .map(([optionId]) => {
-                const optionData = optsMap.get(optionId);
-                return {
-                  id: optionId,
-                  name: optionData?.option.name || "",
-                  price: optionData?.option.price || 0,
-                };
-              });
+    // Run save work concurrently with the native-driver close animation.
+    // All needed state is captured in locals above — no stale closures.
+    queueMicrotask(() => {
+      const selectedModifiers = modifiersItem?.modifiers
+        ? Object.entries(currentState.modifierSelections)
+            .map(([cId, selections]) => {
+              const category = categoriesMap.get(cId);
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([optionId]) => {
+                  const optionData = optsMap.get(optionId);
+                  return {
+                    id: optionId,
+                    name: optionData?.option.name || "",
+                    price: optionData?.option.price || 0,
+                  };
+                });
 
-            return {
-              categoryId: cId,
-              categoryName: category?.name || "",
-              options: selectedOptions,
-            };
-          })
-          .filter((mod) => mod.options.length > 0)
-      : [];
+              return {
+                categoryId: cId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            })
+            .filter((mod) => mod.options.length > 0)
+        : [];
 
-    const finalCustomizations = {
-      modifiers: selectedModifiers,
-      notes: currentState.notes,
-    };
-
-    if (
-      currentMode === "edit" ||
-      (currentMode === "fullscreen" && currentCartItem)
-    ) {
-      if (!currentCartItem) return;
-      const updatedItem = {
-        ...currentCartItem,
-        quantity: currentState.quantity,
-        price: currentTotal / Math.max(1, currentState.quantity),
-        customizations: finalCustomizations,
-        isDraft: false,
-        // Clear calculated fields - will be recalculated by calculateOrderTotals
-        // These values become stale when quantity/modifiers change
-        subtotal: undefined,
-        cashSubtotal: undefined,
-        taxAmount: undefined,
-        cashTaxAmount: undefined,
+      const finalCustomizations = {
+        modifiers: selectedModifiers,
+        notes: currentState.notes,
       };
 
-      updateItemInActiveOrder(updatedItem);
-      showToast({
-        title: "Item Updated",
-        message: `Your changes to ${item?.name} have been saved.`,
-        type: "success",
-      });
-    } else {
-      const { activeOrderId, ordersById } = useOrderStore.getState();
-      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-
-      const coursingState = useCoursingStore.getState();
-      const currentCourse =
-        coursingState.getForOrder(activeOrderId ?? "")?.workingCourse ?? 1;
-
-      const existingItem = activeOrder?.items.find((i) => {
-        if (i.menuItemId !== baseItem.id) return false;
-
-        const existingItemCourse =
-          coursingState.getForOrder(activeOrderId ?? "")?.itemCourseMap?.[
-            i.id
-          ] ?? 1;
-        if (existingItemCourse !== currentCourse) return false;
-
-        const itemCustomizations = i.customizations;
-        const itemModifiers = itemCustomizations.modifiers || [];
-        const currentModifiers = finalCustomizations.modifiers || [];
-
-        if (itemModifiers.length !== currentModifiers.length) return false;
-
-        for (let j = 0; j < itemModifiers.length; j++) {
-          const itemMod = itemModifiers[j];
-          const currentMod = currentModifiers[j];
-
-          if (itemMod.categoryId !== currentMod.categoryId) return false;
-          if (itemMod.options.length !== currentMod.options.length)
-            return false;
-
-          for (let k = 0; k < itemMod.options.length; k++) {
-            if (itemMod.options[k].id !== currentMod.options[k].id)
-              return false;
-          }
-        }
-
-        const itemNotes = (itemCustomizations.notes || "").trim();
-        const currentNotes = (finalCustomizations.notes || "").trim();
-        if (itemNotes !== currentNotes) return false;
-
-        return true;
-      });
-
-      // Resolve category and menu names from IDs
-      const categoryName = catId
-        ? useMenuStore.getState().getCategoryById(catId)?.name
-        : undefined;
-      const menuName = mId
-        ? useMenuStore.getState().getMenuById(mId)?.name
-        : undefined;
-
-      if (existingItem) {
-        const draftItems = activeOrder?.items.filter(
-          (i) => i.isDraft && i.menuItemId === baseItem.id,
-        );
-
-        if (draftItems && draftItems.length > 0) {
-          draftItems.forEach((draftItem) => {
-            removeItemFromActiveOrder(draftItem.id);
-          });
-        }
-
-        const itemCashPrice = resolvedCashPrice;
-
-        const confirmedItem: Omit<
-          CartItem,
-          | "subtotal"
-          | "cashSubtotal"
-          | "taxRate"
-          | "taxAmount"
-          | "cashTaxAmount"
-        > = {
-          id: generateCartItemId(baseItem.id, finalCustomizations),
-          menuItemId: baseItem.id,
-          name: baseItem.name,
+      if (
+        currentMode === "edit" ||
+        (currentMode === "fullscreen" && currentCartItem)
+      ) {
+        if (!currentCartItem) return;
+        const updatedItem = {
+          ...currentCartItem,
           quantity: currentState.quantity,
-          originalPrice: itemCashPrice,
-          unitPrice: baseItem.price ?? itemCashPrice,
           price: currentTotal / Math.max(1, currentState.quantity),
-          cashPrice: itemCashPrice,
-          image: baseItem.image,
           customizations: finalCustomizations,
-          availableDiscount: baseItem.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
           isDraft: false,
-          addedFromCategoryId: catId || null,
-          addedFromMenuId: mId || null,
-          category_name: categoryName || undefined,
-          baseCardPrice: baseItem.price,
-          baseCashPrice: baseItem.cashPrice ?? baseItem.price,
+          // Clear calculated fields - will be recalculated by calculateOrderTotals
+          // These values become stale when quantity/modifiers change
+          subtotal: undefined,
+          cashSubtotal: undefined,
+          taxAmount: undefined,
+          cashTaxAmount: undefined,
         };
-        addItemToActiveOrder(confirmedItem);
-        // showToast({
-        //   title: "Item Added",
-        //   message: `${baseItem.name} has been successfully added to your order.`,
-        //   type: "success",
-        // });
+
+        updateItemInActiveOrder(updatedItem);
+        showToast({
+          title: "Item Updated",
+          message: `Your changes to ${item?.name} have been saved.`,
+          type: "success",
+        });
       } else {
         const itemCashPrice = resolvedCashPrice;
 
+        // Resolve category and menu names from IDs
+        const categoryName = catId
+          ? useMenuStore.getState().getCategoryById(catId)?.name
+          : undefined;
+
+        // Single item object — addItemToActiveOrder already handles
+        // draft removal and merge detection via generateItemCompositeKey
         const newItem = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
@@ -1182,13 +992,8 @@ const ModifierScreen = () => {
           baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };
         addItemToActiveOrder(newItem);
-        // showToast({
-        //   title: "Item Added",
-        //   message: `${baseItem.name} has been successfully added to your order.`,
-        //   type: "success",
-        // });
       }
-    }
+    });
   }, []); // Empty deps = never recreates
 
   // Stable handleCancel - reads from refs
@@ -1207,18 +1012,7 @@ const ModifierScreen = () => {
       !cart &&
       item
     ) {
-      const { activeOrderId, ordersById } = useOrderStore.getState();
-      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-
-      const draftItems = activeOrder?.items.filter(
-        (i) => i.isDraft && i.menuItemId === item.id,
-      );
-
-      if (draftItems && draftItems.length > 0) {
-        draftItems.forEach((draftItem) => {
-          removeItemFromActiveOrder(draftItem.id);
-        });
-      }
+      removeDraftItems(item.id);
       lastDraftMenuItemIdRef.current = null;
     }
     closeModal();

@@ -1,9 +1,9 @@
 /**
  * Subscriber-based order prefetch for occupied tables.
  *
- * Watches `useTableSessionStore.sessions` for changes and prefetches uncached
- * orders via `syncOrderFromDatabase()`. Replaces the dynamic import hack
- * that was inline in `loadFloorPlanStatus()`.
+ * Watches `useTableSessionStore.sessions` for changes to order_ids and
+ * prefetches uncached orders via `syncOrderFromDatabase()`. Replaces the
+ * dynamic import hack that was inline in `loadFloorPlanStatus()`.
  *
  * Initialize once in root layout after both stores hydrate.
  */
@@ -18,12 +18,15 @@ export function setupTableOrderPrefetch() {
   if (_unsubscribe) return;
 
   _unsubscribe = useTableSessionStore.subscribe(
-    (state) => state.sessions,
-    (sessions) => {
-      const orderIds = Object.values(sessions)
-        .map((s) => s.order_id)
-        .filter((id): id is string => !!id);
-
+    // Selector: extract only order_ids (fires only when order_ids change)
+    (state) => {
+      const ids: string[] = [];
+      for (const s of Object.values(state.sessions)) {
+        if (s.order_id) ids.push(s.order_id);
+      }
+      return ids;
+    },
+    (orderIds) => {
       if (orderIds.length === 0) return;
 
       // Defer to avoid blocking UI
@@ -40,7 +43,7 @@ export function setupTableOrderPrefetch() {
           });
 
           if (uncachedOrderIds.length > 0) {
-            console.log(
+            if (__DEV__) console.log(
               `[prefetch] Fetching ${uncachedOrderIds.length} uncached orders`,
             );
             await Promise.allSettled(
@@ -48,7 +51,7 @@ export function setupTableOrderPrefetch() {
                 orderState.syncOrderFromDatabase(id),
               ),
             );
-            console.log(
+            if (__DEV__) console.log(
               `[prefetch] Finished fetching ${uncachedOrderIds.length} orders`,
             );
           }
@@ -57,7 +60,14 @@ export function setupTableOrderPrefetch() {
         }
       });
     },
-    { fireImmediately: true },
+    {
+      // Only fire when the set of order_ids actually changes
+      equalityFn: (a, b) => {
+        if (a.length !== b.length) return false;
+        const setB = new Set(b);
+        return a.every((id) => setB.has(id));
+      },
+    },
   );
 }
 

@@ -142,7 +142,10 @@ function itemMatchesRules(
     if (rule.rule_type === "prep_station" && item.prep_station === rule.rule_value) {
       return true;
     }
-    if (rule.rule_type === "category" && item.category_name === rule.rule_value) {
+    if (rule.rule_type === "category" && (
+      item.category_name === rule.rule_value ||
+      (item.category_id && item.category_id === rule.rule_value)
+    )) {
       return true;
     }
     if (rule.rule_type === "order_type" && orderType === rule.rule_value) {
@@ -217,6 +220,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       course_number: courseNumber,
       status: ticketStatus,
       order_type: order.order_type,
+      order_source: order.order_source ?? null,
       table_name: order.table_number,
       customer_name: null,
       start_time: fireTime ?? order.sent_to_kitchen_at,
@@ -601,6 +605,14 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       return;
     }
 
+    // Always schedule a background refetch for authoritative server state.
+    // This is critical for display-filtered KDS stations where client-side
+    // filtering may miss items that server-side routing (kds_item_status) includes.
+    const locationId = order.location_id;
+    if (locationId) {
+      get().scheduleRefetch(locationId);
+    }
+
     // Client-side display filtering for broadcast items
     let filteredOrder = order;
     if (shouldUseDisplayFilter(kdsDisplayId, routingMode, cachedRules)) {
@@ -612,7 +624,7 @@ export const useKDSStore = create<KDSState>((set, get) => ({
           itemMatchesRules(item, cachedRules!, order.order_type),
         );
         if (filteredItems.length === 0) {
-          return; // Skip — doesn't match this display
+          return; // Skip optimistic update — refetch already scheduled above
         }
         filteredOrder = { ...order, order_items: filteredItems };
       }
@@ -631,13 +643,6 @@ export const useKDSStore = create<KDSState>((set, get) => ({
 
     const bucketed = smartBucketTickets(merged, get().ticketsByStatus);
     set({ tickets: merged, ...bucketed });
-
-    // Schedule a refetch for authoritative state (safe for all displays since
-    // fetchTickets now only passes display ID when routing rules exist)
-    const locationId = order.location_id;
-    if (locationId) {
-      get().scheduleRefetch(locationId);
-    }
   },
 
   incrementTimerTick: () => {

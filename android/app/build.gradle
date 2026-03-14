@@ -4,6 +4,9 @@ apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+// Expose hermesEnabled as an ext property so expo-modules-core and other modules can read it
+ext.hermesEnabled = findProperty("hermesEnabled") ?: "true"
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -172,7 +175,7 @@ dependencies {
         }
     }
 
-    if (hermesEnabled.toBoolean()) {
+    if (project.findProperty("hermesEnabled")?.toBoolean() ?: true) {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor

@@ -106,7 +106,7 @@ EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 ## Key Conventions
 
 - KDS mode skips POS-only initialization (timeclock, PTO, draft cleanup, print queue) — gated by `isKDS` checks in `_layout.tsx`
-- Supabase RPC functions (with versioned naming like `process_payment_v6`) are the primary backend API
+- Supabase RPC functions (with versioned naming like `process_payment_v7`) are the primary backend API
 - Real-time sync uses Supabase broadcast channels per location
 - `useOrderStore.syncOrderFromBackendComplete(orderId)` expects the **local store key**, not `db_order_id`
 - Solution: Shared Singleton for Castles Terminals 

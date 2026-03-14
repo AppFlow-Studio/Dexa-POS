@@ -28,6 +28,7 @@ import {
   ShoppingBag,
   Square,
   Truck,
+  Globe,
   UtensilsCrossed,
   Wifi,
   WifiOff,
@@ -384,6 +385,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   {orderTypeLabel}
                 </Text>
               </View>
+              {ticket.order_source === "online" && (
+                <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(96,165,250,0.25)" }}>
+                  <Globe color="#60a5fa" size={11} />
+                  <Text style={{ color: "#60a5fa", fontSize: 10, fontWeight: "700", marginLeft: 2 }}>ONLINE</Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -622,6 +629,9 @@ const KitchenDisplayScreen = () => {
   }, [isRealtimeConnected]);
 
   // Initial fetch + adaptive polling via setTimeout chain
+  // Display-filtered KDS stations use 30s polling as a safety net since
+  // client-side broadcast filtering may miss items that server-side routing includes.
+  const hasDisplayFilter = routingMode !== null && routingMode !== "all";
   useEffect(() => {
     if (!isReady || !locationId) return;
 
@@ -629,7 +639,9 @@ const KitchenDisplayScreen = () => {
 
     let timeoutId: ReturnType<typeof setTimeout>;
     const schedulePoll = () => {
-      const interval = isRealtimeConnectedRef.current ? 120_000 : 15_000;
+      const interval = isRealtimeConnectedRef.current
+        ? (hasDisplayFilter ? 30_000 : 120_000)
+        : 15_000;
       timeoutId = setTimeout(() => {
         backgroundFetchTickets(locationId);
         schedulePoll();
@@ -638,7 +650,7 @@ const KitchenDisplayScreen = () => {
     schedulePoll();
 
     return () => clearTimeout(timeoutId);
-  }, [isReady, locationId, fetchTickets, backgroundFetchTickets]);
+  }, [isReady, locationId, fetchTickets, backgroundFetchTickets, hasDisplayFilter]);
 
   // On reconnection (false -> true), trigger a single background fetch
   useEffect(() => {

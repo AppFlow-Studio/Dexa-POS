@@ -53,6 +53,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -298,6 +299,9 @@ const PrintersKitchenScreen = () => {
   // Retry connection state
   const [retryingPrinterId, setRetryingPrinterId] = useState<string | null>(null);
 
+  // Pull-to-refresh
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Derived
   const paymentTerminal = selectedStation?.payment_terminal ?? null;
   // Hide built-in printers from other stations — they can't receive external print requests
@@ -353,6 +357,20 @@ const PrintersKitchenScreen = () => {
       console.warn("[PrintersKitchen] Failed to refresh capabilities:", e);
     } finally {
       setIsRefreshingCapabilities(false);
+    }
+  };
+
+  const handlePullToRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        selectedStore?.id ? fetchPrinters(selectedStore.id) : Promise.resolve(),
+        handleRefreshCapabilities(),
+      ]);
+    } catch (e) {
+      console.warn("[PrintersKitchen] Pull-to-refresh failed:", e);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -1020,6 +1038,13 @@ const PrintersKitchenScreen = () => {
         className="flex-1 px-4 pb-4"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handlePullToRefresh}
+            tintColor={colors.info}
+          />
+        }
       >
         {/* ============================================================== */}
         {/* PRINTER LIST TAB                                                */}
