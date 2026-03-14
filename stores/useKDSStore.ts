@@ -38,6 +38,8 @@ interface KDSState {
     ready: KDSTicket[];
   };
   counts: { pending: number; cooking: number; ready: number };
+  doneTickets: KDSTicket[];
+  doneCount: number;
   isInitialLoading: boolean;
   isFetching: boolean;
   _hasHydrated: boolean;
@@ -83,6 +85,10 @@ interface KDSState {
   prioritizeTicket: (ticketId: string) => void;
   toggleRush: (ticketId: string) => void;
   markItemDone: (ticketId: string, itemId: string) => void;
+
+  // Done tickets
+  recallDoneTicket: (ticketId: string) => void;
+  clearDoneTickets: () => void;
 
   // Bulk actions
   toggleBulkMode: () => void;
@@ -322,6 +328,8 @@ export const useKDSStore = create<KDSState>((set, get) => ({
   tickets: [],
   ticketsByStatus: { pending: [], cooking: [], ready: [] },
   counts: { pending: 0, cooking: 0, ready: 0 },
+  doneTickets: [],
+  doneCount: 0,
   isInitialLoading: true,
   isFetching: false,
   _hasHydrated: false,
@@ -544,8 +552,17 @@ export const useKDSStore = create<KDSState>((set, get) => ({
 
     let updatedTickets: KDSTicket[];
     if (ticketStatus === null) {
-      // Served → remove ticket entirely
+      // Served → remove from active, add to done
+      const servedTicket = tickets.find((t) => t.ticket_id === ticketId);
       updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
+
+      if (servedTicket) {
+        const updatedDone = [
+          { ...servedTicket, status: "done" as KDSTicket["status"] },
+          ...get().doneTickets,
+        ].slice(0, 50);
+        set({ doneTickets: updatedDone, doneCount: updatedDone.length });
+      }
     } else {
       const itemIdSet = new Set(itemIds);
       updatedTickets = tickets.map((t) =>
@@ -840,6 +857,47 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     }
   },
 
+  // ─── Done Ticket Actions ────────────────────────────────────────
+
+  recallDoneTicket: (ticketId: string) => {
+    const { doneTickets, tickets } = get();
+    const ticket = doneTickets.find((t) => t.ticket_id === ticketId);
+    if (!ticket) return;
+
+    const itemIds = ticket.items.map((i) => i.id);
+
+    // Move from done → active tickets as "pending"
+    const restoredTicket: KDSTicket = {
+      ...ticket,
+      status: "pending" as KDSTicket["status"],
+      items: ticket.items.map((item) => ({ ...item, kitchen_status: "sent" })),
+    };
+    const updatedDone = doneTickets.filter((t) => t.ticket_id !== ticketId);
+    const updatedTickets = [...tickets, restoredTicket];
+
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    set({
+      tickets: updatedTickets,
+      ...bucketed,
+      doneTickets: updatedDone,
+      doneCount: updatedDone.length,
+    });
+
+    // Backend: recall via existing RPC
+    const client = getClient();
+    if (client && itemIds.length > 0) {
+      OrderService.recallOrderItems(client, itemIds).catch((err) => {
+        console.error("[KDSStore] recallDoneTicket backend error:", err);
+        const lastLoc = get()._lastLocationId;
+        if (lastLoc) get().scheduleRefetch(lastLoc);
+      });
+    }
+  },
+
+  clearDoneTickets: () => {
+    set({ doneTickets: [], doneCount: 0 });
+  },
+
   // ─── Bulk Actions ───────────────────────────────────────────────
 
   toggleBulkMode: () => {
@@ -907,10 +965,14 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       }
     }
 
-    // Phase 3: Single pass over tickets to produce final array
+    // Phase 3: Single pass over tickets to produce final array + capture served
     const updatedTickets: KDSTicket[] = [];
+    const servedTickets: KDSTicket[] = [];
     for (const t of tickets) {
-      if (removeIds.has(t.ticket_id)) continue; // skip removed
+      if (removeIds.has(t.ticket_id)) {
+        servedTickets.push({ ...t, status: "done" as KDSTicket["status"] });
+        continue; // skip removed
+      }
       const mutation = mutations.get(t.ticket_id);
       if (mutation) {
         updatedTickets.push({
@@ -926,9 +988,18 @@ export const useKDSStore = create<KDSState>((set, get) => ({
       }
     }
 
-    // Single state update
+    // Single state update (including done tickets)
     const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
-    set({ tickets: updatedTickets, ...bucketed, selectedTicketIds: new Set<string>() });
+    const updatedDone = servedTickets.length > 0
+      ? [...servedTickets, ...get().doneTickets].slice(0, 50)
+      : get().doneTickets;
+    set({
+      tickets: updatedTickets,
+      ...bucketed,
+      selectedTicketIds: new Set<string>(),
+      doneTickets: updatedDone,
+      doneCount: updatedDone.length,
+    });
 
     // Phase 4: Fire at most 3 batched RPCs (one per status) instead of N
     const client = getClient();

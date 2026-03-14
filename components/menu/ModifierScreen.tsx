@@ -20,6 +20,7 @@ import {
 import { useImmerReducer } from "use-immer";
 import {
   Image,
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -285,17 +286,26 @@ const ModifierScreen = () => {
       }))
     );
 
-  // Group 3: Precomputed data
-  const { precomputedModifiers, storeInitialSelections, precomputedItemPrice, precomputedCashPrice, precomputedActiveCategory } =
-    useModifierSidebarStore(
-      useShallow((s) => ({
-        precomputedModifiers: s.precomputedModifiers,
-        storeInitialSelections: s.initialSelections,
-        precomputedItemPrice: s.itemPrice,
-        precomputedCashPrice: s.itemCashPrice,
-        precomputedActiveCategory: s.activeModifierCategory,
-      }))
-    );
+  // Group 3: Precomputed data (includes pre-built Maps from store — no per-render work)
+  const {
+    precomputedModifiers,
+    precomputedCategoriesById,
+    precomputedOptionsById,
+    storeInitialSelections,
+    precomputedItemPrice,
+    precomputedCashPrice,
+    precomputedActiveCategory,
+  } = useModifierSidebarStore(
+    useShallow((s) => ({
+      precomputedModifiers: s.precomputedModifiers,
+      precomputedCategoriesById: s.precomputedCategoriesById,
+      precomputedOptionsById: s.precomputedOptionsById,
+      storeInitialSelections: s.initialSelections,
+      precomputedItemPrice: s.itemPrice,
+      precomputedCashPrice: s.itemCashPrice,
+      precomputedActiveCategory: s.activeModifierCategory,
+    }))
+  );
 
   // Group 4: Stable action ref (single selector is fine)
   const close = useModifierSidebarStore(selectClose);
@@ -366,7 +376,6 @@ const ModifierScreen = () => {
   const lastDraftMenuItemIdRef = useRef<string | null>(null);
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
-  const isInitializedRef = useRef(false);
 
   const isReadOnly = mode === "view";
   const currentItem =
@@ -454,27 +463,27 @@ const ModifierScreen = () => {
     return { ...baseMenuItem, modifiers } as MenuItemWithModifiers;
   }, [isOpen, baseMenuItem, precomputedModifiers]);
 
+  // Use pre-built Maps from store when available; fallback only for edit/view with cart item (no precompute)
   const { modifierCategoriesById, optionsById } = useMemo(() => {
-    if (!isOpen) return { modifierCategoriesById: new Map<string, ModifierCategory>(), optionsById: new Map<string, { option: any; categoryId: string; categoryName: string }>() };
-    const categoriesMap = new Map<string, ModifierCategory>();
-    const optionsMap = new Map<
-      string,
-      { option: any; categoryId: string; categoryName: string }
-    >();
-
+    const emptyCategories = new Map<string, ModifierCategory>();
+    const emptyOptions = new Map<string, { option: any; categoryId: string; categoryName: string }>();
+    if (!isOpen) return { modifierCategoriesById: emptyCategories, optionsById: emptyOptions };
+    if (precomputedCategoriesById && precomputedOptionsById) {
+      return { modifierCategoriesById: precomputedCategoriesById, optionsById: precomputedOptionsById };
+    }
+    // Fallback: build from menuItemForModifiers (edit mode, cart item without menu context)
     menuItemForModifiers?.modifiers?.forEach((category) => {
-      categoriesMap.set(category.id, category);
+      emptyCategories.set(category.id, category);
       category.options.forEach((option) => {
-        optionsMap.set(option.id, {
+        emptyOptions.set(option.id, {
           option,
           categoryId: category.id,
           categoryName: category.name,
         });
       });
     });
-
-    return { modifierCategoriesById: categoriesMap, optionsById: optionsMap };
-  }, [isOpen, menuItemForModifiers?.modifiers]);
+    return { modifierCategoriesById: emptyCategories, optionsById: emptyOptions };
+  }, [isOpen, precomputedCategoriesById, precomputedOptionsById, menuItemForModifiers?.modifiers]);
 
   const total = useMemo(() => {
     if (!isOpen || !currentItem) return 0;
@@ -501,41 +510,8 @@ const ModifierScreen = () => {
     getCurrentItemPrice,
   ]);
 
-  // ============================================================================
-  // INITIALIZATION (CONSOLIDATED - Single openKey-based effect replaces 3 effects)
-  // Tracks a composite key of the open session; dispatches INITIALIZE only when
-  // switching to a different item/mode.
-  // ============================================================================
-
-  const prevOpenKeyRef = useRef<string | null>(null);
-  const openKey = isOpen ? `${cartItem?.id ?? ""}_${menuItem?.id ?? ""}_${mode}` : null;
-
-  useEffect(() => {
-    if (!isOpen || !openKey) return;
-
-    // Reset action tracking on every open (Effect 1 behavior)
-    actionHandledRef.current = false;
-    isInitializedRef.current = true;
-
-    // Dispatch INITIALIZE only when switching to a different item (Effects 2+3 behavior)
-    if (openKey !== prevOpenKeyRef.current) {
-      prevOpenKeyRef.current = openKey;
-      const selections = storeInitialSelections ?? {};
-      dispatch({
-        type: "INITIALIZE",
-        payload: {
-          quantity: cartItem?.quantity ?? 1,
-          notes: cartItem?.customizations?.notes ?? "",
-          modifierSelections: selections,
-          activeCategory: precomputedActiveCategory ?? null,
-        },
-      });
-    }
-
-    return () => {
-      isInitializedRef.current = false;
-    };
-  }, [openKey, storeInitialSelections, precomputedActiveCategory]);
+  // INITIALIZATION: Keyed remount in ModifierScreenOverlay ensures reducer lazy init
+  // gets correct store data on first render — no INITIALIZE effect needed.
 
   // ============================================================================
   // DRAFT ITEM CREATION (Deferred via microtask for non-blocking UI)
@@ -564,11 +540,10 @@ const ModifierScreen = () => {
   useEffect(() => {
     if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
 
-    // Defer draft creation past the open spring animation (~80ms)
-    // to avoid bill re-renders during the first frames
+    // Defer draft creation until after animations complete (InteractionManager)
     let cancelled = false;
 
-    const timeoutId = setTimeout(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
       if (cancelled) return;
 
       const {
@@ -646,17 +621,22 @@ const ModifierScreen = () => {
         draftItemIdRef.current = draftItem.id;
         lastDraftMenuItemIdRef.current = item.id;
       }
-    }, 100);
+    });
 
     return () => {
       cancelled = true;
-      clearTimeout(timeoutId);
+      handle.cancel();
     };
   }, [isOpen, currentItem?.id, mode, cartItem]); // Minimal dependencies
 
   // ============================================================================
   // CLEANUP
   // ============================================================================
+  // Track our session identity — matches ModifierScreenOverlay's sessionKey
+  const sessionKeyRef = useRef<string>("closed");
+  sessionKeyRef.current = !isOpen
+    ? "closed"
+    : `${cartItem?.id ?? ""}_${menuItem?.id ?? ""}_${mode}`;
 
   useEffect(() => {
     return () => {
@@ -664,9 +644,17 @@ const ModifierScreen = () => {
         removeDraftItem(draftItemIdRef.current);
         draftItemIdRef.current = null;
       }
-      // Safety: close store if still open on unmount (e.g., navigation away)
-      if (useModifierSidebarStore.getState().isOpen) {
-        useModifierSidebarStore.getState().close();
+      const store = useModifierSidebarStore.getState();
+      const currentSessionKey = !store.isOpen
+        ? "closed"
+        : `${store.cartItem?.id ?? ""}_${store.menuItem?.id ?? ""}_${store.mode}`;
+      // Only close if WE were the active modifier screen unmounting (e.g. navigation away),
+      // not when the "closed" placeholder unmounts during open (key change triggers remount)
+      if (
+        sessionKeyRef.current !== "closed" &&
+        sessionKeyRef.current === currentSessionKey
+      ) {
+        store.close();
       }
     };
   }, []);

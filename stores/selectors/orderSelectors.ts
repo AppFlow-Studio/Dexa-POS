@@ -12,6 +12,7 @@
 import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { OrderProfile } from "@/lib/types";
 import { useMemo, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useOrderStore } from "../useOrderStore";
 import { useSettingsStore } from "../useSettingsStore";
 import { useStoreSettingsStore } from "../useStoreSettingsStore";
@@ -546,6 +547,46 @@ export function useOtherStationOrderCount(): number {
 
 export const useRemoteOrders = useOtherStationOrders;
 export const useRemoteOrderCount = useOtherStationOrderCount;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Order Line Filtered Orders (with structural memoization)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Filtered orders for order line display (non-dine-in, by daysToShow).
+ * Uses useStableOrderList for referential stability when content unchanged.
+ */
+export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
+  const raw = useOrderStore(
+    useShallow((state) => {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
+      cutoffDate.setHours(0, 0, 0, 0);
+      const cutoffTime = cutoffDate.getTime();
+      const result: OrderProfile[] = [];
+      for (let i = state.orderIds.length - 1; i >= 0; i--) {
+        const o = state.ordersById[state.orderIds[i]];
+        if (!o) continue;
+        if (
+          new Date(o.opened_at || 0).getTime() >= cutoffTime &&
+          o.order_type !== "Dine In" &&
+          o.order_type !== "dine_in" &&
+          (((o.order_status === "preparing" || o.order_status === "sent_to_kitchen") && o.items.length > 0) ||
+            ((o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial") &&
+              o.order_status !== "completed" &&
+              o.order_status !== "draft" &&
+              o.order_status !== "void" &&
+              o.check_status !== "Closed") ||
+            (o.order_status === "ready" && o.paid_status === "Paid" && o.items.length > 0))
+        ) {
+          result.push(o);
+        }
+      }
+      return result;
+    })
+  );
+  return useStableOrderList(raw);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SELECTOR: Single Order by ID (granular - benefits from immer structural sharing)

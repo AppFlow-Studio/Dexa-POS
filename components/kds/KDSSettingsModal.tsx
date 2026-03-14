@@ -399,6 +399,9 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
   const kdsAggregateToExistingTickets = useStoreSettingsStore((s) => s.kdsAggregateToExistingTickets);
   const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
   const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
+  const kdsYellowThresholdMinutes = useStoreSettingsStore((s) => s.kdsYellowThresholdMinutes);
+  const kdsOrangeThresholdMinutes = useStoreSettingsStore((s) => s.kdsOrangeThresholdMinutes);
+  const kdsRedThresholdMinutes = useStoreSettingsStore((s) => s.kdsRedThresholdMinutes);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
 
   // KDS display (sound config lives in Supabase per-display)
@@ -711,6 +714,39 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
                   onChange={(val) => updateField("kdsAutoFireDelayMinutes", val)}
                 />
               )}
+
+              {/* TICKET COLOR THRESHOLDS Section */}
+              <SectionHeader title="Ticket Color Thresholds" />
+
+              <StepperRow
+                label="Yellow (Warning)"
+                value={kdsYellowThresholdMinutes}
+                min={1}
+                max={kdsOrangeThresholdMinutes - 1}
+                step={1}
+                suffix="m"
+                onChange={(val) => updateField("kdsYellowThresholdMinutes", val)}
+              />
+
+              <StepperRow
+                label="Orange (Late)"
+                value={kdsOrangeThresholdMinutes}
+                min={kdsYellowThresholdMinutes + 1}
+                max={kdsRedThresholdMinutes - 1}
+                step={1}
+                suffix="m"
+                onChange={(val) => updateField("kdsOrangeThresholdMinutes", val)}
+              />
+
+              <StepperRow
+                label="Red (Critical)"
+                value={kdsRedThresholdMinutes}
+                min={kdsOrangeThresholdMinutes + 1}
+                max={60}
+                step={1}
+                suffix="m"
+                onChange={(val) => updateField("kdsRedThresholdMinutes", val)}
+              />
             </ScrollView>
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 }}>

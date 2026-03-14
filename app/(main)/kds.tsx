@@ -4,6 +4,7 @@ import {
   getBucketedElapsed,
   getUrgencyLevel,
   useKDSTimer,
+  type UrgencyThresholds,
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
@@ -68,13 +69,14 @@ import Animated, {
 } from "react-native-reanimated";
 
 // ─── Status Tab Config ────────────────────────────────────────────
-type StatusFilter = "pending" | "cooking" | "ready";
+type StatusFilter = "pending" | "cooking" | "ready" | "done";
 type OrderTypeFilter = "all" | "delivery" | "takeout" | "dine_in";
 
 const STATUS_TABS: { key: StatusFilter; label: string; color: string }[] = [
   { key: "pending", label: "Pending", color: KDS_STATUS_TAB_COLORS.pending },
   { key: "cooking", label: "Cooking", color: KDS_STATUS_TAB_COLORS.cooking },
   { key: "ready", label: "Served", color: KDS_STATUS_TAB_COLORS.ready },
+  { key: "done", label: "Done", color: KDS_STATUS_TAB_COLORS.done },
 ];
 
 const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
@@ -236,10 +238,11 @@ interface KDSTicketCardProps {
   onItemPress?: (ticketId: string, itemId: string) => void;
   hideDoneItems: boolean;
   displaySettings: KDSTicketDisplaySettings;
+  urgencyThresholds: UrgencyThresholds;
 }
 
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
-  ({ ticket, onAdvance, bulkMode, onToggleSelect, onLongPress, onItemPress, hideDoneItems, displaySettings }) => {
+  ({ ticket, onAdvance, bulkMode, onToggleSelect, onLongPress, onItemPress, hideDoneItems, displaySettings, urgencyThresholds }) => {
     // Subscribe to own selection state via Zustand selector — only the toggled card re-renders
     const isSelected = useKDSStore(
       useCallback(
@@ -264,9 +267,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       useCallback(
         (s) => {
           void s.timerTick;
-          return getUrgencyLevel(ticket.start_time_epoch);
+          return getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds);
         },
-        [ticket.start_time_epoch],
+        [ticket.start_time_epoch, urgencyThresholds],
       ),
     );
 
@@ -636,7 +639,172 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     prev.onLongPress === next.onLongPress &&
     prev.onItemPress === next.onItemPress &&
     prev.hideDoneItems === next.hideDoneItems &&
-    prev.displaySettings === next.displaySettings,
+    prev.displaySettings === next.displaySettings &&
+    prev.urgencyThresholds === next.urgencyThresholds,
+);
+
+// ─── Done Ticket Card (gray, muted, tap to recall) ───────────────
+interface KDSDoneTicketCardProps {
+  ticket: KDSTicket;
+  onRecall: (ticketId: string) => void;
+}
+
+const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
+  ({ ticket, onRecall }) => {
+    const timeElapsed = useKDSStore(
+      useCallback(
+        (s) => {
+          void s.timerTick;
+          return getBucketedElapsed(ticket.start_time_epoch);
+        },
+        [ticket.start_time_epoch],
+      ),
+    );
+
+    const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
+    const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
+
+    return (
+      <Pressable onPress={() => onRecall(ticket.ticket_id)}>
+        <View
+          style={{
+            margin: 4,
+            borderRadius: 10,
+            overflow: "hidden",
+            backgroundColor: colors.skeleton,
+            borderWidth: 2,
+            borderColor: colors.muted,
+            opacity: 0.7,
+          }}
+        >
+          {/* Top bar — gray */}
+          <View
+            style={{
+              backgroundColor: colors.muted,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Clock size={12} color="#fff" />
+              <Text
+                style={{
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: "700",
+                  marginLeft: 4,
+                }}
+              >
+                {timeElapsed}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>
+                {ticket.item_count} items
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "rgba(0,0,0,0.2)",
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 4,
+                }}
+              >
+                {orderTypeIcon}
+                <Text style={{ color: "#fff", fontSize: 10, marginLeft: 3, fontWeight: "600" }}>
+                  {orderTypeLabel}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Order info */}
+          <View
+            style={{
+              backgroundColor: colors.skeletonHighlight,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ color: colors.label, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
+                {ticket.display_number || ticket.order_number?.slice(-4) || "----"}
+                {ticket.course_number > 1 && (
+                  <Text style={{ color: colors.muted }}> C{ticket.course_number}</Text>
+                )}
+              </Text>
+              {ticket.table_name && (
+                <Text style={{ color: colors.muted, fontSize: 12 }}>{ticket.table_name}</Text>
+              )}
+            </View>
+          </View>
+
+          {/* Items list */}
+          <View style={{ padding: 8, backgroundColor: colors.screen }}>
+            {ticket.items.map((item: KDSTicketItem, index: number) => (
+              <View
+                key={item.id}
+                style={[
+                  { flexDirection: "row", alignItems: "flex-start" },
+                  index < ticket.items.length - 1 ? { marginBottom: 4 } : undefined,
+                ]}
+              >
+                <View
+                  style={{
+                    backgroundColor: colors.border,
+                    width: 22,
+                    height: 22,
+                    borderRadius: 4,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 6,
+                  }}
+                >
+                  <Text style={{ color: colors.label, fontSize: 12, fontWeight: "700" }}>
+                    {item.quantity}
+                  </Text>
+                </View>
+                <Text
+                  style={{
+                    color: colors.label,
+                    fontSize: 13,
+                    fontWeight: "500",
+                    flex: 1,
+                  }}
+                  numberOfLines={1}
+                >
+                  {item.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Tap to recall hint */}
+          <View
+            style={{
+              backgroundColor: colors.screen,
+              paddingVertical: 4,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "600" }}>
+              Tap to Recall
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  },
+  (prev, next) => prev.ticket === next.ticket && prev.onRecall === next.onRecall,
 );
 
 // ─── Main Screen ──────────────────────────────────────────────────
@@ -675,6 +843,9 @@ const KitchenDisplayScreen = () => {
   const bulkAdvanceTickets = useKDSStore((s) => s.bulkAdvanceTickets);
   const setOnNewOrderCallback = useKDSStore((s) => s.setOnNewOrderCallback);
   const recallTicket = useKDSStore((s) => s.recallTicket);
+  const doneTickets = useKDSStore((s) => s.doneTickets);
+  const doneCount = useKDSStore((s) => s.doneCount);
+  const recallDoneTicket = useKDSStore((s) => s.recallDoneTicket);
   const prioritizeTicket = useKDSStore((s) => s.prioritizeTicket);
   const toggleRush = useKDSStore((s) => s.toggleRush);
   const markItemDone = useKDSStore((s) => s.markItemDone);
@@ -694,6 +865,18 @@ const KitchenDisplayScreen = () => {
   const kdsDisplayExclusionsAtTop = useStoreSettingsStore((s) => s.kdsDisplayExclusionsAtTop);
   const kdsAlphabeticalSort = useStoreSettingsStore((s) => s.kdsAlphabeticalSort);
   const kdsAggregateIdenticalItems = useStoreSettingsStore((s) => s.kdsAggregateIdenticalItems);
+  const kdsYellowThresholdMinutes = useStoreSettingsStore((s) => s.kdsYellowThresholdMinutes);
+  const kdsOrangeThresholdMinutes = useStoreSettingsStore((s) => s.kdsOrangeThresholdMinutes);
+  const kdsRedThresholdMinutes = useStoreSettingsStore((s) => s.kdsRedThresholdMinutes);
+
+  const urgencyThresholds = useMemo<UrgencyThresholds>(
+    () => ({
+      yellow: kdsYellowThresholdMinutes,
+      orange: kdsOrangeThresholdMinutes,
+      red: kdsRedThresholdMinutes,
+    }),
+    [kdsYellowThresholdMinutes, kdsOrangeThresholdMinutes, kdsRedThresholdMinutes],
+  );
 
   const displaySettings = useMemo<KDSTicketDisplaySettings>(
     () => ({
@@ -905,9 +1088,14 @@ const KitchenDisplayScreen = () => {
     return readyTickets.filter((t) => matchesTypeFilter(t, activeType));
   }, [readyTickets, activeType]);
 
+  const filteredDone = useMemo(() => {
+    if (activeType === "all") return doneTickets;
+    return doneTickets.filter((t) => matchesTypeFilter(t, activeType));
+  }, [doneTickets, activeType]);
+
   const filteredByStatus: Record<StatusFilter, KDSTicket[]> = useMemo(
-    () => ({ pending: filteredPending, cooking: filteredCooking, ready: filteredReady }),
-    [filteredPending, filteredCooking, filteredReady],
+    () => ({ pending: filteredPending, cooking: filteredCooking, ready: filteredReady, done: filteredDone }),
+    [filteredPending, filteredCooking, filteredReady, filteredDone],
   );
 
   // Active tab's filtered data — for bulk actions / select-all
@@ -917,7 +1105,8 @@ const KitchenDisplayScreen = () => {
   const activeRawTickets =
     activeStatus === "pending" ? pendingTickets
     : activeStatus === "cooking" ? cookingTickets
-    : readyTickets;
+    : activeStatus === "ready" ? readyTickets
+    : doneTickets;
 
   const typeCounts = useMemo(() => {
     const result: Record<OrderTypeFilter, number> = {
@@ -1075,10 +1264,20 @@ const KitchenDisplayScreen = () => {
           onItemPress={handleItemPress}
           hideDoneItems={kdsHideDoneItems}
           displaySettings={displaySettings}
+          urgencyThresholds={urgencyThresholds}
         />
       </Animated.View>
     ),
-    [advanceTicketStatus, bulkMode, toggleTicketSelection, handleTicketLongPress, handleItemPress, kdsHideDoneItems, displaySettings, columnWidthPct],
+    [advanceTicketStatus, bulkMode, toggleTicketSelection, handleTicketLongPress, handleItemPress, kdsHideDoneItems, displaySettings, urgencyThresholds, columnWidthPct],
+  );
+
+  const renderDoneItem = useCallback(
+    ({ item }: { item: KDSTicket }) => (
+      <View style={{ width: columnWidthPct, paddingHorizontal: 2 }}>
+        <KDSDoneTicketCard ticket={item} onRecall={recallDoneTicket} />
+      </View>
+    ),
+    [recallDoneTicket, columnWidthPct],
   );
 
   const keyExtractor = useCallback((item: KDSTicket) => item.ticket_id, []);
@@ -1327,7 +1526,7 @@ const KitchenDisplayScreen = () => {
                         opacity: isFetching ? 0.7 : 1,
                       }}
                     >
-                      {counts[tab.key]}
+                      {tab.key === "done" ? doneCount : counts[tab.key]}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -1386,7 +1585,7 @@ const KitchenDisplayScreen = () => {
       </View>
 
       {/* ─── Bulk Action Bar ─── */}
-      {bulkMode && (
+      {bulkMode && activeStatus !== "done" && (
         <View
           style={{
             backgroundColor: colors.skeleton,
@@ -1461,7 +1660,7 @@ const KitchenDisplayScreen = () => {
         </View>
       )}
 
-      {/* ─── Grid: 3 pre-mounted FlatLists stacked ─── */}
+      {/* ─── Grid: 4 pre-mounted FlatLists stacked ─── */}
       {!isReady || isInitialLoading ? (
         renderSkeletons()
       ) : (
@@ -1506,6 +1705,40 @@ const KitchenDisplayScreen = () => {
               </View>
             );
           })}
+          {/* Done tab — separate FlatList with gray card renderer */}
+          <View
+            key="done"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: activeStatus === "done" ? 1 : 0,
+              zIndex: activeStatus === "done" ? 1 : 0,
+            }}
+            pointerEvents={activeStatus === "done" ? "auto" : "none"}
+          >
+            <Animated.FlatList
+              key={columnCount}
+              data={filteredDone}
+              keyExtractor={keyExtractor}
+              renderItem={renderDoneItem}
+              numColumns={columnCount}
+              contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
+              initialNumToRender={16}
+              maxToRenderPerBatch={8}
+              windowSize={5}
+              removeClippedSubviews={false}
+              ListEmptyComponent={
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
+                  <Text style={{ color: colors.muted, fontSize: 14 }}>
+                    No done tickets
+                  </Text>
+                </View>
+              }
+            />
+          </View>
         </View>
       )}
 

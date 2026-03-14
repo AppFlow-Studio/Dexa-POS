@@ -25,7 +25,7 @@ import type {
 } from "@/types/order-calculations";
 import type { Station } from "@/types/station";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { current } from "immer";
+import { current, freeze, original } from "immer";
 import { create } from "zustand";
 import {
   createJSONStorage,
@@ -1098,16 +1098,24 @@ const addItemToBackend = async (
           console.log(
             `[addItemToBackend] Item ${item.id} was fired during sync, retroactively sending to kitchen`,
           );
-          OrderService.bulkUpdateOrderItemStatus(
-            supabase,
-            [addResult.order_item_id],
-            "sent",
-          ).catch((err) =>
-            console.error(
-              "[addItemToBackend] Retroactive kitchen send failed:",
+          try {
+            await OrderService.bulkUpdateOrderItemStatus(
+              supabase,
+              [addResult.order_item_id],
+              "sent",
+            );
+          } catch (err) {
+            console.warn(
+              "[addItemToBackend] Retroactive kitchen send failed, queuing send_to_kitchen:",
               err,
-            ),
-          );
+            );
+            // Queue a send_to_kitchen op as fallback — it handles order status transition first
+            queueFailedOperation(
+              "send_to_kitchen",
+              { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+              resolveOrderKey(),
+            );
+          }
         }
       }
 
@@ -1349,16 +1357,24 @@ const addItemToBackend = async (
         if (__DEV__) console.log(
           `[addItemToBackend] Item ${item.id} was fired during sync, retroactively sending to kitchen`,
         );
-        OrderService.bulkUpdateOrderItemStatus(
-          supabase,
-          [addResult.order_item_id],
-          "sent",
-        ).catch((err) =>
-          console.error(
-            "[addItemToBackend] Retroactive kitchen send failed:",
+        try {
+          await OrderService.bulkUpdateOrderItemStatus(
+            supabase,
+            [addResult.order_item_id],
+            "sent",
+          );
+        } catch (err) {
+          console.warn(
+            "[addItemToBackend] Retroactive kitchen send failed, queuing send_to_kitchen:",
             err,
-          ),
-        );
+          );
+          // Queue a send_to_kitchen op as fallback — it handles order status transition first
+          queueFailedOperation(
+            "send_to_kitchen",
+            { localOrderId: resolveOrderKey(), localItemIds: [item.id] },
+            resolveOrderKey(),
+          );
+        }
       }
 
       if (__DEV__) console.log(
@@ -3271,9 +3287,9 @@ export const useOrderStore = create<OrderState>()(
               sourceStationName,
             );
 
-            // Upsert to single index
+            // Upsert to single index (pre-freeze so Immer skips recursive scan)
             set((state) => {
-              state.ordersById[dbOrderId] = orderProfile;
+              state.ordersById[dbOrderId] = freeze(orderProfile);
               // Only add to orderIds if new
               if (!existing) {
                 state.orderIds.push(dbOrderId);
@@ -3556,9 +3572,9 @@ export const useOrderStore = create<OrderState>()(
               _sourceStationName: null,
             };
 
-            // Add to store (single index by DB UUID)
+            // Add to store (single index by DB UUID; pre-freeze so Immer skips recursive scan)
             set((state) => {
-              state.ordersById[dbOrderId] = localOrder;
+              state.ordersById[dbOrderId] = freeze(localOrder);
               state.orderIds.push(dbOrderId);
             });
 
@@ -3785,11 +3801,11 @@ export const useOrderStore = create<OrderState>()(
               total_discount: o.total_discount ?? 0,
               items: o.items || [],
             }));
-            // Convert array to ordersById (single index)
+            // Convert array to ordersById; pre-freeze so Immer skips recursive scan
             const ordersById: Record<string, OrderProfile> = {};
             const orderIds: string[] = [];
             for (const order of sanitizedOrders) {
-              ordersById[order.id] = order;
+              ordersById[order.id] = freeze(order);
               orderIds.push(order.id);
             }
             set({ ordersById, orderIds });
@@ -4107,7 +4123,7 @@ export const useOrderStore = create<OrderState>()(
                     // to avoid orphaned child draft proxies under the deleted path
                     const snapshot = current(existingOrder);
                     delete state.ordersById[orderId];
-                    state.ordersById[dbOrderId] = {
+                    state.ordersById[dbOrderId] = freeze({
                       ...snapshot,
                       id: dbOrderId,
                       db_order_id: dbOrderId,
@@ -4116,7 +4132,7 @@ export const useOrderStore = create<OrderState>()(
                       sync_status: "synced" as const,
                       sync_version: syncVersion ?? 1,
                       opened_at: snapshot.opened_at || createdAt,
-                    };
+                    });
 
                     // Update orderIds list
                     const idx = state.orderIds.indexOf(orderId);
@@ -4680,8 +4696,9 @@ export const useOrderStore = create<OrderState>()(
             set((state) => {
               const order = state.ordersById[activeOrderId];
               if (!order) return;
-              const item = order.items.find((i) => i.id === draftItemId);
-              if (item) Object.assign(item, updates);
+              const items = original(order)?.items ?? [];
+              const idx = items.findIndex((i) => i.id === draftItemId);
+              if (idx !== -1) Object.assign(order.items[idx], updates);
             });
           },
 
@@ -4693,7 +4710,8 @@ export const useOrderStore = create<OrderState>()(
             set((state) => {
               const order = state.ordersById[activeOrderId];
               if (!order) return;
-              const idx = order.items.findIndex((i) => i.id === draftItemId && i.isDraft);
+              const items = original(order)?.items ?? [];
+              const idx = items.findIndex((i) => i.id === draftItemId && i.isDraft);
               if (idx !== -1) order.items.splice(idx, 1);
             });
           },
@@ -4706,9 +4724,11 @@ export const useOrderStore = create<OrderState>()(
             set((state) => {
               const order = state.ordersById[activeOrderId];
               if (!order) return;
-              order.items = order.items.filter(
+              const items = original(order)?.items ?? [];
+              const toKeep = items.filter(
                 (i) => !(i.isDraft && i.menuItemId === menuItemId),
               );
+              order.items = toKeep;
             });
           },
 
@@ -5198,7 +5218,7 @@ export const useOrderStore = create<OrderState>()(
 
                     const snapshot = current(existingOrder);
                     delete state.ordersById[orderId];
-                    state.ordersById[dbOrderId] = {
+                    state.ordersById[dbOrderId] = freeze({
                       ...snapshot,
                       id: dbOrderId,
                       db_order_id: dbOrderId,
@@ -5207,7 +5227,7 @@ export const useOrderStore = create<OrderState>()(
                       sync_status: "synced" as const,
                       sync_version: syncVersion ?? 1,
                       opened_at: snapshot.opened_at || createdAt,
-                    };
+                    });
 
                     const idx = state.orderIds.indexOf(orderId);
                     if (idx !== -1) state.orderIds[idx] = dbOrderId;
@@ -7678,7 +7698,7 @@ export const useOrderStore = create<OrderState>()(
 
               if (dbItemIds.length === 0 && newItems.length > 0) {
                 // Items haven't synced to backend yet - queue for retry
-                // The retroactive mechanism in addItemToBackend is a backup
+                // The queue handler will update order status + items atomically
                 console.log(
                   "[sendNewItemsToKitchen] Items not synced yet, queuing send_to_kitchen",
                 );
@@ -7687,27 +7707,6 @@ export const useOrderStore = create<OrderState>()(
                   { localOrderId: activeOrderId, localItemIds },
                   activeOrderId,
                 );
-                // Still update order status if possible
-                Promise.resolve(
-                  supabase.rpc("update_order_status", {
-                    p_order_id: currentOrder.db_order_id,
-                    p_reason: undefined,
-                    p_new_status: backendStatus,
-                  }),
-                )
-                  .then(({ error }: { error: any }) => {
-                    if (
-                      error &&
-                      error.code !== "P0001" &&
-                      !error.message?.includes("already in")
-                    ) {
-                      console.error(
-                        "Failed to update backend order status:",
-                        error,
-                      );
-                    }
-                  })
-                  .catch(console.error);
               } else if (dbItemIds.length > 0) {
                 if (isDraft) {
                   // Draft order: must update order status FIRST (draft -> sent_to_kitchen)
@@ -7905,6 +7904,7 @@ export const useOrderStore = create<OrderState>()(
 
               if (dbItemIds.length === 0 && newItems.length > 0) {
                 // Items haven't synced to backend yet - queue for retry
+                // The queue handler will update order status + items atomically
                 console.log(
                   "[sendNewItemsToKitchenForOrder] Items not synced yet, queuing send_to_kitchen",
                 );
@@ -7913,21 +7913,6 @@ export const useOrderStore = create<OrderState>()(
                   { localOrderId: orderId, localItemIds },
                   orderId,
                 );
-                // Still update order status
-                const { error } = await supabase.rpc("update_order_status", {
-                  p_order_id: order.db_order_id,
-                  p_new_status: backendStatus,
-                });
-                if (
-                  error &&
-                  error.code !== "P0001" &&
-                  !error.message?.includes("already in")
-                ) {
-                  console.error(
-                    "Failed to update backend order status:",
-                    error,
-                  );
-                }
               } else if (dbItemIds.length > 0) {
                 if (isDraft) {
                   // Draft order: must update order status FIRST (draft -> sent_to_kitchen)
@@ -8596,7 +8581,7 @@ export const useOrderStore = create<OrderState>()(
 
                     const snapshot = current(existingOrder);
                     delete state.ordersById[id];
-                    state.ordersById[dbOrderId] = {
+                    state.ordersById[dbOrderId] = freeze({
                       ...snapshot,
                       id: dbOrderId,
                       db_order_id: dbOrderId,
@@ -8605,7 +8590,7 @@ export const useOrderStore = create<OrderState>()(
                       sync_status: "synced" as const,
                       sync_version: syncVersion ?? 1,
                       opened_at: snapshot.opened_at || createdAt,
-                    };
+                    });
 
                     const idx = state.orderIds.indexOf(id);
                     if (idx !== -1) state.orderIds[idx] = dbOrderId;
@@ -10120,7 +10105,7 @@ export const useOrderStore = create<OrderState>()(
                     orderData.delivery_address ?? currentOrder.delivery_address,
                 };
 
-                state.ordersById[storeKey] = updatedOrder;
+                state.ordersById[storeKey] = freeze(updatedOrder);
                 // Update active order derived state if this is the active order
                 if (storeKey === state.activeOrderId) {
                   state.activeOrderTotal =

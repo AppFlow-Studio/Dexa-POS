@@ -106,6 +106,9 @@ export interface StoreSettings {
   kdsDisplayExclusionsAtTop: boolean
   kdsAggregateIdenticalItems: boolean
   kdsAggregateToExistingTickets: boolean
+  kdsYellowThresholdMinutes: number
+  kdsOrangeThresholdMinutes: number
+  kdsRedThresholdMinutes: number
 
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: number // Auto-expire notified parties after this many minutes
@@ -219,6 +222,9 @@ const initialData: StoreSettings = {
   kdsDisplayExclusionsAtTop: false,
   kdsAggregateIdenticalItems: false,
   kdsAggregateToExistingTickets: false,
+  kdsYellowThresholdMinutes: 5,
+  kdsOrangeThresholdMinutes: 10,
+  kdsRedThresholdMinutes: 15,
 
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: 10,
@@ -499,6 +505,9 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         kdsDisplayExclusionsAtTop: state.kdsDisplayExclusionsAtTop,
         kdsAggregateIdenticalItems: state.kdsAggregateIdenticalItems,
         kdsAggregateToExistingTickets: state.kdsAggregateToExistingTickets,
+        kdsYellowThresholdMinutes: state.kdsYellowThresholdMinutes,
+        kdsOrangeThresholdMinutes: state.kdsOrangeThresholdMinutes,
+        kdsRedThresholdMinutes: state.kdsRedThresholdMinutes,
         // Organization branding
         organizationLogoUrl: state.organizationLogoUrl,
         // Station session fields

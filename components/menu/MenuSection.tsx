@@ -111,20 +111,28 @@ const getImageSource = (item: MenuItemType) => {
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
 
+// Isolated overlay — only this re-renders when modifier opens, not the FlatList
+const MenuBlockingOverlay = React.memo(() => {
+  const isMenuBlocked = useModifierSidebarStore(selectIsMenuBlocked);
+  const cancelAndRemoveDraft = useModifierSidebarStore(
+    selectCancelAndRemoveDraft,
+  );
+  if (!isMenuBlocked && !isMenuBlockedSync()) return null;
+  return (
+    <Pressable
+      style={menuSectionStyles.blockingOverlay}
+      onPress={cancelAndRemoveDraft}
+    />
+  );
+});
+MenuBlockingOverlay.displayName = "MenuBlockingOverlay";
+
 const MenuSectionContent: React.FC<MenuSectionProps> = ({
   onOrderClosedCheck,
   isTableOrder = false,
   headerLeft,
   headerBelow,
 }) => {
-  // ============================================================
-  // MENU BLOCKING - For inline overlay pattern
-  // ============================================================
-  const isMenuBlocked = useModifierSidebarStore(selectIsMenuBlocked);
-  const cancelAndRemoveDraft = useModifierSidebarStore(
-    selectCancelAndRemoveDraft,
-  );
-
   // State for the active filters
   const menus = useMenuStore((s) => s.menus);
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
@@ -354,6 +362,19 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     if (!activeMeal) return undefined;
     return menus.find((m) => m.name === activeMeal)?.id;
   }, [activeMeal, menus]);
+
+  // Pre-warm modifier data for visible items so first tap is instant (deferred to avoid blocking render)
+  useEffect(() => {
+    if (!filteredMenuItems.length || !currentCategoryId || !activeMenuId) return;
+    const id = requestAnimationFrame(() => {
+      useModifierSidebarStore.getState().preWarmMany(
+        filteredMenuItems,
+        currentCategoryId,
+        activeMenuId,
+      );
+    });
+    return () => cancelAnimationFrame(id);
+  }, [filteredMenuItems, currentCategoryId, activeMenuId]);
 
   // OPTIMIZED: Memoized keyExtractor to prevent recreation
   // NOTE: All hooks must be called before any early returns
@@ -629,18 +650,8 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           ) : null}
         </View>
 
-        {/* ============================================================
-            BLOCKING OVERLAY - Prevents touch during modifier editing
-            Native-level blocking via Pressable for 60fps performance
-            Checks BOTH React state AND sync ref for zero-gap blocking
-            Clicking overlay cancels and removes draft items
-            ============================================================ */}
-        {(isMenuBlocked || isMenuBlockedSync()) && (
-          <Pressable
-            style={menuSectionStyles.blockingOverlay}
-            onPress={cancelAndRemoveDraft}
-          />
-        )}
+        {/* Blocking overlay isolated — only re-renders when modifier opens */}
+        <MenuBlockingOverlay />
       </View>
 
       {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}

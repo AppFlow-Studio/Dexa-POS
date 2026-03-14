@@ -18,6 +18,7 @@ import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { colors } from "@/lib/theme";
+import { initImmer } from "@/lib/initImmer";
 import { initLogCollector } from "@/lib/logCollector";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { PrinterService } from "@/services/printing/PrinterService";
@@ -51,6 +52,8 @@ WebBrowser.maybeCompleteAuthSession();
 
 // Initialize log collector to capture console output for remote log retrieval
 initLogCollector();
+// Optimize Immer array iteration in producers
+initImmer();
 
 export const tokenCache: TokenCache = {
   async getToken(key: string) {

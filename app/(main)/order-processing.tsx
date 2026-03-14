@@ -9,6 +9,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { useOrderLineFilteredOrders } from "@/stores/selectors/orderSelectors";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -16,7 +17,6 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
-import { useShallow } from "zustand/react/shallow";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
 const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const;
@@ -33,42 +33,8 @@ const OrderProcessing = () => {
   const daysToShow = useSettingsStore((s) => s.orderLineSettings.daysToShow);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
-  // OPTIMIZED: Use shallow selector to filter orders inside the store selector.
-  // This prevents the component from re-rendering unless the resulting list of filtered orders changes.
-  // We compute both the filtered list and its reverse here to avoid extra memos.
-  const reversedFilteredOrders = useOrderStore(
-    useShallow((state) => {
-      // Date cutoff based on orderLineSettings.daysToShow
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysToShow);
-      cutoffDate.setHours(0, 0, 0, 0);
-      const cutoffTime = cutoffDate.getTime();
-
-      // PERF: Iterate orderIds in reverse directly, avoiding intermediate array + .reverse()
-      const result: typeof state.ordersById[string][] = [];
-      for (let i = state.orderIds.length - 1; i >= 0; i--) {
-        const o = state.ordersById[state.orderIds[i]];
-        if (!o) continue;
-        if (
-          new Date(o.opened_at || 0).getTime() >= cutoffTime &&
-          o.order_type !== "Dine In" &&
-          o.order_type !== "dine_in" &&
-          (( (o.order_status === "preparing" || o.order_status === 'sent_to_kitchen') && o.items.length > 0) ||
-            ((o.paid_status === "Unpaid" ||
-              o.paid_status === "Pending" ||
-              o.paid_status === "Partial") &&
-              o.order_status !== "completed" &&
-              o.order_status !== "draft" &&
-              o.order_status !== "void" &&
-              o.check_status !== "Closed") ||
-            (o.order_status === "ready" && o.paid_status === "Paid" && o.items.length > 0))
-        ) {
-          result.push(o);
-        }
-      }
-      return result;
-    }),
-  );
+  // OPTIMIZED: Dedicated selector with useStableOrderList for referential stability
+  const reversedFilteredOrders = useOrderLineFilteredOrders(daysToShow);
 
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
