@@ -1,5 +1,6 @@
 import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
+import TableOrderView from '@/components/tables/TableOrderView'
 import MergeActionBar from '@/components/tables/MergeActionBar'
 import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
@@ -81,6 +82,7 @@ const TablesScreen = () => {
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [isHostStationOpen, setHostStationOpen] = useState(false)
+  const [overlayTableId, setOverlayTableId] = useState<string | null>(null)
 
   useEffect(() => {
     if (supabaseClient) {
@@ -199,10 +201,7 @@ const TablesScreen = () => {
           setActiveOrder(existingOrder.id)
         }
       }
-      router.push({
-        pathname: '/tables/[tableId]',
-        params: { tableId }
-      })
+      setOverlayTableId(tableId)
     },
     [tables, getOrder, setActiveOrder, router]
   )
@@ -224,11 +223,8 @@ const TablesScreen = () => {
           const existing = useOrderStore.getState().getOrder(orderId)
           if (existing) setActiveOrder(existing.id)
 
-          // Navigate immediately — push keeps floor plan mounted (faster than replace)
-          router.push({
-            pathname: '/tables/[tableId]',
-            params: { tableId: table.id }
-          })
+          // Show overlay immediately — no routing latency
+          setOverlayTableId(table.id)
 
           // Background sync for fresh data (no-op if order already current)
           syncOrderFromDatabase(orderId)
@@ -237,10 +233,7 @@ const TablesScreen = () => {
             })
             .catch(() => {})
         } else {
-          router.push({
-            pathname: '/tables/[tableId]',
-            params: { tableId: table.id }
-          })
+          setOverlayTableId(table.id)
         }
         return
       }
@@ -763,6 +756,13 @@ const TablesScreen = () => {
         onClose={handleCloseGuestModal}
         onSubmit={handleGuestCountSubmit}
       />
+
+      {overlayTableId && (
+        <TableOrderView
+          tableId={overlayTableId}
+          onClose={() => setOverlayTableId(null)}
+        />
+      )}
 
       {/* Host Station Modal */}
       <Modal

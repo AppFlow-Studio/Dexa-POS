@@ -37,6 +37,7 @@ function getActionsForStatus(
   onSeatGuests: (t: FloorPlanObject) => void,
   onNavigate: (id: string) => void,
   clearTableSession: (id: string) => void,
+  finishCleaning: (id: string) => void,
   updateSessionStatus: (id: string, s: TableStatus) => void,
 ): ActionItem[] {
   const actions: ActionItem[] = [];
@@ -127,7 +128,7 @@ function getActionsForStatus(
       actions.push({
         label: "Mark Clean",
         icon: <Trash2 size={18} color={colors.label} />,
-        onPress: () => updateSessionStatus(table.id, "available"),
+        onPress: () => finishCleaning(table.id),
         variant: "secondary",
       });
       break;
@@ -159,6 +160,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const snapPoints = useMemo(() => ["45%"], []);
 
   const clearTableSession = useFloorPlanStore((s) => s.clearTableSession);
+  const finishCleaning = useFloorPlanStore((s) => s.finishCleaning);
   const updateSessionStatus = useFloorPlanStore((s) => s.updateSessionStatus);
 
   // Sync sheet open/close with table selection
@@ -180,6 +182,25 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const status = (liveSession?.status ?? table?.session?.status) || "available";
   const tableColor = TABLE_STATUS_COLORS[status] || colors.info;
 
+  // Debug: log all status values
+  if (table) {
+    console.log('[TableContextSheet] Status determination:', {
+      tableId: table.id,
+      tableName: table.name,
+      liveSessionStatus: liveSession?.status,
+      floorPlanStatus: table?.session?.status,
+      finalStatus: status,
+      hasLiveSession: !!liveSession,
+      hasTableSession: !!table?.session,
+      allSessionFields: liveSession ? {
+        id: liveSession.id,
+        status: liveSession.status,
+        order_id: liveSession.order_id,
+        party_size: liveSession.party_size
+      } : null
+    });
+  }
+
   const actions = useMemo(
     () =>
       table
@@ -189,10 +210,11 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
             onSeatGuests,
             onNavigate,
             (id) => clearTableSession(id),
+            (id) => finishCleaning(id),
             (id, s) => updateSessionStatus(id, s),
           )
         : [],
-    [table, status, onSeatGuests, onNavigate, clearTableSession, updateSessionStatus],
+    [table, status, onSeatGuests, onNavigate, clearTableSession, finishCleaning, updateSessionStatus],
   );
 
   if (!table) return null;

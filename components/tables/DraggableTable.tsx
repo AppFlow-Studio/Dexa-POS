@@ -110,8 +110,19 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   // Subscribe directly to live session so table color/status updates without needing
   // the floor plan store sync (matches how Sidebar's TableListItem works)
-  const liveSession =
-    useTableSessionStore(s => s.sessions[table.id]) ?? table.session
+  const sessionStoreSession = useTableSessionStore(s => s.sessions[table.id])
+  const liveSession = sessionStoreSession ?? table.session
+
+  if (liveSession?.status === 'served' || liveSession?.status === 'check_presented') {
+    console.log('[DraggableTable] Table with served/check_presented status:', {
+      tableId: table.id,
+      tableStatus: liveSession?.status,
+      fromSessionStore: !!sessionStoreSession,
+      fromFloorPlan: !!table.session,
+      sessionStoreSession: sessionStoreSession?.status,
+      floorPlanSession: table.session?.status
+    });
+  }
 
   // --- COMPONENT LOOKUP ---
   const shapeDef =
@@ -387,6 +398,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     : isReservedSoon
     ? colors.info // blue for reserved soon
     : TABLE_STATUS_COLORS[tableStatus] || TABLE_STATUS_COLORS.available
+
+  if (liveSession?.status === 'served' || liveSession?.status === 'check_presented') {
+    console.log('[DraggableTable] Color determination for', table.name, {
+      sessionStatus,
+      isLocalOnly: sessionStatus ? isLocalOnlyStatus(sessionStatus) : 'N/A',
+      tableStatus,
+      tableColor,
+      fromCOLORSMap: TABLE_STATUS_COLORS[tableStatus],
+      allColors: TABLE_STATUS_COLORS
+    });
+  }
 
   // Type check for category is effective if we trust the object
   const isTableType = table.category === 'table' || table.category === 'booth'

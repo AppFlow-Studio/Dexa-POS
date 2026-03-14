@@ -7,10 +7,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { FloorPlanService } from "@/services/floorPlanService";
+import { getFloorPlanClient, useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { Href, useRouter } from "expo-router";
 import { Edit, Plus, Trash2 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -104,7 +105,20 @@ const FloorPlanManagementScreen = () => {
     updateFloorPlan,
     deleteFloorPlan,
     setActiveFloorPlan,
+    activeFloorPlanId,
   } = useFloorPlanStore();
+  // tables only holds the active plan's objects — use for accurate count on active plan
+  const activeTables = useFloorPlanStore((s) => s.tables);
+
+  // Reload floor plan list on mount to get up-to-date table_count from DB for all plans
+  useEffect(() => {
+    const { locationId, setFloorPlans } = useFloorPlanStore.getState();
+    const supabase = getFloorPlanClient();
+    if (!locationId || !supabase) return;
+    FloorPlanService.getLocationFloorPlans(supabase, locationId).then(({ data }) => {
+      if (data) setFloorPlans(data);
+    });
+  }, []);
 
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
@@ -176,7 +190,9 @@ const FloorPlanManagementScreen = () => {
                 {item.name}
               </Text>
               <Text className="text-lg text-gray-400 mt-1">
-                {item.table_count || 0} tables
+                {item.id === activeFloorPlanId
+                  ? activeTables.filter(t => t.category === 'table' || t.category === 'booth').length
+                  : (item.table_count || 0)} tables
               </Text>
             </View>
             <View className="flex-row items-center gap-2">

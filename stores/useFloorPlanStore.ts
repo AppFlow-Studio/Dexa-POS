@@ -142,7 +142,8 @@ interface FloorPlanState {
   unmergeTable: (sessionId: string, tableId: string) => Promise<void>
   advanceCourse: (sessionId: string) => Promise<void>
   linkOrderToSession: (sessionId: string, orderId: string) => Promise<void>
-  clearTableSession: (tableId: string) => Promise<void>
+  clearTableSession: (tableId: string) => Promise<void>;
+  finishCleaning: (tableId: string) => Promise<void>
 
   // Selection Actions
   toggleTableSelection: (tableId: string) => void
@@ -1046,6 +1047,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         clearTableSession: async (tableId: string) =>
           useTableSessionStore.getState().clearTableSession(tableId),
+
+        finishCleaning: async (tableId: string) =>
+          useTableSessionStore.getState().finishCleaning(tableId),
 
         // ====================================================================
         // SELECTION ACTIONS

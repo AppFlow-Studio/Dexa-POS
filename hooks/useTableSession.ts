@@ -38,8 +38,18 @@ function getPhase(ref: React.MutableRefObject<SessionPhase>): SessionPhase {
 export function useTableSession(
   tableId: string,
   source?: string,
+  onClose?: () => void,
 ): UseTableSessionResult {
   const router = useRouter();
+  const navigateAway = useCallback(() => {
+    if (onClose) {
+      onClose();
+    } else if (source) {
+      router.replace(source as any);
+    } else {
+      router.replace("/tables");
+    }
+  }, [onClose, source, router]);
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -129,7 +139,7 @@ export function useTableSession(
   useEffect(() => {
     if (tableStatus === "cleaning") {
       updatePhase("navigating_away");
-      router.replace("/tables");
+      navigateAway();
       return;
     }
     if (
@@ -139,7 +149,7 @@ export function useTableSession(
     ) {
       console.log("[useTableSession] Table cleared, navigating away");
       updatePhase("navigating_away");
-      router.replace("/tables");
+      navigateAway();
     }
   }, [tableStatus, session]);
 
