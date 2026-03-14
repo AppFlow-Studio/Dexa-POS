@@ -109,6 +109,13 @@ const UpdateTableScreen = () => {
   // --- Deferred rendering ---
   // Skip skeleton (stage 0) when order data is already in the store (e.g. navigating from tables screen)
   const [renderStage, setRenderStage] = useState(() => {
+    // Check session store for this table's order — works even before activeOrderId is set
+    const session = useTableSessionStore.getState().sessions[currentTableId];
+    if (session?.order_id) {
+      const found = useOrderStore.getState().getOrder(session.order_id);
+      if (found) return 1;
+    }
+    // Fallback: check activeOrderId (available table or freshly created order)
     const orderState = useOrderStore.getState();
     const oid = orderState.activeOrderId;
     const hasOrder = oid && orderState.ordersById[oid]?.service_location_id === currentTableId;
@@ -117,16 +124,20 @@ const UpdateTableScreen = () => {
   useEffect(() => {
     let cancelled = false;
     if (renderStage >= 2) return;
+    if (renderStage === 1) {
+      // Already past skeleton — go straight to full render in one frame
+      const raf = requestAnimationFrame(() => {
+        if (!cancelled) setRenderStage(2);
+      });
+      return () => { cancelled = true; cancelAnimationFrame(raf); };
+    }
+    // Stage 0: show skeleton one frame, then stage 1, then stage 2
     const raf = requestAnimationFrame(() => {
       if (cancelled) return;
-      if (renderStage < 1) {
-        setRenderStage(1);
-        requestAnimationFrame(() => {
-          if (!cancelled) setRenderStage(2);
-        });
-      } else {
-        setRenderStage(2);
-      }
+      setRenderStage(1);
+      requestAnimationFrame(() => {
+        if (!cancelled) setRenderStage(2);
+      });
     });
     return () => {
       cancelled = true;

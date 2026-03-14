@@ -28,7 +28,6 @@ import {
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { handleSeatingEffect } from "@/services/sessionEffects/handleSeatingEffect";
-import { recordVoidedSession } from "@/services/tableSessionRealtimeSync";
 import {
   FloorPlanObject,
   TableSession,
@@ -1075,11 +1074,6 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
 
         // 1. Optimistic local clear
         get().dispatch(tableId, { type: 'CLEAR' });
-
-        // Record this session as voided so polling won't re-sync it
-        if (sessionId) {
-          recordVoidedSession(tableId, sessionId);
-        }
 
         // 2. Try backend if online and session exists
         if (isOnline && supabase && sessionId) {

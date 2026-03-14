@@ -67,6 +67,14 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     return [...tables].sort((a, b) => (a.z_index ?? 0) - (b.z_index ?? 0))
   }, [tables])
 
+  // Stable geometry key — only changes when position/size/section assignment changes,
+  // not when session status/order changes. Prevents sectionOverlays from recomputing
+  // on every realtime table session update.
+  const tableGeometryKey = useMemo(
+    () => tables.map(t => `${t.id}:${t.x},${t.y},${t.width ?? ''},${t.height ?? ''},${t.section_id ?? ''}`).join('|'),
+    [tables]
+  )
+
   // Compute section overlay bounding boxes from tables grouped by section_id
   const sectionOverlays = useMemo(() => {
     if (!sectionsById || Object.keys(sectionsById).length === 0) return []
@@ -109,7 +117,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         width: bounds.maxX - bounds.minX + PADDING * 2,
         height: bounds.maxY - bounds.minY + PADDING * 2
       }))
-  }, [tables, sectionsById])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableGeometryKey, sectionsById])
 
   // Use the correct selection state:
   // - In selection mode: use global store (supports multi-select for merge)

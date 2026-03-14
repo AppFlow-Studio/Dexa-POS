@@ -1,6 +1,6 @@
 import { DragCardState } from '@/hooks/useWaitlistDragState'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
-import React, { useMemo } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { Gesture } from 'react-native-gesture-handler'
 import Animated, {
   runOnJS,
@@ -13,7 +13,6 @@ import WaitlistQueueCard from './WaitlistQueueCard'
 interface AnimatedCardItemProps {
   item: WaitlistEntry
   index: number
-  now: number
   activeWaitlistLength: number
   cardDragStates: DragCardState[]
   dragIndex: SharedValue<number>
@@ -21,17 +20,16 @@ interface AnimatedCardItemProps {
   cardHeight: SharedValue<number>
   setScrollEnabled: (enabled: boolean) => void
   onReorder: (fromIndex: number, toIndex: number) => void
-  onNotify: () => void
-  onSeat: () => void
-  onCancel: () => void
-  onMarkNoShow: () => void
-  onOfferComp?: () => void
+  onNotify: (item: WaitlistEntry) => void
+  onSeat: (item: WaitlistEntry) => void
+  onCancel: (item: WaitlistEntry) => void
+  onMarkNoShow: (item: WaitlistEntry) => void
+  onOfferComp?: (item: WaitlistEntry) => void
 }
 
 export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
   item,
   index,
-  now,
   activeWaitlistLength,
   cardDragStates,
   dragIndex,
@@ -157,29 +155,33 @@ export const AnimatedCardItem: React.FC<AnimatedCardItemProps> = ({
     }
   })
 
+  const handleLayout = useCallback((e: any) => {
+    if (cardHeight.value === 0) {
+      cardHeight.value = e.nativeEvent.layout.height + 12
+    }
+  }, [cardHeight])
+
+  const handleNotify = useCallback(() => onNotify(item), [onNotify, item])
+  const handleSeat = useCallback(() => onSeat(item), [onSeat, item])
+  const handleCancel = useCallback(() => onCancel(item), [onCancel, item])
+  const handleMarkNoShow = useCallback(() => onMarkNoShow(item), [onMarkNoShow, item])
+  const handleOfferComp = useCallback(() => onOfferComp?.(item), [onOfferComp, item])
+
   return (
-    <Animated.View
-      style={animatedStyle}
-      onLayout={e => {
-        if (cardHeight.value === 0) {
-          cardHeight.value = e.nativeEvent.layout.height + 12
-        }
-      }}
-    >
+    <Animated.View style={animatedStyle} onLayout={handleLayout}>
       <WaitlistQueueCard
         entry={item}
         position={index + 1}
-        now={now}
         dragGesture={dragGesture}
         isDragging={cardDragStates[index].isDragging}
-        onNotify={onNotify}
-        onSeat={onSeat}
-        onCancel={onCancel}
-        onMarkNoShow={onMarkNoShow}
-        onOfferComp={onOfferComp}
+        onNotify={handleNotify}
+        onSeat={handleSeat}
+        onCancel={handleCancel}
+        onMarkNoShow={handleMarkNoShow}
+        onOfferComp={handleOfferComp}
       />
     </Animated.View>
   )
 }
 
-export default AnimatedCardItem
+export default React.memo(AnimatedCardItem)

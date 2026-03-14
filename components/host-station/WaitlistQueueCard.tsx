@@ -1,3 +1,4 @@
+import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { colors } from '@/lib/theme'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import {
@@ -29,7 +30,6 @@ import { SharedValue } from 'react-native-reanimated'
 interface WaitlistQueueCardProps {
   entry: WaitlistEntry
   position: number
-  now: number
   onNotify: () => void
   onSeat: () => void
   onCancel: () => void
@@ -94,7 +94,6 @@ function formatElapsed (minutes: number): string {
 export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
   entry,
   position,
-  now,
   onNotify,
   onSeat,
   onCancel,
@@ -133,9 +132,11 @@ export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
     })
   ).current
 
+  const tick = useTableTimerTick()
   const elapsed = useMemo(
     () => getElapsedMinutes(entry.created_at),
-    [entry.created_at, now]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entry.created_at, tick]
   )
   const isOverdue = elapsed > (entry.quoted_wait_minutes || 0)
   const isApproaching =

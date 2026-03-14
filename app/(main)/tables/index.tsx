@@ -70,7 +70,6 @@ const TablesScreen = () => {
   const getOrderByDbId = useOrderStore(s => s.getOrderByDbId)
   const getOrder = useOrderStore(s => s.getOrder)
   const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
-  const isWaitlistOpen = useWaitlistSheetStore(s => s.isOpen)
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
 
@@ -84,6 +83,7 @@ const TablesScreen = () => {
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [isHostStationOpen, setHostStationOpen] = useState(false)
+  const isWaitlistOpen = useWaitlistSheetStore(s => s.isOpen)
 
   useEffect(() => {
     if (supabaseClient) {
@@ -223,22 +223,22 @@ const TablesScreen = () => {
       if (activeSessionLP && activeSessionLP.status !== 'available') {
         const orderId = activeSessionLP.order_id
         if (orderId) {
-          // Sync from DB to ensure items are up-to-date, then navigate
+          // Set active order synchronously if already in store (avoids skeleton on destination screen)
+          const existing = useOrderStore.getState().getOrder(orderId)
+          if (existing) setActiveOrder(existing.id)
+
+          // Navigate immediately
+          router.replace({
+            pathname: '/tables/[tableId]',
+            params: { tableId: table.id }
+          })
+
+          // Background sync for fresh data (no-op if order already current)
           syncOrderFromDatabase(orderId)
             .then(localOrderId => {
               if (localOrderId) setActiveOrder(localOrderId)
-              router.replace({
-                pathname: '/tables/[tableId]',
-                params: { tableId: table.id }
-              })
             })
-            .catch(() => {
-              // Fallback: navigate anyway
-              router.replace({
-                pathname: '/tables/[tableId]',
-                params: { tableId: table.id }
-              })
-            })
+            .catch(() => {})
         } else {
           router.replace({
             pathname: '/tables/[tableId]',
@@ -636,7 +636,7 @@ const TablesScreen = () => {
           )}
 
           {/* Map Container */}
-          <View className='bg-screen border border-border rounded-xl flex-1 relative'>
+          <View className='bg-screen border border-border rounded-xl flex-1 relative' pointerEvents={isWaitlistOpen ? 'none' : 'auto'}>
             {!isReady || (floorPlanLoading && tables.length === 0) ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
@@ -754,7 +754,7 @@ const TablesScreen = () => {
             </View>
           </View>
         </View>
-        {isWaitlistOpen && <WaitlistBottomSheet />}
+        <WaitlistBottomSheet />
       </View>
       <TableContextSheet
         table={contextTable}

@@ -53,7 +53,6 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
   const [showAddForm, setShowAddForm] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<WaitlistEntry | null>(null)
   const [showTablePicker, setShowTablePicker] = useState(false)
-  const [now, setNow] = useState(Date.now())
   const [scrollEnabled, setScrollEnabled] = useState(true)
   const [notice, setNotice] = useState<{
     title: string
@@ -71,7 +70,6 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
     fetchWaitlist(location_id)
 
     const pollInterval = setInterval(() => {
-      setNow(Date.now())
       fetchWaitlist(location_id, { silent: true })
     }, 15000)
 
@@ -396,6 +394,11 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
     [show]
   )
 
+  const handleSeatEntry = useCallback((entry: WaitlistEntry) => {
+    setSelectedEntry(entry)
+    setShowTablePicker(true)
+  }, [])
+
   // Handle drag-to-reorder
   const handleReorder = useCallback(
     (fromIndex: number, toIndex: number) => {
@@ -585,7 +588,6 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
               key={item.id}
               item={item}
               index={index}
-              now={now}
               activeWaitlistLength={activeWaitlist.length}
               cardDragStates={cardDragStates}
               dragIndex={dragIndex}
@@ -593,14 +595,11 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({
               cardHeight={cardHeight}
               setScrollEnabled={setScrollEnabled}
               onReorder={handleReorder}
-              onNotify={() => handleNotifyParty(item)}
-              onSeat={() => {
-                setSelectedEntry(item)
-                setShowTablePicker(true)
-              }}
-              onCancel={() => handleCancelEntry(item)}
-              onMarkNoShow={() => handleMarkNoShow(item)}
-              onOfferComp={() => handleOfferComp(item)}
+              onNotify={handleNotifyParty}
+              onSeat={handleSeatEntry}
+              onCancel={handleCancelEntry}
+              onMarkNoShow={handleMarkNoShow}
+              onOfferComp={handleOfferComp}
             />
           ))}
         </ScrollView>

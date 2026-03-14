@@ -45,11 +45,21 @@ export function useTableSession(
 
   const [phase, setPhase] = useState<SessionPhase>(() => {
     const t = useFloorPlanStore.getState().getTableById(tableId);
-    const oid = useOrderStore.getState().activeOrderId;
-    const ord = oid ? useOrderStore.getState().ordersById[oid] : undefined;
-    if (t && (ord || !useTableSessionStore.getState().sessions[tableId])) {
-      return "ready";
+    if (!t) return "initializing";
+
+    const session = useTableSessionStore.getState().sessions[tableId];
+
+    // No session → available table, auto-create will run, start ready
+    if (!session || session.status === "available") return "ready";
+
+    // Session has an order — check if we already have it locally
+    if (session.order_id) {
+      const orderState = useOrderStore.getState();
+      const found = orderState.getOrder(session.order_id);
+      if (found) return "ready"; // order in store, render immediately
     }
+
+    // Session exists but order not yet loaded
     return "initializing";
   });
   const phaseRef = useRef<SessionPhase>(phase);
@@ -183,7 +193,12 @@ export function useTableSession(
             return;
           }
 
-          await useFloorPlanStore.getState().loadFloorPlanStatusIfStale(1000);
+          // Only fetch from DB when there's truly no local session at all (cold open / stale cache).
+          // Skip when navigating from the floor plan — session is already in the store.
+          const freshSession = useTableSessionStore.getState().getSession(tableId);
+          if (!freshSession) {
+            await useFloorPlanStore.getState().loadFloorPlanStatusIfStale(1000);
+          }
         }
 
         // Re-fetch after potential status update
@@ -229,6 +244,7 @@ export function useTableSession(
             if (activeOrderId !== foundOrder.id) {
               setActiveOrder(foundOrder.id);
             }
+            updatePhase("ready");
           } else {
             if (
               getPhase(phaseRef) === "navigating_away" ||
@@ -236,6 +252,15 @@ export function useTableSession(
               updatedTableStatus === "available"
             )
               return;
+
+            // Before blocking on a DB fetch, check if the background sync
+            // (started from the long-press handler) already loaded the order.
+            const alreadyInStore = useOrderStore.getState().getOrder(sOrderId);
+            if (alreadyInStore) {
+              setActiveOrder(alreadyInStore.id);
+              updatePhase("ready");
+              return;
+            }
 
             updatePhase("loading_session");
             console.log(

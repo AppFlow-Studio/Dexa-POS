@@ -1,6 +1,7 @@
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import AppNoticeModal from '@/components/ui/AppNoticeModal'
 import { useToast } from '@/contexts/ToastContext'
+import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { bottomSheetTheme, colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -37,9 +38,9 @@ import {
   View
 } from 'react-native'
 import Animated, {
-  FadeIn,
-  FadeOut,
-  LinearTransition
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming
 } from 'react-native-reanimated'
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -64,16 +65,27 @@ const WaitlistCard: React.FC<{
   onSeat: () => void
   onNotify: () => void
   onDelete: () => void
-  now: number // timestamp to force re-render
-}> = ({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete, now }) => {
-  const elapsed = getElapsedMinutes(entry.created_at)
+}> = React.memo(({ entry, isExpanded, onToggle, onSeat, onNotify, onDelete }) => {
+  const tick = useTableTimerTick()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const elapsed = useMemo(() => getElapsedMinutes(entry.created_at), [entry.created_at, tick])
   const isOverdue = elapsed > entry.quoted_wait_minutes
 
+  const expandedHeight = useSharedValue(isExpanded ? 1 : 0)
+
+  // Sync shared value when isExpanded changes
+  if (expandedHeight.value !== (isExpanded ? 1 : 0)) {
+    expandedHeight.value = withTiming(isExpanded ? 1 : 0, { duration: 200 })
+  }
+
+  const expandedStyle = useAnimatedStyle(() => ({
+    opacity: expandedHeight.value,
+    maxHeight: expandedHeight.value * 300,
+    overflow: 'hidden'
+  }))
+
   return (
-    <Animated.View
-      layout={LinearTransition.duration(200)}
-      className='mb-3 rounded-xl overflow-hidden bg-card border border-border'
-    >
+    <View className='mb-3 rounded-xl overflow-hidden bg-card border border-border'>
       {/* Collapsed Row */}
       <Pressable onPress={onToggle} className='flex-row items-center px-4 py-3'>
         {/* Time Badge */}
@@ -122,13 +134,9 @@ const WaitlistCard: React.FC<{
         )}
       </Pressable>
 
-      {/* Expanded Section */}
-      {isExpanded && (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          exiting={FadeOut.duration(150)}
-          className='px-4 pb-4 border-t border-border'
-        >
+      {/* Expanded Section — always mounted, animated in/out on UI thread */}
+      <Animated.View style={expandedStyle}>
+        <View className='px-4 pb-4 border-t border-border'>
           <View className='mt-3 gap-2'>
             {/* Phone */}
             {entry.phone ? (
@@ -197,11 +205,11 @@ const WaitlistCard: React.FC<{
               <X size={18} color={colors.danger} />
             </TouchableOpacity>
           </View>
-        </Animated.View>
-      )}
-    </Animated.View>
+        </View>
+      </Animated.View>
+    </View>
   )
-}
+})
 
 // ── AddEntryForm ─────────────────────────────────────────────
 
@@ -490,14 +498,12 @@ const TablePickerSheet: React.FC<{
 const WaitlistBottomSheet: React.FC = () => {
   const sheetRef = useRef<BottomSheet>(null)
   const { isOpen, closeSheet, initialMode } = useWaitlistSheetStore()
-  const {
-    waitlist,
-    isLoading,
-    fetchWaitlist,
-    addToWaitlistAsync,
-    removeFromWaitlistAsync,
-    seatFromWaitlistAsync
-  } = useWaitlistStore()
+  const waitlist = useWaitlistStore(s => s.waitlist)
+  const isLoading = useWaitlistStore(s => s.isLoading)
+  const fetchWaitlist = useWaitlistStore(s => s.fetchWaitlist)
+  const addToWaitlistAsync = useWaitlistStore(s => s.addToWaitlistAsync)
+  const removeFromWaitlistAsync = useWaitlistStore(s => s.removeFromWaitlistAsync)
+  const seatFromWaitlistAsync = useWaitlistStore(s => s.seatFromWaitlistAsync)
   const startNewOrder = useOrderStore(s => s.startNewOrder)
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
@@ -509,7 +515,6 @@ const WaitlistBottomSheet: React.FC = () => {
   const [selectedEntry, setSelectedEntry] = useState<WaitlistEntry | null>(null)
   const [isTablePickerOpen, setTablePickerOpen] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<WaitlistEntry | null>(null)
-  const [now, setNow] = useState(Date.now())
   const [notice, setNotice] = useState<{
     title: string
     description: string
@@ -517,13 +522,6 @@ const WaitlistBottomSheet: React.FC = () => {
   } | null>(null)
 
   const snapPoints = useMemo(() => ['70%', '95%'], [])
-
-  // Timer: update elapsed time every 60s
-  useEffect(() => {
-    if (!isOpen) return
-    const interval = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(interval)
-  }, [isOpen])
 
   // Open/close sheet
   useEffect(() => {
@@ -706,10 +704,9 @@ const WaitlistBottomSheet: React.FC = () => {
         onSeat={() => handleSeat(item)}
         onNotify={() => handleNotify(item)}
         onDelete={() => setItemToDelete(item)}
-        now={now}
       />
     ),
-    [expandedId, handleToggle, handleSeat, handleNotify, now]
+    [expandedId, handleToggle, handleSeat, handleNotify]
   )
 
   const keyExtractor = useCallback((item: WaitlistEntry) => item.id, [])

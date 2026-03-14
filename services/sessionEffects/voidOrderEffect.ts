@@ -14,7 +14,6 @@
 
 import type { SideEffectContext } from "@/lib/sessionSideEffects";
 import { InventoryService } from "@/services/inventoryService";
-import { recordVoidedSession, recordTableCleared } from "@/services/tableSessionRealtimeSync";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import {
   getOrderStoreSupabaseClient,
@@ -76,12 +75,6 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
 
     // Sync clear to floor plan store so UI updates immediately
     sessionStore._syncToFloorPlanStore(tableId);
-
-    // Record as voided so polling won't restore it
-    recordVoidedSession(tableId, sessionId);
-
-    // Also record as recently cleared to give backend RPC time to update
-    recordTableCleared(tableId);
 
     console.log(`[voidOrderEffect] Cleared table ${tableId} session ${sessionId}`);
   } else {

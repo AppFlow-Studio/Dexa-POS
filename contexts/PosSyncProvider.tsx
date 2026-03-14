@@ -3,11 +3,6 @@ import { useOrdersQuery, orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import {
-  startTableSessionRealtimeSync,
-  stopTableSessionRealtimeSync,
-  setTableSessionSyncSupabaseClient,
-} from "@/services/tableSessionRealtimeSync";
 import { queryClient } from "@/contexts/TanstackProvider";
 import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
@@ -86,8 +81,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
       setKDSSupabaseClient(supabase);
-      setTableSessionSyncSupabaseClient(supabase);
-
       // Initialize offline sync service (only once)
       if (!offlineSyncInitialized.current) {
         offlineSyncInitialized.current = true;
@@ -156,16 +149,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
     return () => {
       stopStarPrinterHealthCheck();
-    };
-  }, [selectedStore?.id, isKDS]);
-
-  // Table session real-time sync (polling-based, no Supabase Realtime needed)
-  useEffect(() => {
-    if (selectedStore?.id && !isKDS) {
-      startTableSessionRealtimeSync(selectedStore.id);
-    }
-    return () => {
-      stopTableSessionRealtimeSync();
     };
   }, [selectedStore?.id, isKDS]);
 

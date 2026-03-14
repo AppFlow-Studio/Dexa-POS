@@ -119,7 +119,7 @@ const QuickActionButton: React.FC<{
 
 const useTableData = (table: FloorPlanObject) => {
   const getOrder = useOrderStore((s) => s.getOrder);
-  const tables = useFloorPlanStore((s) => s.tables);
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
 
   // Get session order ID for payment calculations — O(1) via getOrder (uses dbOrderIdIndex)
   const sessionOrderId = table.session?.order_id || null;
@@ -197,10 +197,9 @@ const useTableData = (table: FloorPlanObject) => {
     // O(1) lookup via getOrder (checks ordersById + dbOrderIdIndex)
     let order: OrderProfile | undefined = getOrder(sessionOrderId) ?? undefined;
 
-    // Get merged table names for display
-    const groupIds = [table.id, ...mergedIds];
-    const uniqueGroupIds = Array.from(new Set(groupIds));
-    const groupTables = tables.filter((t) => uniqueGroupIds.includes(t.id));
+    // Get merged table names for display — O(1) per lookup via tablesById
+    const uniqueGroupIds = Array.from(new Set([table.id, ...mergedIds]));
+    const groupTables = uniqueGroupIds.map((id) => tablesById[id]).filter(Boolean);
 
     // If order not found in store or is voided, return empty (might need backend fetch)
     if (!order || order.order_status === "void") {
@@ -285,7 +284,7 @@ const useTableData = (table: FloorPlanObject) => {
       server: serverDisplay,
       orders: groupOrders,
     };
-  }, [table, getOrder, tables, orderTotals]);
+  }, [table, getOrder, tablesById, orderTotals]);
 };
 
 const ExpandedView: React.FC<{

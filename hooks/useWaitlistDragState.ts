@@ -22,5 +22,7 @@ export function useWaitlistDragState(count: number): DragCardState[] {
     })
   }
 
-  return slotsRef.current.slice(0, count)
+  // Return the ref array directly (stable reference) — callers use index access,
+  // so returning the same array that may have extra slots beyond `count` is safe.
+  return slotsRef.current
 }

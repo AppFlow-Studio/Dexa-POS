@@ -864,16 +864,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           rotation?: number
         ) => {
           const supabase = getClient()
-          // Optimistic update - sync both tables array and tablesById map
+          // Optimistic update - targeted O(1) tablesById update instead of full rebuild
           set(state => {
-            const newTables = state.tables.map(t =>
-              t.id === tableId
-                ? { ...t, x, y, rotation: rotation ?? t.rotation }
-                : t
-            )
+            const existing = state.tablesById[tableId]
+            if (!existing) return state
+            const updated = { ...existing, x, y, rotation: rotation ?? existing.rotation }
+            const newTables = state.tables.map(t => t.id === tableId ? updated : t)
             return {
               tables: newTables,
-              tablesById: buildTablesById(newTables)
+              tablesById: { ...state.tablesById, [tableId]: updated }
             }
           })
 
@@ -894,14 +893,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         updateTableName: async (tableId: string, name: string) => {
           const supabase = getClient()
-          // Optimistic update - sync both tables array and tablesById map
+          // Optimistic update - targeted O(1) tablesById update instead of full rebuild
           set(state => {
-            const newTables = state.tables.map(t =>
-              t.id === tableId ? { ...t, name } : t
-            )
+            const existing = state.tablesById[tableId]
+            if (!existing) return state
+            const updated = { ...existing, name }
+            const newTables = state.tables.map(t => t.id === tableId ? updated : t)
             return {
               tables: newTables,
-              tablesById: buildTablesById(newTables)
+              tablesById: { ...state.tablesById, [tableId]: updated }
             }
           })
 
@@ -923,14 +923,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           height: number
         ) => {
           const supabase = getClient()
-          // Optimistic update
+          // Optimistic update - targeted O(1) tablesById update instead of full rebuild
           set(state => {
-            const newTables = state.tables.map(t =>
-              t.id === tableId ? { ...t, width, height } : t
-            )
+            const existing = state.tablesById[tableId]
+            if (!existing) return state
+            const updated = { ...existing, width, height }
+            const newTables = state.tables.map(t => t.id === tableId ? updated : t)
             return {
               tables: newTables,
-              tablesById: buildTablesById(newTables)
+              tablesById: { ...state.tablesById, [tableId]: updated }
             }
           })
 
