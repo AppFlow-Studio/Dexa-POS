@@ -200,6 +200,7 @@ let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 // ============================================================================
 
 let isOnline = true;
+let isInitialized = false;
 let pendingOperations: OfflineOperation[] = [];
 let deadLetterQueue: OfflineOperation[] = [];
 let syncInProgress = false;
@@ -282,6 +283,8 @@ export async function initOfflineSyncService(config: {
   // Start network listener
   startNetworkListener();
 
+  isInitialized = true;
+
   // Check initial state
   const state = await NetInfo.fetch();
   handleNetworkChange(state);
@@ -310,6 +313,7 @@ export function destroyOfflineSyncService(): void {
     clearTimeout(timer);
   }
   autoRetryTimers.clear();
+  isInitialized = false;
 }
 
 /**
@@ -397,6 +401,8 @@ function handleNetworkChange(state: NetInfoState): void {
 }
 
 function scheduleSync(): void {
+  if (!isInitialized) return;
+
   // Clear existing timer
   if (debounceTimer) {
     clearTimeout(debounceTimer);
@@ -1304,7 +1310,7 @@ async function processQueue(): Promise<void> {
   }
 
   if (!executeOperation) {
-    console.error("[OfflineSync] No executeOperation handler registered");
+    console.warn("[OfflineSync] executeOperation handler not registered yet, deferring");
     return;
   }
 

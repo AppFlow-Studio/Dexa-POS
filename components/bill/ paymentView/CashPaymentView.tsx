@@ -5,7 +5,7 @@ import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSe
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ScrollView,
     Text,
@@ -87,6 +87,18 @@ const CashPaymentView = () => {
   const tendered = parseFloat(amountTendered) || 0;
   const changeDue = tendered - grandTotal; // Change is after tip
   const isSufficient = tendered >= grandTotal;
+
+  // Freeze displayed values once processing starts to prevent flicker
+  const frozenTotal = useRef(total);
+  const frozenChangeDue = useRef(changeDue);
+  useEffect(() => {
+    if (isProcessing) {
+      frozenTotal.current = total;
+      frozenChangeDue.current = changeDue;
+    }
+  }, [isProcessing]); // Intentionally only depend on isProcessing — capture at transition
+  const displayTotal = isProcessing ? frozenTotal.current : total;
+  const displayChangeDue = isProcessing ? frozenChangeDue.current : changeDue;
 
   // Generate smart bill suggestions based on grand total
   const suggestions = useMemo(() => {
@@ -205,7 +217,7 @@ const CashPaymentView = () => {
               Total Due
             </Text>
             <Text className="text-4xl font-bold text-white">
-              ${total.toFixed(2)}
+              ${displayTotal.toFixed(2)}
             </Text>
           </View>
 
@@ -258,7 +270,7 @@ const CashPaymentView = () => {
           </View>
 
           {/* Grand Total Section - Shows when tip is added */}
-          <View className="p-4 bg-panel border-t border-border">
+          {/* <View className="p-4 bg-panel border-t border-border">
             <View className="flex-row justify-between items-center">
               <Text className="text-gray-400 text-sm">Bill Total</Text>
               <Text className="text-gray-400 text-sm">${total.toFixed(2)}</Text>
@@ -277,7 +289,7 @@ const CashPaymentView = () => {
                 ${grandTotal.toFixed(2)}
               </Text>
             </View>
-          </View>
+          </View> */}
 
           {/* Bottom Section: Change Calculation */}
           <View
@@ -293,7 +305,7 @@ const CashPaymentView = () => {
                 isSufficient ? "text-green-400" : "text-gray-500"
               }`}
             >
-              ${changeDue > 0 ? changeDue.toFixed(2) : "0.00"}
+              ${displayChangeDue > 0 ? displayChangeDue.toFixed(2) : "0.00"}
             </Text>
           </View>
         </View>
