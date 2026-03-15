@@ -54,6 +54,7 @@
       "expo-audio"
     ],
     "experiments": {
+      "reactCompiler": true,
       "typedRoutes": true
     },
     "extra": {

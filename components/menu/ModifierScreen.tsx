@@ -20,7 +20,6 @@ import {
 import { useImmerReducer } from "use-immer";
 import {
   Image,
-  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -514,119 +513,71 @@ const ModifierScreen = () => {
   // gets correct store data on first render — no INITIALIZE effect needed.
 
   // ============================================================================
-  // DRAFT ITEM CREATION (Deferred via microtask for non-blocking UI)
+  // DRAFT ITEM CREATION (Instant via store's open() → _createDraftInOpen)
   // ============================================================================
-
-  // Store current values in ref for stable microtask access
-  const draftCreationRef = useRef({
-    currentItem,
-    categoryId,
-    menuId,
-    getCurrentItemPrice,
-    getCurrentItemCashPrice,
-    addItemToActiveOrder,
-  });
-
-  // Direct assignment — ref is only read inside callbacks/microtasks, safe per React docs
-  draftCreationRef.current = {
-    currentItem,
-    categoryId,
-    menuId,
-    getCurrentItemPrice,
-    getCurrentItemCashPrice,
-    addItemToActiveOrder,
-  };
 
   useEffect(() => {
     if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
 
-    // Defer draft creation until after animations complete (InteractionManager)
-    let cancelled = false;
+    const stableDraftId = `draft_${currentItem.id}`;
 
-    const handle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
+    // Happy path: draft was already created by store's open() action
+    const storeDraftId = useModifierSidebarStore.getState().draftCreatedId;
+    if (storeDraftId) {
+      draftItemIdRef.current = storeDraftId;
+      lastDraftMenuItemIdRef.current = currentItem.id;
+      return;
+    }
 
-      const {
-        currentItem: item,
-        categoryId: catId,
-        menuId: mId,
-        getCurrentItemPrice: getPrice,
-        getCurrentItemCashPrice: getCashPrice,
-        addItemToActiveOrder: addItem,
-      } = draftCreationRef.current;
+    // Fallback: check if draft exists in order (e.g. re-mount scenario)
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+    const existingDraft = activeOrder?.items.find(
+      (i) => i.id === stableDraftId,
+    );
+    if (existingDraft) {
+      draftItemIdRef.current = existingDraft.id;
+      lastDraftMenuItemIdRef.current = currentItem.id;
+      return;
+    }
 
-      if (!item) return;
-
-      // Staleness guard: Verify store still has data for THIS item
-      const currentStoreItemId =
-        useModifierSidebarStore.getState().precomputedForItemId;
-      if (currentStoreItemId !== item.id) {
-        console.warn(
-          "[ModifierScreen] Stale draft creation detected, item changed from",
-          item.id,
-          "to",
-          currentStoreItemId,
-        );
-        return;
-      }
-
-      const { activeOrderId, ordersById } = useOrderStore.getState();
-      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-      const stableDraftId = `draft_${item.id}`;
-
-      // Check if draft already exists
-      const existingStableDraft = activeOrder?.items.find(
-        (i) => i.id === stableDraftId,
-      );
-      if (existingStableDraft) {
-        draftItemIdRef.current = existingStableDraft.id;
-        lastDraftMenuItemIdRef.current = item.id;
-        return;
-      }
-
-      // Check for existing identical item
-      const existingItem = activeOrder?.items.find((i) => {
-        if (i.menuItemId !== item.id) return false;
-        const hasModifiers =
-          i.customizations.modifiers && i.customizations.modifiers.length > 0;
-        const hasNotes =
-          i.customizations.notes && i.customizations.notes.trim() !== "";
-        const hasSent = i.kitchen_status === "sent";
-        return !hasModifiers && !hasNotes && !hasSent;
-      });
-
-      if (!existingItem) {
-        const itemPrice = getPrice(item);
-        const cashPrice = getCashPrice(item);
-        const draftItem = {
-          id: stableDraftId,
-          menuItemId: item.id,
-          name: item.name,
-          quantity: 1,
-          originalPrice: cashPrice || itemPrice,
-          price: itemPrice,
-          unitPrice: currentItem.price,
-          cashPrice: cashPrice || itemPrice,
-          image: item.image,
-          isDraft: true,
-          customizations: { modifiers: [], notes: "" },
-          availableDiscount: item.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
-          addedFromCategoryId: catId || null,
-          addedFromMenuId: mId || null,
-        };
-
-        addItem(draftItem);
-        draftItemIdRef.current = draftItem.id;
-        lastDraftMenuItemIdRef.current = item.id;
-      }
+    // Last resort: create draft synchronously (edge case where open() couldn't create it)
+    const existingItem = activeOrder?.items.find((i) => {
+      if (i.menuItemId !== currentItem.id) return false;
+      const hasModifiers =
+        i.customizations.modifiers && i.customizations.modifiers.length > 0;
+      const hasNotes =
+        i.customizations.notes && i.customizations.notes.trim() !== "";
+      const hasSent = i.kitchen_status === "sent";
+      return !hasModifiers && !hasNotes && !hasSent;
     });
 
-    return () => {
-      cancelled = true;
-      handle.cancel();
-    };
+    if (!existingItem) {
+      const itemPrice = getCurrentItemPrice(currentItem);
+      const cashPrice = getCurrentItemCashPrice(currentItem);
+      const draftItem = {
+        id: stableDraftId,
+        menuItemId: currentItem.id,
+        name: currentItem.name,
+        quantity: 1,
+        originalPrice: cashPrice || itemPrice,
+        price: itemPrice,
+        unitPrice: currentItem.price,
+        cashPrice: cashPrice || itemPrice,
+        image: currentItem.image,
+        isDraft: true,
+        customizations: { modifiers: [], notes: "" },
+        availableDiscount: currentItem.availableDiscount,
+        appliedDiscount: null,
+        paidQuantity: 0,
+        addedFromCategoryId: categoryId || null,
+        addedFromMenuId: menuId || null,
+      };
+
+      addItemToActiveOrder(draftItem);
+      draftItemIdRef.current = draftItem.id;
+      lastDraftMenuItemIdRef.current = currentItem.id;
+    }
   }, [isOpen, currentItem?.id, mode, cartItem]); // Minimal dependencies
 
   // ============================================================================

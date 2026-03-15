@@ -3,13 +3,13 @@ import { useToast } from "@/contexts/ToastContext";
 import { isLocalOnlyStatus } from "@/lib/tableStateMachine";
 import { OrderProfile } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { hasPendingOrderCreation, useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { TableStatus } from "@/types/db-floor-plan-types";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type SessionPhase =
   | "initializing" // Waiting for data
@@ -75,6 +75,8 @@ export function useTableSession(
   const phaseRef = useRef<SessionPhase>(phase);
   const hasAutoCreatedRef = useRef(false);
   const lastSetOrderIdRef = useRef<string | null>(null);
+  const cachedOrderRef = useRef<OrderProfile | null>(null);
+  const syncInFlightRef = useRef<string | null>(null);
   // If we started ready (order was already in store at mount), skip the first
   // auto-session effect run — there is nothing to load.
   const initiallyReadyRef = useRef(phase === "ready");
@@ -98,16 +100,36 @@ export function useTableSession(
   const setActiveTableId = usePaymentStore((s) => s.setActiveTableId);
   const clearActiveTableId = usePaymentStore((s) => s.clearActiveTableId);
 
-  // Reactive order subscription
-  const activeOrder = useOrderStore((state) => {
+  // Reactive order subscription — raw selector (inlined O(1) lookup for narrow subscription)
+  const rawActiveOrder = useOrderStore((state) => {
     if (sessionOrderId) {
-      return state.getOrder(sessionOrderId);
+      const localKey = state.dbOrderIdIndex[sessionOrderId] ?? sessionOrderId;
+      const found = state.ordersById[localKey];
+      if (found) return found;
     }
     if (state.activeOrderId) {
-      return state.ordersById[state.activeOrderId];
+      const active = state.ordersById[state.activeOrderId];
+      // Table-scoped fallback: if active order belongs to this table, use it
+      // even when sessionOrderId doesn't resolve (handles localId → dbUUID transition)
+      if (active?.service_location_id === tableId) return active;
+      return undefined;
     }
     return undefined;
   });
+
+  // Cache last valid order; use as fallback during transitional gaps
+  const activeOrder = useMemo(() => {
+    if (rawActiveOrder) {
+      cachedOrderRef.current = rawActiveOrder;
+      return rawActiveOrder;
+    }
+    // Session expects an order but selector can't resolve it — return cached
+    if (cachedOrderRef.current) {
+      if (cachedOrderRef.current.service_location_id === tableId) return cachedOrderRef.current;
+      if (sessionOrderId && cachedOrderRef.current.db_order_id === sessionOrderId) return cachedOrderRef.current;
+    }
+    return undefined;
+  }, [rawActiveOrder, sessionOrderId, tableId]);
 
   // Set active table ID for payment store
   useEffect(() => {
@@ -131,6 +153,7 @@ export function useTableSession(
   useEffect(() => {
     return () => {
       lastSetOrderIdRef.current = null;
+      cachedOrderRef.current = null;
       setActiveOrder(null);
     };
   }, [tableId, setActiveOrder]);
@@ -248,11 +271,19 @@ export function useTableSession(
           const resolved = orderState.getOrder(sOrderId);
           if (resolved && resolved.id === orderState.activeOrderId) return;
 
+          // Lookup active order from fresh state for subsequent guards
+          const activeOid = orderState.activeOrderId;
+          const activeOrd = activeOid ? orderState.ordersById[activeOid] : undefined;
+
+          // Check if active order's db_order_id already matches session's order_id
+          // (hydrateOrderFromSeat already ran — no need to re-sync)
+          if (activeOrd?.service_location_id === tableId && activeOrd?.db_order_id === sOrderId) {
+            return;
+          }
+
           // Guard: If active order belongs to this table but hasn't received
           // its db_order_id yet, hydrateOrderFromSeat is still in-flight —
           // skip sync to prevent creating a duplicate order
-          const activeOid = orderState.activeOrderId;
-          const activeOrd = activeOid ? orderState.ordersById[activeOid] : undefined;
           if (activeOrd?.service_location_id === tableId && !activeOrd?.db_order_id) {
             return;
           }
@@ -321,6 +352,14 @@ export function useTableSession(
           hasAutoCreatedRef.current = true;
 
           if (getPhase(phaseRef) === "navigating_away") return;
+
+          // Check if seatGuests is already in-flight from the caller (e.g. handleGuestCountSubmit)
+          const orderState3 = useOrderStore.getState();
+          const activeOid3 = orderState3.activeOrderId;
+          if (activeOid3 && hasPendingOrderCreation(activeOid3)) {
+            updatePhase("ready");
+            return;
+          }
 
           updatePhase("creating_session");
           showLoading("Creating session...");
@@ -412,16 +451,23 @@ export function useTableSession(
           return;
         }
 
+        // Deduplicate: skip if we're already syncing this order
+        if (syncInFlightRef.current === sessionOrderId) return;
+        syncInFlightRef.current = sessionOrderId;
+
         updatePhase("loading_session");
         try {
           const localId = await syncOrderFromDatabase(sessionOrderId);
           if (localId && getPhase(phaseRef) !== "navigating_away") {
             setActiveOrder(localId);
           }
+          updatePhase("ready");
         } catch (e) {
           console.error("[useTableSession] Recovery sync failed:", e);
+          updatePhase("ready"); // Allow retry on next dependency change
+        } finally {
+          syncInFlightRef.current = null;
         }
-        updatePhase("ready");
       }, 300);
 
       return () => clearTimeout(timer);

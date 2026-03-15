@@ -3,117 +3,131 @@ import {
   selectIsFullscreen,
   useModifierSidebarStore
 } from "@/stores/useModifierSidebarStore";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
   Dimensions,
-  Easing,
   StyleSheet,
 } from "react-native";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import ModifierScreen from "./ModifierScreen";
+import ModifierScreenSkeleton from "./ModifierScreenSkeleton";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 /**
- * ModifierScreenOverlay - An overlay component that slides down from the top
+ * ModifierScreenOverlay - An overlay component that slides up from the bottom
  *
- * This architectural pattern decouples the modifier screen from MenuSection,
- * preventing MenuSection re-renders when the modifier opens/closes.
+ * PERFORMANCE CRITICAL - SKELETON-FIRST ARCHITECTURE:
+ * - Uses Reanimated v3 for UI-thread animations (no JS thread contention)
+ * - Shows lightweight skeleton during slide animation
+ * - Mounts heavy ModifierScreen only after animation completes
+ * - Eliminates the visual gap between background slide and content paint
  *
- * PERFORMANCE CRITICAL - PRE-MOUNTED ARCHITECTURE:
- * - ALWAYS renders (never unmounts) - eliminates 10-20ms mount overhead
- * - Visibility controlled via translateY/opacity animations
- * - MenuSection never re-renders when modifier opens
- * - FlatList stays mounted (preserves scroll position)
- * - Smooth native-driver animation
- * - Zero coupling between components
- * - Uses granular selectors for minimal re-renders
- *
- * OPTIMIZED:
- * - Easing curves (out cubic open, in cubic close) for smooth transitions
- * - Touch enabled immediately via isOpen (not animation completion)
+ * Animation flow:
+ * 1. Open triggered → skeleton renders instantly, slide animation starts on UI thread
+ * 2. Animation completes → runOnJS sets animationComplete = true
+ * 3. ModifierScreen mounts into fully-positioned container — no jank
  */
 const ModifierScreenOverlay: React.FC = () => {
-  // Use combined selector for single subscription - minimizes re-renders
   const isFullscreen = useModifierSidebarStore(selectIsFullscreen);
-  // OPTIMIZATION: Enable touch immediately when store says open, not when animation completes
   const isOpen = useModifierSidebarStore((s) => s.isOpen);
-  // Session key for ModifierScreen remount — correct initial state on first render, no INITIALIZE effect
   const sessionKey = useModifierSidebarStore((s) =>
     !s.isOpen ? "closed" : `${s.cartItem?.id ?? ""}_${s.menuItem?.id ?? ""}_${s.mode}`
   );
 
-  // Animation values for slide-down effect - START in hidden position
-  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const [animationComplete, setAnimationComplete] = useState(false);
+
+  // Track previous isFullscreen to detect item-switch while already open
+  const prevIsFullscreenRef = useRef(false);
+  const prevSessionKeyRef = useRef(sessionKey);
+
+  // Reanimated shared values
+  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const opacity = useSharedValue(0);
+
+  const setAnimationCompleteIfOpen = useCallback(() => {
+    if (useModifierSidebarStore.getState().isOpen) {
+      setAnimationComplete(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (isFullscreen) {
-      // Stop any in-flight animations before starting new ones
-      slideAnim.stopAnimation();
-      opacityAnim.stopAnimation();
-      // Smooth open: out cubic easing, 100ms
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 100,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 100,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Stop any in-flight animations before starting new ones
-      slideAnim.stopAnimation();
-      opacityAnim.stopAnimation();
-      // Smooth close: in cubic easing, 100ms
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: SCREEN_HEIGHT,
-          duration: 100,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 0,
-          duration: 100,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [isFullscreen, slideAnim, opacityAnim]);
+      const wasAlreadyOpen = prevIsFullscreenRef.current;
+      const sessionChanged = prevSessionKeyRef.current !== sessionKey;
 
-  // Safety reset: force animation values to hidden state after close animation should have completed
+      if (wasAlreadyOpen && sessionChanged) {
+        // Already open, switching items — skip animation, show content immediately
+        setAnimationComplete(true);
+      } else {
+        // Fresh open — show skeleton, animate, then mount content
+        setAnimationComplete(false);
+
+        // Cancel any in-flight close animation and reset to start position
+        cancelAnimation(translateY);
+        cancelAnimation(opacity);
+        translateY.value = SCREEN_HEIGHT;
+        opacity.value = 0;
+
+        const timingConfig = {
+          duration: 120,
+          easing: Easing.out(Easing.cubic),
+        };
+
+        translateY.value = withTiming(0, timingConfig);
+        opacity.value = withTiming(1, timingConfig, (finished) => {
+          if (finished) {
+            runOnJS(setAnimationCompleteIfOpen)();
+          }
+        });
+      }
+    } else {
+      // Close — reset animationComplete, animate out
+      setAnimationComplete(false);
+
+      const timingConfig = {
+        duration: 100,
+        easing: Easing.in(Easing.cubic),
+      };
+
+      translateY.value = withTiming(SCREEN_HEIGHT, timingConfig);
+      opacity.value = withTiming(0, timingConfig);
+    }
+
+    prevIsFullscreenRef.current = isFullscreen;
+    prevSessionKeyRef.current = sessionKey;
+  }, [isFullscreen, sessionKey, translateY, opacity, setAnimationCompleteIfOpen]);
+
+  // Safety reset: force to hidden state after close
   useEffect(() => {
     if (!isOpen) {
       const timer = setTimeout(() => {
-        slideAnim.setValue(SCREEN_HEIGHT);
-        opacityAnim.setValue(0);
-      }, 150); // 150ms > 100ms close animation
+        translateY.value = SCREEN_HEIGHT;
+        opacity.value = 0;
+      }, 150);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, slideAnim, opacityAnim]);
+  }, [isOpen, translateY, opacity]);
 
-  // ALWAYS RENDER - visibility controlled by animation values
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
+
   return (
     <Animated.View
-      style={[
-        styles.overlay,
-        {
-          transform: [{ translateY: slideAnim }],
-          opacity: opacityAnim,
-        },
-      ]}
-      // OPTIMIZATION: Enable touches as soon as store says open (not animation completion)
+      style={[styles.overlay, animatedStyle]}
       pointerEvents={isOpen ? "auto" : "none"}
     >
-      <ModifierScreen key={sessionKey} />
+      {isOpen && !animationComplete && <ModifierScreenSkeleton />}
+      {animationComplete && <ModifierScreen key={sessionKey} />}
     </Animated.View>
   );
 };
@@ -123,7 +137,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.card,
     zIndex: 9999,
-    elevation: 100, // Android shadow/layering
+    elevation: 100,
   },
 });
 

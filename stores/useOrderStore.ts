@@ -1,5 +1,5 @@
 import { getDeviceId } from "@/lib/deviceId";
-import { mmkvStorage } from "@/lib/storage";
+import { getSyncJSON, mmkvStorage, setSyncJSON } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import {
   CartItem,
@@ -348,6 +348,9 @@ const pendingOrderCreations: Map<string, Promise<string | null>> = new Map();
  * This prevents ensureOrderCreated from creating a duplicate backend order
  * while the external creation is still in-flight.
  */
+export const hasPendingOrderCreation = (localOrderId: string): boolean =>
+  pendingOrderCreations.has(localOrderId);
+
 export const registerPendingOrderCreation = (
   localOrderId: string,
   promise: Promise<string | null>,
@@ -364,6 +367,29 @@ export const registerPendingOrderCreation = (
 // Survives the cleanup of pendingOrderCreations and prevents duplicate order
 // creation after the order has been re-keyed in ordersById.
 const localIdToDbOrderId = new Map<string, string>();
+
+const LOCAL_ID_MAP_STORAGE_KEY = "local_id_to_db_order_id";
+
+// Debounced persist for localIdToDbOrderId (secondary fallback, 200ms is fine)
+let _localIdMapFlushTimer: ReturnType<typeof setTimeout> | null = null;
+function persistLocalIdMap(): void {
+  if (_localIdMapFlushTimer) clearTimeout(_localIdMapFlushTimer);
+  _localIdMapFlushTimer = setTimeout(() => {
+    setSyncJSON(LOCAL_ID_MAP_STORAGE_KEY, Object.fromEntries(localIdToDbOrderId));
+  }, 200);
+}
+
+// Load persisted mapping on module init
+try {
+  const stored = getSyncJSON<Record<string, string>>(LOCAL_ID_MAP_STORAGE_KEY);
+  if (stored) {
+    for (const [k, v] of Object.entries(stored)) {
+      localIdToDbOrderId.set(k, v);
+    }
+  }
+} catch (e) {
+  console.warn("[useOrderStore] Failed to load localIdToDbOrderId from storage:", e);
+}
 
 // Resolve the canonical queue key for an order.
 // After re-keying, items queued under the old local ID should chain on the
@@ -2071,6 +2097,10 @@ interface OrderState {
     itemId: string,
     status: "preparing" | "ready" | "served",
   ) => void;
+  batchUpdateItemKitchenStatus: (
+    itemIds: string[],
+    status: "preparing" | "ready" | "served",
+  ) => void;
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => Promise<void>;
@@ -2180,6 +2210,8 @@ interface OrderState {
     localOrderId: string,
     updates: Partial<OrderProfile>,
   ) => void;
+  // Patch an order with partial data (Immer-safe, no O(n) spread)
+  patchOrder: (orderId: string, patch: Partial<OrderProfile>) => void;
   // Retry failed syncs for an order
   retryFailedSyncs: (orderId: string) => Promise<void>;
   // Sync order from database (manual refresh)
@@ -4164,6 +4196,7 @@ export const useOrderStore = create<OrderState>()(
                   // ensureOrderCreated and resolveQueueKey can find the order
                   // even after pendingOrderCreations is cleaned up.
                   localIdToDbOrderId.set(orderId, dbOrderId);
+                  persistLocalIdMap();
 
                   // Migrate the serial addition chain from the old local key
                   // to the new db key so future items join the same chain.
@@ -5010,6 +5043,102 @@ export const useOrderStore = create<OrderState>()(
             // recalculateTotals(activeOrderId);
           },
 
+          batchUpdateItemKitchenStatus: (itemIds, status) => {
+            const { activeOrderId } = get();
+            if (!activeOrderId) return;
+
+            const idSet = new Set(itemIds);
+
+            set((state) => {
+              const order = state.ordersById[activeOrderId];
+              if (!order) return;
+
+              for (const item of order.items) {
+                if (!idSet.has(item.id)) continue;
+                if (
+                  status === "preparing" &&
+                  (!item.kitchen_status || item.kitchen_status === "new")
+                ) {
+                  item.kitchen_status = "preparing";
+                } else if (status === "ready") {
+                  item.kitchen_status = "ready";
+                } else if (status === "served") {
+                  item.kitchen_status = "served";
+                }
+                item.item_status =
+                  status === "preparing"
+                    ? "preparing"
+                    : status === "ready"
+                      ? "ready"
+                      : status === "served"
+                        ? "served"
+                        : item.item_status;
+              }
+
+              // Aggregate order_status for dine-in
+              if (
+                order.order_type === "Dine In" &&
+                order.order_status !== "draft" &&
+                order.service_location_id !== null
+              ) {
+                const allServed =
+                  order.items.length > 0 &&
+                  order.items.every((i) => i.item_status === "served");
+                const allReady =
+                  order.items.length > 0 &&
+                  order.items.every(
+                    (i) =>
+                      i.item_status === "ready" ||
+                      i.item_status === "served",
+                  );
+                const anyPreparing = order.items.some(
+                  (i) => i.item_status === "preparing",
+                );
+
+                if (allServed) order.order_status = "completed";
+                else if (allReady) order.order_status = "ready";
+                else if (anyPreparing) order.order_status = "preparing";
+              }
+            });
+
+            // Inventory depletion for ready/served
+            if (status === "ready" || status === "served") {
+              const order = get().ordersById[activeOrderId];
+              if (order) {
+                for (const item of order.items) {
+                  if (idSet.has(item.id)) {
+                    useInventoryStore.getState().decrementStockFromItem(item);
+                  }
+                }
+              }
+            }
+
+            // Update table session status when all items are served
+            if (status === "served") {
+              const order = get().ordersById[activeOrderId];
+              if (
+                order &&
+                order.items.length > 0 &&
+                order.items.every((i) => i.item_status === "served" || i.item_status === "Served") &&
+                order.service_location_id
+              ) {
+                const tableSessionStore = useTableSessionStore.getState();
+                const session =
+                  tableSessionStore.sessions[order.service_location_id];
+                if (session && session.status === "ordered") {
+                  tableSessionStore
+                    .updateSessionStatus(session.id, "served")
+                    .catch((err) => {
+                      console.error(
+                        "[batchUpdateItemKitchenStatus] Failed to mark table as served:",
+                        err,
+                      );
+                    });
+                }
+              }
+            }
+          },
+
           removeItemFromActiveOrder: (itemId, voidReason) => {
             // console.log('[removeItemFromActiveOrder] itemId', itemId);
             // console.log('[removeItemFromActiveOrder] voidReason', voidReason);
@@ -5271,6 +5400,7 @@ export const useOrderStore = create<OrderState>()(
 
                 // Record persistent localId → dbOrderId mapping
                 localIdToDbOrderId.set(orderId, dbOrderId);
+                persistLocalIdMap();
               };
 
               // Create and track the sync promise - wrapped in queue to serialize additions
@@ -8359,6 +8489,7 @@ export const useOrderStore = create<OrderState>()(
             // Register in persistent mapping so ensureOrderCreated can find
             // the db_order_id even after pendingOrderCreations is cleaned up
             localIdToDbOrderId.set(localOrderId, dbOrderId);
+            persistLocalIdMap();
 
             // If the localOrderId is a temp ID, use rekey pattern
             if (
@@ -8524,6 +8655,14 @@ export const useOrderStore = create<OrderState>()(
             );
           },
 
+          patchOrder: (orderId: string, patch: Partial<OrderProfile>) => {
+            set((state) => {
+              const order = state.ordersById[orderId];
+              if (!order) return;
+              Object.assign(order, patch); // Safe: Immer draft
+            });
+          },
+
           // Retry failed syncs for an order
           retryFailedSyncs: async (orderId: string) => {
             const {
@@ -8637,6 +8776,7 @@ export const useOrderStore = create<OrderState>()(
 
                 // Record persistent localId → dbOrderId mapping
                 localIdToDbOrderId.set(id, dbOrderId);
+                persistLocalIdMap();
               };
 
               // Wrapped in queue to serialize additions during retry
@@ -8725,58 +8865,55 @@ export const useOrderStore = create<OrderState>()(
             );
 
             try {
-              // 1. Fetch order from database
-              const { data: dbOrder, error: orderError } = await supabase
-                .from("orders")
-                .select("*")
-                .eq("id", dbOrderId)
-                .single();
+              // Fetch order, items, payments, and item payments in parallel
+              const [orderResult, itemsResult, paymentsResult, itemPaymentsResult] =
+                await Promise.all([
+                  supabase.from("orders").select("*").eq("id", dbOrderId).single(),
+                  supabase
+                    .from("order_items")
+                    .select("*")
+                    .eq("order_id", dbOrderId)
+                    .eq("is_voided", false),
+                  supabase
+                    .from("order_payments")
+                    .select("*")
+                    .eq("order_id", dbOrderId)
+                    .eq("status", "captured"),
+                  supabase
+                    .from("order_item_payments")
+                    .select("*")
+                    .eq("order_id", dbOrderId),
+                ]);
 
-              if (orderError) {
+              if (orderResult.error) {
                 console.error(
                   "[syncOrderFromDatabase] Order fetch error:",
-                  orderError,
+                  orderResult.error,
                 );
-                throw new Error(orderError.message);
+                throw new Error(orderResult.error.message);
               }
 
+              const dbOrder = orderResult.data;
               if (!dbOrder) {
                 throw new Error("Order not found in database");
               }
 
-              // 2. Fetch order items from database
-              const { data: dbItems, error: itemsError } = await supabase
-                .from("order_items")
-                .select("*")
-                .eq("order_id", dbOrderId)
-                .eq("is_voided", false);
-
-              if (itemsError) {
+              if (itemsResult.error) {
                 console.error(
                   "[syncOrderFromDatabase] Items fetch error:",
-                  itemsError,
+                  itemsResult.error,
                 );
-                throw new Error(itemsError.message);
+                throw new Error(itemsResult.error.message);
               }
 
-              // 3. Fetch payments from database
-              const { data: dbPayments, error: paymentsError } = await supabase
-                .from("order_payments")
-                .select("*")
-                .eq("order_id", dbOrderId)
-                .eq("status", "captured");
+              const dbItems = itemsResult.data;
+              const dbPayments = paymentsResult.data;
+              const dbItemPayments = itemPaymentsResult.data;
 
-              // 4. Fetch items payment allocations from database
-              const { data: dbItemPayments, error: itemPaymentsError } =
-                await supabase
-                  .from("order_item_payments")
-                  .select("*")
-                  .eq("order_id", dbOrderId);
-
-              if (paymentsError) {
+              if (paymentsResult.error) {
                 console.error(
                   "[syncOrderFromDatabase] Payments fetch error:",
-                  paymentsError,
+                  paymentsResult.error,
                 );
                 // Non-fatal - continue without payments
               }
@@ -10066,6 +10203,11 @@ export const useOrderStore = create<OrderState>()(
                   (item) => !item.db_order_item_id && !item.isDraft,
                 );
 
+                // Conflict guard: preserve local status if we have pending changes
+                const hasLocalPending = currentOrder.items.some(
+                  (item) => item.sync_status === "pending" || (!item.db_order_item_id && !item.isDraft),
+                );
+
                 // Build the updated order once to avoid duplication
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
@@ -10086,9 +10228,9 @@ export const useOrderStore = create<OrderState>()(
                   amount_paid: orderData.amount_paid,
                   amount_due: orderData.amount_due,
                   cash_amount_due: orderData.cash_amount_due,
-                  // Status fields
-                  paid_status: paidStatus,
-                  order_status: orderData.status,
+                  // Status fields — preserve local status when items are pending sync
+                  paid_status: hasLocalPending ? currentOrder.paid_status : paidStatus,
+                  order_status: hasLocalPending ? currentOrder.order_status : orderData.status,
                   sync_version: orderData.sync_version,
                   check_status:
                     orderData.check_status || currentOrder.check_status,

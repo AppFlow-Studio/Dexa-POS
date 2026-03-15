@@ -824,6 +824,7 @@ const KitchenDisplayScreen = () => {
   const tickets = useKDSStore((s) => s.tickets);
   const counts = useKDSStore((s) => s.counts);
   const isInitialLoading = useKDSStore((s) => s.isInitialLoading);
+  const hasHydrated = useKDSStore((s) => s._hasHydrated);
   const isFetching = useKDSStore((s) => s.isFetching);
   const fetchTickets = useKDSStore((s) => s.fetchTickets);
   const backgroundFetchTickets = useKDSStore((s) => s._backgroundFetchTickets);
@@ -849,6 +850,10 @@ const KitchenDisplayScreen = () => {
   const prioritizeTicket = useKDSStore((s) => s.prioritizeTicket);
   const toggleRush = useKDSStore((s) => s.toggleRush);
   const markItemDone = useKDSStore((s) => s.markItemDone);
+  const kdsCleanup = useKDSStore((s) => s._cleanup);
+
+  // Cleanup retries + pending actions on unmount
+  useEffect(() => () => kdsCleanup(), [kdsCleanup]);
 
   // Realtime connection status for adaptive polling
   const { orders: ordersChannel } = useLocationRealtime();
@@ -1661,7 +1666,7 @@ const KitchenDisplayScreen = () => {
       )}
 
       {/* ─── Grid: 4 pre-mounted FlatLists stacked ─── */}
-      {!isReady || isInitialLoading ? (
+      {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
       ) : (
         <View style={{ flex: 1, position: "relative" }}>

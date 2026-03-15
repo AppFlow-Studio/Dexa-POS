@@ -206,6 +206,50 @@ let syncInProgress = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeNetInfo: (() => void) | null = null;
 
+// Indexes for O(1) lookups instead of linear scans
+const entityKeyIndex = new Map<string, Set<string>>(); // entityKey -> Set<operationId>
+const localOrderIdIndex = new Map<string, Set<string>>(); // localOrderId -> Set<operationId>
+
+function addToIndex(op: OfflineOperation): void {
+  const ek = op.entityKey ?? generateEntityKey(op);
+  if (ek) {
+    let set = entityKeyIndex.get(ek);
+    if (!set) { set = new Set(); entityKeyIndex.set(ek, set); }
+    set.add(op.id);
+  }
+  if (op.localOrderId) {
+    let set = localOrderIdIndex.get(op.localOrderId);
+    if (!set) { set = new Set(); localOrderIdIndex.set(op.localOrderId, set); }
+    set.add(op.id);
+  }
+}
+
+function removeFromIndex(op: OfflineOperation): void {
+  const ek = op.entityKey ?? generateEntityKey(op);
+  if (ek) {
+    const set = entityKeyIndex.get(ek);
+    if (set) {
+      set.delete(op.id);
+      if (set.size === 0) entityKeyIndex.delete(ek);
+    }
+  }
+  if (op.localOrderId) {
+    const set = localOrderIdIndex.get(op.localOrderId);
+    if (set) {
+      set.delete(op.id);
+      if (set.size === 0) localOrderIdIndex.delete(op.localOrderId);
+    }
+  }
+}
+
+function rebuildIndexes(): void {
+  entityKeyIndex.clear();
+  localOrderIdIndex.clear();
+  for (const op of pendingOperations) {
+    addToIndex(op);
+  }
+}
+
 // Callbacks for store integration
 let onStatusChange: ((isOnline: boolean) => void) | null = null;
 let onQueueChange: ((count: number) => void) | null = null;
@@ -415,17 +459,27 @@ function findCollapseTarget(
     return null;
   }
 
-  // Find the most recent pending operation with the same entity key
-  const candidates = pendingOperations
-    .filter(
-      (op) =>
-        op.entityKey === entityKey &&
-        op.status === "pending" &&
-        collapsibleTypes.includes(op.type)
-    )
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  // Use entityKeyIndex for O(1) lookup instead of scanning all pendingOperations
+  const opIds = entityKeyIndex.get(entityKey);
+  if (!opIds || opIds.size === 0) return null;
 
-  return candidates[0] || null;
+  let best: OfflineOperation | null = null;
+  let bestTime = -1;
+  for (const opId of opIds) {
+    const op = pendingOperations.find((o) => o.id === opId);
+    if (
+      op &&
+      op.status === "pending" &&
+      collapsibleTypes.includes(op.type)
+    ) {
+      const t = new Date(op.timestamp).getTime();
+      if (t > bestTime) {
+        bestTime = t;
+        best = op;
+      }
+    }
+  }
+  return best;
 }
 
 /**
@@ -477,6 +531,7 @@ export async function queueOperation(
   };
 
   pendingOperations.push(operation);
+  addToIndex(operation);
   await saveQueueToStorage();
   onQueueChange?.(getActivePendingCount());
 
@@ -562,6 +617,7 @@ export async function queueOperationBundle(
     };
 
     pendingOperations.push(operation);
+    addToIndex(operation);
     operationIds.push(operation.id);
 
     console.log(
@@ -631,6 +687,8 @@ function getActivePendingCount(): number {
  * Remove an operation from the queue (after success or permanent failure).
  */
 export async function removeOperation(operationId: string): Promise<void> {
+  const removed = pendingOperations.find((op) => op.id === operationId);
+  if (removed) removeFromIndex(removed);
   pendingOperations = pendingOperations.filter((op) => op.id !== operationId);
   await saveQueueToStorage();
   onQueueChange?.(getActivePendingCount());
@@ -925,6 +983,7 @@ export async function retryDeadLetterOperation(operationId: string): Promise<voi
   op.status = "pending";
   op.retryCount = 0;
   pendingOperations.push(op);
+  addToIndex(op);
   await saveQueueToStorage();
   onQueueChange?.(getActivePendingCount());
 
@@ -964,6 +1023,7 @@ export async function pruneExpiredOperations(): Promise<number> {
   });
 
   if (pruned > 0) {
+    rebuildIndexes();
     await saveQueueToStorage();
     onQueueChange?.(getActivePendingCount());
   }
@@ -1061,13 +1121,22 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
   ];
 
   if (typesRequiringOrder.includes(op.type) && op.localOrderId) {
-    // Check if there's a pending create_order for this order
-    const orderCreationPending = pendingOperations.some(
-      (o) =>
-        o.localOrderId === op.localOrderId &&
-        o.type === "create_order" &&
-        (o.status === "pending" || o.status === "processing" || o.status === "blocked")
-    );
+    // Use localOrderIdIndex for O(1) lookup instead of scanning all pendingOperations
+    const siblingIds = localOrderIdIndex.get(op.localOrderId);
+    let orderCreationPending = false;
+    if (siblingIds) {
+      for (const sibId of siblingIds) {
+        const sib = pendingOperations.find((o) => o.id === sibId);
+        if (
+          sib &&
+          sib.type === "create_order" &&
+          (sib.status === "pending" || sib.status === "processing" || sib.status === "blocked")
+        ) {
+          orderCreationPending = true;
+          break;
+        }
+      }
+    }
 
     if (orderCreationPending) {
       console.log(
@@ -1144,15 +1213,44 @@ function getReadyOperations(): OfflineOperation[] {
  */
 async function updateBlockedOperations(): Promise<void> {
   let changed = false;
+  const timedOutOps: OfflineOperation[] = [];
 
   for (const op of pendingOperations) {
     if (op.status === "pending" && !areDependenciesSatisfied(op)) {
       op.status = "blocked";
       changed = true;
-    } else if (op.status === "blocked" && areDependenciesSatisfied(op)) {
-      op.status = "pending";
-      changed = true;
+    } else if (op.status === "blocked") {
+      if (areDependenciesSatisfied(op)) {
+        op.status = "pending";
+        changed = true;
+      } else {
+        // Timeout: if blocked >5min and parent is dead/missing, dead-letter it
+        const BLOCKED_TIMEOUT_MS = 5 * 60 * 1000;
+        const blockedDuration = Date.now() - new Date(op.timestamp).getTime();
+        if (blockedDuration > BLOCKED_TIMEOUT_MS) {
+          const parent = op.dependsOn
+            ? pendingOperations.find((p) => p.id === op.dependsOn)
+            : null;
+          const parentDead = parent && (parent.status === "failed" || parent.status === "discarded");
+          if (parentDead || !parent) {
+            console.log(
+              `[OfflineSync] Blocked operation timed out (${Math.round(blockedDuration / 1000)}s): ${op.type} (${op.id})`
+            );
+            moveToDeadLetter(op);
+            timedOutOps.push(op);
+            changed = true;
+          }
+        }
+      }
     }
+  }
+
+  // Remove timed-out operations from pendingOperations
+  if (timedOutOps.length > 0) {
+    const timedOutIds = new Set(timedOutOps.map((o) => o.id));
+    pendingOperations = pendingOperations.filter((op) => !timedOutIds.has(op.id));
+    // Rebuild indexes after bulk removal
+    rebuildIndexes();
   }
 
   if (changed) {
@@ -1176,6 +1274,7 @@ async function handleOperationFailure(
       `[OfflineSync] ✗ DEAD-LETTERED (${reason}): ${operation.type} (${operation.id})`
     );
     // Remove from active queue and move to dead letter
+    removeFromIndex(operation);
     pendingOperations = pendingOperations.filter((op) => op.id !== operation.id);
     moveToDeadLetter(operation);
     await saveQueueToStorage();
@@ -1339,6 +1438,8 @@ async function loadQueueFromStorage(): Promise<void> {
         pendingOperations.length,
         "operations from storage"
       );
+      // Build indexes for O(1) lookups
+      rebuildIndexes();
     }
 
     // Load dead letter queue
@@ -1357,6 +1458,7 @@ async function loadQueueFromStorage(): Promise<void> {
   } catch (error) {
     console.error("[OfflineSync] Failed to load queue from storage:", error);
     pendingOperations = [];
+    rebuildIndexes(); // Clear indexes when queue is cleared
   }
 }
 

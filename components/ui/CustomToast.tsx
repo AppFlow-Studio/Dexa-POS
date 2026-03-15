@@ -1,4 +1,4 @@
-import { useToast } from "@/contexts/ToastContext";
+import { useToastStore } from "@/stores/useToastStore";
 import { colors } from "@/lib/theme";
 import {
   AlertTriangle,
@@ -26,7 +26,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
   onUndo,
   type = "success",
 }) => {
-  const { hide } = useToast();
+  const hide = useToastStore((s) => s.hide);
 
   const handleUndo = () => {
     if (onUndo) {

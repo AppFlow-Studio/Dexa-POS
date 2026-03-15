@@ -80,6 +80,7 @@ interface ModifierSidebarState {
   itemCashPrice: number; // Cash price for the item in current context
   activeModifierCategory: string | null;
   precomputedForItemId: string | null; // Track which item precomputed values are for (prevents race conditions)
+  draftCreatedId: string | null; // Draft item ID created by open(), null if not created
 
   preWarm: (item: MenuItemType, categoryId?: string, menuId?: string) => void;
   preWarmMany: (items: MenuItemType[], categoryId?: string, menuId?: string) => void;
@@ -257,6 +258,70 @@ function precomputeModifierData(
   };
 }
 
+/**
+ * Create a draft item immediately during open() for instant cart feedback.
+ * Mirrors the logic from ModifierScreen's draft useEffect but runs synchronously in the store.
+ * Returns the draft ID if created, null otherwise.
+ */
+function _createDraftInOpen(
+  sourceItem: MenuItemType,
+  itemPrice: number,
+  itemCashPrice: number,
+  categoryId: string | undefined,
+  menuId: string | undefined,
+): string | null {
+  const { useOrderStore } = require("./useOrderStore");
+  const { activeOrderId, ordersById, addItemToActiveOrder } =
+    useOrderStore.getState();
+
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+  if (!activeOrder) return null;
+
+  const stableDraftId = `draft_${sourceItem.id}`;
+
+  // Check if draft already exists
+  const existingDraft = activeOrder.items.find(
+    (i: any) => i.id === stableDraftId,
+  );
+  if (existingDraft) return existingDraft.id;
+
+  // Check for existing identical unsent item (no modifiers, no notes, not sent)
+  const existingItem = activeOrder.items.find((i: any) => {
+    if (i.menuItemId !== sourceItem.id) return false;
+    const hasModifiers =
+      i.customizations.modifiers && i.customizations.modifiers.length > 0;
+    const hasNotes =
+      i.customizations.notes && i.customizations.notes.trim() !== "";
+    const hasSent = i.kitchen_status === "sent";
+    return !hasModifiers && !hasNotes && !hasSent;
+  });
+
+  if (existingItem) return null;
+
+  const cashPrice = itemCashPrice || itemPrice;
+  const draftItem = {
+    id: stableDraftId,
+    menuItemId: sourceItem.id,
+    name: sourceItem.name,
+    quantity: 1,
+    originalPrice: cashPrice,
+    price: itemPrice,
+    unitPrice: sourceItem.price,
+    cashPrice: cashPrice,
+    image: sourceItem.image,
+    isDraft: true,
+    customizations: { modifiers: [], notes: "" },
+    availableDiscount: sourceItem.availableDiscount,
+    appliedDiscount: null,
+    paidQuantity: 0,
+    addedFromCategoryId: categoryId || null,
+    addedFromMenuId: menuId || null,
+  };
+
+  addItemToActiveOrder(draftItem);
+  return stableDraftId;
+}
+
 export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) => ({
   isOpen: false,
   mode: "add",
@@ -279,6 +344,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
   itemCashPrice: 0,
   activeModifierCategory: null,
   precomputedForItemId: null,
+  draftCreatedId: null,
 
   preWarm: (item, categoryId, menuId) => {
     const existing = getOrEvictCache(item.id);
@@ -353,6 +419,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       // Determine menuItem field: include sourceItem in state if adding from menu or explicitly requested
       const stateMenuItem = (menuItemParam || includeMenuItemInState) ? sourceItem : null;
 
+      // Create draft instantly for "add" mode (menuItem without cartItem)
+      let draftCreatedId: string | null = null;
+      if (menuItemParam && !cartItemParam) {
+        draftCreatedId = _createDraftInOpen(
+          sourceItem, precomputed.itemPrice, precomputed.itemCashPrice,
+          resolvedCatId, resolvedMenuId,
+        );
+      }
+
       set({
         isOpen: true,
         isMenuBlocked: true,
@@ -370,6 +445,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
         activeModifierCategory: precomputed.activeCategory,
         precomputedForItemId: precomputed.forItemId,
         activeEditingItemId: cartItemParam?.id ?? null,
+        draftCreatedId,
       });
     } else if (cartItemParam) {
       // Fallback: no menu item found, use cart item data directly
@@ -434,6 +510,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       itemCashPrice: 0,
       activeModifierCategory: null,
       precomputedForItemId: null,
+      draftCreatedId: null,
     });
   },
 
@@ -487,6 +564,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       itemCashPrice: 0,
       activeModifierCategory: null,
       precomputedForItemId: null,
+      draftCreatedId: null,
     });
   },
 

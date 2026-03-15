@@ -1101,7 +1101,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               ...get().schedulePeriods,
               ...get().weeklySchedules,
             ];
-            const employees = useEmployeeStore.getState().employees;
+            const employees = useEmployeeStore.getState()?.employees || [];
 
             const conflicts: { employeeName: string; date: string }[] = [];
 

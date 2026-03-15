@@ -1,5 +1,5 @@
 import { CartItem, OrderProfile } from "@/lib/types";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -60,7 +60,7 @@ function deriveAggregateStatus(items: CartItem[]): AggregateKitchenStatus {
 }
 
 // --- Sub-Component: CourseGroup with Animations ---
-const CourseGroup: React.FC<CourseGroupProps> = ({
+const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
   courseId,
   items,
   isExpanded,
@@ -101,8 +101,8 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
   const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   const aggregateStatus = useMemo(
-    () => (isSent ? deriveAggregateStatus(items) : null),
-    [isSent, items],
+    () => deriveAggregateStatus(items),
+    [items],
   );
 
   return (
@@ -124,7 +124,7 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
             {isSent && (
               <Text className="text-sm font-semibold text-teal ml-2">Sent</Text>
             )}
-            {isSent && aggregateStatus && (
+            {aggregateStatus && (
               <View className={`ml-2 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}>
                 <Text className={`text-xs font-bold ${BADGE_CONFIG[aggregateStatus].text}`}>
                   {BADGE_CONFIG[aggregateStatus].label}
@@ -137,7 +137,7 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
           </View>
 
           <View className="flex-row items-center gap-2">
-            {!isSent && courseItemCount > 0 && (
+            {!isSent && !aggregateStatus && courseItemCount > 0 && (
               <TouchableOpacity
                 onPress={() => runOnJS(onDoubleTap)(courseId)}
                 className="px-4 py-2 bg-blue-500 rounded-lg flex-row items-center gap-2 border border-blue-400 shadow-lg"
@@ -163,7 +163,7 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
           exiting={FadeOut.duration(150)}
           layout={LinearTransition.duration(200)}
           className="pl-4 gap-y-2 overflow-hidden"
-          style={isSent ? { opacity: 0.5 } : undefined}
+          style={isSent || aggregateStatus ? { opacity: 0.5 } : undefined}
         >
           {items.map((item) => (
             <Animated.View
@@ -171,14 +171,14 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
               layout={LinearTransition.duration(150)}
               className="overflow-hidden"
             >
-              <BillItem item={item} isEditable={!isSent} />
+              <BillItem item={item} isEditable={!isSent && !aggregateStatus} />
             </Animated.View>
           ))}
         </Animated.View>
       )}
     </Animated.View>
   );
-};
+});
 
 // --- Main Component ---
 const CourseAccordion: React.FC<CourseAccordionProps> = ({
@@ -250,14 +250,13 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     }
   }, [currentCourse]);
 
-  const handleToggleCourse = (courseId: number) => {
+  const handleToggleCourse = useCallback((courseId: number) => {
     // Toggle: if already expanded, collapse; otherwise expand this one (collapsing others)
-    const newExpandedCourseId = expandedCourseId === courseId ? null : courseId;
-    setExpandedCourseId(newExpandedCourseId);
+    setExpandedCourseId((prev) => (prev === courseId ? null : courseId));
     if (onSelectCourse) {
-      onSelectCourse(newExpandedCourseId);
+      onSelectCourse(expandedCourseId === courseId ? null : courseId);
     }
-  };
+  }, [onSelectCourse, expandedCourseId]);
 
   if (!activeOrder) {
     return (

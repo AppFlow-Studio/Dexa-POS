@@ -3,7 +3,6 @@ import { immer } from "zustand/middleware/immer";
 import { devtools, persist } from "zustand/middleware";
 import { PTOAccrualEntry } from "@/lib/types";
 import { useStoreSettingsStore } from "./useStoreSettingsStore";
-import { useTimeclockStore } from "./useTimeclockStore";
 
 interface PtoState {
   accrualHistory: Record<string, PTOAccrualEntry[]>;
@@ -23,6 +22,7 @@ export const usePtoStore = create<PtoState>()(
         balances: {},
 
         initializePtoFromHistory: () => {
+          const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
           const shiftHistory = useTimeclockStore.getState().shiftHistory;
           const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate;
 

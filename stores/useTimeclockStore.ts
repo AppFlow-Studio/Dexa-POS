@@ -92,7 +92,7 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
 
   // New action to initialize history
   initializeHistory: () => {
-    const employees = useEmployeeStore.getState().employees;
+    const employees = useEmployeeStore.getState()?.employees || [];
     const processedHistory = processMockHistory(MOCK_WORK_HISTORY, employees);
     set({ shiftHistory: processedHistory });
     console.log("Timeclock history initialized from mock data.");

@@ -230,8 +230,9 @@ export function useRefundMutation() {
         });
       }
 
-      // Cache invalidation
-      queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
+      // Cache invalidation — scoped to list/counts, not individual detail queries
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "list"] });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "filterCounts"] });
       queryClient.invalidateQueries({
         queryKey: ordersQueryKeys.detail(input.dbOrderId),
       });

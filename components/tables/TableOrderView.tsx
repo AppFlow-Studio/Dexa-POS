@@ -19,6 +19,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -27,7 +28,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { ChevronLeft } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { useShallow } from "zustand/react/shallow";
+
 
 interface TableOrderViewProps {
   tableId: string;
@@ -73,17 +74,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const updateItemStatusInActiveOrder = useOrderStore((s) => s.updateItemStatusInActiveOrder);
+  const batchUpdateItemKitchenStatus = useOrderStore((s) => s.batchUpdateItemKitchenStatus);
 
   const syncOrderStatus = useOrderStore((s) => s.syncOrderStatus);
 
-  const { activeOrderId, storeActiveOrderOutstandingTotal, storeActiveOrderTotal } =
-    useOrderStore(
-      useShallow((s) => ({
-        activeOrderId: s.activeOrderId,
-        storeActiveOrderOutstandingTotal: s.activeOrderOutstandingTotal,
-        storeActiveOrderTotal: s.activeOrderTotal,
-      })),
-    );
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const totals = useActiveOrderTotals();
+  const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0;
+  const storeActiveOrderTotal = totals?.total ?? 0;
 
   // --- Bottom sheet refs ---
   const pricingSheetRef = useRef<BottomSheetMethods>(null);
@@ -391,7 +389,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   };
 
   const handleMarkAllReadyForCourse = (itemIds: string[]) => {
-    itemIds.forEach((itemId) => updateItemStatusInActiveOrder(itemId, "ready"));
+    batchUpdateItemKitchenStatus(itemIds, "ready");
     if (activeOrderId && selectedCourseIdForTracker !== null) {
       coursingHook.markCourseServed(activeOrderId, selectedCourseIdForTracker);
     }
@@ -459,10 +457,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       kitchen_status: i.kitchen_status,
     }));
 
-    // Optimistically mark items as preparing
-    itemsInCourse.forEach((i) => {
-      updateItemStatusInActiveOrder(i.id, "preparing");
-    });
+    // Optimistically mark items as preparing (single batched set() call)
+    batchUpdateItemKitchenStatus(
+      itemsInCourse.map((i) => i.id),
+      "preparing",
+    );
+
+    // Mark course as sent IMMEDIATELY (drives CourseGroup UI via isSent prop)
+    coursingHook.markCourseSent(activeOrder.id, course);
 
     // Collect db item IDs for the effect
     const dbItemIds = itemsInCourse
@@ -482,8 +484,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     });
 
     if (result.success) {
-      coursingHook.markCourseSent(activeOrder.id, course);
-
       // Auto-print kitchen tickets for the sent items
       if (autoPrintKitchenTickets && selectedStore) {
         PrinterService.printKitchenTickets(activeOrder, itemsInCourse, selectedStore)
@@ -496,6 +496,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         type: "success",
       });
     } else {
+      // Revert course sent state
+      coursingHook.unmarkCourseSent(activeOrder.id, course);
+
       // Revert item statuses on failure
       const orderStore = useOrderStore.getState();
       const oid = orderStore.activeOrderId;
@@ -587,16 +590,24 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   // --- Memoized course content ---
   const isCurrentCourseSent = useMemo(() => {
     if (!activeOrder?.id) return false;
-    const coursingState = coursingHook.getForOrder(activeOrder.id);
-    const workingCourse = coursingState?.workingCourse ?? 1;
-    return coursingHook.isCourseSent(activeOrder.id, workingCourse);
-  }, [activeOrder?.id, coursingHook.getForOrder, coursingHook.isCourseSent]);
+    return coursingHook.sentCourses[coursingHook.currentCourse] ?? false;
+  }, [activeOrder?.id, coursingHook.sentCourses, coursingHook.currentCourse]);
 
   // --- Render ---
 
   if (!isReady && renderStage === 0) {
     return (
-      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100 }} className="bg-screen">
+      <View style={{ flex: 1 }} className="bg-screen">
+        <TableDetailSkeleton />
+      </View>
+    );
+  }
+
+  // Show skeleton if session has an order but we can't resolve it yet
+  // (prevents "No active order" flash during transitional gaps)
+  if (!activeOrder && session?.order_id) {
+    return (
+      <View style={{ flex: 1 }} className="bg-screen">
         <TableDetailSkeleton />
       </View>
     );
@@ -604,14 +615,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   if (!table) {
     return (
-      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100 }} className="bg-screen flex-1 items-center justify-center">
+      <View style={{ flex: 1 }} className="bg-screen flex-1 items-center justify-center">
         <Text className="text-xl font-bold" style={{ color: colors.danger }}>Table not found!</Text>
       </View>
     );
   }
 
   return (
-    <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100 }} className="bg-screen">
+    <View style={{ flex: 1 }} className="bg-screen">
       {/* Header bar */}
       <View
         style={{ backgroundColor: colors.screen }}

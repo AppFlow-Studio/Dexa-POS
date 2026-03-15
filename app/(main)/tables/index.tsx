@@ -5,7 +5,7 @@ import Sidebar from '@/components/tables/Sidebar'
 import TableContextSheet from '@/components/tables/TableContextSheet'
 import TableLayoutSkeleton from '@/components/tables/TableLayoutSkeleton'
 import TableLayoutView from '@/components/tables/TableLayoutView'
-import TableOrderView from '@/components/tables/TableOrderView'
+import TableOrderModal from '@/components/tables/TableOrderModal'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { useToast } from '@/contexts/ToastContext'
@@ -209,7 +209,7 @@ const TablesScreen = () => {
       }
       setOverlayTableId(tableId)
     },
-    [tables, getOrder, setActiveOrder, router]
+    [tables, getOrder, setActiveOrder]
   )
 
   const handleTableLongPress = useCallback(
@@ -255,8 +255,7 @@ const TablesScreen = () => {
       clearSelection,
       toggleTableSelection,
       syncOrderFromDatabase,
-      setActiveOrder,
-      router
+      setActiveOrder
     ]
   )
 
@@ -441,10 +440,7 @@ const TablesScreen = () => {
     setGuestModalOpen(false)
     clearSelection()
     setMergeMode(false)
-    router.replace({
-      pathname: '/tables/[tableId]',
-      params: { tableId: primaryTableId }
-    })
+    setOverlayTableId(primaryTableId)
 
     // 3. Register pending creation to prevent ensureOrderCreated from duplicating
     let resolveCreation: (dbOrderId: string | null) => void
@@ -767,12 +763,10 @@ const TablesScreen = () => {
         onSubmit={handleGuestCountSubmit}
       />
 
-      {overlayTableId && (
-        <TableOrderView
-          tableId={overlayTableId}
-          onClose={() => setOverlayTableId(null)}
-        />
-      )}
+      <TableOrderModal
+        tableId={overlayTableId}
+        onClose={() => setOverlayTableId(null)}
+      />
 
       {/* Host Station Modal */}
       <Modal

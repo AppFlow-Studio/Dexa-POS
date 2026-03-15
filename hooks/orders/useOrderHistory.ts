@@ -91,9 +91,15 @@ export function useOrderHistory(filters: OrderHistoryFilters) {
       let q = supabase
         .from("orders")
         .select(
-          `*,
-          order_items(*, order_item_modifiers(*)),
-          order_payments(*),
+          `id, display_number, order_number, status, payment_status, order_type,
+          total_amount, card_total, amount_paid, amount_due, tax_amount, discount_amount,
+          cash_amount_due, customer_name, customer_phone, customer_email, customer_id,
+          delivery_address, created_at, updated_at, opened_at, station_id, check_status,
+          merchant_id, location_id, created_by_staff_id, created_by_user_id,
+          assigned_server_id, table_number, seat_number,
+          external_id, order_source, sync_version, sent_to_kitchen_at,
+          order_payments(id, amount, payment_method, refunded_amount, is_voided, tip_amount, status,
+            card_type, card_last_four, is_cash_priced, reference_number, created_at),
           stations(station_name),
           created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
         )
@@ -145,9 +151,9 @@ export function useOrderHistory(filters: OrderHistoryFilters) {
       const { data, error } = await q;
       if (error) throw error;
 
-      // Transform to OrderProfile
+      // Transform to OrderProfile (lightweight query omits order_items for list view)
       const orders: OrderProfile[] = (data ?? []).map((o) => {
-        const normalized = normalizeFetchedOrder(o as FetchedOrderData);
+        const normalized = normalizeFetchedOrder(o as unknown as FetchedOrderData);
         return transformBroadcastToOrder(normalized);
       });
 

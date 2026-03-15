@@ -1,4 +1,4 @@
-import { ToastProps } from "@/contexts/ToastContext";
+import type { ToastProps } from "@/stores/useToastStore";
 import { AnimatePresence } from "moti";
 import React from "react";
 import { View } from "react-native";

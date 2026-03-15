@@ -31,7 +31,8 @@ export function useCloseCheck() {
         message: "Check has been closed successfully",
         type: "success",
       });
-      queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "list"] });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "filterCounts"] });
     },
     onError: (error: Error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -75,7 +76,8 @@ export function useReopenCheck() {
         message: "Check has been reopened",
         type: "success",
       });
-      queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "list"] });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "filterCounts"] });
     },
     onError: (error: Error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -115,7 +117,8 @@ export function useVoidOrder() {
         message: "Order has been voided successfully",
         type: "success",
       });
-      queryClient.invalidateQueries({ queryKey: orderHistoryKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "list"] });
+      queryClient.invalidateQueries({ queryKey: ["orderHistory", "filterCounts"] });
     },
     onError: (error: Error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

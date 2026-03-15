@@ -20,7 +20,9 @@ import {
   persist,
   subscribeWithSelector
 } from 'zustand/middleware'
-import { useTableSessionStore } from './useTableSessionStore'
+// Lazy accessor — breaks circular dependency with useTableSessionStore
+const getTableSessionStore = () =>
+  (require('./useTableSessionStore') as typeof import('./useTableSessionStore')).useTableSessionStore
 
 // Global client reference to avoid direct dependency loops or hook usage outside components
 let _supabaseClient: SupabaseClient | null = null
@@ -676,7 +678,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               })
 
               // Hydrate session store from fresh table data
-              useTableSessionStore
+              getTableSessionStore()
                 .getState()
                 ._patchSessionsFromTables(mergedTables)
 
@@ -819,7 +821,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           })
 
           // Hydrate session store from merged tables
-          useTableSessionStore.getState()._patchSessionsFromTables(mergedTables)
+          getTableSessionStore().getState()._patchSessionsFromTables(mergedTables)
         },
 
         // ====================================================================
@@ -1025,41 +1027,41 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         // Forwarding stubs — session methods now delegate to useTableSessionStore
         seatGuests: async params =>
-          useTableSessionStore.getState().seatGuests(params),
+          getTableSessionStore().getState().seatGuests(params),
 
         updateSessionStatus: async (
           sessionId: string,
           status: TableStatus,
           notes?: string
         ) =>
-          useTableSessionStore
+          getTableSessionStore()
             .getState()
             .updateSessionStatus(sessionId, status, notes),
 
         transferSession: async (sessionId: string, newTableIds: string[]) =>
-          useTableSessionStore
+          getTableSessionStore()
             .getState()
             .transferSession(sessionId, newTableIds),
 
         mergeTable: async (sessionId: string, tableId: string) =>
-          useTableSessionStore.getState().mergeTable(sessionId, tableId),
+          getTableSessionStore().getState().mergeTable(sessionId, tableId),
 
         unmergeTable: async (sessionId: string, tableId: string) =>
-          useTableSessionStore.getState().unmergeTable(sessionId, tableId),
+          getTableSessionStore().getState().unmergeTable(sessionId, tableId),
 
         advanceCourse: async (sessionId: string) =>
-          useTableSessionStore.getState().advanceCourse(sessionId),
+          getTableSessionStore().getState().advanceCourse(sessionId),
 
         linkOrderToSession: async (sessionId: string, orderId: string) =>
-          useTableSessionStore
+          getTableSessionStore()
             .getState()
             .linkOrderToSession(sessionId, orderId),
 
         clearTableSession: async (tableId: string) =>
-          useTableSessionStore.getState().clearTableSession(tableId),
+          getTableSessionStore().getState().clearTableSession(tableId),
 
         finishCleaning: async (tableId: string) =>
-          useTableSessionStore.getState().finishCleaning(tableId),
+          getTableSessionStore().getState().finishCleaning(tableId),
 
         // ====================================================================
         // SELECTION ACTIONS
