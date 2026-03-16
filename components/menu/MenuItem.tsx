@@ -24,15 +24,20 @@ import {
 const styles = StyleSheet.create({
   container: {
     width: "23%",
+    aspectRatio: 1,
     borderRadius: 20,
     marginBottom: 8,
     backgroundColor: colors.panel,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: `${colors.teal}40`,
     padding: 3
   },
   containerDisabled: {
     opacity: 0.5,
+  },
+  containerNoImage: {
+    aspectRatio: undefined,
+    height: 80,
   },
   innerContainer: {
     flexDirection: "column",
@@ -66,16 +71,14 @@ const styles = StyleSheet.create({
   },
   modifierIconContainer: {
     position: "absolute",
-    top: 0,
-    right: 0,
+    top: 6,
+    right: 6,
   },
-  modifierTriangle: {
-    width: 0,
-    height: 0,
-    borderTopWidth: 14,
-    borderTopColor: `${colors.info}8C`,
-    borderLeftWidth: 14,
-    borderLeftColor: "transparent",
+  modifierDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.teal,
   },
   divider: {
     height: 1,
@@ -172,10 +175,6 @@ const PlaceholderIcon = React.memo(() => (
 ));
 PlaceholderIcon.displayName = "PlaceholderIcon";
 
-const ModifierTriangle = React.memo(() => (
-  <View style={styles.modifierTriangle} />
-));
-ModifierTriangle.displayName = "ModifierTriangle";
 
 // OPTIMIZED: Memoized stock status component
 const StockStatus = React.memo(
@@ -326,23 +325,17 @@ const MenuItem: React.FC<MenuItemProps> = ({
       disabled={isDisabled}
       onPressIn={handlePressIn}
       onPress={handlePress}
-      style={[styles.container, isDisabled && styles.containerDisabled]}
+      style={[styles.container, isDisabled && styles.containerDisabled, (!showMenuImages || !imageSource) && styles.containerNoImage]}
     >
       <View style={styles.innerContainer}>
         {hasModifiers && (
           <View style={styles.modifierIconContainer}>
-            <ModifierTriangle />
+            <View style={styles.modifierDot} />
           </View>
         )}
-        {showMenuImages && (
+        {showMenuImages && imageSource && (
           <View style={styles.imageContainer}>
-            {imageSource ? (
-              <Image source={imageSource} style={styles.image} />
-            ) : (
-              <View style={styles.placeholderContainer}>
-                <PlaceholderIcon />
-              </View>
-            )}
+            <Image source={imageSource} style={styles.image} />
           </View>
         )}
         {/* <View style={styles.divider} /> */}

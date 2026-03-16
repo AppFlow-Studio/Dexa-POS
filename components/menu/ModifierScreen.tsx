@@ -65,7 +65,7 @@ const CategoryTab = memo(
         isActive
           ? { backgroundColor: colors.teal + "33", borderColor: colors.teal }
           : hasSelection
-            ? { backgroundColor: colors.success + "1A", borderColor: colors.success }
+            ? { backgroundColor: colors.teal + "1A", borderColor: colors.teal }
             : undefined
       }
     >
@@ -74,7 +74,7 @@ const CategoryTab = memo(
           {category.name}
         </Text>
         {hasSelection && (
-          <Check color={colors.success} size={20} />
+          <Check color={colors.teal} size={20} />
         )}
       </View>
       {category.type === "required" ? (
@@ -117,7 +117,7 @@ const ModifierOption = memo(
       className="p-4 rounded-xl border-2 min-w-[140px] max-w-[220px] flex-1 items-center"
       style={
         isSelected
-          ? { backgroundColor: colors.success + "26", borderColor: colors.success }
+          ? { backgroundColor: colors.teal + "26", borderColor: colors.teal }
           : isUnavailable
             ? { backgroundColor: colors.panel, borderColor: colors.border, opacity: 0.5 }
             : { backgroundColor: colors.card, borderColor: colors.border }
@@ -125,7 +125,7 @@ const ModifierOption = memo(
     >
       {isSelected && (
         <View className="absolute top-2 right-2">
-          <CheckCircle2 color={colors.success} size={20} />
+          <CheckCircle2 color={colors.teal} size={20} />
         </View>
       )}
       <Text

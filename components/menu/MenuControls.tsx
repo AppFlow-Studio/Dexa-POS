@@ -106,18 +106,18 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 <TouchableOpacity
                   key={cat.id || tab} // Use ID if available
                   onPress={() => handleCategoryPress(tab, isAvailable)}
-                  className={`py-2 px-4 rounded-full flex-row items-center gap-2 ${
+                  className={`py-2 px-4 rounded-full flex-row items-center gap-2 border ${
                     activeCategory === tab
-                      ? "bg-card font-semibold"
+                      ? "bg-teal/10 border-teal font-semibold"
                       : !isAvailable
-                      ? "bg-gray-700 opacity-60"
-                      : "bg-panel"
+                      ? "bg-gray-700 border-transparent opacity-60"
+                      : "bg-panel border-transparent"
                   }`}
                 >
                   <Text
                     className={` text-lg ${
                       activeCategory === tab
-                        ? "text-blue-400"
+                        ? "text-teal"
                         : !isAvailable
                         ? "text-gray-400"
                         : "text-gray-200"

@@ -1566,11 +1566,12 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           const currentOrder = Object.values(
             useOrderStore.getState().ordersById,
           ).find((o) => o.db_order_id === resolvedOrderId);
+          const currentStatus = currentOrder?.order_status;
           const backendStatus =
-            currentOrder?.order_status === "draft" ||
-            currentOrder?.order_status === "sent_to_kitchen"
-              ? "sent_to_kitchen"
-              : "preparing";
+            currentStatus === "draft" ? "sent_to_kitchen"
+            : currentStatus === "sent_to_kitchen" ? "sent_to_kitchen"
+            : currentStatus === "preparing" ? "preparing"
+            : "preparing";
 
           const { error: statusError } = await OrderService.updateOrderStatus(
             _supabaseClient,

@@ -255,7 +255,7 @@ const OrderProcessing = () => {
           </View>
         )}
 
-        <View className="flex-1 bg-screen">
+        <View className="flex-1 bg-screen ml-4">
           {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
           {renderStage >= 2 ? (
             <MenuSection
