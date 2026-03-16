@@ -525,7 +525,7 @@ const CardPaymentView = () => {
                       onPress={() => handleTipPreset(percent)}
                       className={`flex-1 py-3 rounded-xl border ${
                         selectedTipPreset === percent
-                          ? "bg-blue-600 border-blue-500"
+                          ? "bg-teal/20 border-teal"
                           : "bg-surface border-border"
                       }`}
                     >
@@ -541,7 +541,7 @@ const CardPaymentView = () => {
                       <Text
                         className={`text-center text-xs mt-1 ${
                           selectedTipPreset === percent
-                            ? "text-blue-200"
+                            ? "text-teal"
                             : "text-gray-500"
                         }`}
                       >
@@ -584,8 +584,8 @@ const CardPaymentView = () => {
             <View className="mb-8">
               {status === "processing" && (
                 <Animated.View entering={FadeIn} className="items-center">
-                  <View className="w-24 h-24 bg-blue-600/10 rounded-full items-center justify-center mb-4 border-2 border-blue-500/20">
-                    <ActivityIndicator size="large" color={colors.info} />
+                  <View className="w-24 h-24 bg-teal/10 rounded-full items-center justify-center mb-4 border-2 border-teal/20">
+                    <ActivityIndicator size="large" color={colors.teal} />
                   </View>
                   <View className="flex-row items-center gap-2 bg-surface px-4 py-2 rounded-full border border-border">
                     <Wifi size={16} color={colors.success} />
@@ -694,7 +694,7 @@ const CardPaymentView = () => {
               disabled={!terminalReady}
               className={`w-full py-4 rounded-xl mb-4 items-center ${
                 terminalReady
-                  ? "bg-blue-600 active:bg-blue-700"
+                  ? "bg-teal active:bg-teal/80"
                   : "bg-gray-600 opacity-50"
               }`}
             >

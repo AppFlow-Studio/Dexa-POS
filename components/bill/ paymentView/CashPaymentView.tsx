@@ -250,7 +250,7 @@ const CashPaymentView = () => {
                 onPress={handleSelectExact}
                 className="flex-grow bg-surface border border-border py-3 px-4 rounded-lg active:bg-surface"
               >
-                <Text className="text-blue-400 font-bold text-center">
+                <Text className="text-teal font-bold text-center">
                   Exact
                 </Text>
               </TouchableOpacity>
@@ -329,7 +329,7 @@ const CashPaymentView = () => {
             className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-sm
               ${
                 (isSufficient || total === 0) && !isProcessing
-                  ? "bg-blue-600 active:bg-blue-700"
+                  ? "bg-teal active:bg-teal/80"
                   : "bg-surface border border-border"
               }`}
           >

@@ -34,8 +34,8 @@ const CardPaymentOptions = () => {
       >
         {/* Header Section */}
         <View className="mb-8 mt-2 items-center">
-          <View className="w-16 h-16 bg-blue-900/20 rounded-full items-center justify-center mb-4">
-            <CreditCard size={32} color={colors.info} />
+          <View className="w-16 h-16 bg-teal/10 rounded-full items-center justify-center mb-4">
+            <CreditCard size={32} color={colors.teal} />
           </View>
           <Text className="text-2xl font-bold text-white mb-2">
             Card Payment
@@ -53,8 +53,8 @@ const CardPaymentOptions = () => {
             activeOpacity={0.7}
             className="flex-row items-center p-5 rounded-2xl bg-surface border border-border active:bg-surface"
           >
-            <View className="w-12 h-12 rounded-xl bg-blue-600/10 items-center justify-center mr-4">
-              <CreditCard size={24} color={colors.info} />
+            <View className="w-12 h-12 rounded-xl bg-teal/10 items-center justify-center mr-4">
+              <CreditCard size={24} color={colors.teal} />
             </View>
             <View className="flex-1">
               <Text className="text-lg font-bold text-white mb-1">

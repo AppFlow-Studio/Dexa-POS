@@ -109,8 +109,8 @@ const SplitEvenlyView = () => {
         {/* LEFT: Controls (Input) */}
         <View className="flex-1 bg-surface rounded-3xl border border-border justify-center items-center">
           <View className="items-center">
-            <View className="w-16 h-16 bg-blue-900/20 rounded-full items-center justify-center mb-6">
-              <Users size={32} color={colors.info} />
+            <View className="w-16 h-16 bg-teal/10 rounded-full items-center justify-center mb-6">
+              <Users size={32} color={colors.teal} />
             </View>
             <Text className="text-xl font-semibold text-gray-300 mb-8">
               Number of People
@@ -186,12 +186,12 @@ const SplitEvenlyView = () => {
                 {/* Card Payment Option */}
                 <View className="flex-row justify-between items-center py-3 px-4 bg-panel rounded-xl mb-2 border border-border">
                   <View className="flex-row items-center">
-                    <CreditCard size={20} color={colors.info} />
+                    <CreditCard size={20} color={colors.teal} />
                     <Text className="text-gray-300 font-medium ml-3">
                       Card Payment
                     </Text>
                   </View>
-                  <Text className="text-2xl font-bold text-blue-400">
+                  <Text className="text-2xl font-bold text-teal">
                     ${cardAmountPerPerson.toFixed(2)}
                   </Text>
                 </View>
@@ -227,7 +227,7 @@ const SplitEvenlyView = () => {
           {/* Action Button */}
           <TouchableOpacity
             onPress={handleConfirmSplit}
-            className="w-full py-5 bg-blue-600 rounded-2xl flex-row items-center justify-center shadow-lg shadow-blue-900/20 active:bg-blue-700"
+            className="w-full py-5 bg-teal rounded-2xl flex-row items-center justify-center shadow-lg shadow-teal/20 active:bg-teal/80"
           >
             <Check size={24} color="white" className="mr-3" />
             <Text className="font-bold text-xl text-white">

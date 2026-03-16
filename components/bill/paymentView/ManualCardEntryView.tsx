@@ -444,7 +444,7 @@ const ManualCardEntryView = () => {
                       onPress={() => handleTipPreset(percent)}
                       className={`flex-1 py-2 rounded-xl border ${
                         selectedTipPreset === percent
-                          ? "bg-blue-600 border-blue-500"
+                          ? "bg-teal/20 border-teal"
                           : "bg-surface border-border"
                       }`}
                     >
@@ -460,7 +460,7 @@ const ManualCardEntryView = () => {
                       <Text
                         className={`text-center text-xs mt-1 ${
                           selectedTipPreset === percent
-                            ? "text-blue-200"
+                            ? "text-teal"
                             : "text-gray-500"
                         }`}
                       >
@@ -503,19 +503,19 @@ const ManualCardEntryView = () => {
                 <TouchableOpacity
                   onPress={handleProcessPayment}
                   disabled={status === "processing"}
-                  className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-lg shadow-blue-900/20 
+                  className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-lg shadow-teal/20
                                 ${
                                   status === "processing"
-                                    ? "bg-blue-900"
-                                    : "bg-blue-600 active:bg-blue-700"
+                                    ? "bg-teal/30"
+                                    : "bg-teal active:bg-teal/80"
                                 }`}
                 >
                   {status === "processing" ? (
-                    <Text className="text-blue-200 font-bold text-lg">
+                    <Text className="text-teal font-bold text-lg">
                       Processing...
                     </Text>
                   ) : (
-                    <Text className="text-white font-bold text-lg">
+                    <Text className="text-white font-bold text-lg" >
                       Pay ${grandTotal.toFixed(2)}
                     </Text>
                   )}

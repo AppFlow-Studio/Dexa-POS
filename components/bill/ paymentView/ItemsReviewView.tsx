@@ -83,7 +83,7 @@ const ItemsReviewView = () => {
               else if (paymentMethod === "Split") setView("split");
               else setView("cash");
             }}
-            className="flex-1 py-3 bg-blue-600 rounded-xl items-center"
+            className="flex-1 py-3 bg-teal rounded-xl items-center"
           >
             <Text className="text-lg font-bold text-white text-center">
               Continue

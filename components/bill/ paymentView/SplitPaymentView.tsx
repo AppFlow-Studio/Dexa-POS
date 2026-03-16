@@ -286,13 +286,13 @@ const SplitPaymentView = () => {
                   onPress={() => setNumberOfPeople(num)}
                   className={`w-14 h-14 rounded-lg border items-center justify-center ${
                     numberOfPeople === num
-                      ? "border-blue-500 bg-blue-900/30"
+                      ? "border-teal bg-teal/10"
                       : "border-gray-600"
                   }`}
                 >
                   <Text
                     className={`text-xl font-semibold ${
-                      numberOfPeople === num ? "text-blue-400" : "text-gray-300"
+                      numberOfPeople === num ? "text-teal" : "text-gray-300"
                     }`}
                   >
                     {num}
@@ -346,7 +346,7 @@ const SplitPaymentView = () => {
                   className="p-3 bg-panel border border-gray-700 rounded-lg"
                 >
                   <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-xl font-bold text-blue-400 mb-2">
+                    <Text className="text-xl font-bold text-teal mb-2">
                       Split {split.id} - ${split.amount.toFixed(2)}
                     </Text>
                     {splits.length > 1 && (
@@ -399,7 +399,7 @@ const SplitPaymentView = () => {
                 key={split.id}
                 className="flex-row items-center justify-between p-3 bg-panel border border-gray-700 rounded-lg"
               >
-                <Text className="text-xl font-bold text-blue-400 w-24">
+                <Text className="text-xl font-bold text-teal w-24">
                   Split {index + 1}
                 </Text>
                 <View className="flex-1 flex-row items-center bg-surface rounded-md px-2 border border-gray-600">
@@ -486,13 +486,13 @@ const SplitPaymentView = () => {
                     onPress={() => setSplitOption(opt)}
                     className={`flex-1 py-3 rounded-xl border ${
                       isSelected
-                        ? "border-blue-500 bg-blue-900/30"
+                        ? "border-teal bg-teal/10"
                         : "border-gray-600"
                     }`}
                   >
                     <Text
                       className={`text-lg font-semibold text-center ${
-                        isSelected ? "text-blue-400" : "text-gray-300"
+                        isSelected ? "text-teal" : "text-gray-300"
                       }`}
                     >
                       {opt}
@@ -525,7 +525,7 @@ const SplitPaymentView = () => {
                     onPress={() => handleSetPaymentType(split.id, "Card")}
                     className={`py-2 px-4 rounded-lg border ${
                       split.paymentType === "Card"
-                        ? "border-blue-500 bg-blue-600"
+                        ? "border-teal bg-teal"
                         : "border-gray-600"
                     }`}
                   >
@@ -543,7 +543,7 @@ const SplitPaymentView = () => {
                     onPress={() => handleSetPaymentType(split.id, "Cash")}
                     className={`py-2 px-4 rounded-lg border ${
                       split.paymentType === "Cash"
-                        ? "border-blue-500 bg-blue-600"
+                        ? "border-teal bg-teal"
                         : "border-gray-600"
                     }`}
                   >
@@ -598,7 +598,7 @@ const SplitPaymentView = () => {
               className={`flex-1 py-3 rounded-xl items-center ${
                 Math.abs(remainingBalance) > 0.01
                   ? "bg-gray-500"
-                  : "bg-blue-600"
+                  : "bg-teal"
               }`}
             >
               <Text className="text-lg font-bold text-white">

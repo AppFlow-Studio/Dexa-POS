@@ -350,7 +350,7 @@ const SplitByItemView = () => {
                 onPress={() => setActiveSplitId(split.id)}
                 className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${
                   isActive
-                    ? "bg-blue-600 border-blue-500"
+                    ? "bg-teal/20 border-teal"
                     : "bg-surface border-border"
                 }`}
               >
@@ -405,10 +405,10 @@ const SplitByItemView = () => {
               {/* Card Payment Option */}
               <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-panel rounded-xl border border-border">
                 <View className="flex-row items-center">
-                  <CreditCard size={16} color={colors.info} />
+                  <CreditCard size={16} color={colors.teal} />
                   <Text className="text-gray-400 text-xs ml-2">Card</Text>
                 </View>
-                <Text className="text-lg font-bold text-blue-400">
+                <Text className="text-lg font-bold text-teal">
                   ${activeSplitTotals.total.toFixed(2)}
                 </Text>
               </View>
@@ -450,11 +450,12 @@ const SplitByItemView = () => {
                 key={item.id}
                 className={`flex-row justify-between items-center p-4 border-b border-border ${
                   isSelected
-                    ? "bg-[#1e3a8a] border-[#2563eb]"
+                    ? ""
                     : isFullyAssignedToOthers
                       ? "bg-panel opacity-40"
                       : "bg-surface"
                 }`}
+                style={isSelected ? { backgroundColor: colors.teal + "20", borderColor: colors.teal } : undefined}
               >
                 {/* Item Info */}
                 <View className="flex-1">
@@ -471,7 +472,7 @@ const SplitByItemView = () => {
                   </Text>
                   <Text
                     className={`text-sm mt-1 ${
-                      isSelected ? "text-blue-200" : "text-gray-400"
+                      isSelected ? "text-teal" : "text-gray-400"
                     }`}
                   >
                     ${item.price.toFixed(2)}
@@ -502,7 +503,7 @@ const SplitByItemView = () => {
                       {/* Quantity Badge */}
                       <View
                         className={`min-w-[36px] px-2 py-1 rounded-md items-center ${
-                          isSelected ? "bg-blue-600" : "bg-surface"
+                          isSelected ? "bg-teal" : "bg-surface"
                         }`}
                       >
                         <Text
@@ -531,7 +532,7 @@ const SplitByItemView = () => {
 
                   {/* Status Text */}
                   {item.qtyRemaining > 0 && !isFullyAssignedToOthers && (
-                    <Text className="text-blue-400 text-xs font-medium mt-1">
+                    <Text className="text-teal text-xs font-medium mt-1">
                       {item.qtyRemaining} left
                     </Text>
                   )}
@@ -565,7 +566,7 @@ const SplitByItemView = () => {
           disabled={!isAllAssigned}
           className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${
             isAllAssigned
-              ? "bg-blue-600 active:bg-blue-700"
+              ? "bg-teal active:bg-teal/80"
               : "bg-surface opacity-80"
           }`}
         >

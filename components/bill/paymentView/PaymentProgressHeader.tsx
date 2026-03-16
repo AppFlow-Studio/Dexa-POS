@@ -174,17 +174,17 @@ const PaymentProgressHeader: React.FC = () => {
   return (
     <View className="w-full px-6 py-3 bg-panel border-b border-border">
       <View className="flex-row justify-between items-center mb-2">
-        <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest">
+        <Text className="text-gray-400 text-xs font-bold uppercase tracking-widest" numberOfLines={1}>
           {progressLabel}
         </Text>
-        <Text className="text-blue-400 text-xs font-bold">
+        <Text className="text-teal text-xs font-bold ml-2">
           {Math.round(targetProgress)}%
         </Text>
       </View>
 
       <View className="h-1.5 w-full bg-surface rounded-full overflow-hidden">
         <Animated.View
-          className="h-full bg-blue-600 rounded-full"
+          className="h-full bg-teal rounded-full"
           style={animatedStyle}
         />
       </View>

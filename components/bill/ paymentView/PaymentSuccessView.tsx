@@ -294,7 +294,7 @@ const PaymentSuccessView = () => {
           {/* Primary Action */}
           <TouchableOpacity
             onPress={handleDone}
-            className="w-full py-4 bg-blue-600 rounded-xl items-center shadow-lg shadow-blue-900/20 active:bg-blue-700"
+            className="w-full py-4 bg-teal rounded-xl items-center shadow-lg shadow-teal/20 active:bg-teal/80"
           >
             <Text className="text-white font-bold text-xl">
               {activeOrder?.order_type === "dine_in" || activeOrder?.order_type == 'Dine In'

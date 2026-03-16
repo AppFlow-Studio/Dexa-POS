@@ -123,7 +123,7 @@ const CustomAmountView = () => {
             {/* Allocated */}
             <View className="flex-row justify-between mb-4 pb-4 border-b border-border">
               <Text className="text-gray-400 text-lg">Allocated</Text>
-              <Text className="text-blue-400 font-bold text-lg">
+              <Text className="text-teal font-bold text-lg">
                 ${totalAllocated.toFixed(2)}
               </Text>
             </View>
@@ -172,7 +172,7 @@ const CustomAmountView = () => {
               onPress={handleProceed}
               disabled={!canProceed}
               className={`w-full py-4 rounded-xl flex-row items-center justify-center shadow-lg
-                        ${canProceed ? "bg-blue-600 shadow-blue-900/20 active:bg-blue-700" : "bg-surface opacity-80"}`}
+                        ${canProceed ? "bg-teal shadow-teal/20 active:bg-teal/80" : "bg-surface opacity-80"}`}
             >
               {canProceed ? (
                 <Check size={20} color="white" className="mr-2" />
@@ -227,9 +227,9 @@ const CustomAmountView = () => {
                   {remaining > 0 && (
                     <TouchableOpacity
                       onPress={() => handleFillRemaining(split.id)}
-                      className="bg-blue-900/30 px-3 py-2 rounded-lg border border-blue-500/30"
+                      className="bg-teal/10 px-3 py-2 rounded-lg border border-teal/30"
                     >
-                      <Text className="text-blue-400 text-xs font-bold">
+                      <Text className="text-teal text-xs font-bold">
                         Fill
                       </Text>
                     </TouchableOpacity>
@@ -269,7 +269,7 @@ const CustomAmountView = () => {
                 <Text className="text-gray-500">No guests added.</Text>
                 <TouchableOpacity
                   onPress={handleAddGuest}
-                  className="mt-4 bg-blue-600 px-6 py-3 rounded-xl"
+                  className="mt-4 bg-teal px-6 py-3 rounded-xl"
                 >
                   <Text className="text-white font-bold">Add Guest</Text>
                 </TouchableOpacity>

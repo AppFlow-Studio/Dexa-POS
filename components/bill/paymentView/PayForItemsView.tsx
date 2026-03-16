@@ -223,9 +223,9 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(({
                 {onPrint && (
                     <TouchableOpacity
                         onPress={onPrint}
-                        className="px-3 py-2 bg-blue-600/20 rounded-lg"
+                        className="px-3 py-2 bg-teal/20 rounded-lg"
                     >
-                        <FileText size={16} color={colors.info} />
+                        <FileText size={16} color={colors.teal} />
                     </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -534,9 +534,9 @@ const PayForItemsView: React.FC = () => {
                         <View className="flex-row gap-2">
                             <TouchableOpacity
                                 onPress={handleSelectAll}
-                                className="px-2 py-1 bg-blue-600/20 rounded"
+                                className="px-2 py-1 bg-teal/20 rounded"
                             >
-                                <Text className="text-blue-400 text-xs font-bold">ALL</Text>
+                                <Text className="text-teal text-xs font-bold">ALL</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleClearSelection}
@@ -566,8 +566,9 @@ const PayForItemsView: React.FC = () => {
                                 return (
                                     <View
                                         key={item.id}
-                                        className={`flex-row items-center p-3 border-b border-border ${isSelected ? "bg-blue-900/30" : "bg-transparent"
+                                        className={`flex-row items-center p-3 border-b border-border ${isSelected ? "" : "bg-transparent"
                                             }`}
+                                        style={isSelected ? { backgroundColor: colors.teal + "20", borderColor: colors.teal } : undefined}
                                     >
                                         {/* Item Info */}
                                         <View className="flex-1">
@@ -596,7 +597,7 @@ const PayForItemsView: React.FC = () => {
                                             </TouchableOpacity>
 
                                             <View
-                                                className={`min-w-[36px] px-2 py-1 rounded-md items-center ${isSelected ? "bg-blue-600" : "bg-surface"
+                                                className={`min-w-[36px] px-2 py-1 rounded-md items-center ${isSelected ? "bg-teal" : "bg-surface"
                                                     }`}
                                             >
                                                 <Text
@@ -706,16 +707,16 @@ const PayForItemsView: React.FC = () => {
                                     <TouchableOpacity
                                         onPress={() => setPaymentMethod("card")}
                                         className={`flex-1 p-3 rounded-lg border ${paymentMethod === "card"
-                                            ? "bg-blue-600/20 border-blue-500"
+                                            ? "bg-teal/20 border-teal"
                                             : "bg-surface border-border"
                                             }`}
                                     >
                                         <View className="flex-row items-center justify-between">
                                             <View className="flex-row items-center">
-                                                <CreditCard size={16} color={colors.info} />
+                                                <CreditCard size={16} color={colors.teal} />
                                                 <Text className="text-gray-400 text-xs ml-2">Card</Text>
                                             </View>
-                                            <Text className="text-blue-400 font-bold">
+                                            <Text className="text-teal font-bold">
                                                 ${selectedCardTotals.total.toFixed(2)}
                                             </Text>
                                         </View>

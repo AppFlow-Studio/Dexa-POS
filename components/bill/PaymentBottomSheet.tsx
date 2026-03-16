@@ -126,9 +126,7 @@ const PaymentBottomSheet: React.FC = () => {
               </View>
 
               {/* Progress Header */}
-              <View className="h-10 bg-gray-700 items-center justify-center">
-                <PaymentProgressHeader />
-              </View>
+              <PaymentProgressHeader />
 
               {/* Content Wrapper */}
               <View style={styles.content}>{renderContent()}</View>

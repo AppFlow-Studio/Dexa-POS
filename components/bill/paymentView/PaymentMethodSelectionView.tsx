@@ -114,7 +114,7 @@ const PaymentMethodSelectionView: React.FC = () => {
                   flex-row items-center p-5 rounded-2xl border-2
                   ${
                     isSelected
-                      ? "border-blue-500 bg-[#252b36]"
+                      ? "border-teal bg-[#252b36]"
                       : "border-border bg-surface"
                   }
                 `}
@@ -123,7 +123,7 @@ const PaymentMethodSelectionView: React.FC = () => {
                 <View
                   className={`
                     w-12 h-12 rounded-xl items-center justify-center mr-4
-                    ${isSelected ? "bg-blue-600" : "bg-surface"}
+                    ${isSelected ? "bg-teal/20" : "bg-surface"}
                   `}
                 >
                   <Icon
@@ -144,7 +144,7 @@ const PaymentMethodSelectionView: React.FC = () => {
                   </Text>
                   <Text
                     className={`text-sm ${
-                      isSelected ? "text-blue-200" : "text-gray-500"
+                      isSelected ? "text-teal" : "text-gray-500"
                     }`}
                   >
                     {method.description}
@@ -156,8 +156,8 @@ const PaymentMethodSelectionView: React.FC = () => {
                   {isSelected ? (
                     <CheckCircle2
                       size={28}
-                      color={colors.info}
-                      fill={colors.info}
+                      color={colors.teal}
+                      fill={colors.teal}
                       stroke="#fff"
                     />
                   ) : (
@@ -186,7 +186,7 @@ const PaymentMethodSelectionView: React.FC = () => {
           {/* Proceed Button */}
           <TouchableOpacity
             onPress={handleProceed}
-            className="flex-1 py-4 rounded-xl bg-blue-600 active:bg-blue-700 shadow-sm"
+            className="flex-1 py-4 rounded-xl bg-teal active:bg-teal/80 shadow-sm"
           >
             <Text className="text-center font-bold text-lg text-white">
               Proceed
