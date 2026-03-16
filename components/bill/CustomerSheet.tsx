@@ -302,54 +302,51 @@ const CustomerSheet: React.FC = () => {
         />
       )}
     >
-      <BottomSheetView className="flex-1 bg-panel">
+      <BottomSheetView className="flex-1" style={{ backgroundColor: colors.screen }}>
         {/* Header */}
-        <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
+        <View className="flex-row justify-between items-center px-5 py-4 border-b" style={{ borderColor: colors.border }}>
           <View className="flex-row items-center gap-x-3">
             {viewMode === "add" && (
-              <TouchableOpacity onPress={() => setViewMode("search")}>
-                <ArrowLeft color="white" size={24} />
+              <TouchableOpacity onPress={() => setViewMode("search")} className="mr-1">
+                <ArrowLeft color={colors.label} size={20} />
               </TouchableOpacity>
             )}
-            <Text className="text-2xl font-bold text-white">
-              {viewMode === "search" ? "Assign Customer" : "Add New Customer"}
+            <Text className="text-base font-bold" style={{ color: colors.heading }}>
+              {viewMode === "search" ? "Assign Customer" : "Add Customer"}
             </Text>
           </View>
-
-          <View className="flex-row gap-x-4 items-center">
+          <View className="flex-row gap-x-3 items-center">
             {viewMode === "search" && (
               <TouchableOpacity
                 disabled={isAssignDisabled}
                 onPress={() => setViewMode("add")}
-                className={`py-2 px-4 rounded-xl items-center ${
-                  isAssignDisabled ? "bg-blue-600/50" : "bg-blue-600"
-                }`}
+                className="px-4 py-2 rounded-xl"
+                style={{ backgroundColor: isAssignDisabled ? colors.teal + "60" : colors.teal }}
               >
-                <Text className="text-lg font-bold text-white">+ Add New</Text>
+                <Text className="text-sm font-semibold" style={{ color: colors.onSolid }}>+ New</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={handleClose} className="p-2">
-              <X color={colors.label} size={24} />
+            <TouchableOpacity onPress={handleClose} className="p-1.5 rounded-lg" style={{ backgroundColor: colors.panel }}>
+              <X color={colors.label} size={18} />
             </TouchableOpacity>
           </View>
         </View>
 
         {viewMode === "search" ? (
           <View className="flex-1">
-            {/* Unified Search Bar */}
-            <View className="p-4">
-              <View className="flex-row items-center bg-surface border border-gray-600 rounded-lg px-3 h-14">
-                <Search size={22} color={colors.label} />
+            <View className="px-4 pt-4 pb-2">
+              <View className="flex-row items-center rounded-xl px-3 h-12 border" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
+                <Search size={16} color={colors.label} />
                 <BottomSheetTextInput
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  placeholder="Search by Name, Phone, or Address..."
+                  placeholder="Search name, phone, address..."
                   placeholderTextColor={colors.muted}
-                  className="flex-1 ml-3 text-white text-lg"
+                  style={{ flex: 1, marginLeft: 10, color: colors.heading, fontSize: 14 }}
                 />
                 {searchQuery.length > 0 && (
                   <TouchableOpacity onPress={() => setSearchQuery("")}>
-                    <X size={20} color={colors.muted} />
+                    <X size={16} color={colors.muted} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -358,134 +355,112 @@ const CustomerSheet: React.FC = () => {
             <BottomSheetFlatList
               data={filteredCustomers}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={{
-                paddingHorizontal: 16,
-                paddingBottom: 120,
-              }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
               renderItem={({ item }: { item: CustomerWithMeta }) => (
                 <TouchableOpacity
                   disabled={isAssignDisabled}
                   onPress={() => handleSelectCustomer(item)}
-                  className={`p-4 border-b border-gray-700 ${
-                    isAssignDisabled ? "opacity-60" : ""
-                  }`}
+                  className="flex-row items-center px-4 py-3 rounded-xl border mb-2"
+                  style={{
+                    backgroundColor: colors.panel,
+                    borderColor: colors.border,
+                    opacity: isAssignDisabled ? 0.6 : 1,
+                  }}
                 >
-                  <View className="flex-row justify-between items-start">
-                    <View>
-                      <Text className="text-xl font-semibold text-white">
-                        {item.name || "Unknown Name"}
-                      </Text>
-                      <Text className="text-lg text-gray-400 mt-1">
-                        {item.phone ?? item.phoneNumber}
-                      </Text>
-                      {item.address ? (
-                        <Text
-                          className="text-sm text-gray-500 mt-1 max-w-[300px]"
-                          numberOfLines={1}
-                        >
-                          {formatAddress(item.address)}
-                        </Text>
-                      ) : null}
-                    </View>
-                    {item.is_offline && (
-                      <Text className="text-xs text-yellow-400 font-medium">
-                        Offline
-                      </Text>
-                    )}
+                  <View className="w-9 h-9 rounded-full items-center justify-center mr-3" style={{ backgroundColor: colors.teal + "20" }}>
+                    <Text className="text-sm font-bold" style={{ color: colors.teal }}>
+                      {(item.name || "?")[0].toUpperCase()}
+                    </Text>
                   </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-semibold" style={{ color: colors.heading }}>{item.name || "Unknown"}</Text>
+                    <Text className="text-xs mt-0.5" style={{ color: colors.label }}>{item.phone ?? item.phoneNumber}</Text>
+                    {item.address ? (
+                      <Text className="text-xs mt-0.5" style={{ color: colors.muted }} numberOfLines={1}>{formatAddress(item.address)}</Text>
+                    ) : null}
+                  </View>
+                  {item.is_offline && (
+                    <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.warning + "20" }}>
+                      <Text className="text-xs" style={{ color: colors.warning }}>Offline</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
-                <Text className="text-lg text-gray-500 text-center p-6">
-                  No customers found.
-                </Text>
+                <Text className="text-sm text-center py-10" style={{ color: colors.muted }}>No customers found.</Text>
               }
             />
           </View>
         ) : (
-          <View className="p-6">
-            <Text className="text-gray-400 mb-6">
-              Enter the customer's details below. Address fields are optional.
-            </Text>
+          <View className="p-5 gap-y-4">
+            <Text className="text-xs" style={{ color: colors.muted }}>Address fields are optional.</Text>
 
-            <View className="gap-y-4">
-              <View>
-                <Text className="text-gray-300 mb-2 font-medium">
-                  Full Name *
-                </Text>
-                <BottomSheetTextInput
-                  value={newName}
-                  onChangeText={setNewName}
-                  placeholder="e.g. John Doe"
-                  placeholderTextColor={colors.muted}
-                  className="bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
-                />
-              </View>
-
-              <View>
-                <Text className="text-gray-300 mb-2 font-medium">
-                  Phone Number *
-                </Text>
-                <BottomSheetTextInput
-                  value={newPhone}
-                  onChangeText={handlePhoneChange}
-                  placeholder="(555) - 555 - 5555"
-                  maxLength={20}
-                  keyboardType="phone-pad"
-                  placeholderTextColor={colors.muted}
-                  className="bg-surface border border-blue-500 rounded-lg h-14 px-4 text-white text-lg"
-                />
-              </View>
-
-              <View className="mt-2">
-                <Text className="text-gray-300 mb-2 font-medium">
-                  Delivery Address
-                </Text>
-
-                <BottomSheetTextInput
-                  value={street}
-                  onChangeText={setStreet}
-                  placeholder="Street Address"
-                  placeholderTextColor={colors.muted}
-                  className="bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg mb-3"
-                />
-
-                <View className="flex-row gap-x-3 mb-3">
-                  <BottomSheetTextInput
-                    value={city}
-                    onChangeText={setCity}
-                    placeholder="City"
-                    placeholderTextColor={colors.muted}
-                    className="flex-[2] bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
-                  />
-                  <BottomSheetTextInput
-                    value={stateCode}
-                    onChangeText={setStateCode}
-                    placeholder="State"
-                    placeholderTextColor={colors.muted}
-                    className="flex-[1] bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
-                  />
-                </View>
-
-                <BottomSheetTextInput
-                  value={zip}
-                  onChangeText={setZip}
-                  placeholder="Zip Code"
-                  keyboardType="numeric"
-                  placeholderTextColor={colors.muted}
-                  className="w-1/2 bg-surface border border-gray-600 rounded-lg h-14 px-4 text-white text-lg"
-                />
-              </View>
-
-              <TouchableOpacity
-                onPress={handleSaveNewCustomer}
-                className="mt-6 bg-blue-600 rounded-xl h-14 items-center justify-center"
-              >
-                <Text className="text-white text-xl font-bold">
-                  Save Customer
-                </Text>
-              </TouchableOpacity>
+            <View className="gap-y-1.5">
+              <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Full Name *</Text>
+              <BottomSheetTextInput
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="e.g. John Doe"
+                placeholderTextColor={colors.muted}
+                style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, height: 48, paddingHorizontal: 16, color: colors.heading, fontSize: 14 }}
+              />
             </View>
+
+            <View className="gap-y-1.5">
+              <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Phone Number *</Text>
+              <BottomSheetTextInput
+                value={newPhone}
+                onChangeText={handlePhoneChange}
+                placeholder="(555) - 555 - 5555"
+                maxLength={20}
+                keyboardType="phone-pad"
+                placeholderTextColor={colors.muted}
+                style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.teal, borderRadius: 12, height: 48, paddingHorizontal: 16, color: colors.heading, fontSize: 14 }}
+              />
+            </View>
+
+            <View className="gap-y-1.5">
+              <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Delivery Address</Text>
+              <BottomSheetTextInput
+                value={street}
+                onChangeText={setStreet}
+                placeholder="Street Address"
+                placeholderTextColor={colors.muted}
+                style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, height: 48, paddingHorizontal: 16, color: colors.heading, fontSize: 14 }}
+              />
+              <View className="flex-row gap-x-2">
+                <BottomSheetTextInput
+                  value={city}
+                  onChangeText={setCity}
+                  placeholder="City"
+                  placeholderTextColor={colors.muted}
+                  style={{ flex: 2, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, height: 48, paddingHorizontal: 16, color: colors.heading, fontSize: 14 }}
+                />
+                <BottomSheetTextInput
+                  value={stateCode}
+                  onChangeText={setStateCode}
+                  placeholder="State"
+                  placeholderTextColor={colors.muted}
+                  style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, height: 48, paddingHorizontal: 16, color: colors.heading, fontSize: 14 }}
+                />
+              </View>
+              <BottomSheetTextInput
+                value={zip}
+                onChangeText={setZip}
+                placeholder="Zip Code"
+                keyboardType="numeric"
+                placeholderTextColor={colors.muted}
+                style={{ width: '50%', backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, height: 48, paddingHorizontal: 16, color: colors.heading, fontSize: 14 }}
+              />
+            </View>
+
+            <TouchableOpacity
+              onPress={handleSaveNewCustomer}
+              className="rounded-xl h-12 items-center justify-center mt-2"
+              style={{ backgroundColor: colors.teal }}
+            >
+              <Text className="text-sm font-bold" style={{ color: colors.onSolid }}>Save Customer</Text>
+            </TouchableOpacity>
           </View>
         )}
       </BottomSheetView>
