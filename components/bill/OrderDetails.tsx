@@ -287,14 +287,14 @@ const OrderDetailsComponent: React.FC = () => {
     <View className=" px-4 overflow-hidden ">
       {/* Header */}
       <View className="flex-row flex items-center justify-center w-full gap-x-4">
-        <View className="w-[50%] flex items-center justify-center flex-col gap-y-1">
-          <Label className="text-white font-semibold text-xl">Customer</Label>
+        <View className="w-[50%] flex items-start justify-center flex-col gap-y-1">
+          <Label className="text-label font-small text-xs ml-2 mt-1">Customer</Label>
           <TouchableOpacity
             onPress={openSheet}
-            className={`flex-row w-full items-center p-2 border-2 rounded-lg h-12 ${
+            className={`flex-row w-full items-center p-2 rounded-xl h-12 ${
               customerName
-                ? "border-green-500 bg-surface border-solid"
-                : "border-dashed border-gray-700 bg-surface"
+                ? "bg-surface"
+                : "bg-surface"
             }`}
           >
             {customerName ? (
@@ -317,25 +317,25 @@ const OrderDetailsComponent: React.FC = () => {
               </>
             ) : (
               <>
-                <Plus color={colors.label} size={24} />
-                <Text className="text-xl font-semibold text-gray-300 ml-3">
+                <Plus color={colors.teal} size={20} />
+                <Text className="text-base font-medium text-teal-400 ml-2">
                   Add Customer
                 </Text>
               </>
             )}
           </TouchableOpacity>
         </View>
-        <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-xl">Order Type</Label>
+        <View className="w-[50%] flex items-start justify-center flex-col gap-y-1">
+          <Label className="text-label font-medium text-xs ml-2 mt-1">Order Type</Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row items-center justify-between p-2 border border-background-400 rounded-lg bg-surface h-12"
+            className="w-full flex-row items-center justify-between p-2 rounded-xl h-12 bg-surface"
             onPress={openDrawer}
           >
-            <Text className="text-xl font-semibold text-white">
+            <Text className="text-l ml-2 text-base font-medium text-white">
               {orderType}
             </Text>
-            <Text className="text-gray-400">▼</Text>
+            <Text className="text-white text-l">▼</Text>
           </TouchableOpacity>
         </View>
       </View>

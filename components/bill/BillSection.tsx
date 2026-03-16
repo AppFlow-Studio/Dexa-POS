@@ -364,7 +364,7 @@ const BillSectionContent = ({
           No Active Order
         </Text>
         <TouchableOpacity
-          className="px-6 py-3 bg-blue-600 rounded-lg shadow-md active:opacity-80"
+          className="px-6 py-3 bg-teal-600 rounded-lg shadow-md active:opacity-80"
           onPress={() => {
             startNewOrder();
           }}
@@ -383,7 +383,7 @@ const BillSectionContent = ({
   };
 
   return (
-    <View className="w-1/3 bg-background border-r-2 border-border " >
+    <View className="w-1/3 bg-screen border-r-2 border-border " >
       {showOrderDetails && <OrderDetails />}
 
       {/* Offline / Sync Status Banner */}
@@ -452,7 +452,7 @@ const BillSectionContent = ({
 
           {/* Syncing Indicator (only when online and syncing) */}
           {isOnline && !hasFailedSyncs && hasPendingSyncs && (
-            <View className="flex-row items-center justify-center bg-blue-600/60 px-3 py-2 rounded-lg">
+            <View className="flex-row items-center justify-center bg-teal-600/60 px-3 py-2 rounded-lg">
               <ActivityIndicator size="small" color="#FFFFFF" />
               <Text className="text-white text-sm font-medium ml-2">
                 Syncing {syncStatus.pending} item
@@ -469,12 +469,12 @@ const BillSectionContent = ({
           {/* Start New Order Button */}
           <TouchableOpacity
             onPress={handleStartNewOrder}
-            className="w-1/5 py-1.5 px-3 flex-row items-center justify-center gap-1.5 rounded-lg border"
+            className="w-1/3 py-2 px-3 flex-row items-center justify-center gap-1.5 rounded-lg border"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            <Plus color={colors.success} size={18} />
+            <Plus color={"#FFFFFF"} size={20} />
             <Text className="text-center text-base font-semibold text-white">
-              New
+              New Order
             </Text>
           </TouchableOpacity>
 
@@ -494,15 +494,12 @@ const BillSectionContent = ({
             activeOpacity={1}
           >
             {hasPendingSyncs ? (
-              <ActivityIndicator size={10} color={colors.info} />
+              <ActivityIndicator size={10} color={colors.teal} />
             ) : null}
-            {/* <Send size={16} color="#9CA3AF" /> */}
-            <Text className="text-center text-base font-semibold text-gray-300">
+            <Text className="text-center text-base font-semibold text-white">
               Send to Kitchen
             </Text>
-            <Text
-              className={`text-sm mr-2 rounded-full bg-blue-600 px-3 py-1 text-white`}
-            >
+            <Text className="text-sm mr-2 rounded-full bg-teal px-2 py-0.5 font-bold ">
               {newItemsCount}
             </Text>
           </TouchableOpacity>
@@ -513,12 +510,11 @@ const BillSectionContent = ({
           <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
-              className="w-1/5 h-14 items-center justify-center rounded-xl border"
+              className="w-1/4 h-14 items-center justify-center rounded-xl border"
               style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
-              <Text className="text-center text-base font-bold text-gray-300">
-                More
-              </Text>
+              <Text className="text-center text-lg font-bold text-white leading-none mb-0.5">···</Text>
+              <Text className="text-center text-xs font-bold text-white">More</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
@@ -528,7 +524,7 @@ const BillSectionContent = ({
                   ? "bg-gray-600"
                   : isPartiallyPaid
                     ? "bg-green-600"
-                    : "bg-blue-600"
+                    : "bg-teal-400"
               }`}
             >
               {hasPendingSyncs || isProcessing ? (
@@ -536,7 +532,7 @@ const BillSectionContent = ({
               ) : null}
               <Text
                 className={`text-center text-xl font-bold ${
-                  isPayButtonDisabled ? "text-gray-400" : "text-white"
+                  isPayButtonDisabled ? "text-gray-400" : "text-black"
                 }`}
               >
                 {isPartiallyPaid
@@ -546,10 +542,9 @@ const BillSectionContent = ({
             </TouchableOpacity>
           </View>
           {/* Cash Discount Option */}
-          <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
-            <Text className="text-center text-sm text-green-400">
-              Pay cash: ${cashBalanceDue?.toFixed(2)} (save $
-              {cashSavings?.toFixed(2)})
+          <View className="mt-2 self-center px-2 py-1.5 bg-transparent rounded-3xl border border-teal-600/30">
+            <Text className="text-sm text-teal">
+              Pay cash: ${cashBalanceDue?.toFixed(2)} (save ${cashSavings?.toFixed(2)})
             </Text>
           </View>
         </View>

@@ -3,7 +3,6 @@ import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
-import { Badge } from "@/components/ui/badge";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
@@ -232,8 +231,8 @@ const OrderProcessing = () => {
   const handleCloseItemsModal = useCallback(() => setItemsModalOpen(false), []);
 
   return (
-    <View className="flex-1 flex-col bg-background">
-      <View className="flex-1 flex-row ">
+    <View className="flex-1 flex-col bg-screen px-2 py-1">
+      <View className="flex-1 flex-row bg-screen rounded-lg border border-border">
         {/* Stage 1: BillSection (lighter — user sees their order first) */}
         {renderStage >= 1 ? (
           <BillSection
@@ -247,36 +246,36 @@ const OrderProcessing = () => {
         ) : (
           // BillSection skeleton: matches the 380px sidebar layout
           <View className="w-[380px] bg-screen p-4">
-            <View className="h-10 w-48 bg-surface rounded-lg mb-4" />
-            <View className="h-6 w-32 bg-surface rounded-md mb-3" />
-            <View className="h-6 w-64 bg-surface rounded-md mb-3" />
-            <View className="h-6 w-52 bg-surface rounded-md mb-3" />
+            <View className="h-10 w-48 bg-panel rounded-lg mb-4" />
+            <View className="h-6 w-32 bg-panel rounded-md mb-3" />
+            <View className="h-6 w-64 bg-panel rounded-md mb-3" />
+            <View className="h-6 w-52 bg-panel rounded-md mb-3" />
             <View className="flex-1" />
-            <View className="h-14 bg-surface rounded-xl" />
+            <View className="h-14 bg-panel rounded-xl" />
           </View>
         )}
 
-        <View className="flex-1 px-2 pt-0 bg-background rounded-tl-3xl ">
+        <View className="flex-1 bg-screen">
           {/* Stage 2: MenuSection (heavier — fills in after BillSection) */}
           {renderStage >= 2 ? (
             <MenuSection
               headerLeft={
                 <View className="flex-row items-center gap-x-2">
-                  <Text className="text-2xl font-bold text-white">
+                  <Text className="text-lg font-semibold text-white">
                     Order Line
                   </Text>
                   {displayOrders?.length > 0 && (
-                    <Badge className="ml-1 bg-gray-700 rounded-full px-4 py-0.5 justify-center items-center">
-                      <Text className="text-sm font-semibold text-gray-300">
+                    <View className="ml-1 bg-panel border border-border rounded-full px-2.5 py-0.5 items-center justify-center">
+                      <Text className="text-xs font-bold text-label">
                         {displayOrders.length}
                       </Text>
-                    </Badge>
+                    </View>
                   )}
                 </View>
               }
               headerBelow={
                 !isAccordionOpen && displayOrders.length > 0 ? (
-                  <View className="px-2 border-b border-border py-1">
+                  <View className="px-3 border-b border-border py-1.5">
                     <FlatList
                       horizontal
                       data={displayOrders}
@@ -296,15 +295,15 @@ const OrderProcessing = () => {
             />
           ) : (
             // MenuSection skeleton: matches the grid layout
-            <View className="flex-1 pt-2">
+            <View className="flex-1 p-4">
               <View className="flex-row gap-x-2 mb-3">
                 {[1, 2, 3, 4].map((i) => (
-                  <View key={i} className="h-10 w-20 bg-surface rounded-lg" />
+                  <View key={i} className="h-10 w-20 bg-panel rounded-lg" />
                 ))}
               </View>
               <View className="flex-row flex-wrap gap-2">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                  <View key={i} className="h-24 w-28 bg-surface rounded-xl" />
+                  <View key={i} className="h-24 w-28 bg-panel rounded-xl" />
                 ))}
               </View>
             </View>
