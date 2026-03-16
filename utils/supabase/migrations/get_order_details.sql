@@ -42,6 +42,7 @@ BEGIN
             WHERE oim.order_item_id = oi.id
           )
         )
+        ORDER BY oi.display_order ASC NULLS LAST, oi.created_at ASC
       ), '[]'::json)
       FROM public.order_items oi
       WHERE oi.order_id = o.id

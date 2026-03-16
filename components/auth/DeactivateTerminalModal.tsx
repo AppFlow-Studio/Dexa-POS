@@ -102,7 +102,7 @@ const DeactivateTerminalModal = ({
       if (result?.staff_id) {
         employee = getEmployeeByStaffId(result.staff_id) || null;
       } else if (result?.queued) {
-        employee = await findEmployeeByPin(pin);
+        employee = findEmployeeByPin(pin);
       }
 
       if (!employee) {

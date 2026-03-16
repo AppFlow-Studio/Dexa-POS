@@ -91,15 +91,9 @@ export function useOrderHistory(filters: OrderHistoryFilters) {
       let q = supabase
         .from("orders")
         .select(
-          `id, display_number, order_number, status, payment_status, order_type,
-          total_amount, card_total, amount_paid, amount_due, tax_amount, discount_amount,
-          cash_amount_due, customer_name, customer_phone, customer_email, customer_id,
-          delivery_address, created_at, updated_at, opened_at, station_id, check_status,
-          merchant_id, location_id, created_by_staff_id, created_by_user_id,
-          assigned_server_id, table_number, seat_number,
-          external_id, order_source, sync_version, sent_to_kitchen_at,
+          `*,
           order_payments(id, amount, payment_method, refunded_amount, is_voided, tip_amount, status,
-            card_type, card_last_four, is_cash_priced, reference_number, created_at),
+            card_type, card_last_four, is_cash_priced, reference_number, initiated_at),
           stations(station_name),
           created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)`,
         )
@@ -149,13 +143,23 @@ export function useOrderHistory(filters: OrderHistoryFilters) {
       }
 
       const { data, error } = await q;
-      if (error) throw error;
+      if (error) {
+        if (__DEV__) console.error(`[useOrderHistory] Supabase error:`, error.message, error.details, error.hint);
+        throw error;
+      }
+
+      if (__DEV__) console.log(`[useOrderHistory] locationId=${locationId}, fetched=${data?.length ?? 0} orders, page=${pageParam}`);
 
       // Transform to OrderProfile (lightweight query omits order_items for list view)
-      const orders: OrderProfile[] = (data ?? []).map((o) => {
-        const normalized = normalizeFetchedOrder(o as unknown as FetchedOrderData);
-        return transformBroadcastToOrder(normalized);
-      });
+      const orders: OrderProfile[] = (data ?? []).reduce<OrderProfile[]>((acc, o) => {
+        try {
+          const normalized = normalizeFetchedOrder(o as unknown as FetchedOrderData);
+          acc.push(transformBroadcastToOrder(normalized));
+        } catch (err) {
+          if (__DEV__) console.warn('[useOrderHistory] Failed to transform order:', (o as any)?.id, err);
+        }
+        return acc;
+      }, []);
 
       // Client-side filter: needs attention (pending open orders with no payments)
       let filtered = orders;
@@ -253,6 +257,8 @@ export function useOrderHistory(filters: OrderHistoryFilters) {
     orders,
     filterCounts,
     isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage,
     fetchNextPage: query.fetchNextPage,

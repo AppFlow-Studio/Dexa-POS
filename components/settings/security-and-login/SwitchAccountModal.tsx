@@ -97,7 +97,7 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
     showLoading("Switching account...");
 
     try {
-      // Use server-side PIN validation (fast, no local bcrypt)
+      // Use server-side PIN validation
       const result = await timeClock.signIn(pin, selectedStore.id, deviceId);
 
       if (result?.staff_id) {

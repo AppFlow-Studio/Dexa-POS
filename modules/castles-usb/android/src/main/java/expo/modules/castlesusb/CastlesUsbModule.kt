@@ -80,13 +80,30 @@ class CastlesUsbModule : Module() {
     }
 
     // ── listDevices() ──
-    // Returns all USB serial devices discovered by the default prober.
+    // Returns all USB devices visible to the host, with a best-effort
+    // mapping to usb-serial drivers. Never throws SecurityException:
+    // if permission is missing, we still return the device with
+    // hasPermission = false and an empty driverName.
     AsyncFunction("listDevices") {
-      val prober = UsbSerialProber.getDefaultProber()
-      val drivers = prober.findAllDrivers(usbManager)
+      // Enumerate raw USB devices (this is allowed without permission).
+      val devices = usbManager.deviceList.values.toList()
 
-      drivers.map { driver ->
-        val device = driver.device
+      // Best-effort driver lookup; tolerate SecurityException on newer
+      // Android versions or devices that require permission for probing.
+      val driverNamesById = mutableMapOf<Int, String>()
+      try {
+        val prober = UsbSerialProber.getDefaultProber()
+        val drivers = prober.findAllDrivers(usbManager)
+        drivers.forEach { driver ->
+          val device = driver.device
+          driverNamesById[device.deviceId] = driver.javaClass.simpleName
+        }
+      } catch (_: SecurityException) {
+        // Ignore — we'll return devices without driverName in this case.
+      }
+
+      devices.map { device ->
+        val hasPermission = usbManager.hasPermission(device)
         mapOf(
           "deviceId" to device.deviceId,
           "vendorId" to device.vendorId,
@@ -94,7 +111,8 @@ class CastlesUsbModule : Module() {
           "productName" to (device.productName ?: ""),
           "manufacturerName" to (device.manufacturerName ?: ""),
           "serialNumber" to (device.serialNumber ?: ""),
-          "driverName" to driver.javaClass.simpleName
+          "driverName" to (driverNamesById[device.deviceId] ?: ""),
+          "hasPermission" to hasPermission
         )
       }
     }

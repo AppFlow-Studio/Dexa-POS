@@ -1149,7 +1149,7 @@ const KitchenDisplayScreen = () => {
 
   const handlePinConfirm = useCallback(
     async (pin: string) => {
-      const employee = await findEmployeeByPin(pin);
+      const employee = findEmployeeByPin(pin);
       if (!employee) {
         toast.show({
           title: "Invalid PIN",
