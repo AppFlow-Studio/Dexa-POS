@@ -622,6 +622,9 @@ export interface ProcessPaymentV2Params {
    * Required if p_split_count is provided
    */
   p_split_portion_index?: number | null;
+
+  /** Force card pricing for custom amount payments (no cash discount) */
+  p_force_card_pricing?: boolean;
 }
 
 /**

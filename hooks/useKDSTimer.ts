@@ -64,21 +64,30 @@ export function getBucketedElapsed(startTimeEpoch: number): string {
   return `${hours}h${mins}m`;
 }
 
+export interface UrgencyThresholds {
+  yellow: number;
+  orange: number;
+  red: number;
+}
+
+const DEFAULT_THRESHOLDS: UrgencyThresholds = { yellow: 5, orange: 10, red: 15 };
+
 /**
  * Returns urgency level 0-3 based on elapsed time.
- * 0 = green (<5m), 1 = yellow (5-9m), 2 = orange (10-14m), 3 = red (15m+)
+ * 0 = green, 1 = yellow, 2 = orange, 3 = red
  * @param startTimeEpoch — milliseconds since epoch (0 = unknown)
+ * @param thresholds — configurable minute thresholds (defaults to 5/10/15)
  */
-export function getUrgencyLevel(startTimeEpoch: number): number {
+export function getUrgencyLevel(startTimeEpoch: number, thresholds: UrgencyThresholds = DEFAULT_THRESHOLDS): number {
   if (startTimeEpoch === 0) return 0;
   const diffMins = Math.floor((Date.now() - startTimeEpoch) / 60000);
-  if (diffMins >= 15) return 3;
-  if (diffMins >= 10) return 2;
-  if (diffMins >= 5) return 1;
+  if (diffMins >= thresholds.red) return 3;
+  if (diffMins >= thresholds.orange) return 2;
+  if (diffMins >= thresholds.yellow) return 1;
   return 0;
 }
 
 /** Maps urgency level to color hex */
-export function getUrgencyColor(startTimeEpoch: number): string {
-  return URGENCY_COLORS[getUrgencyLevel(startTimeEpoch)];
+export function getUrgencyColor(startTimeEpoch: number, thresholds?: UrgencyThresholds): string {
+  return URGENCY_COLORS[getUrgencyLevel(startTimeEpoch, thresholds)];
 }

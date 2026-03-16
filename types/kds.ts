@@ -26,14 +26,16 @@ export interface KDSTicket {
   order_number: string | null;
   display_number: string | null;
   course_number: number;
-  status: "pending" | "cooking" | "ready";
+  status: "pending" | "cooking" | "ready" | "done";
   order_type: string | null;
+  order_source?: string | null;
   table_name: string | null;
   customer_name: string | null;
   start_time: string | null;
   start_time_epoch: number;
   item_count: number;
   items: KDSTicketItem[];
+  prioritized?: boolean;
 }
 
 export interface KDSDisplayConfig {
@@ -44,6 +46,7 @@ export interface KDSDisplayConfig {
   autoBumpMinutes: number | null;
   soundOnNewOrder: boolean | null;
   soundOnRush: boolean | null;
+  soundConfig: import("@/services/kds/kdsSoundService").KDSSoundConfig | null;
   showAllergyFlags: boolean | null;
   showOrderNotes: boolean | null;
   showServerName: boolean | null;

@@ -185,8 +185,9 @@ BEGIN
           THEN COALESCE(o.ready_at, NOW())
         ELSE o.ready_at
       END,
-      -- Status derivation (only for kitchen-related statuses)
+      -- Status derivation (only for kitchen-related statuses, skip when just sending items)
       status = CASE
+        WHEN p_status = 'sent' THEN o.status
         WHEN o.status::text NOT IN ('sent_to_kitchen', 'preparing') THEN o.status
         WHEN agg.all_ready_or_served THEN 'ready'::order_status
         WHEN agg.any_beyond_sent THEN 'preparing'::order_status

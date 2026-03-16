@@ -18,8 +18,10 @@ import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { colors } from "@/lib/theme";
+import { initImmer } from "@/lib/initImmer";
 import { initLogCollector } from "@/lib/logCollector";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { flushAllPendingWrites } from "@/lib/storage";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePtoStore } from "@/stores/usePtoStore";
@@ -42,7 +44,7 @@ import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import * as React from "react";
-import { Platform, Text, View } from "react-native";
+import { AppState, Platform, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -51,6 +53,8 @@ WebBrowser.maybeCompleteAuthSession();
 
 // Initialize log collector to capture console output for remote log retrieval
 initLogCollector();
+// Optimize Immer array iteration in producers
+initImmer();
 
 export const tokenCache: TokenCache = {
   async getToken(key: string) {
@@ -122,6 +126,16 @@ export default function RootLayout() {
       // Start print queue processing
       PrinterService.startProcessing();
     }
+  }, []);
+
+  // Flush pending MMKV writes when app goes to background to prevent data loss
+  React.useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        flushAllPendingWrites();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // Cleanup intervals on unmount

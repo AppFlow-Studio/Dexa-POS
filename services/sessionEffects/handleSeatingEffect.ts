@@ -97,21 +97,24 @@ export async function handleSeatingEffect(
     };
   }
 
-  // 2. Merge additional tables for multi-table seating
+  // 2. Merge additional tables for multi-table seating (parallel)
   if (additionalTableIds.length > 0 && data.session_id) {
-    for (const extraTableId of additionalTableIds) {
-      try {
-        await FloorPlanService.mergeTableToSession(deps.supabase, {
-          p_session_id: data.session_id,
+    const mergeResults = await Promise.allSettled(
+      additionalTableIds.map(extraTableId =>
+        FloorPlanService.mergeTableToSession(deps.supabase, {
+          p_session_id: data.session_id!,
           p_table_id: extraTableId,
-        });
-      } catch (mergeErr) {
+        })
+      )
+    );
+    mergeResults.forEach((result, i) => {
+      if (result.status === 'rejected') {
         console.warn(
-          `[handleSeatingEffect] Non-fatal: failed to merge table ${extraTableId}:`,
-          mergeErr,
+          `[handleSeatingEffect] Non-fatal: failed to merge table ${additionalTableIds[i]}:`,
+          result.reason,
         );
       }
-    }
+    });
   }
 
   // 3. Hydrate order from RPC response
@@ -123,6 +126,18 @@ export async function handleSeatingEffect(
       orderNumber: data.order_number,
       displayNumber: data.display_number,
     });
+
+    // Fix activeOrderId if hydrateOrderFromSeat rekeyed the order
+    if (params.localOrderId) {
+      const os = useOrderStore.getState();
+      // If order was rekeyed, activeOrderId now points to a deleted key — fix it
+      if (os.activeOrderId === params.localOrderId && !os.ordersById[params.localOrderId]) {
+        const newKey = os.dbOrderIdIndex[data.order_id] ?? data.order_id;
+        if (os.ordersById[newKey]) {
+          useOrderStore.getState().setActiveOrder(newKey);
+        }
+      }
+    }
   }
 
   // 4. Dispatch SESSION_CREATED for all tables

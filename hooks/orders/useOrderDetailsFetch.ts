@@ -43,19 +43,9 @@ export function useOrderDetailsFetch({
     if (reversals.length === 0 && orderRefundItems.length === 0) return;
 
     if (isActiveOrder) {
-      useOrderStore.setState((state) => {
-        const current = state.ordersById[localOrderId];
-        if (!current) return state;
-        return {
-          ordersById: {
-            ...state.ordersById,
-            [localOrderId]: {
-              ...current,
-              reversals,
-              order_refund_items: orderRefundItems,
-            },
-          },
-        };
+      useOrderStore.getState().patchOrder(localOrderId, {
+        reversals,
+        order_refund_items: orderRefundItems,
       });
     } else {
       usePreviousOrdersStore.setState((state) => ({

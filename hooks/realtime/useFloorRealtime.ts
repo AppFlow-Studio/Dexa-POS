@@ -65,7 +65,7 @@ export function useFloorRealtime({
   // Handle incoming messages
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
-      console.log(`[FloorRealtime] Event: ${event}`, payload);
+      if (__DEV__) console.log(`[FloorRealtime] Event: ${event}`, payload);
 
       switch (event) {
         case 'INSERT':

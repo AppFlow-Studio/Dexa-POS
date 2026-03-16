@@ -244,6 +244,9 @@ const OrderRow = memo<OrderRowProps>(
             <Text className="text-sm text-heading" numberOfLines={1}>
               {timeDisplay}
               {orderTypeLabel ? ` · ${orderTypeLabel}` : ""}
+              {order.order_source === "online" && (
+                <Text style={{ color: "#60a5fa" }}> · Online</Text>
+              )}
             </Text>
             <Text className="text-xs text-hint mt-0.5">{dateDisplay}</Text>
           </View>

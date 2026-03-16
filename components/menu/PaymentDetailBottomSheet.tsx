@@ -28,6 +28,7 @@ import {
     Package,
     Printer,
     RefreshCcw,
+    Globe,
     RotateCcw,
     X,
 } from "lucide-react-native";
@@ -3145,6 +3146,13 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   </Text>
                 </View>
                 <View className="flex-row items-center gap-3">
+                  {/* Online Badge */}
+                  {order.order_source === "online" && (
+                    <View className="px-3 py-1.5 rounded-full flex-row items-center bg-blue-500/15 border border-blue-500/40">
+                      <Globe color="#60a5fa" size={12} />
+                      <Text className="text-xs font-semibold uppercase text-blue-400 ml-1.5">Online</Text>
+                    </View>
+                  )}
                   {/* Status Badge */}
                   <View
                     className={`px-3 py-1.5 rounded-full flex-row items-center ${

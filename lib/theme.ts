@@ -68,6 +68,7 @@ export const colors = _colors as {
   kdsPending: string;
   kdsCooking: string;
   kdsReady: string;
+  kdsDone: string;
   // Order type (KDS)
   orderTypeDelivery: string;
   orderTypeDineIn: string;
@@ -156,6 +157,7 @@ export const KDS_STATUS_TAB_COLORS: Record<string, string> = {
   pending: colors.kdsPending,
   cooking: colors.kdsCooking,
   ready: colors.kdsReady,
+  done: colors.kdsDone,
 };
 
 export const ORDER_TYPE_COLORS: Record<string, string> = {

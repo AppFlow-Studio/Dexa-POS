@@ -19,6 +19,7 @@ import Popover from "react-native-popover-view";
 interface OrderBadgeProps {
   order: OrderProfile;
   onMarkReady: () => void;
+  onMarkDone?: () => void;
   onViewItems: () => void;
   onRetrieve: () => void;
   onReopenCheck?: () => void;
@@ -81,6 +82,7 @@ interface PopoverContentProps {
   order: OrderProfile;
   currentStationId: string | null;
   onMarkReady: () => void;
+  onMarkDone?: () => void;
   onViewItems: () => void;
   onRetrieve: () => void;
   onReopenCheck?: () => void;
@@ -93,6 +95,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
     order,
     currentStationId,
     onMarkReady,
+    onMarkDone,
     onViewItems,
     onRetrieve,
     onReopenCheck,
@@ -377,6 +380,25 @@ const PopoverContent = React.memo<PopoverContentProps>(
             </TouchableOpacity>
           )}
 
+          {/* Mark as Done — for ready+paid orders */}
+          {order.order_status === "ready" && order.paid_status === "Paid" && onMarkDone && (
+            <TouchableOpacity
+              onPress={() => {
+                onMarkDone();
+                onClose();
+              }}
+              className="flex-row items-center px-3 py-2.5 rounded-lg"
+            >
+              <CheckCircle color={colors.orderReady} size={18} />
+              <Text
+                className="ml-3 font-semibold text-base"
+                style={{ color: colors.success }}
+              >
+                Mark as Done
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {/* Print Receipt */}
           {onPrintReceipt && order.paid_status === "Paid" && (
             <TouchableOpacity
@@ -481,6 +503,7 @@ const PopoverContent = React.memo<PopoverContentProps>(
 const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   order,
   onMarkReady,
+  onMarkDone,
   onViewItems,
   onRetrieve,
   onReopenCheck,
@@ -571,7 +594,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
         >
           {wasRecentlyUpdated && (
             <View className="mr-1.5">
-              <RefreshCw color={colors.info} size={12} />
+              <RefreshCw color={colors.info} size={8} />
             </View>
           )}
           <View
@@ -597,6 +620,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           order={order}
           currentStationId={currentStationId}
           onMarkReady={onMarkReady}
+          onMarkDone={onMarkDone}
           onViewItems={onViewItems}
           onRetrieve={onRetrieve}
           onReopenCheck={onReopenCheck}
@@ -608,12 +632,19 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   );
 };
 
+// WeakMap cache for O(1) refunded lookups — unchanged order refs (Immer structural sharing) get cache hits
+const refundedCache = new WeakMap<OrderProfile, number>();
+function getCachedRefunded(order: OrderProfile): number {
+  let v = refundedCache.get(order);
+  if (v === undefined) {
+    v = (order.payments || []).reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
+    refundedCache.set(order, v);
+  }
+  return v;
+}
+
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
-  // Helper to calculate total refunded for comparison
-  const getTotalRefunded = (order: OrderProfile) =>
-    (order.payments || []).reduce((sum, p) => sum + (p.refundedAmount ?? 0), 0);
-
   // Return true if props are equal (skip re-render)
   return (
     prev.order.id === next.order.id &&
@@ -626,7 +657,7 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     prev.order.total_amount === next.order.total_amount &&
     prev.order.customer_name === next.order.customer_name &&
     prev.order.payments?.length === next.order.payments?.length &&
-    getTotalRefunded(prev.order) === getTotalRefunded(next.order) &&
+    getCachedRefunded(prev.order) === getCachedRefunded(next.order) &&
     // Station-related fields for display
     prev.order.station_id === next.order.station_id &&
     prev.order._sourceStationName === next.order._sourceStationName

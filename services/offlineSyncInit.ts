@@ -742,7 +742,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         };
 
         console.log(
-          "[OfflineSync:payment] Calling process_payment_v6 with:",
+          "[OfflineSync:payment] Calling process_payment_v7 with:",
           JSON.stringify({
             orderId: finalParams.p_order_id,
             method: finalParams.p_payment_method,
@@ -1253,11 +1253,24 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             console.log(
               `[OfflineSync:add_item] Item was fired during sync, retroactively sending to kitchen`,
             );
-            await OrderService.bulkUpdateOrderItemStatus(
-              _supabaseClient,
-              [data.order_item_id],
-              "sent",
-            );
+            try {
+              await OrderService.bulkUpdateOrderItemStatus(
+                _supabaseClient,
+                [data.order_item_id],
+                "sent",
+              );
+            } catch (retroErr) {
+              console.warn(
+                `[OfflineSync:add_item] Retroactive kitchen send failed, queuing send_to_kitchen:`,
+                retroErr,
+              );
+              // Queue send_to_kitchen as fallback — don't fail the add_item op (prevents duplicates)
+              await queueFailedOperation(
+                "send_to_kitchen",
+                { localOrderId, localItemIds: [localItemId] },
+                localOrderId,
+              );
+            }
           }
         } else {
           console.log(
@@ -1516,7 +1529,37 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         );
 
         try {
-          // 1. Update order status FIRST
+          // 1. Resolve item IDs FIRST (before any RPC calls)
+          let resolvedItemIds: string[] = [];
+          let unresolvedLocalItemIds: string[] = [];
+
+          if (localItemIds && localItemIds.length > 0) {
+            for (const localItemId of localItemIds) {
+              const resolved = resolveItemId(localOrderId, localItemId);
+              if (resolved) {
+                resolvedItemIds.push(resolved);
+              } else {
+                unresolvedLocalItemIds.push(localItemId);
+              }
+            }
+
+            console.log(
+              `[OfflineSync:send_to_kitchen] Resolved ${resolvedItemIds.length}/${localItemIds.length} items` +
+                (unresolvedLocalItemIds.length > 0
+                  ? ` (${unresolvedLocalItemIds.length} unresolved)`
+                  : ""),
+            );
+
+            // If zero items resolved, retry later — don't update order status yet
+            if (resolvedItemIds.length === 0) {
+              console.log(
+                `[OfflineSync:send_to_kitchen] No items resolved yet, will retry`,
+              );
+              return false;
+            }
+          }
+
+          // 2. Update order status
           // The bulk_update_order_item_status RPC sets sent_to_kitchen_at on the parent order,
           // which violates valid_status_transitions if the order is still in 'draft'.
           // So we must transition the order out of 'draft' before updating items.
@@ -1557,41 +1600,39 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             );
           }
 
-          // 2. THEN resolve and update item statuses
-          if (localItemIds && localItemIds.length > 0) {
-            const resolvedItemIds = localItemIds
-              .map((localItemId: string) =>
-                resolveItemId(localOrderId, localItemId),
-              )
-              .filter((id: string | null): id is string => !!id);
-
-            if (resolvedItemIds.length > 0) {
-              const { error: itemError } =
-                await OrderService.bulkUpdateOrderItemStatus(
-                  _supabaseClient,
-                  resolvedItemIds,
-                  "sent",
-                );
-
-              if (itemError) {
-                console.error(
-                  "[OfflineSync:send_to_kitchen] Failed to update item statuses:",
-                  itemError,
-                );
-                // Fatal - retry the whole operation so items get updated
-                return false;
-              }
-
-              console.log(
-                `[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items marked as "sent"`,
+          // 3. Update resolved item statuses
+          if (resolvedItemIds.length > 0) {
+            const { error: itemError } =
+              await OrderService.bulkUpdateOrderItemStatus(
+                _supabaseClient,
+                resolvedItemIds,
+                "sent",
               );
-            } else {
-              console.log(
-                `[OfflineSync:send_to_kitchen] No items could be resolved (may not be synced yet)`,
+
+            if (itemError) {
+              console.error(
+                "[OfflineSync:send_to_kitchen] Failed to update item statuses:",
+                itemError,
               );
-              // Items not synced yet - retry later
+              // Fatal - retry the whole operation so items get updated
               return false;
             }
+
+            console.log(
+              `[OfflineSync:send_to_kitchen] ${resolvedItemIds.length} items marked as "sent"`,
+            );
+          }
+
+          // 4. Re-queue unresolved items so they aren't lost
+          if (unresolvedLocalItemIds.length > 0) {
+            console.log(
+              `[OfflineSync:send_to_kitchen] Re-queuing ${unresolvedLocalItemIds.length} unresolved items`,
+            );
+            await queueFailedOperation(
+              "send_to_kitchen",
+              { localOrderId, localItemIds: unresolvedLocalItemIds },
+              localOrderId,
+            );
           }
 
           console.log(`[OfflineSync:send_to_kitchen] SUCCESS!`);

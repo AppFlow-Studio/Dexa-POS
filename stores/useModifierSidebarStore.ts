@@ -19,8 +19,26 @@ export const isMenuBlockedSync = () => menuBlockedSyncRef;
 
 // ============================================================================
 // PRE-WARM CACHE - Precompute modifier data ahead of store open()
+// OPTIMIZED: Persist entries with TTL (5 min) - no delete on consume for re-tap speed
 // ============================================================================
-const preWarmCache = new Map<string, ReturnType<typeof precomputeModifierData>>();
+const PREWARM_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+type PreWarmEntry = {
+  data: ReturnType<typeof precomputeModifierData>;
+  createdAt: number;
+};
+
+const preWarmCache = new Map<string, PreWarmEntry>();
+
+function getOrEvictCache(itemId: string): PreWarmEntry | undefined {
+  const entry = preWarmCache.get(itemId);
+  if (!entry) return undefined;
+  if (Date.now() - entry.createdAt > PREWARM_TTL_MS) {
+    preWarmCache.delete(itemId);
+    return undefined;
+  }
+  return entry;
+}
 
 // Pre-computed modifier selections for instant UI
 interface ModifierSelection {
@@ -55,13 +73,17 @@ interface ModifierSidebarState {
   // PRE-COMPUTED DATA - For instant ModifierScreen render
   // ============================================================
   precomputedModifiers: ModifierCategory[] | null;
+  precomputedCategoriesById: Map<string, ModifierCategory> | null;
+  precomputedOptionsById: Map<string, { option: any; categoryId: string; categoryName: string }> | null;
   initialSelections: ModifierSelection | null;
   itemPrice: number;
   itemCashPrice: number; // Cash price for the item in current context
   activeModifierCategory: string | null;
   precomputedForItemId: string | null; // Track which item precomputed values are for (prevents race conditions)
+  draftCreatedId: string | null; // Draft item ID created by open(), null if not created
 
   preWarm: (item: MenuItemType, categoryId?: string, menuId?: string) => void;
+  preWarmMany: (items: MenuItemType[], categoryId?: string, menuId?: string) => void;
   open: (config: {
     menuItem?: MenuItemType;
     cartItem?: CartItem;
@@ -106,6 +128,8 @@ function precomputeModifierData(
   setFn?: ((partial: Partial<ModifierSidebarState>) => void) | null
 ): {
   modifiers: ModifierCategory[];
+  modifierCategoriesById: Map<string, ModifierCategory>;
+  optionsById: Map<string, { option: any; categoryId: string; categoryName: string }>;
   initialSelections: ModifierSelection;
   itemPrice: number;
   itemCashPrice: number;
@@ -208,14 +232,94 @@ function precomputeModifierData(
   // Set first category as active
   const activeCategory = modifiers.length > 0 ? modifiers[0].id : null;
 
+  // Build Maps once here — ModifierScreen uses them for O(1) lookups (no per-render work)
+  const modifierCategoriesById = new Map<string, ModifierCategory>();
+  const optionsById = new Map<string, { option: any; categoryId: string; categoryName: string }>();
+  modifiers.forEach((category) => {
+    modifierCategoriesById.set(category.id, category);
+    category.options.forEach((option) => {
+      optionsById.set(option.id, {
+        option,
+        categoryId: category.id,
+        categoryName: category.name,
+      });
+    });
+  });
+
   return {
     modifiers,
+    modifierCategoriesById,
+    optionsById,
     initialSelections,
     itemPrice,
     itemCashPrice,
     activeCategory,
     forItemId: item.id,
   };
+}
+
+/**
+ * Create a draft item immediately during open() for instant cart feedback.
+ * Mirrors the logic from ModifierScreen's draft useEffect but runs synchronously in the store.
+ * Returns the draft ID if created, null otherwise.
+ */
+function _createDraftInOpen(
+  sourceItem: MenuItemType,
+  itemPrice: number,
+  itemCashPrice: number,
+  categoryId: string | undefined,
+  menuId: string | undefined,
+): string | null {
+  const { useOrderStore } = require("./useOrderStore");
+  const { activeOrderId, ordersById, addItemToActiveOrder } =
+    useOrderStore.getState();
+
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+  if (!activeOrder) return null;
+
+  const stableDraftId = `draft_${sourceItem.id}`;
+
+  // Check if draft already exists
+  const existingDraft = activeOrder.items.find(
+    (i: any) => i.id === stableDraftId,
+  );
+  if (existingDraft) return existingDraft.id;
+
+  // Check for existing identical unsent item (no modifiers, no notes, not sent)
+  const existingItem = activeOrder.items.find((i: any) => {
+    if (i.menuItemId !== sourceItem.id) return false;
+    const hasModifiers =
+      i.customizations.modifiers && i.customizations.modifiers.length > 0;
+    const hasNotes =
+      i.customizations.notes && i.customizations.notes.trim() !== "";
+    const hasSent = i.kitchen_status === "sent";
+    return !hasModifiers && !hasNotes && !hasSent;
+  });
+
+  if (existingItem) return null;
+
+  const cashPrice = itemCashPrice || itemPrice;
+  const draftItem = {
+    id: stableDraftId,
+    menuItemId: sourceItem.id,
+    name: sourceItem.name,
+    quantity: 1,
+    originalPrice: cashPrice,
+    price: itemPrice,
+    unitPrice: sourceItem.price,
+    cashPrice: cashPrice,
+    image: sourceItem.image,
+    isDraft: true,
+    customizations: { modifiers: [], notes: "" },
+    availableDiscount: sourceItem.availableDiscount,
+    appliedDiscount: null,
+    paidQuantity: 0,
+    addedFromCategoryId: categoryId || null,
+    addedFromMenuId: menuId || null,
+  };
+
+  addItemToActiveOrder(draftItem);
+  return stableDraftId;
 }
 
 export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) => ({
@@ -233,17 +337,33 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
 
   // Pre-computed data starts empty
   precomputedModifiers: null,
+  precomputedCategoriesById: null,
+  precomputedOptionsById: null,
   initialSelections: null,
   itemPrice: 0,
   itemCashPrice: 0,
   activeModifierCategory: null,
   precomputedForItemId: null,
+  draftCreatedId: null,
 
   preWarm: (item, categoryId, menuId) => {
-    if (preWarmCache.has(item.id)) return;
+    const existing = getOrEvictCache(item.id);
+    if (existing) return;
     // Compute WITHOUT setFn — no deferred price update yet; open() will handle it
     const result = precomputeModifierData(item, categoryId, menuId, null, null);
-    preWarmCache.set(item.id, result);
+    preWarmCache.set(item.id, { data: result, createdAt: Date.now() });
+  },
+
+  preWarmMany: (items, categoryId, menuId) => {
+    const now = Date.now();
+    for (const item of items) {
+      if (item.modifierGroupIds && item.modifierGroupIds.length > 0) {
+        const existing = getOrEvictCache(item.id);
+        if (existing) continue;
+        const result = precomputeModifierData(item, categoryId, menuId, null, null);
+        preWarmCache.set(item.id, { data: result, createdAt: now });
+      }
+    }
   },
 
   open: (config) => {
@@ -264,13 +384,12 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       const resolvedCatId = catId || cartItemParam?.addedFromCategoryId || undefined;
       const resolvedMenuId = mId || cartItemParam?.addedFromMenuId || undefined;
 
-      // Check preWarm cache first, fall back to precomputeModifierData
-      const cached = preWarmCache.get(sourceItem.id);
+      // Check preWarm cache first (persisted, not deleted on consume for re-tap speed)
+      const cachedEntry = getOrEvictCache(sourceItem.id);
       let precomputed: ReturnType<typeof precomputeModifierData>;
 
-      if (cached) {
-        precomputed = cached;
-        preWarmCache.delete(sourceItem.id);
+      if (cachedEntry) {
+        precomputed = cachedEntry.data;
         // PreWarm skipped setFn, so schedule deferred price lookup if menuId exists
         if (resolvedMenuId) {
           const { menusById } = useMenuStore.getState();
@@ -300,6 +419,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       // Determine menuItem field: include sourceItem in state if adding from menu or explicitly requested
       const stateMenuItem = (menuItemParam || includeMenuItemInState) ? sourceItem : null;
 
+      // Create draft instantly for "add" mode (menuItem without cartItem)
+      let draftCreatedId: string | null = null;
+      if (menuItemParam && !cartItemParam) {
+        draftCreatedId = _createDraftInOpen(
+          sourceItem, precomputed.itemPrice, precomputed.itemCashPrice,
+          resolvedCatId, resolvedMenuId,
+        );
+      }
+
       set({
         isOpen: true,
         isMenuBlocked: true,
@@ -309,12 +437,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
         categoryId: resolvedCatId || null,
         menuId: resolvedMenuId || null,
         precomputedModifiers: precomputed.modifiers,
+        precomputedCategoriesById: precomputed.modifierCategoriesById,
+        precomputedOptionsById: precomputed.optionsById,
         initialSelections: precomputed.initialSelections,
         itemPrice: precomputed.itemPrice,
         itemCashPrice: precomputed.itemCashPrice,
         activeModifierCategory: precomputed.activeCategory,
         precomputedForItemId: precomputed.forItemId,
         activeEditingItemId: cartItemParam?.id ?? null,
+        draftCreatedId,
       });
     } else if (cartItemParam) {
       // Fallback: no menu item found, use cart item data directly
@@ -327,6 +458,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
         categoryId: cartItemParam.addedFromCategoryId || null,
         menuId: cartItemParam.addedFromMenuId || null,
         precomputedModifiers: null,
+        precomputedCategoriesById: null,
+        precomputedOptionsById: null,
         initialSelections: null,
         itemPrice: cartItemParam.price,
         itemCashPrice: cartItemParam.cashPrice ?? cartItemParam.price,
@@ -353,8 +486,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
     get().open({ cartItem: item, includeMenuItemInState: true }),
 
   close: () => {
-    // Clear preWarm cache
-    preWarmCache.clear();
+    // Cache persisted for re-tap speed; TTL evicts stale entries
 
     // CRITICAL: Unblock touches synchronously FIRST (same frame)
     setMenuBlockedSync(false);
@@ -371,17 +503,19 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       menuId: null,
       // Clear pre-computed data
       precomputedModifiers: null,
+      precomputedCategoriesById: null,
+      precomputedOptionsById: null,
       initialSelections: null,
       itemPrice: 0,
       itemCashPrice: 0,
       activeModifierCategory: null,
       precomputedForItemId: null,
+      draftCreatedId: null,
     });
   },
 
   cancelAndRemoveDraft: () => {
-    // Clear preWarm cache
-    preWarmCache.clear();
+    // Cache persisted for re-tap speed; TTL evicts stale entries
 
     // CRITICAL: Unblock touches synchronously FIRST (same frame)
     setMenuBlockedSync(false);
@@ -423,11 +557,14 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       categoryId: null,
       menuId: null,
       precomputedModifiers: null,
+      precomputedCategoriesById: null,
+      precomputedOptionsById: null,
       initialSelections: null,
       itemPrice: 0,
       itemCashPrice: 0,
       activeModifierCategory: null,
       precomputedForItemId: null,
+      draftCreatedId: null,
     });
   },
 
@@ -456,6 +593,14 @@ export const selectCartItem = (state: ModifierSidebarState) => state.cartItem;
 /** Selector for precomputed modifiers - use for instant modifier rendering */
 export const selectPrecomputedModifiers = (state: ModifierSidebarState) =>
   state.precomputedModifiers;
+
+/** Selector for precomputed category map - O(1) lookup, no per-render build */
+export const selectPrecomputedCategoriesById = (state: ModifierSidebarState) =>
+  state.precomputedCategoriesById;
+
+/** Selector for precomputed options map - O(1) lookup, no per-render build */
+export const selectPrecomputedOptionsById = (state: ModifierSidebarState) =>
+  state.precomputedOptionsById;
 
 /** Selector for initial selections - use for instant form initialization */
 export const selectInitialSelections = (state: ModifierSidebarState) =>

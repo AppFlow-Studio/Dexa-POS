@@ -96,6 +96,19 @@ export interface StoreSettings {
   // KDS Settings
   kdsAutoFireEnabled: boolean
   kdsAutoFireDelayMinutes: number // Minutes before auto-firing pending items
+  kdsHideDoneItems: boolean // Hide individually-done items in KDS tickets
+  kdsDisplayModifierGroupName: 'for_group_priced' | 'always' | 'never'
+  kdsItemNameLines: number // 0 = unlimited, 1, 2, 3
+  kdsDisplaySeatNumbers: boolean
+  kdsDisplayGuestCount: boolean
+  kdsAlphabeticalSort: boolean
+  kdsHighlightNotes: boolean
+  kdsDisplayExclusionsAtTop: boolean
+  kdsAggregateIdenticalItems: boolean
+  kdsAggregateToExistingTickets: boolean
+  kdsYellowThresholdMinutes: number
+  kdsOrangeThresholdMinutes: number
+  kdsRedThresholdMinutes: number
 
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: number // Auto-expire notified parties after this many minutes
@@ -199,6 +212,22 @@ const initialData: StoreSettings = {
   // KDS Settings
   kdsAutoFireEnabled: false,
   kdsAutoFireDelayMinutes: 5,
+  kdsHideDoneItems: false,
+  kdsDisplayModifierGroupName: 'for_group_priced',
+  kdsItemNameLines: 0,
+  kdsDisplaySeatNumbers: false,
+  kdsDisplayGuestCount: true,
+  kdsAlphabeticalSort: false,
+  kdsHighlightNotes: true,
+  kdsDisplayExclusionsAtTop: false,
+  kdsAggregateIdenticalItems: false,
+  kdsAggregateToExistingTickets: false,
+  kdsYellowThresholdMinutes: 5,
+  kdsOrangeThresholdMinutes: 10,
+  kdsRedThresholdMinutes: 15,
+
+  // Waitlist Settings
+  waitlistNotificationGracePeriodMinutes: 10,
 
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: 10,
@@ -469,6 +498,19 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         // KDS Settings
         kdsAutoFireEnabled: state.kdsAutoFireEnabled,
         kdsAutoFireDelayMinutes: state.kdsAutoFireDelayMinutes,
+        kdsHideDoneItems: state.kdsHideDoneItems,
+        kdsDisplayModifierGroupName: state.kdsDisplayModifierGroupName,
+        kdsItemNameLines: state.kdsItemNameLines,
+        kdsDisplaySeatNumbers: state.kdsDisplaySeatNumbers,
+        kdsDisplayGuestCount: state.kdsDisplayGuestCount,
+        kdsAlphabeticalSort: state.kdsAlphabeticalSort,
+        kdsHighlightNotes: state.kdsHighlightNotes,
+        kdsDisplayExclusionsAtTop: state.kdsDisplayExclusionsAtTop,
+        kdsAggregateIdenticalItems: state.kdsAggregateIdenticalItems,
+        kdsAggregateToExistingTickets: state.kdsAggregateToExistingTickets,
+        kdsYellowThresholdMinutes: state.kdsYellowThresholdMinutes,
+        kdsOrangeThresholdMinutes: state.kdsOrangeThresholdMinutes,
+        kdsRedThresholdMinutes: state.kdsRedThresholdMinutes,
         // Organization branding
         organizationLogoUrl: state.organizationLogoUrl,
         // Station session fields

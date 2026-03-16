@@ -23,6 +23,7 @@ import {
   WifiOff,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountBottomSheet from "./DiscountBottomSheet";
@@ -64,31 +65,26 @@ const BillSectionContent = ({
   moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>;
   discountSheetRef?: React.RefObject<BottomSheetMethods>;
 }) => {
-  // O(1) lookups with individual selectors - only re-renders when specific values change
+  // O(1) lookups - single shallow selector reduces subscription overhead
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
-
-  // PERF: Narrow subscriptions to specific fields instead of entire activeOrder object
-  // items/payments are array refs that stay stable when other fields change
-  const activeOrderItems = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.items ?? null;
-  });
-  const activeOrderPayments = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.payments ?? null;
-  });
-  const activeOrderPaidStatus = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.paid_status ?? null;
-  });
-  const activeOrderType = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.order_type ?? null;
-  });
-  const activeOrderServiceLocation = useOrderStore((s) => {
-    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.service_location_id ?? null;
-  });
+  const {
+    activeOrderItems,
+    activeOrderPayments,
+    activeOrderPaidStatus,
+    activeOrderType,
+    activeOrderServiceLocation,
+  } = useOrderStore(
+    useShallow((s) => {
+      const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+      return {
+        activeOrderItems: order?.items ?? null,
+        activeOrderPayments: order?.payments ?? null,
+        activeOrderPaidStatus: order?.paid_status ?? null,
+        activeOrderType: order?.order_type ?? null,
+        activeOrderServiceLocation: order?.service_location_id ?? null,
+      };
+    })
+  );
 
   // Phase 7: Use derived selector instead of 3 individual store selectors
   const orderTotals = useActiveOrderTotals();

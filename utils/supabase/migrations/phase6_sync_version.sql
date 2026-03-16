@@ -480,18 +480,18 @@ END;
 $$;
 
 -- ============================================
--- 7. Update process_payment_v6 to increment sync_version
+-- 7. Update process_payment_v7 to increment sync_version
 -- Note: This is added at the end of the existing function.
 -- Since we can't easily modify the existing function, we wrap it
 -- or add the sync_version increment to the end.
 -- ============================================
 
--- For process_payment_v6, we need to modify the return statement.
+-- For process_payment_v7, we need to modify the return statement.
 -- Since this is complex, we'll create a wrapper or note that
 -- the process_payment function should call increment_order_sync_version
 -- after successful payment processing.
 
--- The recommended approach is to modify process_payment_v6.sql directly
+-- The recommended approach is to modify process_payment_v7.sql directly
 -- to include the following at the end before RETURN:
 --
 --     -- Phase 6: Increment sync_version

@@ -3,6 +3,7 @@ import { selectActiveEditingItemId, useModifierSidebarStore } from "@/stores/use
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useMemo, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
+import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
 import BillItem from "./BillItem";
 
 interface BillSummaryProps {
@@ -106,8 +107,11 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                         // Highlight if: being actively edited OR is a draft item
                         const shouldHighlight = item.id === activeEditingItemId || item.isDraft === true;
                         return (
-                          <View
+                          <Animated.View
                             key={`${item.id}-${index}`}
+                            entering={FadeInDown.duration(200)}
+                            exiting={FadeOutUp.duration(150)}
+                            layout={LinearTransition.duration(200)}
                             className={`rounded-xl mb-1.5 ${
                               isCourseActive ? "border border-blue-500" : ""
                             }`}
@@ -117,7 +121,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                               isEditable={true}
                               isActive={shouldHighlight}
                             />
-                          </View>
+                          </Animated.View>
                         );
                       })}
                     </View>

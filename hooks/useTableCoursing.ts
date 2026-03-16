@@ -22,6 +22,7 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined) {
   const setCurrentCourse = useCoursingStore((s) => s.setCurrentCourse);
   const isCourseSent = useCoursingStore((s) => s.isCourseSent);
   const markCourseSent = useCoursingStore((s) => s.markCourseSent);
+  const unmarkCourseSent = useCoursingStore((s) => s.unmarkCourseSent);
   const markCourseServed = useCoursingStore((s) => s.markCourseServed);
   const finalizeCurrentCourse = useCoursingStore((s) => s.finalizeCurrentCourse);
 
@@ -48,6 +49,10 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined) {
       setCoursingInitialized(false);
       return;
     }
+
+    // Reset tracking refs when order changes
+    syncedDbItemsRef.current = new Set();
+    prevItemIdsRef.current = [];
 
     initializeForOrder(orderId, activeOrder?.db_order_id);
 
@@ -196,6 +201,7 @@ export function useTableCoursing(activeOrder: OrderProfile | undefined) {
     setCurrentCourse,
     isCourseSent,
     markCourseSent,
+    unmarkCourseSent,
     markCourseServed,
     getForOrder,
     finalizeCurrentCourse,

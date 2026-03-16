@@ -50,9 +50,11 @@
       ],
       "expo-web-browser",
       "expo-secure-store",
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-audio"
     ],
     "experiments": {
+      "reactCompiler": true,
       "typedRoutes": true
     },
     "extra": {

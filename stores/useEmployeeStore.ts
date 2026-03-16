@@ -3,7 +3,6 @@ import { MerchantRole } from "@/lib/types";
 import bcrypt from "bcryptjs";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { useTimeclockStore } from "./useTimeclockStore";
 export interface EmployeeProfile {
   id: string; // location_members.id
   profileId: string; // staff_profiles.id
@@ -80,6 +79,7 @@ export const useEmployeeStore = create<EmployeeState>()(
       },
 
       setActiveSession: (employee: EmployeeProfile) => {
+        const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
         const { setActiveEmployee } = useTimeclockStore.getState();
         set({
           activeEmployeeId: employee.id,
@@ -121,7 +121,8 @@ export const useEmployeeStore = create<EmployeeState>()(
           ),
         }));
         // Also update timeclock store status
-        useTimeclockStore.getState().clockIn(employeeId);
+        const { useTimeclockStore: timeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
+        timeclockStore.getState().clockIn(employeeId);
       },
 
       clockOut: (employeeId) => {
@@ -133,7 +134,8 @@ export const useEmployeeStore = create<EmployeeState>()(
           ),
         }));
         // Also update timeclock store status
-        useTimeclockStore.getState().clockOut(employeeId);
+        const { useTimeclockStore: timeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
+        timeclockStore.getState().clockOut(employeeId);
       },
 
       /**
@@ -159,6 +161,7 @@ export const useEmployeeStore = create<EmployeeState>()(
         }
 
         // Set as active employee
+        const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
         const { setActiveEmployee, getSession, clockIn: timeclockClockIn } = useTimeclockStore.getState();
 
         // Check if already in session
@@ -180,6 +183,7 @@ export const useEmployeeStore = create<EmployeeState>()(
 
       signOut: () => {
         set({ activeEmployeeId: null, loggedInEmployee: null });
+        const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
         useTimeclockStore.getState().setActiveEmployee(null);
       },
     }),

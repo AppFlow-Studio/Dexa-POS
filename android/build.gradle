@@ -35,5 +35,6 @@ flatDir {
   }
 }
 
+// def enableProguardInReleaseBuilds = true
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

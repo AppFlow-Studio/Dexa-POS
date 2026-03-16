@@ -47,6 +47,7 @@ export interface BroadcastOrderItemData {
   open_item_price: number | null;
   special_instructions: string | null;
   category_name: string | null;
+  category_id?: string | null;
   base_card_price: number;
   base_cash_price: number;
   prep_station?: string | null;
@@ -154,6 +155,7 @@ export interface BroadcastOrderData {
   station_id: string | null;
   station_name: string | null;
   // Order info
+  order_source?: string | null;
   order_type: "dine_in" | "takeout" | "delivery";
   status:
     | "draft"

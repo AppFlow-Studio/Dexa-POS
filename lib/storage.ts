@@ -73,6 +73,16 @@ function debouncedSetItem(name: string, value: string): void {
 }
 
 /**
+ * Flush all pending debounced writes immediately.
+ * Call this on app background/inactive to prevent data loss if the app is killed.
+ */
+export function flushAllPendingWrites(): void {
+  for (const key of Object.keys(debouncedWriters)) {
+    debouncedWriters[key]?.flush();
+  }
+}
+
+/**
  * Zustand-compatible storage adapter for general storage.
  * Use with: createJSONStorage(() => mmkvStorage)
  */

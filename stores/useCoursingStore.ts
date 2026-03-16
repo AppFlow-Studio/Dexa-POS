@@ -1,6 +1,6 @@
 import { isLocalId, resolveToBackendId } from "@/lib/offlineIdRegistry";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { isValidUUID } from "@/utils/orderIdHelpers";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { useEmployeeStore } from "./useEmployeeStore";
@@ -14,14 +14,6 @@ let _supabaseClient: SupabaseClient | null = null;
 export function setCoursingSupabaseClient(client: SupabaseClient | null) {
   _supabaseClient = client;
 }
-
-// Helper to validate if a string is a valid UUID (for backend sync)
-const isValidUUID = (id: string): boolean => {
-  // UUID v4 regex pattern
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(id);
-};
 
 // ============================================================================
 // TYPES
@@ -84,6 +76,7 @@ type CoursingState = {
   getSentCourses: (orderId: string) => number[];
   getUnsentCourses: (orderId: string) => number[];
   markCourseSent: (orderId: string, course: number) => void;
+  unmarkCourseSent: (orderId: string, course: number) => void;
   getAllCourseStatuses: (
     orderId: string
   ) => Record<number, "unsent" | "sent" | "in_progress">;
@@ -348,6 +341,30 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     get().fireCourse(orderId, course).catch(console.error);
   },
 
+  unmarkCourseSent: (orderId: string, course: number) => {
+    const orderData = get().byOrderId[orderId];
+    if (!orderData) return;
+    set((prev) => ({
+      byOrderId: {
+        ...prev.byOrderId,
+        [orderId]: {
+          ...prev.byOrderId[orderId],
+          courses: {
+            ...prev.byOrderId[orderId].courses,
+            [course]: {
+              ...(prev.byOrderId[orderId].courses[course] ?? {
+                courseNumber: course,
+                itemCount: 0,
+              }),
+              status: "open",
+              firedAt: undefined,
+            },
+          },
+        },
+      },
+    }));
+  },
+
   getAllCourseStatuses: (orderId: string) => {
     const orderData = get().byOrderId[orderId];
     if (!orderData) return {};
@@ -607,6 +624,8 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
 
   fireCourse: async (orderId: string, courseNumber: number) => {
     // SYNC BARRIER: Ensure all items are synced before firing course
+    // Lazy require — breaks circular dependency with useOrderStore
+    const { useOrderStore } = require('@/stores/useOrderStore') as typeof import('@/stores/useOrderStore');
     const orderStore = useOrderStore.getState();
 
     if (orderStore.hasPendingSyncs(orderId)) {
@@ -724,22 +743,28 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
   },
 
   markCourseServed: async (orderId: string, courseNumber: number) => {
-    set((prev) => ({
-      byOrderId: {
-        ...prev.byOrderId,
-        [orderId]: {
-          ...prev.byOrderId[orderId],
-          courses: {
-            ...prev.byOrderId[orderId].courses,
-            [courseNumber]: {
-              ...prev.byOrderId[orderId].courses[courseNumber],
-              status: "served",
-              servedAt: new Date().toISOString(),
+    const orderData = get().byOrderId[orderId];
+    if (!orderData) return;
+
+    set((prev) => {
+      if (!prev.byOrderId[orderId]) return prev;
+      return {
+        byOrderId: {
+          ...prev.byOrderId,
+          [orderId]: {
+            ...prev.byOrderId[orderId],
+            courses: {
+              ...prev.byOrderId[orderId].courses,
+              [courseNumber]: {
+                ...prev.byOrderId[orderId].courses[courseNumber],
+                status: "served",
+                servedAt: new Date().toISOString(),
+              },
             },
           },
         },
-      },
-    }));
+      };
+    });
 
     const dbOrderId = get().byOrderId[orderId]?.dbOrderId;
     if (_supabaseClient && dbOrderId) {

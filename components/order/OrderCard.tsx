@@ -52,6 +52,9 @@ const OrderCard: React.FC<OrderCardProps> = ({
   // Derive closed with balance status
   const isClosedWithBalance = order.check_status === "Closed" && (order.amount_due ?? 0) > 0;
 
+  // Ready + Paid: needs explicit "Done" action from cashier
+  const isReadyAndPaid = order.order_status === "ready" && order.paid_status === "Paid";
+
   // Dot-chip color helpers
   const orderDotColor = useMemo(() => {
     if (refundStatus.isFullyRefunded) return colors.orderCancelled;
@@ -237,7 +240,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
           <ArrowUpRight color={colors.heading} size={18} />
         </TouchableOpacity>
 
-        {(isClosedWithBalance || refundStatus.isFullyRefunded) ? (
+        {(isClosedWithBalance || refundStatus.isFullyRefunded || isReadyAndPaid) ? (
           <View className="flex-row flex-1 ml-2 gap-2">
             {onMarkDone && (
               <TouchableOpacity
@@ -250,7 +253,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
                 </Text>
               </TouchableOpacity>
             )}
-            {onReopenCheck && !refundStatus.isFullyRefunded && (
+            {onReopenCheck && !refundStatus.isFullyRefunded && !isReadyAndPaid && (
               <TouchableOpacity
                 onPress={onReopenCheck}
                 className="px-3 py-2 bg-blue-600 rounded-xl flex-1 flex-row items-center justify-center"

@@ -86,6 +86,7 @@ BEGIN
         'open_item_price', oi.open_item_price,
         'special_instructions', oi.special_instructions,
         'category_name', oi.category_name,
+        'category_id', oi.category_id,
         'prep_station', oi.prep_station,
         'rush', COALESCE(oi.rush, false),
         -- Phase 2.5: Include modifiers for this item
@@ -173,13 +174,14 @@ BEGIN
       'voided_at', NEW.voided_at
     );
 
-    -- Part 5: Void info, sync info, and order items
+    -- Part 5: Void info, sync info, order source, and order items
     order_data := order_data || jsonb_build_object(
       'voided_by', NEW.voided_by,
       'void_reason', NEW.void_reason,
       'cancellation_reason', NEW.cancellation_reason,
       'sync_version', NEW.sync_version,
       'is_offline', NEW.is_offline,
+      'order_source', NEW.order_source,
       'order_items', order_items_data
     );
 
