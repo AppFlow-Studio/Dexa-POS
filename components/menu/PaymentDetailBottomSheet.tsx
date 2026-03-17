@@ -1,7 +1,10 @@
 import { useToast, ToastRenderer } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import type { CartItem, OrderPaymentItemCoverage, OrderProfile, OrderProfilePayment, OrderRefundItemRecord, ReversalRecord } from "@/lib/types";
+import { OrderService } from "@/services/orderService";
 import { PrinterService } from "@/services/printing/PrinterService";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useRefundMutation, type PerPaymentRefundDetail } from "@/hooks/orders/useRefundMutation";
 import { useTipAdjustMutation } from "@/hooks/orders/useTipAdjustMutation";
@@ -1311,6 +1314,7 @@ const RightPaneTipAdjust: React.FC<RightPaneTipAdjustProps> = ({
     try {
       await tipAdjustMutation.mutateAsync({
         dbOrderId: order.db_order_id || order.id,
+        orderId: order.id,
         payments: cardPayments.map((payment) => ({
           paymentIndex: payment.paymentIndex,
           dbPaymentId: payment.dbPaymentId,
@@ -2664,6 +2668,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 > = (props, ref) => {
   const { show } = useToast();
   const router = useRouter();
+  const supabase = useSupabaseClient();
   const internalRef = useRef<BottomSheetMethods>(null);
   const [tipProcessing, setTipProcessing] = useState(false);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
@@ -2943,43 +2948,69 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   // Handlers
   const handleReopenOrder = useCallback(async () => {
     if (!orderId) return;
-    await updateOrderCheckStatus(orderId, "Opened");
+
+    // Check if the order is in the active store
     const storeKey = useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId;
-    const current = useOrderStore.getState().ordersById[storeKey];
-    if (current?.check_status === "Opened") {
-      show({
-        title: "Order Reopened",
-        message: "This order is now open for editing and payments.",
-        type: "success",
-      });
+    const isActiveOrder = !!useOrderStore.getState().ordersById[storeKey];
+
+    if (isActiveOrder) {
+      await updateOrderCheckStatus(orderId, "Opened");
+      const current = useOrderStore.getState().ordersById[storeKey];
+      if (current?.check_status === "Opened") {
+        show({ title: "Order Reopened", message: "This order is now open for editing and payments.", type: "success" });
+      } else {
+        show({ title: "Reopen Failed", message: "Could not reopen this order. Please try again.", type: "error" });
+      }
     } else {
-      show({
-        title: "Reopen Failed",
-        message: "Could not reopen this order. Please try again.",
-        type: "error",
-      });
+      // Previous order — call OrderService directly
+      const dbId = usePreviousOrdersStore.getState().getOrderById(orderId)?.db_order_id || orderId;
+      const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId;
+      if (!supabase || !staffId) {
+        show({ title: "Reopen Failed", message: "Missing authentication.", type: "error" });
+        return;
+      }
+      const result = await OrderService.reopenCheck(supabase, dbId, staffId);
+      if (result.success) {
+        usePreviousOrdersStore.getState().patchPreviousOrder(orderId, { checkStatus: "Opened" });
+        show({ title: "Order Reopened", message: "This order is now open for editing and payments.", type: "success" });
+      } else {
+        show({ title: "Reopen Failed", message: result.error || "Could not reopen this order.", type: "error" });
+      }
     }
-  }, [orderId, updateOrderCheckStatus, show]);
+  }, [orderId, updateOrderCheckStatus, show, supabase]);
 
   const handleCloseOrder = useCallback(async () => {
     if (!orderId) return;
-    await updateOrderCheckStatus(orderId, "Closed");
+
+    // Check if the order is in the active store
     const storeKey = useOrderStore.getState().dbOrderIdIndex[orderId] ?? orderId;
-    const current = useOrderStore.getState().ordersById[storeKey];
-    if (current?.check_status === "Closed") {
-      show({
-        title: "Order Closed",
-        message: "This order has been closed.",
-        type: "success",
-      });
+    const isActiveOrder = !!useOrderStore.getState().ordersById[storeKey];
+
+    if (isActiveOrder) {
+      await updateOrderCheckStatus(orderId, "Closed");
+      const current = useOrderStore.getState().ordersById[storeKey];
+      if (current?.check_status === "Closed") {
+        show({ title: "Order Closed", message: "This order has been closed.", type: "success" });
+      } else {
+        show({ title: "Close Failed", message: "Could not close this order. There may be an outstanding balance.", type: "error" });
+      }
     } else {
-      show({
-        title: "Close Failed",
-        message: "Could not close this order. There may be an outstanding balance.",
-        type: "error",
-      });
+      // Previous order — call OrderService directly
+      const dbId = usePreviousOrdersStore.getState().getOrderById(orderId)?.db_order_id || orderId;
+      const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId;
+      if (!supabase) {
+        show({ title: "Close Failed", message: "Missing connection.", type: "error" });
+        return;
+      }
+      const result = await OrderService.closeCheck(supabase, dbId, staffId);
+      if (result.success) {
+        usePreviousOrdersStore.getState().patchPreviousOrder(orderId, { checkStatus: "Closed" });
+        show({ title: "Order Closed", message: "This order has been closed.", type: "success" });
+      } else {
+        show({ title: "Close Failed", message: result.error || "Could not close this order.", type: "error" });
+      }
     }
-  }, [orderId, updateOrderCheckStatus, show]);
+  }, [orderId, updateOrderCheckStatus, show, supabase]);
 
   const handleContinueCharging = useCallback(async () => {
     if (!orderId) return;

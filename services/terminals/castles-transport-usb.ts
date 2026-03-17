@@ -70,29 +70,46 @@ export class CastlesUsbTransport implements ICastlesTransport {
    */
   async connect(): Promise<void> {
     // Step 1: Discover USB serial devices
-    const devices = await listDevices();
+    let devices: UsbDeviceInfo[];
+    try {
+      devices = await listDevices();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error(
+        '[CastlesUsbTransport] Failed to list USB devices:',
+        error.message,
+      );
+      throw new Error(
+        'Unable to scan USB devices. Check Android USB permissions and reconnect the terminal.',
+      );
+    }
+
     console.log(
-      `[CastlesUsbTransport] Found ${devices.length} USB serial device(s)`,
+      `[CastlesUsbTransport] Found ${devices.length} USB device(s)`,
     );
 
     // Step 2: Find Saturn1000
     const device = this._findSaturn1000(devices);
     if (!device) {
       throw new Error(
-        'Saturn1000 not found on USB. Check cable connection.',
+        'Saturn1000 not found on USB. Check cable connection and power.',
       );
     }
     console.log(
-      `[CastlesUsbTransport] Saturn1000 found: deviceId=${device.deviceId}, ` +
+      `[CastlesUsbTransport] Saturn1000 candidate: deviceId=${device.deviceId}, ` +
         `vendor=0x${device.vendorId.toString(16)}, product="${device.productName}"`,
     );
 
-    // Step 3: Request USB permission
-    const granted = await requestPermission(device.deviceId);
-    if (!granted) {
-      throw new Error(
-        'USB permission denied. Please allow USB access when prompted.',
-      );
+    // Step 3: Ensure USB permission
+    let hasPermission = device.hasPermission;
+    if (!hasPermission) {
+      const granted = await requestPermission(device.deviceId);
+      if (!granted) {
+        throw new Error(
+          'USB permission denied. Please allow USB access when prompted and try again.',
+        );
+      }
+      hasPermission = true;
     }
 
     // Step 4: Open serial port

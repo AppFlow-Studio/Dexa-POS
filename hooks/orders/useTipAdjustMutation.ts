@@ -10,7 +10,10 @@ import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
 import { adjustTips, TipAdjustment } from "@/services/tipAdjustService";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { orderHistoryKeys } from "./useOrderHistory";
+import { applyOptimisticPatch } from "./applyOptimisticPatch";
+import type { OrderProfile, OrderProfilePayment, PreviousOrder } from "@/lib/types";
 import * as Haptics from "expo-haptics";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -28,6 +31,7 @@ export interface TipAdjustPaymentInput {
 
 export interface TipAdjustMutationInput {
   dbOrderId: string;
+  orderId?: string; // local store key (for optimistic patching)
   payments: TipAdjustPaymentInput[];
 }
 
@@ -140,15 +144,41 @@ export function useTipAdjustMutation() {
         );
       }
 
-      // Sync order from backend
+      // Apply optimistic patch immediately
+      {
+        const localOrderId = input.orderId || input.dbOrderId;
+        const orderState = useOrderStore.getState();
+        const localKey = orderState.dbOrderIdIndex[input.dbOrderId] ?? localOrderId;
+        const activeOrder = orderState.ordersById[localKey];
+        const prevOrder = usePreviousOrdersStore.getState().getOrderById(localOrderId)
+          ?? usePreviousOrdersStore.getState().getOrderById(input.dbOrderId);
+        const currentPayments: OrderProfilePayment[] = activeOrder?.payments || prevOrder?.payments || [];
+
+        const patchedPayments = currentPayments.map((p, idx) => {
+          const adj = input.payments.find(
+            (a) => a.dbPaymentId === p.db_payment_id || a.paymentIndex === idx
+          );
+          if (!adj || Math.abs(adj.newTip - adj.currentTip) < 0.001) return p;
+          return {
+            ...p,
+            tip_amount: adj.newTip,
+            total_collected: p.amount + adj.newTip,
+            original_tip_amount: p.original_tip_amount ?? p.tip_amount,
+            tip_adjusted_at: new Date().toISOString(),
+            tip_adjusted_by: loggedInEmployee?.profileId || undefined,
+          };
+        });
+
+        const orderPatch: Partial<OrderProfile> = { payments: patchedPayments };
+        const previousOrderPatch: Partial<PreviousOrder> = { payments: patchedPayments };
+
+        applyOptimisticPatch(localOrderId, input.dbOrderId, orderPatch, previousOrderPatch);
+      }
+
+      // Fire-and-forget background sync
       if (input.dbOrderId) {
-        try {
-          await useOrderStore
-            .getState()
-            .syncOrderFromBackendComplete(input.dbOrderId);
-        } catch (syncError) {
-          console.warn("[TipAdjust] Post-adjustment sync failed:", syncError);
-        }
+        useOrderStore.getState().syncOrderFromBackendComplete(input.dbOrderId)
+          .catch(err => console.warn("[TipAdjust] Background sync failed:", err));
       }
 
       return { isOffline: !ordersRealtime.isConnected };

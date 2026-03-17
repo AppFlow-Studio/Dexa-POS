@@ -105,6 +105,7 @@ BEGIN
           WHERE oim.order_item_id = oi.id
         )
       )
+      ORDER BY oi.display_order ASC NULLS LAST, oi.created_at ASC
     ), '[]'::jsonb) INTO order_items_data
     FROM order_items oi
     WHERE oi.order_id = NEW.id

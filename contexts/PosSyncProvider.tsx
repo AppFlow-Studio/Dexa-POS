@@ -163,6 +163,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
             `
           id,
           pin_code,
+          pin_plain,
           role_code,
           staff_profile_id,
           staff_profiles (
@@ -200,7 +201,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
               displayName: profile?.display_name || fullName || "Unknown",
               role: row.role_code as MerchantRole,
               profilePictureUrl: profile?.avatar_url || undefined,
-              pinHash: row.pin_code, // bcrypt hash from DB
+              pin: row.pin_plain ?? null,
               email: profile?.email,
               phone: profile?.phone,
               shiftStatus: "clocked_out" as const,

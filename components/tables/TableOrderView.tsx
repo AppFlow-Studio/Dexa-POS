@@ -470,11 +470,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       kitchen_status: i.kitchen_status
     }))
 
-    // Optimistically mark items as preparing (single batched set() call)
+    // Optimistically mark items as sent/queued (single batched set() call)
     batchUpdateItemKitchenStatus(
-      itemsInCourse.map(i => i.id),
-      'preparing'
-    )
+      itemsInCourse.map((i) => i.id),
+      "sent",
+    );
 
     // Mark course as sent IMMEDIATELY (drives CourseGroup UI via isSent prop)
     coursingHook.markCourseSent(activeOrder.id, course)

@@ -41,21 +41,27 @@ BEGIN
     v_ip_address := NULL;
   END IF;
 
-  SELECT 
+  SELECT
     sp.id as staff_profile_id,
     sp.first_name,
     sp.last_name,
     lm.role_code,
     lm.hourly_rate,
-    lm.merchant_id
+    lm.merchant_id,
+    lm.id as location_member_id,
+    lm.pin_plain
   INTO v_staff
   FROM location_members lm
   JOIN staff_profiles sp ON sp.id = lm.staff_profile_id
-  WHERE lm.location_id = p_location_id 
+  WHERE lm.location_id = p_location_id
     AND lm.is_active = true
-    AND lm.pin_code IS NOT NULL
     AND (
-        replace(lm.pin_code, '$2b$', '$2a$') = crypt(p_pin_code, replace(lm.pin_code, '$2b$', '$2a$'))
+        -- Fast path: plain-text PIN match
+        (lm.pin_plain IS NOT NULL AND lm.pin_plain = p_pin_code)
+        OR
+        -- Bcrypt fallback: un-migrated employees only
+        (lm.pin_plain IS NULL AND lm.pin_code IS NOT NULL
+         AND replace(lm.pin_code, '$2b$', '$2a$') = crypt(p_pin_code, replace(lm.pin_code, '$2b$', '$2a$')))
     );
 
   IF NOT FOUND THEN
@@ -64,6 +70,11 @@ BEGIN
       'error', 'Invalid PIN',
       'error_code', 'INVALID_PIN'
     );
+  END IF;
+
+  -- Auto-migrate: populate pin_plain on first successful bcrypt login
+  IF v_staff.pin_plain IS NULL THEN
+    UPDATE location_members SET pin_plain = p_pin_code WHERE id = v_staff.location_member_id;
   END IF;
 
   -- ========================================
