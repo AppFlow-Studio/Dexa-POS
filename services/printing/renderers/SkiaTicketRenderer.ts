@@ -1,4 +1,4 @@
-import { Skia } from "@shopify/react-native-skia";
+import { Skia, PaintStyle } from "@shopify/react-native-skia";
 import * as FileSystem from "expo-file-system";
 
 // ============================================================================
@@ -12,6 +12,9 @@ export interface TextBlock {
   doubleWidth: boolean;
   inverted: boolean;
   align: "left" | "center" | "right";
+  isDivider?: boolean;
+  dividerStyle?: "solid" | "dotted" | "double";
+  secondColor?: boolean;
 }
 
 // ============================================================================
@@ -82,6 +85,9 @@ function getTypeface(bold: boolean) {
  * Renders an array of TextBlocks to a PNG image file using Skia offscreen rendering.
  * Used by graphics-only Star printers (TSP100III) that don't support actionPrintText.
  *
+ * doubleHeight uses vertical canvas scaling (not a larger font) so character width
+ * stays the same as BASE_FONT_SIZE — matching how real thermal printers stretch height only.
+ *
  * @param blocks - The text blocks to render
  * @param printWidthDots - Print head width in dots (e.g. 576 for 80mm @ 203dpi)
  * @returns file:// URI pointing to the rendered PNG in the cache directory
@@ -97,10 +103,16 @@ export async function renderTextBlocksToImage(
   const lineHeights: number[] = [];
 
   for (const block of blocks) {
-    const fontSize = block.doubleHeight ? BASE_FONT_SIZE * 2 : BASE_FONT_SIZE;
-    const lineHeight = fontSize + LINE_SPACING;
-    lineHeights.push(lineHeight);
-    totalHeight += lineHeight;
+    if (block.isDivider) {
+      const divHeight = (block.dividerStyle ?? "solid") === "double" ? 20 : 16;
+      lineHeights.push(divHeight);
+      totalHeight += divHeight;
+    } else {
+      const scaleY = block.doubleHeight ? 2 : 1;
+      const lineHeight = BASE_FONT_SIZE * scaleY + LINE_SPACING;
+      lineHeights.push(lineHeight);
+      totalHeight += lineHeight;
+    }
   }
 
   // Add padding at top and bottom
@@ -132,80 +144,116 @@ export async function renderTextBlocksToImage(
   const invertBgPaint = Skia.Paint();
   invertBgPaint.setColor(Skia.Color("#000000"));
 
+  // Bold stroke overlay paints (thin stroke drawn over fill for thermal paper thickness)
+  const boldStrokePaint = Skia.Paint();
+  boldStrokePaint.setColor(Skia.Color("#000000"));
+  boldStrokePaint.setStyle(PaintStyle.Stroke);
+  boldStrokePaint.setStrokeWidth(0.5);
+  boldStrokePaint.setAntiAlias(false);
+
+  const boldStrokeWhitePaint = Skia.Paint();
+  boldStrokeWhitePaint.setColor(Skia.Color("#FFFFFF"));
+  boldStrokeWhitePaint.setStyle(PaintStyle.Stroke);
+  boldStrokeWhitePaint.setStrokeWidth(0.5);
+  boldStrokeWhitePaint.setAntiAlias(false);
+
+  // Red paint for secondColor (two-color thermal printers)
+  const redPaint = Skia.Paint();
+  redPaint.setColor(Skia.Color("#FF0000"));
+  redPaint.setAntiAlias(false);
+
+  const redStrokePaint = Skia.Paint();
+  redStrokePaint.setColor(Skia.Color("#FF0000"));
+  redStrokePaint.setStyle(PaintStyle.Stroke);
+  redStrokePaint.setStrokeWidth(0.5);
+  redStrokePaint.setAntiAlias(false);
+
   let y = LINE_SPACING;
 
   const maxContentWidth = printWidthDots - 2 * HORIZONTAL_PADDING;
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
+    const lineHeight = lineHeights[i];
 
-    // Auto-reduce magnification if text would overflow the print width
-    let { doubleWidth, doubleHeight } = block;
-    const checkFont = Skia.Font(getTypeface(block.bold), doubleHeight ? BASE_FONT_SIZE * 2 : BASE_FONT_SIZE);
-    const rawWidth = checkFont.getTextWidth(block.text);
-    const effectiveWidth = doubleWidth ? rawWidth * 2 : rawWidth;
-    if (effectiveWidth > maxContentWidth) {
-      if (doubleWidth) {
-        // Drop doubleWidth first
-        doubleWidth = false;
-        // Re-check with just doubleHeight
-        if (rawWidth > maxContentWidth && doubleHeight) {
-          doubleHeight = false;
-        }
-      } else if (doubleHeight) {
-        // Re-measure at normal font size
-        const normalFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
-        const normalWidth = normalFont.getTextWidth(block.text);
-        if (normalWidth <= maxContentWidth) {
-          doubleHeight = false;
-        }
+    // ── Divider: graphic lines instead of text dashes ──
+    if (block.isDivider) {
+      const style = block.dividerStyle ?? "solid";
+      const lineY = y + lineHeight / 2;
+      const linePaint = Skia.Paint();
+      linePaint.setColor(Skia.Color("#000000"));
+      linePaint.setStrokeWidth(style === "double" ? 1.5 : 2);
+      linePaint.setStyle(PaintStyle.Stroke);
+      linePaint.setAntiAlias(false);
+      canvas.drawLine(HORIZONTAL_PADDING, lineY, printWidthDots - HORIZONTAL_PADDING, lineY, linePaint);
+      if (style === "double") {
+        canvas.drawLine(HORIZONTAL_PADDING, lineY + 5, printWidthDots - HORIZONTAL_PADDING, lineY + 5, linePaint);
       }
+      y += lineHeight;
+      continue;
     }
 
-    const fontSize = doubleHeight ? BASE_FONT_SIZE * 2 : BASE_FONT_SIZE;
+    // ── Overflow check ──
+    // doubleHeight uses vertical scaling only — it never affects width.
+    // Only doubleWidth needs width checking.
+    let { doubleWidth, doubleHeight } = block;
+    const checkFont = Skia.Font(getTypeface(block.bold), BASE_FONT_SIZE);
+    const rawWidth = checkFont.getTextWidth(block.text);
+    const effectiveWidth = doubleWidth ? rawWidth * 2 : rawWidth;
+    if (effectiveWidth > maxContentWidth && doubleWidth) {
+      doubleWidth = false;
+      // doubleHeight stays — it doesn't affect width
+    }
 
     const typeface = getTypeface(block.bold);
-    const font = Skia.Font(typeface, fontSize);
+    const font = Skia.Font(typeface, BASE_FONT_SIZE);
     font.setEdging(0); // 0 = Alias — no anti-aliasing, crisp for thermal printing
-
-    const lineHeight = lineHeights[i];
-    const textY = y + fontSize; // drawText y is baseline
 
     // Handle inverted: draw black rect, then white text
     if (block.inverted) {
-      const rectY = y;
       canvas.drawRect(
-        { x: 0, y: rectY, width: printWidthDots, height: lineHeight },
+        { x: 0, y, width: printWidthDots, height: lineHeight },
         invertBgPaint,
       );
     }
 
-    const paint = block.inverted ? whitePaint : blackPaint;
+    // ── Select paint — fill + optional bold stroke overlay ──
+    // secondColor (without inverted) uses red for two-color printers;
+    // on monochrome thermal printers, red pixels print as black bold text.
+    const useRed = block.secondColor && !block.inverted;
+    const fillPaint = block.inverted ? whitePaint : (useRed ? redPaint : blackPaint);
+    const strokeOverlay = block.bold
+      ? (block.inverted ? boldStrokeWhitePaint : (useRed ? redStrokePaint : boldStrokePaint))
+      : null;
 
-    // Handle doubleWidth by scaling
-    if (doubleWidth) {
-      const textWidth = font.getTextWidth(block.text);
-      const scaledWidth = textWidth * 2;
-      let x = HORIZONTAL_PADDING;
-      if (block.align === "center") {
-        x = (printWidthDots - scaledWidth) / 2;
-      } else if (block.align === "right") {
-        x = printWidthDots - HORIZONTAL_PADDING - scaledWidth;
-      }
+    // ── Unified scaling for doubleWidth / doubleHeight ──
+    const scaleX = doubleWidth ? 2 : 1;
+    const scaleY = doubleHeight ? 2 : 1;
+
+    // Calculate alignment at output (global) coordinates
+    const textWidth = font.getTextWidth(block.text);
+    const outputTextWidth = textWidth * scaleX;
+    let outputX = HORIZONTAL_PADDING;
+    if (block.align === "center") {
+      outputX = (printWidthDots - outputTextWidth) / 2;
+    } else if (block.align === "right") {
+      outputX = printWidthDots - HORIZONTAL_PADDING - outputTextWidth;
+    }
+
+    if (scaleX !== 1 || scaleY !== 1) {
       canvas.save();
-      canvas.scale(2, 1);
-      canvas.drawText(block.text, x / 2, textY, paint, font);
+      canvas.translate(outputX, y);
+      canvas.scale(scaleX, scaleY);
+      canvas.drawText(block.text, 0, BASE_FONT_SIZE, fillPaint, font);
+      if (strokeOverlay) {
+        canvas.drawText(block.text, 0, BASE_FONT_SIZE, strokeOverlay, font);
+      }
       canvas.restore();
     } else {
-      // Calculate x position based on alignment
-      const textWidth = font.getTextWidth(block.text);
-      let x = HORIZONTAL_PADDING;
-      if (block.align === "center") {
-        x = (printWidthDots - textWidth) / 2;
-      } else if (block.align === "right") {
-        x = printWidthDots - HORIZONTAL_PADDING - textWidth;
+      canvas.drawText(block.text, outputX, y + BASE_FONT_SIZE, fillPaint, font);
+      if (strokeOverlay) {
+        canvas.drawText(block.text, outputX, y + BASE_FONT_SIZE, strokeOverlay, font);
       }
-      canvas.drawText(block.text, x, textY, paint, font);
     }
 
     y += lineHeight;

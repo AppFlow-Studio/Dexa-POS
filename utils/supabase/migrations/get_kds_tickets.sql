@@ -50,6 +50,7 @@ BEGIN
       'customer_name', o.customer_name,
       'start_time', COALESCE(oi_grouped.fire_time, o.sent_to_kitchen_at, o.created_at),
       'item_count', oi_grouped.item_count,
+      'prioritized', oi_grouped.any_prioritized,
       'items', oi_grouped.items_json
     ) AS ticket
     FROM orders o
@@ -64,7 +65,9 @@ BEGIN
         -- Item count (sum of quantities)
         SUM(oi.quantity)::int AS item_count,
         oi.fire_time,
-        -- Items array with nested modifiers
+        -- Ticket-level priority flag (true if any item is prioritized)
+        bool_or(COALESCE(oi.is_prioritized, false)) AS any_prioritized,
+        -- Items array with nested modifiers (stable ordering)
         jsonb_agg(
           jsonb_build_object(
             'id', oi.id,
@@ -78,6 +81,7 @@ BEGIN
             'menu_id', oi.menu_id,
             'prep_station', oi.prep_station,
             'rush', COALESCE(oi.rush, false),
+            'is_prioritized', COALESCE(oi.is_prioritized, false),
             'fire_time', oi.fire_time,
             'modifiers', (
               SELECT COALESCE(jsonb_agg(
@@ -91,6 +95,7 @@ BEGIN
               WHERE oim.order_item_id = oi.id
             )
           )
+          ORDER BY oi.id ASC
         ) AS items_json
       FROM order_items oi
       -- When p_kds_display_id is provided, only include items routed to that display

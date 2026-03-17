@@ -77,6 +77,7 @@ BEGIN
         'category_id', oi.category_id,
         'prep_station', oi.prep_station,
         'rush', COALESCE(oi.rush, false),
+        'is_prioritized', COALESCE(oi.is_prioritized, false),
         'fire_time', oi.fire_time,
         -- Phase 2.5: Include modifiers for this item
         'modifiers', (

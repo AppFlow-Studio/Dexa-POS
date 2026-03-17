@@ -13,6 +13,11 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 
+import com.temurappflowstudios.dexapos.tcpserver.TcpServerPackage
+import com.temurappflowstudios.dexapos.secondarydisplay.SecondaryDisplayPackage
+import com.temurappflowstudios.dexapos.hardware.HardwareDetectionPackage
+import com.temurappflowstudios.dexapos.printer.LandiPrinterPackage
+
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 
@@ -22,9 +27,11 @@ class MainApplication : Application(), ReactApplication {
         this,
         object : DefaultReactNativeHost(this) {
           override fun getPackages(): List<ReactPackage> {
-            val packages = PackageList(this).packages
-            // Packages that cannot be autolinked yet can be added manually here, for example:
-            // packages.add(MyReactNativePackage())
+            val packages = PackageList(this).packages.toMutableList()
+            packages.add(TcpServerPackage())
+            packages.add(SecondaryDisplayPackage())
+            packages.add(HardwareDetectionPackage())
+            packages.add(LandiPrinterPackage())
             return packages
           }
 

@@ -8,6 +8,12 @@ export type ReceiptTemplateRow =
   Database["public"]["Tables"]["receipt_templates"]["Row"];
 
 // ============================================================================
+// MODIFIER STYLE
+// ============================================================================
+
+export type ModifierStyle = "inverted" | "red" | "bold";
+
+// ============================================================================
 // RECEIPT TEMPLATE CONFIG (mapped from DB row)
 // ============================================================================
 
@@ -34,6 +40,7 @@ export interface ReceiptTemplateConfig {
   showModsLarge: boolean;
   largeItemText: boolean;
   groupByStation: boolean;
+  modifierStyle: ModifierStyle;
 }
 
 // ============================================================================
@@ -63,6 +70,7 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
   showModsLarge: true,
   largeItemText: true,
   groupByStation: true,
+  modifierStyle: "inverted",
 };
 
 // ============================================================================
@@ -101,6 +109,7 @@ export function receiptTemplateConfigToRow(
     show_mods_large: config.showModsLarge,
     large_item_text: config.largeItemText,
     group_by_station: config.groupByStation,
+    modifier_style: config.modifierStyle,
   };
 
   // Only include id if it's a real UUID (not "default")
@@ -137,5 +146,6 @@ export function receiptTemplateRowToConfig(
     showModsLarge: row.show_mods_large ?? true,
     largeItemText: row.large_item_text ?? true,
     groupByStation: row.group_by_station ?? true,
+    modifierStyle: (row.modifier_style as ModifierStyle) ?? "inverted",
   };
 }

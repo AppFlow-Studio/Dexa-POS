@@ -42,6 +42,8 @@ interface PrinterStoreState {
     },
   ) => Promise<void>;
 
+  deletePrinter: (printerId: string) => Promise<void>;
+
   // Routing V2 actions
   fetchRoutingRules: (locationId: string) => Promise<void>;
   setRoutingMode: (printerId: string, mode: PrinterRoutingMode) => Promise<void>;
@@ -220,6 +222,45 @@ export const usePrinterStore = create<PrinterStoreState>()(
           }));
         } catch (e) {
           console.error("[PrinterStore] Failed to update printer config:", e);
+          throw e;
+        }
+      },
+
+      deletePrinter: async (printerId: string) => {
+        const supabase = getOrderStoreSupabaseClient();
+        if (!supabase) {
+          console.warn("[PrinterStore] No Supabase client available");
+          return;
+        }
+
+        try {
+          // 1. Delete routing rules for this printer
+          await supabase
+            .from("printer_routing_rules")
+            .delete()
+            .eq("printer_id", printerId);
+
+          // 2. Delete the printer row
+          const { error } = await supabase
+            .from("printers")
+            .delete()
+            .eq("id", printerId);
+
+          if (error) {
+            console.error("[PrinterStore] Failed to delete printer:", error);
+            throw error;
+          }
+
+          // 3. Remove from local state
+          set((state) => {
+            const { [printerId]: _, ...remainingConfigs } = state.routingConfigs;
+            return {
+              printers: state.printers.filter((p) => p.id !== printerId),
+              routingConfigs: remainingConfigs,
+            };
+          });
+        } catch (e) {
+          console.error("[PrinterStore] Error deleting printer:", e);
           throw e;
         }
       },

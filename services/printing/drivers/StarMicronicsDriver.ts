@@ -148,7 +148,27 @@ export class StarMicronicsDriver implements PrinterDriver {
   }
 
   async openCashDrawer(): Promise<void> {
-    throw new Error("Cash drawer not supported via Star Micronics driver");
+    if (!this.printer) {
+      throw new Error("Star Micronics driver not initialized");
+    }
+
+    // Send raw ESC/POS drawer kick command directly via printRawData().
+    // Bypasses the StarXpand command builder entirely — avoids circular import
+    // issues and the native layer silently ignoring the JSON drawer command.
+    // ESC p m t1 t2: m=0 (pin 2 / DK port), t1=25 (50ms on), t2=250 (500ms off)
+    // Same bytes used in EscPosBuilder.openCashDrawer().
+    const drawerKickBytes = [0x1b, 0x70, 0x00, 0x19, 0xfa];
+
+    try {
+      await this.printer.open();
+      await this.printer.printRawData(drawerKickBytes);
+      await this.printer.close();
+      this.connected = true;
+    } catch (e: any) {
+      this.connected = false;
+      try { await this.printer.close(); } catch { /* ignore */ }
+      throw new Error(`Star cash drawer open failed: ${e.message}`);
+    }
   }
 
   async disconnect(): Promise<void> {

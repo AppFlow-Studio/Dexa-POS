@@ -164,7 +164,7 @@ function pushSingleItem(
 ): void {
   const useLargeText = cfg?.largeItemText !== false;
   const prefix = item.isVoided ? "VOID " : "";
-  const qtyStr = `${item.quantity}x `;
+  const qtyStr = `${item.quantity}× `;
   const itemText = `${prefix}${qtyStr}${item.name}`;
 
   nodes.push({
@@ -175,11 +175,26 @@ function pushSingleItem(
 
   // Modifiers (conditional)
   if (cfg?.showItemModifiers !== false) {
+    const modStyle = cfg?.modifierStyle ?? "inverted";
+    let modFormat: PrintTextFormat;
+    switch (modStyle) {
+      case "red":
+        modFormat = { bold: true, secondColor: true };
+        break;
+      case "bold":
+        modFormat = { bold: true };
+        break;
+      case "inverted":
+      default:
+        modFormat = { bold: true, inverted: true };
+        break;
+    }
+
     for (const mod of item.modifiers) {
       nodes.push({
         type: "text_line",
         content: `  + ${mod}`,
-        format: { bold: true, inverted: true },
+        format: modFormat,
       });
     }
   }

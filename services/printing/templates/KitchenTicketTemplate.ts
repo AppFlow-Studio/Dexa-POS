@@ -161,18 +161,20 @@ function renderSingleItem(
 
   // Modifiers (conditional)
   if (cfg?.showItemModifiers !== false) {
-    const useModsLarge = cfg?.showModsLarge === true;
-    if (useModsLarge) {
-      b.bold(true);
+    const modStyle = cfg?.modifierStyle ?? "inverted";
+    if (modStyle === "inverted") {
+      b.inverted(true);
     }
+    b.bold(true);
 
     for (const mod of item.modifiers) {
       b.textLine(`  + ${mod}`);
     }
 
-    if (useModsLarge) {
-      b.bold(false);
+    if (modStyle === "inverted") {
+      b.inverted(false);
     }
+    b.bold(false);
   }
 
   // Allergy alert (prominent warning)

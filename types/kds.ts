@@ -17,6 +17,7 @@ export interface KDSTicketItem {
   menu_id?: string;
   prep_station?: string | null;
   rush?: boolean;
+  is_prioritized?: boolean;
 }
 
 export interface KDSTicket {

@@ -1,7 +1,4 @@
 import { PrintDocument, PrintNode, PrintTextFormat } from "@/types/print-document";
-import {
-  StarXpandCommand,
-} from "react-native-star-io10";
 import * as FileSystem from "expo-file-system";
 import { TextBlock, renderTextBlocksToImage } from "./SkiaTicketRenderer";
 
@@ -19,6 +16,19 @@ export interface StarRenderOptions {
 const PRINT_WIDTH_DOTS_80MM = 576;
 const PRINT_WIDTH_DOTS_58MM = 384;
 
+// Lazy-loaded to avoid circular dependency issues in the react-native-star-io10 SDK.
+// The SDK has PrinterBuilder.ts → index.ts → StarXpandCommand.ts → PrinterBuilder.ts
+// circular imports that cause StarXpandCommand.Printer to be undefined at module load time.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _StarXpandCommand: any = null;
+
+function getStarXpandCommand() {
+  if (!_StarXpandCommand) {
+    _StarXpandCommand = require("react-native-star-io10").StarXpandCommand;
+  }
+  return _StarXpandCommand;
+}
+
 // ============================================================================
 // PUBLIC API
 // ============================================================================
@@ -31,20 +41,35 @@ export async function renderDocumentToStarCommands(
   doc: PrintDocument,
   options: StarRenderOptions,
 ): Promise<string> {
+  const StarXpandCommand = getStarXpandCommand();
+
+  // Guard: Star SDK rendering layer must be fully loaded
+  if (!StarXpandCommand?.Printer) {
+    throw new Error(
+      "Star SDK not ready: StarXpandCommand.Printer is undefined. " +
+      "The native module may still be initializing. Retry the print job."
+    );
+  }
+
   const w = options.maxCharsPerLine;
   const printerBuilder = new StarXpandCommand.PrinterBuilder();
 
-  // Required encoding setup — without this some Star models produce blank output
-  printerBuilder.styleInternationalCharacter(
-    StarXpandCommand.Printer.InternationalCharacterType.Usa,
-  );
+  // International character type only matters for text-mode printers.
+  // For graphics-only printers (TSP100III), all text is rendered as PNG via Skia,
+  // so this setting is irrelevant. Skipping also avoids triggering the SDK's
+  // broken convertPrinterInternationalCharacterType converter (circular dep).
+  if (!options.graphicsOnly) {
+    printerBuilder.styleInternationalCharacter(
+      StarXpandCommand.Printer.InternationalCharacterType.Usa,
+    );
+  }
   printerBuilder.styleCharacterSpace(0);
 
   if (options.graphicsOnly) {
-    await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options);
+    await renderNodesGraphicsOnly(printerBuilder, doc.nodes, w, options, StarXpandCommand);
   } else {
     for (const node of doc.nodes) {
-      await renderNode(printerBuilder, node, w, options);
+      await renderNode(printerBuilder, node, w, options, StarXpandCommand);
     }
   }
 
@@ -69,11 +94,14 @@ export async function renderDocumentToStarCommands(
  * buffers, renders them as PNG images via Skia, then sends via actionPrintImage.
  * Non-text nodes (cut, feed, qr_code) are sent as native Star commands.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function renderNodesGraphicsOnly(
-  pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
+  pb: any,
   nodes: PrintNode[],
   lineWidth: number,
   options: StarRenderOptions,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sdk: any,
 ): Promise<void> {
   const printWidthDots = lineWidth >= 42
     ? PRINT_WIDTH_DOTS_80MM
@@ -87,7 +115,7 @@ async function renderNodesGraphicsOnly(
     const imageUri = await renderTextBlocksToImage(textBuffer, printWidthDots);
     if (imageUri) {
       pb.actionPrintImage(
-        new StarXpandCommand.Printer.ImageParameter(imageUri, printWidthDots),
+        new sdk.Printer.ImageParameter(imageUri, printWidthDots),
       );
     }
     textBuffer = [];
@@ -103,6 +131,7 @@ async function renderNodesGraphicsOnly(
           doubleWidth: !!node.format?.doubleWidth,
           inverted: !!node.format?.inverted,
           align: node.align ?? "left",
+          secondColor: !!node.format?.secondColor,
         });
         break;
       }
@@ -115,6 +144,7 @@ async function renderNodesGraphicsOnly(
           doubleWidth: !!node.format?.doubleWidth,
           inverted: !!node.format?.inverted,
           align: node.align ?? "left",
+          secondColor: !!node.format?.secondColor,
         });
         break;
       }
@@ -128,31 +158,21 @@ async function renderNodesGraphicsOnly(
           doubleWidth: !!node.format?.doubleWidth,
           inverted: !!node.format?.inverted,
           align: "left",
+          secondColor: !!node.format?.secondColor,
         });
         break;
       }
 
       case "divider": {
-        const w = node.lineWidth;
-        let line: string;
-        switch (node.style) {
-          case "solid":
-            line = "-".repeat(w);
-            break;
-          case "dotted":
-            line = "- ".repeat(Math.floor(w / 2)).substring(0, w);
-            break;
-          case "double":
-            line = "=".repeat(w);
-            break;
-        }
         textBuffer.push({
-          text: line,
+          text: "",
           bold: false,
           doubleHeight: false,
           doubleWidth: false,
           inverted: false,
           align: "left",
+          isDivider: true,
+          dividerStyle: node.style,
         });
         break;
       }
@@ -179,7 +199,7 @@ async function renderNodesGraphicsOnly(
       case "cut": {
         await flushTextBuffer();
         if (options.supportsAutoCut) {
-          pb.actionCut(StarXpandCommand.Printer.CutType.Partial);
+          pb.actionCut(sdk.Printer.CutType.Partial);
         } else {
           pb.actionFeedLine(5);
         }
@@ -188,13 +208,13 @@ async function renderNodesGraphicsOnly(
 
       case "qr_code": {
         await flushTextBuffer();
-        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+        pb.styleAlignment(sdk.Printer.Alignment.Center);
         pb.actionPrintQRCode(
-          new StarXpandCommand.Printer.QRCodeParameter(node.data)
+          new sdk.Printer.QRCodeParameter(node.data)
             .setCellSize(node.size ?? 4),
         );
         pb.actionFeedLine(1);
-        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+        pb.styleAlignment(sdk.Printer.Alignment.Left);
         break;
       }
 
@@ -205,29 +225,29 @@ async function renderNodesGraphicsOnly(
           await FileSystem.writeAsStringAsync(tempUri, node.base64Png, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+          pb.styleAlignment(sdk.Printer.Alignment.Center);
           pb.actionPrintImage(
-            new StarXpandCommand.Printer.ImageParameter(tempUri, printWidthDots / 2),
+            new sdk.Printer.ImageParameter(tempUri, printWidthDots / 2),
           );
-          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+          pb.styleAlignment(sdk.Printer.Alignment.Left);
         }
         break;
       }
 
       case "barcode": {
         await flushTextBuffer();
-        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+        pb.styleAlignment(sdk.Printer.Alignment.Center);
         pb.actionPrintBarcode(
-          new StarXpandCommand.Printer.BarcodeParameter(
+          new sdk.Printer.BarcodeParameter(
             node.data,
-            StarXpandCommand.Printer.BarcodeSymbology.Code128,
+            sdk.Printer.BarcodeSymbology.Code128,
           )
             .setBarDots(2)
             .setHeight(node.height ?? 40)
             .setPrintHri(true),
         );
         pb.actionFeedLine(1);
-        pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+        pb.styleAlignment(sdk.Printer.Alignment.Left);
         break;
       }
 
@@ -276,29 +296,32 @@ function fitFormat(
   return format;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function renderNode(
-  pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
+  pb: any,
   node: PrintNode,
   lineWidth: number,
   options: StarRenderOptions,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sdk: any,
 ): Promise<void> {
   switch (node.type) {
     case "text": {
       const fmt = fitFormat(node.content, lineWidth, node.format);
-      applyAlignment(pb, node.align);
-      applyFormat(pb, fmt);
+      applyAlignment(pb, node.align, sdk);
+      applyFormat(pb, fmt, sdk);
       pb.actionPrintText(node.content);
-      resetFormat(pb, fmt);
+      resetFormat(pb, fmt, sdk);
       break;
     }
 
     case "text_line": {
       const fmt = fitFormat(node.content, lineWidth, node.format);
-      applyAlignment(pb, node.align);
-      applyFormat(pb, fmt);
+      applyAlignment(pb, node.align, sdk);
+      applyFormat(pb, fmt, sdk);
       pb.actionPrintText(node.content + "\n");
-      resetFormat(pb, fmt);
-      applyAlignment(pb, "left");
+      resetFormat(pb, fmt, sdk);
+      applyAlignment(pb, "left", sdk);
       break;
     }
 
@@ -306,27 +329,39 @@ async function renderNode(
       const w = node.lineWidth;
       const line = padTwoColumn(node.left, node.right, w);
       const fmt = fitFormat(line, w, node.format);
-      applyFormat(pb, fmt);
+      applyFormat(pb, fmt, sdk);
       pb.actionPrintText(line + "\n");
-      resetFormat(pb, fmt);
+      resetFormat(pb, fmt, sdk);
       break;
     }
 
     case "divider": {
-      const w = node.lineWidth;
-      let line: string;
-      switch (node.style) {
-        case "solid":
-          line = "-".repeat(w);
-          break;
-        case "dotted":
-          line = "- ".repeat(Math.floor(w / 2)).substring(0, w);
-          break;
-        case "double":
-          line = "=".repeat(w);
-          break;
+      try {
+        const paperWidthMm = lineWidth >= 42 ? 72 : 48;
+        const param = new sdk.Printer.RuledLineParameter(paperWidthMm);
+        param.setThickness(0.5);
+        if (node.style === "double") {
+          param.setLineStyle(sdk.Printer.LineStyle.Double);
+        }
+        pb.actionPrintRuledLine(param);
+        pb.actionFeedLine(1);
+      } catch {
+        // Fallback to text dashes if RuledLine API not available
+        const w = node.lineWidth;
+        let line: string;
+        switch (node.style) {
+          case "solid":
+            line = "-".repeat(w);
+            break;
+          case "dotted":
+            line = "- ".repeat(Math.floor(w / 2)).substring(0, w);
+            break;
+          case "double":
+            line = "=".repeat(w);
+            break;
+        }
+        pb.actionPrintText(line + "\n");
       }
-      pb.actionPrintText(line + "\n");
       break;
     }
 
@@ -342,7 +377,7 @@ async function renderNode(
 
     case "cut": {
       if (options.supportsAutoCut) {
-        pb.actionCut(StarXpandCommand.Printer.CutType.Partial);
+        pb.actionCut(sdk.Printer.CutType.Partial);
       } else {
         // SP700 tear-off: feed enough for manual tear
         pb.actionFeedLine(5);
@@ -351,13 +386,13 @@ async function renderNode(
     }
 
     case "qr_code": {
-      applyAlignment(pb, "center");
+      applyAlignment(pb, "center", sdk);
       pb.actionPrintQRCode(
-        new StarXpandCommand.Printer.QRCodeParameter(node.data)
+        new sdk.Printer.QRCodeParameter(node.data)
           .setCellSize(node.size ?? 4),
       );
       pb.actionPrintText("\n");
-      applyAlignment(pb, "left");
+      applyAlignment(pb, "left", sdk);
       break;
     }
 
@@ -371,11 +406,11 @@ async function renderNode(
           await FileSystem.writeAsStringAsync(tempUri, node.base64Png, {
             encoding: FileSystem.EncodingType.Base64,
           });
-          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+          pb.styleAlignment(sdk.Printer.Alignment.Center);
           pb.actionPrintImage(
-            new StarXpandCommand.Printer.ImageParameter(tempUri, printWidthDots / 2),
+            new sdk.Printer.ImageParameter(tempUri, printWidthDots / 2),
           );
-          pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+          pb.styleAlignment(sdk.Printer.Alignment.Left);
         } catch {
           // Silently skip if file write fails
         }
@@ -384,18 +419,18 @@ async function renderNode(
     }
 
     case "barcode": {
-      applyAlignment(pb, "center");
+      applyAlignment(pb, "center", sdk);
       pb.actionPrintBarcode(
-        new StarXpandCommand.Printer.BarcodeParameter(
+        new sdk.Printer.BarcodeParameter(
           node.data,
-          StarXpandCommand.Printer.BarcodeSymbology.Code128,
+          sdk.Printer.BarcodeSymbology.Code128,
         )
           .setBarDots(2)
           .setHeight(node.height ?? 40)
           .setPrintHri(true),
       );
       pb.actionPrintText("\n");
-      applyAlignment(pb, "left");
+      applyAlignment(pb, "left", sdk);
       break;
     }
 
@@ -411,26 +446,32 @@ async function renderNode(
 // ============================================================================
 
 function applyAlignment(
-  pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
-  align?: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pb: any,
+  align: string | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sdk: any,
 ): void {
   switch (align) {
     case "center":
-      pb.styleAlignment(StarXpandCommand.Printer.Alignment.Center);
+      pb.styleAlignment(sdk.Printer.Alignment.Center);
       break;
     case "right":
-      pb.styleAlignment(StarXpandCommand.Printer.Alignment.Right);
+      pb.styleAlignment(sdk.Printer.Alignment.Right);
       break;
     case "left":
     default:
-      pb.styleAlignment(StarXpandCommand.Printer.Alignment.Left);
+      pb.styleAlignment(sdk.Printer.Alignment.Left);
       break;
   }
 }
 
 function applyFormat(
-  pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
-  format?: PrintTextFormat,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pb: any,
+  format: PrintTextFormat | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sdk: any,
 ): void {
   if (!format) return;
 
@@ -439,17 +480,20 @@ function applyFormat(
   if (format.inverted) pb.styleInvert(true);
 
   if (format.doubleHeight && format.doubleWidth) {
-    pb.styleMagnification(new StarXpandCommand.MagnificationParameter(2, 2));
+    pb.styleMagnification(new sdk.MagnificationParameter(2, 2));
   } else if (format.doubleHeight) {
-    pb.styleMagnification(new StarXpandCommand.MagnificationParameter(1, 2));
+    pb.styleMagnification(new sdk.MagnificationParameter(1, 2));
   } else if (format.doubleWidth) {
-    pb.styleMagnification(new StarXpandCommand.MagnificationParameter(2, 1));
+    pb.styleMagnification(new sdk.MagnificationParameter(2, 1));
   }
 }
 
 function resetFormat(
-  pb: InstanceType<typeof StarXpandCommand.PrinterBuilder>,
-  format?: PrintTextFormat,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pb: any,
+  format: PrintTextFormat | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sdk: any,
 ): void {
   if (!format) return;
 
@@ -458,7 +502,7 @@ function resetFormat(
   if (format.inverted) pb.styleInvert(false);
 
   if (format.doubleHeight || format.doubleWidth) {
-    pb.styleMagnification(new StarXpandCommand.MagnificationParameter(1, 1));
+    pb.styleMagnification(new sdk.MagnificationParameter(1, 1));
   }
 }
 

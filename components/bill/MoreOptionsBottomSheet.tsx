@@ -166,15 +166,29 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }
   };
 
-  const handleManagerPinSubmit = () => {
+  const handleManagerPinSubmit = async () => {
     if (managerPin === "1234") {
       if (isOpenDrawer) {
-        show({
-          title: "Drawer Opened",
-          message: "The cash drawer has been successfully opened.",
-          type: "success",
-        });
         setIsOpenDrawer(false);
+        setShowManagerPin(false);
+        setManagerPin("");
+        try {
+          const success = await PrinterService.openCashDrawer();
+          show({
+            title: success ? "Drawer Opened" : "Drawer Not Opened",
+            message: success
+              ? "The cash drawer has been successfully opened."
+              : "No printer with cash drawer support found.",
+            type: success ? "success" : "error",
+          });
+        } catch (e: any) {
+          show({
+            title: "Drawer Error",
+            message: e?.message || "Failed to open cash drawer.",
+            type: "error",
+          });
+        }
+        return;
       } else {
         setIsTaxExempt(true);
         show({

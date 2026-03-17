@@ -1,4 +1,5 @@
 import { CartItem } from "@/lib/types";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { PrinterConfig, PrinterRoutingConfig } from "@/types/printer";
 
@@ -61,10 +62,11 @@ export function getKitchenPrinters(locationId: string): PrinterConfig[] {
  * Returns a map of printerId -> items to print on that printer.
  *
  * Algorithm:
- * 1. "all" printers receive ALL items (subject to order_type gate)
- * 2. "custom" printers check order_type gate, then category/item rules
- * 3. "unassigned" printers receive items not matched by any "custom" or "all" printer
- * 4. Fallback: if nothing routed anywhere, send everything to defaultKitchenPrinter
+ * 1a. "custom" printers check order_type gate, then category/item rules (processed first)
+ * 1b. "all" printers receive remaining items not claimed by custom printers
+ *     (if no custom routing exists, "all" printers get everything)
+ * 2. "unassigned" printers receive items not matched by any "custom" or "all" printer
+ * 3. Fallback: if nothing routed anywhere, send everything to defaultKitchenPrinter
  */
 export function routeKitchenItems(
   items: CartItem[],
@@ -104,26 +106,36 @@ export function routeKitchenItems(
   // Track which items have been assigned to at least one non-unassigned printer
   const assignedItems = new Set<CartItem>();
 
-  // Phase 1: Route to "all" and "custom" printers
+  // Phase 1a: Route to "custom" printers first to build assignedItems set
   for (const printer of kitchenPrinters) {
     const config = routingConfigs[printer.id] ?? defaultConfig(printer.id);
-
-    if (config.routingMode === "unassigned") continue;
-
-    // Order type gate: if printer has order_type rules, check them
+    if (config.routingMode !== "custom") continue;
     if (!passesOrderTypeGate(config, orderContext?.orderType)) continue;
 
-    if (config.routingMode === "all") {
-      // "All" mode: receives every item
+    const matched = items.filter((item) => matchesCustomRules(config, item));
+    if (matched.length > 0) {
+      result.set(printer.id, matched);
+      for (const item of matched) assignedItems.add(item);
+    }
+  }
+
+  // Phase 1b: Route to "all" printers — exclude items claimed by custom printers
+  const hasCustomRouting = assignedItems.size > 0;
+  for (const printer of kitchenPrinters) {
+    const config = routingConfigs[printer.id] ?? defaultConfig(printer.id);
+    if (config.routingMode !== "all") continue;
+    if (!passesOrderTypeGate(config, orderContext?.orderType)) continue;
+
+    if (hasCustomRouting) {
+      // Custom routing is active: only give unmatched items to "all" printers
+      const unmatched = items.filter((item) => !assignedItems.has(item));
+      if (unmatched.length > 0) {
+        result.set(printer.id, unmatched);
+      }
+    } else {
+      // No custom routing: original behavior — all items
       result.set(printer.id, [...items]);
       for (const item of items) assignedItems.add(item);
-    } else if (config.routingMode === "custom") {
-      // "Custom" mode: check item-level and category-level rules
-      const matched = items.filter((item) => matchesCustomRules(config, item));
-      if (matched.length > 0) {
-        result.set(printer.id, matched);
-        for (const item of matched) assignedItems.add(item);
-      }
     }
   }
 
@@ -252,15 +264,23 @@ function matchesCustomRules(
 
   // Check category-level rules
   if (categoryRules.length > 0) {
-    // Match by category name or addedFromCategoryId
-    const categoryName = item.category_name ?? "";
+    // Primary: direct UUID match via addedFromCategoryId
     const categoryId = item.addedFromCategoryId ?? "";
+    if (categoryId && categoryRules.some((r) => r.rule_value === categoryId)) {
+      return true;
+    }
 
-    return categoryRules.some(
-      (r) =>
-        r.rule_value === categoryId ||
-        r.rule_value.toLowerCase() === categoryName.toLowerCase(),
-    );
+    // Secondary: look up menu item's categories from menu store
+    // rule_value stores category UUID, menuItem.category stores category NAMES
+    // Resolve UUID → name via categoriesById, then check membership
+    const { menuItemsById, categoriesById } = useMenuStore.getState();
+    const menuItem = menuItemsById[item.menuItemId];
+    if (menuItem?.category) {
+      return categoryRules.some((r) => {
+        const cat = categoriesById[r.rule_value];
+        return cat && menuItem.category.includes(cat.name);
+      });
+    }
   }
 
   // No category or item rules = doesn't match this custom printer

@@ -13,7 +13,6 @@ import { detectNativeHardware } from "@/native/HardwareDetection";
 import { StationPaymentTerminal } from "@/types/station";
 import { PrinterConfig, printerRowToConfig } from "@/types/printer";
 import { DejavooDriver } from "@/services/printing/drivers/DejavooDriver";
-import { StarMicronicsDriver } from "@/services/printing/drivers/StarMicronicsDriver";
 import type { DiscoveredStarPrinter } from "@/services/printing/discovery/StarPrinterDiscovery";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 
@@ -787,6 +786,7 @@ export async function provisionStarPrinter(
       .update({
         network_address: discovered.ipAddress,
         printer_name: `${discovered.modelName} (${discovered.ipAddress})`,
+        supports_cash_drawer_kick: true,
         metadata: {
           starModel: discovered.model,
           macAddress: discovered.macAddress,
@@ -815,7 +815,7 @@ export async function provisionStarPrinter(
       paper_width: caps.paperWidth,
       max_chars_per_line: caps.maxCharsPerLine,
       supports_auto_cut: caps.supportsAutoCut,
-      supports_cash_drawer_kick: false,
+      supports_cash_drawer_kick: true,
       supports_qr_code: true,
       supports_barcode: true,
       supports_logo: false,
@@ -854,7 +854,11 @@ export async function provisionStarPrinter(
 // ============================================================================
 
 /**
- * Verifies a Star Micronics printer by sending a test page.
+ * Verifies a Star Micronics printer via connectivity check (open + getStatus + close).
+ * Does NOT print a test page — avoids StarXpandCommand.Printer dependency that can
+ * crash if the native module hasn't fully initialized yet. Test prints can be triggered
+ * separately via the "Test Print" button in printer settings.
+ *
  * On success: updates DB with is_connected: true, last_status: "verified".
  * On failure: updates DB with is_connected: false but keeps is_active: true.
  */
@@ -874,26 +878,46 @@ export async function verifyStarPrinter(
   }
 
   const config = printerRowToConfig(row);
-  const driver = new StarMicronicsDriver();
+
+  if (!config.networkAddress) {
+    console.error("[DeviceDetection] Star printer has no network address:", printerId);
+    return false;
+  }
+
+  // Use the same connectivity-only pattern as starPrinterHealthCheck.probePrinter()
+  const { StarPrinter, StarConnectionSettings, InterfaceType } = require("react-native-star-io10");
+  const settings = new StarConnectionSettings();
+  settings.interfaceType = InterfaceType.Lan;
+  settings.identifier = config.networkAddress;
+
+  const probe = new StarPrinter(settings);
+  probe.openTimeout = 5000;
+  probe.getStatusTimeout = 5000;
 
   try {
-    await driver.initialize(config);
+    await probe.open();
+    const status = await probe.getStatus();
+    await probe.close();
 
-    // Send a test page
-    await driver.printDocument({
-      nodes: [
-        { type: "text_line", content: "DEXA POS", align: "center", format: { bold: true, doubleHeight: true, doubleWidth: true } },
-        { type: "empty_line" },
-        { type: "text_line", content: "Star Printer Connected!", align: "center" },
-        { type: "text_line", content: config.printerName, align: "center" },
-        { type: "empty_line" },
-        { type: "text_line", content: new Date().toLocaleString(), align: "center" },
-        { type: "divider", style: "solid", lineWidth: config.maxCharsPerLine },
-        { type: "feed", lines: 2 },
-        { type: "cut" },
-      ],
-      maxCharsPerLine: config.maxCharsPerLine,
-    });
+    if (status.hasError) {
+      const errorDetail = status.paperEmpty
+        ? "Paper empty"
+        : status.coverOpen
+          ? "Cover open"
+          : "Printer error";
+
+      await supabase
+        .from("printers")
+        .update({
+          is_connected: false,
+          last_status: `verification_failed: ${errorDetail}`,
+          last_status_at: new Date().toISOString(),
+        })
+        .eq("id", printerId);
+
+      console.warn("[DeviceDetection] Star printer has error:", errorDetail);
+      return false;
+    }
 
     await supabase
       .from("printers")
@@ -907,6 +931,8 @@ export async function verifyStarPrinter(
     console.log("[DeviceDetection] Star printer verified:", printerId);
     return true;
   } catch (e: any) {
+    try { await probe.close(); } catch { /* ignore */ }
+
     await supabase
       .from("printers")
       .update({
@@ -919,6 +945,6 @@ export async function verifyStarPrinter(
     console.warn("[DeviceDetection] Star printer verification failed:", e.message);
     return false;
   } finally {
-    await driver.disconnect();
+    try { await probe.dispose(); } catch { /* ignore */ }
   }
 }

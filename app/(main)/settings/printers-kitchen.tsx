@@ -22,6 +22,7 @@ import {
   XCircle,
   Zap,
   Route,
+  Trash2,
 } from "lucide-react-native";
 import { colors, spinnerColor } from "@/lib/theme";
 import KDSSoundService, {
@@ -36,6 +37,8 @@ import { PrinterRoutingModal } from "@/components/settings/PrinterRoutingModal";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
+import type { ModifierStyle } from "@/types/receipt-template";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
   type PrinterConfig,
@@ -98,6 +101,7 @@ interface KitchenTicketSettings {
   showCourseNumber: boolean;
   showServerName: boolean;
   largeFont: boolean;
+  modifierStyle: ModifierStyle;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,10 +303,17 @@ const PrintersKitchenScreen = () => {
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
 
+  // Receipt template store
+  const fetchTemplates = useReceiptTemplateStore((s) => s.fetchTemplates);
+  const getKitchenTemplate = useReceiptTemplateStore((s) => s.getKitchenTemplate);
+  const updateTemplate = useReceiptTemplateStore((s) => s.updateTemplate);
+  const saveTemplate = useReceiptTemplateStore((s) => s.saveTemplate);
+
   // Printer store
   const storedPrinters = usePrinterStore((s) => s.printers);
   const fetchPrinters = usePrinterStore((s) => s.fetchPrinters);
   const updatePrinterConfig = usePrinterStore((s) => s.updatePrinterConfig);
+  const deletePrinter = usePrinterStore((s) => s.deletePrinter);
 
   // Print queue (reactive via selector on jobs array)
   const jobs = usePrintQueueStore((s) => s.jobs);
@@ -340,6 +351,10 @@ const PrintersKitchenScreen = () => {
   // Edit panel state
   const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
   const [isSavingPrinter, setIsSavingPrinter] = useState(false);
+  const [deletingPrinterId, setDeletingPrinterId] = useState<string | null>(null);
+
+  // Printer scope toggle
+  const [printerScope, setPrinterScope] = useState<"station" | "location">("station");
 
   // Routing modal state
   const [routingModalPrinter, setRoutingModalPrinter] = useState<PrinterConfig | null>(null);
@@ -421,6 +436,30 @@ const PrintersKitchenScreen = () => {
     }
   }, [selectedStore?.id]);
 
+  // Load kitchen template from DB and sync to local state
+  useEffect(() => {
+    if (!selectedStore?.id) return;
+    fetchTemplates(selectedStore.id).then(() => {
+      const tpl = getKitchenTemplate(selectedStore.id);
+      setKitchenSettings((prev) => ({
+        ...prev,
+        showModifiers: tpl.showItemModifiers,
+        showServerName: tpl.showServerName,
+        largeFont: tpl.largeItemText,
+        modifierStyle: tpl.modifierStyle,
+      }));
+    });
+  }, [selectedStore?.id]);
+
+  // Helper to update a kitchen template field and persist
+  const updateKitchenTemplateField = (updates: Record<string, any>) => {
+    if (!selectedStore?.id) return;
+    const tpl = getKitchenTemplate(selectedStore.id);
+    updateTemplate(tpl.id, updates);
+    const updatedTpl = { ...tpl, ...updates };
+    saveTemplate(updatedTpl, selectedStore.merchant_id, selectedStore.id);
+  };
+
   // Cleanup Star discovery on unmount
   useEffect(() => {
     return () => {
@@ -436,10 +475,14 @@ const PrintersKitchenScreen = () => {
 
   // Derived
   const paymentTerminal = selectedStation?.payment_terminal ?? null;
-  // Hide built-in printers from other stations — they can't receive external print requests
-  const visiblePrinters = storedPrinters.filter(
-    (p) => p.connectionType !== "builtin" || p.stationId === selectedStation?.id,
-  );
+  const visiblePrinters = storedPrinters.filter((p) => {
+    if (printerScope === "station") {
+      // Show this station's printers + shared (null station) printers
+      return p.stationId === selectedStation?.id || p.stationId === null;
+    }
+    // "location" mode: show all, but still hide other stations' builtins
+    return p.connectionType !== "builtin" || p.stationId === selectedStation?.id;
+  });
   const hasDejavooPrinter = visiblePrinters.some((p) => p.printerType === "dejavoo_spin_p");
   const dejavooPrinter = visiblePrinters.find((p) => p.printerType === "dejavoo_spin_p") ?? null;
   const builtinPrinter = visiblePrinters.find((p) => p.printerType === "builtin_landi") ?? null;
@@ -474,6 +517,7 @@ const PrintersKitchenScreen = () => {
     showCourseNumber: false,
     showServerName: true,
     largeFont: false,
+    modifierStyle: "inverted",
   });
 
   // ---------------------------------------------------------------------------
@@ -732,6 +776,34 @@ const PrintersKitchenScreen = () => {
     setManualIpError(null);
     setDiscoveredStarPrinters([]);
     setStarScanError(null);
+  };
+
+  const handleDeletePrinter = (printer: PrinterConfig) => {
+    Alert.alert(
+      "Delete Printer?",
+      `This will permanently remove "${printer.printerName}". This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingPrinterId(printer.id);
+            try {
+              await deletePrinter(printer.id);
+              setEditingPrinterId(null);
+              if (selectedStore?.id) {
+                await fetchPrinters(selectedStore.id);
+              }
+            } catch (e: any) {
+              Alert.alert("Error", e.message || "Failed to delete printer");
+            } finally {
+              setDeletingPrinterId(null);
+            }
+          },
+        },
+      ],
+    );
   };
 
   // ---------------------------------------------------------------------------
@@ -1127,6 +1199,22 @@ const PrintersKitchenScreen = () => {
               />
             </View>
 
+            {/* Delete Printer */}
+            <TouchableOpacity
+              onPress={() => handleDeletePrinter(printer)}
+              disabled={deletingPrinterId === printer.id}
+              className="mt-4 py-3 rounded-lg bg-red-600/10 border border-red-600/30 flex-row items-center justify-center"
+            >
+              {deletingPrinterId === printer.id ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <>
+                  <Trash2 size={16} color="#ef4444" />
+                  <Text className="text-red-400 font-medium ml-2 text-sm">Delete Printer</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
             {isSavingPrinter && (
               <View className="items-center py-2 mt-2">
                 <ActivityIndicator size="small" color={colors.info} />
@@ -1210,6 +1298,24 @@ const PrintersKitchenScreen = () => {
                   </>
                 )}
               </TouchableOpacity>
+            </View>
+
+            {/* Station / Location scope toggle */}
+            <View className="flex-row bg-surface rounded-lg border border-gray-600 overflow-hidden mb-3">
+              {([
+                { key: "station" as const, label: "This Station" },
+                { key: "location" as const, label: "All Printers" },
+              ]).map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setPrinterScope(key)}
+                  className={`flex-1 py-2 items-center ${printerScope === key ? "bg-blue-600" : ""}`}
+                >
+                  <Text className={`text-sm font-medium ${printerScope === key ? "text-white" : "text-gray-400"}`}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             {/* Print Queue Banner */}
@@ -1430,7 +1536,11 @@ const PrintersKitchenScreen = () => {
             <ToggleRow
               label="Show Modifiers"
               value={kitchenSettings.showModifiers}
-              onToggle={() => setKitchenSettings((prev) => ({ ...prev, showModifiers: !prev.showModifiers }))}
+              onToggle={() => {
+                const newVal = !kitchenSettings.showModifiers;
+                setKitchenSettings((prev) => ({ ...prev, showModifiers: newVal }));
+                updateKitchenTemplateField({ showItemModifiers: newVal });
+              }}
             />
             <ToggleRow
               label="Show Course Number"
@@ -1440,13 +1550,55 @@ const PrintersKitchenScreen = () => {
             <ToggleRow
               label="Show Server Name"
               value={kitchenSettings.showServerName}
-              onToggle={() => setKitchenSettings((prev) => ({ ...prev, showServerName: !prev.showServerName }))}
+              onToggle={() => {
+                const newVal = !kitchenSettings.showServerName;
+                setKitchenSettings((prev) => ({ ...prev, showServerName: newVal }));
+                updateKitchenTemplateField({ showServerName: newVal });
+              }}
             />
             <ToggleRow
               label="Large Font"
               value={kitchenSettings.largeFont}
-              onToggle={() => setKitchenSettings((prev) => ({ ...prev, largeFont: !prev.largeFont }))}
+              onToggle={() => {
+                const newVal = !kitchenSettings.largeFont;
+                setKitchenSettings((prev) => ({ ...prev, largeFont: newVal }));
+                updateKitchenTemplateField({ largeItemText: newVal });
+              }}
             />
+
+            {kitchenSettings.showModifiers && (
+              <>
+                <SectionHeader title="Modifier Style" />
+                <View className="flex-row gap-2 mb-2">
+                  {([
+                    { value: "inverted" as ModifierStyle, label: "Inverted", icon: "■" },
+                    { value: "red" as ModifierStyle, label: "Red Text", icon: "R" },
+                    { value: "bold" as ModifierStyle, label: "Bold Only", icon: "B" },
+                  ]).map((opt) => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      onPress={() => {
+                        setKitchenSettings((prev) => ({ ...prev, modifierStyle: opt.value }));
+                        updateKitchenTemplateField({ modifierStyle: opt.value });
+                      }}
+                      className={`flex-1 py-2.5 rounded-lg items-center ${
+                        kitchenSettings.modifierStyle === opt.value
+                          ? "bg-blue-600"
+                          : "bg-surface"
+                      }`}
+                    >
+                      <Text className={`text-xs font-bold ${
+                        kitchenSettings.modifierStyle === opt.value
+                          ? "text-white"
+                          : "text-gray-400"
+                      }`}>
+                        {opt.icon} {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
           </View>
         )}
 

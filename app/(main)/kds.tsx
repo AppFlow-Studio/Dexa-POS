@@ -59,7 +59,6 @@ import {
   View,
 } from "react-native";
 import Animated, {
-  FadeIn,
   FadeOut,
   LinearTransition,
   useAnimatedStyle,
@@ -93,7 +92,6 @@ const URGENCY_BORDER_COLORS = URGENCY_COLORS;
 const MANAGER_ROLES = ["merchant.manager", "merchant.admin", "merchant.owner"];
 
 // ─── Memoized animation configs (avoid re-allocation per render) ─
-const ENTER_ANIM = FadeIn.duration(200);
 const EXIT_ANIM = FadeOut.duration(150);
 const LAYOUT_ANIM = LinearTransition.duration(300);
 
@@ -1257,7 +1255,6 @@ const KitchenDisplayScreen = () => {
     ({ item }: { item: KDSTicket }) => (
       <Animated.View
         style={{ width: columnWidthPct, paddingHorizontal: 2 }}
-        entering={ENTER_ANIM}
         exiting={EXIT_ANIM}
       >
         <KDSTicketCard

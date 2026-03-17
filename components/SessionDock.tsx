@@ -390,7 +390,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 const SessionDock = () => {
   const { sessions, activeEmployeeId } = useTimeclockStore();
   const [isSwitchModalOpen, setSwitchModalOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Chevron rotation animation
   const rotation = useSharedValue(180); // Start at 180 since expanded by default

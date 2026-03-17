@@ -13,6 +13,7 @@ export interface PrintTextFormat {
   fontSize?: number;
   inverted?: boolean;
   condensed?: boolean;
+  secondColor?: boolean;
 }
 
 export type PrintNode =

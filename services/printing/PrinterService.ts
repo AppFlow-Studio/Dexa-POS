@@ -181,9 +181,17 @@ export const PrinterService = {
    */
   async openCashDrawer(): Promise<boolean> {
     const { printers } = usePrinterStore.getState();
-    const printer = printers.find(
-      (p) => p.isActive && p.supportsCashDrawerKick,
+    // Drawer-capable: flag set OR Star Micronics (always has DK port)
+    const drawerPrinters = printers.filter(
+      (p) => p.isActive && (p.supportsCashDrawerKick || p.printerType === "star_micronics"),
     );
+
+    // Priority: connected default receipt > any default receipt > connected any > first available
+    const printer =
+      drawerPrinters.find((p) => p.isDefaultReceipt && p.isConnected) ??
+      drawerPrinters.find((p) => p.isDefaultReceipt) ??
+      drawerPrinters.find((p) => p.isConnected) ??
+      drawerPrinters[0];
 
     if (!printer) {
       console.warn("[PrinterService] No printer with cash drawer support");
@@ -191,6 +199,7 @@ export const PrinterService = {
     }
 
     try {
+      console.log("[PrinterService] Opening cash drawer for printer:", printer.networkAddress);
       const driver = getDriver(printer);
       if (!driver.isConnected()) {
         await driver.initialize(printer);
@@ -218,7 +227,7 @@ export const PrinterService = {
       return false;
     }
 
-    const w = printer.maxCharsPerLine;
+    const w = printer.graphicsOnly ? Math.min(printer.maxCharsPerLine, 32) : printer.maxCharsPerLine;
     const timestamp = new Date().toLocaleString("en-US");
 
     // Build test page as PrintDocument (works for all drivers)
@@ -298,7 +307,7 @@ export const PrinterService = {
       total: 53.77,
       payments: [{ method: "Card", amount: 53.77, last4: "4242" }],
       footerMessage: "** TEST RECEIPT — NOT A REAL TRANSACTION **",
-      maxCharsPerLine: targetPrinter.maxCharsPerLine,
+      maxCharsPerLine: targetPrinter.graphicsOnly ? Math.min(targetPrinter.maxCharsPerLine, 32) : targetPrinter.maxCharsPerLine,
       taxRate: 0.08,
     };
 
@@ -345,7 +354,7 @@ export const PrinterService = {
         { name: "Fish & Chips", quantity: 1, modifiers: ["Tartar Sauce on Side"], station: "Grill" },
       ],
       isVoidTicket: false,
-      maxCharsPerLine: targetPrinter.maxCharsPerLine,
+      maxCharsPerLine: targetPrinter.graphicsOnly ? Math.min(targetPrinter.maxCharsPerLine, 32) : targetPrinter.maxCharsPerLine,
     };
 
     const job = createJobForPrinter(
@@ -439,6 +448,16 @@ async function processNextJob(): Promise<void> {
     });
   } catch (e: any) {
     const errorMsg = e?.message ?? "Unknown print error";
+
+    // Star SDK may still be initializing — auto-retry after delay
+    if (errorMsg.includes("Star SDK not ready")) {
+      console.warn("[PrinterService] Star SDK not ready, will retry in 3s");
+      usePrintQueueStore.getState().updateJobStatus(job.id, "queued");
+      setTimeout(() => processNextJob(), 3000);
+      isProcessing = false;
+      return;
+    }
+
     console.error("[PrinterService] Print job failed:", errorMsg);
 
     usePrintQueueStore.getState().updateJobStatus(job.id, "failed", errorMsg);
@@ -718,7 +737,7 @@ function buildReceiptTemplateData(
     footerMessage:
       template.footerText ?? printer.receiptFooter ?? "Thank you for your purchase!",
     headerMessage: template.headerText ?? undefined,
-    maxCharsPerLine: printer.maxCharsPerLine,
+    maxCharsPerLine: printer.graphicsOnly ? Math.min(printer.maxCharsPerLine, 32) : printer.maxCharsPerLine,
     taxRate: weightedTaxRate / 100,  // Convert from 8.875 to 0.08875
     templateConfig: template,
     logoBase64: template.showLogo
@@ -807,7 +826,7 @@ function buildKitchenTicketData(
     totalItemCount,
     items: kitchenItems,
     isVoidTicket,
-    maxCharsPerLine: printer.maxCharsPerLine,
+    maxCharsPerLine: printer.graphicsOnly ? Math.min(printer.maxCharsPerLine, 32) : printer.maxCharsPerLine,
     templateConfig: template,
     readyByTime,
   };

@@ -5,6 +5,7 @@ import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSe
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { PrinterService } from "@/services/printing/PrinterService";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -179,6 +180,11 @@ const CashPaymentView = () => {
           amountTendered: amountTenderedNum,
           isCashPriced: true,
         },
+      });
+
+      // Fire-and-forget: auto-open cash drawer after successful payment
+      PrinterService.openCashDrawer().catch((err) => {
+        console.warn("[CashPayment] Cash drawer auto-open failed:", err);
       });
     } catch (error) {
       console.error("[CashPayment] Error processing payment:", error);

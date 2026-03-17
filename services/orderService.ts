@@ -846,6 +846,24 @@ export class OrderService {
   }
 
   /**
+   * Toggle priority flag on order items.
+   */
+  static async togglePriorityOnItems(
+    client: SupabaseClient,
+    orderItemIds: string[],
+    isPrioritized: boolean,
+  ): Promise<{ data: any; error: any }> {
+    if (orderItemIds.length === 0) {
+      return { data: null, error: null };
+    }
+    const { data, error } = await client.rpc("toggle_priority_order_items", {
+      p_order_item_ids: orderItemIds,
+      p_is_prioritized: isPrioritized,
+    });
+    return { data, error };
+  }
+
+  /**
    * Fetch pre-grouped KDS tickets from the server (denormalized)
    */
   static async getKDSTickets(

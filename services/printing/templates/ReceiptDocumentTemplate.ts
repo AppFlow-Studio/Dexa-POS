@@ -26,6 +26,10 @@ function scaledFormat(
 /**
  * Builds a PrintDocument for a receipt.
  * Layout matches the sales receipt mockup with conditional flags from templateConfig.
+ *
+ * Visual hierarchy: bold is reserved for headers, item lines, totals, and key labels.
+ * Secondary/informational text (modifiers, notes, subtotals, payment details, footer meta)
+ * uses regular weight for contrast.
  */
 export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   const w = 32;
@@ -119,19 +123,19 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
 
     nodes.push({ type: "two_column", left: itemName, right: itemPrice, lineWidth: w, format: { bold: true } });
 
-    // Modifiers (conditional)
+    // Modifiers (conditional) — regular weight for contrast
     if (cfg?.showItemModifiers !== false) {
       for (const mod of item.modifiers) {
         const modLine = mod.price > 0
           ? `  + ${mod.name} (${formatCurrency(mod.price)})`
           : `  + ${mod.name}`;
-        nodes.push({ type: "text_line", content: modLine, format: { bold: true } });
+        nodes.push({ type: "text_line", content: modLine });
       }
     }
 
-    // Notes
+    // Notes — regular weight
     if (item.notes) {
-      nodes.push({ type: "text_line", content: `  Note: ${item.notes}`, format: { bold: true } });
+      nodes.push({ type: "text_line", content: `  Note: ${item.notes}` });
     }
   }
 
@@ -140,12 +144,12 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
   nodes.push({ type: "text_line", content: "TOTALS", align: "center", format: { bold: true } });
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
 
+  // Subtotal/tax/discount/tip — regular weight for contrast with totals
   nodes.push({
     type: "two_column",
     left: "Subtotal",
     right: formatCurrency(data.subtotal),
     lineWidth: w,
-    format: { bold: true },
   });
 
   if (data.tax > 0) {
@@ -158,7 +162,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: taxLabel,
       right: formatCurrency(data.tax),
       lineWidth: w,
-      format: { bold: true },
     });
   }
   if (data.discount > 0) {
@@ -167,7 +170,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Discount",
       right: `-${formatCurrency(data.discount)}`,
       lineWidth: w,
-      format: { bold: true },
     });
   }
   if (data.tip > 0) {
@@ -176,7 +178,6 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
       left: "Tip",
       right: formatCurrency(data.tip),
       lineWidth: w,
-      format: { bold: true },
     });
   }
 
@@ -234,17 +235,18 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
         lineWidth: w,
         format: { bold: true },
       });
+      // Payment detail lines — regular weight for contrast
       if (payment.last4) {
         const cardLine = payment.cardBrand
           ? `  ${payment.cardBrand} ending in ${payment.last4}`
           : `  ${payment.method} ending in ${payment.last4}`;
-        nodes.push({ type: "text_line", content: cardLine, format: { bold: true } });
+        nodes.push({ type: "text_line", content: cardLine });
       }
       if (payment.authCode) {
-        nodes.push({ type: "two_column", left: "  Auth #", right: payment.authCode, lineWidth: w, format: { bold: true } });
+        nodes.push({ type: "two_column", left: "  Auth #", right: payment.authCode, lineWidth: w });
       }
       if (payment.rrn) {
-        nodes.push({ type: "two_column", left: "  Ref (RRN)", right: payment.rrn, lineWidth: w, format: { bold: true } });
+        nodes.push({ type: "two_column", left: "  Ref (RRN)", right: payment.rrn, lineWidth: w });
       }
     }
 
@@ -269,24 +271,24 @@ export function buildReceiptDocument(data: ReceiptTemplateData): PrintDocument {
     }
   }
 
-  // ── Order Details Footer ──
+  // ── Order Details Footer — regular weight ──
   nodes.push({ type: "divider", style: "solid", lineWidth: w });
   nodes.push({ type: "empty_line" });
 
   if (data.backendOrderNumber) {
-    nodes.push({ type: "two_column", left: "Order #", right: data.backendOrderNumber, lineWidth: w, format: { bold: true } });
+    nodes.push({ type: "two_column", left: "Order #", right: data.backendOrderNumber, lineWidth: w });
   } else {
-    nodes.push({ type: "two_column", left: "Order #", right: data.orderNumber, lineWidth: w, format: { bold: true } });
+    nodes.push({ type: "two_column", left: "Order #", right: data.orderNumber, lineWidth: w });
   }
-  nodes.push({ type: "two_column", left: "Ordered", right: `${data.orderDate}, ${data.orderTime}`, lineWidth: w, format: { bold: true } });
+  nodes.push({ type: "two_column", left: "Ordered", right: `${data.orderDate}, ${data.orderTime}`, lineWidth: w });
   if (data.printDate && data.printTime) {
-    nodes.push({ type: "two_column", left: "Printed", right: `${data.printDate}, ${data.printTime}`, lineWidth: w, format: { bold: true } });
+    nodes.push({ type: "two_column", left: "Printed", right: `${data.printDate}, ${data.printTime}`, lineWidth: w });
   }
   if (data.serverName) {
-    nodes.push({ type: "two_column", left: "Server", right: data.serverName, lineWidth: w, format: { bold: true } });
+    nodes.push({ type: "two_column", left: "Server", right: data.serverName, lineWidth: w });
   }
   if (data.customerName) {
-    nodes.push({ type: "two_column", left: "Customer", right: data.customerName, lineWidth: w, format: { bold: true } });
+    nodes.push({ type: "two_column", left: "Customer", right: data.customerName, lineWidth: w });
   }
 
   nodes.push({ type: "empty_line" });
