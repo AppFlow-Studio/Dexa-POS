@@ -291,7 +291,7 @@ const OrderDetailsComponent: React.FC = () => {
           <Label className="text-label font-small text-xs ml-2 mt-1">Customer</Label>
           <TouchableOpacity
             onPress={openSheet}
-            className={`flex-row w-full items-center p-2 rounded-xl h-12 ${
+            className={`flex-row w-full items-center p-2 rounded-xl h-10 ${
               customerName
                 ? "bg-surface"
                 : "bg-surface"
@@ -302,13 +302,13 @@ const OrderDetailsComponent: React.FC = () => {
                 <User color={colors.label} size={24} />
                 <View className="ml-3 flex-1">
                   <Text
-                    className="text-xl font-semibold text-white overflow-ellipsis"
+                    className="text-sm font-semibold text-white overflow-ellipsis"
                     numberOfLines={1}
                   >
                     {customerName}
                   </Text>
                   {customerPhone && (
-                    <Text className="text-sm text-gray-400">
+                    <Text className="text-xs text-gray-400">
                       {customerPhone}
                     </Text>
                   )}
@@ -317,8 +317,8 @@ const OrderDetailsComponent: React.FC = () => {
               </>
             ) : (
               <>
-                <Plus color={colors.teal} size={20} />
-                <Text className="text-base font-medium text-teal-400 ml-2">
+                <Plus color={colors.teal} size={24} />
+                <Text className="text-sm font-medium text-teal-400 ml-2">
                   Add Customer
                 </Text>
               </>
@@ -329,7 +329,7 @@ const OrderDetailsComponent: React.FC = () => {
           <Label className="text-label font-medium text-xs ml-2 mt-1">Order Type</Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row items-center justify-between p-2 rounded-xl h-12 bg-surface"
+            className="w-full flex-row items-center justify-between p-2 rounded-xl h-10 bg-surface"
             onPress={openDrawer}
           >
             <Text className="text-l ml-2 text-base font-medium text-white">
