@@ -20,198 +20,117 @@ import {
   View,
 } from "react-native";
 
-// OPTIMIZED: Pre-compiled StyleSheet (no runtime parsing)
 const styles = StyleSheet.create({
   container: {
     width: "23%",
     aspectRatio: 1,
-    borderRadius: 20,
+    borderRadius: 16,
     marginBottom: 8,
     backgroundColor: colors.panel,
     borderWidth: 1,
-    borderColor: `${colors.teal}40`,
-    padding: 3
+    borderColor: `${colors.teal}30`,
+    overflow: "hidden",
   },
   containerDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
   containerNoImage: {
     aspectRatio: undefined,
     height: 80,
   },
-  innerContainer: {
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 4,
-    overflow: "hidden",
-    borderRadius: 8,
-    flex: 1,
+  // Modifier corner triangle
+  modifierCorner: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+    borderTopWidth: 24,
+    borderLeftWidth: 24,
+    borderTopColor: colors.teal,
+    borderLeftColor: "transparent",
+    zIndex: 10,
   },
-  imageContainer: {
-    position: "relative",
-    width: "90%",
-    height: 96,
+  // Image area
+  imageWrapper: {
     flex: 1,
-    borderWidth: 2,
-    borderColor: colors.border,
-    marginTop: 2,
-    borderRadius: 10,
+    width: "100%",
   },
   image: {
     width: "100%",
-    height: '100%',
-    borderRadius: 8,
+    height: "100%",
   },
   placeholderContainer: {
     width: "100%",
-    height: '100%',
-    borderRadius: 12,
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: `${colors.teal}08`,
   },
-  modifierIconContainer: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-  },
-  modifierDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.teal,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.info,
-    alignSelf: "center",
-    width: "90%",
-  },
+  // Content area
   contentContainer: {
-    width: "100%",
-    paddingHorizontal: 16,
-    paddingBottom: 4,
-    justifyContent: "flex-end",
-  },
-  nameContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 3,
   },
   nameText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: colors.heading,
-    marginTop: 2,
-    flex: 1,
+    lineHeight: 17,
   },
-  priceContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  priceText: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: colors.heading,
-  },
-  priceTextCustom: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: colors.warning,
-  },
-  originalPriceText: {
-    fontSize: 18,
-    color: colors.muted,
-    marginLeft: 8,
-    textDecorationLine: "line-through",
-  },
-  cashPriceText: {
-    fontSize: 12,
-    color: colors.success,
-    marginLeft: 4,
-    marginRight: 4,
-  },
-  cashPriceTextCash: {
-    fontSize: 12,
-    color: colors.success,
-    marginLeft: 4,
-    fontWeight: 500,
-  },
-  stockContainer: {
-    marginTop: 8,
-  },
-  stockRow: {
+  // Price row: card price left, cash pill right
+  priceRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 1,
   },
-  stockDotGreen: {
-    width: 8,
-    height: 8,
-    backgroundColor: colors.success,
-    borderRadius: 4,
-    marginRight: 8,
+  cardPrice: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.heading,
   },
-  stockDotRed: {
-    width: 8,
-    height: 8,
-    backgroundColor: colors.danger,
-    borderRadius: 4,
-    marginRight: 8,
+  cardPriceCustom: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.warning,
   },
-  stockTextGreen: {
+  cashPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: `${colors.success}18`,
+    borderWidth: 1,
+    borderColor: `${colors.success}40`,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  cashLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: `${colors.success}99`,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  cashAmount: {
+    fontSize: 11,
+    fontWeight: "700",
     color: colors.success,
-    fontSize: 14,
-    fontWeight: "500",
   },
-  stockTextRed: {
-    color: colors.danger,
-    fontSize: 14,
-    fontWeight: "500",
+  // Divider between image and content
+  divider: {
+    height: 1,
+    backgroundColor: `${colors.teal}20`,
+    marginHorizontal: 10,
   },
 });
 
-// OPTIMIZED: Memoized icon components (prevents re-render)
 const PlaceholderIcon = React.memo(() => (
-  <Utensils color={colors.label} size={24} />
+  <Utensils color={`${colors.label}60`} size={22} />
 ));
 PlaceholderIcon.displayName = "PlaceholderIcon";
-
-
-// OPTIMIZED: Memoized stock status component
-const StockStatus = React.memo(
-  ({
-    stockQuantity,
-    availability,
-  }: {
-    stockQuantity?: number;
-    availability?: boolean;
-  }) => {
-    //     if (stockQuantity !== undefined && stockQuantity > 0) {
-    //       return (
-    //         <View style={styles.stockRow}>
-    //           <View style={styles.stockDotGreen} />
-    //           <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
-    //         </View>
-    //       );
-    //     }
-
-    if (availability === false) {
-      return (
-        <View style={styles.stockRow}>
-          <View style={styles.stockDotRed} />
-          <Text style={styles.stockTextRed}>Out of Stock</Text>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.stockRow}>
-        <View style={styles.stockDotGreen} />
-        <Text style={styles.stockTextGreen}>In Stock</Text>
-      </View>
-    );
-  },
-);
-StockStatus.displayName = "StockStatus";
 
 interface MenuItemProps {
   item: MenuItemType;
@@ -228,7 +147,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
   categoryId,
   menuId,
 }) => {
-  // OPTIMIZED: Removed activeOrderId/activeOrder subscriptions - now read via getState() in handlePress
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
   const { show } = useToast();
   const showMenuItemPrices = useSettingsStore((s) => s.showMenuItemPrices);
@@ -240,21 +158,16 @@ const MenuItem: React.FC<MenuItemProps> = ({
     return session?.status === "clockedIn";
   }, [activeEmployeeId, getSession]);
 
-  // OPTIMIZED: Pre-compute price data (moved from render IIFE)
   const priceData = useMemo(() => {
-    // Trusted item.price from tree
     const displayPrice = item.price;
     const basePrice =
       item.priceLevels?.level_2_location_item ??
       item.priceLevels?.level_1_base ??
       item.price;
-    // Show custom pricing if display price differs from base price
     const hasCustomPricing = displayPrice !== basePrice;
-
     return { displayPrice, hasCustomPricing, basePrice };
   }, [item]);
 
-  // OPTIMIZED: Pre-compute derived values
   const hasModifiers = useMemo(
     () => item.modifierGroupIds && item.modifierGroupIds.length > 0,
     [item.modifierGroupIds],
@@ -262,11 +175,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const isDisabled = item.availability === false;
 
-  // ─── Phase 1: onPressIn ──────────────────────────────────────────────────
-  // Fires ~50-150ms before onPress. Do validation + pre-warm computation here.
-  // DO NOT open the modal — avoid triggering a React render while finger is down.
   const handlePressIn = useCallback(() => {
-    // Synchronous block (same frame, before React)
     setMenuBlockedSync(true);
 
     if (!isClockedIn) {
@@ -293,31 +202,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
       return;
     }
 
-    // Pre-warm: compute modifier data NOW while finger is still down.
-    // By the time onPress fires, this is already cached.
     useModifierSidebarStore.getState().preWarm(item, categoryId, menuId);
-  }, [
-    item,
-    categoryId,
-    menuId,
-    isClockedIn,
-    onOrderClosedCheck,
-    showClockInWall,
-    show,
-  ]);
+  }, [item, categoryId, menuId, isClockedIn, onOrderClosedCheck, showClockInWall, show]);
 
-  // ─── Phase 2: onPress ──────────────────────────────────────────────────────
-  // Fires after finger lifts. Pre-warm is already done — just flip isOpen = true.
   const handlePress = useCallback(() => {
-    // If validation failed in pressIn, menu was already unblocked — skip
     if (!isMenuBlockedSync()) return;
-
     const { activeOrderId } = useOrderStore.getState();
-
-    // openToAdd consumes the preWarm cache — no computation needed
-    useModifierSidebarStore
-      .getState()
-      .openToAdd(item, activeOrderId, categoryId, menuId);
+    useModifierSidebarStore.getState().openToAdd(item, activeOrderId, categoryId, menuId);
   }, [item, categoryId, menuId]);
 
   return (
@@ -325,66 +216,54 @@ const MenuItem: React.FC<MenuItemProps> = ({
       disabled={isDisabled}
       onPressIn={handlePressIn}
       onPress={handlePress}
-      style={[styles.container, isDisabled && styles.containerDisabled, (!showMenuImages || !imageSource) && styles.containerNoImage]}
+      style={[
+        styles.container,
+        isDisabled && styles.containerDisabled,
+        !showMenuImages && styles.containerNoImage,
+      ]}
     >
-      <View style={styles.innerContainer}>
-        {hasModifiers && (
-          <View style={styles.modifierIconContainer}>
-            <View style={styles.modifierDot} />
-          </View>
-        )}
-        {showMenuImages && imageSource && (
-          <View style={styles.imageContainer}>
-            <Image source={imageSource} style={styles.image} />
-          </View>
-        )}
-        {/* <View style={styles.divider} /> */}
-        <View style={styles.contentContainer} >
-          <View style={styles.nameContainer}>
-            <Text style={styles.nameText}>{item.name}</Text>
-          </View>
-          {showMenuItemPrices && (
-            <View
-              style={styles.priceContainer}
-              className="flex-row flex items-center gap-1"
-            >
-              <Text
-                style={
-                  priceData.hasCustomPricing
-                    ? styles.priceTextCustom
-                    : styles.priceText
-                }
-                className="flex-row items-center gap-1 w-fit "
-              >
-                ${priceData.displayPrice?.toFixed(2)}
-              </Text>
+      {/* Modifier triangle corner */}
+      {hasModifiers && <View style={styles.modifierCorner} />}
 
-              {item.cashPrice && (
-                <View className="flex-row  items-center gap-1 w-fit rounded-full bg-emerald-900 p-0.5">
-                  <Text style={styles.cashPriceTextCash}>Cash:</Text>
-                  <Text
-                    style={styles.cashPriceText}
-                    className="flex-row items-center gap-1"
-                  >
-                    ${item.cashPrice.toFixed(2)}
-                  </Text>
-                </View>
-              )}
+      {/* Image */}
+      {showMenuImages && (
+        <View style={styles.imageWrapper}>
+          {imageSource ? (
+            <Image source={imageSource} style={styles.image} resizeMode="cover" />
+          ) : (
+            <View style={styles.placeholderContainer}>
+              <PlaceholderIcon />
             </View>
           )}
-          {/* <View style={styles.stockContainer}>
-            <StockStatus
-              stockQuantity={item.stockQuantity}
-              availability={item.availability}
-            />
-          </View> */}
         </View>
+      )}
+
+      {/* Divider */}
+      {showMenuImages && <View style={styles.divider} />}
+
+      {/* Content */}
+      <View style={styles.contentContainer}>
+        <Text style={styles.nameText} numberOfLines={2}>{item.name}</Text>
+
+        {showMenuItemPrices && (
+          <View style={styles.priceRow}>
+            <Text style={priceData.hasCustomPricing ? styles.cardPriceCustom : styles.cardPrice}>
+              ${priceData.displayPrice?.toFixed(2)}
+            </Text>
+
+            {item.cashPrice && (
+              <View style={styles.cashPill}>
+                <Text style={styles.cashLabel}>Cash</Text>
+                <Text style={styles.cashAmount}>${item.cashPrice.toFixed(2)}</Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
 };
 
-// OPTIMIZED: React.memo with custom comparison to prevent unnecessary re-renders
 export default React.memo(MenuItem, (prevProps, nextProps) => {
   return (
     prevProps.item.id === nextProps.item.id &&

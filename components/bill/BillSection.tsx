@@ -359,17 +359,15 @@ const BillSectionContent = ({
 
   if (!activeOrderId)
     return (
-      <View className="w-1/3 items-center justify-center p-8 bg-background ">
-        <Text className="text-xl font-semibold text-white mb-4">
+      <View className="w-1/3 items-center justify-center p-6 bg-background">
+        <Text className="text-sm font-semibold text-white mb-3">
           No Active Order
         </Text>
         <TouchableOpacity
-          className="px-6 py-3 bg-teal-600 rounded-lg shadow-md active:opacity-80"
-          onPress={() => {
-            startNewOrder();
-          }}
+          className="px-4 py-2 bg-teal-600 rounded-lg active:opacity-80"
+          onPress={() => { startNewOrder(); }}
         >
-          <Text className="text-white text-xl font-bold tracking-wide">
+          <Text className="text-white text-sm font-semibold">
             Start New Order
           </Text>
         </TouchableOpacity>
@@ -388,24 +386,21 @@ const BillSectionContent = ({
 
       {/* Offline / Sync Status Banner */}
       {(!isOnline || hasFailedSyncs || pendingSyncCount > 0) && (
-        <View className="px-4 py-2" style={{ backgroundColor: colors.panel }}>
-          {/* Offline Mode Banner */}
+        <View className="px-3 py-1.5 gap-y-1" style={{ backgroundColor: colors.panel }}>
           {!isOnline && (
-            <View className="flex-row items-center justify-center bg-amber-600 px-3 py-2 rounded-lg mb-2">
-              <WifiOff size={16} color="#FFFFFF" />
-              <Text className="text-white text-sm font-medium ml-2">
-                Offline Mode{" "}
-                {pendingSyncCount > 0 ? `• ${pendingSyncCount} pending` : ""}
+            <View className="flex-row items-center justify-center bg-amber-600 px-2.5 py-1.5 rounded-md">
+              <WifiOff size={12} color="#FFFFFF" />
+              <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
+                Offline Mode{pendingSyncCount > 0 ? ` • ${pendingSyncCount} pending` : ""}
               </Text>
             </View>
           )}
 
-          {/* Failed Syncs Banner with Auto-Retry Indicator (only when online) */}
           {isOnline && hasFailedSyncs && (
             <TouchableOpacity
               onPress={handleRetryFailedSyncs}
               disabled={autoRetryState.isRetrying}
-              className={`flex-row items-center justify-between px-3 py-2 rounded-lg ${
+              className={`flex-row items-center justify-between px-2.5 py-1.5 rounded-md ${
                 autoRetryState.isRetrying ? "bg-amber-600/80" : "bg-red-600/80"
               }`}
               activeOpacity={0.7}
@@ -414,49 +409,42 @@ const BillSectionContent = ({
                 {autoRetryState.isRetrying ? (
                   <>
                     <ActivityIndicator size="small" color="#FFFFFF" />
-                    <Text className="text-white text-sm font-medium ml-2">
-                      Auto-retrying {autoRetryState.count} operation
-                      {autoRetryState.count > 1 ? "s" : ""}...
+                    <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
+                      Retrying {autoRetryState.count} op{autoRetryState.count > 1 ? "s" : ""}...
                     </Text>
                   </>
                 ) : (
                   <>
-                    <AlertTriangle size={16} color="#FFFFFF" />
-                    <Text className="text-white text-sm font-medium ml-2">
-                      {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""}{" "}
-                      failed to sync
+                    <AlertTriangle size={12} color="#FFFFFF" />
+                    <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
+                      {syncStatus.failed} failed to sync
                     </Text>
                   </>
                 )}
               </View>
               {!autoRetryState.isRetrying && (
                 <View className="flex-row items-center">
-                  <RefreshCw size={14} color="#FFFFFF" />
-                  <Text className="text-white text-xs ml-1">Retry Now</Text>
+                  <RefreshCw size={11} color="#FFFFFF" />
+                  <Text className="text-white ml-1" style={{ fontSize: 10 }}>Retry</Text>
                 </View>
               )}
             </TouchableOpacity>
           )}
 
-          {/* Pending Payment Syncs Banner (only when online and has pending payments) */}
-          {isOnline &&
-            !hasFailedSyncs &&
-            activeOrderPayments?.some((p) => p.sync_status === "pending") && (
-              <View className="flex-row items-center justify-center bg-amber-600/70 px-3 py-2 rounded-lg">
-                <Clock size={16} color="#FFFFFF" />
-                <Text className="text-white text-sm font-medium ml-2">
-                  Payment pending sync...
-                </Text>
-              </View>
-            )}
+          {isOnline && !hasFailedSyncs && activeOrderPayments?.some((p) => p.sync_status === "pending") && (
+            <View className="flex-row items-center justify-center bg-amber-600/70 px-2.5 py-1.5 rounded-md">
+              <Clock size={12} color="#FFFFFF" />
+              <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
+                Payment syncing...
+              </Text>
+            </View>
+          )}
 
-          {/* Syncing Indicator (only when online and syncing) */}
           {isOnline && !hasFailedSyncs && hasPendingSyncs && (
-            <View className="flex-row items-center justify-center bg-teal-600/60 px-3 py-2 rounded-lg">
+            <View className="flex-row items-center justify-center bg-teal-600/60 px-2.5 py-1.5 rounded-md">
               <ActivityIndicator size="small" color="#FFFFFF" />
-              <Text className="text-white text-sm font-medium ml-2">
-                Syncing {syncStatus.pending} item
-                {syncStatus.pending > 1 ? "s" : ""}...
+              <Text className="text-white font-medium ml-1.5" style={{ fontSize: 11 }}>
+                Syncing {syncStatus.pending} item{syncStatus.pending > 1 ? "s" : ""}...
               </Text>
             </View>
           )}
@@ -464,26 +452,22 @@ const BillSectionContent = ({
       )}
 
       <BillItemsAndTotals cart={cart} />
-      <View className="py-2 px-4" >
-        <View className="flex-row gap-3">
-          {/* Start New Order Button */}
+      <View className="py-1.5 px-3">
+        <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={handleStartNewOrder}
-            className="w-1/3 py-2 px-3 flex-row items-center justify-center gap-1.5 rounded-lg border"
+            className="w-1/3 py-1.5 px-2 flex-row items-center justify-center gap-1 rounded-lg border"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            <Plus color={"#FFFFFF"} size={20} />
-            <Text className="text-center text-base font-semibold text-white">
+            <Plus color={"#FFFFFF"} size={14} />
+            <Text className="text-center text-xs font-semibold text-white">
               New Order
             </Text>
           </TouchableOpacity>
 
-          {/* Send to Kitchen Button - secondary styling */}
           <TouchableOpacity
-            className={`flex-1 py-1.5 px-2 flex-row items-center justify-center gap-2 rounded-lg border ${
-              newItemsCount === 0 || hasDraftItems
-                ? "opacity-40"
-                : ""
+            className={`flex-1 py-1.5 px-2 flex-row items-center justify-center gap-1.5 rounded-lg border ${
+              newItemsCount === 0 || hasDraftItems ? "opacity-40" : ""
             }`}
             style={{
               backgroundColor: newItemsCount === 0 || hasDraftItems ? colors.panel : colors.card,
@@ -496,30 +480,31 @@ const BillSectionContent = ({
             {hasPendingSyncs ? (
               <ActivityIndicator size={10} color={colors.teal} />
             ) : null}
-            <Text className="text-center text-base font-semibold text-white">
+            <Send size={13} color="#FFFFFF" />
+            <Text className="text-center text-xs font-semibold text-white">
               Send to Kitchen
             </Text>
-            <Text className="text-sm mr-2 rounded-full bg-teal px-2 py-0.5 font-bold ">
+            <Text style={{ fontSize: 10, fontWeight: "700" }} className="rounded-full bg-teal-400 px-1.5 py-0.5">
               {newItemsCount}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
       {showPlaymentActions && (
-        <View className="px-4 pt-1 pb-3" >
-          <View className="flex-row gap-3">
+        <View className="px-3 pt-1 pb-2.5">
+          <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
-              className="w-1/4 h-14 items-center justify-center rounded-xl border"
+              className="w-1/4 h-11 items-center justify-center rounded-lg border"
               style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
-              <Text className="text-center text-lg font-bold text-white leading-none mb-0.5">···</Text>
-              <Text className="text-center text-xs font-bold text-white">More</Text>
+              <Text className="text-center text-base font-bold text-white leading-none mb-0.5">···</Text>
+              <Text className="text-center" style={{ fontSize: 10, fontWeight: "600", color: "#FFFFFF" }}>More</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={isPayButtonDisabled}
-              className={`flex-1 h-14 rounded-xl flex-row items-center justify-center gap-2 ${
+              className={`flex-1 h-11 rounded-lg flex-row items-center justify-center gap-1.5 ${
                 isPayButtonDisabled
                   ? "bg-gray-600"
                   : isPartiallyPaid
@@ -528,12 +513,11 @@ const BillSectionContent = ({
               }`}
             >
               {hasPendingSyncs || isProcessing ? (
-                <ActivityIndicator size={14} color="#FFFFFF" />
+                <ActivityIndicator size={12} color="#FFFFFF" />
               ) : null}
               <Text
-                className={`text-center text-xl font-bold ${
-                  isPayButtonDisabled ? "text-gray-400" : "text-black"
-                }`}
+                style={{ fontSize: 15, fontWeight: "700" }}
+                className={isPayButtonDisabled ? "text-gray-400" : "text-black"}
               >
                 {isPartiallyPaid
                   ? `Pay Due $${displayBalanceDue.toFixed(2)}`
@@ -541,12 +525,13 @@ const BillSectionContent = ({
               </Text>
             </TouchableOpacity>
           </View>
-          {/* Cash Discount Option */}
-          <View className="mt-2 self-center px-2 py-1.5 bg-transparent rounded-3xl border border-teal-600/30">
-            <Text className="text-sm text-teal">
-              Pay cash: ${cashBalanceDue?.toFixed(2)} (save ${cashSavings?.toFixed(2)})
-            </Text>
-          </View>
+          {cashSavings > 0 && (
+            <View className="mt-1.5 self-center px-2 py-1 bg-transparent rounded-2xl border border-teal-600/30">
+              <Text style={{ fontSize: 10 }} className="text-teal">
+                Cash: ${cashBalanceDue?.toFixed(2)} · save ${cashSavings?.toFixed(2)}
+              </Text>
+            </View>
+          )}
         </View>
       )}
       <DiscountOverlay
