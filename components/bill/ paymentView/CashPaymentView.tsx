@@ -4,6 +4,7 @@ import { toastService } from "@/lib/toastService";
 import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -53,9 +54,13 @@ const CashPaymentView = () => {
     setBaseAmount,
     tipResponse,
     clearTipResponse,
+    showProcessing,
+    showApproved,
+    showDeclined,
   } = useCFD();
 
-  const TIP_PRESETS = [18, 20, 25];
+  const tipPresetPercentages = useStoreSettingsStore((s) => s.tipPresetPercentages);
+  const TIP_PRESETS = tipPresetPercentages;
 
   // Get the active order for backend cash_amount_due
   const activeOrder = useActiveOrder();
@@ -135,7 +140,7 @@ const CashPaymentView = () => {
   // Sync CFD on mount
   useEffect(() => {
     // Show tip selection on CFD when Cash View opens with the local cash-priced total
-    showTipSelection(total, [18, 20, 25]);
+    showTipSelection(total, TIP_PRESETS);
     clearTipResponse();
 
     // Cleanup: Reset CFD state when leaving the cash payment view
@@ -161,10 +166,12 @@ const CashPaymentView = () => {
 
   const handleProcessCashPayment = async () => {
     setIsProcessing(true);
+    showProcessing();
     try {
       const tipAmt = parseFloat(tipInput) || 0;
       const amountTenderedNum = parseFloat(amountTendered) || 0;
 
+      showApproved();
       await handlePaymentCompletion({
         method: "Cash",
         tipAmount: tipAmt,
@@ -175,6 +182,7 @@ const CashPaymentView = () => {
       });
     } catch (error) {
       console.error("[CashPayment] Error processing payment:", error);
+      showDeclined();
       toastService.show({
         title: "Payment Failed",
         message: error instanceof Error ? error.message : "Unknown error",

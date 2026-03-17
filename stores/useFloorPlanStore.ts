@@ -207,6 +207,10 @@ interface FloorPlanState {
   redo: () => void
   saveSnapshot: () => void
 
+  // Server Section Actions
+  assignServerToSection: (sectionId: string, staffProfileId: string) => Promise<void>
+  unassignServerFromSection: (sectionId: string) => Promise<void>
+
   // O(1) Getters
   getTableById: (id: string) => FloorPlanObject | undefined
 
@@ -1327,6 +1331,89 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             past: [...state.past, state.tables].slice(-30),
             future: []
           }))
+        },
+
+        // Server Section Actions
+        assignServerToSection: async (sectionId: string, staffProfileId: string) => {
+          const client = getClient()
+          if (!client) return
+
+          // Optimistic update
+          set(state => {
+            const updatedSections = state.sections.map(s =>
+              s.id === sectionId ? { ...s, assigned_staff_id: staffProfileId } : s
+            )
+            const updatedSectionsById = { ...state.sectionsById }
+            if (updatedSectionsById[sectionId]) {
+              updatedSectionsById[sectionId] = {
+                ...updatedSectionsById[sectionId],
+                assigned_staff_id: staffProfileId
+              }
+            }
+            return { sections: updatedSections, sectionsById: updatedSectionsById }
+          })
+
+          // Backend update
+          const { error } = await client
+            .from('server_sections')
+            .update({ assigned_staff_id: staffProfileId, updated_at: new Date().toISOString() })
+            .eq('id', sectionId)
+
+          if (error) {
+            console.error('[FloorPlan] Failed to assign server to section:', error)
+            // Revert on error
+            set(state => {
+              const reverted = state.sections.map(s =>
+                s.id === sectionId ? { ...s, assigned_staff_id: null } : s
+              )
+              const revertedById = { ...state.sectionsById }
+              if (revertedById[sectionId]) {
+                revertedById[sectionId] = { ...revertedById[sectionId], assigned_staff_id: null }
+              }
+              return { sections: reverted, sectionsById: revertedById }
+            })
+          }
+        },
+
+        unassignServerFromSection: async (sectionId: string) => {
+          const client = getClient()
+          if (!client) return
+
+          const previousStaffId = get().sectionsById[sectionId]?.assigned_staff_id
+
+          // Optimistic update
+          set(state => {
+            const updatedSections = state.sections.map(s =>
+              s.id === sectionId ? { ...s, assigned_staff_id: null } : s
+            )
+            const updatedSectionsById = { ...state.sectionsById }
+            if (updatedSectionsById[sectionId]) {
+              updatedSectionsById[sectionId] = { ...updatedSectionsById[sectionId], assigned_staff_id: null }
+            }
+            return { sections: updatedSections, sectionsById: updatedSectionsById }
+          })
+
+          const { error } = await client
+            .from('server_sections')
+            .update({ assigned_staff_id: null, updated_at: new Date().toISOString() })
+            .eq('id', sectionId)
+
+          if (error) {
+            console.error('[FloorPlan] Failed to unassign server from section:', error)
+            // Revert
+            if (previousStaffId) {
+              set(state => {
+                const reverted = state.sections.map(s =>
+                  s.id === sectionId ? { ...s, assigned_staff_id: previousStaffId } : s
+                )
+                const revertedById = { ...state.sectionsById }
+                if (revertedById[sectionId]) {
+                  revertedById[sectionId] = { ...revertedById[sectionId], assigned_staff_id: previousStaffId }
+                }
+                return { sections: reverted, sectionsById: revertedById }
+              })
+            }
+          }
         },
 
         // O(1) Getter

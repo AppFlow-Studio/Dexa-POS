@@ -110,6 +110,9 @@ export interface StoreSettings {
   kdsOrangeThresholdMinutes: number
   kdsRedThresholdMinutes: number
 
+  // CFD Tip Presets
+  tipPresetPercentages: number[]
+
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: number // Auto-expire notified parties after this many minutes
 
@@ -225,6 +228,9 @@ const initialData: StoreSettings = {
   kdsYellowThresholdMinutes: 5,
   kdsOrangeThresholdMinutes: 10,
   kdsRedThresholdMinutes: 15,
+
+  // CFD Tip Presets
+  tipPresetPercentages: [18, 20, 25],
 
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: 10,
@@ -508,6 +514,8 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         kdsYellowThresholdMinutes: state.kdsYellowThresholdMinutes,
         kdsOrangeThresholdMinutes: state.kdsOrangeThresholdMinutes,
         kdsRedThresholdMinutes: state.kdsRedThresholdMinutes,
+        // CFD Tip Presets
+        tipPresetPercentages: state.tipPresetPercentages,
         // Organization branding
         organizationLogoUrl: state.organizationLogoUrl,
         // Station session fields

@@ -24,7 +24,6 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { flushAllPendingWrites } from "@/lib/storage";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { usePtoStore } from "@/stores/usePtoStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
@@ -115,10 +114,8 @@ export default function RootLayout() {
 
     // Skip POS-only initialization for KDS stations
     if (!isKDS) {
-      // Initialize timeclock history first
-      useTimeclockStore.getState().initializeHistory();
-      // Then initialize PTO history based on the timeclock history
-      usePtoStore.getState().initializePtoFromHistory();
+      // NOTE: Timeclock hydration now happens in PosSyncProvider after employees sync.
+      // PTO history is calculated from real shift data, not mock data.
       // Start draft order cleanup
       useOrderStore.getState().startDraftCleanup();
       // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)

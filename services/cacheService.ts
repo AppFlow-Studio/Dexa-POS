@@ -10,7 +10,6 @@ import { queryClient } from "@/contexts/TanstackProvider";
 import { clearCacheData } from "@/lib/storage";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useTimeClockStore } from "@/stores/useTimeClock";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 
 export interface CacheClearResult {
@@ -63,20 +62,8 @@ export function clearCache(): CacheClearResult {
   }
 
   try {
-    // Reset time clock store
-    useTimeClockStore.getState().clearState();
-    clearedKeys.push("timeClockStore (memory)");
-  } catch (error) {
-    errors.push(`Failed to reset time clock store: ${error}`);
-  }
-
-  try {
-    // Reset timeclock store sessions (but keep history)
-    useTimeclockStore.setState({
-      activeEmployeeId: null,
-      sessions: {},
-      isClockInWallOpen: false,
-    });
+    // Reset unified timeclock store (clears device state, sessions, and UI state)
+    useTimeclockStore.getState().clearState();
     clearedKeys.push("timeclockStore (memory)");
   } catch (error) {
     errors.push(`Failed to reset timeclock store: ${error}`);

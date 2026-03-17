@@ -1,6 +1,5 @@
 import { colors } from "@/lib/theme";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useTimeClockStore } from "@/stores/useTimeClock";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useRouter } from "expo-router";
 import { Clock, LogOut } from "lucide-react-native";
@@ -20,22 +19,20 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
   const BREAK_DURATION_MS = breakDurationMinutes * 60 * 1000;
   const [timeLeft, setTimeLeft] = useState(BREAK_DURATION_MS);
 
-  // Get the functions and state needed from the timeclock store
+  // Get the functions and state needed from the unified timeclock store
   const { startBreak, activeEmployeeId, getSession } = useTimeclockStore();
-  // Also check the new store for break start time
-  const newBreakStartTime = useTimeClockStore((state) => state.breakStartTime);
+  const persistedBreakStartTime = useTimeclockStore((state) => state.breakStartTime);
 
   // Get the specific session for the currently active employee
   const activeSession = useMemo(() => {
     if (!activeEmployeeId) return null;
     return getSession(activeEmployeeId);
-  }, [activeEmployeeId, getSession, isOpen]); // Rerun when isOpen changes
+  }, [activeEmployeeId, getSession, isOpen]);
 
-  // Use break start time from new store if available, otherwise from old store
-  const breakStartTime = newBreakStartTime
-    ? new Date(newBreakStartTime)
+  // Use persisted break start time if available, otherwise from session
+  const breakStartTime = persistedBreakStartTime
+    ? new Date(persistedBreakStartTime)
     : activeSession?.breakStartTime;
-  // --- END OF CORRECTION ---
 
   // This handler is now correct. It calls the store action which handles the logic.
   const handleSwitchAccount = () => {

@@ -92,6 +92,10 @@ const CardPaymentView = () => {
     setBaseAmount,
     tipResponse,
     clearTipResponse,
+    showProcessing,
+    showApproved,
+    showDeclined,
+    showIdle,
   } = useCFD();
 
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
@@ -109,7 +113,8 @@ const CardPaymentView = () => {
     selectedStation?.payment_terminal,
   );
 
-  const TIP_PRESETS = [18, 20, 25];
+  const tipPresetPercentages = useStoreSettingsStore((s) => s.tipPresetPercentages);
+  const TIP_PRESETS = tipPresetPercentages;
 
   // Get the active order for backend amount_due
   const activeOrder = useActiveOrder();
@@ -151,7 +156,7 @@ const CardPaymentView = () => {
   // Sync with CFD Tip Selection
   useEffect(() => {
     if (status === "ready") {
-      showTipSelection(totalToPay, [18, 20, 25]);
+      showTipSelection(totalToPay, TIP_PRESETS);
 
       // Resync existing tip selection if state persisted
       const currentTipAmount = parseFloat(tipInput) || 0;
@@ -236,6 +241,7 @@ const CardPaymentView = () => {
               const errorInfo = result.raw?.txnReturnCode
                 ? parseCastlesReturnCode(result.raw.txnReturnCode)
                 : { message: result.error || "Transaction failed" };
+              showDeclined();
               setErrorModal({
                 visible: true,
                 title: "Payment Declined",
@@ -245,6 +251,7 @@ const CardPaymentView = () => {
             }
 
             // 5. Handle success
+            showApproved();
             setStatus("success");
             const castlesTx = result.terminalResponse?.castles_transaction as Record<string, string> | undefined;
             handlePaymentCompletion({
@@ -352,6 +359,7 @@ const CardPaymentView = () => {
               type: "error",
               duration: 5000,
             });
+            showIdle();
             close(); // Immediate safe close
             return;
           }
@@ -359,6 +367,7 @@ const CardPaymentView = () => {
           // Handle all other transaction errors (declined, timeout, etc.)
           if (!result.success) {
             const errorType = categorizeError(result);
+            showDeclined();
             setErrorModal({
               visible: true,
               title: getErrorTitle(errorType),
@@ -369,6 +378,7 @@ const CardPaymentView = () => {
 
           // Success
           if (result.success) {
+            showApproved();
             setStatus("success");
             const rawResponse = result.rawResponse as Record<string, any> | undefined;
             const generalResponse = rawResponse?.GeneralResponse;
@@ -450,6 +460,7 @@ const CardPaymentView = () => {
           console.error("[CardPayment] Error processing payment:", error);
           const errorMsg =
             error instanceof Error ? error.message : "Unknown error";
+          showDeclined();
           setErrorModal({
             visible: true,
             title: "Payment Failed",
@@ -479,6 +490,7 @@ const CardPaymentView = () => {
 
   const handleChargeCard = () => {
     setStatus("processing");
+    showProcessing();
   };
 
   return (

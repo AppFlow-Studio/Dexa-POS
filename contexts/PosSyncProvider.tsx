@@ -24,6 +24,7 @@ import {
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { setKDSSupabaseClient } from "@/stores/useKDSStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import {
@@ -292,7 +293,14 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // KDS only needs employees (for PIN verification)
   useEffect(() => {
     if (selectedStore?.id) {
-      syncEmployees(selectedStore.id);
+      syncEmployees(selectedStore.id).then(() => {
+        // Hydrate active shifts after employees are loaded (needs employee data for mapping)
+        if (!isKDS) {
+          useTimeclockStore
+            .getState()
+            .hydrateActiveShifts(supabase, selectedStore.id);
+        }
+      });
       if (!isKDS) {
         syncFloorPlans(selectedStore.id);
         syncTaxRates(selectedStore.id);

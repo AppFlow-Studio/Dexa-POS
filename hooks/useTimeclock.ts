@@ -1,7 +1,7 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { toastService } from "@/lib/toastService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useTimeClockStore } from "@/stores/useTimeClock";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { TimeClockAction, TimeClockActionType } from "@/types/time-clock";
 import NetInfo from "@react-native-community/netinfo";
 import { useCallback, useEffect } from "react";
@@ -13,7 +13,7 @@ export interface UseTimeClockOptions {
 }
 
 export const useTimeClock = (options?: UseTimeClockOptions) => {
-  const store = useTimeClockStore();
+  const store = useTimeclockStore();
   const supabase = useSupabaseClient();
 
   // 1. The Core Action Handler
@@ -78,7 +78,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             locationId,
             deviceId,
             pinLength: pinCode?.length,
-            pinFirstChar: pinCode?.charAt(0), // Debug without exposing full PIN
+            pinFirstChar: pinCode?.charAt(0),
           });
           const { data, error } = await supabase.rpc("handle_time_clock", {
             p_pin_code: pinCode,
@@ -187,7 +187,6 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             return { success: true, queued: true };
           } else {
             // Logic error (e.g., Wrong PIN, Already clocked in): show error
-            // Check for specific backend error codes first
             let errorTitle = "Clock Error";
             let errorToastMessage = "";
 
@@ -220,7 +219,6 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
               errorTitle = "Invalid PIN";
               errorToastMessage = "The PIN you entered is incorrect.";
             } else {
-              // Fallback to generic messages
               const errorMessages: Record<TimeClockActionType, string> = {
                 sign_in:
                   "Failed to sign in. Please check your PIN and try again.",
@@ -240,7 +238,6 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             });
 
             options?.onError?.(type, errorMessage);
-            // Throw so caller can handle the error
             throw new Error(errorMessage);
           }
         }
@@ -253,7 +250,6 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
           message: "Your action will be synced when connection is restored.",
           type: "warning",
         });
-        // Return queued status so caller knows it was accepted
         return { success: true, queued: true };
       }
     },
@@ -261,7 +257,6 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
   );
 
   // 2. Sync Processor (The "Queue Flusher")
-  // Automatically runs when internet comes back or queue changes
   useEffect(() => {
     const processQueue = async () => {
       if (store.offlineQueue.length === 0 || store.isSyncing) return;
@@ -272,7 +267,6 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       store.setSyncing(true);
 
       // Process strictly in order (FIFO)
-      // We process one at a time to ensure backend state consistency
       const actionToProcess = store.offlineQueue[0];
 
       try {
@@ -287,12 +281,9 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
 
         if (error) {
           console.error("Sync failed for action", actionToProcess.id, error);
-          // If it's a "Wrong PIN" error stored offline, we discard it
-          // Otherwise, keep it in queue for retry
           const isLogicError =
             error.code && !error.message?.includes("network");
           if (isLogicError) {
-            // Logic error (wrong PIN, etc.) - remove from queue
             store.removeFromQueue(actionToProcess.id);
             toastService.show({
               title: "Sync Warning",
@@ -301,12 +292,9 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
               type: "warning",
             });
           }
-          // Network errors will be retried on next interval
         } else {
-          // Success: Remove from queue
           store.removeFromQueue(actionToProcess.id);
           if (store.offlineQueue.length === 1) {
-            // Last item in queue was just processed
             toastService.show({
               title: "Sync Complete",
               message: "All pending actions have been synced.",
@@ -321,17 +309,15 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
       }
     };
 
-    // Run processor on mount and whenever queue changes
     processQueue();
 
-    // Set up a poller interval for aggressive syncing
     const interval = setInterval(processQueue, 10000);
     return () => clearInterval(interval);
   }, [store.offlineQueue, store.isSyncing, supabase]);
 
   return {
     status: store.status,
-    shiftId: store.shiftId,
+    shiftId: store.currentShiftId,
     isSyncing: store.isSyncing,
     pendingActions: store.offlineQueue.length,
     clockIn: (pin: string, loc: string, dev: string) =>

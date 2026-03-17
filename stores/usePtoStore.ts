@@ -21,9 +21,20 @@ export const usePtoStore = create<PtoState>()(
         accrualHistory: {},
         balances: {},
 
+        /**
+         * Initialize PTO from shift history (fetched from backend via timeclock store).
+         * Call this after `fetchShiftHistory()` has populated the timeclock store.
+         * Safe to call multiple times — recalculates from scratch each time.
+         */
         initializePtoFromHistory: () => {
           const { useTimeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
           const shiftHistory = useTimeclockStore.getState().shiftHistory;
+
+          if (!shiftHistory.length) {
+            console.log("[PTO] No shift history available, skipping PTO init.");
+            return;
+          }
+
           const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate;
 
           const newAccrualHistory: Record<string, PTOAccrualEntry[]> = {};
@@ -47,12 +58,11 @@ export const usePtoStore = create<PtoState>()(
               date: shift.date,
               hoursWorked: hoursWorked,
               ptoEarned: ptoEarned,
-              accrualRateUsed: ptoAccrualRate, // Use current rate for historical entries
+              accrualRateUsed: ptoAccrualRate,
               shiftId: shift.id,
               employeeId: shift.employeeId,
             };
 
-            // Initialize records if they don't exist
             if (!newAccrualHistory[entry.employeeId]) {
               newAccrualHistory[entry.employeeId] = [];
             }
@@ -72,7 +82,7 @@ export const usePtoStore = create<PtoState>()(
             balances: newBalances,
           });
 
-          console.log("PTO history initialized from timeclock store.");
+          console.log(`[PTO] Initialized from ${shiftHistory.length} shifts.`);
         },
 
         recordPtoAccrual: (entry) => {

@@ -102,12 +102,8 @@ const FinancialReportsScreen = () => {
     description: string;
   } | null>(null);
 
-  // Initialize shift history if empty
-  React.useEffect(() => {
-    if (shiftHistory.length === 0) {
-      useTimeclockStore.getState().initializeHistory();
-    }
-  }, [shiftHistory.length]);
+  // NOTE: Shift history is now hydrated from the backend via PosSyncProvider.
+  // If empty, it means the fetch hasn't completed yet or no shifts exist.
 
   // --- Real Logic for Labor Cost ---
   const laborStats = useMemo(() => {

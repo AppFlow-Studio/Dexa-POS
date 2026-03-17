@@ -14,6 +14,7 @@ import { formatCurrency } from "@/utils/currency";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { FloorPlanObject, TableStatus } from "@/types/db-floor-plan-types";
 import {
+  ArrowLeftRight,
   ChevronUp,
   DollarSign,
   LogOut,
@@ -32,6 +33,7 @@ interface TableContextSheetProps {
   onClose: () => void;
   onSeatGuests: (table: FloorPlanObject) => void;
   onNavigate: (tableId: string) => void;
+  onTransferServer?: (tableId: string, sessionId: string) => void;
 }
 
 type ActionItem = {
@@ -177,6 +179,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   onClose,
   onSeatGuests,
   onNavigate,
+  onTransferServer,
 }) => {
   const sheetRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ["55%"], []);
@@ -258,6 +261,18 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
       (id) => finishCleaning(id),
       (id, s) => updateSessionStatus(id, s),
     );
+
+    // Add transfer server action for occupied tables
+    const occupiedForTransfer = new Set([
+      "seated", "seating", "ordering", "ordered", "served", "check_presented",
+    ]);
+    if (onTransferServer && liveSession?.id && occupiedForTransfer.has(status) && table) {
+      baseActions.push({
+        label: "Transfer Server",
+        icon: <ArrowLeftRight size={18} color={colors.label} />,
+        onPress: () => onTransferServer(table.id, liveSession.id),
+      });
+    }
 
     // Add print actions for occupied tables
     if (order && selectedStore) {

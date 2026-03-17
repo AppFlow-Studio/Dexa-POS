@@ -217,3 +217,86 @@ export function calculateEvenSplitDualPrice(
     cashLastPerson: cashSplit.lastPerson,
   };
 }
+
+// ============================================================================
+// CASH DRAWER INTEGRATION
+// ============================================================================
+
+/**
+ * Record cash payment in the cash drawer.
+ * Call this after a successful cash payment to track the operation.
+ * Records both the cash received (deposit) and change given (withdrawal).
+ */
+export function trackCashPaymentInDrawer(
+  paymentResult: ProcessPaymentV2Result,
+  orderId: string,
+  staffProfileId: string
+): void {
+  // Lazy import to avoid circular deps
+  const { useCashDrawerStore } = require("@/stores/useCashDrawerStore") as {
+    useCashDrawerStore: typeof import("@/stores/useCashDrawerStore").useCashDrawerStore;
+  };
+  const { recordDrawerOperation } = require("@/services/cashDrawerService") as typeof import("@/services/cashDrawerService");
+
+  const store = useCashDrawerStore.getState();
+  if (!store.activeSession || !store.drawerId) return;
+
+  const supabase = getSupabase();
+
+  // Record cash received
+  if (paymentResult.total_collected > 0) {
+    recordDrawerOperation(supabase, {
+      cashDrawerId: store.drawerId,
+      sessionId: store.activeSession.id,
+      operationType: "cash_payment",
+      amount: paymentResult.total_collected,
+      performedBy: staffProfileId,
+      orderId,
+      paymentId: paymentResult.payment_id,
+    });
+  }
+
+  // Record change given (if any)
+  if (paymentResult.change_given > 0) {
+    recordDrawerOperation(supabase, {
+      cashDrawerId: store.drawerId,
+      sessionId: store.activeSession.id,
+      operationType: "change_given",
+      amount: paymentResult.change_given,
+      performedBy: staffProfileId,
+      orderId,
+      paymentId: paymentResult.payment_id,
+    });
+  }
+}
+
+/**
+ * Record cash refund in the cash drawer.
+ * Call this after a successful cash refund.
+ */
+export function trackCashRefundInDrawer(
+  refundAmount: number,
+  orderId: string,
+  staffProfileId: string,
+  paymentId?: string
+): void {
+  const { useCashDrawerStore } = require("@/stores/useCashDrawerStore") as {
+    useCashDrawerStore: typeof import("@/stores/useCashDrawerStore").useCashDrawerStore;
+  };
+  const { recordDrawerOperation } = require("@/services/cashDrawerService") as typeof import("@/services/cashDrawerService");
+
+  const store = useCashDrawerStore.getState();
+  if (!store.activeSession || !store.drawerId || refundAmount <= 0) return;
+
+  const supabase = getSupabase();
+
+  recordDrawerOperation(supabase, {
+    cashDrawerId: store.drawerId,
+    sessionId: store.activeSession.id,
+    operationType: "refund",
+    amount: refundAmount,
+    performedBy: staffProfileId,
+    orderId,
+    paymentId,
+  });
+}

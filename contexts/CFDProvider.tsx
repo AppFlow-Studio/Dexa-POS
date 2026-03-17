@@ -18,6 +18,7 @@ import type {
 } from "@/types/cfd.types";
 import type { CartItem } from "@/lib/types";
 import { usePathname } from "expo-router";
+import { debounce } from "lodash";
 import React, {
     createContext,
     useCallback,
@@ -105,12 +106,24 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     null,
   );
   const tipConfigRef = useRef<CFDPayload["tipConfig"] | null>(null);
+  const lastPayloadHashRef = useRef("");
+  const debouncedUpdateRef = useRef(
+    debounce((ctrl: CFDController, params: any) => {
+      const hash = JSON.stringify(params);
+      if (hash === lastPayloadHashRef.current) return;
+      lastPayloadHashRef.current = hash;
+      ctrl.updateOrder(params);
+    }, 150)
+  );
 
   // Store settings
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const organizationLogoUrl = useStoreSettingsStore(
     (s) => s.organizationLogoUrl
+  );
+  const tipPresetPercentages = useStoreSettingsStore(
+    (s) => s.tipPresetPercentages
   );
 
   // Order store selectors
@@ -280,6 +293,8 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
 
     if (isConnected) {
       fetchImages();
+      const interval = setInterval(fetchImages, 5 * 60 * 1000); // Refresh every 5 minutes
+      return () => clearInterval(interval);
     }
   }, [isConnected, selectedStore?.id]);
 
@@ -312,7 +327,7 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     }
 
     // items should always be synced if we're showing order data
-    controller.updateOrder({
+    const params = {
       screenState: activeScreenState || undefined,
       orderNumber:
         activeOrder?.display_number ?? activeOrder?.order_number ?? null,
@@ -330,7 +345,29 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
       ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
       tipConfig: tipConfigRef.current ?? undefined,
-    });
+    };
+
+    // Payment state transitions need immediate delivery; ordering state can be debounced
+    const isPaymentState = activeScreenState === "payment" ||
+      activeScreenState === "processing" ||
+      activeScreenState === "approved" ||
+      activeScreenState === "declined" ||
+      activeScreenState === "tip_selection";
+
+    if (isPaymentState) {
+      debouncedUpdateRef.current.cancel();
+      const hash = JSON.stringify(params);
+      if (hash !== lastPayloadHashRef.current) {
+        lastPayloadHashRef.current = hash;
+        controller.updateOrder(params);
+      }
+    } else {
+      debouncedUpdateRef.current(controller, params);
+    }
+
+    return () => {
+      debouncedUpdateRef.current.cancel();
+    };
   }, [
     isConnected,
     activeOrder,
@@ -452,7 +489,7 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
 
       const config = {
         subtotalForTip: Math.round(currentBase * 100), // CONVERT TO CENTS
-        presetPercentages: presetPercentages || [15, 18, 20, 25],
+        presetPercentages: presetPercentages || tipPresetPercentages,
         allowCustom: true,
       };
       tipConfigRef.current = config;
@@ -461,7 +498,7 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
         config.presetPercentages,
       );
     },
-    [activeOrderSubtotal],
+    [activeOrderSubtotal, tipPresetPercentages],
   );
 
   const updateTip = useCallback((amount: number, percentage: number | null) => {
@@ -506,6 +543,18 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     setCurrentTip({ amount: 0, percentage: null });
     controllerRef.current?.showIdle();
   }, []);
+
+  // Auto-return to idle after payment result display
+  useEffect(() => {
+    if (activeScreenState === "approved") {
+      const timer = setTimeout(() => showIdle(), 4000);
+      return () => clearTimeout(timer);
+    }
+    if (activeScreenState === "declined") {
+      const timer = setTimeout(() => showIdle(), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeScreenState, showIdle]);
 
   const value = {
     serverStatus,

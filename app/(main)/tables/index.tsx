@@ -1,3 +1,4 @@
+import ServerSectionManager from '@/components/floor-plan/ServerSectionManager'
 import HostStationScreenEnhanced from '@/components/host-station/HostStationScreenEnhanced'
 import { GuestCountModal } from '@/components/tables/GuestCountModal'
 import MergeActionBar from '@/components/tables/MergeActionBar'
@@ -28,6 +29,7 @@ import {
   GitMerge,
   Pencil,
   Search,
+  Users,
   UtensilsCrossed,
   X
 } from 'lucide-react-native'
@@ -88,6 +90,7 @@ const TablesScreen = () => {
   const [contextTable, setContextTable] = useState<FloorPlanObject | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [isHostStationOpen, setHostStationOpen] = useState(false)
+  const [isSectionManagerOpen, setSectionManagerOpen] = useState(false)
   const [overlayTableId, setOverlayTableId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -430,6 +433,12 @@ const TablesScreen = () => {
       return
     }
 
+    // Auto-resolve server from section assignment
+    const sectionId = freshTable?.section_id
+    const assignedServerId = sectionId
+      ? useFloorPlanStore.getState().sectionsById[sectionId]?.assigned_staff_id ?? undefined
+      : undefined
+
     const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId]
 
     // 1. Create local order immediately (synchronous — ~0ms)
@@ -457,7 +466,8 @@ const TablesScreen = () => {
         createOrder: true,
         localOrderId: newOrder.id,
         selected_station: selectedStation?.id,
-        device_id: device_id
+        device_id: device_id,
+        serverId: assignedServerId
       })
 
       if (orderId && orderId !== newOrder.id) {
@@ -550,6 +560,19 @@ const TablesScreen = () => {
                 {isMergeMode ? 'Cancel' : 'Merge Tables'}
               </Text>
             </TouchableOpacity>
+
+            {/* Server Sections Button */}
+            {sections.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSectionManagerOpen(true)}
+                className='py-2 px-4 flex-row items-center justify-center rounded-lg bg-teal border border-teal'
+              >
+                <Users color='black' size={18} />
+                <Text className='text-lg font-bold text-black ml-2'>
+                  Servers
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* Host Station Button */}
             <TouchableOpacity
@@ -766,6 +789,12 @@ const TablesScreen = () => {
       <TableOrderModal
         tableId={overlayTableId}
         onClose={() => setOverlayTableId(null)}
+      />
+
+      {/* Server Section Manager */}
+      <ServerSectionManager
+        isOpen={isSectionManagerOpen}
+        onClose={() => setSectionManagerOpen(false)}
       />
 
       {/* Host Station Modal */}

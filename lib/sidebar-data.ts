@@ -149,7 +149,7 @@ export const SIDEBAR_DATA: SidebarNavigationItem[] = [
           {
             id: 'end_of_day',
             label: 'End of Day Report',
-            href: '/settings/store-operation/end-of-day' as Href
+            href: '/settings/end-of-day' as Href
           }
         ]
       },

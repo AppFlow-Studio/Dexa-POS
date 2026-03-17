@@ -110,9 +110,8 @@ export const useEmployeeStore = create<EmployeeState>()(
               : e
           ),
         }));
-        // Also update timeclock store status
-        const { useTimeclockStore: timeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
-        timeclockStore.getState().clockIn(employeeId);
+        // NOTE: No longer cascading to timeclock store here.
+        // The timeclock store clockIn is called directly by the caller (pin-login, etc.)
       },
 
       clockOut: (employeeId) => {
@@ -123,9 +122,8 @@ export const useEmployeeStore = create<EmployeeState>()(
               : e
           ),
         }));
-        // Also update timeclock store status
-        const { useTimeclockStore: timeclockStore } = require("./useTimeclockStore") as { useTimeclockStore: typeof import("./useTimeclockStore").useTimeclockStore };
-        timeclockStore.getState().clockOut(employeeId);
+        // NOTE: No longer cascading to timeclock store here.
+        // The timeclock store clockOut calls employeeStore.clockOut, not the other way around.
       },
 
       /**
