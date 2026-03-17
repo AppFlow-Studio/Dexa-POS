@@ -17,26 +17,41 @@ DECLARE
     v_current_status text;
     v_result json;
     v_session_id uuid;
+    v_member_id uuid;
+    v_pin_plain text;
 BEGIN
     -- 1. Validate PIN & Get Staff Context
-    SELECT 
-        sm.staff_profile_id, 
-        sm.hourly_rate, 
-        sm.merchant_id
-    INTO 
-        v_staff_id, 
-        v_rate, 
-        v_merchant_id
+    SELECT
+        sm.staff_profile_id,
+        sm.hourly_rate,
+        sm.merchant_id,
+        sm.id,
+        sm.pin_plain
+    INTO
+        v_staff_id,
+        v_rate,
+        v_merchant_id,
+        v_member_id,
+        v_pin_plain
     FROM location_members sm
-    WHERE sm.location_id = p_location_id 
+    WHERE sm.location_id = p_location_id
       AND sm.is_active = true
-      AND sm.pin_code IS NOT NULL
       AND (
-          replace(sm.pin_code, '$2b$', '$2a$') = crypt(p_pin_code, replace(sm.pin_code, '$2b$', '$2a$'))
+          -- Fast path: plain-text PIN match
+          (sm.pin_plain IS NOT NULL AND sm.pin_plain = p_pin_code)
+          OR
+          -- Bcrypt fallback: un-migrated employees only
+          (sm.pin_plain IS NULL AND sm.pin_code IS NOT NULL
+           AND replace(sm.pin_code, '$2b$', '$2a$') = crypt(p_pin_code, replace(sm.pin_code, '$2b$', '$2a$')))
       );
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'INVALID_PIN';
+    END IF;
+
+    -- Auto-migrate: populate pin_plain on first successful bcrypt login
+    IF v_pin_plain IS NULL THEN
+        UPDATE location_members SET pin_plain = p_pin_code WHERE id = v_member_id;
     END IF;
 
     -- Get active station session for this device (if any)

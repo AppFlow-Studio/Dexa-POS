@@ -14,6 +14,7 @@ export interface UsbDeviceInfo {
   manufacturerName: string;
   serialNumber: string;
   driverName: string;
+  hasPermission: boolean;
 }
 
 export interface CastlesUsbDataEvent {

@@ -262,7 +262,7 @@ const PinLoginScreen = () => {
         const { data } = await supabase
           .from("location_members")
           .select(`
-            id, pin_code, role_code, staff_profile_id,
+            id, pin_code, pin_plain, role_code, staff_profile_id,
             staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
           `)
           .eq("location_id", selectedStore.id)
@@ -279,7 +279,7 @@ const PinLoginScreen = () => {
               displayName: profile?.display_name || fullName || "Unknown",
               role: row.role_code as MerchantRole,
               profilePictureUrl: profile?.avatar_url || undefined,
-              pinHash: row.pin_code,
+              pin: row.pin_plain ?? null,
               email: profile?.email,
               phone: profile?.phone,
               shiftStatus: "clocked_out" as const,
@@ -483,7 +483,7 @@ const PinLoginScreen = () => {
         const { data } = await supabase
           .from("location_members")
           .select(`
-            id, pin_code, role_code, staff_profile_id,
+            id, pin_code, pin_plain, role_code, staff_profile_id,
             staff_profiles (id, first_name, last_name, display_name, avatar_url, email, phone)
           `)
           .eq("location_id", selectedStore.id)
@@ -500,7 +500,7 @@ const PinLoginScreen = () => {
               displayName: profile?.display_name || fullName || "Unknown",
               role: row.role_code as MerchantRole,
               profilePictureUrl: profile?.avatar_url || undefined,
-              pinHash: row.pin_code,
+              pin: row.pin_plain ?? null,
               email: profile?.email,
               phone: profile?.phone,
               shiftStatus: "clocked_out" as const,
@@ -638,7 +638,7 @@ const PinLoginScreen = () => {
         employee = getEmployeeByStaffId(result.staff_id) || null;
       } else if (result?.queued) {
         // Request was queued (offline) - verify locally
-        employee = await findEmployeeByPin(pin);
+        employee = findEmployeeByPin(pin);
       }
 
       hideLoading();

@@ -1,6 +1,5 @@
 import { secureMMKVStorage } from "@/lib/storage";
 import { MerchantRole } from "@/lib/types";
-import bcrypt from "bcryptjs";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 export interface EmployeeProfile {
@@ -10,7 +9,7 @@ export interface EmployeeProfile {
   displayName: string;
   role: MerchantRole;
   profilePictureUrl?: string;
-  pinHash: string | null; // bcrypt hash (NOT plain PIN)
+  pin: string | null; // plain-text PIN for instant local matching
   email?: string;
   phone?: string;
   shiftStatus: "clocked_in" | "clocked_out";
@@ -49,7 +48,7 @@ interface EmployeeState {
   // Helpers
   getEmployeeById: (id: string) => EmployeeProfile | undefined;
   getEmployeeByStaffId: (staffId: string) => EmployeeProfile | undefined;
-  findEmployeeByPin: (pin: string) => Promise<EmployeeProfile | null>;
+  findEmployeeByPin: (pin: string) => EmployeeProfile | null;
   setActiveSession: (employee: EmployeeProfile) => void;
 }
 
@@ -64,18 +63,9 @@ export const useEmployeeStore = create<EmployeeState>()(
 
       getEmployeeById: (id) => get().employees.find((e) => e.id === id),
 
-      findEmployeeByPin: async (pin: string) => {
-        // Local bcrypt comparison for offline support
-        // Online verification is handled in components using useTimeClock hook
+      findEmployeeByPin: (pin: string) => {
         const { employees } = get();
-        for (const emp of employees) {
-          if (!emp.pinHash) continue;
-          const isMatch = await bcrypt.compare(pin, emp.pinHash);
-          if (isMatch) {
-            return emp;
-          }
-        }
-        return null;
+        return employees.find((emp) => emp.pin === pin) ?? null;
       },
 
       setActiveSession: (employee: EmployeeProfile) => {
@@ -139,22 +129,14 @@ export const useEmployeeStore = create<EmployeeState>()(
       },
 
       /**
-       * Sign in with PIN using local bcrypt comparison (offline fallback).
+       * Sign in with PIN using local plain-text comparison (offline fallback).
        * For online verification, use the useTimeClock hook in components.
        */
       signInWithPin: async (pin: string, _locationId: string, _deviceId: string) => {
         const { employees } = get();
 
-        // Find employee by PIN hash
-        let foundEmployee: EmployeeProfile | null = null;
-        for (const emp of employees) {
-          if (!emp.pinHash) continue;
-          const isMatch = await bcrypt.compare(pin, emp.pinHash);
-          if (isMatch) {
-            foundEmployee = emp;
-            break;
-          }
-        }
+        // Find employee by plain PIN
+        const foundEmployee = employees.find((emp) => emp.pin === pin) ?? null;
 
         if (!foundEmployee) {
           return { ok: false as const, reason: "invalid_pin" as const };

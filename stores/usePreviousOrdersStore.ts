@@ -88,6 +88,7 @@ interface PreviousOrdersState {
     paymentMethod: PaymentType,
   ) => Promise<void>;
   getRefundsForOrder: (orderId: string) => RefundRecord[];
+  patchPreviousOrder: (orderId: string, patch: Partial<PreviousOrder>) => void;
 }
 
 export const usePreviousOrdersStore = create<PreviousOrdersState>(
@@ -642,6 +643,33 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
     getRefundsForOrder: (orderId: string) => {
       return get().refunds.filter((refund) => refund.orderId === orderId);
+    },
+
+    patchPreviousOrder: (orderId: string, patch: Partial<PreviousOrder>) => {
+      set((state) => {
+        // Find by db_order_id key first, then by orderId field
+        let lookupKey: string | undefined;
+        if (state._orderLookup[orderId]) {
+          lookupKey = orderId;
+        } else {
+          for (const [key, order] of Object.entries(state._orderLookup)) {
+            if (order.orderId === orderId) {
+              lookupKey = key;
+              break;
+            }
+          }
+        }
+        if (!lookupKey) return {};
+
+        const existing = state._orderLookup[lookupKey];
+        const updated = { ...existing, ...patch };
+        return {
+          previousOrders: state.previousOrders.map((po) =>
+            po.orderId === existing.orderId ? updated : po
+          ),
+          _orderLookup: { ...state._orderLookup, [lookupKey]: updated },
+        };
+      });
     },
   }),
 );

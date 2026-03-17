@@ -12,7 +12,6 @@
  */
 
 import { FloorPlanService } from "@/services/floorPlanService";
-import { useOrderStore } from "@/stores/useOrderStore";
 import type { TableSession } from "@/types/db-floor-plan-types";
 import type { SeatGuestsParams } from "@/types/sessionRpcTypes";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -119,6 +118,8 @@ export async function handleSeatingEffect(
 
   // 3. Hydrate order from RPC response
   if (data.order_id) {
+    const { useOrderStore } = await import("@/stores/useOrderStore");
+
     useOrderStore.getState().hydrateOrderFromSeat({
       localOrderId: params.localOrderId,
       dbOrderId: data.order_id,

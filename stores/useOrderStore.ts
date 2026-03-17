@@ -2099,7 +2099,7 @@ interface OrderState {
   ) => void;
   batchUpdateItemKitchenStatus: (
     itemIds: string[],
-    status: "preparing" | "ready" | "served",
+    status: "sent" | "preparing" | "ready" | "served",
   ) => void;
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
@@ -5056,8 +5056,13 @@ export const useOrderStore = create<OrderState>()(
               for (const item of order.items) {
                 if (!idSet.has(item.id)) continue;
                 if (
-                  status === "preparing" &&
+                  status === "sent" &&
                   (!item.kitchen_status || item.kitchen_status === "new")
+                ) {
+                  item.kitchen_status = "sent";
+                } else if (
+                  status === "preparing" &&
+                  (!item.kitchen_status || item.kitchen_status === "new" || item.kitchen_status === "sent")
                 ) {
                   item.kitchen_status = "preparing";
                 } else if (status === "ready") {
@@ -5066,13 +5071,15 @@ export const useOrderStore = create<OrderState>()(
                   item.kitchen_status = "served";
                 }
                 item.item_status =
-                  status === "preparing"
-                    ? "preparing"
-                    : status === "ready"
-                      ? "ready"
-                      : status === "served"
-                        ? "served"
-                        : item.item_status;
+                  status === "sent"
+                    ? item.item_status
+                    : status === "preparing"
+                      ? "preparing"
+                      : status === "ready"
+                        ? "ready"
+                        : status === "served"
+                          ? "served"
+                          : item.item_status;
               }
 
               // Aggregate order_status for dine-in
@@ -10015,6 +10022,18 @@ export const useOrderStore = create<OrderState>()(
                   "[syncOrderFromBackendComplete] ⚠️ No items in response - order may be empty or all items voided",
                 );
               }
+
+              // Sort raw backend items by created_at to ensure stable order (defense-in-depth)
+              itemsData.sort((a: any, b: any) => {
+                const aOrder = a.item?.display_order ?? a.display_order ?? null;
+                const bOrder = b.item?.display_order ?? b.display_order ?? null;
+                if (aOrder !== null && bOrder !== null && aOrder !== bOrder) return aOrder - bOrder;
+                if (aOrder !== null && bOrder === null) return -1;
+                if (aOrder === null && bOrder !== null) return 1;
+                const aTime = a.item?.created_at || a.created_at || '';
+                const bTime = b.item?.created_at || b.created_at || '';
+                return aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
+              });
 
               // Transform items with nested modifiers to CartItem format
               // Uses the shared mapBackendItemToCartItem for consistency with broadcast transforms

@@ -2,7 +2,6 @@ import { colors } from "@/lib/theme";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
-import { useOrderHistory } from "@/hooks/orders/useOrderHistory";
 import {
   useCloseCheck,
   useReopenCheck,
@@ -11,11 +10,13 @@ import {
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  RefreshCw,
   RotateCcw,
   Search,
   ShoppingBag,
@@ -25,10 +26,8 @@ import {
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
-  LayoutAnimation,
   Platform,
   RefreshControl,
   Text,
@@ -37,6 +36,8 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  FadeIn,
+  FadeOut,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -217,43 +218,186 @@ const PreviousOrdersScreen = () => {
   const [sortBy, setSortBy] = useState<"date" | "total" | "status">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Derive filter props from active filter pills
-  const statusFilter = useMemo(() => {
-    const statuses: string[] = [];
-    if (activeFilters.has("refunded")) {
-      statuses.push("Refunded", "Partially Refunded");
-    }
-    return statuses;
-  }, [activeFilters]);
-
-  const orderTypeFilter = useMemo(() => {
-    const types: string[] = [];
-    if (activeFilters.has("dine-in")) types.push("Dine In");
-    if (activeFilters.has("takeaway")) types.push("Takeaway");
-    if (activeFilters.has("delivery")) types.push("Delivery");
-    return types;
-  }, [activeFilters]);
-
-  // Data layer
+  // ─── Store-based data layer (mirrors PreviousOrdersSection pattern) ───
+  const ordersById = useOrderStore((s) => s.ordersById);
   const {
-    orders,
-    filterCounts,
-    isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-    refetch,
-    isRefetching,
-  } = useOrderHistory({
-    searchText,
-    statusFilter,
-    orderTypeFilter,
-    sortBy,
-    sortOrder,
-    needsAttention: activeFilters.has("needs-attention"),
-    refundedOnly: activeFilters.has("refunded"),
-  });
+    refreshPreviousOrders,
+    previousOrders,
+    newOrdersCount,
+    checkForNewOrders,
+    clearNewOrdersCount,
+  } = usePreviousOrdersStore();
+
+  // Initial load + 15s polling for new orders
+  useEffect(() => {
+    refreshPreviousOrders();
+
+    const intervalId = setInterval(() => {
+      checkForNewOrders();
+    }, 15000);
+
+    return () => {
+      clearInterval(intervalId);
+      clearNewOrdersCount();
+    };
+  }, []);
+
+  // Handle refresh (pull-to-refresh or banner tap)
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await refreshPreviousOrders();
+    setIsRefreshing(false);
+  }, [refreshPreviousOrders]);
+
+  // Combine active orders + history orders with dedup (same as PreviousOrdersSection)
+  const allOrders: OrderProfile[] = useMemo(() => {
+    const activeOrders = Object.values(ordersById).filter(
+      (o: OrderProfile) =>
+        o.order_status !== "draft" ||
+        (o.order_status === "draft" && o.items.length > 0),
+    );
+
+    const activeIds = new Set(activeOrders.map((o) => o.id));
+    const activeDbIds = new Set(
+      activeOrders.map((o) => o.db_order_id).filter(Boolean),
+    );
+
+    const mappedHistoryOrders: OrderProfile[] = previousOrders
+      .filter((po) => {
+        if (activeIds.has(po.orderId)) return false;
+        if (po.db_order_id && activeDbIds.has(po.db_order_id)) return false;
+        return true;
+      })
+      .map(
+        (po) =>
+          ({
+            id: po.orderId,
+            db_order_id: po.db_order_id,
+            display_number: po.display_number,
+            order_number: po.display_number,
+            customer_name: po.customer,
+            server_name: po.server,
+            order_status: po.refunded
+              ? "refunded"
+              : po.closed_at
+                ? "completed"
+                : "pending",
+            check_status: po.checkStatus || "Opened",
+            paid_status: po.paymentStatus,
+            order_type: po.type,
+            items: po.items,
+            total_amount: po.total,
+            amount_paid: po.amount_paid,
+            amount_due: po.amount_due,
+            opened_at: po.timestamp || po.opened_at,
+            created_at: po.timestamp,
+            closed_at: po.closed_at,
+            service_location_id: po.service_location_id || null,
+            service_location_name: po.service_location_name,
+            station_id: po.station_id || null,
+            _sourceStationName: po.station_name,
+            notes: po.notes,
+            payments: po.payments,
+            order_source: po.order_source ?? null,
+            reversals: po.reversals,
+            order_refund_items: po.order_refund_items,
+          }) as OrderProfile,
+      );
+
+    return [...activeOrders, ...mappedHistoryOrders];
+  }, [ordersById, previousOrders]);
+
+  // ─── Compute filter counts from allOrders ──────────────
+  const filterCounts = useMemo(() => {
+    let needsAttention = 0;
+    let refunded = 0;
+    let dineIn = 0;
+    let takeaway = 0;
+    let delivery = 0;
+
+    for (const o of allOrders) {
+      if (o.paid_status === "Pending") needsAttention++;
+      if (o.order_status === "refunded" || (o.payments || []).some((p) => (p.refundedAmount ?? 0) > 0)) {
+        refunded++;
+      }
+      switch (o.order_type) {
+        case "Dine In":
+          dineIn++;
+          break;
+        case "Takeaway":
+          takeaway++;
+          break;
+        case "Delivery":
+          delivery++;
+          break;
+      }
+    }
+
+    return { needsAttention, refunded, dineIn, takeaway, delivery };
+  }, [allOrders]);
+
+  // ─── Client-side filtering + sorting ───────────────────
+  const filteredOrders = useMemo(() => {
+    let filtered = allOrders;
+
+    // Search by display_number or customer_name
+    if (searchText.trim()) {
+      const query = searchText.toLowerCase().trim();
+      filtered = filtered.filter((o) => {
+        const customerName = (o.customer_name || "walk-in").toLowerCase();
+        const displayNumber = String(o.display_number || "").toLowerCase();
+        return customerName.includes(query) || displayNumber.includes(query);
+      });
+    }
+
+    // Status filters
+    if (activeFilters.has("needs-attention")) {
+      filtered = filtered.filter((o) => o.paid_status === "Pending");
+    }
+    if (activeFilters.has("refunded")) {
+      filtered = filtered.filter(
+        (o) =>
+          o.order_status === "refunded" ||
+          (o.payments || []).some((p) => (p.refundedAmount ?? 0) > 0),
+      );
+    }
+
+    // Order type filters
+    if (activeFilters.has("dine-in")) {
+      filtered = filtered.filter((o) => o.order_type === "Dine In");
+    }
+    if (activeFilters.has("takeaway")) {
+      filtered = filtered.filter((o) => o.order_type === "Takeaway");
+    }
+    if (activeFilters.has("delivery")) {
+      filtered = filtered.filter((o) => o.order_type === "Delivery");
+    }
+
+    // Sorting
+    const sortMultiplier = sortOrder === "asc" ? 1 : -1;
+    filtered = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case "date": {
+          const dateA = new Date(a.opened_at || 0).getTime();
+          const dateB = new Date(b.opened_at || 0).getTime();
+          return (dateA - dateB) * sortMultiplier;
+        }
+        case "total":
+          return ((a.total_amount || 0) - (b.total_amount || 0)) * sortMultiplier;
+        case "status": {
+          const statusA = (a.paid_status || "").toLowerCase();
+          const statusB = (b.paid_status || "").toLowerCase();
+          return statusA.localeCompare(statusB) * sortMultiplier;
+        }
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  }, [allOrders, searchText, activeFilters, sortBy, sortOrder]);
 
   // Mutation hooks
   const closeCheckMutation = useCloseCheck();
@@ -391,21 +535,6 @@ const PreviousOrdersScreen = () => {
     ],
   );
 
-  const handleEndReached = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  const renderFooter = useCallback(() => {
-    if (!isFetchingNextPage) return null;
-    return (
-      <View className="py-4 items-center">
-        <ActivityIndicator size="small" color={colors.info} />
-      </View>
-    );
-  }, [isFetchingNextPage]);
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -517,45 +646,63 @@ const PreviousOrdersScreen = () => {
         </View>
 
         {/* ─── Order List ──────────────────────────────── */}
-        <View className="flex-1 rounded-xl overflow-hidden">
-          {isLoading ? (
-            <View className="flex-1 pt-2">
-              {Array.from({ length: 10 }).map((_, index) => (
-                <SkeletonRow key={`skeleton-${index}`} />
-              ))}
-            </View>
-          ) : (
-            <FlatList
-              data={orders}
-              keyExtractor={(item) => item.id}
-              renderItem={renderItem}
-              onEndReached={handleEndReached}
-              onEndReachedThreshold={0.3}
-              ListFooterComponent={renderFooter}
-              ListEmptyComponent={
-                <View className="items-center justify-center py-16">
-                  <Text className="text-xl text-gray-500">
-                    No orders found
-                  </Text>
-                  <Text className="text-sm text-gray-600 mt-2">
-                    Try adjusting your filters or search
-                  </Text>
-                </View>
-              }
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefetching}
-                  onRefresh={refetch}
-                  tintColor="#3B82F6"
-                  colors={["#3B82F6"]}
-                />
-              }
-              contentContainerStyle={{ paddingTop: 4, paddingBottom: 16 }}
-              initialNumToRender={10}
-              maxToRenderPerBatch={10}
-              windowSize={5}
-              removeClippedSubviews={true}
-            />
+        <View className="flex-1 rounded-xl overflow-hidden relative">
+          <FlatList
+            data={filteredOrders}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            ListEmptyComponent={
+              <View className="items-center justify-center py-16">
+                <Text className="text-xl text-gray-500">
+                  No orders found
+                </Text>
+                <Text className="text-sm text-gray-600 mt-2">
+                  Try adjusting your filters or search
+                </Text>
+              </View>
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor="#3B82F6"
+                colors={["#3B82F6"]}
+              />
+            }
+            contentContainerStyle={{ paddingTop: 4, paddingBottom: 16 }}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
+          />
+
+          {/* New Orders Banner */}
+          {newOrdersCount > 0 && (
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              exiting={FadeOut.duration(200)}
+              className="absolute top-4 left-0 right-0 items-center z-10"
+              pointerEvents="box-none"
+            >
+              <TouchableOpacity
+                onPress={handleRefresh}
+                activeOpacity={0.8}
+                className="flex-row items-center gap-2 px-5 py-3 rounded-full bg-green-600 shadow-lg"
+                style={{
+                  shadowColor: "#22c55e",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 8,
+                }}
+              >
+                <RefreshCw size={16} color="#fff" />
+                <Text className="text-white font-semibold text-sm">
+                  {newOrdersCount} New Order{newOrdersCount > 1 ? "s" : ""} - Tap
+                  to Refresh
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
           )}
         </View>
 
