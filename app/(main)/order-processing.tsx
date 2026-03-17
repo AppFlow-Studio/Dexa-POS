@@ -275,7 +275,7 @@ const OrderProcessing = () => {
               }
               headerBelow={
                 !isAccordionOpen && displayOrders.length > 0 ? (
-                  <View className="px-3 border-b border-border py-1.5">
+                  <View className="px-3 py-1.5">
                     <FlatList
                       horizontal
                       data={displayOrders}

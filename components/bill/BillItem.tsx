@@ -57,36 +57,29 @@ interface ModifierDisplay {
  */
 const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
   ({ modifiers }) => (
-    <View className="py-1">
+    <View>
       {modifiers.map((modifier, index) => (
-        <View key={`mod-${index}`} className="ml-4">
-          {modifier.options.length > 0 && (
-            <View className="flex flex-row flex-wrap items-center mb-1">
-              {modifier.categoryName && (
-                <Text className="text-sm font-medium text-gray-300">
-                  {modifier.categoryName}:
+        modifier.options.length > 0 && (
+          <View key={`mod-${index}`} className="flex-row flex-wrap items-center gap-x-1 mb-0.5">
+            {modifier.categoryName && (
+              <Text style={{ fontSize: 10 }} className="text-gray-500">
+                {modifier.categoryName}:
+              </Text>
+            )}
+            {modifier.options.map((option, optionIndex) => (
+              <View key={`opt-${optionIndex}`} className="flex-row items-center gap-0.5">
+                <Text style={{ fontSize: 10 }} className="text-gray-300">
+                  {option.name}{optionIndex < modifier.options.length - 1 ? "," : ""}
                 </Text>
-              )}
-              {modifier.options.map((option, optionIndex) => (
-                <View
-                  key={`opt-${optionIndex}`}
-                  className="flex-row justify-between items-center ml-1"
-                >
-                  <Text className="text-sm text-gray-200">
-                    {option.name}
-                    {optionIndex < modifier.options.length - 1 && " • "}
+                {option.price > 0 && (
+                  <Text style={{ fontSize: 10 }} className="text-teal-500">
+                    +${option.price.toFixed(2)}
                   </Text>
-                  {option.price > 0 && (
-                    <Text className="text-sm font-medium ml-1 text-teal-400">
-                      +${option.price.toFixed(2)}
-                      {optionIndex < modifier.options.length - 1 && ","}
-                    </Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )
       ))}
     </View>
   ),
@@ -354,11 +347,15 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               backgroundColor: colors.card,
               borderWidth: 1,
               borderRightColor: colors.border,
-              borderTopColor : colors.border,
-              borderBottomColor : colors.border,
-              ...(kitchenBorderColor
-                ? { borderLeftWidth: 3, borderLeftColor: kitchenBorderColor }
-                : {}),
+              borderTopColor: colors.border,
+              borderBottomColor: colors.border,
+              borderLeftWidth: 3,
+              borderLeftColor: kitchenBorderColor ?? colors.border,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.2,
+              shadowRadius: 2,
+              elevation: 2,
             }
           : undefined,
         isActive
@@ -393,117 +390,112 @@ const BillItemComponent: React.FC<BillItemProps> = ({
         >
           <TouchableOpacity
             onPress={isVoided ? undefined : handleNotesPress}
-            activeOpacity={isVoided ? 1 : 0.9}
+            activeOpacity={isVoided ? 1 : 0.85}
             disabled={isVoided}
           >
-            <View className="flex-row items-center py-2 px-2">
+            {/* Main row */}
+            <View className="flex-row items-center py-2 px-3 gap-2.5">
+              {/* Quantity pill */}
+              <View
+                className="items-center justify-center rounded-md"
+                style={{ width: 22, height: 22, backgroundColor: isVoided ? "#374151" : "#2A3050" }}
+              >
+                <Text
+                  style={{ fontSize: 11, fontWeight: "700" }}
+                  className={isVoided ? "text-gray-500" : "text-gray-200"}
+                >
+                  {item.quantity}
+                </Text>
+              </View>
+
+              {/* Name + badges */}
               <View className="flex-1">
-                <View className="flex-row items-center flex-wrap">
-                  {isVoided && (
-                    <View className="bg-red-600 px-2 py-0.5 rounded mr-2">
-                      <Text className="text-white text-xs font-bold">VOID</Text>
-                    </View>
-                  )}
-                  {/* Paid/Refunded status badges - from memoized paymentCoverage */}
-                  {!isVoided && paymentCoverage.isFullyRefunded && (
-                    <View className="bg-red-600/20 px-2 py-0.5 rounded mr-2">
-                      <Text className="text-red-400 text-xs font-bold">
-                        REFUNDED
-                      </Text>
-                    </View>
-                  )}
-                  {!isVoided && paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid && (
-                    <View className="bg-orange-600/20 px-2 py-0.5 rounded mr-2">
-                      <Text className="text-orange-400 text-xs font-bold">
-                        {paymentCoverage.refundedQty} REFUNDED
-                      </Text>
-                    </View>
-                  )}
-                  {!isVoided && !paymentCoverage.isFullyRefunded && !(paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid) && paymentCoverage.isFullyPaid && (
-                    <View className="flex-row items-center bg-green-600/20 px-2 py-0.5 rounded mr-2">
-                      {paymentCoverage.primaryMethod === "Cash" && !paymentCoverage.isSplitMethod && (
-                        <Banknote size={12} color={colors.success} style={{ marginRight: 3 }} />
-                      )}
-                      <Text className="text-green-400 text-xs font-bold">
-                        PAID {paymentCoverage.methodLabel}
-                      </Text>
-                    </View>
-                  )}
-                  {!isVoided && paymentCoverage.isPartiallyPaid && (
-                    <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
-                      <Text className="text-yellow-400 text-xs font-bold">
-                        {paymentCoverage.netCoveredQty}/{item.quantity} PAID
-                      </Text>
-                    </View>
-                  )}
-                   <Text
-                    className={`text-sm mr-2 rounded-md bg-gray-900 px-2 py-1 ${
-                      isVoided ? "text-gray-600 line-through" : "text-gray-300"
-                    }`}
-                  >
-                    {item.quantity}
-                  </Text>
+                <View className="flex-row items-center gap-1.5">
                   <Text
-                    className={`font-semibold text-base ${
+                    className={`font-semibold text-sm flex-shrink ${
                       isVoided ? "text-gray-500 line-through" : "text-white"
                     }`}
+                    numberOfLines={1}
                   >
                     {item.name}
                   </Text>
-                  {/* Sync status indicator - Phase 7D: from dedicated store */}
                   {syncStatus === "pending" || syncStatus === "syncing" ? (
-                    <ActivityIndicator
-                      size={10}
-                      color={colors.info}
-                      style={{ marginLeft: 12 }}
-                    />
+                    <ActivityIndicator size={10} color={colors.info} />
                   ) : syncStatus === "failed" ? (
-                    <AlertCircle
-                      size={16}
-                      color={colors.danger}
-                      style={{ marginLeft: 6 }}
-                    />
+                    <AlertCircle size={13} color={colors.danger} />
                   ) : null}
                 </View>
+
+                {/* Status badges row */}
+                {(isVoided || paymentCoverage.isFullyRefunded || paymentCoverage.isPartiallyRefunded || paymentCoverage.isFullyPaid || paymentCoverage.isPartiallyPaid) && (
+                  <View className="flex-row flex-wrap gap-1 mt-0.5">
+                    {isVoided && (
+                      <View className="bg-red-900/60 px-1.5 py-px rounded">
+                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-red-400">VOID</Text>
+                      </View>
+                    )}
+                    {!isVoided && paymentCoverage.isFullyRefunded && (
+                      <View className="bg-red-900/40 px-1.5 py-px rounded">
+                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-red-400">REFUNDED</Text>
+                      </View>
+                    )}
+                    {!isVoided && paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid && (
+                      <View className="bg-orange-900/40 px-1.5 py-px rounded">
+                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-orange-400">{paymentCoverage.refundedQty} REFUNDED</Text>
+                      </View>
+                    )}
+                    {!isVoided && !paymentCoverage.isFullyRefunded && !(paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid) && paymentCoverage.isFullyPaid && (
+                      <View className="flex-row items-center bg-green-900/40 px-1.5 py-px rounded gap-1">
+                        {paymentCoverage.primaryMethod === "Cash" && !paymentCoverage.isSplitMethod && (
+                          <Banknote size={9} color={colors.success} />
+                        )}
+                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-green-400">PAID {paymentCoverage.methodLabel}</Text>
+                      </View>
+                    )}
+                    {!isVoided && paymentCoverage.isPartiallyPaid && (
+                      <View className="bg-yellow-900/40 px-1.5 py-px rounded">
+                        <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-yellow-400">{paymentCoverage.netCoveredQty}/{item.quantity} PAID</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 {isVoided && item.void_reason && (
-                  <Text className="text-red-400/70 text-xs mt-1 italic">
-                    Reason: {item.void_reason}
+                  <Text style={{ fontSize: 10 }} className="text-red-400/60 mt-0.5 italic">
+                    {item.void_reason}
                   </Text>
                 )}
-                {/* Refund-then-repay sub-text - from memoized paymentCoverage */}
                 {paymentCoverage.hasRepaid && (
-                  <Text className="text-gray-500 text-[10px] italic mt-0.5">
+                  <Text style={{ fontSize: 9 }} className="text-gray-500 italic mt-0.5">
                     Refunded → Re-paid {paymentCoverage.repaidMethodLabel}
                   </Text>
                 )}
-                <View className="flex-row items-center">
-                  {/* {!item.isDraft && (...)} */}
-                </View>
               </View>
+
+              {/* Price */}
               <Text
-                className={`font-semibold text-lg ${
-                  isVoided ? "text-gray-500 line-through" : "text-teal-400"
-                }`}
+                style={{ fontSize: 13, fontWeight: "600" }}
+                className={isVoided ? "text-gray-600 line-through" : "text-teal-400"}
               >
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>
             </View>
 
+            {/* Modifiers / Notes */}
             {hasModifiers && (
               <Animated.View className="overflow-hidden">
-                <View className="px-2">
-                  {/* OPTIMIZED: Use memoized ModifiersList component */}
+                <View
+                  className="mx-3 mb-2 px-2 py-1.5 rounded-md"
+                  style={{ backgroundColor: "#12162A" }}
+                >
                   {item.customizations.modifiers &&
                     item.customizations.modifiers.length > 0 && (
-                      <ModifiersList
-                        modifiers={item.customizations.modifiers}
-                      />
+                      <ModifiersList modifiers={item.customizations.modifiers} />
                     )}
-
                   {item.customizations.notes && (
-                    <View className="py-0.5">
-                      <Text className="text-sm text-gray-300">Notes:</Text>
-                      <Text className="text-sm text-gray-200 ml-2 italic">
+                    <View className="flex-row items-start gap-1 mt-0.5">
+                      <Text style={{ fontSize: 10 }} className="text-gray-500">Note:</Text>
+                      <Text style={{ fontSize: 10 }} className="text-gray-300 italic flex-1">
                         {item.customizations.notes}
                       </Text>
                     </View>

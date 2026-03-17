@@ -456,7 +456,7 @@ const BillSectionContent = ({
         <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={handleStartNewOrder}
-            className="w-1/3 py-1.5 px-2 flex-row items-center justify-center gap-1 rounded-lg border"
+            className="w-1/3 py-1.5 px-2 flex-row items-center justify-center gap-1 rounded-lg border shrink-0"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
             <Plus color={"#FFFFFF"} size={14} />
@@ -495,7 +495,7 @@ const BillSectionContent = ({
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
-              className="w-1/4 h-11 items-center justify-center rounded-lg border"
+              className="w-1/3 h-11 items-center justify-center rounded-lg border shrink-0"
               style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
               <Text className="text-center text-base font-bold text-white leading-none mb-0.5">···</Text>

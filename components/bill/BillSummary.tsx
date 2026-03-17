@@ -112,7 +112,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                             entering={FadeInDown.duration(200)}
                             exiting={FadeOutUp.duration(150)}
                             layout={LinearTransition.duration(200)}
-                            className={`rounded-xl mb-1.5 ${
+                            className={`rounded-xl mb-1 ${
                               isCourseActive ? "border border-blue-500" : ""
                             }`}
                           >

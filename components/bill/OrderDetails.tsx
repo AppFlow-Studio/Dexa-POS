@@ -299,21 +299,21 @@ const OrderDetailsComponent: React.FC = () => {
           >
             {customerName ? (
               <>
-                <User color={colors.label} size={24} />
-                <View className="ml-3 flex-1">
+                <User color={colors.label} size={16} />
+                <View className="ml-2 flex-1">
                   <Text
-                    className="text-xl font-semibold text-white overflow-ellipsis"
+                    className="text-sm font-semibold text-white"
                     numberOfLines={1}
                   >
                     {customerName}
                   </Text>
                   {customerPhone && (
-                    <Text className="text-sm text-gray-400">
+                    <Text className="text-xs text-gray-400">
                       {customerPhone}
                     </Text>
                   )}
                 </View>
-                <Edit3 color={colors.info} size={24} />
+                <Edit3 color={colors.info} size={14} />
               </>
             ) : (
               <>
