@@ -482,19 +482,15 @@ const CardPaymentView = () => {
   };
 
   return (
-    <View className="flex-1 bg-panel">
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
       <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: "space-between",
-          padding: 16,
-        }}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: "space-between", padding: 16 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* Terminal Status Banner */}
         {terminalStatus !== "online" && (
-          <View className="mb-4">
+          <View style={{ marginBottom: 16 }}>
             <TerminalStatusBanner
               status={terminalStatus}
               errorMessage={terminalErrorMessage || undefined}
@@ -503,77 +499,59 @@ const CardPaymentView = () => {
           </View>
         )}
 
-        {/* Top Section: Status Indicator */}
-        <View className="items-center justify-center flex-1">
-          {/* READY STATE: Tip Input */}
+        {/* Top Section */}
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          {/* READY STATE */}
           {status === "ready" && (
-            <View className="w-full max-w-sm">
-              <View className="items-center mb-8">
-                <Text className="text-gray-400 text-lg mb-2">Total Due</Text>
-                <Text className="text-5xl font-bold text-white mb-8">
+            <View style={{ width: "100%", maxWidth: 400 }}>
+              <View style={{ alignItems: "center", marginBottom: 24 }}>
+                <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Total Due</Text>
+                <Text style={{ fontSize: 48, fontWeight: "700", color: colors.teal, marginBottom: 28 }}>
                   ${totalToPay.toFixed(2)}
                 </Text>
 
-                <Text className="text-gray-400 mb-2 font-medium self-start w-full">
+                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, alignSelf: "flex-start" }}>
                   Add Tip
                 </Text>
                 {/* Preset Tip Buttons */}
-                <View className="flex-row gap-2 w-full mb-4">
-                  {TIP_PRESETS.map((percent) => (
-                    <TouchableOpacity
-                      key={percent}
-                      onPress={() => handleTipPreset(percent)}
-                      className={`flex-1 py-3 rounded-xl border ${
-                        selectedTipPreset === percent
-                          ? "bg-teal/20 border-teal"
-                          : "bg-surface border-border"
-                      }`}
-                    >
-                      <Text
-                        className={`text-center font-bold ${
-                          selectedTipPreset === percent
-                            ? "text-white"
-                            : "text-gray-300"
-                        }`}
+                <View style={{ flexDirection: "row", gap: 8, width: "100%", marginBottom: 12 }}>
+                  {TIP_PRESETS.map((percent) => {
+                    const isActive = selectedTipPreset === percent;
+                    return (
+                      <TouchableOpacity
+                        key={percent}
+                        onPress={() => handleTipPreset(percent)}
+                        style={{
+                          flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+                          backgroundColor: isActive ? `${colors.teal}15` : colors.panel,
+                          borderColor: isActive ? colors.teal : colors.border,
+                          alignItems: "center",
+                        }}
                       >
-                        {percent}%
-                      </Text>
-                      <Text
-                        className={`text-center text-xs mt-1 ${
-                          selectedTipPreset === percent
-                            ? "text-teal"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        ${((percent / 100) * totalToPay).toFixed(2)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text style={{ fontWeight: "700", color: isActive ? colors.heading : colors.muted }}>{percent}%</Text>
+                        <Text style={{ fontSize: 11, marginTop: 2, color: isActive ? colors.teal : colors.muted }}>
+                          ${((percent / 100) * totalToPay).toFixed(2)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
                 {/* Custom Tip Input */}
-                <View className="flex-row items-center bg-surface border border-border rounded-xl px-4 h-16 w-full mb-8">
-                  <Text className="text-gray-400 text-xl mr-2">$</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, height: 56, width: "100%", marginBottom: 24 }}>
+                  <Text style={{ color: colors.muted, fontSize: 18, marginRight: 6 }}>$</Text>
                   <TextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
                     placeholder="0.00"
                     keyboardType="numeric"
                     placeholderTextColor={colors.muted}
-                    style={{
-                      flex: 1,
-                      fontSize: 24,
-                      fontWeight: "bold",
-                      color: "white",
-                      height: "100%",
-                    }}
+                    style={{ flex: 1, fontSize: 22, fontWeight: "700", color: colors.heading }}
                   />
                 </View>
 
-                <View className="flex-row justify-between w-full border-t border-border pt-4">
-                  <Text className="text-gray-300 text-xl">Grand Total:</Text>
-                  <Text className="text-white text-xl font-bold">
-                    ${grandTotal.toFixed(2)}
-                  </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14 }}>
+                  <Text style={{ color: colors.muted, fontSize: 16 }}>Grand Total</Text>
+                  <Text style={{ color: colors.heading, fontSize: 16, fontWeight: "700" }}>${grandTotal.toFixed(2)}</Text>
                 </View>
               </View>
             </View>
@@ -581,45 +559,34 @@ const CardPaymentView = () => {
 
           {/* PROCESSING / SUCCESS STATES */}
           {(status === "processing" || status === "success") && (
-            <View className="mb-8">
+            <View style={{ marginBottom: 24, alignItems: "center" }}>
               {status === "processing" && (
-                <Animated.View entering={FadeIn} className="items-center">
-                  <View className="w-24 h-24 bg-teal/10 rounded-full items-center justify-center mb-4 border-2 border-teal/20">
+                <Animated.View entering={FadeIn} style={{ alignItems: "center" }}>
+                  <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 2, borderColor: `${colors.teal}30` }}>
                     <ActivityIndicator size="large" color={colors.teal} />
                   </View>
-                  <View className="flex-row items-center gap-2 bg-surface px-4 py-2 rounded-full border border-border">
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.panel, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}>
                     <Wifi size={16} color={colors.success} />
-                    <Text className="text-gray-400 font-medium text-sm">
-                      Terminal Connected
-                    </Text>
+                    <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 13 }}>Terminal Connected</Text>
                   </View>
                 </Animated.View>
               )}
 
               {status === "success" && (
-                <Animated.View
-                  entering={FadeIn.duration(300)}
-                  className="items-center"
-                >
-                  <View className="w-24 h-24 bg-green-500/10 rounded-full items-center justify-center mb-4 border-2 border-green-500/20">
+                <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center" }}>
+                  <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: `${colors.success}15`, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 2, borderColor: `${colors.success}30` }}>
                     <CheckCircle2 size={48} color={colors.success} />
                   </View>
-                  <Text className="text-green-400 font-bold text-lg">
-                    Approved
-                  </Text>
+                  <Text style={{ color: colors.success, fontWeight: "700", fontSize: 16 }}>Approved</Text>
                 </Animated.View>
               )}
 
-              <View className="mt-8 items-center">
-                <Text className="text-3xl font-bold text-white mb-2 text-center">
-                  {status === "processing"
-                    ? "Present Card"
-                    : "Payment Successful"}
+              <View style={{ marginTop: 24, alignItems: "center" }}>
+                <Text style={{ fontSize: 28, fontWeight: "700", color: colors.heading, marginBottom: 6, textAlign: "center" }}>
+                  {status === "processing" ? "Present Card" : "Payment Successful"}
                 </Text>
-                <Text className="text-gray-400 text-lg text-center">
-                  {status === "processing"
-                    ? `Charging $${grandTotal.toFixed(2)}`
-                    : "Transaction completed"}
+                <Text style={{ color: colors.muted, fontSize: 16, textAlign: "center" }}>
+                  {status === "processing" ? `Charging $${grandTotal.toFixed(2)}` : "Transaction completed"}
                 </Text>
               </View>
             </View>
@@ -633,72 +600,59 @@ const CardPaymentView = () => {
           message={errorModal.message}
           onDismiss={handleDismissErrorModal}
         />
-        {/* Bottom Section: Receipt Details & Actions */}
-        <Animated.View entering={FadeInDown.delay(200)} className="w-full">
-          {/* Receipt Breakdown Card */}
-          {/* Only show simplified breakdown or nothing in ready state if unnecessary, keeping consistent for now */}
+
+        {/* Bottom Section */}
+        <Animated.View entering={FadeInDown.delay(200)} style={{ width: "100%" }}>
+          {/* Receipt Breakdown */}
           {status !== "ready" && (
-            <View className="bg-surface p-5 rounded-2xl border border-border mb-6">
+            <View style={{ backgroundColor: colors.panel, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 }}>
               {activeSplit ? (
-                <View className="flex-row justify-between">
-                  <Text className="text-gray-400 text-base">
-                    {activeSplit.customerName} Share
-                  </Text>
-                  <Text className="text-white text-base font-medium">
-                    ${activeSplit.amount.toFixed(2)}
-                  </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ color: colors.muted, fontSize: 15 }}>{activeSplit.customerName} Share</Text>
+                  <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${activeSplit.amount.toFixed(2)}</Text>
                 </View>
               ) : (
                 <>
-                  <View className="flex-row justify-between mb-3">
-                    <Text className="text-gray-400 text-base">Subtotal</Text>
-                    <Text className="text-white text-base font-medium">
-                      ${activeOrderOutstandingSubtotal.toFixed(2)}
-                    </Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
+                    <Text style={{ color: colors.muted, fontSize: 15 }}>Subtotal</Text>
+                    <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${activeOrderOutstandingSubtotal.toFixed(2)}</Text>
                   </View>
-
                   {activeOrderDiscount > 0 && (
-                    <View className="flex-row justify-between mb-3">
-                      <Text className="text-green-500/80 text-base">
-                        Discount
-                      </Text>
-                      <Text className="text-green-500 font-medium text-base">
-                        -${activeOrderDiscount.toFixed(2)}
-                      </Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
+                      <Text style={{ color: colors.success, fontSize: 15 }}>Discount</Text>
+                      <Text style={{ color: colors.success, fontSize: 15, fontWeight: "600" }}>-${activeOrderDiscount.toFixed(2)}</Text>
                     </View>
                   )}
-
-                  <View className="flex-row justify-between pt-3 border-t border-border">
-                    <Text className="text-gray-400 text-base">Tax</Text>
-                    <Text className="text-white text-base font-medium">
-                      ${activeOrderOutstandingTax.toFixed(2)}
-                    </Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+                    <Text style={{ color: colors.muted, fontSize: 15 }}>Tax</Text>
+                    <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${activeOrderOutstandingTax.toFixed(2)}</Text>
                   </View>
                 </>
               )}
               {tipAmount > 0 && (
-                <View className="flex-row justify-between pt-3 border-t border-border mt-3">
-                  <Text className="text-gray-400 text-base">Tip</Text>
-                  <Text className="text-white text-base font-medium">
-                    ${tipAmount.toFixed(2)}
-                  </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10 }}>
+                  <Text style={{ color: colors.muted, fontSize: 15 }}>Tip</Text>
+                  <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${tipAmount.toFixed(2)}</Text>
                 </View>
               )}
             </View>
           )}
 
-          {/* Action Buttons */}
+          {/* Charge Button */}
           {status === "ready" && (
             <TouchableOpacity
               onPress={handleChargeCard}
               disabled={!terminalReady}
-              className={`w-full py-4 rounded-xl mb-4 items-center ${
-                terminalReady
-                  ? "bg-teal active:bg-teal/80"
-                  : "bg-gray-600 opacity-50"
-              }`}
+              style={{
+                width: "100%", paddingVertical: 16, borderRadius: 12, marginBottom: 12,
+                alignItems: "center",
+                backgroundColor: terminalReady ? colors.teal : colors.panel,
+                borderWidth: terminalReady ? 0 : 1,
+                borderColor: colors.border,
+                opacity: terminalReady ? 1 : 0.5,
+              }}
             >
-              <Text className="text-white font-bold text-lg">
+              <Text style={{ color: terminalReady ? "#000" : colors.muted, fontWeight: "700", fontSize: 17 }}>
                 Charge Card ${grandTotal.toFixed(2)}
               </Text>
             </TouchableOpacity>
@@ -710,22 +664,15 @@ const CardPaymentView = () => {
               onPress={async () => {
                 if (isCancelling) return;
                 if (status === "processing" && currentRefIdRef.current) {
-                  // Abort in-flight transaction on terminal
                   setIsCancelling(true);
                   const terminal = selectedStation?.payment_terminal;
                   try {
                     if (terminal?.terminal_type === 'castles') {
                       await getSharedCastlesService().gracefulDisconnect();
                     } else if (terminal) {
-                      // Dejavoo: abort via SPIN API
                       const DejavooAPI = new DejavooSpinAPI(supabase);
-                      await DejavooAPI.loadTerminal(
-                        terminal.id || "",
-                        terminal,
-                      );
-                      await DejavooAPI.abortTransaction()
-                        .referenceId(currentRefIdRef.current)
-                        .execute();
+                      await DejavooAPI.loadTerminal(terminal.id || "", terminal);
+                      await DejavooAPI.abortTransaction().referenceId(currentRefIdRef.current).execute();
                     }
                   } catch (err) {
                     console.error("[CardPayment] Abort failed:", err);
@@ -736,9 +683,9 @@ const CardPaymentView = () => {
                   close();
                 }
               }}
-              className={`w-full py-4 bg-surface border border-border rounded-xl active:bg-surface ${isCancelling ? "opacity-50" : ""}`}
+              style={{ width: "100%", paddingVertical: 16, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, opacity: isCancelling ? 0.5 : 1 }}
             >
-              <Text className="text-lg font-bold text-gray-300 text-center">
+              <Text style={{ fontSize: 16, fontWeight: "700", color: colors.muted, textAlign: "center" }}>
                 {isCancelling ? "Cancelling..." : "Cancel Transaction"}
               </Text>
             </TouchableOpacity>

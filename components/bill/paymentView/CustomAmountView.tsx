@@ -86,161 +86,122 @@ const CustomAmountView = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "padding"}
-      className="flex-1 bg-panel"
+      style={{ flex: 1, backgroundColor: colors.screen }}
     >
       {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-border">
+      <View style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <TouchableOpacity
           onPress={() => setView("split-options")}
-          className="p-2 bg-surface rounded-lg mr-4"
+          style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 14 }}
         >
-          <ArrowLeft size={20} color="white" />
+          <ArrowLeft size={18} color={colors.label} />
         </TouchableOpacity>
         <View>
-          <Text className="text-2xl font-bold text-white">Custom Amounts</Text>
-          <Text className="text-gray-400">
-            Manually assign amounts to each guest.
-          </Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Custom Amounts</Text>
+          <Text style={{ fontSize: 12, color: colors.muted }}>Manually assign amounts to each guest.</Text>
         </View>
       </View>
 
-      <View className="flex-1 flex-row p-6 gap-6">
-        {/* LEFT PANEL: The Math & Actions (Sticky) */}
-        <View className="w-1/3 bg-surface rounded-3xl border border-border p-6 justify-between">
+      <View style={{ flex: 1, flexDirection: "row", padding: 20, gap: 16 }}>
+        {/* LEFT: Summary */}
+        <View style={{ width: "33%", backgroundColor: colors.panel, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 20, justifyContent: "space-between" }}>
           <View>
-            <Text className="text-gray-500 uppercase tracking-widest text-xs font-bold mb-6">
-              Summary
-            </Text>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 20 }}>Summary</Text>
 
-            {/* Total Bill */}
-            <View className="flex-row justify-between mb-4">
-              <Text className="text-gray-400 text-lg">Total Bill</Text>
-              <Text className="text-white font-bold text-lg">
-                ${effectiveTotal.toFixed(2)}
-              </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 14 }}>
+              <Text style={{ color: colors.muted, fontSize: 15 }}>Total Bill</Text>
+              <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 15 }}>${effectiveTotal.toFixed(2)}</Text>
             </View>
 
-            {/* Allocated */}
-            <View className="flex-row justify-between mb-4 pb-4 border-b border-border">
-              <Text className="text-gray-400 text-lg">Allocated</Text>
-              <Text className="text-teal font-bold text-lg">
-                ${totalAllocated.toFixed(2)}
-              </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.muted, fontSize: 15 }}>Allocated</Text>
+              <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 15 }}>${totalAllocated.toFixed(2)}</Text>
             </View>
 
-            {/* Remaining */}
             <View>
-              <Text className="text-gray-400 text-lg mb-1">Remaining</Text>
-              <Text className={`text-5xl font-bold ${statusColor}`}>
-                {isOver ? "" : ""}
-                {/* Handle negative sign via styling or logic if needed */}$
-                {Math.abs(remaining).toFixed(2)}
+              <Text style={{ color: colors.muted, fontSize: 15, marginBottom: 6 }}>Remaining</Text>
+              <Text style={{ fontSize: 40, fontWeight: "700", color: isPerfect ? colors.success : isOver ? colors.danger : colors.heading }}>
+                ${Math.abs(remaining).toFixed(2)}
               </Text>
-              {isOver && (
-                <Text className="text-red-400 text-sm mt-2">
-                  Total exceeds bill amount by ${Math.abs(remaining).toFixed(2)}
-                </Text>
-              )}
-              {isPerfect && (
-                <Text className="text-green-400 text-sm mt-2">
-                  Perfectly split!
-                </Text>
-              )}
+              {isOver && <Text style={{ color: colors.danger, fontSize: 12, marginTop: 6 }}>Exceeds bill by ${Math.abs(remaining).toFixed(2)}</Text>}
+              {isPerfect && <Text style={{ color: colors.success, fontSize: 12, marginTop: 6 }}>Perfectly split!</Text>}
             </View>
           </View>
 
-          {/* Bottom Actions Area */}
-          <View className="gap-4">
-            {/* Hint */}
+          <View style={{ gap: 12 }}>
             {!canProceed && (
-              <View className="bg-surface p-4 rounded-xl">
-                <Text className="text-gray-400 text-sm text-center">
-                  Assign amounts to enable payment.
-                </Text>
+              <View style={{ backgroundColor: colors.screen, padding: 14, borderRadius: 12 }}>
+                <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center" }}>Assign amounts to enable payment.</Text>
               </View>
             )}
             {canProceed && !isPerfect && (
-              <View className="bg-surface p-4 rounded-xl">
-                <Text className="text-yellow-400 text-sm text-center">
-                  ${remaining.toFixed(2)} remaining will stay unpaid.
-                </Text>
+              <View style={{ backgroundColor: colors.screen, padding: 14, borderRadius: 12 }}>
+                <Text style={{ color: "#F59E0B", fontSize: 13, textAlign: "center" }}>${remaining.toFixed(2)} remaining will stay unpaid.</Text>
               </View>
             )}
 
-            {/* Next Step Button */}
             <TouchableOpacity
               onPress={handleProceed}
               disabled={!canProceed}
-              className={`w-full py-4 rounded-xl flex-row items-center justify-center shadow-lg
-                        ${canProceed ? "bg-teal shadow-teal/20 active:bg-teal/80" : "bg-surface opacity-80"}`}
+              style={{
+                width: "100%", paddingVertical: 16, borderRadius: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                backgroundColor: canProceed ? colors.teal : colors.screen,
+                borderWidth: canProceed ? 0 : 1, borderColor: colors.border,
+                opacity: canProceed ? 1 : 0.6,
+              }}
             >
-              {canProceed ? (
-                <Check size={20} color="white" className="mr-2" />
-              ) : (
-                <ArrowRight size={20} color={colors.label} className="mr-2" />
-              )}
-              <Text
-                className={`font-bold text-lg ${canProceed ? "text-white" : "text-gray-400"}`}
-              >
+              {canProceed
+                ? <Check size={18} color="#000" />
+                : <ArrowRight size={18} color={colors.muted} />
+              }
+              <Text style={{ fontWeight: "700", fontSize: 15, color: canProceed ? "#000" : colors.muted }}>
                 {isPerfect ? "Finalize Split" : "Pay Allocated Amount"}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* RIGHT PANEL: The Inputs (Scrollable) */}
-        <View className="flex-1 bg-panel rounded-3xl border border-border overflow-hidden">
-          <View className="p-4 border-b border-border bg-surface flex-row justify-between items-center">
-            <Text className="text-gray-400 font-bold uppercase tracking-wider text-xs">
-              Guest List
-            </Text>
+        {/* RIGHT: Guest List */}
+        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 20, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+          <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>Guest List</Text>
             <TouchableOpacity
               onPress={handleAddGuest}
-              className="bg-surface p-2 rounded-lg border border-border"
+              style={{ width: 32, height: 32, backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}
             >
-              <Plus size={20} color="white" />
+              <Plus size={18} color={colors.teal} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <ScrollView contentContainerStyle={{ padding: 14 }}>
             {splits.map((split) => (
               <View
                 key={split.id}
-                className="flex-row items-center mb-3 bg-surface p-3 rounded-2xl border border-border"
+                style={{ flexDirection: "row", alignItems: "center", marginBottom: 10, backgroundColor: colors.screen, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
               >
-                {/* Icon & Name */}
-                <View className="flex-row items-center flex-1 mr-4">
-                  <View className="w-10 h-10 bg-surface rounded-full items-center justify-center mr-3">
-                    <User size={18} color={colors.muted} />
+                <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 12 }}>
+                  <View style={{ width: 36, height: 36, backgroundColor: colors.panel, borderRadius: 18, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                    <User size={16} color={colors.muted} />
                   </View>
-                  <Text
-                    className="text-lg font-bold text-gray-200 w-24"
-                    numberOfLines={1}
-                  >
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: colors.label, width: 90 }} numberOfLines={1}>
                     {split.customerName}
                   </Text>
                 </View>
 
-                {/* Input Area */}
-                <View className="flex-row items-center gap-3">
-                  {/* Auto-Fill Button */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   {remaining > 0 && (
                     <TouchableOpacity
                       onPress={() => handleFillRemaining(split.id)}
-                      className="bg-teal/10 px-3 py-2 rounded-lg border border-teal/30"
+                      style={{ backgroundColor: `${colors.teal}15`, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: `${colors.teal}40` }}
                     >
-                      <Text className="text-teal text-xs font-bold">
-                        Fill
-                      </Text>
+                      <Text style={{ color: colors.teal, fontSize: 12, fontWeight: "700" }}>Fill</Text>
                     </TouchableOpacity>
                   )}
 
-                  <View className="flex-row items-center bg-panel rounded-xl px-4 border border-border w-40 h-14">
-                    <Text className="font-bold text-xl text-gray-500 mr-1">
-                      $
-                    </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderRadius: 12, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, width: 140, height: 52 }}>
+                    <Text style={{ fontWeight: "700", fontSize: 18, color: colors.muted, marginRight: 4 }}>$</Text>
                     <TextInput
-                      className="flex-1 text-xl font-bold text-white text-right h-full"
+                      style={{ flex: 1, fontSize: 18, fontWeight: "700", color: colors.heading, textAlign: "right", height: "100%" }}
                       value={split.amount > 0 ? split.amount.toString() : ""}
                       onChangeText={(text) => {
                         if ((text.match(/\./g) || []).length > 1) return;
@@ -256,22 +217,22 @@ const CustomAmountView = () => {
 
                   <TouchableOpacity
                     onPress={() => removeSplit(split.id)}
-                    className="p-3 bg-surface rounded-xl"
+                    style={{ padding: 10, backgroundColor: colors.screen, borderRadius: 10 }}
                   >
-                    <Trash2 size={20} color={colors.muted} />
+                    <Trash2 size={18} color={colors.muted} />
                   </TouchableOpacity>
                 </View>
               </View>
             ))}
 
             {splits.length === 0 && (
-              <View className="items-center py-20">
-                <Text className="text-gray-500">No guests added.</Text>
+              <View style={{ alignItems: "center", paddingVertical: 60 }}>
+                <Text style={{ color: colors.muted }}>No guests added.</Text>
                 <TouchableOpacity
                   onPress={handleAddGuest}
-                  className="mt-4 bg-teal px-6 py-3 rounded-xl"
+                  style={{ marginTop: 16, backgroundColor: colors.teal, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
                 >
-                  <Text className="text-white font-bold">Add Guest</Text>
+                  <Text style={{ color: "#000", fontWeight: "700" }}>Add Guest</Text>
                 </TouchableOpacity>
               </View>
             )}

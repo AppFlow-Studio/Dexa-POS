@@ -187,57 +187,39 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(({
                 : payment.method;
 
     return (
-        <View className="flex-row items-center justify-between py-3 px-2 bg-surface rounded-lg mb-2">
-            {/* Payment Badge + Method */}
-            <View className="flex-row items-center flex-1">
-                <View className="bg-green-600 px-2 py-1 rounded mr-3">
-                    <Text className="text-white text-xs font-bold">Paid</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, paddingHorizontal: 10, backgroundColor: colors.panel, borderRadius: 10, marginBottom: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                <View style={{ backgroundColor: `${colors.success}20`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 10, borderWidth: 1, borderColor: `${colors.success}40` }}>
+                    <Text style={{ color: colors.success, fontSize: 11, fontWeight: "700" }}>Paid</Text>
                 </View>
                 <View>
-                    <Text className="text-white font-medium">{methodDisplay}</Text>
+                    <Text style={{ color: colors.heading, fontWeight: "600" }}>{methodDisplay}</Text>
                     {payment.timestamp && (
-                        <Text className="text-gray-500 text-xs">
-                            {new Date(payment.timestamp).toLocaleTimeString("en-US", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                            })}
+                        <Text style={{ color: colors.muted, fontSize: 11 }}>
+                            {new Date(payment.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                         </Text>
                     )}
                 </View>
             </View>
 
-            {/* Amount */}
-            <View className="items-end mr-4">
-                <Text className="text-white font-bold text-lg">
-                    ${payment.amount.toFixed(2)}
-                </Text>
+            <View style={{ alignItems: "flex-end", marginRight: 12 }}>
+                <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 16 }}>${payment.amount.toFixed(2)}</Text>
                 {payment.tip_amount && payment.tip_amount > 0 && (
-                    <Text className="text-green-400 text-xs">
-                        +${payment.tip_amount.toFixed(2)} tip
-                    </Text>
+                    <Text style={{ color: colors.success, fontSize: 11 }}>+${payment.tip_amount.toFixed(2)} tip</Text>
                 )}
             </View>
 
-            {/* Actions */}
-            <View className="flex-row gap-2">
+            <View style={{ flexDirection: "row", gap: 8 }}>
                 {onPrint && (
-                    <TouchableOpacity
-                        onPress={onPrint}
-                        className="px-3 py-2 bg-teal/20 rounded-lg"
-                    >
-                        <FileText size={16} color={colors.teal} />
+                    <TouchableOpacity onPress={onPrint} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: `${colors.teal}15`, borderRadius: 8 }}>
+                        <FileText size={15} color={colors.teal} />
                     </TouchableOpacity>
                 )}
-                <TouchableOpacity
-                    onPress={onVoid}
-                    disabled={isVoiding}
-                    className="px-3 py-2 bg-red-600/20 rounded-lg"
-                >
-                    {isVoiding ? (
-                        <ActivityIndicator size="small" color={colors.danger} />
-                    ) : (
-                        <RotateCcw size={16} color={colors.danger} />
-                    )}
+                <TouchableOpacity onPress={onVoid} disabled={isVoiding} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: `${colors.danger}15`, borderRadius: 8 }}>
+                    {isVoiding
+                        ? <ActivityIndicator size="small" color={colors.danger} />
+                        : <RotateCcw size={15} color={colors.danger} />
+                    }
                 </TouchableOpacity>
             </View>
         </View>
@@ -485,76 +467,59 @@ const PayForItemsView: React.FC = () => {
     // --- RENDER ---
     if (!activeOrder) {
         return (
-            <View className="flex-1 bg-panel items-center justify-center">
-                <Text className="text-gray-400">No active order</Text>
+            <View style={{ flex: 1, backgroundColor: colors.screen, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: colors.muted }}>No active order</Text>
             </View>
         );
     }
 
-
     console.log("selectedItems", selectedCashTotals);
     return (
-        <View className="flex-1 bg-panel">
+        <View style={{ flex: 1, backgroundColor: colors.screen }}>
             {/* Header */}
-            <View className="flex-row items-center p-4 border-b border-border h-[70px]">
+            <View style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, height: 70 }}>
                 <TouchableOpacity
                     onPress={handleGoBack}
-                    className="p-2 bg-surface rounded-lg mr-4"
+                    style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 14 }}
                 >
-                    <ArrowLeft size={20} color="white" />
+                    <ArrowLeft size={18} color={colors.label} />
                 </TouchableOpacity>
-                <View className="flex-1">
-                    <Text className="text-xl font-bold text-white">Split Review</Text>
-                    <Text className="text-gray-400 text-xs">
-                        Select items to pay or manage payments
-                    </Text>
+                <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Pay for Items</Text>
+                    <Text style={{ fontSize: 12, color: colors.muted }}>Select items to pay or manage payments</Text>
                 </View>
-
-                {/* Void All Payments */}
                 {payments.length > 0 && (
                     <TouchableOpacity
                         onPress={handleVoidAllPayments}
-                        className="px-3 py-2 bg-red-600/20 rounded-lg flex-row items-center"
+                        style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: `${colors.danger}15`, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 6 }}
                     >
-                        <Trash2 size={16} color={colors.danger} />
-                        <Text className="text-red-400 font-bold ml-2 text-sm">VOID ALL</Text>
+                        <Trash2 size={15} color={colors.danger} />
+                        <Text style={{ color: colors.danger, fontWeight: "700", fontSize: 12 }}>VOID ALL</Text>
                     </TouchableOpacity>
                 )}
             </View>
 
             {/* Two-Panel Layout */}
-            <View className="flex-1 flex-row">
-                {/* LEFT PANEL - Remaining Items */}
-                <View className="w-[45%] border-r border-gray-700 bg-panel">
-                    {/* Left Panel Header */}
-                    <View className="p-3 border-b border-border flex-row justify-between items-center">
-                        <Text className="text-orange-500 font-bold text-sm uppercase tracking-wider">
-                            Remaining Items
-                        </Text>
-                        <View className="flex-row gap-2">
-                            <TouchableOpacity
-                                onPress={handleSelectAll}
-                                className="px-2 py-1 bg-teal/20 rounded"
-                            >
-                                <Text className="text-teal text-xs font-bold">ALL</Text>
+            <View style={{ flex: 1, flexDirection: "row" }}>
+                {/* LEFT PANEL */}
+                <View style={{ width: "45%", borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.screen }}>
+                    <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text style={{ color: "#F97316", fontWeight: "700", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8 }}>Remaining Items</Text>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                            <TouchableOpacity onPress={handleSelectAll} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: `${colors.teal}15`, borderRadius: 6 }}>
+                                <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700" }}>ALL</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity
-                                onPress={handleClearSelection}
-                                className="px-2 py-1 bg-gray-600/20 rounded"
-                            >
-                                <Text className="text-gray-400 text-xs font-bold">CLEAR</Text>
+                            <TouchableOpacity onPress={handleClearSelection} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.panel, borderRadius: 6 }}>
+                                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700" }}>CLEAR</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
 
-                    {/* Items List */}
                     <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
                         {unpaidItems.length === 0 ? (
-                            <View className="p-4 items-center">
+                            <View style={{ padding: 20, alignItems: "center" }}>
                                 <CheckCircle size={40} color={colors.success} />
-                                <Text className="text-green-400 font-bold mt-2">
-                                    All Items Paid!
-                                </Text>
+                                <Text style={{ color: colors.success, fontWeight: "700", marginTop: 8 }}>All Items Paid!</Text>
                             </View>
                         ) : (
                             unpaidItems.map((item) => {
@@ -562,61 +527,35 @@ const PayForItemsView: React.FC = () => {
                                 const selected = selectedItems.get(item.id);
                                 const selectedQty = selected?.quantityToPay || 0;
                                 const isSelected = selectedQty > 0;
-                                // console.log('[item | PayForItemsView] item', item);
                                 return (
                                     <View
                                         key={item.id}
-                                        className={`flex-row items-center p-3 border-b border-border ${isSelected ? "" : "bg-transparent"
-                                            }`}
-                                        style={isSelected ? { backgroundColor: colors.teal + "20", borderColor: colors.teal } : undefined}
+                                        style={{
+                                            flexDirection: "row", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
+                                            backgroundColor: isSelected ? `${colors.teal}15` : "transparent",
+                                        }}
                                     >
-                                        {/* Item Info */}
-                                        <View className="flex-1">
-                                            <Text
-                                                className={`font-semibold ${isSelected ? "text-white" : "text-gray-300"
-                                                    }`}
-                                            >
-                                                {item.name}
-                                            </Text>
-                                            <Text className="text-gray-500 text-sm">
-                                                ${item.price.toFixed(2)} × {unpaidQty} unpaid
-                                            </Text>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{ fontWeight: "600", color: isSelected ? colors.heading : colors.label }}>{item.name}</Text>
+                                            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>${item.price.toFixed(2)} × {unpaidQty} unpaid</Text>
                                         </View>
-
-                                        {/* Quantity Controls */}
-                                        <View className="flex-row items-center gap-2">
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                                             <TouchableOpacity
                                                 onPress={() => handleRemoveItem(item.id)}
                                                 disabled={selectedQty === 0}
-                                                className={`w-8 h-8 rounded-full items-center justify-center ${selectedQty > 0
-                                                    ? "bg-red-600"
-                                                    : "bg-surface opacity-30"
-                                                    }`}
+                                                style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: selectedQty > 0 ? colors.danger : colors.panel, opacity: selectedQty > 0 ? 1 : 0.3 }}
                                             >
-                                                <Minus size={14} color="white" />
+                                                <Minus size={13} color="#fff" />
                                             </TouchableOpacity>
-
-                                            <View
-                                                className={`min-w-[36px] px-2 py-1 rounded-md items-center ${isSelected ? "bg-teal" : "bg-surface"
-                                                    }`}
-                                            >
-                                                <Text
-                                                    className={`font-bold ${isSelected ? "text-white" : "text-gray-500"
-                                                        }`}
-                                                >
-                                                    {selectedQty}
-                                                </Text>
+                                            <View style={{ minWidth: 32, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.panel }}>
+                                                <Text style={{ fontWeight: "700", fontSize: 12, color: isSelected ? "#000" : colors.muted }}>{selectedQty}</Text>
                                             </View>
-
                                             <TouchableOpacity
                                                 onPress={() => handleAddItem(item)}
                                                 disabled={selectedQty >= unpaidQty}
-                                                className={`w-8 h-8 rounded-full items-center justify-center ${selectedQty < unpaidQty
-                                                    ? "bg-green-600"
-                                                    : "bg-surface opacity-30"
-                                                    }`}
+                                                style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: selectedQty < unpaidQty ? colors.success : colors.panel, opacity: selectedQty < unpaidQty ? 1 : 0.3 }}
                                             >
-                                                <Plus size={14} color="white" />
+                                                <Plus size={13} color="#fff" />
                                             </TouchableOpacity>
                                         </View>
                                     </View>
@@ -626,60 +565,42 @@ const PayForItemsView: React.FC = () => {
                     </ScrollView>
                 </View>
 
-                {/* RIGHT PANEL - Split Review */}
-                <View className="w-[55%] bg-panel">
+                {/* RIGHT PANEL */}
+                <View style={{ width: "55%", backgroundColor: colors.screen }}>
                     {/* Totals Header */}
-                    <View className="p-4 border-b border-border">
-                        <View className="flex-row justify-between">
-                            {/* Order Total */}
-                            <View className="items-center">
-                                <Text className="text-2xl font-bold text-white">
-                                    ${activeOrderTotal.toFixed(2)}
-                                </Text>
-                                <Text className="text-gray-500 text-xs uppercase">
-                                    Order Total
-                                </Text>
+                    <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                            <View style={{ alignItems: "center" }}>
+                                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading }}>${activeOrderTotal.toFixed(2)}</Text>
+                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase" }}>Order Total</Text>
                             </View>
-
-                            {/* Remaining - Show both card and cash */}
-                            <View className="items-center">
-                                <View className="flex-row items-baseline gap-2">
-                                    <Text className="text-2xl font-bold text-orange-500">
-                                        ${remainingAmount.toFixed(2)}
-                                    </Text>
+                            <View style={{ alignItems: "center" }}>
+                                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
+                                    <Text style={{ fontSize: 20, fontWeight: "700", color: "#F97316" }}>${remainingAmount.toFixed(2)}</Text>
                                     {remainingCashSavings > 0.01 && (
-                                        <Text className="text-sm font-medium text-green-400">
-                                            (${remainingCashAmount.toFixed(2)} cash)
-                                        </Text>
+                                        <Text style={{ fontSize: 13, fontWeight: "500", color: colors.success }}>(${remainingCashAmount.toFixed(2)} cash)</Text>
                                     )}
                                 </View>
-                                <Text className="text-gray-500 text-xs uppercase">
-                                    Remaining{remainingCashSavings > 0.01 ? ' (Card / Cash)' : ''}
+                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase" }}>
+                                    Remaining{remainingCashSavings > 0.01 ? " (Card / Cash)" : ""}
                                 </Text>
                             </View>
-
-                            {/* Collected */}
-                            <View className="items-center">
-                                <Text className="text-2xl font-bold text-green-400">
-                                    ${collectedAmount.toFixed(2)}
-                                </Text>
-                                <Text className="text-gray-500 text-xs uppercase">
-                                    Collected • {collectedPercent}%
-                                </Text>
+                            <View style={{ alignItems: "center" }}>
+                                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.success }}>${collectedAmount.toFixed(2)}</Text>
+                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase" }}>Collected • {collectedPercent}%</Text>
                             </View>
                         </View>
                     </View>
 
-                    {/* Payments Section */}
-                    <View className="flex-1 p-4">
-                        <Text className="text-gray-500 text-xs uppercase tracking-wider mb-3">
+                    {/* Payments */}
+                    <View style={{ flex: 1, padding: 16 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
                             Payments ({payments.length})
                         </Text>
-
-                        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+                        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                             {payments.length === 0 ? (
-                                <View className="items-center py-6">
-                                    <Text className="text-gray-500">No payments yet</Text>
+                                <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                                    <Text style={{ color: colors.muted }}>No payments yet</Text>
                                 </View>
                             ) : (
                                 payments.map((payment, index) => (
@@ -694,57 +615,37 @@ const PayForItemsView: React.FC = () => {
                             )}
                         </ScrollView>
 
-                        {/* Selected Items Summary */}
                         {selectedItems.size > 0 && (
-                            <View className="mt-4 p-3 bg-surface rounded-xl border border-border">
-                                <Text className="text-gray-400 text-xs uppercase mb-2">
-                                    Selected for Payment
-                                </Text>
-
-                                {/* Dual Pricing */}
-                                <View className="flex-row gap-2 mb-3">
-                                    {/* Card */}
+                            <View style={{ marginTop: 14, padding: 14, backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}>
+                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Selected for Payment</Text>
+                                <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
                                     <TouchableOpacity
                                         onPress={() => setPaymentMethod("card")}
-                                        className={`flex-1 p-3 rounded-lg border ${paymentMethod === "card"
-                                            ? "bg-teal/20 border-teal"
-                                            : "bg-surface border-border"
-                                            }`}
+                                        style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, backgroundColor: paymentMethod === "card" ? `${colors.teal}15` : colors.screen, borderColor: paymentMethod === "card" ? colors.teal : colors.border }}
                                     >
-                                        <View className="flex-row items-center justify-between">
-                                            <View className="flex-row items-center">
-                                                <CreditCard size={16} color={colors.teal} />
-                                                <Text className="text-gray-400 text-xs ml-2">Card</Text>
+                                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                <CreditCard size={15} color={colors.teal} />
+                                                <Text style={{ color: colors.muted, fontSize: 12 }}>Card</Text>
                                             </View>
-                                            <Text className="text-teal font-bold">
-                                                ${selectedCardTotals.total.toFixed(2)}
-                                            </Text>
+                                            <Text style={{ color: colors.teal, fontWeight: "700" }}>${selectedCardTotals.total.toFixed(2)}</Text>
                                         </View>
                                     </TouchableOpacity>
-
-                                    {/* Cash */}
                                     <TouchableOpacity
                                         onPress={() => setPaymentMethod("cash")}
-                                        className={`flex-1 p-3 rounded-lg border ${paymentMethod === "cash"
-                                            ? "bg-green-600/20 border-green-500"
-                                            : "bg-surface border-border"
-                                            }`}
+                                        style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, backgroundColor: paymentMethod === "cash" ? `${colors.success}15` : colors.screen, borderColor: paymentMethod === "cash" ? colors.success : colors.border }}
                                     >
-                                        <View className="flex-row items-center justify-between">
-                                            <View className="flex-row items-center">
-                                                <Banknote size={16} color={colors.success} />
-                                                <Text className="text-gray-400 text-xs ml-2">Cash</Text>
+                                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                                <Banknote size={15} color={colors.success} />
+                                                <Text style={{ color: colors.muted, fontSize: 12 }}>Cash</Text>
                                                 {cashSavings > 0.01 && (
-                                                    <View className="ml-1 px-1.5 py-0.5 bg-green-900/30 rounded-full">
-                                                        <Text className="text-green-400 text-[10px] font-bold">
-                                                            -${cashSavings.toFixed(2)}
-                                                        </Text>
+                                                    <View style={{ paddingHorizontal: 5, paddingVertical: 2, backgroundColor: `${colors.success}20`, borderRadius: 8 }}>
+                                                        <Text style={{ color: colors.success, fontSize: 10, fontWeight: "700" }}>-${cashSavings.toFixed(2)}</Text>
                                                     </View>
                                                 )}
                                             </View>
-                                            <Text className="text-green-400 font-bold">
-                                                ${selectedCashTotals.total.toFixed(2)}
-                                            </Text>
+                                            <Text style={{ color: colors.success, fontWeight: "700" }}>${selectedCashTotals.total.toFixed(2)}</Text>
                                         </View>
                                     </TouchableOpacity>
                                 </View>
@@ -752,36 +653,28 @@ const PayForItemsView: React.FC = () => {
                         )}
                     </View>
 
-                    {/* Footer Actions */}
-                    <View className="p-4 border-t border-border">
-                        <View className="flex-row gap-3">
+                    {/* Footer */}
+                    <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <View style={{ flexDirection: "row", gap: 10 }}>
                             <TouchableOpacity
                                 onPress={handleBackToOrder}
-                                className="flex-1 py-3 rounded-xl border border-border items-center"
+                                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.panel }}
                             >
-                                <Text className="text-white font-bold">BACK TO ORDER</Text>
+                                <Text style={{ color: colors.label, fontWeight: "700" }}>BACK TO ORDER</Text>
                             </TouchableOpacity>
-
                             <TouchableOpacity
                                 onPress={handleContinueCharging}
                                 disabled={selectedItems.size === 0 || isProcessing}
-                                className={`flex-1 py-3 rounded-xl items-center ${selectedItems.size > 0
-                                    ? "bg-green-600"
-                                    : "bg-surface opacity-50"
-                                    }`}
+                                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center", backgroundColor: selectedItems.size > 0 ? colors.teal : colors.panel, borderWidth: selectedItems.size > 0 ? 0 : 1, borderColor: colors.border, opacity: selectedItems.size === 0 ? 0.5 : 1 }}
                             >
-                                {isProcessing ? (
-                                    <ActivityIndicator color="white" />
-                                ) : (
-                                    <Text className="text-white font-bold">
+                                {isProcessing
+                                    ? <ActivityIndicator color="#000" />
+                                    : <Text style={{ fontWeight: "700", color: selectedItems.size > 0 ? "#000" : colors.muted }}>
                                         {selectedItems.size > 0
-                                            ? `PAY $${paymentMethod === "cash"
-                                                ? selectedCashTotals.total.toFixed(2)
-                                                : selectedCardTotals.total.toFixed(2)
-                                            }`
+                                            ? `PAY $${paymentMethod === "cash" ? selectedCashTotals.total.toFixed(2) : selectedCardTotals.total.toFixed(2)}`
                                             : "SELECT ITEMS"}
                                     </Text>
-                                )}
+                                }
                             </TouchableOpacity>
                         </View>
                     </View>

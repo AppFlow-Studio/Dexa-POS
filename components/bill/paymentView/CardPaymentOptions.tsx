@@ -1,102 +1,85 @@
 import { colors } from "@/lib/theme";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import {
-  ArrowLeft,
-  ChevronRight,
-  CreditCard,
-  Keyboard,
-} from "lucide-react-native";
-import React from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ArrowLeft, ChevronRight, CreditCard, Keyboard } from "lucide-react-native";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.screen },
+  header: { alignItems: "center", paddingVertical: 24 },
+  iconCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: `${colors.teal}15`,
+    alignItems: "center", justifyContent: "center", marginBottom: 14,
+  },
+  title: { fontSize: 22, fontWeight: "700", color: colors.heading, marginBottom: 4 },
+  subtitle: { fontSize: 13, color: colors.muted, textAlign: "center", paddingHorizontal: 32 },
+  list: { gap: 12, paddingHorizontal: 16 },
+  card: {
+    flexDirection: "row", alignItems: "center", padding: 18,
+    borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.panel,
+  },
+  iconBox: {
+    width: 48, height: 48, borderRadius: 12,
+    alignItems: "center", justifyContent: "center", marginRight: 14,
+  },
+  cardTitle: { fontSize: 16, fontWeight: "700", color: colors.heading, marginBottom: 2 },
+  cardDesc: { fontSize: 12, color: colors.muted },
+  footer: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    backgroundColor: colors.screen, paddingTop: 12, paddingBottom: 32,
+    paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  backBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingVertical: 14, backgroundColor: colors.panel,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border, gap: 8,
+  },
+});
 
 const CardPaymentOptions = () => {
   const setView = usePaymentStore((s) => s.setView);
 
-  const handleUseCardReader = () => {
-    setView("card");
-  };
-
-  const handleManualEntry = () => {
-    setView("manual");
-  };
-
-  const handleBack = () => {
-    // Usually better to go back to method selection rather than review
-    // so the user can change their mind about "Card" vs "Cash"
-    setView("payment-method-selection");
-  };
-
   return (
-    <View className="flex-1 bg-panel">
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header Section */}
-        <View className="mb-8 mt-2 items-center">
-          <View className="w-16 h-16 bg-teal/10 rounded-full items-center justify-center mb-4">
-            <CreditCard size={32} color={colors.teal} />
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={styles.iconCircle}>
+            <CreditCard size={30} color={colors.teal} />
           </View>
-          <Text className="text-2xl font-bold text-white mb-2">
-            Card Payment
-          </Text>
-          <Text className="text-gray-400 text-base text-center px-8">
-            Select how you want to process the card transaction.
-          </Text>
+          <Text style={styles.title}>Card Payment</Text>
+          <Text style={styles.subtitle}>Select how you want to process the card transaction.</Text>
         </View>
 
-        {/* Options Section */}
-        <View className="gap-y-4 px-2">
-          {/* Option 1: Terminal / Reader */}
-          <TouchableOpacity
-            onPress={handleUseCardReader}
-            activeOpacity={0.7}
-            className="flex-row items-center p-5 rounded-2xl bg-surface border border-border active:bg-surface"
-          >
-            <View className="w-12 h-12 rounded-xl bg-teal/10 items-center justify-center mr-4">
+        <View style={styles.list}>
+          <TouchableOpacity onPress={() => setView("card")} activeOpacity={0.8} style={styles.card}>
+            <View style={[styles.iconBox, { backgroundColor: `${colors.teal}15` }]}>
               <CreditCard size={24} color={colors.teal} />
             </View>
-            <View className="flex-1">
-              <Text className="text-lg font-bold text-white mb-1">
-                Use Card Reader
-              </Text>
-              <Text className="text-sm text-gray-500">
-                Tap, insert, or swipe on terminal
-              </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Use Card Reader</Text>
+              <Text style={styles.cardDesc}>Tap, insert, or swipe on terminal</Text>
             </View>
             <ChevronRight size={20} color={colors.muted} />
           </TouchableOpacity>
 
-          {/* Option 2: Manual Entry */}
-          <TouchableOpacity
-            onPress={handleManualEntry}
-            activeOpacity={0.7}
-            className="flex-row items-center p-5 rounded-2xl bg-surface border border-border active:bg-surface"
-          >
-            <View className="w-12 h-12 rounded-xl bg-purple-600/10 items-center justify-center mr-4">
+          <TouchableOpacity onPress={() => setView("manual")} activeOpacity={0.8} style={styles.card}>
+            <View style={[styles.iconBox, { backgroundColor: "rgba(168,85,247,0.12)" }]}>
               <Keyboard size={24} color="#A855F7" />
             </View>
-            <View className="flex-1">
-              <Text className="text-lg font-bold text-white mb-1">
-                Manual Entry
-              </Text>
-              <Text className="text-sm text-gray-500">
-                Type card number manually
-              </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Manual Entry</Text>
+              <Text style={styles.cardDesc}>Type card number manually</Text>
             </View>
             <ChevronRight size={20} color={colors.muted} />
           </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* Footer / Back Button */}
-      <View className="absolute bottom-0 left-0 right-0 bg-panel pt-2 pb-4 border-t border-border">
-        <TouchableOpacity
-          onPress={handleBack}
-          className="flex-row items-center justify-center py-4 bg-surface rounded-xl border border-border active:bg-surface mx-4"
-        >
-          <ArrowLeft size={20} color={colors.heading} className="mr-2" />
-          <Text className="font-semibold text-lg text-gray-300">Back</Text>
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setView("payment-method-selection")}>
+          <ArrowLeft size={18} color={colors.muted} />
+          <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 15 }}>Back</Text>
         </TouchableOpacity>
       </View>
     </View>
