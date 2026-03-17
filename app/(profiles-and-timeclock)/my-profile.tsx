@@ -89,72 +89,76 @@ const MyProfileScreen = () => {
 
   return (
     <SafeAreaView edges={["top"]} className="flex-1 bg-screen">
-      <View className="flex-1 p-4 bg-screen">
+      <View className="flex-1 px-5 pt-3 pb-4 bg-screen">
+        {/* Top bar */}
         <View className="flex-row items-center justify-between mb-4">
-          <TouchableOpacity
-            onPress={() => router.replace("/home")}
-            className="flex-row items-center gap-2"
-          >
-            <ArrowLeft color={colors.label} size={24} />
-            <Text className="text-2xl font-bold text-white">My Profile</Text>
-          </TouchableOpacity>
-
           <View className="flex-row items-center gap-3">
+            <TouchableOpacity
+              onPress={() => router.replace("/home")}
+              className="p-1.5 rounded-lg bg-teal-500/10"
+            >
+              <ArrowLeft color={colors.teal} size={18} />
+            </TouchableOpacity>
+            <Text className="text-lg font-bold text-heading">My Profile</Text>
+          </View>
+
+          <View className="flex-row items-center gap-2">
             <Link href="/pto" asChild>
-              <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-panel border border-gray-700 rounded-xl">
-                <Calendar size={16} color={colors.label} />
-                <Text className="text-gray-300 font-semibold">PTO</Text>
+              <TouchableOpacity className="flex-row items-center gap-2 px-3 py-1.5 bg-panel border border-border rounded-xl">
+                <Calendar size={14} color={colors.teal} />
+                <Text className="text-sm font-semibold text-heading">PTO</Text>
               </TouchableOpacity>
             </Link>
             <Link href="/requests" asChild>
-              <TouchableOpacity className="flex-row items-center gap-2 px-4 py-2 bg-panel border border-gray-700 rounded-xl">
-                <Menu size={16} color={colors.label} />
-                <Text className="text-gray-300 font-semibold">Requests</Text>
+              <TouchableOpacity className="flex-row items-center gap-2 px-3 py-1.5 bg-panel border border-border rounded-xl">
+                <Menu size={14} color={colors.teal} />
+                <Text className="text-sm font-semibold text-heading">Requests</Text>
               </TouchableOpacity>
             </Link>
           </View>
         </View>
 
-        <View className="flex-1 bg-panel p-4 rounded-2xl border border-gray-600">
-          {/* Tab Bar */}
-          <View className="bg-gray-700 p-1 rounded-xl w-full flex-row self-start">
-            {TABS.map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                className={`py-2 px-4 rounded-lg flex-1 ${
-                  activeTab === tab ? "bg-screen" : ""
-                }`}
-              >
-                <Text
-                  className={`text-lg font-semibold text-center ${
-                    activeTab === tab ? "text-blue-400" : "text-gray-300"
-                  }`}
-                >
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <View className="flex-row gap-4" style={{ alignItems: 'flex-start' }}>
+          {/* Left: Profile Card */}
+          {currentEmployee?.id && (
+            <View style={{ width: 240, flexShrink: 0 }}>
+              <UserProfileCard employeeId={currentEmployee.id} />
+            </View>
+          )}
 
-          {/* Content Area */}
-          <View className="flex-1 flex-row mt-4">
-            {/* Left: Shared Profile Card */}
-            {currentEmployee?.id && (
-              <View className="w-1/4">
-                <UserProfileCard employeeId={currentEmployee.id} />
-              </View>
-            )}
+          {/* Right: Tab panel */}
+          <View style={{ flex: 1, minWidth: 0 }} className="bg-panel rounded-2xl border border-border overflow-hidden">
+            {/* Tab Bar */}
+            <View className="flex-row border-b border-border px-2 pt-2">
+              {TABS.map((t) => {
+                const isActive = activeTab === t;
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    onPress={() => setActiveTab(t)}
+                    className="px-4 pb-2 mr-1"
+                    style={{ borderBottomWidth: 2, borderBottomColor: isActive ? colors.teal : 'transparent' }}
+                  >
+                    <Text
+                      className="text-sm font-semibold"
+                      style={{ color: isActive ? colors.teal : colors.label }}
+                    >
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-            {/* Right: Tab-Specific Content */}
-            <View className="flex-1 ml-4">{renderContent()}</View>
+            {/* Content */}
+            <View className="flex-1 p-4">
+              {renderContent()}
+            </View>
           </View>
         </View>
       </View>
       <NotificationBottomSheet
-        bottomSheetRef={
-          notificationSheetRef as React.RefObject<BottomSheetMethods>
-        }
+        bottomSheetRef={notificationSheetRef as React.RefObject<BottomSheetMethods>}
         onClose={() => notificationSheetRef.current?.close()}
       />
     </SafeAreaView>

@@ -130,10 +130,10 @@ export function NetworkStatusBadge(): React.ReactElement {
     switch (variant) {
       case "online":
         return {
-          bgColor: isExpanded ? "bg-blue-900/40" : "bg-green-900/30",
-          textColor: isExpanded ? "text-blue-400" : "text-green-400",
-          borderColor: isExpanded ? "border-blue-600/50" : "border-green-600/50",
-          icon: <CheckCircle size={14} color={isExpanded ? colors.info : "#4ade80"} />,
+          bgColor: "bg-teal-900/30",
+          textColor: "text-teal-400",
+          borderColor: "border-teal-600/50",
+          icon: <CheckCircle size={11} color={colors.teal} />,
           label: isExpanded ? "Sync Options" : "Online",
         };
       case "pending":
@@ -144,7 +144,7 @@ export function NetworkStatusBadge(): React.ReactElement {
           icon: isSyncing ? (
             <ActivityIndicator size="small" color={colors.warning} />
           ) : (
-            <Clock size={14} color={colors.warning} />
+            <Clock size={11} color={colors.warning} />
           ),
           label: isSyncing
             ? `Syncing ${pendingSyncCount}...`
@@ -155,7 +155,7 @@ export function NetworkStatusBadge(): React.ReactElement {
           bgColor: "bg-red-900/30",
           textColor: "text-red-400",
           borderColor: "border-red-600/50",
-          icon: <WifiOff size={14} color={colors.danger} />,
+          icon: <WifiOff size={11} color={colors.danger} />,
           label:
             pendingSyncCount > 0
               ? `Offline - ${pendingSyncCount} pending`
@@ -176,17 +176,17 @@ export function NetworkStatusBadge(): React.ReactElement {
           onPress={handleBadgePress}
           disabled={!canExpand && !isSyncing}
           activeOpacity={0.7}
-          className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${config.borderColor} ${config.bgColor}`}
+          className={`flex-row items-center gap-1.5 px-2.5 py-1 rounded-full ${config.bgColor}`}
         >
           {config.icon}
-          <Text className={`text-sm font-medium ${config.textColor}`}>
+          <Text className={`text-xs font-medium ${config.textColor}`}>
             {config.label}
           </Text>
           {(pendingSyncCount > 0 || isExpanded) && isOnline && (
             <View className="ml-0.5">
               <RefreshCw
                 size={12}
-                color={isExpanded ? colors.info : colors.warning}
+                color={isExpanded ? colors.teal : colors.warning}
                 style={isExpanded ? { transform: [{ rotate: "180deg" }] } : undefined}
               />
             </View>
@@ -204,14 +204,14 @@ export function NetworkStatusBadge(): React.ReactElement {
             onPress={handleSyncOrder}
             disabled={isSyncingOrder}
             activeOpacity={0.7}
-            className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-cyan-600/50 bg-cyan-900/40"
+            className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-900/30"
           >
             {isSyncingOrder ? (
-              <ActivityIndicator size="small" color="#22d3d3" />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : (
-              <Database size={14} color="#22d3d3" />
+              <Database size={12} color={colors.teal} />
             )}
-            <Text className="text-sm font-medium text-cyan-400">
+            <Text className="text-xs font-medium text-teal-400">
               {isSyncingOrder ? "Syncing..." : "Sync Order"}
             </Text>
           </TouchableOpacity>
@@ -224,8 +224,8 @@ export function NetworkStatusBadge(): React.ReactElement {
           entering={SlideInRight.duration(200)}
           exiting={SlideOutRight.duration(200)}
         >
-          <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-gray-600/50 bg-gray-900/40">
-            <Text className="text-sm text-gray-500">No active order</Text>
+          <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-900/40">
+            <Text className="text-xs text-gray-500">No active order</Text>
           </View>
         </Animated.View>
       )}
@@ -236,9 +236,9 @@ export function NetworkStatusBadge(): React.ReactElement {
           entering={SlideInRight.duration(200)}
           exiting={SlideOutRight.duration(200)}
         >
-          <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-amber-600/50 bg-amber-900/40">
-            <CreditCard size={14} color={colors.warning} />
-            <Text className="text-sm font-medium text-amber-400">
+          <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-900/30">
+            <CreditCard size={12} color={colors.warning} />
+            <Text className="text-xs font-medium text-amber-400">
               {pendingPaymentsCount} payment{pendingPaymentsCount > 1 ? "s" : ""} queued
             </Text>
           </View>
@@ -259,13 +259,13 @@ export function NetworkStatusBadge(): React.ReactElement {
               });
             }}
             activeOpacity={0.7}
-            className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-red-600/50 bg-red-900/40"
+            className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-900/30"
           >
-            <AlertTriangle size={14} color={colors.danger} />
-            <Text className="text-sm font-medium text-red-400">
+            <AlertTriangle size={12} color={colors.danger} />
+            <Text className="text-xs font-medium text-red-400">
               {failedPayments.length} payment{failedPayments.length > 1 ? "s" : ""} failed
             </Text>
-            <RefreshCw size={12} color={colors.danger} />
+            <RefreshCw size={10} color={colors.danger} />
           </TouchableOpacity>
         </Animated.View>
       )}

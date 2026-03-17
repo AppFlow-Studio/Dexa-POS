@@ -44,8 +44,8 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 
   return (
     <View
-      className="bg-panel p-1 rounded-lg flex-row self-start"
-      style={{ borderWidth: 1, borderColor: colors.border }}
+      className="flex-row self-start rounded-lg p-0.5"
+      style={{ height: 36, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
     >
       {TAB_NAMES.map((name) => {
         const isActive = activeTab === name;
@@ -54,21 +54,14 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
           <Pressable
             key={name}
             onPress={() => onTabChange(name)}
-            className={`py-2 px-4 rounded-md flex-row items-center ${
-              isActive ? "bg-surface" : ""
-            }`}
+            className="flex-row items-center px-3 rounded-md gap-x-1.5"
+            style={[{ flex: 1, alignSelf: "stretch", justifyContent: "center" }, isActive ? { backgroundColor: colors.teal } : undefined]}
           >
             <Text
-              className="font-semibold text-sm"
-              style={{ color: isActive ? colors.teal : colors.label }}
+              className="text-xs font-semibold"
+              style={{ color: isActive ? colors.onSolid : colors.label }}
             >
-              {name}
-            </Text>
-            <Text
-              className="font-semibold text-sm ml-1"
-              style={{ color: isActive ? colors.teal : colors.muted }}
-            >
-              ({count})
+              {name}{count > 0 ? ` (${count})` : ""}
             </Text>
           </Pressable>
         );
@@ -312,39 +305,46 @@ const PreviousOrdersSection = () => {
   };
 
   return (
-    <View className="flex-1 ">
-      {/* Header with Tabs and Search */}
-      <View className="flex-row justify-between items-center mb-4 gap-x-4">
-        <OrderTabs
-          onTabChange={handleTabChange}
-          counts={tabCounts}
-          activeTab={activeTab}
-        />
+    <View className="flex-1 px-3 pt-3">
+      {/* Header: Tabs + Search + Refresh */}
+      <View className="flex-row items-center gap-x-2 mb-3">
+        <View style={{ flex: 2 }}>
+          <OrderTabs
+            onTabChange={handleTabChange}
+            counts={tabCounts}
+            activeTab={activeTab}
+          />
+        </View>
 
         {/* Search Bar */}
         <View
-          className="bg-panel rounded-lg p-2 flex-row items-center flex-1 max-w-md"
-          style={{ borderWidth: 1, borderColor: colors.border }}
+          className="flex-row items-center px-3 rounded-lg"
+          style={{ flex: 1, height: 36, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
         >
-          <Search color={colors.label} size={18} />
+          <Search color={colors.muted} size={13} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search by order number or customer name..."
+            placeholder="Search..."
             placeholderTextColor={colors.muted}
-            className="flex-1 ml-2 text-white text-sm"
+            style={{ flex: 1, marginLeft: 8, color: colors.heading, fontSize: 12, height: 36 }}
             autoCapitalize="none"
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSearchQuery("")}
-              className="ml-2 p-1"
-            >
-              <X color={colors.label} size={18} />
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <X color={colors.muted} size={13} />
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Refresh button */}
+        <TouchableOpacity
+          onPress={handleRefresh}
+          style={{ width: 36, height: 36, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+        >
+          <RefreshCw size={13} color={isRefreshing ? colors.teal : colors.label} />
+        </TouchableOpacity>
       </View>
 
       {/* Orders Table Container - relative for absolute positioning of banner */}
@@ -373,19 +373,19 @@ const PreviousOrdersSection = () => {
             <TouchableOpacity
               onPress={handleNewOrdersBannerTap}
               activeOpacity={0.8}
-              className="flex-row items-center gap-2 px-5 py-3 rounded-full bg-green-600 shadow-lg"
+              className="flex-row items-center gap-2 px-4 py-2.5 rounded-full"
               style={{
-                shadowColor: "#22c55e",
+                backgroundColor: colors.teal,
+                shadowColor: colors.teal,
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.3,
                 shadowRadius: 8,
                 elevation: 8,
               }}
             >
-              <RefreshCw size={16} color="#fff" />
-              <Text className="text-white font-semibold text-sm">
-                {newOrdersCount} New Order{newOrdersCount > 1 ? "s" : ""} - Tap
-                to Refresh
+              <RefreshCw size={13} color={colors.onSolid} />
+              <Text className="text-xs font-semibold" style={{ color: colors.onSolid }}>
+                {newOrdersCount} new order{newOrdersCount > 1 ? "s" : ""} — tap to refresh
               </Text>
             </TouchableOpacity>
           </Animated.View>

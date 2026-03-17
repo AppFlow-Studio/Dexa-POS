@@ -215,6 +215,12 @@ const OpenItemAdder = () => {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <View style={styles.container}>
+        {/* Header */}
+        <View style={{ marginBottom: 4 }}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Custom Item</Text>
+          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 2 }}>Enter a name and price to add a custom item to the order</Text>
+        </View>
+
         {/* Name */}
         <View>
           <Text style={styles.label}>Item Name</Text>

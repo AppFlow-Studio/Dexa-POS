@@ -23,44 +23,41 @@ const ScheduleNotLive: React.FC<ScheduleNotLiveProps> = ({
 
   return (
     <View className="mt-4">
-      <View className="p-6 bg-panel rounded-2xl border border-gray-700 flex-row items-center">
+      <View className="p-5 bg-panel rounded-2xl border border-border flex-row items-center">
         {/* Icon */}
-        <View className="p-4 bg-gray-800 rounded-full">
-          <Calendar size={28} color={colors.label} />
+        <View className="p-3 rounded-xl" style={{ backgroundColor: colors.teal + '15' }}>
+          <Calendar size={24} color={colors.teal} />
         </View>
 
         {/* Text Block */}
-        <View className="flex-1 mx-6">
-          <Text className="text-xl font-bold text-white mb-1" numberOfLines={2}>
+        <View className="flex-1 mx-5">
+          <Text className="text-sm font-bold text-heading mb-1" numberOfLines={2}>
             Your schedule for {weekRange} isn't live yet.
           </Text>
-          <Text className="text-gray-400" numberOfLines={2}>
+          <Text className="text-xs text-label" numberOfLines={2}>
             Managers are finishing the puzzle. Check back after Wed 4:00 pm.
           </Text>
         </View>
 
         {/* Buttons */}
-        <View className="flex-row gap-4">
-          <TouchableOpacity className="py-3 px-5 bg-blue-600 rounded-lg">
-            <Text className="text-white font-bold text-center text-base">
-              Set Availability
-            </Text>
+        <View className="flex-row gap-2">
+          <TouchableOpacity
+            className="py-2 px-4 rounded-lg"
+            style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
+          >
+            <Text className="text-xs font-bold text-teal-400">Set Availability</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onViewLastWeek}
-            className="py-3 px-5 border border-gray-600 rounded-lg"
+            className="py-2 px-4 rounded-lg border border-border"
           >
-            <Text className="text-gray-300 font-bold text-center text-base">
-              View Last Week
-            </Text>
+            <Text className="text-xs font-semibold text-label">Last Week</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onViewNextPublishedWeek}
-            className="py-3 px-5 border border-gray-600 rounded-lg"
+            className="py-2 px-4 rounded-lg border border-border"
           >
-            <Text className="text-gray-300 font-bold text-center text-base">
-              View Next Published Week
-            </Text>
+            <Text className="text-xs font-semibold text-label">Next Published</Text>
           </TouchableOpacity>
         </View>
       </View>

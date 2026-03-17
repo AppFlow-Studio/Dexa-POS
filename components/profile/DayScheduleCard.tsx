@@ -27,10 +27,10 @@ const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
 }) => {
   return (
     <View className="mb-4">
-      <Text className="text-lg font-bold text-white mb-2">
+      <Text className="text-xs font-semibold text-label uppercase tracking-wider mb-2">
         {format(date, "EEE, MMM d")}
       </Text>
-      <View className="gap-y-3">
+      <View className="gap-y-2">
         {shifts.length > 0 ? (
           shifts.map((shift) => (
             <ShiftDetailRow
@@ -41,12 +41,12 @@ const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
               onRequestSwap={onRequestSwap}
               onCancelDropRequest={onCancelDropRequest}
               onCancelSwapRequest={onCancelSwapRequest}
-              onPickUpShift={onPickUpShift} // Pass new prop
+              onPickUpShift={onPickUpShift}
             />
           ))
         ) : (
-          <View className="p-4 bg-surface rounded-xl border border-gray-700 items-center justify-center min-h-[60px]">
-            <Text className="text-gray-500">No shifts scheduled</Text>
+          <View className="px-4 py-3 bg-panel rounded-xl border border-border items-center">
+            <Text className="text-muted text-xs">No shifts scheduled</Text>
           </View>
         )}
       </View>

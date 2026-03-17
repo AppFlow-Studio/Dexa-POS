@@ -4,13 +4,7 @@ import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore"
 import { ArrowDown, ArrowUp, MoreVertical } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
-import { Gesture } from "react-native-gesture-handler";
-import Animated, {
-  runOnJS,
-  useSharedValue,
-  withSequence,
-  withSpring
-} from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 
 export type SortColumn =
   | "order"
@@ -35,7 +29,7 @@ const columns: ColumnConfig[] = [
   { key: "staff", label: "STAFF", sortable: true, flex: "flex-[1.5]" },
   { key: "total", label: "TOTAL", sortable: true, flex: "flex-[1.5]", align: "right" },
   { key: "status", label: "STATUS", sortable: true, flex: "flex-[1.2]", align: "center" },
-  { key: "actions", label: "", sortable: false, width: "w-[60px]" },
+  { key: "actions", label: "", sortable: false, width: "w-[48px]" },
 ];
 
 interface OrdersTableProps {
@@ -43,8 +37,6 @@ interface OrdersTableProps {
   sortColumn: SortColumn;
   sortDirection: SortDirection;
   onSort: (column: SortColumn) => void;
-  onRowClick: (orderId: string) => void;
-  onDoubleClick: (orderId: string) => void;
   onMoreClick: (
     orderId: string,
     position?: { x: number; y: number; width: number; height: number },
@@ -135,9 +127,6 @@ const STATUS_SORT_PRIORITY: Record<string, number> = {
 // Memoized row component
 interface OrderRowProps {
   order: OrderProfile;
-  isEven: boolean;
-  onRowClick: (orderId: string) => void;
-  onDoubleClick: (orderId: string) => void;
   onMoreClick: (
     orderId: string,
     position?: { x: number; y: number; width: number; height: number },
@@ -145,11 +134,8 @@ interface OrderRowProps {
 }
 
 const OrderRow = memo<OrderRowProps>(
-  ({ order, isEven, onRowClick, onDoubleClick, onMoreClick }) => {
-    const buttonRef = React.useRef<React.ElementRef<
-      typeof TouchableOpacity
-    > | null>(null);
-    const scale = useSharedValue(1);
+  ({ order, onMoreClick }) => {
+    const buttonRef = React.useRef<View | null>(null);
 
     // Time + order type display
     const timeDisplay = useMemo(() => {
@@ -204,101 +190,86 @@ const OrderRow = memo<OrderRowProps>(
       [order.id, onMoreClick],
     );
 
-    const singleTap = useMemo(
-      () =>
-        Gesture.Tap().onEnd(() => {
-          scale.value = withSequence(
-            withSpring(0.98, { damping: 15, stiffness: 300 }),
-            withSpring(1),
-          );
-          runOnJS(handleRowPress)();
-        }),
-      [handleRowPress, scale],
-    );
-
     return (
-      <TouchableOpacity onPress={handleRowPress} activeOpacity={0.7}>
+      <TouchableOpacity onPress={handleRowPress} activeOpacity={0.75}>
         <Animated.View
-          style={[
-            { minHeight: 56, borderLeftWidth: 3, borderLeftColor: leftBorderColor, marginVertical : 1, borderRadius: 10 },
-          ]}
-          className={`
-            flex-row items-center
-            ${isEven ? "bg-panel" : "bg-screen"}
-          `}
+          style={{
+            minHeight: 48,
+            borderLeftWidth: 3,
+            borderLeftColor: leftBorderColor,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            backgroundColor: colors.panel,
+          }}
+          className="flex-row items-center"
         >
           {/* ORDER cell */}
-          <View className="flex-[2] py-3 px-4">
-            <Text className="text-sm font-bold text-heading">
-              {displayNumber}
+          <View className="flex-[2] py-2.5 px-3">
+            <Text className="text-xs font-bold" style={{ color: colors.heading }}>
+              #{displayNumber}
             </Text>
             {customerName !== "" && (
-              <Text className="text-xs text-hint mt-0.5" numberOfLines={1}>
+              <Text className="text-[11px] mt-0.5" style={{ color: colors.label }} numberOfLines={1}>
                 {customerName}
               </Text>
             )}
           </View>
 
           {/* TIME cell */}
-          <View className="flex-[2.5] py-3 px-4">
-            <Text className="text-sm text-heading" numberOfLines={1}>
-              {timeDisplay}
-              {orderTypeLabel ? ` · ${orderTypeLabel}` : ""}
+          <View className="flex-[2.5] py-2.5 px-3">
+            <Text className="text-xs" style={{ color: colors.heading }} numberOfLines={1}>
+              {timeDisplay}{orderTypeLabel ? ` · ${orderTypeLabel}` : ""}
               {order.order_source === "online" && (
-                <Text style={{ color: "#60a5fa" }}> · Online</Text>
+                <Text style={{ color: colors.info }}> · Online</Text>
               )}
             </Text>
-            <Text className="text-xs text-hint mt-0.5">{dateDisplay}</Text>
+            <Text className="text-[11px] mt-0.5" style={{ color: colors.muted }}>{dateDisplay}</Text>
           </View>
 
           {/* STAFF cell */}
-          <View className="flex-[1.5] py-3 px-4">
-            <Text className="text-sm text-heading" numberOfLines={1}>
+          <View className="flex-[1.5] py-2.5 px-3">
+            <Text className="text-xs" style={{ color: colors.label }} numberOfLines={1}>
               {order.server_name || order._sourceStationName || "—"}
             </Text>
           </View>
 
           {/* TOTAL cell */}
-          <View className="flex-[1.5] py-3 px-4 items-end">
-            <Text className="text-sm font-bold text-heading">
+          <View className="flex-[1.5] py-2.5 px-3 items-end">
+            <Text className="text-xs font-bold" style={{ color: colors.heading }}>
               ${(order.total_amount || 0).toFixed(2)}
             </Text>
             {hasCashTotal && (
-              <Text
-                className="text-xs mt-0.5"
-                style={{ color: colors.success }}
-              >
-                Cash ${(order.total_cash_amount!).toFixed(2)}
+              <Text className="text-[11px] mt-0.5" style={{ color: colors.success }}>
+                ${(order.total_cash_amount!).toFixed(2)}
               </Text>
             )}
           </View>
 
           {/* STATUS cell */}
-          <View className="flex-[1.2] py-3 px-4 items-center">
+          <View className="flex-[1.2] py-2.5 px-3 items-center">
             <View
               style={{
                 backgroundColor: pill.bg,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderRadius: 12,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 8,
               }}
             >
-              <Text
-                style={{ color: pill.text, fontSize: 12, fontWeight: "600" }}
-              >
+              <Text style={{ color: pill.text, fontSize: 11, fontWeight: "700" }}>
                 {pill.label}
               </Text>
             </View>
           </View>
 
           {/* ACTIONS cell */}
-          <View className="w-[60px] py-3 px-4 items-center">
+          <View className="w-[48px] py-2.5 px-2 items-center">
             <TouchableOpacity
               ref={buttonRef}
               onPress={handleMorePress}
-              className="p-2 rounded-full active:bg-gray-600"
+              className="p-1.5 rounded-lg"
+              style={{ backgroundColor: colors.card }}
             >
-              <MoreVertical size={16} color={colors.label} />
+              <MoreVertical size={14} color={colors.label} />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -314,8 +285,6 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   sortColumn,
   sortDirection,
   onSort,
-  onRowClick,
-  onDoubleClick,
   onMoreClick,
   refreshing,
   onRefresh,
@@ -361,16 +330,13 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   }, [orders, sortColumn, sortDirection]);
 
   const renderItem = useCallback(
-    ({ item, index }: { item: OrderProfile; index: number }) => (
+    ({ item }: { item: OrderProfile }) => (
       <OrderRow
         order={item}
-        isEven={index % 2 === 0}
-        onRowClick={onRowClick}
-        onDoubleClick={onDoubleClick}
         onMoreClick={onMoreClick}
       />
     ),
-    [onRowClick, onDoubleClick, onMoreClick],
+    [onMoreClick],
   );
 
   return (
@@ -380,42 +346,37 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
     >
       {/* Table Header */}
       <View
-        className="flex-row bg-panel"
-        style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
+        className="flex-row"
+        style={{ backgroundColor: colors.screen, borderBottomWidth: 1, borderBottomColor: colors.border }}
       >
         {columns.map((column) => (
           <TouchableOpacity
             key={column.key}
             onPress={() => column.sortable && onSort(column.key as SortColumn)}
             disabled={!column.sortable}
-            className={`
-              py-3 px-4 flex-row items-center
-              ${column.flex || ""}
-              ${column.width || ""}
-            `}
+            className={`py-2 px-3 flex-row items-center gap-x-1 ${column.flex || ""} ${column.width || ""}`}
             style={{
               justifyContent:
-                column.align === "right"
-                  ? "flex-end"
-                  : column.align === "center"
-                    ? "center"
-                    : "flex-start",
+                column.align === "right" ? "flex-end"
+                : column.align === "center" ? "center"
+                : "flex-start",
             }}
           >
             <Text
-              className="text-xs font-bold uppercase"
-              style={{ color: colors.label }}
+              style={{
+                fontSize: 10,
+                fontWeight: "700",
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: sortColumn === column.key ? colors.teal : colors.muted,
+              }}
             >
               {column.label}
             </Text>
             {column.sortable && sortColumn === column.key && (
-              <View className="ml-1">
-                {sortDirection === "asc" ? (
-                  <ArrowUp size={12} color={colors.teal} />
-                ) : (
-                  <ArrowDown size={12} color={colors.teal} />
-                )}
-              </View>
+              sortDirection === "asc"
+                ? <ArrowUp size={10} color={colors.teal} />
+                : <ArrowDown size={10} color={colors.teal} />
             )}
           </TouchableOpacity>
         ))}

@@ -1,169 +1,76 @@
 import { colors } from "@/lib/theme";
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 
-/**
- * ModifierScreenSkeleton - Fast placeholder UI for ModifierScreen
- *
- * PERFORMANCE CRITICAL:
- * - Renders in <16ms (single frame) for instant visual feedback
- * - No subscriptions, no effects, no heavy computation
- * - Pure static layout matching ModifierScreen structure
- * - Shows while rich content hydrates in background
- *
- * This skeleton matches the visual structure of ModifierScreen:
- * - Header with item name placeholder and action buttons
- * - Quantity section placeholder
- * - Modifier category tabs placeholder
- * - Modifier options grid placeholder
- */
 const ModifierScreenSkeleton: React.FC = () => {
+  const skeletonBg = colors.card;
+  const divider = { height: 1, backgroundColor: colors.border };
+
   return (
-    <View style={styles.container}>
-      {/* Header Section */}
-      <View style={styles.header}>
-        {/* Item name placeholder */}
-        <View style={styles.itemNamePlaceholder} />
-
-        {/* Action buttons placeholder */}
-        <View style={styles.headerActions}>
-          <View style={styles.cancelButton} />
-          <View style={styles.addButton} />
+    <View style={{ flex: 1, backgroundColor: "#0f1623" }}>
+      {/* Top bar */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ width: 60, height: 16, backgroundColor: skeletonBg, borderRadius: 6 }} />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ width: 28, height: 28, backgroundColor: skeletonBg, borderRadius: 8 }} />
+          <View style={{ width: 110, height: 28, backgroundColor: colors.teal + "40", borderRadius: 20 }} />
         </View>
       </View>
 
-      {/* Quantity Section */}
-      <View style={styles.quantitySection}>
-        <View style={styles.quantityButton} />
-        <View style={styles.quantityText} />
-        <View style={styles.quantityButton} />
+      {/* Item header */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ gap: 6 }}>
+          <View style={{ width: 140, height: 14, backgroundColor: skeletonBg, borderRadius: 6 }} />
+          <View style={{ width: 90, height: 11, backgroundColor: skeletonBg, borderRadius: 4 }} />
+        </View>
+        <View style={{ width: 48, height: 14, backgroundColor: skeletonBg, borderRadius: 6 }} />
       </View>
 
-      {/* Category Tabs */}
-      <View style={styles.categoryTabs}>
-        <View style={styles.categoryTab} />
-        <View style={styles.categoryTabShort} />
-        <View style={styles.categoryTab} />
+      {/* Category pill tabs */}
+      <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        {[80, 100, 70, 90].map((w, i) => (
+          <View key={i} style={{ width: w, height: 28, backgroundColor: i === 0 ? colors.teal + "40" : skeletonBg, borderRadius: 20 }} />
+        ))}
       </View>
 
-      {/* Modifier Options Grid */}
-      <View style={styles.optionsGrid}>
-        <View style={styles.optionRow}>
-          <View style={styles.optionItem} />
-          <View style={styles.optionItem} />
-          <View style={styles.optionItem} />
+      {/* Category name + rule */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <View style={{ width: 100, height: 13, backgroundColor: skeletonBg, borderRadius: 6 }} />
+          <View style={{ width: 60, height: 11, backgroundColor: skeletonBg, borderRadius: 4 }} />
         </View>
-        <View style={styles.optionRow}>
-          <View style={styles.optionItem} />
-          <View style={styles.optionItem} />
-          <View style={styles.optionItemShort} />
+        {/* Options grid */}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {[1,2,3,4,5,6].map((i) => (
+            <View key={i} style={{ width: "23%", height: 52, backgroundColor: skeletonBg, borderRadius: 10 }} />
+          ))}
         </View>
-        <View style={styles.optionRow}>
-          <View style={styles.optionItem} />
-          <View style={styles.optionItem} />
+      </View>
+
+      <View style={divider} />
+
+      {/* Quantity row */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 }}>
+        <View style={{ width: 60, height: 12, backgroundColor: skeletonBg, borderRadius: 4 }} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ width: 32, height: 32, backgroundColor: skeletonBg, borderRadius: 16 }} />
+          <View style={{ width: 32, height: 20, backgroundColor: skeletonBg, borderRadius: 6 }} />
+          <View style={{ width: 32, height: 32, backgroundColor: colors.teal + "40", borderRadius: 16 }} />
         </View>
+      </View>
+
+      <View style={divider} />
+
+      {/* Notes */}
+      <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <View style={{ width: 120, height: 12, backgroundColor: skeletonBg, borderRadius: 4 }} />
+          <View style={{ width: 30, height: 10, backgroundColor: skeletonBg, borderRadius: 4 }} />
+        </View>
+        <View style={{ height: 52, backgroundColor: skeletonBg, borderRadius: 10 }} />
       </View>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.panel,
-    padding: 16,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  itemNamePlaceholder: {
-    width: 180,
-    height: 32,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-  },
-  headerActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  cancelButton: {
-    width: 80,
-    height: 44,
-    backgroundColor: "rgba(239, 68, 68, 0.3)", // red-500/30
-    borderRadius: 10,
-  },
-  addButton: {
-    width: 120,
-    height: 44,
-    backgroundColor: "rgba(34, 197, 94, 0.3)", // green-500/30
-    borderRadius: 10,
-  },
-  quantitySection: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 24,
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  quantityButton: {
-    width: 48,
-    height: 48,
-    backgroundColor: colors.card,
-    borderRadius: 24,
-  },
-  quantityText: {
-    width: 48,
-    height: 32,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-  },
-  categoryTabs: {
-    flexDirection: "row",
-    gap: 12,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  categoryTab: {
-    width: 110,
-    height: 48,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-  },
-  categoryTabShort: {
-    width: 80,
-    height: 48,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-  },
-  optionsGrid: {
-    flex: 1,
-    paddingTop: 16,
-    gap: 12,
-  },
-  optionRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  optionItem: {
-    flex: 1,
-    height: 56,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-  },
-  optionItemShort: {
-    flex: 0.7,
-    height: 56,
-    backgroundColor: colors.card,
-    borderRadius: 12,
-  },
-});
 
 export default React.memo(ModifierScreenSkeleton);
