@@ -3,14 +3,13 @@ import { CartItem, OrderProfile } from "@/lib/types";
 import { X } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Easing,
-    PanResponder,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Animated,
+  Easing,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
 } from "react-native";
 
 interface OrderNotesModalProps {
@@ -19,135 +18,80 @@ interface OrderNotesModalProps {
   order: OrderProfile | null;
 }
 
-// Helper to truncate long order IDs
-const truncateOrderId = (orderId: string, maxLength: number = 12) => {
-  if (!orderId) return "";
-  if (orderId.length <= maxLength) return orderId;
-  return `${orderId.slice(0, maxLength)}...`;
-};
-
 const ModifierItem = ({ item }: { item: CartItem }) => (
-  <View style={itemStyles.card}>
-    <View className="flex-row justify-between items-center">
-      <Text className="text-xl font-bold text-white">{item.name}</Text>
-      <View style={itemStyles.quantityBadge}>
-        <Text className="font-semibold text-base text-gray-200">
-          {item.quantity} PCs
+  <View style={{
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  }}>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, flex: 1, marginRight: 8 }}>
+        {item.name}
+      </Text>
+      <View style={{
+        backgroundColor: colors.screen,
+        paddingHorizontal: 10,
+        paddingVertical: 3,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+          {item.quantity} pc{item.quantity !== 1 ? "s" : ""}
         </Text>
       </View>
     </View>
 
-    {item.customizations?.modifiers &&
-      item.customizations.modifiers.length > 0 && (
-        <View className="mt-3">
-          {item.customizations.modifiers.map((mod, index) => (
-            <View key={index} className="mt-1">
-              <Text className="font-bold text-base text-gray-400">
-                {mod.categoryName}:
-              </Text>
-              <Text className="text-base text-gray-300 ml-1.5">
-                {mod.options
-                  .map(
-                    (opt) =>
-                      `${opt.name}${
-                        opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""
-                      }`,
-                  )
-                  .join(", ")}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-    {item.customizations?.notes && (
-      <View className="mt-3">
-        <Text className="font-bold text-base text-gray-400 mb-1.5">Notes:</Text>
-        <View style={itemStyles.notesContainer}>
-          <View style={itemStyles.notesAccent} />
-          <View style={itemStyles.notesContent}>
-            <Text className="text-base text-gray-300 italic">
-              {item.customizations.notes}
+    {item.customizations?.modifiers && item.customizations.modifiers.length > 0 && (
+      <View style={{ marginTop: 8, gap: 4 }}>
+        {item.customizations.modifiers.map((mod, index) => (
+          <View key={index}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              {mod.categoryName}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+              {mod.options
+                .map((opt) => `${opt.name}${opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""}`)
+                .join(", ")}
             </Text>
           </View>
-        </View>
+        ))}
+      </View>
+    )}
+
+    {item.customizations?.notes && (
+      <View style={{ marginTop: 8, flexDirection: "row", backgroundColor: colors.screen, borderRadius: 8, overflow: "hidden" }}>
+        <View style={{ width: 3, backgroundColor: colors.info }} />
+        <Text style={{ flex: 1, padding: 10, fontSize: 12, color: colors.label, fontStyle: "italic" }}>
+          {item.customizations.notes}
+        </Text>
       </View>
     )}
   </View>
 );
 
-const itemStyles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.panel,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  quantityBadge: {
-    backgroundColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  notesContainer: {
-    flexDirection: "row",
-    backgroundColor: colors.screen,
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  notesAccent: {
-    width: 3,
-    backgroundColor: colors.info,
-  },
-  notesContent: {
-    flex: 1,
-    padding: 12,
-  },
-});
-
 const ANIMATION_DURATION = 280;
-const SWIPE_THRESHOLD = 100; // Minimum swipe distance to close
+const SWIPE_THRESHOLD = 100;
 
-const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
-  isOpen,
-  onClose,
-  order,
-}) => {
-  // ... (keep hooks and useEffect as they are)
+const OrderNotesModal: React.FC<OrderNotesModalProps> = ({ isOpen, onClose, order }) => {
   const slideAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
-  const [closeButtonPressed, setCloseButtonPressed] = useState(false);
 
-  // Pan responder for drag gesture
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to vertical gestures
-        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // Only allow dragging down (positive dy)
-        if (gestureState.dy > 0) {
-          dragY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > SWIPE_THRESHOLD) {
-          // Swipe down past threshold - close the sheet
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => { if (gs.dy > 0) dragY.setValue(gs.dy); },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > SWIPE_THRESHOLD) {
           onClose();
         } else {
-          // Spring back to original position
-          Animated.spring(dragY, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 100,
-            friction: 10,
-          }).start();
+          Animated.spring(dragY, { toValue: 0, useNativeDriver: true, tension: 100, friction: 10 }).start();
         }
       },
     }),
@@ -156,292 +100,134 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
-      dragY.setValue(0); // Reset drag position
-      // Animate in: slide up, scale up, and fade in backdrop
+      dragY.setValue(0);
       Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: ANIMATION_DURATION,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: ANIMATION_DURATION,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: ANIMATION_DURATION,
-          useNativeDriver: true,
-        }),
+        Animated.timing(slideAnim, { toValue: 0, duration: ANIMATION_DURATION, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1, duration: ANIMATION_DURATION, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: ANIMATION_DURATION, useNativeDriver: true }),
       ]).start();
     } else {
-      // Animate out: slide down, scale down, and fade out backdrop
       Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 1,
-          duration: ANIMATION_DURATION,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 0.98,
-          duration: ANIMATION_DURATION,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: ANIMATION_DURATION,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setIsVisible(false);
-      });
+        Animated.timing(slideAnim, { toValue: 1, duration: ANIMATION_DURATION, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 0.98, duration: ANIMATION_DURATION, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(fadeAnim, { toValue: 0, duration: ANIMATION_DURATION, useNativeDriver: true }),
+      ]).start(() => setIsVisible(false));
     }
   }, [isOpen, slideAnim, scaleAnim, fadeAnim, dragY]);
 
   if (!isVisible || !order) return null;
 
+  const orderLabel = order.display_number || order.order_number || `#${order.id?.slice(-4)}`;
+
   return (
-    <View style={styles.container}>
-      {/* Semi-transparent backdrop */}
-      <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
-        <Pressable style={styles.backdropPressable} onPress={onClose} />
+    <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 }}>
+      {/* Backdrop */}
+      <Animated.View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)", opacity: fadeAnim }}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
       </Animated.View>
 
-      {/* Bottom sheet */}
+      {/* Sheet */}
       <Animated.View
-        style={[
-          styles.sheet,
-          {
-            transform: [
-              {
-                translateY: Animated.add(
-                  slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 500],
-                  }),
-                  dragY,
-                ),
-              },
-              { scale: scaleAnim },
-            ],
-          },
-        ]}
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          maxHeight: "78%",
+          backgroundColor: colors.panel,
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          borderTopWidth: 1,
+          borderLeftWidth: 1,
+          borderRightWidth: 1,
+          borderColor: colors.border,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 12,
+          elevation: 10,
+          transform: [
+            {
+              translateY: Animated.add(
+                slideAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 500] }),
+                dragY,
+              ),
+            },
+            { scale: scaleAnim },
+          ],
+        }}
       >
-        {/* Drag Handle - swipe down to close */}
-        <Animated.View
-          style={styles.dragHandleContainer}
-          {...panResponder.panHandlers}
-        >
-          <View style={styles.dragHandle} />
+        {/* Drag handle */}
+        <Animated.View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 2 }} {...panResponder.panHandlers}>
+          <View style={{ width: 36, height: 4, backgroundColor: colors.border, borderRadius: 2 }} />
         </Animated.View>
 
         {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Order Notes & Modifiers</Text>
+        <View style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}>
+          <View>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Order Notes</Text>
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>{orderLabel} · ${(order.total_amount || 0).toFixed(2)}</Text>
+          </View>
           <Pressable
             onPress={onClose}
-            onPressIn={() => setCloseButtonPressed(true)}
-            onPressOut={() => setCloseButtonPressed(false)}
-            style={[
-              styles.closeButton,
-              closeButtonPressed && styles.closeButtonPressed,
-            ]}
+            style={({ pressed }) => ({
+              padding: 7,
+              borderRadius: 8,
+              backgroundColor: pressed ? colors.teal + "15" : colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            })}
           >
-            <X color={closeButtonPressed ? "#3B82F6" : "#9CA3AF"} size={24} />
+            <X color={colors.label} size={15} />
           </Pressable>
         </View>
 
         {/* Content */}
-        <View style={styles.content}>
-          {/* Order Info Badge */}
-          <View style={styles.orderInfoBadge}>
-            <Text style={styles.orderInfoText}>
-              Order #
-              {truncateOrderId(
-                order.display_number || order.order_number || order.id || "",
-              )}
-            </Text>
-            <View style={styles.orderInfoDivider} />
-            <Text style={styles.orderTotalText}>
-              Total ${(order.total_amount || 0).toFixed(2)}
-            </Text>
-          </View>
-
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Order-level notes */}
-            {order.notes && (
-              <View style={styles.orderNotesContainer}>
-                <Text style={styles.orderNotesLabel}>Order Notes:</Text>
-                <View style={styles.orderNotesBox}>
-                  <View style={styles.orderNotesAccent} />
-                  <Text style={styles.orderNotesText}>{order.notes}</Text>
-                </View>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, gap: 12 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Order-level notes */}
+          {order.notes && (
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                Order Notes
+              </Text>
+              <View style={{ flexDirection: "row", backgroundColor: colors.screen, borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ width: 3, backgroundColor: colors.warning }} />
+                <Text style={{ flex: 1, padding: 10, fontSize: 13, color: colors.heading, fontStyle: "italic" }}>
+                  {order.notes}
+                </Text>
               </View>
-            )}
-
-            {/* Items with their notes */}
-            <View style={styles.itemsList}>
-              {order.items.map((item) => (
-                <ModifierItem key={item.id} item={item} />
-              ))}
             </View>
-          </ScrollView>
-        </View>
+          )}
+
+          {/* Items */}
+          {order.items.length > 0 && (
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                Items ({order.items.length})
+              </Text>
+              <View style={{ gap: 8 }}>
+                {order.items.map((item, idx) => (
+                  <ModifierItem key={item.id || idx} item={item} />
+                ))}
+              </View>
+            </View>
+          )}
+        </ScrollView>
       </Animated.View>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1000,
-  },
-  backdrop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-  },
-  backdropPressable: {
-    flex: 1,
-  },
-  sheet: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    maxHeight: "80%",
-    backgroundColor: colors.panel,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: colors.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 10,
-  },
-  dragHandleContainer: {
-    alignItems: "center",
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.muted,
-    borderRadius: 2,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#FFFFFF",
-  },
-  closeButton: {
-    padding: 10,
-    borderRadius: 20,
-    backgroundColor: "transparent",
-  },
-  closeButtonPressed: {
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
-  },
-  content: {
-    flexShrink: 1,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 24,
-  },
-  orderInfoBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.panel,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginBottom: 16,
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  orderInfoText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: colors.label,
-  },
-  orderInfoDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: colors.muted,
-    marginHorizontal: 12,
-  },
-  orderTotalText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: colors.success,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 8,
-  },
-  itemsList: {
-    gap: 12,
-  },
-  orderNotesContainer: {
-    marginBottom: 16,
-  },
-  orderNotesLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.label,
-    marginBottom: 8,
-  },
-  orderNotesBox: {
-    flexDirection: "row",
-    backgroundColor: colors.screen,
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  orderNotesAccent: {
-    width: 3,
-    backgroundColor: colors.warning,
-  },
-  orderNotesText: {
-    flex: 1,
-    padding: 12,
-    fontSize: 15,
-    color: colors.heading,
-    fontStyle: "italic",
-  },
-});
 
 export default OrderNotesModal;

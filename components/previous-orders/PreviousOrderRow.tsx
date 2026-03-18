@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import {
+  AlertTriangle,
   CheckCircle,
   FileText,
   MoreHorizontal,
@@ -35,26 +36,25 @@ interface PreviousOrderRowProps {
   onVoid?: (order: OrderProfile) => void;
 }
 
-const statusConfig: Record<string, { bg: string; text: string }> = {
-  Paid: { bg: "bg-green-900/50", text: "text-green-400" },
-  Partial: { bg: "bg-yellow-900/50", text: "text-yellow-400" },
-  Pending: { bg: "bg-orange-900/50", text: "text-orange-400" },
-  Unpaid: { bg: "bg-red-900/50", text: "text-red-400" },
-  "In Progress": { bg: "bg-blue-900/50", text: "text-blue-400" },
-  Refunded: { bg: "bg-red-900/50", text: "text-red-400" },
-  "Partially Refunded": { bg: "bg-yellow-900/50", text: "text-yellow-400" },
+// Status → semantic color mapping
+const statusColorMap: Record<string, string> = {
+  Paid: colors.success,
+  Partial: colors.warning,
+  Pending: colors.warning,
+  Unpaid: colors.danger,
+  "In Progress": colors.teal,
+  Refunded: colors.danger,
+  "Partially Refunded": colors.warning,
 };
 
-const orderTypeConfig: Record<
-  string,
-  { bg: string; text: string; icon: React.ElementType }
-> = {
-  "Dine In": { bg: "bg-purple-900/50", text: "text-purple-400", icon: Utensils },
-  dine_in: { bg: "bg-purple-900/50", text: "text-purple-400", icon: Utensils },
-  Takeaway: { bg: "bg-orange-900/50", text: "text-orange-400", icon: ShoppingBag },
-  takeout: { bg: "bg-orange-900/50", text: "text-orange-400", icon: ShoppingBag },
-  Delivery: { bg: "bg-cyan-900/50", text: "text-cyan-400", icon: Truck },
-  delivery: { bg: "bg-cyan-900/50", text: "text-cyan-400", icon: Truck },
+// Order type → semantic color + icon mapping
+const orderTypeColorMap: Record<string, { color: string; icon: React.ElementType }> = {
+  "Dine In":  { color: colors.teal,    icon: Utensils },
+  dine_in:    { color: colors.teal,    icon: Utensils },
+  Takeaway:   { color: colors.warning, icon: ShoppingBag },
+  takeout:    { color: colors.warning, icon: ShoppingBag },
+  Delivery:   { color: colors.info,    icon: Truck },
+  delivery:   { color: colors.info,    icon: Truck },
 };
 
 const displayTypeLabels: Record<string, string> = {
@@ -87,7 +87,6 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       lastPressRef.current = 0;
     } else {
       lastPressRef.current = now;
-      // Delay single-press action to distinguish from double-press
       setTimeout(() => {
         if (lastPressRef.current !== 0) {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -104,14 +103,6 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
       })
     : "-";
 
-  const itemsPreview = useMemo(() => {
-    if (!order.items?.length) return "";
-    return order.items
-      .slice(0, 3)
-      .map((i) => i.name)
-      .join(", ");
-  }, [order.items]);
-
   const totalRefunded = useMemo(
     () =>
       (order.payments || []).reduce(
@@ -126,24 +117,15 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0));
 
   const status = order.paid_status || "Unpaid";
-  const statusStyle = statusConfig[status] || {
-    bg: "bg-gray-700",
-    text: "text-gray-300",
-  };
+  const statusColor = statusColorMap[status] ?? colors.label;
 
   const orderType = order.order_type || "Dine In";
-  const typeConfig = orderTypeConfig[orderType] || {
-    bg: "bg-gray-700",
-    text: "text-gray-300",
-    icon: Utensils,
-  };
+  const typeConfig = orderTypeColorMap[orderType] ?? { color: colors.teal, icon: Utensils };
   const TypeIcon = typeConfig.icon;
   const displayType = displayTypeLabels[orderType] || orderType;
 
-  // "Needs Attention" = pending open orders with no payments
   const needsAttention = order.paid_status === "Pending";
 
-  // ─── Context menu state ──────────────────────────────────
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<View>(null);
@@ -161,147 +143,115 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
 
   const closeMenu = useCallback(() => setMenuVisible(false), []);
 
-  // Server initials for avatar
-  const serverInitials = useMemo(() => {
-    const name = order.server_name || "";
-    const parts = name.split(" ").filter(Boolean);
-    if (parts.length >= 2) return parts[0][0] + parts[1][0];
-    if (parts.length === 1) return parts[0][0];
-    return "?";
-  }, [order.server_name]);
-
-  // Refund status badge
   const refundBadge = useMemo(() => {
     if (totalRefunded <= 0) return null;
     if (isFullyRefunded) {
-      return { label: "Refunded", bg: "bg-red-900/50", text: "text-red-400" };
+      return { label: "Refunded", color: colors.danger };
     }
-    return {
-      label: "Partial Refund",
-      bg: "bg-purple-900/50",
-      text: "text-purple-400",
-    };
+    return { label: "Partial Refund", color: colors.warning };
   }, [totalRefunded, isFullyRefunded]);
 
   return (
     <View
-      className="mb-2 mx-2 rounded-xl overflow-hidden"
-      style={
-        needsAttention
-          ? { borderLeftWidth: 4, borderLeftColor: "#EAB308" }
-          : undefined
-      }
+      style={{ marginBottom: 8, marginHorizontal: 8, borderRadius: 12, overflow: "hidden" }}
     >
       {/* Collapsed row */}
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={handlePress}
-        className="bg-panel px-4 py-3"
+        style={{
+          backgroundColor: needsAttention ? colors.warning + "08" : colors.panel,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        }}
       >
-        <View className="flex-row items-center">
-          {/* Order number + time + items preview */}
-          <View className="flex-1" style={{ minWidth: 180 }}>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-base font-bold text-white">
-                {order.display_number || order.order_number || `#${order.id.slice(-4)}`}
-              </Text>
-              <Text className="text-sm text-gray-400">{orderTime}</Text>
-            </View>
-            <Text
-              className="text-xs text-gray-500 mt-0.5"
-              numberOfLines={1}
-            >
-              {itemsPreview || "No items"}
+        {/* Left: order number + meta line */}
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+              {order.display_number || order.order_number || `#${order.id.slice(-4)}`}
             </Text>
+            <Text style={{ fontSize: 11, color: colors.muted }}>{orderTime}</Text>
+            {needsAttention && (
+              <AlertTriangle size={12} color={colors.warning} />
+            )}
           </View>
-
-          {/* Status badge */}
-          <View className="items-center mx-2" style={{ width: 100 }}>
-            <View
-              className={`px-2.5 py-1 rounded-md ${statusStyle.bg}`}
-            >
-              <Text className={`text-xs font-bold ${statusStyle.text}`}>
-                {status}
-              </Text>
-            </View>
-            {refundBadge && (
-              <View
-                className={`px-2 py-0.5 rounded-md mt-1 ${refundBadge.bg}`}
-              >
-                <Text className={`text-xs font-bold ${refundBadge.text}`}>
-                  {refundBadge.label}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
+            <TypeIcon color={typeConfig.color} size={11} />
+            <Text style={{ fontSize: 11, color: typeConfig.color, fontWeight: "600" }}>
+              {displayType}
+            </Text>
+            {order.server_name ? (
+              <>
+                <Text style={{ fontSize: 11, color: colors.muted }}>·</Text>
+                <Text style={{ fontSize: 11, color: colors.label }} numberOfLines={1}>
+                  {order.server_name}
                 </Text>
-              </View>
-            )}
+              </>
+            ) : null}
           </View>
+        </View>
 
-          {/* Server avatar */}
-          <View className="items-center mx-2" style={{ width: 70 }}>
-            <View className="w-8 h-8 rounded-full bg-blue-900/50 items-center justify-center">
-              <Text className="text-xs font-bold text-blue-400">
-                {serverInitials.toUpperCase()}
-              </Text>
-            </View>
-            <Text
-              className="text-xs text-gray-400 mt-0.5"
-              numberOfLines={1}
-            >
-              {order.server_name || "-"}
+        {/* Status badges */}
+        <View style={{ alignItems: "flex-end", gap: 4 }}>
+          <View style={{
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 20,
+            backgroundColor: statusColor + "20",
+            borderWidth: 1,
+            borderColor: statusColor + "50",
+          }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: statusColor }}>
+              {status}
             </Text>
           </View>
-
-          {/* Item count pill */}
-          <View className="mx-2" style={{ width: 40 }}>
-            <View className="bg-gray-700 rounded-full px-2 py-0.5 self-center">
-              <Text className="text-xs font-semibold text-gray-300 text-center">
-                {order.items?.length || 0}
+          {refundBadge && (
+            <View style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 20,
+              backgroundColor: refundBadge.color + "20",
+              borderWidth: 1,
+              borderColor: refundBadge.color + "50",
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: refundBadge.color }}>
+                {refundBadge.label}
               </Text>
             </View>
-          </View>
+          )}
+        </View>
 
-          {/* Order type */}
-          <View className="mx-2" style={{ width: 90 }}>
-            <View
-              className={`flex-row items-center gap-1 px-2 py-1 rounded-md self-start ${typeConfig.bg}`}
-            >
-              <TypeIcon
-                color={
-                  typeConfig.text.includes("purple")
-                    ? "#A78BFA"
-                    : typeConfig.text.includes("orange")
-                      ? "#FB923C"
-                      : "#22D3EE"
-                }
-                size={12}
-              />
-              <Text className={`text-xs font-semibold ${typeConfig.text}`}>
-                {displayType}
-              </Text>
-            </View>
-          </View>
-
-          {/* Total */}
-          <View className="items-end mx-2" style={{ width: 80 }}>
-            <Text className="text-base font-bold text-white">
-              ${(order.total_amount ?? 0).toFixed(2)}
+        {/* Price */}
+        <View style={{ alignItems: "flex-end", minWidth: 70 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+            ${(order.total_amount ?? 0).toFixed(2)}
+          </Text>
+          {totalRefunded > 0 && (
+            <Text style={{ fontSize: 11, color: colors.danger }}>
+              −${totalRefunded.toFixed(2)}
             </Text>
-            {totalRefunded > 0 && (
-              <Text className="text-xs text-red-400">
-                -${totalRefunded.toFixed(2)}
-              </Text>
-            )}
-          </View>
+          )}
+        </View>
 
-          {/* Menu trigger */}
-          <View
-            style={{ width: 36 }}
-            ref={triggerRef}
-            onTouchStart={(e) => e.stopPropagation()}
+        {/* 3-dot menu */}
+        <View
+          ref={triggerRef}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <TouchableOpacity
+            onPress={openMenu}
+            style={{
+              padding: 6,
+              borderRadius: 8,
+              backgroundColor: colors.card,
+            }}
           >
-            <TouchableOpacity className="p-1" onPress={openMenu}>
-              <MoreHorizontal color={colors.label} size={20} />
-            </TouchableOpacity>
-          </View>
+            <MoreHorizontal color={colors.label} size={16} />
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
 
@@ -326,7 +276,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
         <TouchableOpacity
           activeOpacity={1}
           onPress={closeMenu}
-          style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+          style={{ flex: 1 }}
         >
           <View
             onStartShouldSetResponder={() => true}
@@ -334,85 +284,67 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               position: "absolute",
               top: menuPos.top,
               left: menuPos.left,
-              width: 256,
-              backgroundColor: "#1a1f3a",
-              borderRadius: 16,
+              width: 220,
+              backgroundColor: colors.panel,
+              borderRadius: 12,
               borderWidth: 1,
-              borderColor: "#2a3058",
-              paddingVertical: 6,
+              borderColor: colors.border,
+              paddingVertical: 4,
               shadowColor: "#000",
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.4,
-              shadowRadius: 24,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.35,
+              shadowRadius: 16,
               elevation: 20,
             }}
           >
             {order.paid_status === "Paid" &&
               order.check_status !== "Closed" &&
               onCloseCheck && (
-                <TouchableOpacity
-                  activeOpacity={0.6}
+                <MenuRow
+                  icon={<CheckCircle color={colors.success} size={15} />}
+                  label="Close Check"
+                  iconBg={colors.success + "15"}
                   onPress={() => { closeMenu(); onCloseCheck(order); }}
-                  className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
-                >
-                  <CheckCircle color={colors.success} size={18} />
-                  <Text className="text-base text-white ml-3">Close Check</Text>
-                </TouchableOpacity>
+                />
               )}
             {order.check_status === "Closed" && onReopenCheck && (
-              <TouchableOpacity
-                activeOpacity={0.6}
+              <MenuRow
+                icon={<RefreshCw color={colors.info} size={15} />}
+                label="Reopen Check"
+                iconBg={colors.info + "15"}
                 onPress={() => { closeMenu(); onReopenCheck(order); }}
-                className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
-              >
-                <RefreshCw color={colors.info} size={18} />
-                <Text className="text-base text-white ml-3">Reopen Check</Text>
-              </TouchableOpacity>
+              />
             )}
             {onRefund && (
-              <TouchableOpacity
-                activeOpacity={0.6}
+              <MenuRow
+                icon={<RotateCcw color={colors.teal} size={15} />}
+                label="Process Refund"
+                iconBg={colors.teal + "15"}
                 onPress={() => { closeMenu(); onRefund(order); }}
-                className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
-              >
-                <RotateCcw color={colors.teal} size={18} />
-                <Text className="text-base text-white ml-3">Process Refund</Text>
-              </TouchableOpacity>
+              />
             )}
-            <TouchableOpacity
-              activeOpacity={0.6}
+            <MenuRow
+              icon={<FileText color={colors.info} size={15} />}
+              label="View Notes"
+              iconBg={colors.info + "15"}
               onPress={() => { closeMenu(); onViewNotes(order); }}
-              className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
-            >
-              <FileText color={colors.info} size={18} />
-              <Text className="text-base text-white ml-3">View Notes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.6}
+            />
+            <MenuRow
+              icon={<Printer color={colors.label} size={15} />}
+              label="Print Receipt"
+              iconBg={colors.card}
               onPress={() => { closeMenu(); onPrint(order); }}
-              className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-indigo-900/30"
-            >
-              <Printer color="#9CA3AF" size={18} />
-              <Text className="text-base text-white ml-3">Print Receipt</Text>
-            </TouchableOpacity>
+            />
             {onVoid && (
               <>
-                <View
-                  style={{
-                    height: 1,
-                    backgroundColor: "#2a3058",
-                    marginVertical: 6,
-                    marginHorizontal: 16,
-                  }}
-                />
-                <TouchableOpacity
-                  activeOpacity={0.6}
+                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4, marginHorizontal: 12 }} />
+                <MenuRow
+                  icon={<XCircle color={colors.danger} size={15} />}
+                  label="Void Order"
+                  iconBg={colors.danger + "15"}
+                  labelColor={colors.danger}
                   onPress={() => { closeMenu(); onVoid(order); }}
-                  className="flex-row items-center py-3 px-4 mx-1.5 rounded-lg active:bg-red-900/20"
-                >
-                  <XCircle color={colors.danger} size={18} />
-                  <Text className="text-base text-red-400 ml-3">Void Order</Text>
-                </TouchableOpacity>
+                />
               </>
             )}
           </View>
@@ -421,6 +353,48 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     </View>
   );
 };
+
+const MenuRow = ({
+  icon,
+  label,
+  iconBg,
+  labelColor,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  iconBg: string;
+  labelColor?: string;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    activeOpacity={0.6}
+    onPress={onPress}
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginHorizontal: 4,
+      borderRadius: 8,
+    }}
+  >
+    <View style={{
+      width: 28,
+      height: 28,
+      borderRadius: 7,
+      backgroundColor: iconBg,
+      alignItems: "center",
+      justifyContent: "center",
+    }}>
+      {icon}
+    </View>
+    <Text style={{ fontSize: 13, color: labelColor ?? colors.heading, fontWeight: "500" }}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
 
 const PreviousOrderRow = React.memo(
   PreviousOrderRowContent,
