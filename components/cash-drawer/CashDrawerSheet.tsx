@@ -130,6 +130,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       openingAmount: amount,
       openingCountDetails: details,
     });
+    console.log("[CASH DRAWER] Open Drawer Result:", result);
 
     setIsSubmitting(false);
     if (result.success) {

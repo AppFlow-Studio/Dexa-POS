@@ -5,28 +5,59 @@
  * variance thresholds, and EOD requirements.
  */
 
+import CashDrawerSheet from "@/components/cash-drawer/CashDrawerSheet";
 import { Switch } from "@/components/ui/switch";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
+import { hydrateDrawerSession } from "@/services/cashDrawerService";
+import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { formatCurrency } from "@/utils/currency";
 import {
   Banknote,
   ChevronDown,
   ChevronUp,
+  CircleDollarSign,
   DollarSign,
   Eye,
   FileText,
+  Lock,
+  RefreshCw,
   ShieldCheck,
+  Unlock,
 } from "lucide-react-native";
-import React, { useState } from "react";
-import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 export default function CashManagementScreen() {
+  const supabase = useSupabaseClient();
   const cashDrawerSettings = useStoreSettingsStore((s) => s.cashDrawerSettings);
   const updateCashDrawerSettings = useStoreSettingsStore(
     (s) => s.updateCashDrawerSettings
   );
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+
+  const drawerId = useCashDrawerStore((s) => s.drawerId);
+  const drawerName = useCashDrawerStore((s) => s.drawerName);
+  const activeSession = useCashDrawerStore((s) => s.activeSession);
+  const getRunningBalance = useCashDrawerStore((s) => s.getRunningBalance);
+  const operations = useCashDrawerStore((s) => s.operations);
+
+  const isSessionOpen = activeSession?.status === "open";
+
+  const [isCashDrawerSheetOpen, setCashDrawerSheetOpen] = useState(false);
+  const [isRefreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (!selectedStation || !selectedStore || isRefreshing) return;
+    setRefreshing(true);
+    await hydrateDrawerSession(supabase, selectedStation.id, selectedStore.id);
+    setRefreshing(false);
+  }, [selectedStation, selectedStore, supabase, isRefreshing]);
 
   const [expandedSections, setExpandedSections] = useState({
+    session: true,
     noSale: true,
     drawer: true,
     variance: false,
@@ -103,9 +134,23 @@ export default function CashManagementScreen() {
   );
 
   return (
+    <>
     <View className="flex-1 bg-screen p-6">
       <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">Cash Management</Text>
+        <View className="flex-row items-center justify-between">
+          <Text className="text-3xl font-bold text-white">Cash Management</Text>
+          <TouchableOpacity
+            onPress={handleRefresh}
+            disabled={isRefreshing}
+            className="p-2 rounded-lg bg-panel border border-border"
+          >
+            {isRefreshing ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <RefreshCw size={20} color="white" />
+            )}
+          </TouchableOpacity>
+        </View>
         <Text className="text-gray-400 mt-2">
           Configure cash drawer operations, approval rules, and reconciliation settings.
         </Text>
@@ -114,6 +159,74 @@ export default function CashManagementScreen() {
       <View className="h-px w-full bg-gray-700 mb-6" />
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Drawer Session */}
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+          {renderSectionHeader(
+            "Drawer Session",
+            <CircleDollarSign size={20} color={colors.teal} />,
+            "session"
+          )}
+          {expandedSections.session && (
+            <View className="p-5">
+              {!drawerId ? (
+                <Text className="text-gray-500 text-sm italic">
+                  No cash drawer assigned to this station.
+                </Text>
+              ) : !isSessionOpen ? (
+                <View>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <View>
+                      <Text className="text-white text-base font-semibold">
+                        {drawerName || "Cash Drawer"}
+                      </Text>
+                      <Text className="text-gray-500 text-sm">Closed</Text>
+                    </View>
+                    <View className="flex-row items-center">
+                      <Lock size={16} color={colors.muted} />
+                      <Text className="text-gray-500 text-sm ml-1">Closed</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setCashDrawerSheetOpen(true)}
+                    className="py-3 rounded-xl items-center bg-teal"
+                  >
+                    <View className="flex-row items-center gap-2">
+                      <Unlock size={18} color="black" />
+                      <Text className="text-base font-bold text-black">Open Drawer</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <View>
+                      <Text className="text-white text-base font-semibold">
+                        {drawerName || "Cash Drawer"}
+                      </Text>
+                      <View className="flex-row items-center mt-0.5">
+                        <View className="w-2 h-2 rounded-full bg-green-400 mr-1.5" />
+                        <Text className="text-green-400 text-sm">Open</Text>
+                      </View>
+                    </View>
+                    <View className="items-end">
+                      <Text className="text-gray-500 text-xs">Running Balance</Text>
+                      <Text className="text-teal text-lg font-bold">
+                        {formatCurrency(getRunningBalance())}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setCashDrawerSheetOpen(true)}
+                    className="py-3 rounded-xl items-center bg-surface border border-border"
+                  >
+                    <Text className="text-base font-semibold text-white">Manage Drawer</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
         {/* No Sale Settings */}
         <View className="bg-panel rounded-xl border border-gray-700 mb-6">
           {renderSectionHeader(
@@ -224,5 +337,11 @@ export default function CashManagementScreen() {
         </View>
       </ScrollView>
     </View>
+
+    <CashDrawerSheet
+      isOpen={isCashDrawerSheetOpen}
+      onClose={() => setCashDrawerSheetOpen(false)}
+    />
+    </>
   );
 }

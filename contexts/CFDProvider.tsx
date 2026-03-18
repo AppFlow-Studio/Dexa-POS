@@ -1,15 +1,15 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
-  updateSecondaryDisplay,
+  showSecondaryDisplay,
   dismissSecondaryDisplay,
 } from "@/native/SecondaryDisplay";
-import type { SecondaryDisplayData } from "@/native/SecondaryDisplay";
 import { detectNativeHardware } from "@/native/HardwareDetection";
 import { getCachedCapabilities } from "@/services/hardware/deviceDetection";
 import { CFDController } from "@/services/cfd/CFDController";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import type {
     CFDCartItem,
     CFDPairingData,
@@ -34,25 +34,6 @@ const DEBUG = __DEV__;
 
 function Log(msg: string) {
   if (DEBUG) console.log(msg);
-}
-
-function formatModifiersForBuiltinCfd(item: CartItem): string[] {
-  const mods: string[] = [];
-  if (item.customizations?.size) {
-    const price = item.customizations.size.priceModifier || 0;
-    mods.push(
-      `${item.customizations.size.name}${price ? ` (+$${price.toFixed(2)})` : ""}`,
-    );
-  }
-  item.customizations?.addOns?.forEach((a) => {
-    mods.push(`${a.name}${a.price ? ` (+$${a.price.toFixed(2)})` : ""}`);
-  });
-  item.customizations?.modifiers?.forEach((m) => {
-    m.options.forEach((o) => {
-      mods.push(`${o.name}${o.price ? ` (+$${o.price.toFixed(2)})` : ""}`);
-    });
-  });
-  return mods;
 }
 
 export type CFDServerStatus =
@@ -86,7 +67,41 @@ interface CFDContextType {
 
 const CFDContext = createContext<CFDContextType | null>(null);
 
+const noopCFDValue: CFDContextType = {
+  serverStatus: "disabled",
+  isServerReady: false,
+  isConnected: false,
+  clientCount: 0,
+  serverError: null,
+  pairingData: null,
+  serverInfo: null,
+  tipResponse: null,
+  showTipSelection: () => {},
+  updateTip: () => {},
+  setBaseAmount: () => {},
+  setScreenState: () => {},
+  clearTipResponse: () => {},
+  showPayment: () => {},
+  showProcessing: () => {},
+  showApproved: () => {},
+  showDeclined: () => {},
+  showIdle: () => {},
+};
+
 export function CFDProvider({ children }: { children: React.ReactNode }) {
+  const isCFDMode = useStoreSettingsStore((s) => s.isCFDMode);
+
+  // In CFD client mode, this device is a display client — don't start server
+  if (isCFDMode) {
+    return (
+      <CFDContext.Provider value={noopCFDValue}>{children}</CFDContext.Provider>
+    );
+  }
+
+  return <CFDServerProvider>{children}</CFDServerProvider>;
+}
+
+function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const controllerRef = useRef<CFDController | null>(null);
   const pathname = usePathname();
 
@@ -127,7 +142,6 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     (s) => s.tipPresetPercentages
   );
 
-  // Order store selectors
   // Order store selectors - Individual selectors for stability
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const activeOrder = useOrderStore((s) =>
@@ -141,49 +155,65 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     (s) => s.activeOrderOutstandingTotal,
   );
 
-  // Transform cart items to CFD format
+  // Transform cart items to CFD format with dual pricing
   const cfdItems: CFDCartItem[] = useMemo(() => {
     if (!activeOrder?.items) return [];
 
     return activeOrder.items
       .filter((item) => !item.is_voided && item.quantity > 0)
-      .map((item) => ({
-        id: item.id,
-        name: item.is_open_item
-          ? (item.open_item_name ?? "Open Item")
-          : item.name,
-        quantity: item.quantity,
-        // Use fallbacks for price fields to prevent $0.00
-        unitPrice: Math.round((item.unitPrice || item.price || 0) * 100),
-        // Calculate line total manually if subtotal is missing/zero using strict math
-        lineTotal: Math.round(
-          (item.subtotal ||
-            (item.unitPrice || item.price || 0) * item.quantity) * 100,
-        ),
-        modifiers: [
-          ...(item.customizations?.size
-            ? [
-                {
-                  name: item.customizations.size.name,
-                  price: Math.round(
-                    (item.customizations.size.priceModifier || 0) * 100,
-                  ),
-                },
-              ]
-            : []),
-          ...(item.customizations?.addOns?.map((a) => ({
-            name: a.name,
-            price: Math.round((a.price || 0) * 100),
-          })) ?? []),
-          ...(item.customizations?.modifiers?.flatMap((m) =>
-            m.options.map((o) => ({
-              name: o.name,
-              price: Math.round((o.price || 0) * 100),
-            })),
-          ) ?? []),
-        ],
-        notes: item.customizations?.notes,
-      }));
+      .map((item) => {
+        const cardUnitPrice = item.unitPrice || item.price || 0;
+        const cashUnitPrice = item.cashPrice || cardUnitPrice;
+        const cardLineTotal = item.subtotal || cardUnitPrice * item.quantity;
+        const cashLineTotal = item.cashSubtotal || cashUnitPrice * item.quantity;
+
+        return {
+          id: item.id,
+          name: item.is_open_item
+            ? (item.open_item_name ?? "Open Item")
+            : item.name,
+          quantity: item.quantity,
+          unitPrice: Math.round(cardUnitPrice * 100),
+          cashPrice: Math.round(cashUnitPrice * 100),
+          cardPrice: Math.round(cardUnitPrice * 100),
+          lineTotal: Math.round(cardLineTotal * 100),
+          lineTotalCash: Math.round(cashLineTotal * 100),
+          lineTotalCard: Math.round(cardLineTotal * 100),
+          modifiers: [
+            ...(item.customizations?.size
+              ? [
+                  {
+                    name: item.customizations.size.name,
+                    price: Math.round(
+                      (item.customizations.size.priceModifier || 0) * 100,
+                    ),
+                    priceCash: Math.round(
+                      (item.customizations.size.priceModifier || 0) * 100,
+                    ),
+                    priceCard: Math.round(
+                      (item.customizations.size.priceModifier || 0) * 100,
+                    ),
+                  },
+                ]
+              : []),
+            ...(item.customizations?.addOns?.map((a) => ({
+              name: a.name,
+              price: Math.round((a.price || 0) * 100),
+              priceCash: Math.round((a.price || 0) * 100),
+              priceCard: Math.round((a.price || 0) * 100),
+            })) ?? []),
+            ...(item.customizations?.modifiers?.flatMap((m) =>
+              m.options.map((o) => ({
+                name: o.name,
+                price: Math.round((o.price || 0) * 100),
+                priceCash: Math.round((o.price || 0) * 100),
+                priceCard: Math.round((o.price || 0) * 100),
+              })),
+            ) ?? []),
+          ],
+          notes: item.customizations?.notes,
+        };
+      });
   }, [activeOrder?.items]);
 
   // Initialize CFD controller
@@ -266,8 +296,10 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     organizationLogoUrl,
   ]);
 
-  // Fetch and Sync Carousel Images
+  // Fetch and Sync Carousel Images (for both WS clients and built-in display)
   const supabase = useSupabaseClient();
+  const [hasBuiltinCfd, setHasBuiltinCfd] = useState(false);
+
   useEffect(() => {
     const fetchImages = async () => {
       if (!selectedStore?.id || !controllerRef.current) return;
@@ -286,20 +318,25 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
           const imageUrls = data.map((d: any) => d.image_url);
           console.log("[CFD] Updating carousel images:", imageUrls.length);
           controllerRef.current.updateCarouselImages(imageUrls);
+          // Also write to builtin store so the secondary display gets them
+          useCFDBuiltinStore.getState().update({ carouselImages: imageUrls });
         }
       } catch (err) {
         console.error("[CFD] Error fetching images:", err);
       }
     };
 
-    if (isConnected) {
+    if (isConnected || hasBuiltinCfd) {
       fetchImages();
       const interval = setInterval(fetchImages, 5 * 60 * 1000); // Refresh every 5 minutes
       return () => clearInterval(interval);
     }
-  }, [isConnected, selectedStore?.id]);
+  }, [isConnected, hasBuiltinCfd, selectedStore?.id]);
 
-  // Auto-sync order to CFD
+  // Order totals with dual pricing (used by both WS sync and built-in display)
+  const orderTotals = useActiveOrderTotals();
+
+  // Auto-sync order to CFD (WebSocket clients)
   useEffect(() => {
     const controller = controllerRef.current;
     if (!controller || !isConnected) return;
@@ -328,6 +365,14 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     }
 
     // items should always be synced if we're showing order data
+    const cardSubtotal = Math.round(currentBase * 100);
+    const cashSubtotal = Math.round((orderTotals?.cashSubtotal ?? currentBase) * 100);
+    const cardTax = Math.round(activeOrderTax * 100);
+    const cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100);
+    const cardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
+    const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
+    const savingsAmount = Math.max(0, cardTotal - cashTotal);
+
     const params = {
       screenState: activeScreenState || undefined,
       orderNumber:
@@ -335,12 +380,19 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
       orderType: activeOrder?.order_type ?? null,
       guestCount: activeOrder?.guest_count ?? null,
       items: cfdItems,
-      subtotal: Math.round(currentBase * 100),
+      subtotal: cardSubtotal,
+      subtotalCash: cashSubtotal,
+      subtotalCard: cardSubtotal,
       discountAmount: Math.round(activeOrderDiscount * 100),
-      taxAmount: Math.round(activeOrderTax * 100),
+      taxAmount: cardTax,
+      taxCash: cashTax,
+      taxCard: cardTax,
       tipAmount: Math.round(currentTip.amount * 100),
       tipPercentage: currentTip.percentage,
-      total: Math.round((activeOrderTotal + currentTip.amount) * 100),
+      total: cardTotal,
+      totalCash: cashTotal,
+      totalCard: cardTotal,
+      savingsAmount,
       outstandingTotal: Math.round(
         (activeOrderOutstandingTotal + currentTip.amount) * 100,
       ),
@@ -378,16 +430,14 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     activeOrderTax,
     activeOrderTotal,
     activeOrderOutstandingTotal,
+    orderTotals,
     currentTip,
     activeScreenState,
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
   ]);
 
-  // ==================== BUILT-IN SECONDARY DISPLAY SYNC ====================
-
-  const orderTotals = useActiveOrderTotals();
-  const [hasBuiltinCfd, setHasBuiltinCfd] = useState(false);
+  // ==================== BUILT-IN SECONDARY DISPLAY ====================
 
   // Check for built-in CFD once on mount (async with cache-first, native-fallback)
   useEffect(() => {
@@ -412,8 +462,11 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; };
   }, []);
 
-  // Dismiss secondary display on unmount if detected
+  // Show/dismiss secondary display Presentation (lifecycle only — data flows via Zustand)
   useEffect(() => {
+    if (hasBuiltinCfd) {
+      showSecondaryDisplay();
+    }
     return () => {
       if (hasBuiltinCfd) {
         dismissSecondaryDisplay();
@@ -421,82 +474,86 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
     };
   }, [hasBuiltinCfd]);
 
+  // Sync order data to built-in display via useCFDBuiltinStore
   useEffect(() => {
     if (!hasBuiltinCfd) return;
 
-    const restaurantName = selectedStore?.name ?? "";
     const isSalesScreen = pathname.includes("order-processing");
     const shouldShowOrderData =
       !!activeScreenState || (isSalesScreen && !!activeOrder);
 
     if (!shouldShowOrderData) {
-      updateSecondaryDisplay({
+      useCFDBuiltinStore.getState().update({
         screenState: "idle",
-        restaurantName,
-        orderNumber: null,
-        orderType: null,
-        guestCount: null,
-        items: [],
-        cardSubtotal: 0,
-        cashSubtotal: 0,
-        discountAmount: 0,
-        cardTax: 0,
-        cashTax: 0,
-        cardTotal: 0,
-        cashTotal: 0,
-        amountPaid: 0,
+        branding: {
+          restaurantName: selectedStore?.name ?? "",
+          locationCode: selectedStore?.code ?? null,
+          logoUrl: organizationLogoUrl,
+          primaryColor: "#10b981",
+        },
       });
       return;
     }
 
     const screenState = activeScreenState || "ordering";
+    const currentBase = baseAmountOverride ?? activeOrderSubtotal;
+    const cardSubtotal = Math.round(currentBase * 100);
+    const cashSubtotal = Math.round((orderTotals?.cashSubtotal ?? currentBase) * 100);
+    const cardTax = Math.round(activeOrderTax * 100);
+    const cashTax = Math.round((orderTotals?.cashTax ?? activeOrderTax) * 100);
+    const cardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
+    const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
+    const savingsAmount = Math.max(0, cardTotal - cashTotal);
 
-    // Build items with dual pricing
-    const items = (activeOrder?.items ?? [])
-      .filter((item) => !item.is_voided && item.quantity > 0)
-      .map((item) => ({
-        name: item.is_open_item
-          ? (item.open_item_name ?? "Open Item")
-          : item.name,
-        quantity: item.quantity,
-        cardPrice: Math.round((item.unitPrice || item.price || 0) * 100),
-        cashPrice: Math.round(
-          (item.cashPrice || item.unitPrice || item.price || 0) * 100,
-        ),
-        cardLineTotal: Math.round((item.subtotal || 0) * 100),
-        cashLineTotal: Math.round(
-          (item.cashSubtotal || item.subtotal || 0) * 100,
-        ),
-        modifiers: formatModifiersForBuiltinCfd(item),
-        notes: item.customizations?.notes ?? null,
-      }));
-
-    const payload: SecondaryDisplayData = {
+    useCFDBuiltinStore.getState().update({
       screenState,
-      restaurantName,
-      orderNumber:
-        activeOrder?.display_number ?? activeOrder?.order_number ?? null,
+      serverName: null,
+      orderNumber: activeOrder?.display_number ?? activeOrder?.order_number ?? null,
       orderType: activeOrder?.order_type ?? null,
       guestCount: activeOrder?.guest_count ?? null,
-      items,
-      cardSubtotal: Math.round((orderTotals?.subtotal ?? 0) * 100),
-      cashSubtotal: Math.round((orderTotals?.cashSubtotal ?? 0) * 100),
-      discountAmount: Math.round((orderTotals?.discount ?? 0) * 100),
-      cardTax: Math.round((orderTotals?.tax ?? 0) * 100),
-      cashTax: Math.round((orderTotals?.cashTax ?? 0) * 100),
-      cardTotal: Math.round((orderTotals?.total ?? 0) * 100),
-      cashTotal: Math.round((orderTotals?.cashTotal ?? 0) * 100),
+      items: cfdItems,
+      subtotal: cardSubtotal,
+      subtotalCash: cashSubtotal,
+      subtotalCard: cardSubtotal,
+      discountAmount: Math.round(activeOrderDiscount * 100),
+      taxAmount: cardTax,
+      taxCash: cashTax,
+      taxCard: cardTax,
+      tipAmount: Math.round(currentTip.amount * 100),
+      tipPercentage: currentTip.percentage,
+      total: cardTotal,
+      totalCash: cashTotal,
+      totalCard: cardTotal,
+      savingsAmount,
+      outstandingTotal: Math.round(
+        (activeOrderOutstandingTotal + currentTip.amount) * 100,
+      ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
-    };
-
-    updateSecondaryDisplay(payload);
+      tipConfig: tipConfigRef.current ?? null,
+      branding: {
+        restaurantName: selectedStore?.name ?? "",
+        locationCode: selectedStore?.code ?? null,
+        logoUrl: organizationLogoUrl,
+        primaryColor: "#10b981",
+      },
+    });
   }, [
     hasBuiltinCfd,
     activeOrder,
+    cfdItems,
+    activeOrderSubtotal,
+    activeOrderDiscount,
+    activeOrderTax,
+    activeOrderTotal,
+    activeOrderOutstandingTotal,
     orderTotals,
+    currentTip,
     activeScreenState,
+    baseAmountOverride,
     pathname,
     selectedStore?.name,
+    selectedStore?.code,
+    organizationLogoUrl,
   ]);
 
   // ==================== EXPOSED METHODS ====================

@@ -4,6 +4,8 @@ import { Buffer } from "buffer";
 import { sha1 } from "js-sha1";
 
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const HEARTBEAT_INTERVAL = 15000; // 15s ping interval
+const HEARTBEAT_TIMEOUT = 20000; // Disconnect if no pong for 20s
 
 type MessageHandler = (clientId: string, message: string) => void;
 type ConnectionHandler = (clientId: string) => void;
@@ -11,7 +13,8 @@ type ConnectionHandler = (clientId: string) => void;
 interface WSClient {
   id: string;
   isUpgraded: boolean;
-  buffer: string;
+  buffer: Buffer;
+  lastPongTime: number;
 }
 
 export class WebSocketServer {
@@ -21,6 +24,7 @@ export class WebSocketServer {
   private onConnect: ConnectionHandler | null = null;
   private onDisconnect: ConnectionHandler | null = null;
   private subscriptions: Array<{ remove: () => void }> = [];
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(port: number = 8080) {
     this.port = port;
@@ -42,9 +46,10 @@ export class WebSocketServer {
           this.clients.set(clientId, {
             id: clientId,
             isUpgraded: false,
-            buffer: Buffer.alloc(0) as any,
+            buffer: Buffer.alloc(0),
+            lastPongTime: Date.now(),
           });
-          console.log("[WS] New TCP connection:", clientId);
+          if (__DEV__) console.log("[WS] New TCP connection:", clientId);
         }),
       );
 
@@ -55,7 +60,7 @@ export class WebSocketServer {
             this.onDisconnect?.(clientId);
           }
           this.clients.delete(clientId);
-          console.log("[WS] Client disconnected:", clientId);
+          if (__DEV__) console.log("[WS] Client disconnected:", clientId);
         }),
       );
 
@@ -68,12 +73,34 @@ export class WebSocketServer {
 
     // Start TCP server
     const result = await TcpServer.start(this.port);
-    console.log(`[WS] Server started at ${result.ip}:${result.port}`);
+    if (__DEV__) console.log(`[WS] Server started at ${result.ip}:${result.port}`);
+
+    // Start server-side heartbeat
+    this.startHeartbeat();
+
     return result;
   }
 
+  private startHeartbeat(): void {
+    this.heartbeatTimer = setInterval(() => {
+      const now = Date.now();
+      this.clients.forEach((client) => {
+        if (!client.isUpgraded) return;
+
+        // Check if client missed heartbeat timeout
+        if (now - client.lastPongTime > HEARTBEAT_TIMEOUT) {
+          console.error(`[WS] Client ${client.id} heartbeat timeout, disconnecting`);
+          TcpServer.disconnect(client.id);
+          return;
+        }
+
+        // Send ping frame (opcode 0x09)
+        this.sendFrame(client.id, Buffer.alloc(0), 0x09);
+      });
+    }, HEARTBEAT_INTERVAL);
+  }
+
   private handleData(clientId: string, base64Data: string): void {
-    console.log(`[WS] handleData for ${clientId}, size: ${base64Data.length}`);
     const client = this.clients.get(clientId);
     if (!client) return;
 
@@ -81,23 +108,14 @@ export class WebSocketServer {
     const chunk = Buffer.from(base64Data, "base64");
 
     // Append to buffer
-    if (typeof client.buffer === "string") {
-      client.buffer = Buffer.alloc(0) as any;
-    }
-
-    const currentBuffer = client.buffer as unknown as Buffer;
-    client.buffer = Buffer.concat([currentBuffer, chunk]) as any;
+    client.buffer = Buffer.concat([client.buffer, chunk]);
 
     // Not yet upgraded - check for HTTP upgrade request
     if (!client.isUpgraded) {
-      // Check for \r\n\r\n
-      const asString = (client.buffer as unknown as Buffer).toString("utf8");
-      // console.log(`[WS] Buffer string preview: ${asString.substring(0, 100)}`)
+      const asString = client.buffer.toString("utf8");
       if (asString.includes("\r\n\r\n")) {
-        console.log(`[WS] Found HTTP Upgrade Request for ${clientId}`);
+        if (__DEV__) console.log(`[WS] Found HTTP Upgrade Request for ${clientId}`);
         this.handleUpgrade(client);
-      } else {
-        console.log(`[WS] Waiting for full HTTP request...`);
       }
       return;
     }
@@ -107,23 +125,18 @@ export class WebSocketServer {
   }
 
   private handleUpgrade(client: WSClient): void {
-    const request = (client.buffer as unknown as Buffer).toString("utf8");
-    console.log(
-      `[WS] Handling upgrade. Request headers length: ${request.length}`,
-    );
+    const request = client.buffer.toString("utf8");
 
     // Extract Sec-WebSocket-Key
     const keyMatch = request.match(/Sec-WebSocket-Key:\s*(.+)\r\n/i);
     if (!keyMatch) {
-      console.log("[WS] No WebSocket key found, closing");
+      console.error("[WS] No WebSocket key found, closing");
       TcpServer.disconnect(client.id);
       return;
     }
 
     const key = keyMatch[1].trim();
-    console.log(`[WS] Key found: ${key}`);
     const acceptKey = this.generateAcceptKey(key);
-    console.log(`[WS] Accept Key generated: ${acceptKey}`);
 
     // Send upgrade response
     const response = [
@@ -136,12 +149,12 @@ export class WebSocketServer {
     ].join("\r\n");
 
     TcpServer.send(client.id, response);
-    console.log(`[WS] Upgrade response sent to ${client.id}`);
 
     client.isUpgraded = true;
-    client.buffer = Buffer.alloc(0) as any;
+    client.buffer = Buffer.alloc(0);
+    client.lastPongTime = Date.now();
 
-    console.log("[WS] Client upgraded:", client.id);
+    if (__DEV__) console.log("[WS] Client upgraded:", client.id);
     this.onConnect?.(client.id);
   }
 
@@ -156,7 +169,7 @@ export class WebSocketServer {
   }
 
   private parseFrames(client: WSClient): void {
-    let buffer = client.buffer as unknown as Buffer;
+    let buffer = client.buffer;
     let offset = 0;
 
     while (offset < buffer.length) {
@@ -188,14 +201,14 @@ export class WebSocketServer {
       if (buffer.length - offset < totalLength) break;
 
       // Extract payload
-      let payload = buffer.slice(offset + headerLength, offset + totalLength);
+      let payload: Buffer = Buffer.from(buffer.subarray(offset + headerLength, offset + totalLength));
 
       // Unmask if needed
       if (isMasked) {
-        const maskKey = buffer.slice(
+        const maskKey = Buffer.from(buffer.subarray(
           offset + headerLength - 4,
           offset + headerLength,
-        );
+        ));
         payload = this.unmask(payload, maskKey);
       }
 
@@ -210,14 +223,16 @@ export class WebSocketServer {
       } else if (opcode === 0x09) {
         // Ping - respond with pong
         this.sendFrame(client.id, payload, 0x0a);
+      } else if (opcode === 0x0a) {
+        // Pong - update heartbeat timestamp
+        client.lastPongTime = Date.now();
       }
-      // 0x0a = pong, ignore
 
       offset += totalLength;
     }
 
     // Keep unprocessed data
-    client.buffer = buffer.slice(offset) as any;
+    client.buffer = Buffer.from(buffer.subarray(offset));
   }
 
   private unmask(payload: Buffer, maskKey: Buffer): Buffer {
@@ -293,6 +308,10 @@ export class WebSocketServer {
   }
 
   async stop(): Promise<void> {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     this.subscriptions.forEach((s) => s.remove());
     this.subscriptions = [];
     this.clients.clear();

@@ -15,11 +15,21 @@ export interface CFDCartItem {
   id: string;
   name: string;
   quantity: number;
-  unitPrice: number; // cents
-  lineTotal: number; // cents (after modifiers)
+  unitPrice: number; // Base unit price (cents)
+
+  // Dual Pricing
+  cashPrice: number;
+  cardPrice: number;
+
+  lineTotal: number; // Defaults to card total
+  lineTotalCash: number;
+  lineTotalCard: number;
+
   modifiers: Array<{
     name: string;
-    price: number; // cents
+    price: number; // usually card price
+    priceCash: number;
+    priceCard: number;
   }>;
   notes?: string;
 }
@@ -36,6 +46,7 @@ export interface CFDPayload {
   stationId: string;
   stationName: string;
   locationId: string;
+  serverName?: string | null; // e.g., "Michael J."
 
   // Current screen
   screenState: CFDScreenState;
@@ -47,12 +58,24 @@ export interface CFDPayload {
   items: CFDCartItem[];
 
   // Totals (all in cents)
-  subtotal: number;
+  subtotal: number; // Default/Card subtotal
+  subtotalCash: number;
+  subtotalCard: number;
+
   discountAmount: number;
-  taxAmount: number;
+
+  taxAmount: number; // Default/Card tax
+  taxCash: number;
+  taxCard: number;
+
   tipAmount: number;
   tipPercentage: number | null; // Current selected percentage (if any)
-  total: number;
+
+  total: number; // Default/Card total
+  totalCash: number;
+  totalCard: number;
+
+  savingsAmount: number; // Amount saved by paying cash
 
   // Outstanding amounts (for partial payments)
   outstandingTotal: number;

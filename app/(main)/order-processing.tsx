@@ -240,10 +240,10 @@ const OrderProcessing = () => {
 
   return (
     <View className="flex-1 flex-col bg-screen px-2 py-1">
-      <CashDrawerStatusBar
+      {/* <CashDrawerStatusBar
         onManagePress={handleManageDrawer}
         onNoSalePress={handleNoSale}
-      />
+      /> */}
       <View className="flex-1 flex-row bg-screen rounded-lg ">
         {/* Stage 1: BillSection (lighter — user sees their order first) */}
         {renderStage >= 1 ? (

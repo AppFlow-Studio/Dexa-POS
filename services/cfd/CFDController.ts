@@ -1,4 +1,5 @@
 // src/services/cfd/CFDController.ts
+import { NsdPublisher } from "@/native/NsdPublisher";
 import type {
     CFDBranding,
     CFDCartItem,
@@ -77,6 +78,17 @@ export class CFDController {
     console.log(
       `[CFD] Controller ready at ${this.serverInfo.ip}:${this.serverInfo.port}`,
     );
+
+    // Register NSD service for auto-discovery
+    NsdPublisher.register(this.serverInfo.port, {
+      stationId: this.stationId,
+      stationName: this.stationName,
+      locationId: this.locationId,
+      locationName: this.branding.restaurantName,
+    }).catch((e) => {
+      if (__DEV__) console.log("[CFD] NSD registration failed (non-fatal):", e);
+    });
+
     return this.serverInfo;
   }
 
@@ -120,11 +132,18 @@ export class CFDController {
       guestCount: this.lastPayload.guestCount ?? null,
       items: this.lastPayload.items ?? [],
       subtotal: this.lastPayload.subtotal ?? 0,
+      subtotalCash: this.lastPayload.subtotalCash ?? 0,
+      subtotalCard: this.lastPayload.subtotalCard ?? 0,
       discountAmount: this.lastPayload.discountAmount ?? 0,
       taxAmount: this.lastPayload.taxAmount ?? 0,
+      taxCash: this.lastPayload.taxCash ?? 0,
+      taxCard: this.lastPayload.taxCard ?? 0,
       tipAmount: this.lastPayload.tipAmount ?? 0,
       tipPercentage: this.lastPayload.tipPercentage ?? null,
       total: this.lastPayload.total ?? 0,
+      totalCash: this.lastPayload.totalCash ?? 0,
+      totalCard: this.lastPayload.totalCard ?? 0,
+      savingsAmount: this.lastPayload.savingsAmount ?? 0,
       outstandingTotal: this.lastPayload.outstandingTotal ?? 0,
       amountPaid: this.lastPayload.amountPaid ?? 0,
       branding: this.branding,
@@ -158,11 +177,18 @@ export class CFDController {
     guestCount: number | null;
     items: CFDCartItem[];
     subtotal: number;
+    subtotalCash: number;
+    subtotalCard: number;
     discountAmount: number;
     taxAmount: number;
+    taxCash: number;
+    taxCard: number;
     tipAmount: number;
     tipPercentage: number | null;
     total: number;
+    totalCash: number;
+    totalCard: number;
+    savingsAmount: number;
     outstandingTotal: number;
     amountPaid: number;
     tipConfig?: CFDPayload["tipConfig"];
@@ -260,11 +286,18 @@ export class CFDController {
       guestCount: null,
       items: [],
       subtotal: 0,
+      subtotalCash: 0,
+      subtotalCard: 0,
       discountAmount: 0,
       taxAmount: 0,
+      taxCash: 0,
+      taxCard: 0,
       tipAmount: 0,
       tipPercentage: null,
       total: 0,
+      totalCash: 0,
+      totalCard: 0,
+      savingsAmount: 0,
       outstandingTotal: 0,
       amountPaid: 0,
       branding: this.branding,
@@ -313,6 +346,7 @@ export class CFDController {
   }
 
   async stop(): Promise<void> {
+    NsdPublisher.unregister().catch(() => {});
     await this.server.stop();
     this.serverInfo = null;
   }

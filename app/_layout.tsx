@@ -50,6 +50,12 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 // IMPORTANT: Must be called once at module level for OAuth to work correctly
 WebBrowser.maybeCompleteAuthSession();
 
+// Register CFD secondary display component for Android built-in displays.
+// Must happen at module level before native side mounts the ReactRootView.
+if (Platform.OS === "android") {
+  require("@/components/cfd-builtin/CFDBuiltinDisplay");
+}
+
 // Initialize log collector to capture console output for remote log retrieval
 initLogCollector();
 // Optimize Immer array iteration in producers
@@ -96,6 +102,8 @@ export default function RootLayout() {
   const isClockInWallOpen = useTimeclockStore((s) => s.isClockInWallOpen);
   const hideClockInWall = useTimeclockStore((s) => s.hideClockInWall);
   const isKDS = useStoreSettingsStore((s) => s.selectedStation?.station_type === "kds");
+  const isCFDMode = useStoreSettingsStore((s) => s.isCFDMode);
+  const isPOSMode = !isKDS && !isCFDMode;
   const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
   const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
   const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
@@ -112,8 +120,8 @@ export default function RootLayout() {
     setIsColorSchemeLoaded(true);
     hasMounted.current = true;
 
-    // Skip POS-only initialization for KDS stations
-    if (!isKDS) {
+    // Skip POS-only initialization for KDS stations and CFD client mode
+    if (!isKDS && !isCFDMode) {
       // NOTE: Timeclock hydration now happens in PosSyncProvider after employees sync.
       // PTO history is calculated from real shift data, not mock data.
       // Start draft order cleanup
@@ -138,12 +146,12 @@ export default function RootLayout() {
   // Cleanup intervals on unmount
   React.useEffect(() => {
     return () => {
-      if (!isKDS) {
+      if (!isKDS && !isCFDMode) {
         useOrderStore.getState().stopDraftCleanup();
         PrinterService.stopProcessing();
       }
     };
-  }, [isKDS]);
+  }, [isKDS, isCFDMode]);
 
   if (!isColorSchemeLoaded) {
     return null;
@@ -190,17 +198,17 @@ export default function RootLayout() {
                               <Stack.Screen name="(main)/tables/waitlist" options={{ animation: 'none' }} />
                             </Stack>
                             <PortalHost />
-                            {!isKDS && <SearchBottomSheet />}
-                            {!isKDS && isCustomizationOpen && <ItemCustomizationDialog />}
-                            {!isKDS && isClockInWallOpen && (
+                            {isPOSMode && <SearchBottomSheet />}
+                            {isPOSMode && isCustomizationOpen && <ItemCustomizationDialog />}
+                            {isPOSMode && isClockInWallOpen && (
                               <ClockInWallModal
                                 isOpen={isClockInWallOpen}
                                 onClose={hideClockInWall}
                               />
                             )}
-                            {!isKDS && isPinModalOpen && <ManagerPinModal />}
-                            {!isKDS && <CustomerSheet />}
-                            {!isKDS && isNoPrinterModalVisible && <NoPrinterModal />}
+                            {isPOSMode && isPinModalOpen && <ManagerPinModal />}
+                            {isPOSMode && <CustomerSheet />}
+                            {isPOSMode && isNoPrinterModalVisible && <NoPrinterModal />}
                             <Toasts
                               defaultStyle={{
                                 view: {

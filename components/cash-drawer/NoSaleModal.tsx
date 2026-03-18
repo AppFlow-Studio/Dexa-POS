@@ -69,6 +69,9 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
   const requiresReason = cashDrawerSettings.requireNoSaleReason;
 
   const canSubmit =
+    !!drawerId &&
+    !!activeSession &&
+    !!loggedInEmployee &&
     (!requiresReason || (reason && reason.trim().length > 0)) &&
     (!requiresApproval || approvedBy);
 
@@ -102,47 +105,53 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
     if (!drawerId || !activeSession || !loggedInEmployee || !canSubmit) return;
     setIsSubmitting(true);
 
-    await recordDrawerOperation(supabase, {
-      cashDrawerId: drawerId,
-      sessionId: activeSession.id,
-      operationType: "no_sale",
-      amount: 0,
-      performedBy: loggedInEmployee.profileId,
-      reason: reason || undefined,
-      approvedBy: approvedBy || undefined,
-    });
-
-    // Open the physical cash drawer
     try {
-      await PrinterService.openCashDrawer();
-    } catch {
-      // Non-blocking — drawer open is best-effort
-    }
+      await recordDrawerOperation(supabase, {
+        cashDrawerId: drawerId,
+        sessionId: activeSession.id,
+        operationType: "no_sale",
+        amount: 0,
+        performedBy: loggedInEmployee.profileId,
+        reason: reason || undefined,
+        approvedBy: approvedBy || undefined,
+      });
 
-    show({ title: "No Sale", message: "Cash drawer opened.", type: "success" });
-
-    // Print receipt if configured
-    if (cashDrawerSettings.autoPrintNoSaleReceipt) {
+      // Open the physical cash drawer
       try {
-        await PrinterService.printNoSaleReceipt({
-          storeName: selectedStore?.name || "Store",
-          storeAddress: selectedStore?.address_line1 || undefined,
-          drawerName: drawerName || "Drawer",
-          stationName: selectedStation?.station_name || "Station",
-          employeeName: loggedInEmployee.displayName || "Employee",
-          reason: reason || "No reason",
-          approvedBy: approvedBy || undefined,
-          timestamp: new Date().toISOString(),
-          locationId: selectedStore?.id || "",
-        });
+        await PrinterService.openCashDrawer();
       } catch {
-        // Non-blocking
+        // Non-blocking — drawer open is best-effort
       }
-    }
 
-    setIsSubmitting(false);
-    resetState();
-    onClose();
+      show({ title: "No Sale", message: "Cash drawer opened.", type: "success" });
+
+      // Print receipt if configured
+      if (cashDrawerSettings.autoPrintNoSaleReceipt) {
+        try {
+          await PrinterService.printNoSaleReceipt({
+            storeName: selectedStore?.name || "Store",
+            storeAddress: selectedStore?.address_line1 || undefined,
+            drawerName: drawerName || "Drawer",
+            stationName: selectedStation?.station_name || "Station",
+            employeeName: loggedInEmployee.displayName || "Employee",
+            reason: reason || "No reason",
+            approvedBy: approvedBy || undefined,
+            timestamp: new Date().toISOString(),
+            locationId: selectedStore?.id || "",
+          });
+        } catch {
+          // Non-blocking
+        }
+      }
+
+      resetState();
+      onClose();
+    } catch (err) {
+      console.error("[NoSaleModal] Failed:", err);
+      show({ title: "Error", message: "Failed to open drawer. Please try again.", type: "error" });
+    } finally {
+      setIsSubmitting(false);
+    }
   }, [
     drawerId, activeSession, loggedInEmployee, canSubmit, reason, approvedBy,
     supabase, cashDrawerSettings, selectedStore, selectedStation, drawerName, show, onClose,
@@ -259,6 +268,12 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
               {isSubmitting ? "Opening..." : "Open Drawer"}
             </Text>
           </TouchableOpacity>
+
+          {(!drawerId || !activeSession) && (
+            <Text className="text-xs text-red-400 text-center mt-1">
+              No active drawer session. Open the drawer first.
+            </Text>
+          )}
         </View>
       </DialogContent>
     </Dialog>

@@ -6,7 +6,7 @@ import { SelectedStation, Station } from "@/types/station";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Monitor, RefreshCw, User, Wifi, WifiOff } from "lucide-react-native";
+import { Monitor, MonitorPlay, RefreshCw, User, Wifi, WifiOff } from "lucide-react-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -128,6 +128,7 @@ const StationSelectScreen = () => {
   const setSelectedStation = useStoreSettingsStore(
     (state) => state.setSelectedStation
   );
+  const setIsCFDMode = useStoreSettingsStore((state) => state.setIsCFDMode);
 
   const [selectedStationId, setSelectedStationId] = useState<string | null>(
     null
@@ -321,6 +322,25 @@ const StationSelectScreen = () => {
         }`}
       >
         <Text className="text-white text-xl font-bold">Continue</Text>
+      </TouchableOpacity>
+
+      {/* CFD Display Mode */}
+      <TouchableOpacity
+        onPress={() => {
+          setIsCFDMode(true);
+          router.replace("/(cfd)/cfd-pairing");
+        }}
+        className="w-full mt-4 p-4 rounded-xl items-center border border-gray-700 bg-panel flex-row justify-center gap-3"
+      >
+        <MonitorPlay size={20} color="#9ca3af" />
+        <View>
+          <Text className="text-gray-300 text-base font-medium">
+            Use as CFD Display
+          </Text>
+          <Text className="text-gray-500 text-xs">
+            Turn this tablet into a customer-facing display
+          </Text>
+        </View>
       </TouchableOpacity>
 
       <ConfirmationModal

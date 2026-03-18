@@ -17,6 +17,8 @@ import com.temurappflowstudios.dexapos.tcpserver.TcpServerPackage
 import com.temurappflowstudios.dexapos.secondarydisplay.SecondaryDisplayPackage
 import com.temurappflowstudios.dexapos.hardware.HardwareDetectionPackage
 import com.temurappflowstudios.dexapos.printer.LandiPrinterPackage
+import com.temurappflowstudios.dexapos.nsd.NsdPublisherPackage
+import com.temurappflowstudios.dexapos.nsd.NsdDiscoveryPackage
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
@@ -32,6 +34,8 @@ class MainApplication : Application(), ReactApplication {
             packages.add(SecondaryDisplayPackage())
             packages.add(HardwareDetectionPackage())
             packages.add(LandiPrinterPackage())
+            packages.add(NsdPublisherPackage())
+            packages.add(NsdDiscoveryPackage())
             return packages
           }
 

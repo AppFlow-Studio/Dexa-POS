@@ -133,6 +133,9 @@ export interface StoreSettings {
   selectedStation: SelectedStation | null
   stationSessionId: string | null
   deviceName: string
+
+  // CFD client mode
+  isCFDMode: boolean
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -177,6 +180,10 @@ interface StoreSettingsState extends StoreSettings {
   setDeviceName: (name: string) => void
   clearStationSession: () => void
   updateCashDrawerSettings: (partial: Partial<StoreSettings['cashDrawerSettings']>) => void
+
+  // CFD client mode actions
+  setIsCFDMode: (value: boolean) => void
+  exitCFDMode: () => void
 }
 
 const initialData: StoreSettings = {
@@ -271,7 +278,10 @@ const initialData: StoreSettings = {
   // Station session defaults
   selectedStation: null,
   stationSessionId: null,
-  deviceName: ''
+  deviceName: '',
+
+  // CFD client mode
+  isCFDMode: false
 }
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -500,6 +510,14 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
           ...state,
           cashDrawerSettings: { ...state.cashDrawerSettings, ...partial },
         }))
+      },
+
+      setIsCFDMode: (value: boolean) => {
+        set({ isCFDMode: value })
+      },
+
+      exitCFDMode: () => {
+        set({ isCFDMode: false, selectedStation: null, stationSessionId: null })
       }
     }),
     {
@@ -557,7 +575,9 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         // Station session fields
         selectedStation: state.selectedStation,
         stationSessionId: state.stationSessionId,
-        deviceName: state.deviceName
+        deviceName: state.deviceName,
+        // CFD client mode
+        isCFDMode: state.isCFDMode
       })
     }
   )

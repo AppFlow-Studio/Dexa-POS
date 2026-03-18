@@ -2,7 +2,7 @@
 -- Cash Drawer RLS Policies
 -- ============================================================================
 -- Enable RLS on all cash drawer tables.
--- Policies are location-scoped for authenticated users.
+-- Policies are merchant-scoped for authenticated users.
 -- cash_drawer_operations is append-only (no UPDATE/DELETE for non-service-role).
 -- ============================================================================
 
@@ -20,9 +20,9 @@ CREATE POLICY "cash_drawers_select"
   FOR SELECT
   TO authenticated
   USING (
-    location_id IN (
-      SELECT location_id FROM staff_profiles
-      WHERE auth_user_id = auth.uid()
+    merchant_id IN (
+      SELECT merchant_id FROM staff_profiles
+      WHERE user_id = current_user_id()
     )
   );
 
@@ -31,15 +31,15 @@ CREATE POLICY "cash_drawers_update"
   FOR UPDATE
   TO authenticated
   USING (
-    location_id IN (
-      SELECT location_id FROM staff_profiles
-      WHERE auth_user_id = auth.uid()
+    merchant_id IN (
+      SELECT merchant_id FROM staff_profiles
+      WHERE user_id = current_user_id()
     )
   )
   WITH CHECK (
-    location_id IN (
-      SELECT location_id FROM staff_profiles
-      WHERE auth_user_id = auth.uid()
+    merchant_id IN (
+      SELECT merchant_id FROM staff_profiles
+      WHERE user_id = current_user_id()
     )
   );
 
@@ -52,9 +52,9 @@ CREATE POLICY "cash_drawer_sessions_select"
   FOR SELECT
   TO authenticated
   USING (
-    location_id IN (
-      SELECT location_id FROM staff_profiles
-      WHERE auth_user_id = auth.uid()
+    merchant_id IN (
+      SELECT merchant_id FROM staff_profiles
+      WHERE user_id = current_user_id()
     )
   );
 
@@ -63,9 +63,9 @@ CREATE POLICY "cash_drawer_sessions_insert"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    location_id IN (
-      SELECT location_id FROM staff_profiles
-      WHERE auth_user_id = auth.uid()
+    merchant_id IN (
+      SELECT merchant_id FROM staff_profiles
+      WHERE user_id = current_user_id()
     )
   );
 
@@ -74,15 +74,15 @@ CREATE POLICY "cash_drawer_sessions_update"
   FOR UPDATE
   TO authenticated
   USING (
-    location_id IN (
-      SELECT location_id FROM staff_profiles
-      WHERE auth_user_id = auth.uid()
+    merchant_id IN (
+      SELECT merchant_id FROM staff_profiles
+      WHERE user_id = current_user_id()
     )
   )
   WITH CHECK (
-    location_id IN (
-      SELECT location_id FROM staff_profiles
-      WHERE auth_user_id = auth.uid()
+    merchant_id IN (
+      SELECT merchant_id FROM staff_profiles
+      WHERE user_id = current_user_id()
     )
   );
 
@@ -97,9 +97,9 @@ CREATE POLICY "cash_drawer_operations_select"
   USING (
     cash_drawer_id IN (
       SELECT id FROM cash_drawers
-      WHERE location_id IN (
-        SELECT location_id FROM staff_profiles
-        WHERE auth_user_id = auth.uid()
+      WHERE merchant_id IN (
+        SELECT merchant_id FROM staff_profiles
+        WHERE user_id = current_user_id()
       )
     )
   );
@@ -111,9 +111,9 @@ CREATE POLICY "cash_drawer_operations_insert"
   WITH CHECK (
     cash_drawer_id IN (
       SELECT id FROM cash_drawers
-      WHERE location_id IN (
-        SELECT location_id FROM staff_profiles
-        WHERE auth_user_id = auth.uid()
+      WHERE merchant_id IN (
+        SELECT merchant_id FROM staff_profiles
+        WHERE user_id = current_user_id()
       )
     )
   );
