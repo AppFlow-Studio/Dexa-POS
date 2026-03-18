@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React from "react";
 import { Text, View } from "react-native";
 
@@ -5,7 +6,7 @@ interface PTOBalanceCardProps {
   label: string;
   value: string;
   icon: React.ReactNode;
-  variant: "success" | "warning" | "default" | "primary" | "secondary"; // Added primary and secondary
+  variant: "success" | "warning" | "default" | "primary" | "secondary";
 }
 
 const PTOBalanceCard: React.FC<PTOBalanceCardProps> = ({
@@ -14,39 +15,39 @@ const PTOBalanceCard: React.FC<PTOBalanceCardProps> = ({
   icon,
   variant,
 }) => {
-  const textClasses = {
-    success: "text-green-400",
-    warning: "text-yellow-400",
-    default: "text-white",
-    primary: "text-blue-400", // New text color for primary
-    secondary: "text-gray-400", // New text color for secondary
-  };
+  const valueColor = {
+    success: colors.success,
+    warning: colors.warning,
+    default: colors.heading,
+    primary: colors.teal,
+    secondary: colors.label,
+  }[variant];
 
-  const bgClasses = {
-    success: "bg-green-600/10",
-    warning: "bg-yellow-600/10",
-    default: "bg-surface",
-    primary: "bg-blue-600/10", // New background for primary
-    secondary: "bg-gray-600/10", // New background for secondary
-  };
+  const bgColor = {
+    success: colors.success + '10',
+    warning: colors.warning + '10',
+    default: colors.panel,
+    primary: colors.teal + '10',
+    secondary: colors.label + '10',
+  }[variant];
 
-  const borderClasses = {
-    success: "border-green-500/20",
-    warning: "border-yellow-500/20",
-    default: "border-gray-700",
-    primary: "border-blue-500/20", // New border for primary
-    secondary: "border-gray-500/20", // New border for secondary
-  };
+  const borderColor = {
+    success: colors.success + '30',
+    warning: colors.warning + '30',
+    default: colors.border,
+    primary: colors.teal + '30',
+    secondary: colors.label + '20',
+  }[variant];
 
   return (
     <View
-      className={`flex-1 p-4 rounded-2xl ${bgClasses[variant]} ${borderClasses[variant]} border`}
+      style={{ flex: 1, padding: 14, borderRadius: 14, backgroundColor: bgColor, borderWidth: 1, borderColor }}
     >
-      <View className="flex-row items-start justify-between mb-2">{icon}</View>
-      <Text className={`text-3xl font-bold mb-1 ${textClasses[variant]}`}>
+      <View className="mb-2">{icon}</View>
+      <Text style={{ fontSize: 26, fontWeight: '700', color: valueColor, marginBottom: 2 }}>
         {value}
       </Text>
-      <Text className="text-sm text-gray-400">{label}</Text>
+      <Text style={{ fontSize: 11, color: colors.label }}>{label}</Text>
     </View>
   );
 };

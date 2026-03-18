@@ -1,86 +1,82 @@
 import { ShiftHistoryEntry } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import React from "react";
-import { FlatList, Text, View } from "react-native"; // Added TouchableOpacity for potential future use, though not used currently
-
-// --- Reusable Components for the Table ---
+import { Clock } from "lucide-react-native";
+import { FlatList, Text, View } from "react-native";
 
 const TABLE_HEADERS = [
   "Clock In",
-  "Break Initiated",
-  "Break Ended",
+  "Break",
   "Clock Out",
   "Duration",
 ];
 
 const HistoryTableHeader = () => (
-  <View className="flex-row p-4 bg-surface rounded-t-xl border-b border-gray-700">
+  <View className="flex-row px-4 py-2 border-b border-border">
     {TABLE_HEADERS.map((header) => (
-      <Text key={header} className="flex-1 font-bold text-lg text-gray-300">
+      <Text key={header} className="flex-1 text-xs font-semibold uppercase tracking-wider text-label">
         {header}
       </Text>
     ))}
   </View>
 );
 
-const HistoryTableRow = ({ item }: { item: ShiftHistoryEntry }) => (
-  <View className="flex-row p-4 border-b border-gray-700">
+const HistoryTableRow = ({ item, index }: { item: ShiftHistoryEntry; index: number }) => (
+  <View
+    className="flex-row px-4 py-3 border-b border-border"
+    style={index % 2 === 0 ? { backgroundColor: colors.panel } : { backgroundColor: colors.screen }}
+  >
+    {/* Clock In */}
     <View className="flex-1">
-      <Text className="text-base text-gray-400">{item.date}</Text>
-      <Text className="font-semibold text-lg text-white">{item.clockIn}</Text>
+      <Text style={{ fontSize: 11, color: colors.muted }}>{item.date}</Text>
+      <Text className="text-sm font-semibold text-heading">{item.clockIn}</Text>
     </View>
-    {item.breakInitiated !== "N/A" ? (
-      <>
-        <View className="flex-1">
-          <Text className="text-base text-primary-400">{item.date}</Text>
-          <Text className="font-semibold text-lg text-primary-400">
-            {item.breakInitiated}
-          </Text>
-        </View>
-        <View className="flex-1">
-          <Text className="text-base text-primary-400">{item.date}</Text>
-          <Text className="font-semibold text-lg text-primary-400">
-            {item.breakEnded}
-          </Text>
-        </View>
-      </>
-    ) : (
-      <>
-        <View className="flex-1 items-start justify-start">
-          <Text className="text-base text-gray-500 italic">No break</Text>
-        </View>
-        <View className="flex-1 items-start justify-start">
-          <Text className="text-base text-gray-500 italic">No break</Text>
-        </View>
-      </>
-    )}
+
+    {/* Break */}
     <View className="flex-1">
-      <Text className="text-base text-gray-400">{item.date}</Text>
-      <Text className="font-semibold text-lg text-white">{item.clockOut}</Text>
+      {item.breakInitiated !== "N/A" ? (
+        <>
+          <Text style={{ fontSize: 11, color: colors.teal }}>{item.breakInitiated}</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>– {item.breakEnded}</Text>
+        </>
+      ) : (
+        <Text style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic' }}>No break</Text>
+      )}
     </View>
+
+    {/* Clock Out */}
     <View className="flex-1">
-      <Text className="text-base text-gray-400 invisible">Duration</Text>
-      <Text className="font-semibold text-lg text-white">{item.duration}</Text>
+      <Text style={{ fontSize: 11, color: colors.muted }}>{item.date}</Text>
+      <Text className="text-sm font-semibold text-heading">{item.clockOut}</Text>
+    </View>
+
+    {/* Duration */}
+    <View className="flex-1">
+      <Text className="text-sm font-semibold text-heading">{item.duration}</Text>
     </View>
   </View>
 );
-
-// --- Main HistoryTab Component ---
 
 const HistoryTab = () => {
   const { shiftHistory } = useTimeclockStore();
 
   return (
-    // The FlatList component is perfect for rendering tabular data
-    <View className="flex-1 rounded-lg">
-      <FlatList
-        data={shiftHistory}
-        keyExtractor={(item) => item.id}
-        // The ListHeaderComponent renders our custom table header once
-        ListHeaderComponent={<HistoryTableHeader />}
-        // renderItem renders each row of the table
-        renderItem={({ item }) => <HistoryTableRow item={item} />}
-      />
+    <View className="flex-1">
+      <View className="bg-panel rounded-xl border border-border overflow-hidden">
+        <FlatList
+          data={shiftHistory}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={<HistoryTableHeader />}
+          renderItem={({ item, index }) => <HistoryTableRow item={item} index={index} />}
+          ListEmptyComponent={
+            <View className="items-center py-10">
+              <Clock size={32} color={colors.muted} />
+              <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>No shift history yet.</Text>
+            </View>
+          }
+          scrollEnabled={false}
+        />
+      </View>
     </View>
   );
 };

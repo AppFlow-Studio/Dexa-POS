@@ -22,10 +22,10 @@ import {
 
 const styles = StyleSheet.create({
   container: {
-    width: "23%",
+    width: "19%",
     aspectRatio: 1,
-    borderRadius: 16,
-    marginBottom: 8,
+    borderRadius: 12,
+    marginBottom: 4,
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: `${colors.teal}30`,
@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
   },
   containerNoImage: {
     aspectRatio: undefined,
-    height: 80,
+    height: 64,
   },
   // Modifier corner triangle
   modifierCorner: {
@@ -45,8 +45,8 @@ const styles = StyleSheet.create({
     right: 0,
     width: 0,
     height: 0,
-    borderTopWidth: 24,
-    borderLeftWidth: 24,
+    borderTopWidth: 18,
+    borderLeftWidth: 18,
     borderTopColor: colors.teal,
     borderLeftColor: "transparent",
     zIndex: 10,
@@ -69,15 +69,15 @@ const styles = StyleSheet.create({
   },
   // Content area
   contentContainer: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 2,
   },
   nameText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "600",
     color: colors.heading,
-    lineHeight: 17,
+    lineHeight: 15,
   },
   // Price row: card price left, cash pill right
   priceRow: {
@@ -87,12 +87,12 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   cardPrice: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: "700",
     color: colors.heading,
   },
   cardPriceCustom: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: "700",
     color: colors.warning,
   },
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
 });
 
 const PlaceholderIcon = React.memo(() => (
-  <Utensils color={`${colors.label}60`} size={22} />
+  <Utensils color={`${colors.label}60`} size={16} />
 ));
 PlaceholderIcon.displayName = "PlaceholderIcon";
 
@@ -253,7 +253,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
             {item.cashPrice && (
               <View style={styles.cashPill}>
-                <Text style={styles.cashLabel}>Cash</Text>
                 <Text style={styles.cashAmount}>${item.cashPrice.toFixed(2)}</Text>
               </View>
             )}

@@ -11,20 +11,12 @@ import { colors } from "@/lib/theme";
 import {
   ArrowLeftRight,
   Bell,
-  ChevronRight,
   Coffee,
   LogOut,
-  Plus,
   User,
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
-import Animated, {
-  Layout,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import { Text, TouchableOpacity, View } from "react-native";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
 import PinInputModal from "./timeclock/PinInputModal";
@@ -194,114 +186,113 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     router.replace("/pin-login");
   };
 
-  // For active employee, show dropdown menu
+  const initials = employee.fullName
+    .split(" ")
+    .map((n: string) => n.charAt(0))
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  // For active employee, show teal circle + name, circle opens dropdown
   if (isActive) {
     return (
       <>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <TouchableOpacity className="flex-row items-center p-1.5 rounded-full border bg-blue-600 border-blue-400">
-              <View className="w-5 h-5 bg-blue-500 rounded-full items-center justify-center">
-                <Text className="text-white text-xs font-bold">
-                  {employee.fullName
-                    .split(" ")
-                    .map((name: string) => name.charAt(0))
-                    .join("")
-                    .toUpperCase()
-                    .slice(0, 2)}
-                </Text>
-              </View>
+          <View className="flex-row items-center gap-2">
+            {/* Teal circle — tapping opens dropdown */}
+            <DropdownMenuTrigger style={{ width: 30, height: 30, borderRadius: 21, backgroundColor: '#2DD4BF', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#0C0F1A', fontSize: 13, fontWeight: 'bold' }}>{initials}</Text>
               {unreadCount > 0 && (
-                <View className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-blue-600" />
+                <View style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' }} />
               )}
-              <View className="mx-2">
-                <Text className="font-semibold text-white">
-                  {employee.fullName.split(" ")[0]}
-                </Text>
-                {isOnBreak && session.breakStartTime && (
-                  <BreakCountdown startTime={session.breakStartTime} />
-                )}
-              </View>
-            </TouchableOpacity>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-[300px] bg-panel border border-border rounded-2xl shadow-2xl mt-4">
-            {/* Header row like the design */}
-            <View className="flex-row items-center px-4 py-4">
-              <View className="w-10 h-10 bg-blue-600 rounded-full items-center justify-center mr-3">
-                <Text className="text-white font-bold">
-                  {employee.fullName
-                    .split(" ")
-                    .map((n) => n.charAt(0))
-                    .join("")
-                    .toUpperCase()
-                    .slice(0, 2)}
-                </Text>
-              </View>
-              <Text
-                className="text-white text-xl font-semibold flex-1"
-                numberOfLines={1}
-              >
-                {employee.fullName}
+            </DropdownMenuTrigger>
+            {/* Name — non-interactive */}
+            <View>
+              <Text className="font-medium text-white text-xs leading-tight">
+                {employee.fullName.split(" ")[0]}
               </Text>
-              <View className="bg-[#0e3a63] px-3 py-1 rounded-full">
-                <Text className="text-[#8bc1ff] text-xs font-semibold">
-                  {isOnBreak ? "On Break" : "On Duty"}
-                </Text>
+              {isOnBreak && session.breakStartTime && (
+                <BreakCountdown startTime={session.breakStartTime} />
+              )}
+            </View>
+          </View>
+
+          <DropdownMenuContent className="w-[300px] bg-panel border border-border rounded-2xl shadow-2xl mt-3 overflow-hidden p-0">
+            {/* Hero header */}
+            <View style={{ backgroundColor: '#0C0F1A' }} className="px-5 pt-5 pb-4">
+              <View className="flex-row items-center gap-3">
+                <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: '#2DD4BF', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#0C0F1A', fontSize: 15, fontWeight: 'bold' }}>{initials}</Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white text-base font-bold" numberOfLines={1}>{employee.fullName}</Text>
+                  <View className={`mt-1 self-start px-2 py-0.5 rounded-full ${isOnBreak ? "bg-amber-500/20" : "bg-teal-500/20"}`}>
+                    <Text className={`text-xs font-semibold ${isOnBreak ? "text-amber-400" : "text-teal-400"}`}>
+                      {isOnBreak ? "⏸ On Break" : "● On Duty"}
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
 
-            {/* Items */}
-            <View className="px-4">
-              <DropdownMenuItem
-                onPress={() => router.push("/my-profile")}
-                className="py-3"
-              >
-                <User className="mr-3 h-5 w-5" color="#cbd5e1" />
-                <Text className="text-white text-base">My Profile</Text>
+            {/* Divider */}
+            <View className="h-px bg-border" />
+
+            {/* Menu items */}
+            <View className="py-1.5">
+              <DropdownMenuItem onPress={() => router.push("/my-profile")} className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5">
+                <View className="w-8 h-8 bg-white/5 rounded-lg items-center justify-center">
+                  <User size={16} color={colors.label} />
+                </View>
+                <Text className="text-heading text-sm font-medium flex-1">My Profile</Text>
               </DropdownMenuItem>
 
-              <DropdownMenuItem
-                onPress={handleOpenNotificationPanel}
-                className="py-3"
-              >
-                <View>
-                  <Bell size={24} color={colors.label} />
+              <DropdownMenuItem onPress={handleOpenNotificationPanel} className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5">
+                <View className="w-8 h-8 bg-white/5 rounded-lg items-center justify-center">
+                  <Bell size={16} color={colors.label} />
                   {unreadCount > 0 && (
-                    <View className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 rounded-full items-center justify-center border-2 border-surface">
-                      <Text className="text-white text-xs font-bold">
-                        {unreadCount}
-                      </Text>
+                    <View className="absolute -top-1 -right-1 w-4 h-4 bg-teal-500 rounded-full items-center justify-center">
+                      <Text style={{ color: '#0C0F1A', fontSize: 9, fontWeight: 'bold' }}>{unreadCount}</Text>
                     </View>
                   )}
                 </View>
-                <Text className="text-white text-base">Notification</Text>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onPress={() => setPinModalOpen(true)}
-                className="py-3"
-              >
-                <ArrowLeftRight className="mr-3 h-5 w-5" color="#cbd5e1" />
-                <Text className="text-white text-base">Switch Account</Text>
+                <Text className="text-heading text-sm font-medium flex-1">Notifications</Text>
+                {unreadCount > 0 && (
+                  <View className="bg-teal-500/20 px-2 py-0.5 rounded-full">
+                    <Text className="text-teal-400 text-xs font-bold">{unreadCount}</Text>
+                  </View>
+                )}
               </DropdownMenuItem>
 
-              <View className="h-px bg-border my-2" />
+              <DropdownMenuItem onPress={() => setPinModalOpen(true)} className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5">
+                <View className="w-8 h-8 bg-white/5 rounded-lg items-center justify-center">
+                  <ArrowLeftRight size={16} color={colors.label} />
+                </View>
+                <Text className="text-heading text-sm font-medium flex-1">Switch Account</Text>
+              </DropdownMenuItem>
+
+              <View className="h-px bg-border mx-4 my-1" />
 
               <DropdownMenuItem
                 onPress={handleStartBreak}
                 disabled={!isClockedIn || isOnBreak}
-                className="py-3"
+                className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5"
               >
-                <Coffee className="mr-3 h-5 w-5" color="#cbd5e1" />
-                <Text className="text-white text-base">
+                <View className={`w-8 h-8 rounded-lg items-center justify-center ${!isClockedIn || isOnBreak ? "bg-white/5" : "bg-amber-500/10"}`}>
+                  <Coffee size={16} color={!isClockedIn || isOnBreak ? colors.muted : colors.warning} />
+                </View>
+                <Text className={`text-sm font-medium flex-1 ${!isClockedIn || isOnBreak ? "text-muted" : "text-heading"}`}>
                   {isOnBreak ? "On Break" : "Start Break"}
                 </Text>
               </DropdownMenuItem>
 
-              <View className="h-px bg-border my-2" />
+              <View className="h-px bg-border mx-4 my-1" />
 
-              <DropdownMenuItem onPress={handleLogout} className="py-3">
-                <LogOut className="mr-3 h-5 w-5" color={colors.danger} />
-                <Text className="text-red-400 text-base">Sign out</Text>
+              <DropdownMenuItem onPress={handleLogout} className="px-4 py-3 flex-row items-center gap-3 active:bg-white/5">
+                <View className="w-8 h-8 bg-red-500/10 rounded-lg items-center justify-center">
+                  <LogOut size={16} color={colors.danger} />
+                </View>
+                <Text className="text-red-400 text-sm font-medium flex-1">Sign out</Text>
               </DropdownMenuItem>
             </View>
           </DropdownMenuContent>
@@ -325,44 +316,24 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           onConfirm={handleBreakPinConfirm}
           onCancel={() => setBreakPinModalOpen(false)}
         />
-        {/* <NotificationBottomSheet
-          bottomSheetRef={notificationSheetRef}
-          onClose={() => notificationSheetRef.current?.close()}
-        /> */}
       </>
     );
   }
 
-  // For non-active employees, show regular touchable
+  // For non-active employees, show teal circle + name
   return (
     <>
-      <TouchableOpacity
-        onPress={handlePress}
-        className={`flex-row items-center p-1.5 rounded-full border ${
-          isOnBreak
-            ? "bg-yellow-900/50 border-yellow-600"
-            : "bg-gray-700 border-gray-600"
-        }`}
-      >
-        <View
-          className={`w-8 h-8 rounded-full items-center justify-center ${
-            isOnBreak ? "bg-yellow-500" : "bg-gray-500"
-          }`}
-        >
-          <Text className="text-white text-sm font-bold">
-            {employee.fullName
-              .split(" ")
-              .map((name: string) => name.charAt(0))
-              .join("")
-              .toUpperCase()
-              .slice(0, 2)}
-          </Text>
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.75} className="flex-row items-center gap-2">
+        <View className="relative">
+          <View className={`w-7 h-7 rounded-full items-center justify-center ${isOnBreak ? "bg-amber-500/70" : "bg-teal-500/40"}`}>
+            <Text className="text-white text-[10px] font-bold">{initials}</Text>
+          </View>
+          {unreadCount > 0 && (
+            <View className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+          )}
         </View>
-        {unreadCount > 0 && (
-          <View className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-700" />
-        )}
-        <View className="mx-2">
-          <Text className="font-semibold text-gray-300">
+        <View>
+          <Text className="font-medium text-xs text-label">
             {employee.fullName.split(" ")[0]}
           </Text>
           {isOnBreak && session.breakStartTime && (
@@ -390,19 +361,6 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 const SessionDock = () => {
   const { sessions, activeEmployeeId } = useTimeclockStore();
   const [isSwitchModalOpen, setSwitchModalOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(true);
-
-  // Chevron rotation animation
-  const rotation = useSharedValue(180); // Start at 180 since expanded by default
-
-  const rotateStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
-
-  const toggleExpand = () => {
-    setIsExpanded(!isExpanded);
-    rotation.value = withTiming(isExpanded ? 0 : 180, { duration: 200 });
-  };
 
   const activeSessionId = Object.keys(sessions).find(
     (id) => sessions[id].employeeId === activeEmployeeId
@@ -413,47 +371,12 @@ const SessionDock = () => {
 
   return (
     <>
-      <Animated.View
-        layout={Layout.duration(220)}
-        className="flex-row items-center bg-surface rounded-full border border-gray-700 overflow-hidden"
-      >
-        {isExpanded ? (
-          <>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="gap-2 items-center"
-            >
-              {activeSessionId && <SessionChip sessionId={activeSessionId} />}
-              {otherSessionIds.map((id) => (
-                <SessionChip key={id} sessionId={id} />
-              ))}
-            </ScrollView>
-            <TouchableOpacity
-              onPress={() => setSwitchModalOpen(true)}
-              className="p-0.5 mx-1 bg-gray-600 rounded-full"
-            >
-              <Plus size={16} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={toggleExpand} className="p-2">
-              <Animated.View style={rotateStyle}>
-                <ChevronRight size={16} color="white" />
-              </Animated.View>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <View className="p-1">
-              {activeSessionId && <SessionChip sessionId={activeSessionId} />}
-            </View>
-            <TouchableOpacity onPress={toggleExpand} className="p-2">
-              <Animated.View style={rotateStyle}>
-                <ChevronRight size={16} color="white" />
-              </Animated.View>
-            </TouchableOpacity>
-          </>
-        )}
-      </Animated.View>
+      <View className="flex-row items-center gap-3">
+        {activeSessionId && <SessionChip sessionId={activeSessionId} />}
+        {otherSessionIds.map((id) => (
+          <SessionChip key={id} sessionId={id} />
+        ))}
+      </View>
       <SwitchAccountModal
         isOpen={isSwitchModalOpen}
         onClose={() => setSwitchModalOpen(false)}

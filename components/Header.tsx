@@ -183,18 +183,18 @@ const Header = () => {
   }, [globalParams.returnTo, cancelAndRemoveDraft, closeModifierSidebar, pathname, router]);
 
   return (
-    <View className="flex-row justify-between items-center border-b border-border pb-2">
+    <View className="flex-row justify-between items-center py-1">
       {/* Left Section */}
-      <View className="flex-row items-center flex-shrink-0">
+      <View className="flex-row items-center flex-shrink-0 gap-2">
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBackPress}
-            className="p-2 mr-3 bg-panel rounded-lg"
+            className="p-1.5 rounded-lg bg-teal-500/10"
           >
-            <ArrowLeft color={colors.heading} size={20} />
+            <ArrowLeft color={colors.teal} size={16} />
           </TouchableOpacity>
         )}
-        <Text className="text-2xl font-bold text-white">{title}</Text>
+        <Text className="text-base font-semibold text-heading tracking-wide">{title}</Text>
       </View>
 
       {/* Center Section - Network Status Badge */}

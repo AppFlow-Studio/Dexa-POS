@@ -5,8 +5,8 @@ import { Text, View } from "react-native";
 
 const DetailRow = ({ label, value }: { label: string; value: string }) => (
   <View className="mb-3">
-    <Text className="text-lg text-accent-100 mb-0.5">{label}</Text>
-    <Text className="text-xl font-medium text-accent-100">{value}</Text>
+    <Text className="text-xs text-label uppercase tracking-wider mb-1">{label}</Text>
+    <Text className="text-sm font-medium text-heading">{value}</Text>
   </View>
 );
 

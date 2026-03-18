@@ -299,8 +299,8 @@ const OrderDetailsComponent: React.FC = () => {
           >
             {customerName ? (
               <>
-                <User color={colors.label} size={24} />
-                <View className="ml-3 flex-1">
+                <User color={colors.label} size={16} />
+                <View className="ml-2 flex-1">
                   <Text
                     className="text-sm font-semibold text-white overflow-ellipsis"
                     numberOfLines={1}
@@ -313,7 +313,7 @@ const OrderDetailsComponent: React.FC = () => {
                     </Text>
                   )}
                 </View>
-                <Edit3 color={colors.info} size={24} />
+                <Edit3 color={colors.info} size={14} />
               </>
             ) : (
               <>

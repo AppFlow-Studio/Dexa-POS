@@ -9,7 +9,7 @@ import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { formatAddress } from "../bill/CustomerSheet";
 import { GuestCountModal } from "../tables/GuestCountModal";
 import TableLayoutView from "../tables/TableLayoutView";
@@ -275,11 +275,17 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
               {currentOrderType === "delivery" && (
                 <View className="gap-y-1.5">
                   <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.label }}>Delivery Address</Text>
-                  <View className="px-4 py-3 rounded-xl border" style={{ backgroundColor: colors.panel, borderColor: colors.border }}>
-                    <Text className="text-sm" style={{ color: activeOrder?.delivery_address ? colors.heading : colors.muted }}>
-                      {formatAddress(activeOrder?.delivery_address) || "No address set"}
-                    </Text>
-                  </View>
+                  <TextInput
+                    className="px-4 py-3 rounded-xl border text-sm"
+                    style={{ backgroundColor: colors.panel, borderColor: colors.border, color: colors.heading }}
+                    placeholder="Enter delivery address"
+                    placeholderTextColor={colors.muted}
+                    value={formatAddress(activeOrder?.delivery_address) || ""}
+                    onChangeText={(text) => {
+                      if (activeOrderId) updateActiveOrderDetails({ delivery_address: text });
+                    }}
+                    multiline
+                  />
                 </View>
               )}
             </View>
