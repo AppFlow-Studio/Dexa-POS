@@ -8,7 +8,7 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { ChevronDown, ChevronRight } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
-import { FlatList, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native'
 import Animated, { Easing, Layout } from 'react-native-reanimated'
 
 interface SectionProps {
@@ -42,22 +42,73 @@ const Section: React.FC<SectionProps> = ({ title, isOpen, onToggle, children }) 
   </Animated.View>
 )
 
-const FilterPill: React.FC<{ label: string; active: boolean; onPress: () => void }> = ({ label, active, onPress }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={{
-      paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
-      borderWidth: 1,
-      backgroundColor: active ? colors.teal + '20' : colors.screen,
-      borderColor: active ? colors.teal + '50' : colors.border,
-      marginRight: 6,
-    }}
-  >
-    <Text style={{ fontSize: 11, fontWeight: '600', color: active ? colors.teal : colors.label }}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-)
+interface InlineSelectProps<T extends string> {
+  label: string
+  value: T | null
+  options: { value: T; label: string }[]
+  onSelect: (value: T | null) => void
+  nullable?: boolean
+}
+
+function InlineSelect<T extends string>({ label, value, options, onSelect, nullable = true }: InlineSelectProps<T>) {
+  const [open, setOpen] = useState(false)
+  const selectedLabel = value ? options.find(o => o.value === value)?.label ?? value : null
+
+  return (
+    <View style={{ flex: 1 }}>
+      <TouchableOpacity
+        onPress={() => setOpen(o => !o)}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+          borderWidth: 1,
+          backgroundColor: value ? colors.teal + '15' : colors.card,
+          borderColor: value ? colors.teal + '40' : colors.border,
+        }}
+      >
+        <Text style={{ fontSize: 11, fontWeight: '600', color: value ? colors.teal : colors.muted, flex: 1 }} numberOfLines={1}>
+          {selectedLabel ?? label}
+        </Text>
+        <ChevronDown size={12} color={value ? colors.teal : colors.muted} style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }} />
+      </TouchableOpacity>
+
+      {open && (
+        <View style={{
+          position: 'absolute', top: 34, left: 0, right: 0, zIndex: 100,
+          backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border,
+          borderRadius: 8, overflow: 'hidden',
+        }}>
+          {nullable && (
+            <TouchableOpacity
+              onPress={() => { onSelect(null); setOpen(false) }}
+              style={{
+                paddingHorizontal: 12, paddingVertical: 8,
+                backgroundColor: !value ? colors.teal + '15' : 'transparent',
+                borderBottomWidth: 1, borderBottomColor: colors.border,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '600', color: !value ? colors.teal : colors.label }}>All</Text>
+            </TouchableOpacity>
+          )}
+          {options.map(opt => (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => { onSelect(opt.value); setOpen(false) }}
+              style={{
+                paddingHorizontal: 12, paddingVertical: 8,
+                backgroundColor: value === opt.value ? colors.teal + '15' : 'transparent',
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '600', color: value === opt.value ? colors.teal : colors.label }} numberOfLines={1}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  )
+}
 
 const TablesPanel: React.FC = () => {
   const floorPlans = useFloorPlanStore(s => s.floorPlans)
@@ -68,6 +119,9 @@ const TablesPanel: React.FC = () => {
   const [sections, setSections] = useState<{ [key: string]: boolean }>({})
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
+  const [expandedTableIds, setExpandedTableIds] = useState<Record<string, boolean>>({})
+  type SortMode = 'name' | 'status' | 'duration'
+  const [sortMode, setSortMode] = useState<SortMode>('name')
 
   const activePlanName = useMemo(() => {
     return floorPlans.find(p => p.id === activeFloorPlanId)?.name || 'Dining Area'
@@ -102,6 +156,10 @@ const TablesPanel: React.FC = () => {
     return { uniqueSections: Array.from(sectionSet), uniqueServers: Array.from(serverSet), serverNames: nameMap }
   }, [activeTables, getEmployeeByStaffId, liveSessions])
 
+  const STATUS_ORDER: Record<string, number> = {
+    ordered: 0, seated: 1, served: 2, check_presented: 3, paid: 4, cleaning: 5, available: 6,
+  }
+
   const displayTables = useMemo(() => {
     const seenSessionIds = new Set<string>()
     let filtered = activeTables.filter(table => {
@@ -120,8 +178,24 @@ const TablesPanel: React.FC = () => {
         return session?.server_staff_id === selectedServerId
       })
     }
+    filtered = [...filtered].sort((a, b) => {
+      const sessionA = liveSessions[a.id] ?? a.session
+      const sessionB = liveSessions[b.id] ?? b.session
+      if (sortMode === 'name') return a.name.localeCompare(b.name)
+      if (sortMode === 'status') {
+        const sa = STATUS_ORDER[sessionA?.status?.toLowerCase() ?? ''] ?? 99
+        const sb = STATUS_ORDER[sessionB?.status?.toLowerCase() ?? ''] ?? 99
+        return sa - sb
+      }
+      if (sortMode === 'duration') {
+        const ta = sessionA?.seated_at ? new Date(sessionA.seated_at).getTime() : Infinity
+        const tb = sessionB?.seated_at ? new Date(sessionB.seated_at).getTime() : Infinity
+        return ta - tb // oldest first
+      }
+      return 0
+    })
     return filtered
-  }, [activeTables, selectedSectionId, selectedServerId, liveSessions])
+  }, [activeTables, selectedSectionId, selectedServerId, liveSessions, sortMode])
 
   const occupiedTables = useMemo(() => {
     const activeStatuses = ['seated', 'ordered', 'served', 'check_presented', 'paid']
@@ -157,10 +231,20 @@ const TablesPanel: React.FC = () => {
   }, [activeFloorPlanId])
 
   const noopFn = useCallback(() => {}, [])
+  const toggleTableExpand = useCallback((tableId: string) => {
+    setExpandedTableIds(prev => ({ ...prev, [tableId]: !prev[tableId] }))
+  }, [])
   const renderTableItem = useCallback(
     ({ item }: { item: FloorPlanObject }) => (
-      <TableListItem key={item.id} table={item} isExpanded={false} onToggleExpand={noopFn} onNavigateToOrder={noopFn} handleTablePress={noopFn} />
-    ), [noopFn]
+      <TableListItem
+        key={item.id}
+        table={item}
+        isExpanded={expandedTableIds[item.id] || false}
+        onToggleExpand={() => toggleTableExpand(item.id)}
+        onNavigateToOrder={noopFn}
+        handleTablePress={() => toggleTableExpand(item.id)}
+      />
+    ), [expandedTableIds, noopFn, toggleTableExpand]
   )
   const keyExtractor = useCallback((item: FloorPlanObject) => item.id, [])
 
@@ -177,47 +261,34 @@ const TablesPanel: React.FC = () => {
         </View>
       </View>
 
-      {/* Filters */}
-      {(uniqueSections.length > 0 || uniqueServers.length > 0) && (
-        <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 10 }}>
-          {uniqueSections.length > 0 && (
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                Section
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <FilterPill label="All" active={selectedSectionId === null} onPress={() => setSelectedSectionId(null)} />
-                {uniqueSections.map(sectionId => (
-                  <FilterPill
-                    key={sectionId}
-                    label={sectionsById[sectionId]?.name || sectionId.substring(0, 6)}
-                    active={selectedSectionId === sectionId}
-                    onPress={() => setSelectedSectionId(sectionId)}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          )}
-          {uniqueServers.length > 0 && (
-            <View>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                Server
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <FilterPill label="All" active={selectedServerId === null} onPress={() => setSelectedServerId(null)} />
-                {uniqueServers.map(serverId => (
-                  <FilterPill
-                    key={serverId}
-                    label={serverNames[serverId] || serverId.substring(0, 8)}
-                    active={selectedServerId === serverId}
-                    onPress={() => setSelectedServerId(serverId)}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          )}
+      {/* Filters + Sort */}
+      <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 6, zIndex: 10 }}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <InlineSelect
+            label="Section"
+            value={selectedSectionId}
+            options={uniqueSections.map(id => ({ value: id, label: sectionsById[id]?.name || id.substring(0, 6) }))}
+            onSelect={setSelectedSectionId}
+          />
+          <InlineSelect
+            label="Server"
+            value={selectedServerId}
+            options={uniqueServers.map(id => ({ value: id, label: serverNames[id] || id.substring(0, 8) }))}
+            onSelect={setSelectedServerId}
+          />
+          <InlineSelect
+            label="Sort"
+            value={sortMode}
+            options={[
+              { value: 'name', label: 'Name' },
+              { value: 'status', label: 'Status' },
+              { value: 'duration', label: 'Duration' },
+            ]}
+            onSelect={v => v && setSortMode(v)}
+            nullable={false}
+          />
         </View>
-      )}
+      </View>
 
       {/* Table list */}
       <View style={{ flex: 1, padding: 8 }}>
@@ -231,7 +302,7 @@ const TablesPanel: React.FC = () => {
               initialNumToRender={8}
               maxToRenderPerBatch={5}
               windowSize={3}
-              removeClippedSubviews={true}
+              removeClippedSubviews={false}
               refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />
               }

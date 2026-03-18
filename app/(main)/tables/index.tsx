@@ -436,7 +436,8 @@ const TablesScreen = () => {
     // Auto-resolve server from section assignment
     const sectionId = freshTable?.section_id
     const assignedServerId = sectionId
-      ? useFloorPlanStore.getState().sectionsById[sectionId]?.assigned_staff_id ?? undefined
+      ? useFloorPlanStore.getState().sectionsById[sectionId]
+          ?.assigned_staff_id ?? undefined
       : undefined
 
     const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId]

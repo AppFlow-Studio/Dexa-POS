@@ -34,41 +34,115 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      {/* Use a single dark background for the entire modal */}
-      <DialogContent className="p-6 rounded-2xl bg-panel border border-gray-700 w-[480px]">
-        <View className="items-center">
-          {/* Use dark-theme friendly colors for the icon */}
-          {isDestructive && (
-            <View className="w-16 h-16 bg-red-900/30 rounded-full items-center justify-center border-4 border-red-500/30 mb-4">
-              <AlertTriangle color={colors.danger} size={36} />
-            </View>
-          )}
+      <DialogContent
+        style={{
+          padding: 18,
+          borderRadius: 16,
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          width: 440,
+        }}
+      >
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {isDestructive ? (
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 8,
+                  backgroundColor: colors.danger + "15",
+                  borderWidth: 1,
+                  borderColor: colors.danger + "30",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <AlertTriangle color={colors.danger} size={18} />
+              </View>
+            ) : (
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + "15",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "30",
+                }}
+              />
+            )}
+            <DialogHeader style={{ flex: 1 }}>
+              <DialogTitle
+                style={{
+                  fontSize: 16,
+                  fontWeight: "700",
+                  color: colors.heading,
+                }}
+              >
+                {title}
+              </DialogTitle>
+              <DialogDescription
+                style={{
+                  color: colors.label,
+                  marginTop: 6,
+                  fontSize: 13,
+                }}
+              >
+                {description}
+              </DialogDescription>
+            </DialogHeader>
+          </View>
 
-          <DialogHeader className="items-center">
-            <DialogTitle className="text-2xl font-bold text-white text-center">
-              {title}
-            </DialogTitle>
-            <DialogDescription className="text-center text-gray-400 mt-2 text-lg">
-              {description}
-            </DialogDescription>
-          </DialogHeader>
-
-          <DialogFooter className="pt-6 flex-row gap-4 w-full">
+          <DialogFooter style={{ flexDirection: "row", gap: 10 }}>
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 border border-gray-600 rounded-lg bg-screen"
+              style={{
+                flex: 1,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                backgroundColor: "transparent",
+              }}
             >
-              <Text className="font-bold text-lg text-gray-300 text-center">
+              <Text
+                style={{
+                  fontWeight: "600",
+                  fontSize: 13,
+                  color: colors.label,
+                  textAlign: "center",
+                }}
+              >
                 Cancel
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onConfirm}
-              className={`flex-1 py-3 rounded-lg ${
-                isDestructive ? "bg-red-600" : "bg-teal"
-              }`}
+              style={{
+                flex: 1,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: isDestructive
+                  ? colors.danger + "30"
+                  : colors.teal + "50",
+                backgroundColor: isDestructive
+                  ? colors.danger + "15"
+                  : colors.teal + "20",
+              }}
             >
-              <Text className="font-bold text-white text-lg text-center">
+              <Text
+                style={{
+                  fontWeight: "600",
+                  fontSize: 13,
+                  color: isDestructive ? colors.danger : colors.teal,
+                  textAlign: "center",
+                }}
+              >
                 {confirmText}
               </Text>
             </TouchableOpacity>

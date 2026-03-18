@@ -137,21 +137,21 @@ const QuickActionButton: React.FC<{
       onPress={onPress}
       disabled={disabled}
       style={{
-        paddingHorizontal: 10,
-        paddingVertical: 7,
-        borderRadius: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 7,
         flexDirection: "row",
         alignItems: "center",
-        gap: 5,
+        gap: 4,
         backgroundColor: bg,
         borderWidth: 1,
         borderColor: border,
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      {label.startsWith("Send") && <Send size={13} color={textColor} />}
-      {label === "Open Order" && <Pencil size={13} color={textColor} />}
-      <Text style={{ fontSize: 12, fontWeight: "600", color: textColor }}>{label}</Text>
+      {label.startsWith("Send") && <Send size={11} color={textColor} />}
+      {label === "Open Order" && <Pencil size={11} color={textColor} />}
+      <Text style={{ fontSize: 11, fontWeight: "600", color: textColor }}>{label}</Text>
     </TouchableOpacity>
   );
 };
@@ -454,6 +454,7 @@ const ExpandedView: React.FC<{
         backgroundColor: colors.screen,
         borderRadius: 8,
         padding: 10,
+        overflow: "visible",
       }}
     >
       {/* Seated time */}
@@ -581,7 +582,7 @@ const ExpandedView: React.FC<{
       </View>
 
       {/* Action buttons */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
         <QuickActionButton
           label="Open Order"
           onPress={onNavigateToOrder}
@@ -706,7 +707,7 @@ const TableListItem: React.FC<{
   return (
     <Animated.View
       layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-      style={{ marginBottom: 4, overflow: "hidden" }}
+      style={{ marginBottom: 4, overflow: isExpanded ? "visible" : "hidden" }}
     >
       <TouchableOpacity
         onPress={handlePress}
@@ -718,7 +719,7 @@ const TableListItem: React.FC<{
           borderColor: isExpanded ? colors.teal + "40" : colors.border,
           borderLeftWidth: 3,
           borderLeftColor: accentColor,
-          overflow: "hidden",
+          overflow: isExpanded ? "visible" : "hidden",
         }}
       >
         {/* Collapsed row */}
