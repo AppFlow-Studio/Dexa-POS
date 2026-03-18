@@ -44,24 +44,27 @@ const formatDuration = (milliseconds: number): string => {
 }
 
 const getStatusAccentColor = (status: string, isOvertime: boolean): string => {
-  if (isOvertime) return colors.warning
+  if (isOvertime) return colors.tableOvertime
   switch (status.toLowerCase()) {
     case 'available':
-      return colors.success
+      return colors.tableAvailable
     case 'seated':
-      return colors.info
+      return colors.tableSeated
     case 'ordered':
-      return colors.warning
+      return colors.tableOrdered
     case 'served':
-      return colors.teal
+      return colors.tableServed
     case 'check_presented':
-      return '#8B5CF6'
+      return colors.tableCheckPresented
     case 'paid':
-      return colors.success
+      return colors.tablePaid
     case 'cleaning':
-      return colors.muted
+      return colors.tableCleaning
+    case 'blocked':
+    case 'not_in_service':
+      return colors.tableNotInService
     default:
-      return colors.border
+      return colors.tableInUse
   }
 }
 

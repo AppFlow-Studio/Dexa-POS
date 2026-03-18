@@ -210,7 +210,7 @@ const TablesPanel: React.FC = () => {
     Record<string, boolean>
   >({})
   type SortMode = 'name' | 'status' | 'duration'
-  const [sortMode, setSortMode] = useState<SortMode>('name')
+  const [sortMode, setSortMode] = useState<SortMode>('status')
 
   const activePlanName = useMemo(() => {
     return (
