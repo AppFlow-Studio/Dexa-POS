@@ -848,7 +848,14 @@ const TableListItem: React.FC<{
 
             {/* Total + duration stack */}
             {showActiveDetails && (
-              <View style={{ alignItems: 'center', justifyContent: 'center', minWidth: 48, gap: 2 }}>
+              <View
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: 48,
+                  gap: 2
+                }}
+              >
                 {tableData.total > 0 && (
                   <Text
                     style={{
