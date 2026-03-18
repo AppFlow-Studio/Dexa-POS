@@ -1,7 +1,8 @@
+import { colors } from "@/lib/theme";
 import { Delete, X } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-// Define the types of actions the numpad can perform
+
 export type NumpadAction = "clear" | "backspace";
 export type NumpadInput = number | NumpadAction;
 
@@ -12,16 +13,30 @@ interface PinNumpadProps {
 const PinButton = ({
   value,
   onPress,
+  isAction,
 }: {
   value: React.ReactNode;
   onPress: () => void;
+  isAction?: boolean;
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className="w-32 h-16 bg-screen border border-gray-700 rounded-xl items-center justify-center"
+    activeOpacity={0.7}
+    style={{
+      width: 112,
+      height: 56,
+      backgroundColor: isAction ? colors.screen : colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+    }}
   >
     {typeof value === "string" ? (
-      <Text className="text-2xl font-bold text-white">{value}</Text>
+      <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading }}>
+        {value}
+      </Text>
     ) : (
       value
     )}
@@ -29,34 +44,24 @@ const PinButton = ({
 );
 
 const PinNumpad: React.FC<PinNumpadProps> = ({ onKeyPress }) => {
-  const handlePress = (input: NumpadInput) => {
-    onKeyPress(input);
-  };
-
   const numpadLayout = [
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    { icon: <X color="white" size={20} />, action: "clear" },
+    "1", "2", "3",
+    "4", "5", "6",
+    "7", "8", "9",
+    { icon: <X color={colors.muted} size={18} />, action: "clear" },
     "0",
-    { icon: <Delete color="white" size={20} />, action: "backspace" },
+    { icon: <Delete color={colors.label} size={18} />, action: "backspace" },
   ];
 
   return (
-    <View className="flex-row flex-wrap justify-center gap-4 max-w-[460px] mx-auto">
+    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 10, maxWidth: 370, alignSelf: "center" }}>
       {numpadLayout.map((item, index) => {
         if (typeof item === "string") {
           return (
             <PinButton
               key={index}
               value={item}
-              onPress={() => handlePress(parseInt(item, 10))}
+              onPress={() => onKeyPress(parseInt(item, 10))}
             />
           );
         }
@@ -64,7 +69,8 @@ const PinNumpad: React.FC<PinNumpadProps> = ({ onKeyPress }) => {
           <PinButton
             key={index}
             value={item.icon}
-            onPress={() => handlePress(item.action as NumpadAction)}
+            isAction
+            onPress={() => onKeyPress(item.action as NumpadAction)}
           />
         );
       })}

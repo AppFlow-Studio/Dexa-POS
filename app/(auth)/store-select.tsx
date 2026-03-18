@@ -1,5 +1,5 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
-import { spinnerColor } from "@/lib/theme";
+import { colors, spinnerColor } from "@/lib/theme";
 import { clearLocationData } from "@/services/cacheService";
 import {
   SelectedLocation,
@@ -8,6 +8,7 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import { MapPin, Store } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,7 +18,6 @@ import {
   View,
 } from "react-native";
 
-// Type for location from database
 interface Location {
   id: string;
   merchant_id: string;
@@ -35,43 +35,81 @@ interface StoreSelectItemProps {
   onPress: () => void;
 }
 
-const StoreSelectItem = ({
-  store,
-  isSelected,
-  onPress,
-}: StoreSelectItemProps) => (
+const StoreSelectItem = ({ store, isSelected, onPress }: StoreSelectItemProps) => (
   <TouchableOpacity
     onPress={onPress}
-    className={`p-4 border rounded-lg mb-3 ${isSelected
-      ? "border-blue-500 bg-blue-900/30"
-      : "border-gray-700 bg-panel"
-      }`}
+    activeOpacity={0.7}
+    style={{
+      backgroundColor: isSelected ? colors.teal + "10" : colors.card,
+      borderWidth: 1,
+      borderColor: isSelected ? colors.teal + "50" : colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      marginBottom: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    }}
   >
-    <View className="flex-row items-center justify-between">
-      <View className="flex-1">
+    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 12 }}>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 8,
+          backgroundColor: isSelected ? colors.teal + "20" : colors.screen,
+          borderWidth: 1,
+          borderColor: isSelected ? colors.teal + "40" : colors.border,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Store size={16} color={isSelected ? colors.teal : colors.muted} />
+      </View>
+
+      <View style={{ flex: 1 }}>
         <Text
-          className={`text-xl font-medium ${isSelected ? "text-blue-400" : "text-white"
-            }`}
+          style={{
+            fontSize: 13,
+            fontWeight: "600",
+            color: isSelected ? colors.teal : colors.heading,
+            marginBottom: 2,
+          }}
         >
           {store.name}
         </Text>
-        <Text
-          className={`text-lg mt-1 ${isSelected ? "text-blue-300" : "text-gray-400"
-            }`}
-        >
-          {store.city}, {store.state}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <MapPin size={10} color={colors.muted} />
+          <Text style={{ fontSize: 11, color: colors.muted }}>
+            {store.city}, {store.state}
+          </Text>
+        </View>
+      </View>
+    </View>
+
+    <View style={{ alignItems: "flex-end", gap: 4 }}>
+      {store.code && (
+        <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}>
+          {store.code}
         </Text>
-      </View>
-      <View className="items-end">
-        {store.code && (
-          <Text className="text-sm text-gray-400">{store.code}</Text>
-        )}
-        {store.is_active && (
-          <View className="bg-green-600 px-2 py-1 rounded mt-1">
-            <Text className="text-white text-xs">Active</Text>
-          </View>
-        )}
-      </View>
+      )}
+      {store.is_active && (
+        <View
+          style={{
+            backgroundColor: colors.success + "15",
+            borderWidth: 1,
+            borderColor: colors.success + "40",
+            borderRadius: 20,
+            paddingHorizontal: 8,
+            paddingVertical: 2,
+          }}
+        >
+          <Text style={{ fontSize: 10, fontWeight: "600", color: colors.success }}>
+            Active
+          </Text>
+        </View>
+      )}
     </View>
   </TouchableOpacity>
 );
@@ -80,104 +118,46 @@ const StoreSelectScreen = () => {
   const router = useRouter();
   const { userId } = useAuth();
   const supabase = useSupabaseClient();
-  const setSelectedStore = useStoreSettingsStore(
-    (state) => state.setSelectedStore
-  );
-  const setOrganizationLogoUrl = useStoreSettingsStore(
-    (state) => state.setOrganizationLogoUrl
-  );
+  const setSelectedStore = useStoreSettingsStore((state) => state.setSelectedStore);
+  const setOrganizationLogoUrl = useStoreSettingsStore((state) => state.setOrganizationLogoUrl);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
 
-  // Fetch locations using same approach as website:
-  // users → members → organizations → merchants → locations
-  const {
-    data: queryResult,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data: queryResult, isLoading, error } = useQuery({
     queryKey: ["locations", userId],
     queryFn: async (): Promise<{ locations: Location[]; orgLogoUrl: string | null }> => {
       if (!userId) return { locations: [], orgLogoUrl: null };
 
-      console.log("Fetching locations for user:", userId);
-
-      // Step 1: Get user with members and organizations
-      // Note: organizations.id IS the clerk_org_id (Clerk's organization ID)
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select(
-          `
-          *,
-          members(
-            *,
-            organizations(
-              id,
-              name,
-              imageURL
-            )
-          )
-        `
-        )
+        .select(`*, members(*, organizations(id, name, imageURL))`)
         .eq("id", userId)
         .single();
 
-      if (userError) {
-        console.error("Error getting user info:", userError);
-        throw userError;
-      }
+      if (userError) throw userError;
 
-      console.log("User data:", JSON.stringify(userData, null, 2));
-
-      // Extract organization logo URL
       const orgLogoUrl = userData?.members?.[0]?.organizations?.imageURL ?? null;
-      // Step 2: Get organization ID - this IS the clerk_org_id
-      // The organizations.id from Clerk is stored as clerk_org_id in merchants table
       const clerkOrgId = userData?.members?.[0]?.organizations?.id;
 
-      if (!clerkOrgId) {
-        console.log("No organization found for user");
-        return { locations: [], orgLogoUrl };
-      }
+      if (!clerkOrgId) return { locations: [], orgLogoUrl };
 
-      console.log("Found clerkOrgId (organizations.id):", clerkOrgId);
-
-      // Step 3: Get merchant by clerk_org_id
       const { data: merchant, error: merchantError } = await supabase
         .from("merchants")
         .select("id")
         .eq("clerk_org_id", clerkOrgId)
         .single();
 
-      if (merchantError) {
-        console.error("Error getting merchant:", merchantError);
-        throw merchantError;
-      }
+      if (merchantError) throw merchantError;
+      if (!merchant) return { locations: [], orgLogoUrl };
 
-      if (!merchant) {
-        console.log("No merchant found for org:", clerkOrgId);
-        return { locations: [], orgLogoUrl };
-      }
-
-      console.log("Found merchant:", merchant.id);
-
-      // Step 4: Get locations for this merchant
       const { data: locationsData, error: locationsError } = await supabase
         .from("locations")
         .select("*")
         .eq("merchant_id", merchant.id)
         .order("created_at", { ascending: false });
 
-      if (locationsError) {
-        console.error("Error getting locations:", locationsError);
-        throw locationsError;
-      }
+      if (locationsError) throw locationsError;
 
-      console.log("Found locations:", locationsData[0]);
-
-      return {
-        locations: (locationsData as Location[]) || [],
-        orgLogoUrl,
-      };
+      return { locations: (locationsData as Location[]) || [], orgLogoUrl };
     },
     enabled: !!userId,
   });
@@ -185,7 +165,6 @@ const StoreSelectScreen = () => {
   const locations = queryResult?.locations;
   const orgLogoUrl = queryResult?.orgLogoUrl ?? null;
 
-  // Auto-select first location
   useEffect(() => {
     if (locations && locations.length > 0 && !selectedStoreId) {
       const activeLocation = locations.find((l) => l.is_active);
@@ -197,58 +176,44 @@ const StoreSelectScreen = () => {
 
   const handleContinue = () => {
     if (!selectedStoreId || !locations) return;
-
-    // Clear location-specific data if switching to a different store
-    if (currentStoreId && currentStoreId !== selectedStoreId) {
-      clearLocationData();
-    }
-
-    // Find the full location object
+    if (currentStoreId && currentStoreId !== selectedStoreId) clearLocationData();
     const storeToSave = locations.find((l) => l.id === selectedStoreId);
-    if (storeToSave) {
-      // Save to store (persisted to MMKV)
-      setSelectedStore(storeToSave as SelectedLocation);
-    }
-
-    // Persist organization logo URL if available
+    if (storeToSave) setSelectedStore(storeToSave as SelectedLocation);
     setOrganizationLogoUrl(orgLogoUrl);
-
-    // Navigate to station select instead of pin-login
     router.replace("/station-select");
   };
 
-  // Loading state
   if (isLoading) {
     return (
-      <View className="w-full items-center justify-center py-20">
-        <ActivityIndicator size="large" color={spinnerColor} />
-        <Text className="text-gray-400 mt-4">Loading your locations...</Text>
+      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: 60 }}>
+        <ActivityIndicator size="small" color={spinnerColor} />
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 10 }}>
+          Loading your locations...
+        </Text>
       </View>
     );
   }
 
-  // Error state
   if (error) {
     return (
-      <View className="w-full items-center justify-center py-20">
-        <Text className="text-red-400 text-lg text-center">
+      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 6 }}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger, textAlign: "center" }}>
           Failed to load locations
         </Text>
-        <Text className="text-gray-400 mt-2 text-center">
+        <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
           {(error as Error).message || "Please try again later"}
         </Text>
       </View>
     );
   }
 
-  // No locations state
   if (!locations || locations.length === 0) {
     return (
-      <View className="w-full items-center justify-center py-20">
-        <Text className="text-gray-400 text-lg text-center">
+      <View style={{ width: "100%", alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 6 }}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label, textAlign: "center" }}>
           No locations available
         </Text>
-        <Text className="text-gray-500 mt-2 text-center">
+        <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
           Contact your administrator for access
         </Text>
       </View>
@@ -256,12 +221,16 @@ const StoreSelectScreen = () => {
   }
 
   return (
-    <View className="w-full">
-      <Text className="text-3xl font-semibold text-white text-center mb-6">
+    <View style={{ width: "100%" }}>
+      {/* Header */}
+      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 4 }}>
         Select Store
       </Text>
+      <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 14 }}>
+        Choose a location to continue
+      </Text>
 
-      <ScrollView className="h-80 mb-6">
+      <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
         {locations.map((store) => (
           <StoreSelectItem
             key={store.id}
@@ -275,10 +244,23 @@ const StoreSelectScreen = () => {
       <TouchableOpacity
         onPress={handleContinue}
         disabled={!selectedStoreId}
-        className={`w-full p-4 rounded-xl items-center ${selectedStoreId ? "bg-blue-600" : "bg-blue-400"
-          }`}
+        style={{
+          marginTop: 14,
+          backgroundColor: selectedStoreId ? colors.teal : colors.teal + "30",
+          borderRadius: 10,
+          paddingVertical: 11,
+          alignItems: "center",
+        }}
       >
-        <Text className="text-white text-xl font-bold">Continue</Text>
+        <Text
+          style={{
+            fontSize: 13,
+            fontWeight: "700",
+            color: selectedStoreId ? colors.onSolid : colors.muted,
+          }}
+        >
+          Continue
+        </Text>
       </TouchableOpacity>
     </View>
   );

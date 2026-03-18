@@ -690,130 +690,232 @@ const PinLoginScreen = () => {
 
   return (
     <>
-      <Animated.View style={shakeStyle} className="w-full m-auto">
-        <Text className="text-3xl font-semibold text-white text-center mb-2">
+      <Animated.View style={[shakeStyle, { width: "100%" }]}>
+        {/* Title */}
+        <Text
+          style={{
+            fontSize: 15,
+            fontWeight: "700",
+            color: colors.heading,
+            textAlign: "center",
+            marginBottom: 4,
+          }}
+        >
           Enter Your PIN
         </Text>
-        {selectedStation && selectedStore && (
-          <Text className="text-base text-gray-400 text-center mb-6">
-            {selectedStation.station_name} | {selectedStore.name}
+
+        {/* Station / store subtitle */}
+        {selectedStation && selectedStore ? (
+          <Text
+            style={{
+              fontSize: 11,
+              color: colors.muted,
+              textAlign: "center",
+              marginBottom: 16,
+            }}
+          >
+            {selectedStation.station_name} · {selectedStore.name}
           </Text>
+        ) : (
+          <View style={{ marginBottom: 16 }} />
         )}
-        {(!selectedStation || !selectedStore) && <View className="mb-6" />}
 
         <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
-        <View className="w-full mt-4">
+        <View style={{ marginTop: 10 }}>
           <PinNumpad onKeyPress={handleKeyPress} />
         </View>
 
-        <View className="flex-row gap-4 mt-6 items-stretch">
+        {/* Action buttons */}
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            style={{
+              flex: 1,
+              paddingVertical: 11,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              borderRadius: 10,
+              alignItems: "center",
+              opacity: canSubmit ? 1 : 0.4,
+            }}
           >
-            <Text className="text-blue-400 text-xl font-bold">SIGN IN</Text>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
+              SIGN IN
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={handleClockIn}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            style={{
+              flex: 1,
+              paddingVertical: 11,
+              backgroundColor: colors.success + "15",
+              borderWidth: 1,
+              borderColor: colors.success + "40",
+              borderRadius: 10,
+              alignItems: "center",
+              opacity: canSubmit ? 1 : 0.4,
+            }}
           >
-            <Text className="text-green-400 text-xl font-bold">CLOCK IN</Text>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.success }}>
+              CLOCK IN
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={handleClockOut}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            style={{
+              flex: 1,
+              paddingVertical: 11,
+              backgroundColor: colors.danger + "15",
+              borderWidth: 1,
+              borderColor: colors.danger + "40",
+              borderRadius: 10,
+              alignItems: "center",
+              opacity: canSubmit ? 1 : 0.4,
+            }}
           >
-            <Text className="text-red-400 text-xl font-bold">CLOCK OUT</Text>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}>
+              CLOCK OUT
+            </Text>
           </TouchableOpacity>
         </View>
 
+        {/* Open Timeclock */}
         <TouchableOpacity
           onPress={handleOpenTimeclock}
-          className="self-center mt-6 p-4 bg-card border border-gray-700 rounded-xl items-center justify-center flex-row"
+          style={{
+            alignSelf: "center",
+            marginTop: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingHorizontal: 14,
+            paddingVertical: 7,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+          }}
         >
-          <Text className="text-lg font-semibold text-white mr-2">
+          <Lock size={13} color={colors.label} />
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
             Open Timeclock
           </Text>
-          <Lock color="white" size={20} />
         </TouchableOpacity>
       </Animated.View>
 
       <Dialog open={dialog.visible} onOpenChange={hideDialog}>
-        <DialogContent className="min-w-xl w-[500px] ">
+        <DialogContent className="min-w-xl w-[500px]">
           <View
-            className="min-w-xl w-full rounded-2xl p-6"
             style={{
+              width: "100%",
+              borderRadius: 14,
+              padding: 20,
               backgroundColor: colors.card,
               borderWidth: 1,
               borderColor:
                 dialog.variant === "success"
-                  ? colors.success
+                  ? colors.success + "60"
                   : dialog.variant === "warning"
-                    ? colors.warning
-                    : colors.danger,
+                    ? colors.warning + "60"
+                    : colors.danger + "60",
             }}
           >
             <Text
-              className={`text-2xl font-semibold mb-2 ${
-                dialog.variant === "success"
-                  ? "text-green-400"
-                  : dialog.variant === "warning"
-                    ? "text-yellow-400"
-                    : "text-red-400"
-              }`}
+              style={{
+                fontSize: 14,
+                fontWeight: "700",
+                marginBottom: 6,
+                color:
+                  dialog.variant === "success"
+                    ? colors.success
+                    : dialog.variant === "warning"
+                      ? colors.warning
+                      : colors.danger,
+              }}
             >
               {dialog.title}
             </Text>
-            <Text className="text-xl text-gray-200 mb-6">{dialog.message}</Text>
+            <Text style={{ fontSize: 13, color: colors.label, marginBottom: 18, lineHeight: 19 }}>
+              {dialog.message}
+            </Text>
 
             {dialog.showTakeover ? (
-              // Takeover scenario - show Take Over and Cancel buttons
-              <View className="flex-row justify-end gap-3">
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
                 <TouchableOpacity
                   onPress={() => {
                     hideDialog();
                     setPendingTakeoverPin(null);
                   }}
-                  className="px-5 py-2.5 rounded-lg bg-gray-600"
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
                 >
-                  <Text className="text-white text-lg font-medium">Cancel</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleTakeover}
-                  className="px-5 py-2.5 rounded-lg bg-amber-600"
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                    backgroundColor: colors.warning + "20",
+                    borderWidth: 1,
+                    borderColor: colors.warning + "50",
+                  }}
                 >
-                  <Text className="text-white text-lg font-medium">
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.warning }}>
                     Take Over
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              // Normal dialog - just OK button
               <TouchableOpacity
                 onPress={hideDialog}
-                className="self-end px-5 py-2.5 rounded-lg"
                 style={{
+                  alignSelf: "flex-end",
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 8,
                   backgroundColor:
                     dialog.variant === "success"
-                      ? "#065F46"
+                      ? colors.success + "20"
                       : dialog.variant === "warning"
-                        ? "#92400E"
-                        : colors.danger,
+                        ? colors.warning + "20"
+                        : colors.danger + "20",
+                  borderWidth: 1,
+                  borderColor:
+                    dialog.variant === "success"
+                      ? colors.success + "50"
+                      : dialog.variant === "warning"
+                        ? colors.warning + "50"
+                        : colors.danger + "50",
                 }}
               >
-                <Text className="text-white text-lg font-medium">OK</Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "600",
+                    color:
+                      dialog.variant === "success"
+                        ? colors.success
+                        : dialog.variant === "warning"
+                          ? colors.warning
+                          : colors.danger,
+                  }}
+                >
+                  OK
+                </Text>
               </TouchableOpacity>
             )}
           </View>
