@@ -30,24 +30,23 @@ const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="flex-1 bg-surface p-4 rounded-2xl border border-gray-700 min-h-[150px] justify-between hover:border-blue-500 transition-colors"
-      activeOpacity={0.8}
+      className="bg-panel p-4 rounded-xl border border-border"
+      style={{ minHeight: 130 }}
+      activeOpacity={0.75}
     >
-      <View>
-        <View className="flex-row items-center justify-between">
-          <Text className="text-base font-medium text-gray-400">{title}</Text>
+      <View className="flex-row items-center justify-between mb-3">
+        <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: '#2DD4BF15' }}>
           {icon}
         </View>
-        <View className="flex-row items-baseline gap-2 mt-2">
-          <Text className="text-3xl font-bold text-white">{value}</Text>
-          {trend && (
-            <Text className={`text-base font-semibold ${trendColor}`}>
-              {trend}
-            </Text>
-          )}
-        </View>
       </View>
-      <Text className="text-sm text-gray-500 mt-1">{period}</Text>
+      <Text className="text-xs font-medium text-label mb-1" numberOfLines={1}>{title}</Text>
+      <View className="flex-row items-baseline gap-1.5 mb-1">
+        <Text className="text-xl font-bold text-heading">{value}</Text>
+        {trend && (
+          <Text className={`text-xs font-semibold ${trendColor}`}>{trend}</Text>
+        )}
+      </View>
+      <Text style={{ fontSize: 11, color: '#64748B' }}>{period}</Text>
     </TouchableOpacity>
   );
 };

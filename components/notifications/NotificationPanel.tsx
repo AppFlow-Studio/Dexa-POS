@@ -1,5 +1,6 @@
 import { groupNotificationsByDate } from "@/lib/notificationUtils";
 import { Notification } from "@/lib/types";
+import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
@@ -12,11 +13,15 @@ interface NotificationPanelProps {
   onClose: () => void;
 }
 
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "unread", label: "Unread" },
+  { key: "schedule", label: "Schedule" },
+] as const;
+
 const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
-  const { notifications, markAllAsRead, markAsRead, deleteNotification } =
-    useNotificationStore();
-  const { schedulePeriods, weeklySchedules, swapRequests, dropRequests } =
-    useScheduleStore();
+  const { notifications, markAllAsRead, markAsRead, deleteNotification } = useNotificationStore();
+  const { schedulePeriods, weeklySchedules, swapRequests } = useScheduleStore();
   const { loggedInEmployee } = useEmployeeStore();
   const [filter, setFilter] = useState<"all" | "unread" | "schedule">("all");
 
@@ -26,31 +31,16 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
   }, [notifications, loggedInEmployee]);
 
   const filteredNotifications = useMemo(() => {
-    if (filter === "unread") {
-      return employeeNotifications.filter((n) => !n.isRead);
-    }
-    if (filter === "schedule") {
-      return employeeNotifications.filter((n) =>
-        [
-          "schedule_published",
-          "shift_assigned",
-          "shift_updated",
-          "swap_approved",
-        ].includes(n.type)
-      );
-    }
+    if (filter === "unread") return employeeNotifications.filter((n) => !n.isRead);
+    if (filter === "schedule") return employeeNotifications.filter((n) =>
+      ["schedule_published", "shift_assigned", "shift_updated", "swap_approved"].includes(n.type)
+    );
     return employeeNotifications;
   }, [employeeNotifications, filter]);
 
-  const notificationSections = useMemo(
-    () => groupNotificationsByDate(filteredNotifications),
-    [filteredNotifications]
-  );
+  const notificationSections = useMemo(() => groupNotificationsByDate(filteredNotifications), [filteredNotifications]);
 
-  const unreadCount = useMemo(
-    () => employeeNotifications.filter((n) => !n.isRead).length,
-    [employeeNotifications]
-  );
+  const unreadCount = useMemo(() => employeeNotifications.filter((n) => !n.isRead).length, [employeeNotifications]);
 
   const handleNotificationPress = (notification: Notification) => {
     markAsRead(notification.id);
@@ -60,7 +50,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
       case "drop_request_denied":
         router.push({ pathname: "/requests", params: { tab: "drops" } });
         break;
-      case "swap_request": // This type might not be used anymore, but keeping for safety
+      case "swap_request":
       case "swap_request_received":
       case "swap_request_peer_accepted":
       case "swap_request_peer_denied":
@@ -70,21 +60,15 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
         if (requestId && loggedInEmployee) {
           const swapRequest = swapRequests.find((req) => req.id === requestId);
           if (swapRequest) {
-            let tabToNavigate = "activity"; // Default or fallback
-            if (swapRequest.ownerId === loggedInEmployee.id) {
-              tabToNavigate = "swaps-out";
-            } else if (swapRequest.peerId === loggedInEmployee.id) {
-              tabToNavigate = "swaps-in";
-            }
-            router.push({
-              pathname: "/requests",
-              params: { tab: tabToNavigate },
-            });
+            let tabToNavigate = "activity";
+            if (swapRequest.ownerId === loggedInEmployee.id) tabToNavigate = "swaps-out";
+            else if (swapRequest.peerId === loggedInEmployee.id) tabToNavigate = "swaps-in";
+            router.push({ pathname: "/requests", params: { tab: tabToNavigate } });
           } else {
-            router.push("/requests"); // Fallback if request not found
+            router.push("/requests");
           }
         } else {
-          router.push("/requests"); // Fallback if no requestId or loggedInEmployee
+          router.push("/requests");
         }
         break;
       case "pto_update":
@@ -97,136 +81,82 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
         router.push("/scheduling");
         break;
       case "schedule_published":
-        const schedulePayload = notification.payload as
-          | { scheduleId: string; scheduleType: "period" | "weekly" }
-          | undefined;
+        const schedulePayload = notification.payload as { scheduleId: string; scheduleType: "period" | "weekly" } | undefined;
         const { scheduleId, scheduleType } = schedulePayload || {};
-        const schedule =
-          scheduleType === "period"
-            ? schedulePeriods.find((p) => p.id === scheduleId)
-            : weeklySchedules.find((w) => w.id === scheduleId);
+        const schedule = scheduleType === "period"
+          ? schedulePeriods.find((p) => p.id === scheduleId)
+          : weeklySchedules.find((w) => w.id === scheduleId);
         if (schedule) {
-          router.push({
-            pathname: "/my-profile",
-            params: { tab: "MyScheduleScreen", date: schedule.startDate },
-          });
+          router.push({ pathname: "/my-profile", params: { tab: "MyScheduleScreen", date: schedule.startDate } });
         }
-        break;
-      default:
         break;
     }
     onClose();
   };
 
-  const handleMarkAllAsRead = () => {
-    if (loggedInEmployee) {
-      markAllAsRead(loggedInEmployee.id);
-    }
-  };
-
   return (
-    <View className="flex-1 bg-panel   overflow-hidden">
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Header */}
-      <View className="bg-panel/95 backdrop-blur-md sticky top-0 z-10 p-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <Text className="text-white font-semibold text-xl">
-              Notifications
-            </Text>
+      <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Notifications</Text>
             {unreadCount > 0 && (
-              <View className="bg-blue-600 text-white text-sm font-bold rounded-full min-w-[28px] h-7 px-2 flex items-center justify-center">
-                <Text className="text-white text-sm font-bold">
-                  {unreadCount}
-                </Text>
+              <View style={{ backgroundColor: colors.teal, borderRadius: 10, minWidth: 20, height: 20, paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#0C0F1A', fontSize: 10, fontWeight: '700' }}>{unreadCount}</Text>
               </View>
             )}
           </View>
-          <TouchableOpacity onPress={handleMarkAllAsRead}>
-            <Text className="text-blue-500 text-sm font-medium">
-              Mark all as read
-            </Text>
+          <TouchableOpacity onPress={() => loggedInEmployee && markAllAsRead(loggedInEmployee.id)}>
+            <Text style={{ fontSize: 12, color: colors.teal, fontWeight: '600' }}>Mark all read</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="flex-row gap-2 mt-4">
-          <TouchableOpacity
-            onPress={() => setFilter("all")}
-            className={`px-4 py-1.5 rounded-full ${
-              filter === "all" ? "bg-blue-600" : "bg-surface hover:bg-surface"
-            }`}
-          >
-            <Text
-              className={`text-sm font-medium ${
-                filter === "all" ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              All
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setFilter("unread")}
-            className={`px-4 py-1.5 rounded-full ${
-              filter === "unread"
-                ? "bg-blue-600"
-                : "bg-surface hover:bg-surface"
-            }`}
-          >
-            <Text
-              className={`text-sm font-medium ${
-                filter === "unread" ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              Unread
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setFilter("schedule")}
-            className={`px-4 py-1.5 rounded-full ${
-              filter === "schedule"
-                ? "bg-blue-600"
-                : "bg-surface hover:bg-surface"
-            }`}
-          >
-            <Text
-              className={`text-sm font-medium ${
-                filter === "schedule" ? "text-white" : "text-zinc-400"
-              }`}
-            >
-              Schedule
-            </Text>
-          </TouchableOpacity>
+        {/* Filter pills */}
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {FILTERS.map((f) => {
+            const isActive = filter === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setFilter(f.key)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20,
+                  backgroundColor: isActive ? colors.teal : colors.screen,
+                  borderWidth: 1, borderColor: isActive ? colors.teal : colors.border,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? '#0C0F1A' : colors.label }}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
-      <View className="px-4">
-        <SectionList
-          sections={notificationSections}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => handleNotificationPress(item)}>
-              <NotificationItem
-                notification={item}
-                onDelete={deleteNotification}
-              />
-            </TouchableOpacity>
-          )}
-          renderSectionHeader={({ section: { title } }) => (
-            <View className="bg-panel py-2 px-4 sticky top-0">
-              <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
-                {title}
-              </Text>
-            </View>
-          )}
-          ListEmptyComponent={
-            <View className="p-4 items-center justify-center mt-10">
-              <Text className="text-gray-400 text-lg">
-                You're all caught up!
-              </Text>
-            </View>
-          }
-          contentContainerStyle={{ paddingBottom: 20 }}
-        />
-      </View>
+      <SectionList
+        sections={notificationSections}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity onPress={() => handleNotificationPress(item)}>
+            <NotificationItem notification={item} onDelete={deleteNotification} />
+          </TouchableOpacity>
+        )}
+        renderSectionHeader={({ section: { title } }) => (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.panel }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {title}
+            </Text>
+          </View>
+        )}
+        ListEmptyComponent={
+          <View style={{ padding: 40, alignItems: 'center' }}>
+            <Text style={{ fontSize: 13, color: colors.muted }}>You're all caught up!</Text>
+          </View>
+        }
+        contentContainerStyle={{ paddingBottom: 20 }}
+      />
     </View>
   );
 };

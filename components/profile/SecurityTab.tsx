@@ -1,4 +1,5 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { colors } from "@/lib/theme";
 import { zodResolver } from "@hookform/resolvers/zod";
 import React, { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -45,6 +46,16 @@ type EmailFormData = z.infer<typeof emailSchema>;
 type PhoneFormData = z.infer<typeof phoneSchema>;
 type PinFormData = z.infer<typeof pinSchema>;
 
+const inputStyle = {
+  backgroundColor: colors.panel,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 10,
+  padding: 12,
+  fontSize: 14,
+  color: colors.heading,
+};
+
 const SectionRow = ({
   label,
   value,
@@ -58,24 +69,24 @@ const SectionRow = ({
   children: React.ReactNode;
   onEdit: () => void;
 }) => (
-  <View className="py-4 border-b border-gray-700">
-    <View className="flex-row items-start justify-between">
+  <View className="py-4 border-b border-border">
+    <View className="flex-row items-center justify-between">
       <View>
-        <Text className="text-base text-gray-300 mb-1">{label}</Text>
+        <Text className="text-xs uppercase tracking-wider text-label mb-1">{label}</Text>
         {!isEditing && (
-          <Text className="text-xl font-semibold text-white">{value}</Text>
+          <Text className="text-sm font-semibold text-heading">{value}</Text>
         )}
       </View>
       {!isEditing && (
         <TouchableOpacity
           onPress={onEdit}
-          className="py-2 px-4 border border-gray-600 rounded-lg bg-surface"
+          className="py-1.5 px-3 rounded-lg border border-border"
         >
-          <Text className="font-bold text-base text-gray-300">Change</Text>
+          <Text className="text-xs font-semibold text-label">Change</Text>
         </TouchableOpacity>
       )}
     </View>
-    {isEditing && <View className="mt-2">{children}</View>}
+    {isEditing && <View className="mt-3">{children}</View>}
   </View>
 );
 
@@ -145,7 +156,7 @@ const SecurityTab = () => {
           name="email"
           render={({ field: { onChange, onBlur, value } }) => (
             <TextInput
-              className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
+              style={inputStyle}
               value={value}
               onBlur={onBlur}
               onChangeText={onChange}
@@ -162,17 +173,17 @@ const SecurityTab = () => {
         <View className="flex-row justify-end gap-3 mt-4">
           <TouchableOpacity
             onPress={() => setEditingSection(null)}
-            className="py-2 px-6 border border-gray-600 rounded-lg bg-surface"
+            className="py-1 px-4 border border-border rounded-lg"
           >
-            <Text className="font-bold text-base text-gray-300">Cancel</Text>
+            <Text className="font-semibold text-xs text-label">Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={emailForm.handleSubmit((data) =>
               handleSave("email", data)
             )}
-            className="py-2 px-8 bg-blue-600 rounded-lg"
+            style={{ paddingVertical: 4, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
           >
-            <Text className="font-bold text-base text-white">Save</Text>
+            <Text style={{ fontWeight: '600', fontSize: 12, color: colors.teal }}>Save</Text>
           </TouchableOpacity>
         </View>
       </SectionRow>
@@ -188,7 +199,7 @@ const SecurityTab = () => {
           name="phone"
           render={({ field: { onChange, onBlur, value } }) => (
             <TextInput
-              className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
+              style={inputStyle}
               value={value}
               onBlur={onBlur}
               onChangeText={onChange}
@@ -204,17 +215,17 @@ const SecurityTab = () => {
         <View className="flex-row justify-end gap-3 mt-4">
           <TouchableOpacity
             onPress={() => setEditingSection(null)}
-            className="py-2 px-6 border border-gray-600 rounded-lg bg-surface"
+            className="py-1 px-4 border border-border rounded-lg"
           >
-            <Text className="font-bold text-base text-gray-300">Cancel</Text>
+            <Text className="font-semibold text-xs text-label">Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={phoneForm.handleSubmit((data) =>
               handleSave("phone", data)
             )}
-            className="py-2 px-8 bg-blue-600 rounded-lg"
+            style={{ paddingVertical: 4, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
           >
-            <Text className="font-bold text-base text-white">Save</Text>
+            <Text style={{ fontWeight: '600', fontSize: 12, color: colors.teal }}>Save</Text>
           </TouchableOpacity>
         </View>
       </SectionRow>
@@ -227,13 +238,13 @@ const SecurityTab = () => {
       >
         <View className="gap-y-4">
           <View>
-            <Text className="text-base text-gray-300 mb-1">New PIN</Text>
+            <Text className="text-xs text-label uppercase tracking-wider mb-1">New PIN</Text>
             <Controller
               control={pinForm.control}
               name="pin"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextInput
-                  className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
+                  style={inputStyle}
                   value={value}
                   onBlur={onBlur}
                   onChangeText={onChange}
@@ -250,15 +261,15 @@ const SecurityTab = () => {
             )}
           </View>
           <View>
-            <Text className="text-base text-gray-300 mb-1">
-              Confirm New PIN
+            <Text className="text-xs text-label uppercase tracking-wider mb-1">
+              Confirm PIN
             </Text>
             <Controller
               control={pinForm.control}
               name="confirmPin"
               render={({ field: { onChange, onBlur, value } }) => (
                 <TextInput
-                  className="text-xl font-semibold text-white bg-panel p-3 rounded-md border border-gray-600 w-full"
+                  style={inputStyle}
                   value={value}
                   onBlur={onBlur}
                   onChangeText={onChange}
@@ -278,17 +289,17 @@ const SecurityTab = () => {
         <View className="flex-row justify-end gap-3 mt-4">
           <TouchableOpacity
             onPress={() => setEditingSection(null)}
-            className="py-2 px-6 border border-gray-600 rounded-lg bg-surface"
+            className="py-1 px-4 border border-border rounded-lg"
           >
-            <Text className="font-bold text-base text-gray-300">Cancel</Text>
+            <Text className="font-semibold text-xs text-label">Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={pinForm.handleSubmit((data) =>
               handleSave("pin", { pin: data.pin })
             )}
-            className="py-2 px-8 bg-blue-600 rounded-lg"
+            style={{ paddingVertical: 4, paddingHorizontal: 14, borderRadius: 8, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
           >
-            <Text className="font-bold text-base text-white">Save PIN</Text>
+            <Text style={{ fontWeight: '600', fontSize: 12, color: colors.teal }}>Save PIN</Text>
           </TouchableOpacity>
         </View>
       </SectionRow>

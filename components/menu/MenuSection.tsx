@@ -331,7 +331,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
     if (!isCategoryAvailableNow(activeCategory)) return [];
     return currentCategory.items.filter((item) => item.availability);
   }, [activeMeal, activeCategory, isCategoryAvailableNow, menus, availabilityTick]);
-  const numColumns = 4;
+  const numColumns = 5;
   const dataWithSpacers = useMemo(() => {
     const items = [...filteredMenuItems];
     const numberOfElementsLastRow = items.length % numColumns;
@@ -582,8 +582,9 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                   }}
                   showsVerticalScrollIndicator={false}
                   columnWrapperStyle={{
-                    justifyContent: "space-between",
-                    marginBottom: 12,
+                    justifyContent: "flex-start",
+                    gap: 6,
+                    marginBottom: 6,
                   }}
                   removeClippedSubviews={true}
                   maxToRenderPerBatch={8}

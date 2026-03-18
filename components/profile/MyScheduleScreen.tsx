@@ -483,7 +483,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
 
   const analyticsData = [
     {
-      icon: <Clock size={24} color="#5B8CFF" />,
+      icon: <Clock size={18} color={colors.teal} />,
       title: "Scheduled Hours",
       value: `${scheduledHours.toFixed(1)}h`,
       trend: "updated",
@@ -492,14 +492,14 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
       onPress: () => scheduledHoursSheetRef.current?.expand(),
     },
     {
-      icon: <CheckCircle2 size={24} color="#19C37D" />,
+      icon: <CheckCircle2 size={18} color={colors.success} />,
       title: "On-Time Rate",
       value: onTimeRate,
       period: "Last 30 days",
       onPress: () => onTimeSheetRef.current?.expand(),
     },
     {
-      icon: <Coffee size={24} color={colors.info} />,
+      icon: <Coffee size={18} color={colors.info} />,
       title: "Break Compliance",
       value: breakCompliance.text,
       trend: breakCompliance.trend,
@@ -508,7 +508,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
       onPress: () => breakComplianceSheetRef.current?.expand(),
     },
     {
-      icon: <AlertTriangle size={24} color="#F5A524" />,
+      icon: <AlertTriangle size={18} color={colors.warning} />,
       title: "OT Risk",
       value: otRisk.text,
       period: "By Sat",
@@ -516,8 +516,8 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
       onPress: () => overtimeSheetRef.current?.expand(),
     },
     {
-      icon: <Briefcase size={24} color={colors.info} />,
-      title: "Open Shift Matches",
+      icon: <Briefcase size={18} color={colors.teal} />,
+      title: "Open Shifts",
       value: openShiftMatchesCount.toString(),
       period: "Claimable this week",
       onPress: () => openShiftsSheetRef.current?.expand(),
@@ -526,40 +526,42 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
 
   return (
     <>
-      <View className="flex-1 bg-surface rounded-2xl">
-        <View className="p-4 gap-y-4">
-          {/* Header */}
+      <View className="flex-1 rounded-2xl overflow-hidden">
+        <View className="px-4 pt-4 pb-3 gap-y-3">
+          {/* Header row */}
           <View className="flex-row items-center justify-between">
-            <Text className="text-xl font-bold text-white">
-              My Schedule - Dexa – 5th Ave
-            </Text>
-            <View className="flex-row items-center gap-2">
+            <Text className="text-base font-bold text-heading">My Schedule</Text>
+            <NotificationBell />
+          </View>
+
+          {/* Week navigator */}
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-1">
               <TouchableOpacity
                 onPress={goToPreviousWeek}
-                className="p-2 bg-panel rounded-md border border-gray-700"
+                className="p-1.5 bg-panel rounded-lg border border-border"
               >
-                <ChevronLeft size={20} color={colors.label} />
+                <ChevronLeft size={16} color={colors.label} />
               </TouchableOpacity>
-              <Text className="text-base font-medium text-gray-300">
-                {format(weekDays[0], "MMM d")} -{" "}
-                {format(weekDays[6], "MMM d, yyyy")}
-              </Text>
+              <View className="px-3 py-1.5 bg-panel rounded-lg border border-border">
+                <Text className="text-sm font-medium text-heading">
+                  {format(weekDays[0], "MMM d")} – {format(weekDays[6], "MMM d, yyyy")}
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={goToNextWeek}
-                className="p-2 bg-panel rounded-md border border-gray-700"
+                className="p-1.5 bg-panel rounded-lg border border-border"
               >
-                <ChevronRight size={20} color={colors.label} />
+                <ChevronRight size={16} color={colors.label} />
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={goToCurrentWeek}
-                className="px-4 py-2 bg-blue-600 rounded-lg"
-              >
-                <Text className="text-base font-semibold text-white">
-                  Today
-                </Text>
-              </TouchableOpacity>
-              <NotificationBell />
             </View>
+            <TouchableOpacity
+              onPress={goToCurrentWeek}
+              className="px-3 py-1.5 rounded-lg"
+              style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
+            >
+              <Text className="text-xs font-semibold text-teal-400">Today</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -568,15 +570,15 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
           contentContainerStyle={{ paddingBottom: 20 }}
           className="px-4"
         >
-          <View className="gap-y-4">
+          <View className="gap-y-5">
             {/* Analytics Grid */}
             <View>
-              <Text className="text-lg font-bold text-white mb-3">
-                My Week Analytics
+              <Text className="text-xs font-semibold text-label uppercase tracking-wider mb-3">
+                Week Analytics
               </Text>
-              <View className="flex-row flex-wrap gap-4">
+              <View className="flex-row flex-wrap gap-3">
                 {analyticsData.map((card, index) => (
-                  <View key={index} className="w-[32%]">
+                  <View key={index} className="w-[31%]">
                     <AnalyticsCard {...card} />
                   </View>
                 ))}
@@ -585,38 +587,32 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
 
             {isSchedulePublished ? (
               // Schedule View
-              <View className="mt-4">
-                <View className="flex-row p-1 bg-panel rounded-lg border border-gray-600 self-start mb-3">
+              <View>
+                <View className="flex-row p-0.5 bg-panel rounded-xl border border-border self-start mb-3">
                   <TouchableOpacity
                     onPress={() => setScheduleView("List")}
-                    className={`px-4 py-2 rounded-md flex-row items-center gap-2 ${
-                      scheduleView === "List" ? "bg-blue-600" : ""
-                    }`}
+                    className="px-3 py-1.5 rounded-lg"
+                    style={scheduleView === "List" ? { backgroundColor: colors.teal } : undefined}
                   >
                     <Text
-                      className={`text-base font-semibold ${
-                        scheduleView === "List" ? "text-white" : "text-gray-400"
-                      }`}
+                      className="text-xs font-semibold"
+                      style={{ color: scheduleView === "List" ? colors.onSolid : colors.label }}
                     >
                       List
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setScheduleView("Calendar")}
-                    className={`px-4 py-2 rounded-md flex-row items-center gap-2 ${
-                      scheduleView === "Calendar" ? "bg-blue-600" : ""
-                    }`}
+                    className="px-3 py-1.5 rounded-lg flex-row items-center gap-1.5"
+                    style={scheduleView === "Calendar" ? { backgroundColor: colors.teal } : undefined}
                   >
                     <CalendarIcon
-                      size={20}
-                      color={scheduleView === "Calendar" ? "white" : colors.label}
+                      size={13}
+                      color={scheduleView === "Calendar" ? colors.onSolid : colors.label}
                     />
                     <Text
-                      className={`text-base font-semibold ${
-                        scheduleView === "Calendar"
-                          ? "text-white"
-                          : "text-gray-400"
-                      }`}
+                      className="text-xs font-semibold"
+                      style={{ color: scheduleView === "Calendar" ? colors.onSolid : colors.label }}
                     >
                       Calendar
                     </Text>

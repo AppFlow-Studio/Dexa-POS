@@ -2,7 +2,6 @@ import { colors } from "@/lib/theme";
 import { PTORequest } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { AlertCircle, CheckCircle2, XCircle } from "lucide-react-native";
-import React from "react";
 import { Text, View, TouchableOpacity } from "react-native";
 
 interface PTOHistoryCardProps {
@@ -10,73 +9,50 @@ interface PTOHistoryCardProps {
   onCancelRequest: (requestId: string) => void;
 }
 
-const getStatusStyles = (status: PTORequest["status"]) => {
+const getStatusConfig = (status: PTORequest["status"]) => {
   switch (status) {
     case "approved":
-      return {
-        icon: <CheckCircle2 size={20} color={colors.success} />,
-        bg: "bg-green-500/10",
-        border: "border-green-500/20",
-        text: "text-green-400",
-      };
+      return { icon: <CheckCircle2 size={16} color={colors.success} />, color: colors.success, label: "Approved" };
     case "denied":
-      return {
-        icon: <XCircle size={20} color={colors.danger} />,
-        bg: "bg-red-500/10",
-        border: "border-red-500/20",
-        text: "text-red-400",
-      };
+      return { icon: <XCircle size={16} color={colors.danger} />, color: colors.danger, label: "Denied" };
     case "pending":
-      return {
-        icon: <AlertCircle size={20} color={colors.warning} />,
-        bg: "bg-yellow-500/10",
-        border: "border-yellow-500/20",
-        text: "text-yellow-400",
-      };
+      return { icon: <AlertCircle size={16} color={colors.warning} />, color: colors.warning, label: "Pending" };
   }
 };
 
 const PTOHistoryCard: React.FC<PTOHistoryCardProps> = ({ request, onCancelRequest }) => {
-  const styles = getStatusStyles(request.status);
+  const config = getStatusConfig(request.status);
 
   return (
-    <View className={`p-4 rounded-2xl border ${styles.bg} ${styles.border}`}>
+    <View style={{ padding: 14, borderRadius: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}>
       <View className="flex-row items-start justify-between">
-        <View className="flex-row items-start gap-3">
-          {styles.icon}
-          <View>
-            <Text className="text-lg font-semibold text-white mb-1">
-              {format(parseISO(request.startDate), "MMM d")} -{" "}
-              {format(parseISO(request.endDate), "MMM d, yyyy")}
+        <View className="flex-row items-center gap-2 flex-1">
+          {config.icon}
+          <View className="flex-1">
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading, marginBottom: 2 }}>
+              {format(parseISO(request.startDate), "MMM d")} – {format(parseISO(request.endDate), "MMM d, yyyy")}
             </Text>
-            <Text className="text-sm text-gray-400 mb-2">
-              {request.hours} hours requested
-            </Text>
-            <Text className="text-xs text-gray-500">
-              Submitted{" "}
-              {format(parseISO(request.submittedAt), "MMM d, yyyy 'at' h:mm a")}
+            <Text style={{ fontSize: 11, color: colors.label }}>
+              {request.hours}h requested · Submitted {format(parseISO(request.submittedAt), "MMM d")}
             </Text>
             {request.status === "denied" && request.denialReason && (
-              <Text className="text-xs text-red-400 mt-1">
+              <Text style={{ fontSize: 11, color: colors.danger, marginTop: 2 }}>
                 Reason: {request.denialReason}
               </Text>
             )}
           </View>
         </View>
-        <View className="items-end">
-          <Text
-            className={`text-xs font-medium px-2 py-1 rounded-full ${styles.bg} ${styles.text} mb-2`}
-          >
-            {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-          </Text>
+
+        <View className="items-end gap-2">
+          <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: config.color + '15' }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: config.color }}>{config.label}</Text>
+          </View>
           {request.status === "pending" && (
             <TouchableOpacity
               onPress={() => onCancelRequest(request.id)}
-              className="px-3 py-1 bg-red-600/20 border-2 border-red-500 rounded-lg"
+              style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '40' }}
             >
-              <Text className="text-sm font-semibold text-red-300">
-                Cancel Request
-              </Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.danger }}>Cancel</Text>
             </TouchableOpacity>
           )}
         </View>

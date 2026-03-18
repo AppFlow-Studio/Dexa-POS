@@ -39,24 +39,15 @@ const StatusBadge = ({
   text: string;
   color: "blue" | "yellow" | "gray" | "green";
 }) => {
-  const bgColors = {
-    blue: "bg-blue-600/20 text-blue-400",
-    yellow: "bg-yellow-600/20 text-yellow-400",
-    gray: "bg-gray-600/20 text-gray-300",
-    green: "bg-green-600/20 text-green-400",
-  };
-
-  const textColors = {
-    blue: "text-blue-400",
-    yellow: "text-yellow-400",
-    gray: "text-gray-300",
-    green: "text-green-400",
+  const styles = {
+    blue: { bg: 'bg-teal-500/15', text: 'text-teal-400' },
+    yellow: { bg: 'bg-amber-500/15', text: 'text-amber-400' },
+    gray: { bg: 'bg-white/5', text: 'text-label' },
+    green: { bg: 'bg-green-500/15', text: 'text-green-400' },
   };
   return (
-    <View className={`px-2 py-1 rounded ${bgColors[color]}`}>
-      <Text className={`text-xs font-semibold ${textColors[color]}`}>
-        {text}
-      </Text>
+    <View className={`px-2 py-0.5 rounded-md ${styles[color].bg}`}>
+      <Text className={`text-xs font-semibold ${styles[color].text}`}>{text}</Text>
     </View>
   );
 };
@@ -113,157 +104,118 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`p-4 bg-panel rounded-xl border ${
-        shift.status === "open"
-          ? "border-orange-500 bg-orange-500/10"
-          : "border-gray-700"
-      }`} // Conditional styling for open shifts
+      className="bg-panel rounded-xl border border-border overflow-hidden"
+      style={shift.status === "open" ? { borderColor: colors.teal + '60', backgroundColor: colors.teal + '08' } : undefined}
     >
-      <View className="flex-row items-center gap-3 mb-3">
-        <Text className="text-base font-semibold text-white">{shift.role}</Text>
-        <StatusBadge text={label} color={color} />
-        {shift.isToday && <StatusBadge text="Today" color="blue" />}
-      </View>
-
-      <View className="flex-row items-center gap-2 mb-2">
-        <Clock size={16} color={colors.label} />
-        <Text className="text-base text-white">
-          {shift.startTime
-            ? format(parseISO(shift.startTime), "h:mm a")
-            : "N/A"}{" "}
-          – {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
-        </Text>
-        {shift.status === "on-shift" && shift.actualClockIn && (
-          <Text className="text-base text-green-400">
-            (On since{" "}
-            {format(parse(shift.actualClockIn, "HH:mm", new Date()), "h:mm a")})
-          </Text>
-        )}
-      </View>
-
-      <View className="flex-row items-center gap-2 mb-3">
-        <MapPin size={16} color={colors.label} />
-        <Text className="text-base text-gray-400">{shift.location}</Text>
-      </View>
-
-      {shift.managerNote && (
-        <View>
-          <TouchableOpacity
-            onPress={handleNotePress}
-            className="flex-row items-center gap-2 mb-3"
-          >
-            <MessageSquare size={16} color={colors.info} />
-            <Text className="text-sm text-blue-300 underline">
-              Manager note
-            </Text>
-          </TouchableOpacity>
-          {isNoteVisible && (
-            <View className="p-3 bg-gray-800/50 rounded-lg mt-2 mb-3">
-              <Text className="text-white">{shift.managerNote}</Text>
-            </View>
-          )}
-        </View>
+      {/* Top accent bar for open shifts */}
+      {shift.status === "open" && (
+        <View style={{ height: 3, backgroundColor: colors.teal }} />
       )}
 
-      <View className="flex-row flex-wrap items-center gap-2 mb-4">
-        <ComplianceBadge
-          icon={<Coffee size={14} color={colors.label} />}
-          text={`Meal break ${shift.breakMinutes}m required`}
-          variant="default"
-        />
-        {shift.expectedPace && (
-          <ComplianceBadge
-            icon={<TrendingUp size={14} color={colors.label} />}
-            text={`Expected: ${shift.expectedPace}`}
-            variant={getPaceVariant(shift.expectedPace)}
-          />
-        )}
-        {shift.staffingLevel && (
-          <ComplianceBadge
-            icon={<Users size={14} color={colors.label} />}
-            text={shift.staffingLevel}
-            variant={getStaffingVariant(shift.staffingLevel)}
-          />
-        )}
-        {shift.isOvertimeRisk && (
-          <ComplianceBadge
-            icon={<AlertTriangle size={14} color={colors.warning} />}
-            text="OT risk"
-            variant="warning"
-          />
-        )}
-      </View>
+      <View className="p-4">
+        {/* Role + badges */}
+        <View className="flex-row items-center gap-2 mb-3">
+          <Text className="text-sm font-semibold text-heading flex-1">{shift.role}</Text>
+          <StatusBadge text={label} color={color} />
+          {shift.isToday && <StatusBadge text="Today" color="blue" />}
+        </View>
 
-      <View className="flex-row items-center justify-between border-t border-gray-700 pt-3">
-        <View className="flex-row items-center gap-4">
+        {/* Time */}
+        <View className="flex-row items-center gap-2 mb-1.5">
+          <Clock size={13} color={colors.muted} />
+          <Text className="text-sm text-heading">
+            {shift.startTime ? format(parseISO(shift.startTime), "h:mm a") : "N/A"} – {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
+          </Text>
+          {shift.status === "on-shift" && shift.actualClockIn && (
+            <Text className="text-xs text-teal-400">
+              (on since {format(parse(shift.actualClockIn, "HH:mm", new Date()), "h:mm a")})
+            </Text>
+          )}
+        </View>
+
+        {/* Location */}
+        <View className="flex-row items-center gap-2 mb-3">
+          <MapPin size={13} color={colors.muted} />
+          <Text className="text-sm text-label">{shift.location}</Text>
+        </View>
+
+        {/* Manager note */}
+        {shift.managerNote && (
+          <View className="mb-3">
+            <TouchableOpacity onPress={handleNotePress} className="flex-row items-center gap-2">
+              <MessageSquare size={13} color={colors.teal} />
+              <Text className="text-xs text-teal-400">Manager note</Text>
+            </TouchableOpacity>
+            {isNoteVisible && (
+              <View className="mt-2 p-3 bg-white/5 rounded-lg">
+                <Text className="text-sm text-heading">{shift.managerNote}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Compliance badges */}
+        <View className="flex-row flex-wrap gap-1.5 mb-3">
+          <ComplianceBadge icon={<Coffee size={12} color={colors.muted} />} text={`Break ${shift.breakMinutes}m`} variant="default" />
+          {shift.expectedPace && (
+            <ComplianceBadge icon={<TrendingUp size={12} color={colors.muted} />} text={shift.expectedPace} variant={getPaceVariant(shift.expectedPace)} />
+          )}
+          {shift.staffingLevel && (
+            <ComplianceBadge icon={<Users size={12} color={colors.muted} />} text={shift.staffingLevel} variant={getStaffingVariant(shift.staffingLevel)} />
+          )}
+          {shift.isOvertimeRisk && (
+            <ComplianceBadge icon={<AlertTriangle size={12} color={colors.warning} />} text="OT Risk" variant="warning" />
+          )}
+        </View>
+
+        {/* Action buttons */}
+        <View className="flex-row items-center gap-2 pt-3 border-t border-border">
           {shift.status === "open" && onPickUpShift && (
             <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                onPickUpShift(shift);
-              }}
-              className="flex-row items-center gap-2 rounded-lg bg-orange-600/50 p-2 border-2 border-orange-500"
+              onPress={(e) => { e.stopPropagation(); onPickUpShift(shift); }}
+              className="flex-row items-center gap-1.5 px-3 py-2 rounded-lg"
+              style={{ backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
             >
-              <Clock size={16} color="#FDBA74" />
-              <Text className="text-base font-semibold text-orange-200">
-                Pick Up Shift
-              </Text>
+              <Clock size={13} color={colors.teal} />
+              <Text className="text-xs font-semibold text-teal-400">Pick Up Shift</Text>
             </TouchableOpacity>
           )}
           {shift.status === "confirmed" && (
             <>
               <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onRequestSwap(shift);
-                }}
-                className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
+                onPress={(e) => { e.stopPropagation(); onRequestSwap(shift); }}
+                className="flex-row items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-white/5"
               >
-                <ArrowRightLeft size={16} color={colors.label} />
-                <Text className="text-base font-semibold text-white">
-                  Request Swap
-                </Text>
+                <ArrowRightLeft size={13} color={colors.label} />
+                <Text className="text-xs font-semibold text-label">Swap</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onRequestDrop(shift);
-                }}
-                className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
+                onPress={(e) => { e.stopPropagation(); onRequestDrop(shift); }}
+                className="flex-row items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-white/5"
               >
-                <MinusCircle size={16} color={colors.label} />
-                <Text className="text-base font-semibold text-gray-300">
-                  Drop to Open
-                </Text>
+                <MinusCircle size={13} color={colors.label} />
+                <Text className="text-xs font-semibold text-label">Drop</Text>
               </TouchableOpacity>
             </>
           )}
           {shift.status === "pending-swap" && (
             <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                onCancelSwapRequest(shift); // Call new prop
-              }}
-              className="flex-row items-center gap-2 rounded-lg bg-red-700/50 p-2 border-2 border-red-600" // Red style
+              onPress={(e) => { e.stopPropagation(); onCancelSwapRequest(shift); }}
+              className="flex-row items-center gap-1.5 px-3 py-2 rounded-lg"
+              style={{ backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '40' }}
             >
-              <XCircle size={16} color="#FCA5A5" />
-              <Text className="text-base font-semibold text-red-300">
-                Cancel Swap Request
-              </Text>
+              <XCircle size={13} color={colors.danger} />
+              <Text className="text-xs font-semibold text-red-400">Cancel Swap</Text>
             </TouchableOpacity>
           )}
           {shift.status === "dropped" && (
             <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                onCancelDropRequest(shift);
-              }}
-              className="flex-row items-center gap-2 rounded-lg bg-red-700/50 p-2 border-2 border-red-600"
+              onPress={(e) => { e.stopPropagation(); onCancelDropRequest(shift); }}
+              className="flex-row items-center gap-1.5 px-3 py-2 rounded-lg"
+              style={{ backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '40' }}
             >
-              <XCircle size={16} color="#FCA5A5" />
-              <Text className="text-base font-semibold text-red-300">
-                Cancel Drop Request
-              </Text>
+              <XCircle size={13} color={colors.danger} />
+              <Text className="text-xs font-semibold text-red-400">Cancel Drop</Text>
             </TouchableOpacity>
           )}
         </View>

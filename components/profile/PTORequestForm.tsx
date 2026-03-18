@@ -168,10 +168,10 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
     monthTextColor: "#FFFFFF",
     dayTextColor: "#FFFFFF",
     textDisabledColor: colors.muted,
-    selectedDayBackgroundColor: colors.info,
-    selectedDayTextColor: "#FFFFFF",
-    todayTextColor: colors.info,
-    arrowColor: colors.info,
+    selectedDayBackgroundColor: colors.teal,
+    selectedDayTextColor: "#0C0F1A",
+    todayTextColor: colors.teal,
+    arrowColor: colors.teal,
     textSectionTitleColor: colors.label,
   };
 
@@ -180,26 +180,26 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >
-      <View className="p-4 bg-surface border border-gray-700 rounded-2xl mb-6">
+      <View style={{ padding: 16, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 16, marginBottom: 16 }}>
         <View className="flex-row items-center justify-between mb-4">
-          <Text className="text-xl font-semibold text-white">
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
             New PTO Request
           </Text>
-          <TouchableOpacity onPress={onClose}>
-            <Text className="text-gray-400">Cancel</Text>
+          <TouchableOpacity onPress={onClose} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontSize: 12, color: colors.label }}>Cancel</Text>
           </TouchableOpacity>
         </View>
         <View className="gap-y-4">
           <View className="flex-row gap-4">
             <View className="flex-1">
-              <Text className="text-gray-300 mb-1">Start Date</Text>
+              <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Start Date</Text>
               <TouchableOpacity
                 ref={startDateRef}
                 onPress={() => setIsStartDatePickerOpen(true)}
-                className="p-3 h-14 bg-panel border rounded-lg flex-row justify-between items-center border-gray-600"
+                style={{ padding: 10, height: 42, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                <Text className="text-white">
-                  {startDate ? format(startDate, "yyyy-MM-dd") : "Select Date"}
+                <Text style={{ fontSize: 13, color: startDate ? colors.heading : colors.muted }}>
+                  {startDate ? format(startDate, "MMM d, yyyy") : "Select Date"}
                 </Text>
                 <CalendarIcon size={16} color={colors.label} />
               </TouchableOpacity>
@@ -217,7 +217,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                     markedDates={{
                       [startDate ? format(startDate, "yyyy-MM-dd") : ""]: {
                         selected: true,
-                        selectedColor: colors.info,
+                        selectedColor: colors.teal,
                       },
                     }}
                   />
@@ -226,14 +226,14 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
             </View>
 
             <View className="flex-1">
-              <Text className="text-gray-300 mb-1">End Date</Text>
+              <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>End Date</Text>
               <TouchableOpacity
                 ref={endDateRef}
                 onPress={() => setIsEndDatePickerOpen(true)}
-                className="p-3 h-14 bg-panel border rounded-lg flex-row justify-between items-center border-gray-600"
+                style={{ padding: 10, height: 42, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                <Text className="text-white">
-                  {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
+                <Text style={{ fontSize: 13, color: endDate ? colors.heading : colors.muted }}>
+                  {endDate ? format(endDate, "MMM d, yyyy") : "Select Date"}
                 </Text>
                 <CalendarIcon size={16} color={colors.label} />
               </TouchableOpacity>
@@ -251,7 +251,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                     markedDates={{
                       [endDate ? format(endDate, "yyyy-MM-dd") : ""]: {
                         selected: true,
-                        selectedColor: colors.info,
+                        selectedColor: colors.teal,
                       },
                     }}
                   />
@@ -260,7 +260,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
             </View>
           </View>
           <View>
-            <Text className="text-gray-300 mb-1">Hours per Day</Text>
+            <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Hours per Day</Text>
             <TextInput
               value={hoursPerDay}
               onChangeText={(text) => {
@@ -271,25 +271,25 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
               placeholder="e.g., 8"
               keyboardType="numeric"
               placeholderTextColor={colors.muted}
-              className="p-3 bg-panel border border-gray-600 rounded-lg text-white"
+              style={{ padding: 10, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, color: colors.heading, fontSize: 13 }}
             />
           </View>
           <View>
-            <Text className="text-gray-300 mb-1">Note (Optional)</Text>
+            <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Note (Optional)</Text>
             <TextInput
               value={note}
               onChangeText={setNote}
               placeholder="Add any additional details..."
               multiline
               placeholderTextColor={colors.muted}
-              className="p-3 bg-panel border border-gray-600 rounded-lg text-white min-h-[80px]"
+              style={{ padding: 10, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, color: colors.heading, fontSize: 13, minHeight: 72 }}
             />
           </View>
           <TouchableOpacity
             onPress={handleSubmit}
-            className="py-3 bg-blue-600 rounded-lg items-center"
+            style={{ paddingVertical: 10, borderRadius: 8, alignItems: 'center', backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
           >
-            <Text className="font-bold text-white">Submit Request</Text>
+            <Text style={{ fontWeight: '600', fontSize: 13, color: colors.teal }}>Submit Request</Text>
           </TouchableOpacity>
         </View>
       </View>

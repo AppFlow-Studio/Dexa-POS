@@ -11,6 +11,7 @@ import {
   parse,
   parseISO,
 } from "date-fns";
+import { colors } from "@/lib/theme";
 import { Calendar } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -79,10 +80,10 @@ const PTOPage = () => {
         {!showRequestForm && (
           <TouchableOpacity
             onPress={() => setShowRequestForm(true)}
-            className="flex-row items-center gap-2 bg-blue-600 px-4 py-2 rounded-lg"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50' }}
           >
-            <Calendar color="white" size={16} />
-            <Text className="text-white font-semibold">Request PTO</Text>
+            <Calendar color={colors.teal} size={14} />
+            <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 13 }}>Request PTO</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -98,20 +99,20 @@ const PTOPage = () => {
         )}
         <PtoMetrics employeeId={activeEmployeeId} />
 
-        <View className="p-4 bg-blue-600/10 border border-blue-500/20 rounded-2xl mb-6">
-          <Text className="text-lg font-semibold text-white mb-2">
+        <View style={{ padding: 14, backgroundColor: colors.teal + '08', borderWidth: 1, borderColor: colors.teal + '25', borderRadius: 14, marginBottom: 16 }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.teal, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             Accrual Information
           </Text>
           <View className="flex-row justify-between">
             <View>
-              <Text className="text-sm text-gray-400 mb-1">Accrual Rate</Text>
-              <Text className="text-xl font-bold text-white">
-                {ptoAccrualRate} hours per hour worked
+              <Text style={{ fontSize: 11, color: colors.label, marginBottom: 2 }}>Accrual Rate</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
+                {ptoAccrualRate}h per hour worked
               </Text>
             </View>
             <View>
-              <Text className="text-sm text-gray-400 mb-1">Next Accrual</Text>
-              <Text className="text-xl font-bold text-white">
+              <Text style={{ fontSize: 11, color: colors.label, marginBottom: 2 }}>Next Accrual</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
                 {nextAccrualInfo}
               </Text>
             </View>
@@ -119,7 +120,7 @@ const PTOPage = () => {
         </View>
 
         <View>
-          <Text className="text-xl font-semibold text-white mb-4">
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             Request History
           </Text>
           <View className="gap-y-3">
