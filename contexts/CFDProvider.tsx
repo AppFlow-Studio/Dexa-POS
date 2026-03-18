@@ -4,6 +4,7 @@ import {
   dismissSecondaryDisplay,
 } from "@/native/SecondaryDisplay";
 import type { SecondaryDisplayData } from "@/native/SecondaryDisplay";
+import { detectNativeHardware } from "@/native/HardwareDetection";
 import { getCachedCapabilities } from "@/services/hardware/deviceDetection";
 import { CFDController } from "@/services/cfd/CFDController";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
@@ -386,24 +387,42 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
   // ==================== BUILT-IN SECONDARY DISPLAY SYNC ====================
 
   const orderTotals = useActiveOrderTotals();
-  const hasBuiltinCfdRef = useRef(false);
+  const [hasBuiltinCfd, setHasBuiltinCfd] = useState(false);
 
-  // Check for built-in CFD once on mount
+  // Check for built-in CFD once on mount (async with cache-first, native-fallback)
   useEffect(() => {
-    const caps = getCachedCapabilities();
-    hasBuiltinCfdRef.current = caps?.hasBuiltinCfd ?? false;
-    if (hasBuiltinCfdRef.current) {
-      Log("[Built-in CFD] Detected built-in secondary display");
-    }
+    let mounted = true;
+    (async () => {
+      // Try cache first (fast path for subsequent boots)
+      let hasCfd = getCachedCapabilities()?.hasBuiltinCfd ?? false;
+
+      // If cache miss, detect directly via native module
+      if (!hasCfd) {
+        const hw = await detectNativeHardware();
+        hasCfd = hw?.hasSecondaryDisplay ?? false;
+      }
+
+      if (mounted) {
+        setHasBuiltinCfd(hasCfd);
+        if (hasCfd) {
+          Log("[Built-in CFD] Detected built-in secondary display");
+        }
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // Dismiss secondary display on unmount if detected
+  useEffect(() => {
     return () => {
-      if (hasBuiltinCfdRef.current) {
+      if (hasBuiltinCfd) {
         dismissSecondaryDisplay();
       }
     };
-  }, []);
+  }, [hasBuiltinCfd]);
 
   useEffect(() => {
-    if (!hasBuiltinCfdRef.current) return;
+    if (!hasBuiltinCfd) return;
 
     const restaurantName = selectedStore?.name ?? "";
     const isSalesScreen = pathname.includes("order-processing");
@@ -472,6 +491,7 @@ export function CFDProvider({ children }: { children: React.ReactNode }) {
 
     updateSecondaryDisplay(payload);
   }, [
+    hasBuiltinCfd,
     activeOrder,
     orderTotals,
     activeScreenState,

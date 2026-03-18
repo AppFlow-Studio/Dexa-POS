@@ -244,7 +244,7 @@ const OrderProcessing = () => {
         onManagePress={handleManageDrawer}
         onNoSalePress={handleNoSale}
       />
-      <View className="flex-1 flex-row bg-screen rounded-lg border border-border">
+      <View className="flex-1 flex-row bg-screen rounded-lg ">
         {/* Stage 1: BillSection (lighter — user sees their order first) */}
         {renderStage >= 1 ? (
           <BillSection

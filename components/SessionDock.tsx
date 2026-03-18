@@ -26,7 +26,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 const BREAK_DURATION_MIN = 30;
 
@@ -362,19 +361,6 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 const SessionDock = () => {
   const { sessions, activeEmployeeId } = useTimeclockStore();
   const [isSwitchModalOpen, setSwitchModalOpen] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  // Chevron rotation animation
-  const rotation = useSharedValue(180); // Start at 180 since expanded by default
-
-  const rotateStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
-
-  const toggleExpand = () => {
-    setIsExpanded(!isExpanded);
-    rotation.value = withTiming(isExpanded ? 0 : 180, { duration: 200 });
-  };
 
   const activeSessionId = Object.keys(sessions).find(
     (id) => sessions[id].employeeId === activeEmployeeId
