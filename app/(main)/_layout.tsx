@@ -4,9 +4,10 @@ import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
 import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
+import { hydrateDrawerSession } from "@/services/cashDrawerService";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { useOrderStore, getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
@@ -74,6 +75,24 @@ export default function MainLayout() {
 
   // Initialize table order prefetch subscriber and session side effects (POS mode only)
   useTableSessionInit({ skip: isKDS });
+
+  // Hydrate cash drawer session on startup (POS mode only)
+  // If no active session found and a drawer exists, prompt user to open it
+  useEffect(() => {
+    if (isKDS || !selectedStation || !selectedStore) return;
+    const supabase = getOrderStoreSupabaseClient();
+    if (!supabase) return;
+    hydrateDrawerSession(supabase, selectedStation.id, selectedStore.id)
+      .then((hasSession) => {
+        const store = require("@/stores/useCashDrawerStore").useCashDrawerStore.getState();
+        if (!hasSession && store.drawerId) {
+          store.setShouldPromptOpen(true);
+        }
+      })
+      .catch((err) => {
+        console.warn("[MainLayout] Cash drawer hydration failed:", err);
+      });
+  }, [isKDS, selectedStation?.id, selectedStore?.id]);
 
   // KDS-only broadcast handler — only feeds useKDSStore, skips useOrderStore
   const handleOrderChangeKDS = useCallback((payload: OrderPayload) => {

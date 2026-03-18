@@ -116,6 +116,19 @@ export interface StoreSettings {
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: number // Auto-expire notified parties after this many minutes
 
+  // Cash Drawer Settings
+  cashDrawerSettings: {
+    requireNoSaleReason: boolean
+    requireNoSaleApproval: boolean
+    noSaleAlertThreshold: number
+    blindCloseCount: boolean
+    autoPrintNoSaleReceipt: boolean
+    defaultOpeningAmount: number
+    varianceWarningThreshold: number
+    varianceAlertThreshold: number
+    requireEodBeforeClose: boolean
+  }
+
   // Station session management
   selectedStation: SelectedStation | null
   stationSessionId: string | null
@@ -163,6 +176,7 @@ interface StoreSettingsState extends StoreSettings {
   setStationSessionId: (sessionId: string | null) => void
   setDeviceName: (name: string) => void
   clearStationSession: () => void
+  updateCashDrawerSettings: (partial: Partial<StoreSettings['cashDrawerSettings']>) => void
 }
 
 const initialData: StoreSettings = {
@@ -234,6 +248,19 @@ const initialData: StoreSettings = {
 
   // Waitlist Settings
   waitlistNotificationGracePeriodMinutes: 10,
+
+  // Cash Drawer Settings
+  cashDrawerSettings: {
+    requireNoSaleReason: true,
+    requireNoSaleApproval: false,
+    noSaleAlertThreshold: 5,
+    blindCloseCount: true,
+    autoPrintNoSaleReceipt: false,
+    defaultOpeningAmount: 200.00,
+    varianceWarningThreshold: 5.00,
+    varianceAlertThreshold: 20.00,
+    requireEodBeforeClose: true,
+  },
 
   // No store selected initially
   selectedStore: null,
@@ -466,6 +493,13 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
 
       clearStationSession: () => {
         set({ selectedStation: null, stationSessionId: null })
+      },
+
+      updateCashDrawerSettings: (partial) => {
+        set(state => ({
+          ...state,
+          cashDrawerSettings: { ...state.cashDrawerSettings, ...partial },
+        }))
       }
     }),
     {
@@ -518,6 +552,8 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         tipPresetPercentages: state.tipPresetPercentages,
         // Organization branding
         organizationLogoUrl: state.organizationLogoUrl,
+        // Cash Drawer Settings
+        cashDrawerSettings: state.cashDrawerSettings,
         // Station session fields
         selectedStation: state.selectedStation,
         stationSessionId: state.stationSessionId,

@@ -2,13 +2,12 @@ import { useToast } from "@/contexts/ToastContext";
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
-import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Plus } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface SearchResultItemProps {
   item: MenuItemType;
@@ -18,19 +17,77 @@ interface SearchResultItemProps {
   disabledReason?: string;
 }
 
+const styles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: `${colors.border}`,
+  },
+  name: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.heading,
+  },
+  nameDisabled: {
+    color: colors.muted,
+  },
+  price: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.teal,
+    marginTop: 2,
+  },
+  priceDisabled: {
+    color: colors.muted,
+  },
+  cashPrice: {
+    fontSize: 11,
+    color: colors.muted,
+    marginLeft: 6,
+  },
+  disabledReason: {
+    fontSize: 11,
+    color: colors.danger,
+    marginTop: 2,
+  },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: `${colors.teal}15`,
+    borderWidth: 1,
+    borderColor: `${colors.teal}40`,
+    gap: 4,
+  },
+  addBtnDisabled: {
+    backgroundColor: `${colors.border}30`,
+    borderColor: "transparent",
+  },
+  addText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.teal,
+  },
+  addTextDisabled: {
+    color: colors.muted,
+  },
+});
+
 const SearchResultItem: React.FC<SearchResultItemProps> = ({
   item,
-  menuName,
   displayPrice,
   isDisabled = false,
   disabledReason,
 }) => {
-  const openDialog = useCustomizationStore((state) => state.openToAdd);
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const { openFullscreen } = useModifierSidebarStore();
   const { show } = useToast();
-
   const activeOrder = useActiveOrder();
 
   const handleAddToCart = () => {
@@ -39,18 +96,12 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
     if (!activeOrder?.order_type) {
       show({
         title: "Order Type Required",
-        message:
-          "Please select an order type (e.g., Dine-In) before adding items.",
+        message: "Please select an order type before adding items.",
         type: "warning",
       });
       return;
     }
 
-    // Pass the overridden price context if possible?
-    // Currently openFullscreen doesn't support context overrides easily unless we modify that workflow too.
-    // For now, we assume the customization modal will handle it OR we might have to pass data.
-    // Given the task is about Search UI, I will proceed with just visual price.
-    // TODO: Ensure backend/cart respects this price.
     openFullscreen(item, activeOrderId);
     closeSearchSheet();
   };
@@ -58,59 +109,30 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
   const finalPrice = displayPrice !== undefined ? displayPrice : item.price;
 
   return (
-    <View className="flex-row justify-between items-center py-3 border-b border-gray-700">
-      <View className="flex-1 mr-4">
-        {menuName && (
-          <Text className="text-xs text-gray-400 mb-1 uppercase tracking-wider">
-            {menuName}
-          </Text>
-        )}
-        <Text
-          className={`text-xl font-bold ${
-            isDisabled ? "text-gray-500" : "text-white"
-          }`}
-        >
+    <View style={styles.row}>
+      <View style={{ flex: 1, marginRight: 12 }}>
+        <Text style={[styles.name, isDisabled && styles.nameDisabled]} numberOfLines={1}>
           {item.name}
         </Text>
-        <View className="flex-row items-baseline mt-1">
-          <Text
-            className={`text-lg font-semibold ${
-              isDisabled ? "text-gray-600" : "text-blue-400"
-            }`}
-          >
+        <View style={{ flexDirection: "row", alignItems: "baseline", marginTop: 2 }}>
+          <Text style={[styles.price, isDisabled && styles.priceDisabled]}>
             ${finalPrice.toFixed(2)}
           </Text>
           {item.cashPrice && !isDisabled && (
-            <Text className="text-sm text-gray-500 ml-2">
-              Cash: ${item.cashPrice.toFixed(2)}
-            </Text>
+            <Text style={styles.cashPrice}>Cash ${item.cashPrice.toFixed(2)}</Text>
           )}
         </View>
         {isDisabled && disabledReason && (
-          <Text className="text-xs text-red-500 mt-1">{disabledReason}</Text>
+          <Text style={styles.disabledReason}>{disabledReason}</Text>
         )}
       </View>
       <TouchableOpacity
-        className={`flex-row items-center py-2 px-4 rounded-xl ${
-          isDisabled
-            ? "bg-gray-800 border-gray-700"
-            : "bg-blue-600/20 border border-blue-600"
-        }`}
+        style={[styles.addBtn, isDisabled && styles.addBtnDisabled]}
         onPress={handleAddToCart}
         disabled={isDisabled}
       >
-        <Plus
-          color={isDisabled ? colors.muted : colors.info}
-          size={20}
-          strokeWidth={3}
-        />
-        <Text
-          className={`font-bold ml-1.5 text-base ${
-            isDisabled ? "text-gray-500" : "text-blue-400"
-          }`}
-        >
-          Add
-        </Text>
+        <Plus color={isDisabled ? colors.muted : colors.teal} size={13} strokeWidth={3} />
+        <Text style={[styles.addText, isDisabled && styles.addTextDisabled]}>Add</Text>
       </TouchableOpacity>
     </View>
   );

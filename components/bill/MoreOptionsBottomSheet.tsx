@@ -2,9 +2,11 @@ import { useToast } from "@/contexts/ToastContext";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type { MerchantRole } from "@/lib/types";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -30,20 +32,20 @@ interface MoreOptionsProps {
   discountSheetRef?: React.RefObject<BottomSheetMethods>;
   onVoidSuccess?: () => void;
   onCloseCheck?: () => void;
+  onNoSale?: () => void;
 }
 
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   MoreOptionsProps
 > = function MoreOptionsComponent(
-  { discountSheetRef, onVoidSuccess, onCloseCheck },
+  { discountSheetRef, onVoidSuccess, onCloseCheck, onNoSale },
   ref
 ) {
   const snapPoints = useMemo(() => ["75%"], []);
   const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [isTaxExempt, setIsTaxExempt] = useState(false);
-  const [isOpenDrawer, setIsOpenDrawer] = useState(false);
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
@@ -167,36 +169,18 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const handleManagerPinSubmit = async () => {
-    if (managerPin === "1234") {
-      if (isOpenDrawer) {
-        setIsOpenDrawer(false);
-        setShowManagerPin(false);
-        setManagerPin("");
-        try {
-          const success = await PrinterService.openCashDrawer();
-          show({
-            title: success ? "Drawer Opened" : "Drawer Not Opened",
-            message: success
-              ? "The cash drawer has been successfully opened."
-              : "No printer with cash drawer support found.",
-            type: success ? "success" : "error",
-          });
-        } catch (e: any) {
-          show({
-            title: "Drawer Error",
-            message: e?.message || "Failed to open cash drawer.",
-            type: "error",
-          });
-        }
-        return;
-      } else {
-        setIsTaxExempt(true);
-        show({
-          title: "Tax Exempt Enabled",
-          message: "The order is now tax-exempt.",
-          type: "success",
-        });
-      }
+    // Verify PIN against actual employee database
+    const MANAGER_ROLES: MerchantRole[] = ["merchant.manager", "merchant.admin", "merchant.owner"];
+    const employee = useEmployeeStore.getState().findEmployeeByPin(managerPin);
+    const isManager = employee && MANAGER_ROLES.includes(employee.role);
+
+    if (isManager) {
+      setIsTaxExempt(true);
+      show({
+        title: "Tax Exempt Enabled",
+        message: "The order is now tax-exempt.",
+        type: "success",
+      });
       setShowManagerPin(false);
       setManagerPin("");
     } else {
@@ -211,15 +195,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       setManagerPin("");
       show({
         title: "Invalid PIN",
-        message: "The manager PIN you entered is incorrect.",
+        message: employee
+          ? "This employee does not have manager access."
+          : "The PIN you entered does not match any employee.",
         type: "error",
       });
     }
-  };
-
-  const handleOpenDrawer = () => {
-    setIsOpenDrawer(true);
-    setShowManagerPin(true);
   };
 
   const handleAddCustomer = () => {
@@ -522,25 +503,25 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               />
             </View>
 
-            <View className="px-4 pb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Open Drawer (No-sale)
-              </Text>
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                  <Text className="text-lg text-gray-400 mr-2">
-                    Requires PIN
-                  </Text>
-                  <Lock color={colors.label} size={20} />
-                </View>
+            {onNoSale && (
+              <View className="px-4 pb-4 flex-row justify-between items-center">
+                <Text className="text-xl font-semibold text-white">
+                  No Sale
+                </Text>
                 <TouchableOpacity
-                  onPress={handleOpenDrawer}
-                  className="px-5 py-2 bg-surface rounded-xl border border-gray-600"
+                  onPress={() => {
+                    if (ref && "current" in ref && ref.current) {
+                      ref.current.close();
+                    }
+                    setTimeout(() => onNoSale(), 250);
+                  }}
+                  className="flex-row items-center gap-x-2 px-5 py-2 bg-surface rounded-xl border border-gray-600"
                 >
-                  <Text className="text-xl font-medium text-white">Open</Text>
+                  <Lock color={colors.label} size={16} />
+                  <Text className="text-base font-medium text-white">Open Drawer</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            )}
           </View>
         </BottomSheetScrollView>
       </BottomSheet>

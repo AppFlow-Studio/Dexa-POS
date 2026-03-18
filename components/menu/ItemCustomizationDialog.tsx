@@ -198,7 +198,7 @@ const ItemCustomizationDialog: React.FC = () => {
                         disabled={isReadOnly}
                         key={size.id}
                         onPress={() => setSelectedSize(size)}
-                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-blue-400 bg-blue-400/10" : "border-neutral-200"}`}
+                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-teal bg-teal/10" : "border-neutral-200"}`}
                       >
                         <View className="flex-row justify-between">
                           <Text className="font-semibold text-accent-500">
@@ -231,7 +231,7 @@ const ItemCustomizationDialog: React.FC = () => {
                         disabled={isReadOnly}
                         key={addOn.id}
                         onPress={() => handleAddOnToggle(addOn)}
-                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-blue-400 bg-blue-400/10" : "border-neutral-200"}`}
+                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-teal bg-teal/10" : "border-neutral-200"}`}
                       >
                         <Text className="font-semibold text-accent-500">
                           {addOn.name} (+ ${addOn.price.toFixed(2)})

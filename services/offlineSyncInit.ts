@@ -1566,11 +1566,12 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           const currentOrder = Object.values(
             useOrderStore.getState().ordersById,
           ).find((o) => o.db_order_id === resolvedOrderId);
+          const currentStatus = currentOrder?.order_status;
           const backendStatus =
-            currentOrder?.order_status === "draft" ||
-            currentOrder?.order_status === "sent_to_kitchen"
-              ? "sent_to_kitchen"
-              : "preparing";
+            currentStatus === "draft" ? "sent_to_kitchen"
+            : currentStatus === "sent_to_kitchen" ? "sent_to_kitchen"
+            : currentStatus === "preparing" ? "preparing"
+            : "preparing";
 
           const { error: statusError } = await OrderService.updateOrderStatus(
             _supabaseClient,
@@ -1702,6 +1703,42 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           "Removed",
         );
         return !error;
+      }
+
+      case "record_cash_drawer_operation": {
+        const {
+          id, cash_drawer_id, session_id, operation_type, amount,
+          performed_by, performed_at, order_id, payment_id,
+          balance_after, reason, approved_by,
+        } = op.params;
+
+        if (!_supabaseClient) {
+          console.log("[OfflineSync] record_cash_drawer_operation: No Supabase client");
+          return false;
+        }
+
+        const { error } = await _supabaseClient
+          .from("cash_drawer_operations")
+          .insert({
+            id, cash_drawer_id, session_id, operation_type, amount,
+            performed_by, performed_at, order_id, payment_id,
+            balance_after, reason, approved_by,
+          });
+
+        if (error) {
+          console.error("[OfflineSync] record_cash_drawer_operation failed:", error);
+          return false;
+        }
+
+        // Update session expected_cash
+        if (balance_after != null) {
+          await _supabaseClient
+            .from("cash_drawer_sessions")
+            .update({ expected_cash: balance_after })
+            .eq("id", session_id);
+        }
+
+        return true;
       }
 
       default:

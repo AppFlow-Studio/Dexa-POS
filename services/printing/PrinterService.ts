@@ -28,6 +28,7 @@ import { buildReceiptCommands } from "./templates/ReceiptTemplate";
 import { buildKitchenTicketCommands } from "./templates/KitchenTicketTemplate";
 import { buildReceiptDocument } from "./templates/ReceiptDocumentTemplate";
 import { buildKitchenTicketDocument } from "./templates/KitchenTicketDocumentTemplate";
+import { buildNoSaleDocument, NoSaleReceiptData } from "./templates/NoSaleDocumentTemplate";
 
 /**
  * Sanitize time strings from toLocaleTimeString() which may insert
@@ -210,6 +211,23 @@ export const PrinterService = {
       console.error("[PrinterService] Cash drawer failed:", e);
       return false;
     }
+  },
+
+  /**
+   * Print a No Sale receipt on the receipt printer.
+   */
+  async printNoSaleReceipt(
+    data: NoSaleReceiptData & { locationId: string },
+  ): Promise<boolean> {
+    const printer = getReceiptPrinter(data.locationId);
+    if (!printer) {
+      console.warn("[PrinterService] No receipt printer for no-sale receipt");
+      return false;
+    }
+    const doc = buildNoSaleDocument(data);
+    const job = createDocumentJob(printer.id, doc, "receipt", "normal");
+    usePrintQueueStore.getState().enqueue(job);
+    return true;
   },
 
   /**

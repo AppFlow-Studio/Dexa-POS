@@ -40,7 +40,7 @@ function getKitchenBorderColor(kitchenStatus?: string): string | undefined {
     case "preparing": return colors.paymentPartialRefund;
     case "ready":     return colors.orderReady;
     case "served":    return colors.success;
-    default:          return colors.muted;
+    default:          return colors.teal;
   }
 }
 
@@ -77,7 +77,7 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
                     {optionIndex < modifier.options.length - 1 && " • "}
                   </Text>
                   {option.price > 0 && (
-                    <Text className="text-sm font-medium ml-1 text-green-400">
+                    <Text className="text-sm font-medium ml-1 text-teal-400">
                       +${option.price.toFixed(2)}
                       {optionIndex < modifier.options.length - 1 && ","}
                     </Text>
@@ -482,7 +482,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               </View>
               <Text
                 className={`font-semibold text-lg ${
-                  isVoided ? "text-gray-500 line-through" : "text-white"
+                  isVoided ? "text-gray-500 line-through" : "text-teal-400"
                 }`}
               >
                 ${(item.price * item.quantity).toFixed(2)}
@@ -491,7 +491,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
             {hasModifiers && (
               <Animated.View className="overflow-hidden">
-                <View className="px-2 border-t border-gray-600">
+                <View className="px-2">
                   {/* OPTIMIZED: Use memoized ModifiersList component */}
                   {item.customizations.modifiers &&
                     item.customizations.modifiers.length > 0 && (

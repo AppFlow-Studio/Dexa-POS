@@ -7,7 +7,10 @@
 
 import {
   DenominationCount,
+  DrawerOperationType,
   DrawerSession,
+  isDebitOperation,
+  isNoEffectOperation,
   useCashDrawerStore,
 } from "@/stores/useCashDrawerStore";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -165,66 +168,105 @@ export async function closeDrawerSession(
 }
 
 /**
- * Record a cash drawer operation (deposit, withdrawal, payment, etc.)
- * Saves to both local store and backend.
+ * Record a cash drawer operation.
+ * Saves to local store first (optimistic), then persists to backend.
+ * Falls back to offline queue if backend insert fails.
  */
 export async function recordDrawerOperation(
   supabase: SupabaseClient,
   params: {
     cashDrawerId: string;
     sessionId: string;
-    operationType: string;
+    operationType: DrawerOperationType;
     amount: number;
     performedBy: string;
     orderId?: string;
     paymentId?: string;
     reason?: string;
+    approvedBy?: string;
+    receiptPrinted?: boolean;
   }
 ): Promise<{ success: boolean; error?: string }> {
   const store = useCashDrawerStore.getState();
   const currentBalance = store.getRunningBalance();
-  const isDebit = ["withdrawal", "change_given", "refund", "cash_out"].includes(
-    params.operationType
-  );
-  const balanceAfter = currentBalance + (isDebit ? -Math.abs(params.amount) : Math.abs(params.amount));
+
+  let balanceAfter = currentBalance;
+  if (!isNoEffectOperation(params.operationType)) {
+    const effectiveAmount = isDebitOperation(params.operationType)
+      ? -Math.abs(params.amount)
+      : Math.abs(params.amount);
+    balanceAfter = currentBalance + effectiveAmount;
+  }
+
+  const opId = uuidv4();
+  const performedAt = new Date().toISOString();
 
   // Record locally first (optimistic)
   store.recordOperation({
-    id: uuidv4(),
-    operationType: params.operationType as any,
+    id: opId,
+    operationType: params.operationType,
     amount: params.amount,
     performedBy: params.performedBy,
-    performedAt: new Date().toISOString(),
+    performedAt,
     orderId: params.orderId,
     paymentId: params.paymentId,
     reason: params.reason,
+    approvedBy: params.approvedBy,
+    receiptPrinted: params.receiptPrinted,
   });
 
   // Then persist to backend
   const { error } = await supabase.from("cash_drawer_operations").insert({
+    id: opId,
     cash_drawer_id: params.cashDrawerId,
     session_id: params.sessionId,
     operation_type: params.operationType,
     amount: params.amount,
     performed_by: params.performedBy,
-    performed_at: new Date().toISOString(),
+    performed_at: performedAt,
     order_id: params.orderId || null,
     payment_id: params.paymentId || null,
     balance_after: balanceAfter,
     reason: params.reason || null,
+    approved_by: params.approvedBy || null,
   });
 
   if (error) {
-    console.error("[CashDrawer] Failed to record operation:", error);
-    // Don't revert local — it's already there for display. Backend will catch up.
+    console.error("[CashDrawer] Failed to record operation, queuing offline:", error);
+    // Queue for offline sync
+    try {
+      const { queueOperation } = require("@/services/offlineSyncService") as typeof import("@/services/offlineSyncService");
+      await queueOperation({
+        type: "record_cash_drawer_operation",
+        localOrderId: params.orderId || opId, // use opId as fallback key
+        params: {
+          id: opId,
+          cash_drawer_id: params.cashDrawerId,
+          session_id: params.sessionId,
+          operation_type: params.operationType,
+          amount: params.amount,
+          performed_by: params.performedBy,
+          performed_at: performedAt,
+          order_id: params.orderId || null,
+          payment_id: params.paymentId || null,
+          balance_after: balanceAfter,
+          reason: params.reason || null,
+          approved_by: params.approvedBy || null,
+        },
+      });
+    } catch (queueError) {
+      console.error("[CashDrawer] Failed to queue offline operation:", queueError);
+    }
     return { success: false, error: error.message };
   }
 
   // Update session expected_cash
-  await supabase
-    .from("cash_drawer_sessions")
-    .update({ expected_cash: balanceAfter })
-    .eq("id", params.sessionId);
+  if (!isNoEffectOperation(params.operationType)) {
+    await supabase
+      .from("cash_drawer_sessions")
+      .update({ expected_cash: balanceAfter })
+      .eq("id", params.sessionId);
+  }
 
   return { success: true };
 }

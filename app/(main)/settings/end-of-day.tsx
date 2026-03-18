@@ -248,6 +248,78 @@ export default function EndOfDayScreen() {
             <SummaryCard label="Staff" value={String(dailySummary.staffCount)} />
             <SummaryCard label="Refunds" value={formatCurrency(dailySummary.totalRefunds)} />
           </View>
+
+          {/* Cash Drawer Breakdown */}
+          {dailySummary.drawerBreakdown && dailySummary.drawerBreakdown.length > 0 && (
+            <View className="mt-6">
+              <Text className="text-lg font-bold text-white mb-3">
+                Cash Drawer Summary
+              </Text>
+              {dailySummary.drawerBreakdown.map((drawer, idx) => {
+                const absVariance = Math.abs(drawer.variance);
+                const varianceColor =
+                  absVariance === 0
+                    ? "text-green-400"
+                    : absVariance >= 20
+                    ? "text-red-400"
+                    : absVariance >= 5
+                    ? "text-yellow-400"
+                    : "text-blue-400";
+
+                return (
+                  <View
+                    key={idx}
+                    className="bg-panel border border-gray-700 rounded-xl p-4 mb-3"
+                  >
+                    <Text className="text-base font-bold text-white mb-2">
+                      {drawer.drawerName}
+                    </Text>
+                    <View className="flex-row justify-between mb-1">
+                      <Text className="text-sm text-label">Opening</Text>
+                      <Text className="text-sm text-white">{formatCurrency(drawer.opening)}</Text>
+                    </View>
+                    <View className="flex-row justify-between mb-1">
+                      <Text className="text-sm text-label">Expected</Text>
+                      <Text className="text-sm text-white">{formatCurrency(drawer.expected)}</Text>
+                    </View>
+                    <View className="flex-row justify-between mb-1">
+                      <Text className="text-sm text-label">Closing</Text>
+                      <Text className="text-sm text-white">{formatCurrency(drawer.closing)}</Text>
+                    </View>
+                    <View className="flex-row justify-between mb-2">
+                      <Text className="text-sm font-semibold text-white">Variance</Text>
+                      <Text className={`text-sm font-bold ${varianceColor}`}>
+                        {drawer.variance >= 0 ? "+" : ""}
+                        {formatCurrency(drawer.variance)}
+                      </Text>
+                    </View>
+                    <View className="border-t border-gray-700 pt-2 mt-1">
+                      <View className="flex-row flex-wrap gap-x-4 gap-y-1">
+                        <Text className="text-xs text-label">
+                          Sales: {formatCurrency(drawer.cashSales)}
+                        </Text>
+                        <Text className="text-xs text-label">
+                          Refunds: {formatCurrency(drawer.refunds)}
+                        </Text>
+                        <Text className="text-xs text-label">
+                          Pay In: {formatCurrency(drawer.payIns)}
+                        </Text>
+                        <Text className="text-xs text-label">
+                          Pay Out: {formatCurrency(drawer.payOuts)}
+                        </Text>
+                        <Text className="text-xs text-label">
+                          Drops: {formatCurrency(drawer.cashDrops)}
+                        </Text>
+                        <Text className="text-xs text-label">
+                          No Sales: {drawer.noSaleCount}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
       )}
 

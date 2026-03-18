@@ -6,6 +6,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   BottomSheetTextInput,
+  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search, X } from "lucide-react-native";
@@ -169,46 +170,46 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       onClose={closeSearch}
       backdropComponent={renderBackdrop}
       keyboardBehavior="extend"
+      backgroundStyle={{ backgroundColor: colors.screen }}
+      handleIndicatorStyle={{ backgroundColor: colors.border }}
       {...bottomSheetTheme}
     >
-      <BottomSheetScrollView
-        className="flex-1 bg-panel"
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        {/* Header - Fixed inside ScrollView or part of it? 
-            If inside, it scrolls. Usually nicer if fixed. 
-            But to keep it simple and within one scrollView as requested:
-        */}
-        <View className="bg-panel border-b border-gray-700 pb-4 px-4 pt-2">
-          <View className="flex-row items-center">
-            <View className="flex-row items-center flex-1 rounded-xl px-3 bg-card h-12">
-              <Search color={colors.label} size={20} />
+      <BottomSheetView style={{ flex: 1, backgroundColor: colors.screen }}>
+        {/* Search header */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", flex: 1, borderRadius: 12, paddingHorizontal: 12, height: 44, borderWidth: 1, backgroundColor: colors.panel, borderColor: colors.border }}>
+              <Search color={colors.label} size={16} />
               <BottomSheetTextInput
                 value={searchText}
                 onChangeText={setSearchText}
                 placeholder="Search items..."
-                className="flex-1 py-2 ml-3 text-lg text-white"
-                placeholderTextColor={colors.label}
-                style={{ color: "white" }}
+                placeholderTextColor={colors.muted}
+                style={{ flex: 1, marginLeft: 10, color: colors.heading, fontSize: 14 }}
               />
               {searchText.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchText("")}>
-                  <X color={colors.label} size={18} />
+                  <X color={colors.muted} size={16} />
                 </TouchableOpacity>
               )}
             </View>
-            <TouchableOpacity onPress={closeSearch} className="ml-4 p-2">
-              <Text className="text-lg font-medium text-blue-400">Cancel</Text>
+            <TouchableOpacity onPress={closeSearch}>
+              <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "500" }}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
 
+        <BottomSheetScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 40 }}
+        >
+
         {/* Manual List Rendering */}
-        <View className="px-4 mt-2">
+        <View className="px-5 mt-2">
           {searchResults.length === 0 ? (
             <View className="flex-1 items-center justify-center h-48 mt-10">
               <Search size={48} color={colors.muted} />
-              <Text className="text-gray-500 mt-4 text-center">
+              <Text style={{ color: colors.muted, marginTop: 16, textAlign: "center" }}>
                 {searchText
                   ? `No items found for "${searchText}"`
                   : "No menu items available"}
@@ -217,9 +218,8 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
           ) : (
             searchResults.map((section, sectionIndex) => (
               <View key={`section-${sectionIndex}`} className="mb-6">
-                {/* Section Header */}
-                <View className="bg-panel py-2 border-b border-gray-800 mb-1">
-                  <Text className="text-sm font-bold text-gray-400 uppercase tracking-widest">
+                <View className="py-2 mb-1" style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, letterSpacing: 1, textTransform: "uppercase" }}>
                     {section.title}
                   </Text>
                 </View>
@@ -241,7 +241,8 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
             ))
           )}
         </View>
-      </BottomSheetScrollView>
+        </BottomSheetScrollView>
+      </BottomSheetView>
     </BottomSheet>
   );
 });

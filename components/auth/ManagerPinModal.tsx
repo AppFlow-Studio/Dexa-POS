@@ -1,4 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
+import type { MerchantRole } from "@/lib/types";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import React, { useState } from "react";
@@ -25,8 +27,11 @@ const ManagerPinModal = () => {
   const shakeX = useSharedValue(0);
 
   const handlePinSubmit = () => {
-    // In a real app, this would be a secure check.
-    if (currentPin === "1234") {
+    const MANAGER_ROLES: MerchantRole[] = ["merchant.manager", "merchant.admin", "merchant.owner"];
+    const employee = useEmployeeStore.getState().findEmployeeByPin(currentPin);
+    const isManager = employee && MANAGER_ROLES.includes(employee.role);
+
+    if (isManager) {
       if (actionToPerform) {
         if (actionToPerform.type === "select_menu") {
           addTemporaryMenuAccess(actionToPerform.payload.menuName);
@@ -51,7 +56,9 @@ const ManagerPinModal = () => {
       );
       show({
         title: "Invalid PIN",
-        message: "The PIN you entered is incorrect. Please try again.",
+        message: employee
+          ? "This employee does not have manager access."
+          : "The PIN you entered does not match any employee.",
         type: "error",
       });
     }

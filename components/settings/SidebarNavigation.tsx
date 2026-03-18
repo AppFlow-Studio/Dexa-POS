@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ClipboardList,
   CreditCard,
+  DollarSign,
   FileText,
   Globe,
   LayoutGrid,
@@ -65,6 +66,12 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: "Payment Systems",
         icon: Banknote,
         route: "/settings/payment-systems",
+      },
+      {
+        id: "cash-management",
+        label: "Cash Management",
+        icon: DollarSign,
+        route: "/settings/cash-management",
       },
       {
         id: "dining-room",

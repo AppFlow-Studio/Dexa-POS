@@ -89,148 +89,107 @@ const SplitEvenlyView = () => {
   };
 
   return (
-    <View className="flex-1 bg-panel">
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-border shrink-0">
+      <View style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <TouchableOpacity
           onPress={handleGoBack}
-          className="p-2 bg-surface rounded-lg mr-4"
+          style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 14 }}
         >
-          <ArrowLeft size={20} color="white" />
+          <ArrowLeft size={18} color={colors.label} />
         </TouchableOpacity>
         <View>
-          <Text className="text-2xl font-bold text-white">Split Evenly</Text>
-          <Text className="text-gray-400">Divide the total bill equally.</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Split Evenly</Text>
+          <Text style={{ fontSize: 12, color: colors.muted }}>Divide the total bill equally.</Text>
         </View>
       </View>
 
-      {/* Main Content - Side by Side Layout */}
-      <View className="flex-1 flex-row p-6 gap-6">
-        {/* LEFT: Controls (Input) */}
-        <View className="flex-1 bg-surface rounded-3xl border border-border justify-center items-center">
-          <View className="items-center">
-            <View className="w-16 h-16 bg-blue-900/20 rounded-full items-center justify-center mb-6">
-              <Users size={32} color={colors.info} />
+      {/* Main Content */}
+      <View style={{ flex: 1, flexDirection: "row", padding: 20, gap: 16 }}>
+        {/* LEFT: Controls */}
+        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 20, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}>
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+              <Users size={30} color={colors.teal} />
             </View>
-            <Text className="text-xl font-semibold text-gray-300 mb-8">
-              Number of People
-            </Text>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.label, marginBottom: 28 }}>Number of People</Text>
 
-            <View className="flex-row items-center gap-8">
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 28 }}>
               <TouchableOpacity
                 onPress={handleDecrement}
-                className={`w-20 h-20 rounded-full border-2 items-center justify-center ${numberOfPeople <= 2
-                  ? "border-border bg-[#222]"
-                  : "border-gray-500 bg-surface"
-                  }`}
                 disabled={numberOfPeople <= 2}
+                style={{ width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: numberOfPeople <= 2 ? colors.border : colors.label, backgroundColor: colors.screen, opacity: numberOfPeople <= 2 ? 0.4 : 1 }}
               >
-                <Minus
-                  size={36}
-                  color={numberOfPeople <= 2 ? "#555" : "white"}
-                />
+                <Minus size={32} color={numberOfPeople <= 2 ? colors.muted : colors.heading} />
               </TouchableOpacity>
 
-              <Text className="text-8xl font-bold text-white w-32 text-center">
-                {numberOfPeople}
-              </Text>
+              <Text style={{ fontSize: 80, fontWeight: "700", color: colors.heading, width: 100, textAlign: "center" }}>{numberOfPeople}</Text>
 
               <TouchableOpacity
                 onPress={handleIncrement}
-                className="w-20 h-20 rounded-full border-2 border-gray-500 bg-surface items-center justify-center"
+                style={{ width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.label, backgroundColor: colors.screen }}
               >
-                <Plus size={36} color="white" />
+                <Plus size={32} color={colors.heading} />
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
-        {/* RIGHT: Financials & Action (Result) */}
-        <View className="flex-1 justify-between">
-          {/* Summary Card */}
-          <View className="bg-surface rounded-3xl border border-border p-8 flex-1 justify-center mb-6">
+        {/* RIGHT: Summary & Action */}
+        <View style={{ flex: 1, justifyContent: "space-between" }}>
+          <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 24, justifyContent: "center", marginBottom: 16 }}>
             {/* Total Bill */}
-            <View className="flex-row justify-between items-end mb-6 pb-6 border-b border-border">
-              <Text className="text-gray-400 font-medium text-lg">
-                Total Bill
-              </Text>
-              <Text className="text-3xl font-bold text-gray-300">
-                ${effectiveTotal.toFixed(2)}
-              </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.muted, fontSize: 15, fontWeight: "500" }}>Total Bill</Text>
+              <Text style={{ fontSize: 26, fontWeight: "700", color: colors.label }}>${effectiveTotal.toFixed(2)}</Text>
             </View>
 
-            {/* Per Person Breakdown */}
-            <View>
-              <Text className="text-gray-400 font-medium text-lg mb-4">
-                Per Person Breakdown
-              </Text>
+            {/* Per Person */}
+            <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "500", marginBottom: 14 }}>Per Person Breakdown</Text>
 
-              {/* Subtotal per person */}
-              <View className="flex-row justify-between items-center mb-2">
-                <Text className="text-gray-500 text-sm">Subtotal</Text>
-                <Text className="text-gray-300 text-lg">
-                  ${subtotalPerPerson.toFixed(2)}
-                </Text>
-              </View>
-
-              {/* Tax per person */}
-              <View className="flex-row justify-between items-center mb-4 pb-4 border-b border-border">
-                <Text className="text-gray-500 text-sm">Tax</Text>
-                <Text className="text-gray-300 text-lg">
-                  ${taxPerPerson.toFixed(2)}
-                </Text>
-              </View>
-
-              {/* Dual Pricing Display - Card vs Cash */}
-              <View className="mb-4">
-                {/* Card Payment Option */}
-                <View className="flex-row justify-between items-center py-3 px-4 bg-panel rounded-xl mb-2 border border-border">
-                  <View className="flex-row items-center">
-                    <CreditCard size={20} color={colors.info} />
-                    <Text className="text-gray-300 font-medium ml-3">
-                      Card Payment
-                    </Text>
-                  </View>
-                  <Text className="text-2xl font-bold text-blue-400">
-                    ${cardAmountPerPerson.toFixed(2)}
-                  </Text>
-                </View>
-
-                {/* Cash Payment Option */}
-                <View className="flex-row justify-between items-center py-3 px-4 bg-panel rounded-xl border border-green-900/50">
-                  <View className="flex-row items-center">
-                    <Banknote size={20} color={colors.success} />
-                    <Text className="text-gray-300 font-medium ml-3">
-                      Cash Payment
-                    </Text>
-                    {cashSavingsPerPerson > 0 && (
-                      <View className="ml-2 px-2 py-0.5 bg-green-900/30 rounded-full">
-                        <Text className="text-green-400 text-xs font-bold">
-                          SAVE ${cashSavingsPerPerson.toFixed(2)}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text className="text-2xl font-bold text-green-400">
-                    ${cashAmountPerPerson.toFixed(2)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Info text */}
-              <Text className="text-gray-500 text-xs text-center">
-                Each guest can choose their payment method
-              </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>Subtotal</Text>
+              <Text style={{ color: colors.label, fontSize: 15 }}>${subtotalPerPerson.toFixed(2)}</Text>
             </View>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>Tax</Text>
+              <Text style={{ color: colors.label, fontSize: 15 }}>${taxPerPerson.toFixed(2)}</Text>
+            </View>
+
+            {/* Card vs Cash */}
+            <View style={{ gap: 8, marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <CreditCard size={18} color={colors.teal} />
+                  <Text style={{ color: colors.label, fontWeight: "500" }}>Card Payment</Text>
+                </View>
+                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.teal }}>${cardAmountPerPerson.toFixed(2)}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: `${colors.success}40` }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Banknote size={18} color={colors.success} />
+                  <Text style={{ color: colors.label, fontWeight: "500" }}>Cash Payment</Text>
+                  {cashSavingsPerPerson > 0 && (
+                    <View style={{ marginLeft: 6, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: `${colors.success}20`, borderRadius: 10 }}>
+                      <Text style={{ color: colors.success, fontSize: 11, fontWeight: "700" }}>SAVE ${cashSavingsPerPerson.toFixed(2)}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.success }}>${cashAmountPerPerson.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <Text style={{ color: colors.muted, fontSize: 11, textAlign: "center" }}>Each guest can choose their payment method</Text>
           </View>
 
           {/* Action Button */}
           <TouchableOpacity
             onPress={handleConfirmSplit}
-            className="w-full py-5 bg-blue-600 rounded-2xl flex-row items-center justify-center shadow-lg shadow-blue-900/20 active:bg-blue-700"
+            style={{ width: "100%", paddingVertical: 18, backgroundColor: colors.teal, borderRadius: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 }}
           >
-            <Check size={24} color="white" className="mr-3" />
-            <Text className="font-bold text-xl text-white">
+            <Check size={22} color="#000" />
+            <Text style={{ fontWeight: "700", fontSize: 18, color: "#000" }}>
               Create {numberOfPeople} Splits
             </Text>
           </TouchableOpacity>

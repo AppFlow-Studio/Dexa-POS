@@ -84,7 +84,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                 </View>
               )}
             </View>
-            <Text className="text-base text-blue-400 font-medium">
+            <Text className="text-xs text-teal-400 font-medium">
               {cart.length} {cart.length === 1 ? "Item" : "Items"}
             </Text>
           </View>

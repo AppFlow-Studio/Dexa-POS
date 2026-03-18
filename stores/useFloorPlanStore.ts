@@ -1067,6 +1067,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         finishCleaning: async (tableId: string) =>
           getTableSessionStore().getState().finishCleaning(tableId),
 
+        finishCleaning: async (tableId: string) =>
+          useTableSessionStore.getState().finishCleaning(tableId),
+
         // ====================================================================
         // SELECTION ACTIONS
         // ====================================================================

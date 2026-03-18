@@ -152,16 +152,30 @@ export class StarMicronicsDriver implements PrinterDriver {
       throw new Error("Star Micronics driver not initialized");
     }
 
-    // Send raw ESC/POS drawer kick command directly via printRawData().
-    // Bypasses the StarXpand command builder entirely — avoids circular import
-    // issues and the native layer silently ignoring the JSON drawer command.
-    // ESC p m t1 t2: m=0 (pin 2 / DK port), t1=25 (50ms on), t2=250 (500ms off)
-    // Same bytes used in EscPosBuilder.openCashDrawer().
-    const drawerKickBytes = [0x1b, 0x70, 0x00, 0x19, 0xfa];
+    const StarXpandCommand = require("react-native-star-io10").StarXpandCommand;
+
+    const drawerBuilder = new StarXpandCommand.DrawerBuilder();
+    const contents = drawerBuilder._parameters.get("contents") as Array<Map<string, any>>;
+    contents.push(
+      new Map<string, any>([
+        ["method", "Action.Open"],
+        ["parameter", new Map<string, any>([
+          ["channel", "No.1"],
+          ["on_time", 200]
+        ])]
+      ])
+    );
+
+    const commandBuilder = new StarXpandCommand.StarXpandCommandBuilder();
+    commandBuilder.addDocument(
+      new StarXpandCommand.DocumentBuilder().addDrawer(drawerBuilder)
+    );
+
+    const commands = await commandBuilder.getCommands();
 
     try {
       await this.printer.open();
-      await this.printer.printRawData(drawerKickBytes);
+      await this.printer.print(commands);
       await this.printer.close();
       this.connected = true;
     } catch (e: any) {

@@ -15,14 +15,15 @@ import { immer } from "zustand/middleware/immer";
 // ============================================================================
 
 export type DrawerOperationType =
-  | "deposit"
-  | "withdrawal"
-  | "cash_payment"
-  | "change_given"
-  | "refund"
-  | "adjustment"
-  | "cash_out"
-  | "tip";
+  | "cash_sale"
+  | "cash_refund"
+  | "pay_in"
+  | "pay_out"
+  | "no_sale"
+  | "cash_drop"
+  | "opening_count"
+  | "closing_count"
+  | "tip_out";
 
 export interface DenominationCount {
   denomination: string; // e.g., "100", "50", "20", "10", "5", "1", "0.25", "0.10", "0.05", "0.01"
@@ -41,6 +42,9 @@ export interface DrawerOperation {
   orderId?: string;
   paymentId?: string;
   reason?: string;
+  approvedBy?: string; // staff_profile_id of manager who approved
+  receiptPrinted?: boolean;
+  requiresApproval?: boolean;
 }
 
 export interface DrawerSession {
@@ -52,6 +56,19 @@ export interface DrawerSession {
   openingCountDetails?: DenominationCount[];
   expectedCash: number; // running expected based on operations
   status: "open" | "closing" | "closed";
+  isBlindCount?: boolean;
+}
+
+// Operation type categorization helpers
+const DEBIT_TYPES: DrawerOperationType[] = ["cash_refund", "pay_out", "cash_drop", "tip_out"];
+const NO_EFFECT_TYPES: DrawerOperationType[] = ["no_sale", "opening_count", "closing_count"];
+
+export function isDebitOperation(type: DrawerOperationType): boolean {
+  return DEBIT_TYPES.includes(type);
+}
+
+export function isNoEffectOperation(type: DrawerOperationType): boolean {
+  return NO_EFFECT_TYPES.includes(type);
 }
 
 // ============================================================================
@@ -68,6 +85,9 @@ interface CashDrawerState {
   drawerId: string | null;
   drawerName: string | null;
 
+  // Post-clock-in prompt flag
+  shouldPromptOpen: boolean;
+
   // Actions
   setDrawer: (drawerId: string, drawerName: string) => void;
   openSession: (session: DrawerSession) => void;
@@ -75,6 +95,7 @@ interface CashDrawerState {
   recordOperation: (op: Omit<DrawerOperation, "balanceAfter">) => void;
   setOperations: (ops: DrawerOperation[]) => void;
   clearDrawer: () => void;
+  setShouldPromptOpen: (value: boolean) => void;
 
   // Computed
   getRunningBalance: () => number;
@@ -93,6 +114,7 @@ export const useCashDrawerStore = create<CashDrawerState>()(
       isLoading: false,
       drawerId: null,
       drawerName: null,
+      shouldPromptOpen: false,
 
       setDrawer: (drawerId: string, drawerName: string) => {
         set({ drawerId, drawerName });
@@ -115,9 +137,13 @@ export const useCashDrawerStore = create<CashDrawerState>()(
 
       recordOperation: (op: Omit<DrawerOperation, "balanceAfter">) => {
         const currentBalance = get().getRunningBalance();
-        // For deposits/payments: positive. For withdrawals/change/refunds: negative from expected.
-        const isDebit = ["withdrawal", "change_given", "refund", "cash_out"].includes(op.operationType);
-        const effectiveAmount = isDebit ? -Math.abs(op.amount) : Math.abs(op.amount);
+        // no_sale, opening_count, closing_count have no balance effect
+        if (isNoEffectOperation(op.operationType)) {
+          const fullOp: DrawerOperation = { ...op, balanceAfter: currentBalance };
+          set((state) => { state.operations.push(fullOp); });
+          return;
+        }
+        const effectiveAmount = isDebitOperation(op.operationType) ? -Math.abs(op.amount) : Math.abs(op.amount);
         const balanceAfter = currentBalance + effectiveAmount;
 
         const fullOp: DrawerOperation = {
@@ -143,7 +169,12 @@ export const useCashDrawerStore = create<CashDrawerState>()(
           operations: [],
           drawerId: null,
           drawerName: null,
+          shouldPromptOpen: false,
         });
+      },
+
+      setShouldPromptOpen: (value: boolean) => {
+        set({ shouldPromptOpen: value });
       },
 
       getRunningBalance: () => {
@@ -152,8 +183,8 @@ export const useCashDrawerStore = create<CashDrawerState>()(
 
         let balance = activeSession.openingAmount;
         for (const op of operations) {
-          const isDebit = ["withdrawal", "change_given", "refund", "cash_out"].includes(op.operationType);
-          balance += isDebit ? -Math.abs(op.amount) : Math.abs(op.amount);
+          if (isNoEffectOperation(op.operationType)) continue;
+          balance += isDebitOperation(op.operationType) ? -Math.abs(op.amount) : Math.abs(op.amount);
         }
         return balance;
       },

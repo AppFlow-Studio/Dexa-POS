@@ -24,14 +24,14 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
             className={`px-2.5 py-1 rounded-full ${
               modifierGroup.type === "required"
                 ? "bg-red-900/30 border border-red-500"
-                : "bg-blue-900/30 border border-blue-500"
+                : "bg-teal/10 border border-teal"
             }`}
           >
             <Text
               className={`text-sm font-medium ${
                 modifierGroup.type === "required"
                   ? "text-red-400"
-                  : "text-blue-400"
+                  : "text-teal"
               }`}
             >
               {modifierGroup.type === "required" ? "Required" : "Optional"}

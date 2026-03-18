@@ -53,7 +53,9 @@ export type OperationType =
   | "close_check"           // Close check (lock from edits)
   | "reopen_check"          // Reopen closed check
   // Coursing operations
-  | "fire_course";
+  | "fire_course"
+  // Cash drawer operations
+  | "record_cash_drawer_operation";
 
 /**
  * Priority levels for operation processing.
@@ -89,6 +91,9 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   process_payment: 5,       // Unified payment via process_payment_v2
   process_cash_payment: 5,  // Legacy support
   process_card_payment: 5,  // Legacy support
+
+  // Cash drawer operations (same priority as payments)
+  record_cash_drawer_operation: 5,
 };
 
 export interface OfflineOperation {

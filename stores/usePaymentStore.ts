@@ -8,7 +8,9 @@ import {
   retryFailedOperation,
 } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
+import { trackCashPaymentInDrawer } from "@/services/paymentService";
 import { useConflictStore } from "@/stores/useConflictStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 import { create } from "zustand";
 import {
@@ -722,6 +724,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         return;
       }
 
+      // Track cash payment in drawer (fire-and-forget)
+      if (isCashPayment) {
+        try {
+          const staffProfileId = useEmployeeStore.getState().loggedInEmployee?.profileId || "";
+          trackCashPaymentInDrawer(
+            { amount_charged: paymentAmount, payment_id: "", change_given: 0 } as any,
+            activeOrderId,
+            staffProfileId,
+          );
+        } catch (e) {
+          console.warn("[PaymentStore] Failed to track cash in drawer:", e);
+        }
+      }
+
       const updatedSplits = splits.map((s) =>
         s.id === activeSplitId ? { ...s, status: "paid" as const } : s,
       );
@@ -832,6 +848,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (!paymentSuccess) {
         close();
         return;
+      }
+
+      // Track cash payment in drawer (fire-and-forget)
+      if (isCashPayment) {
+        try {
+          const staffProfileId = useEmployeeStore.getState().loggedInEmployee?.profileId || "";
+          trackCashPaymentInDrawer(
+            { amount_charged: paymentAmount, payment_id: "", change_given: 0 } as any,
+            activeOrderId,
+            staffProfileId,
+          );
+        } catch (e) {
+          console.warn("[PaymentStore] Failed to track cash in drawer:", e);
+        }
       }
 
       // Refresh order state after payment

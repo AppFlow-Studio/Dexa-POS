@@ -30,6 +30,20 @@ export interface ChecklistItem {
   detail?: string; // e.g., "2 tables still active"
 }
 
+export interface DrawerBreakdownItem {
+  drawerName: string;
+  opening: number;
+  closing: number;
+  expected: number;
+  variance: number;
+  cashSales: number;
+  refunds: number;
+  payIns: number;
+  payOuts: number;
+  cashDrops: number;
+  noSaleCount: number;
+}
+
 export interface DailySummary {
   date: string;
   // Sales
@@ -49,6 +63,7 @@ export interface DailySummary {
   drawerOpening: number;
   drawerClosing: number;
   drawerVariance: number;
+  drawerBreakdown?: DrawerBreakdownItem[];
   // Voids & Discounts
   totalVoids: number;
   totalDiscounts: number;

@@ -1,0 +1,129 @@
+/**
+ * NoSaleDocumentTemplate
+ *
+ * Builds a PrintDocument for No Sale receipt printing.
+ * Follows the same pattern as ReceiptDocumentTemplate.
+ */
+
+import { PrintDocument, PrintNode } from "@/types/print-document";
+
+export interface NoSaleReceiptData {
+  storeName: string;
+  storeAddress?: string;
+  drawerName: string;
+  stationName: string;
+  employeeName: string;
+  reason: string;
+  approvedBy?: string;
+  timestamp: string; // ISO
+}
+
+export function buildNoSaleDocument(data: NoSaleReceiptData): PrintDocument {
+  const w = 32;
+  const nodes: PrintNode[] = [];
+
+  // Header
+  nodes.push({
+    type: "text_line",
+    content: "** NO SALE **",
+    align: "center",
+    format: { bold: true, doubleHeight: true },
+  });
+  nodes.push({ type: "empty_line" });
+
+  // Divider
+  nodes.push({ type: "divider", style: "solid", lineWidth: w });
+
+  // Store info
+  nodes.push({
+    type: "text_line",
+    content: data.storeName,
+    align: "center",
+    format: { bold: true },
+  });
+  if (data.storeAddress) {
+    nodes.push({
+      type: "text_line",
+      content: data.storeAddress,
+      align: "center",
+    });
+  }
+
+  nodes.push({ type: "divider", style: "dotted", lineWidth: w });
+
+  // Details
+  const date = new Date(data.timestamp);
+  const dateStr = date.toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
+  const timeStr = date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  nodes.push({
+    type: "two_column",
+    left: "Date:",
+    right: dateStr,
+    lineWidth: w,
+  });
+  nodes.push({
+    type: "two_column",
+    left: "Time:",
+    right: timeStr,
+    lineWidth: w,
+  });
+  nodes.push({
+    type: "two_column",
+    left: "Employee:",
+    right: data.employeeName,
+    lineWidth: w,
+  });
+  nodes.push({
+    type: "two_column",
+    left: "Drawer:",
+    right: data.drawerName,
+    lineWidth: w,
+  });
+  nodes.push({
+    type: "two_column",
+    left: "Station:",
+    right: data.stationName,
+    lineWidth: w,
+  });
+
+  nodes.push({ type: "empty_line" });
+
+  nodes.push({
+    type: "two_column",
+    left: "Reason:",
+    right: data.reason,
+    lineWidth: w,
+    format: { bold: true },
+  });
+
+  if (data.approvedBy) {
+    nodes.push({
+      type: "two_column",
+      left: "Approved By:",
+      right: data.approvedBy,
+      lineWidth: w,
+    });
+  }
+
+  // Footer
+  nodes.push({ type: "divider", style: "solid", lineWidth: w });
+  nodes.push({
+    type: "text_line",
+    content: "NOT A TRANSACTION",
+    align: "center",
+    format: { bold: true },
+  });
+  nodes.push({ type: "empty_line" });
+  nodes.push({ type: "cut" });
+
+  return { nodes, maxCharsPerLine: w };
+}

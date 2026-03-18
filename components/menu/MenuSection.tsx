@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +20,7 @@ import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { Link } from "expo-router";
 import {
+  CheckCircle2,
   ChevronDown,
   Clock,
   Logs,
@@ -419,35 +419,31 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
           >
             <TouchableOpacity
               onPress={handleTabMenu}
-              className={`flex-row items-center bg-panel rounded-lg p-3 justify-start ${
-                activeTab == "Menu"
-                  ? "border-2 border-blue-400"
-                  : ""
-              }`}
+              className="flex-row items-center rounded-lg p-3 justify-start"
+              style={{ backgroundColor: activeTab == "Menu" ? `${colors.teal}15` : colors.panel }}
             >
-              <Table color={colors.label} size={14} />
+              <Table color={activeTab == "Menu" ? colors.teal : colors.label} size={14} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={openSearch}
-              className={`flex-row items-center bg-panel border  rounded-lg p-3 justify-start`}
+              className="flex-row items-center rounded-lg p-3 justify-start"
+              style={{ backgroundColor: colors.panel }}
             >
               <Search color={colors.label} size={14} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleTabOpenItem}
-              className={`flex-row items-center bg-panel rounded-lg p-3 justify-start ${
-                activeTab == "Open Item"
-                  ? "border-2 border-blue-400"
-                  : ""
-              }`}
+              className="flex-row items-center rounded-lg p-3 justify-start"
+              style={{ backgroundColor: activeTab == "Open Item" ? `${colors.teal}15` : colors.panel }}
             >
-              <PackagePlus color={colors.label} size={14} />
+              <PackagePlus color={activeTab == "Open Item" ? colors.teal : colors.label} size={14} />
             </TouchableOpacity>
 
             {!isTableOrder && (
               <Link
                 href="/tables"
-                className={`flex-row items-center bg-panel border rounded-lg p-3 justify-start`}
+                className="flex-row items-center rounded-lg p-3 justify-start"
+                style={{ backgroundColor: colors.panel }}
               >
                 <Sofa color={colors.label} size={14} />
               </Link>
@@ -456,42 +452,36 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
             {!isTableOrder && (
               <TouchableOpacity
                 onPress={handleTabOrders}
-                className={`flex-row items-center bg-panel rounded-lg px-3 py-2.5 justify-start ${
-                  activeTab == "Orders"
-                    ? "border-2 border-blue-400"
-                    : ""
-                }`}
+                className="flex-row items-center rounded-lg px-3 py-2.5 justify-start"
+                style={{ backgroundColor: activeTab == "Orders" ? `${colors.teal}15` : colors.panel }}
               >
-                <Logs color={colors.label} size={14} />
-                <Text className="text-gray-300 ml-2 text-sm">Orders</Text>
+                <Logs color={activeTab == "Orders" ? colors.teal : colors.label} size={14} />
+                <Text style={{ color: activeTab == "Orders" ? colors.teal : colors.muted }} className="ml-2 text-sm">Orders</Text>
               </TouchableOpacity>
             )}
 
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
-              <DialogTrigger asChild className="border-none">
-                <Button
-                  variant="outline"
-                  className="w-fit bg-panel flex-row items-center gap-2 h-14 p-0"
+              <DialogTrigger asChild>
+                <TouchableOpacity
+                  className="flex-row items-center rounded-lg px-3 py-2.5 gap-2"
+                  style={{ backgroundColor: colors.panel }}
                 >
-                  <Text className="text-white font-medium text-sm">
+                  <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "500" }}>
                     {activeMeal || "Select Menu"}
                   </Text>
-
-                  <ChevronDown color={colors.label} size={14} />
-                </Button>
+                  <ChevronDown color={colors.label} size={13} />
+                </TouchableOpacity>
               </DialogTrigger>
-              <DialogContent className="min-w-2xl w-[500px] aspect-square bg-card border-gray-700">
-                <DialogHeader className="border-b border-gray-700 pb-4">
-                  <DialogTitle className="text-white text-center">
-                    <Text className="text-xl font-bold text-white">
-                      Select Menu
-                    </Text>
+              <DialogContent className="w-[480px] max-h-[80vh] bg-screen border border-border rounded-2xl p-0 overflow-hidden">
+                <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+                  <DialogTitle>
+                    <Text className="text-lg font-semibold text-white">Menu</Text>
                   </DialogTitle>
                 </DialogHeader>
                 <ScrollView
                   ref={menuScrollViewRef}
-                  className="gap-3 mt-4 w-full"
-                  contentContainerStyle={{ gap: 12 }}
+                  className="w-full"
+                  contentContainerStyle={{ padding: 16, gap: 10 }}
                 >
                   {menus.map((menu) => {
                     const isAvailable =
@@ -505,67 +495,38 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
                       <TouchableOpacity
                         key={menu.id}
                         onPress={() => handleMenuSelect(menu.name)}
-                        className={`p-4 rounded-xl border-2 ${
-                          isSelected
-                            ? "bg-blue-600 border-blue-400"
-                            : !isAvailable
-                              ? "bg-card border-gray-700 opacity-50"
-                              : "bg-card border-border"
+                        className={`p-4 rounded-xl border ${
+                          !isAvailable ? "opacity-40" : ""
                         }`}
-                        style={
-                          isSelected
-                            ? {
-                                shadowColor: colors.info,
-                                shadowOffset: { width: 0, height: 4 },
-                                shadowOpacity: 0.3,
-                                shadowRadius: 8,
-                                elevation: 8,
-                              }
-                            : undefined
-                        }
+                        style={{
+                          backgroundColor: isSelected ? colors.teal + "20" : colors.panel,
+                          borderColor: isSelected ? colors.teal : colors.border,
+                        }}
                       >
                         <View className="flex-row justify-between items-center">
-                          <Text
-                            className={`font-bold text-base ${
-                              isSelected ? "text-white" : "text-gray-100"
-                            }`}
-                          >
+                          <Text className="font-semibold text-base text-white">
                             {menu.name}
                           </Text>
-                          {isScheduled && (
-                            <Clock
-                              size={18}
-                              color={isSelected ? colors.info : colors.info}
-                            />
-                          )}
+                          <View className="flex-row items-center gap-2">
+                            {isScheduled && <Clock size={14} color={colors.label} />}
+                            {isSelected && <CheckCircle2 size={16} color={colors.teal} />}
+                          </View>
                         </View>
-                        <Text
-                          className={`text-sm mt-1 ${
-                            isSelected ? "text-blue-100" : "text-gray-400"
-                          }`}
-                        >
-                          {menu.description}
-                        </Text>
-                        <View className="flex-row flex-wrap gap-2 mt-3">
-                          {menu.categories.map((category, index) => (
-                            <View
-                              key={index}
-                              className={`px-3 py-1.5 rounded-full ${
-                                isSelected
-                                  ? "bg-blue-500/80"
-                                  : "bg-blue-900/40 border border-blue-800/50"
-                              }`}
-                            >
-                              <Text
-                                className={`text-xs font-medium ${
-                                  isSelected ? "text-white" : "text-blue-300"
-                                }`}
+                        {menu.description ? (
+                          <Text className="text-xs text-gray-400 mt-1">{menu.description}</Text>
+                        ) : null}
+                        {menu.categories.length > 0 && (
+                          <View className="flex-row flex-wrap gap-1.5 mt-2.5">
+                            {menu.categories.map((category, index) => (
+                              <View
+                                key={index}
+                                className="px-2.5 py-1 rounded-full bg-surface border border-border"
                               >
-                                {category.name}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
+                                <Text className="text-xs text-label">{category.name}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
                       </TouchableOpacity>
                     );
                   })}

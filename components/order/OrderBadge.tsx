@@ -7,6 +7,7 @@ import {
   CheckCircle,
   CreditCard,
   Eye,
+  MoreHorizontal,
   Printer,
   RefreshCw,
   Repeat2,
@@ -557,6 +558,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   // PERFORMANCE: Memoize callbacks to prevent recreation
   const handleClose = useCallback(() => setShowTooltip(false), []);
   const handleOpen = useCallback(() => setShowTooltip(true), []);
+  const handleRetrieve = useCallback(() => onRetrieve(), [onRetrieve]);;
 
   // Badge elevation: active, recently updated, or popover open
   const isActive = activeOrderId === order.id || wasRecentlyUpdated;
@@ -570,15 +572,14 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
       animationConfig={{ duration: 0 }}
       popoverStyle={{ backgroundColor: colors.card, borderRadius: 12 }}
       from={
-        <TouchableOpacity
-          onPress={handleOpen}
-          className="flex-row items-center px-3 py-1.5 rounded-full border"
+        <View
+          className="flex-row items-center rounded-full border overflow-hidden"
           style={{
             backgroundColor: isElevated ? colors.card : colors.panel,
             borderColor: showTooltip
               ? colors.teal
               : isActive
-                ? colors.info
+                ? colors.teal
                 : colors.border,
             borderWidth: isElevated ? 2 : 1,
             ...(showTooltip
@@ -592,26 +593,35 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
               : {}),
           }}
         >
-          {wasRecentlyUpdated && (
-            <View className="mr-1.5">
-              <RefreshCw color={colors.info} size={8} />
-            </View>
-          )}
-          <View
-            className="w-2 h-2 rounded-full mr-1.5"
-            style={{ backgroundColor: dotColor }}
-          />
-          <Text className="font-semibold text-sm text-gray-200" numberOfLines={1}>
-            {displayId}
-          </Text>
-          <Text className="text-sm text-gray-500 mx-1">·</Text>
-          <Text
-            className="text-sm text-gray-400"
-            numberOfLines={1}
+          <TouchableOpacity
+            onPress={handleRetrieve}
+            className="flex-row items-center px-3 py-1.5"
           >
-            {statusLabel}
-          </Text>
-        </TouchableOpacity>
+            {wasRecentlyUpdated && (
+              <View className="mr-1.5">
+                <RefreshCw color={colors.info} size={8} />
+              </View>
+            )}
+            <View
+              className="w-2 h-2 rounded-full mr-1.5"
+              style={{ backgroundColor: dotColor }}
+            />
+            <Text className="font-semibold text-sm text-gray-200" numberOfLines={1}>
+              {displayId}
+            </Text>
+            <Text className="text-sm text-gray-500 mx-1">·</Text>
+            <Text className="text-sm text-gray-400" numberOfLines={1}>
+              {statusLabel}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleOpen}
+            className="px-2 py-1.5 border-l"
+            style={{ borderColor: colors.border }}
+          >
+            <MoreHorizontal size={14} color={colors.label} />
+          </TouchableOpacity>
+        </View>
       }
     >
       {/* PERFORMANCE: Lazy render - only render content when popover is visible */}

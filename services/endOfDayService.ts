@@ -5,7 +5,7 @@
  * Runs checklist validations against live data.
  */
 
-import { DailySummary, useEndOfDayStore } from "@/stores/useEndOfDayStore";
+import { DailySummary, DrawerBreakdownItem, useEndOfDayStore } from "@/stores/useEndOfDayStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -207,6 +207,65 @@ export async function fetchDailySummary(
     // Cash drawer
     const drawerStore = useCashDrawerStore.getState();
 
+    // Fetch per-drawer breakdown for the day
+    let drawerBreakdown: DrawerBreakdownItem[] | undefined;
+    try {
+      const { data: sessions } = await supabase
+        .from("cash_drawer_sessions")
+        .select("id, cash_drawer_id, opening_amount, closing_amount, expected_cash, variance")
+        .eq("location_id", locationId)
+        .eq("business_date", targetDate);
+
+      if (sessions?.length) {
+        const drawerIds = [...new Set(sessions.map((s: any) => s.cash_drawer_id))];
+        const { data: drawers } = await supabase
+          .from("cash_drawers")
+          .select("id, name")
+          .in("id", drawerIds);
+        const drawerNameMap: Record<string, string> = {};
+        for (const d of drawers || []) {
+          drawerNameMap[d.id] = d.name;
+        }
+
+        // Fetch operations for these sessions
+        const sessionIds = sessions.map((s: any) => s.id);
+        const { data: allOps } = await supabase
+          .from("cash_drawer_operations")
+          .select("session_id, operation_type, amount")
+          .in("session_id", sessionIds);
+
+        const opsBySession: Record<string, any[]> = {};
+        for (const op of allOps || []) {
+          if (!opsBySession[op.session_id]) opsBySession[op.session_id] = [];
+          opsBySession[op.session_id].push(op);
+        }
+
+        drawerBreakdown = sessions.map((s: any) => {
+          const ops = opsBySession[s.id] || [];
+          const sumType = (type: string) =>
+            ops.filter((o: any) => o.operation_type === type).reduce((sum: number, o: any) => sum + Number(o.amount || 0), 0);
+          const countType = (type: string) =>
+            ops.filter((o: any) => o.operation_type === type).length;
+
+          return {
+            drawerName: drawerNameMap[s.cash_drawer_id] || "Unknown",
+            opening: Number(s.opening_amount || 0),
+            closing: Number(s.closing_amount || 0),
+            expected: Number(s.expected_cash || 0),
+            variance: Number(s.variance || 0),
+            cashSales: sumType("cash_sale"),
+            refunds: sumType("cash_refund"),
+            payIns: sumType("pay_in"),
+            payOuts: sumType("pay_out"),
+            cashDrops: sumType("cash_drop"),
+            noSaleCount: countType("no_sale"),
+          };
+        });
+      }
+    } catch (err) {
+      console.warn("[EOD] Failed to fetch drawer breakdown:", err);
+    }
+
     const summary: DailySummary = {
       date: targetDate,
       totalSales,
@@ -222,7 +281,8 @@ export async function fetchDailySummary(
       drawerOpening: drawerStore.activeSession?.openingAmount || 0,
       drawerClosing: drawerStore.getRunningBalance(),
       drawerVariance: 0,
-      totalVoids: 0, // Would need separate void tracking
+      drawerBreakdown,
+      totalVoids: 0,
       totalDiscounts: 0,
       totalRefunds,
     };

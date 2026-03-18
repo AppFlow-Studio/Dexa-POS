@@ -225,7 +225,8 @@ export function calculateEvenSplitDualPrice(
 /**
  * Record cash payment in the cash drawer.
  * Call this after a successful cash payment to track the operation.
- * Records both the cash received (deposit) and change given (withdrawal).
+ * Records the net amount (amount_charged) — change is implicit.
+ * Formula: expected = opening + cash_sales - cash_refunds + pay_ins - pay_outs - cash_drops
  */
 export function trackCashPaymentInDrawer(
   paymentResult: ProcessPaymentV2Result,
@@ -243,26 +244,13 @@ export function trackCashPaymentInDrawer(
 
   const supabase = getSupabase();
 
-  // Record cash received
-  if (paymentResult.total_collected > 0) {
+  // Record net amount (what stays in the drawer after change)
+  if (paymentResult.amount_charged > 0) {
     recordDrawerOperation(supabase, {
       cashDrawerId: store.drawerId,
       sessionId: store.activeSession.id,
-      operationType: "cash_payment",
-      amount: paymentResult.total_collected,
-      performedBy: staffProfileId,
-      orderId,
-      paymentId: paymentResult.payment_id,
-    });
-  }
-
-  // Record change given (if any)
-  if (paymentResult.change_given > 0) {
-    recordDrawerOperation(supabase, {
-      cashDrawerId: store.drawerId,
-      sessionId: store.activeSession.id,
-      operationType: "change_given",
-      amount: paymentResult.change_given,
+      operationType: "cash_sale",
+      amount: paymentResult.amount_charged,
       performedBy: staffProfileId,
       orderId,
       paymentId: paymentResult.payment_id,
@@ -293,7 +281,7 @@ export function trackCashRefundInDrawer(
   recordDrawerOperation(supabase, {
     cashDrawerId: store.drawerId,
     sessionId: store.activeSession.id,
-    operationType: "refund",
+    operationType: "cash_refund",
     amount: refundAmount,
     performedBy: staffProfileId,
     orderId,

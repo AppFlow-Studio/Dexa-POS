@@ -307,39 +307,34 @@ const SplitByItemView = () => {
   };
 
   return (
-    <View className="flex-1 bg-panel">
-      {/* 1. Header */}
-      <View className="flex-row items-center p-4 border-b border-border h-[70px]">
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
+      {/* Header */}
+      <View style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, height: 70 }}>
         <TouchableOpacity
           onPress={handleGoBack}
-          className="p-2 bg-surface rounded-lg mr-4"
+          style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 14 }}
         >
-          <ArrowLeft size={20} color="white" />
+          <ArrowLeft size={18} color={colors.label} />
         </TouchableOpacity>
         <View>
-          <Text className="text-xl font-bold text-white">Split by Item</Text>
-          <Text className="text-gray-400 text-xs">Assign items to guests</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Split by Item</Text>
+          <Text style={{ fontSize: 12, color: colors.muted }}>Assign items to guests</Text>
         </View>
-
-        {/* Removed 'Done' button from header */}
       </View>
 
-      {/* 2. Guest Tabs */}
-      <View className="h-[70px] bg-panel border-b border-border">
+      {/* Guest Tabs */}
+      <View style={{ height: 70, backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            alignItems: "center",
-          }}
+          contentContainerStyle={{ paddingHorizontal: 16, alignItems: "center" }}
         >
           <TouchableOpacity
             onPress={handleAddGuest}
-            className="flex-row items-center px-4 py-2 mx-2 rounded-full border border-border bg-surface"
+            style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panel, gap: 6 }}
           >
-            <Plus size={18} color="#fff" />
-            <Text className="ml-2 text-white font-semibold">Add</Text>
+            <Plus size={16} color={colors.teal} />
+            <Text style={{ color: colors.teal, fontWeight: "600", fontSize: 13 }}>Add</Text>
           </TouchableOpacity>
 
           {splits.map((split) => {
@@ -348,18 +343,14 @@ const SplitByItemView = () => {
               <TouchableOpacity
                 key={split.id}
                 onPress={() => setActiveSplitId(split.id)}
-                className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${
-                  isActive
-                    ? "bg-blue-600 border-blue-500"
-                    : "bg-surface border-border"
-                }`}
+                style={{
+                  flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderRadius: 20, borderWidth: 1, gap: 6,
+                  backgroundColor: isActive ? `${colors.teal}15` : colors.panel,
+                  borderColor: isActive ? colors.teal : colors.border,
+                }}
               >
-                <User size={16} color={isActive ? "white" : colors.label} />
-                <Text
-                  className={`ml-2 font-semibold ${
-                    isActive ? "text-white" : "text-gray-400"
-                  }`}
-                >
+                <User size={14} color={isActive ? colors.teal : colors.label} />
+                <Text style={{ fontWeight: "600", fontSize: 13, color: isActive ? colors.heading : colors.muted }}>
                   {split.customerName}
                 </Text>
               </TouchableOpacity>
@@ -368,177 +359,119 @@ const SplitByItemView = () => {
         </ScrollView>
       </View>
 
-      {/* 3. Active Guest Summary */}
+      {/* Active Guest Summary */}
       {activeSplit && (
-        <View className="p-4 bg-surface border-b border-border">
-          <View className="flex-row justify-between items-start mb-3">
+        <View style={{ padding: 16, backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
             <View>
               <TextInput
-                className="text-2xl font-bold text-white border-b border-border pb-1 min-w-[150px]"
+                style={{ fontSize: 20, fontWeight: "700", color: colors.heading, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 4, minWidth: 150 }}
                 value={activeSplit.customerName}
                 onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
                 placeholderTextColor={colors.muted}
               />
-              <Text className="text-gray-400 text-xs mt-1">
-                Tap items below to assign
-              </Text>
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Tap items below to assign</Text>
             </View>
-            <View className="items-end">
-              <View className="flex-row items-center gap-2">
-                <Text className="text-gray-500 text-xs">Subtotal:</Text>
-                <Text className="text-gray-300 text-sm">
-                  ${activeSplitTotals.subtotal.toFixed(2)}
-                </Text>
+            <View style={{ alignItems: "flex-end", gap: 2 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>Subtotal:</Text>
+                <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.subtotal.toFixed(2)}</Text>
               </View>
-              <View className="flex-row items-center gap-2">
-                <Text className="text-gray-500 text-xs">Tax:</Text>
-                <Text className="text-gray-300 text-sm">
-                  ${activeSplitTotals.tax.toFixed(2)}
-                </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>Tax:</Text>
+                <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.tax.toFixed(2)}</Text>
               </View>
             </View>
           </View>
 
-          {/* Dual Pricing Display - Card vs Cash */}
           {activeSplit.items.length > 0 && (
-            <View className="flex-row gap-2">
-              {/* Card Payment Option */}
-              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-panel rounded-xl border border-border">
-                <View className="flex-row items-center">
-                  <CreditCard size={16} color={colors.info} />
-                  <Text className="text-gray-400 text-xs ml-2">Card</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <CreditCard size={15} color={colors.teal} />
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>Card</Text>
                 </View>
-                <Text className="text-lg font-bold text-blue-400">
-                  ${activeSplitTotals.total.toFixed(2)}
-                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.teal }}>${activeSplitTotals.total.toFixed(2)}</Text>
               </View>
 
-              {/* Cash Payment Option */}
-              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-panel rounded-xl border border-green-900/50">
-                <View className="flex-row items-center">
-                  <Banknote size={16} color={colors.success} />
-                  <Text className="text-gray-400 text-xs ml-2">Cash</Text>
+              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: `${colors.success}40` }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Banknote size={15} color={colors.success} />
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>Cash</Text>
                   {cashSavings > 0.01 && (
-                    <View className="ml-1 px-1.5 py-0.5 bg-green-900/30 rounded-full">
-                      <Text className="text-green-400 text-[10px] font-bold">
-                        -${cashSavings.toFixed(2)}
-                      </Text>
+                    <View style={{ marginLeft: 4, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${colors.success}20`, borderRadius: 10 }}>
+                      <Text style={{ color: colors.success, fontSize: 10, fontWeight: "700" }}>-${cashSavings.toFixed(2)}</Text>
                     </View>
                   )}
                 </View>
-                <Text className="text-lg font-bold text-green-400">
-                  ${activeSplitCashTotals.total.toFixed(2)}
-                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.success }}>${activeSplitCashTotals.total.toFixed(2)}</Text>
               </View>
             </View>
           )}
         </View>
       )}
 
-      {/* 4. Main Item List */}
-      <View className="flex-1 bg-panel">
+      {/* Item List */}
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
         <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
           {itemData.map((item) => {
             const isSelected = item.qtyInCurrent > 0;
-            const isFullyAssignedToOthers =
-              item.qtyRemaining === 0 && item.qtyInCurrent === 0;
+            const isFullyAssignedToOthers = item.qtyRemaining === 0 && item.qtyInCurrent === 0;
             const canAdd = item.qtyRemaining > 0;
             const canRemove = item.qtyInCurrent > 0;
-
             return (
               <View
                 key={item.id}
-                className={`flex-row justify-between items-center p-4 border-b border-border ${
-                  isSelected
-                    ? "bg-[#1e3a8a] border-[#2563eb]"
-                    : isFullyAssignedToOthers
-                      ? "bg-panel opacity-40"
-                      : "bg-surface"
-                }`}
+                style={{
+                  flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                  padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border,
+                  backgroundColor: isSelected ? `${colors.teal}15` : isFullyAssignedToOthers ? colors.screen : colors.panel,
+                  opacity: isFullyAssignedToOthers ? 0.4 : 1,
+                }}
               >
-                {/* Item Info */}
-                <View className="flex-1">
-                  <Text
-                    className={`text-lg font-semibold ${
-                      isSelected
-                        ? "text-white"
-                        : isFullyAssignedToOthers
-                          ? "text-gray-500"
-                          : "text-gray-200"
-                    }`}
-                  >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: isSelected ? colors.heading : isFullyAssignedToOthers ? colors.muted : colors.label }}>
                     {item.name}
                   </Text>
-                  <Text
-                    className={`text-sm mt-1 ${
-                      isSelected ? "text-blue-200" : "text-gray-400"
-                    }`}
-                  >
+                  <Text style={{ fontSize: 13, marginTop: 2, color: isSelected ? colors.teal : colors.muted }}>
                     ${item.price.toFixed(2)}
                   </Text>
                 </View>
 
-                {/* Quantity Controls */}
-                <View className="items-end gap-1">
+                <View style={{ alignItems: "flex-end", gap: 4 }}>
                   {isFullyAssignedToOthers ? (
-                    <Text className="text-gray-500 italic text-xs">
-                      Assigned to others
-                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 11, fontStyle: "italic" }}>Assigned to others</Text>
                   ) : (
-                    <View className="flex-row items-center gap-2">
-                      {/* Minus Button */}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                       <TouchableOpacity
                         onPress={() => handleRemoveFromGuest(item)}
                         disabled={!canRemove}
-                        className={`w-8 h-8 rounded-full items-center justify-center ${
-                          canRemove
-                            ? "bg-red-600 active:bg-red-700"
-                            : "bg-surface opacity-30"
-                        }`}
+                        style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canRemove ? colors.danger : colors.panel, opacity: canRemove ? 1 : 0.3 }}
                       >
-                        <Minus size={16} color={canRemove ? "white" : "#666"} />
+                        <Minus size={14} color={canRemove ? "#fff" : colors.muted} />
                       </TouchableOpacity>
 
-                      {/* Quantity Badge */}
-                      <View
-                        className={`min-w-[36px] px-2 py-1 rounded-md items-center ${
-                          isSelected ? "bg-blue-600" : "bg-surface"
-                        }`}
-                      >
-                        <Text
-                          className={`text-sm font-bold ${
-                            isSelected ? "text-white" : "text-gray-500"
-                          }`}
-                        >
+                      <View style={{ minWidth: 36, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.panel }}>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: isSelected ? "#000" : colors.muted }}>
                           {item.qtyInCurrent}x
                         </Text>
                       </View>
 
-                      {/* Plus Button */}
                       <TouchableOpacity
                         onPress={() => handleAddToGuest(item)}
                         disabled={!canAdd}
-                        className={`w-8 h-8 rounded-full items-center justify-center ${
-                          canAdd
-                            ? "bg-green-600 active:bg-green-700"
-                            : "bg-surface opacity-30"
-                        }`}
+                        style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canAdd ? colors.success : colors.panel, opacity: canAdd ? 1 : 0.3 }}
                       >
-                        <Plus size={16} color={canAdd ? "white" : "#666"} />
+                        <Plus size={14} color={canAdd ? "#fff" : colors.muted} />
                       </TouchableOpacity>
                     </View>
                   )}
 
-                  {/* Status Text */}
                   {item.qtyRemaining > 0 && !isFullyAssignedToOthers && (
-                    <Text className="text-blue-400 text-xs font-medium mt-1">
-                      {item.qtyRemaining} left
-                    </Text>
+                    <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "600" }}>{item.qtyRemaining} left</Text>
                   )}
                   {item.qtyRemaining === 0 && isSelected && (
-                    <Text className="text-green-400 text-xs font-medium mt-1">
-                      ✓ All assigned
-                    </Text>
+                    <Text style={{ color: colors.success, fontSize: 11, fontWeight: "600" }}>✓ All assigned</Text>
                   )}
                 </View>
               </View>
@@ -547,15 +480,11 @@ const SplitByItemView = () => {
         </ScrollView>
       </View>
 
-      {/* 5. Footer Action: PAY ALL SPLITS */}
-      <View className="p-4 bg-panel border-t border-border">
-        <View className="flex-row items-center justify-between mb-3">
-          <Text className="text-gray-400 text-sm">Items Remaining</Text>
-          <Text
-            className={`font-bold ${
-              globalRemainingItems > 0 ? "text-red-400" : "text-green-400"
-            }`}
-          >
+      {/* Footer */}
+      <View style={{ padding: 16, backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <Text style={{ color: colors.muted, fontSize: 13 }}>Items Remaining</Text>
+          <Text style={{ fontWeight: "700", fontSize: 15, color: globalRemainingItems > 0 ? colors.danger : colors.success }}>
             {globalRemainingItems}
           </Text>
         </View>
@@ -563,22 +492,18 @@ const SplitByItemView = () => {
         <TouchableOpacity
           onPress={handleStartPayment}
           disabled={!isAllAssigned}
-          className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${
-            isAllAssigned
-              ? "bg-blue-600 active:bg-blue-700"
-              : "bg-surface opacity-80"
-          }`}
+          style={{
+            flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, borderRadius: 12, gap: 8,
+            backgroundColor: isAllAssigned ? colors.teal : colors.panel,
+            borderWidth: isAllAssigned ? 0 : 1, borderColor: colors.border,
+            opacity: isAllAssigned ? 1 : 0.6,
+          }}
         >
-          {isAllAssigned ? (
-            <Play size={20} color="white" fill="white" className="mr-1" />
-          ) : (
-            <Circle size={20} color={colors.muted} className="mr-1" />
-          )}
-          <Text
-            className={`text-lg font-bold ${
-              isAllAssigned ? "text-white" : "text-gray-500"
-            }`}
-          >
+          {isAllAssigned
+            ? <Play size={18} color="#000" fill="#000" />
+            : <Circle size={18} color={colors.muted} />
+          }
+          <Text style={{ fontSize: 16, fontWeight: "700", color: isAllAssigned ? "#000" : colors.muted }}>
             {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
           </Text>
         </TouchableOpacity>
