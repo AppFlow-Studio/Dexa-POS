@@ -354,7 +354,7 @@ const TablesPanel: React.FC = () => {
         isExpanded={expandedTableIds[item.id] || false}
         onToggleExpand={() => toggleTableExpand(item.id)}
         onNavigateToOrder={noopFn}
-        handleTablePress={() => toggleTableExpand(item.id)}
+        handleTablePress={noopFn}
       />
     ),
     [expandedTableIds, noopFn, toggleTableExpand]

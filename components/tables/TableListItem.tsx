@@ -123,9 +123,9 @@ const StatusIndicator = ({
   return (
     <View
       style={{
-        width: 7,
-        height: 7,
-        borderRadius: 3.5,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
         backgroundColor: color
       }}
     />
@@ -774,7 +774,7 @@ const TableListItem: React.FC<{
         onPress={handlePress}
         activeOpacity={0.8}
         style={{
-          borderRadius: 10,
+          borderRadius: 8,
           backgroundColor: isExpanded ? colors.teal + '08' : colors.panel,
           borderWidth: 1,
           borderColor: isExpanded ? colors.teal + '40' : colors.border,
@@ -788,9 +788,9 @@ const TableListItem: React.FC<{
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            gap: 10
+            paddingVertical: 5,
+            paddingHorizontal: 8,
+            gap: 6
           }}
         >
           {/* Status dot */}
@@ -803,14 +803,14 @@ const TableListItem: React.FC<{
           {/* Name + meta */}
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}
+              style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}
               numberOfLines={1}
             >
               {tableData.displayName}
             </Text>
             {metaLine ? (
               <Text
-                style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
+                style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
                 numberOfLines={1}
               >
                 {metaLine}
@@ -819,12 +819,12 @@ const TableListItem: React.FC<{
           </View>
 
           {/* Right side */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {/* Available label */}
             {normalizedStatus === 'available' && (
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   color: colors.success,
                   fontWeight: '600'
                 }}
@@ -837,59 +837,64 @@ const TableListItem: React.FC<{
             {(normalizedStatus === 'cleaning' ||
               normalizedStatus === 'closing') && (
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
               >
-                <BrushCleaning size={13} color={colors.muted} />
-                <Text style={{ fontSize: 11, color: colors.muted }}>
+                <BrushCleaning size={11} color={colors.muted} />
+                <Text style={{ fontSize: 10, color: colors.muted }}>
                   Cleaning
                 </Text>
               </View>
             )}
 
-            {/* Duration badge */}
-            {showActiveDetails && duration ? (
-              <View
-                style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 3,
-                  borderRadius: 20,
-                  backgroundColor: isOvertime
-                    ? colors.warning + '15'
-                    : colors.teal + '15',
-                  borderWidth: 1,
-                  borderColor: isOvertime
-                    ? colors.warning + '30'
-                    : colors.teal + '30'
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '600',
-                    color: isOvertime ? colors.warning : colors.teal
-                  }}
-                >
-                  {duration}
-                </Text>
-              </View>
-            ) : null}
+            {/* Total + duration stack */}
+            {showActiveDetails && (
+              <View style={{ alignItems: 'center', justifyContent: 'center', minWidth: 48, gap: 2 }}>
+                {tableData.total > 0 && (
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '700',
+                      color: colors.heading,
+                      textAlign: 'center'
+                    }}
+                  >
+                    ${tableData.total.toFixed(2)}
+                  </Text>
+                )}
 
-            {/* Total */}
-            {showActiveDetails && tableData.total > 0 && (
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: '700',
-                  color: colors.heading
-                }}
-              >
-                ${tableData.total.toFixed(2)}
-              </Text>
+                {duration ? (
+                  <View
+                    style={{
+                      paddingHorizontal: 5,
+                      paddingVertical: 1,
+                      borderRadius: 20,
+                      backgroundColor: isOvertime
+                        ? colors.warning + '15'
+                        : colors.teal + '15',
+                      borderWidth: 1,
+                      borderColor: isOvertime
+                        ? colors.warning + '30'
+                        : colors.teal + '30'
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 9,
+                        fontWeight: '600',
+                        color: isOvertime ? colors.warning : colors.teal,
+                        textAlign: 'center'
+                      }}
+                    >
+                      {duration}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             )}
 
             {/* Chevron */}
             {showActiveDetails && (
-              <ChevronIcon size={14} color={colors.muted} />
+              <ChevronIcon size={12} color={colors.muted} />
             )}
           </View>
         </View>
