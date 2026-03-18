@@ -8,7 +8,13 @@ import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { ChevronDown, ChevronRight } from 'lucide-react-native'
 import React, { useCallback, useMemo, useState } from 'react'
-import { FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native'
+import {
+  FlatList,
+  RefreshControl,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native'
 import Animated, { Easing, Layout } from 'react-native-reanimated'
 
 interface SectionProps {
@@ -18,24 +24,49 @@ interface SectionProps {
   children: React.ReactNode
 }
 
-const Section: React.FC<SectionProps> = ({ title, isOpen, onToggle, children }) => (
-  <Animated.View layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)} style={{ flex: 1 }}>
+const Section: React.FC<SectionProps> = ({
+  title,
+  isOpen,
+  onToggle,
+  children
+}) => (
+  <Animated.View
+    layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
+    style={{ flex: 1 }}
+  >
     <TouchableOpacity
       onPress={onToggle}
       style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 8
       }}
     >
-      {isOpen
-        ? <ChevronDown size={14} color={colors.muted} />
-        : <ChevronRight size={14} color={colors.muted} />}
-      <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginLeft: 6 }}>
+      {isOpen ? (
+        <ChevronDown size={14} color={colors.muted} />
+      ) : (
+        <ChevronRight size={14} color={colors.muted} />
+      )}
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '600',
+          color: colors.muted,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+          marginLeft: 6
+        }}
+      >
         {title}
       </Text>
     </TouchableOpacity>
     {isOpen && (
-      <Animated.View layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)} style={{ flex: 1, paddingLeft: 4 }}>
+      <Animated.View
+        layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
+        style={{ flex: 1, paddingLeft: 4 }}
+      >
         {children}
       </Animated.View>
     )}
@@ -50,56 +81,114 @@ interface InlineSelectProps<T extends string> {
   nullable?: boolean
 }
 
-function InlineSelect<T extends string>({ label, value, options, onSelect, nullable = true }: InlineSelectProps<T>) {
+function InlineSelect<T extends string> ({
+  label,
+  value,
+  options,
+  onSelect,
+  nullable = true
+}: InlineSelectProps<T>) {
   const [open, setOpen] = useState(false)
-  const selectedLabel = value ? options.find(o => o.value === value)?.label ?? value : null
+  const selectedLabel = value
+    ? options.find(o => o.value === value)?.label ?? value
+    : null
 
   return (
     <View style={{ flex: 1 }}>
       <TouchableOpacity
         onPress={() => setOpen(o => !o)}
         style={{
-          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-          paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          borderRadius: 8,
           borderWidth: 1,
           backgroundColor: value ? colors.teal + '15' : colors.card,
-          borderColor: value ? colors.teal + '40' : colors.border,
+          borderColor: value ? colors.teal + '40' : colors.border
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: '600', color: value ? colors.teal : colors.muted, flex: 1 }} numberOfLines={1}>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '600',
+            color: value ? colors.teal : colors.muted,
+            flex: 1
+          }}
+          numberOfLines={1}
+        >
           {selectedLabel ?? label}
         </Text>
-        <ChevronDown size={12} color={value ? colors.teal : colors.muted} style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }} />
+        <ChevronDown
+          size={12}
+          color={value ? colors.teal : colors.muted}
+          style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
+        />
       </TouchableOpacity>
 
       {open && (
-        <View style={{
-          position: 'absolute', top: 34, left: 0, right: 0, zIndex: 100,
-          backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border,
-          borderRadius: 8, overflow: 'hidden',
-        }}>
+        <View
+          style={{
+            position: 'absolute',
+            top: 34,
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            overflow: 'hidden'
+          }}
+        >
           {nullable && (
             <TouchableOpacity
-              onPress={() => { onSelect(null); setOpen(false) }}
+              onPress={() => {
+                onSelect(null)
+                setOpen(false)
+              }}
               style={{
-                paddingHorizontal: 12, paddingVertical: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
                 backgroundColor: !value ? colors.teal + '15' : 'transparent',
-                borderBottomWidth: 1, borderBottomColor: colors.border,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
               }}
             >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: !value ? colors.teal : colors.label }}>All</Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: !value ? colors.teal : colors.label
+                }}
+              >
+                All
+              </Text>
             </TouchableOpacity>
           )}
           {options.map(opt => (
             <TouchableOpacity
               key={opt.value}
-              onPress={() => { onSelect(opt.value); setOpen(false) }}
+              onPress={() => {
+                onSelect(opt.value)
+                setOpen(false)
+              }}
               style={{
-                paddingHorizontal: 12, paddingVertical: 8,
-                backgroundColor: value === opt.value ? colors.teal + '15' : 'transparent',
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor:
+                  value === opt.value ? colors.teal + '15' : 'transparent'
               }}
             >
-              <Text style={{ fontSize: 11, fontWeight: '600', color: value === opt.value ? colors.teal : colors.label }} numberOfLines={1}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: value === opt.value ? colors.teal : colors.label
+                }}
+                numberOfLines={1}
+              >
                 {opt.label}
               </Text>
             </TouchableOpacity>
@@ -117,14 +206,20 @@ const TablesPanel: React.FC = () => {
   const sectionsById = useFloorPlanStore(s => s.sectionsById)
   const liveSessions = useTableSessionStore(s => s.sessions)
   const [sections, setSections] = useState<{ [key: string]: boolean }>({})
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
+    null
+  )
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
-  const [expandedTableIds, setExpandedTableIds] = useState<Record<string, boolean>>({})
+  const [expandedTableIds, setExpandedTableIds] = useState<
+    Record<string, boolean>
+  >({})
   type SortMode = 'name' | 'status' | 'duration'
   const [sortMode, setSortMode] = useState<SortMode>('name')
 
   const activePlanName = useMemo(() => {
-    return floorPlans.find(p => p.id === activeFloorPlanId)?.name || 'Dining Area'
+    return (
+      floorPlans.find(p => p.id === activeFloorPlanId)?.name || 'Dining Area'
+    )
   }, [floorPlans, activeFloorPlanId])
 
   useMemo(() => {
@@ -134,7 +229,8 @@ const TablesPanel: React.FC = () => {
   }, [activeFloorPlanId])
 
   const activeTables = tables
-  const isSeatable = (t: FloorPlanObject) => t.category === 'table' || t.category === 'booth'
+  const isSeatable = (t: FloorPlanObject) =>
+    t.category === 'table' || t.category === 'booth'
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
   const { uniqueSections, uniqueServers, serverNames } = useMemo(() => {
@@ -153,11 +249,21 @@ const TablesPanel: React.FC = () => {
         }
       }
     })
-    return { uniqueSections: Array.from(sectionSet), uniqueServers: Array.from(serverSet), serverNames: nameMap }
+    return {
+      uniqueSections: Array.from(sectionSet),
+      uniqueServers: Array.from(serverSet),
+      serverNames: nameMap
+    }
   }, [activeTables, getEmployeeByStaffId, liveSessions])
 
   const STATUS_ORDER: Record<string, number> = {
-    ordered: 0, seated: 1, served: 2, check_presented: 3, paid: 4, cleaning: 5, available: 6,
+    ordered: 0,
+    seated: 1,
+    served: 2,
+    check_presented: 3,
+    paid: 4,
+    cleaning: 5,
+    available: 6
   }
 
   const displayTables = useMemo(() => {
@@ -171,7 +277,8 @@ const TablesPanel: React.FC = () => {
       seenSessionIds.add(sid)
       return true
     })
-    if (selectedSectionId) filtered = filtered.filter(t => t.section_id === selectedSectionId)
+    if (selectedSectionId)
+      filtered = filtered.filter(t => t.section_id === selectedSectionId)
     if (selectedServerId) {
       filtered = filtered.filter(table => {
         const session = liveSessions[table.id] ?? table.session
@@ -188,17 +295,33 @@ const TablesPanel: React.FC = () => {
         return sa - sb
       }
       if (sortMode === 'duration') {
-        const ta = sessionA?.seated_at ? new Date(sessionA.seated_at).getTime() : Infinity
-        const tb = sessionB?.seated_at ? new Date(sessionB.seated_at).getTime() : Infinity
+        const ta = sessionA?.seated_at
+          ? new Date(sessionA.seated_at).getTime()
+          : Infinity
+        const tb = sessionB?.seated_at
+          ? new Date(sessionB.seated_at).getTime()
+          : Infinity
         return ta - tb // oldest first
       }
       return 0
     })
     return filtered
-  }, [activeTables, selectedSectionId, selectedServerId, liveSessions, sortMode])
+  }, [
+    activeTables,
+    selectedSectionId,
+    selectedServerId,
+    liveSessions,
+    sortMode
+  ])
 
   const occupiedTables = useMemo(() => {
-    const activeStatuses = ['seated', 'ordered', 'served', 'check_presented', 'paid']
+    const activeStatuses = [
+      'seated',
+      'ordered',
+      'served',
+      'check_presented',
+      'paid'
+    ]
     return displayTables.filter(table => {
       const session = liveSessions[table.id] ?? table.session
       return activeStatuses.includes(session?.status?.toLowerCase() || '')
@@ -207,7 +330,10 @@ const TablesPanel: React.FC = () => {
 
   const totalTables = displayTables.length
   const capacityPercentage = useMemo(
-    () => totalTables > 0 ? Math.floor((occupiedTables.length / totalTables) * 100) : 0,
+    () =>
+      totalTables > 0
+        ? Math.floor((occupiedTables.length / totalTables) * 100)
+        : 0,
     [occupiedTables.length, totalTables]
   )
 
@@ -217,7 +343,8 @@ const TablesPanel: React.FC = () => {
     try {
       const locationId = useStoreSettingsStore.getState().selectedStore?.id
       await useFloorPlanStore.getState().loadFloorPlanStatus()
-      if (locationId) await useOrderStore.getState().initializeOrders(locationId, true)
+      if (locationId)
+        await useOrderStore.getState().initializeOrders(locationId, true)
     } catch (error) {
       console.error('Failed to refresh sidebar:', error)
     } finally {
@@ -225,9 +352,12 @@ const TablesPanel: React.FC = () => {
     }
   }
 
-  const isSectionOpen = activeFloorPlanId ? sections[activeFloorPlanId] ?? true : true
+  const isSectionOpen = activeFloorPlanId
+    ? sections[activeFloorPlanId] ?? true
+    : true
   const handleToggleSection = useCallback(() => {
-    if (activeFloorPlanId) setSections(s => ({ ...s, [activeFloorPlanId]: !s[activeFloorPlanId] }))
+    if (activeFloorPlanId)
+      setSections(s => ({ ...s, [activeFloorPlanId]: !s[activeFloorPlanId] }))
   }, [activeFloorPlanId])
 
   const noopFn = useCallback(() => {}, [])
@@ -244,45 +374,98 @@ const TablesPanel: React.FC = () => {
         onNavigateToOrder={noopFn}
         handleTablePress={() => toggleTableExpand(item.id)}
       />
-    ), [expandedTableIds, noopFn, toggleTableExpand]
+    ),
+    [expandedTableIds, noopFn, toggleTableExpand]
   )
   const keyExtractor = useCallback((item: FloorPlanObject) => item.id, [])
 
   return (
-    <View style={{ flex: 1, flexDirection: 'column', backgroundColor: colors.screen }}>
+    <View
+      style={{
+        flex: 1,
+        flexDirection: 'column',
+        backgroundColor: colors.screen
+      }}
+    >
       {/* Capacity bar */}
-      <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-          <Text style={{ fontSize: 11, color: colors.muted }}>{occupiedTables.length}/{totalTables} tables</Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>{capacityPercentage}% capacity</Text>
+      <View
+        style={{
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginBottom: 6
+          }}
+        >
+          <Text style={{ fontSize: 11, color: colors.muted }}>
+            {occupiedTables.length}/{totalTables} tables
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>
+            {capacityPercentage}% capacity
+          </Text>
         </View>
-        <View style={{ height: 4, backgroundColor: colors.card, borderRadius: 2, overflow: 'hidden' }}>
-          <View style={{ width: `${capacityPercentage}%`, height: '100%', backgroundColor: colors.teal, borderRadius: 2 }} />
+        <View
+          style={{
+            height: 4,
+            backgroundColor: colors.card,
+            borderRadius: 2,
+            overflow: 'hidden'
+          }}
+        >
+          <View
+            style={{
+              width: `${capacityPercentage}%`,
+              height: '100%',
+              backgroundColor: colors.teal,
+              borderRadius: 2
+            }}
+          />
         </View>
       </View>
 
       {/* Filters + Sort */}
-      <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 6, zIndex: 10 }}>
+      <View
+        style={{
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          gap: 6,
+          zIndex: 10
+        }}
+      >
         <View style={{ flexDirection: 'row', gap: 6 }}>
           <InlineSelect
-            label="Section"
+            label='Section'
             value={selectedSectionId}
-            options={uniqueSections.map(id => ({ value: id, label: sectionsById[id]?.name || id.substring(0, 6) }))}
+            options={uniqueSections.map(id => ({
+              value: id,
+              label: sectionsById[id]?.name || id.substring(0, 6)
+            }))}
             onSelect={setSelectedSectionId}
           />
           <InlineSelect
-            label="Server"
+            label='Server'
             value={selectedServerId}
-            options={uniqueServers.map(id => ({ value: id, label: serverNames[id] || id.substring(0, 8) }))}
+            options={uniqueServers.map(id => ({
+              value: id,
+              label: serverNames[id] || id.substring(0, 8)
+            }))}
             onSelect={setSelectedServerId}
           />
           <InlineSelect
-            label="Sort"
+            label='Sort'
             value={sortMode}
             options={[
               { value: 'name', label: 'Name' },
               { value: 'status', label: 'Status' },
-              { value: 'duration', label: 'Duration' },
+              { value: 'duration', label: 'Duration' }
             ]}
             onSelect={v => v && setSortMode(v)}
             nullable={false}
@@ -292,19 +475,38 @@ const TablesPanel: React.FC = () => {
 
       {/* Table list */}
       <View style={{ flex: 1, padding: 8 }}>
-        <Section title={activePlanName} isOpen={isSectionOpen} onToggle={handleToggleSection}>
+        <Section
+          title={activePlanName}
+          isOpen={isSectionOpen}
+          onToggle={handleToggleSection}
+        >
           {isSectionOpen && (
             <FlatList
               data={displayTables}
               keyExtractor={keyExtractor}
               renderItem={renderTableItem}
-              ListEmptyComponent={<Text style={{ fontSize: 12, color: colors.muted, padding: 8, fontStyle: 'italic' }}>No tables assigned</Text>}
+              ListEmptyComponent={
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.muted,
+                    padding: 8,
+                    fontStyle: 'italic'
+                  }}
+                >
+                  No tables assigned
+                </Text>
+              }
               initialNumToRender={8}
               maxToRenderPerBatch={5}
               windowSize={3}
               removeClippedSubviews={false}
               refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.teal} />
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  tintColor={colors.teal}
+                />
               }
             />
           )}

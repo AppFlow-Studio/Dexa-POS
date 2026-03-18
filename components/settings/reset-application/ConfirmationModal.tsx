@@ -1,24 +1,24 @@
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
-import { colors } from "@/lib/theme";
-import { AlertTriangle } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { colors } from '@/lib/theme'
+import { AlertTriangle } from 'lucide-react-native'
+import React from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
 
 interface ConfirmationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  title: string;
-  description: string;
-  confirmText: string;
-  variant?: "default" | "destructive";
+  isOpen: boolean
+  onClose: () => void
+  onConfirm: () => void
+  title: string
+  description: string
+  confirmText: string
+  variant?: 'default' | 'destructive'
 }
 
 const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
@@ -28,9 +28,9 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   title,
   description,
   confirmText,
-  variant = "default",
+  variant = 'default'
 }) => {
-  const isDestructive = variant === "destructive";
+  const isDestructive = variant === 'destructive'
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -41,22 +41,22 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
-          width: 440,
+          width: 440
         }}
       >
         <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {isDestructive ? (
               <View
                 style={{
                   width: 40,
                   height: 40,
                   borderRadius: 8,
-                  backgroundColor: colors.danger + "15",
+                  backgroundColor: colors.danger + '15',
                   borderWidth: 1,
-                  borderColor: colors.danger + "30",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  borderColor: colors.danger + '30',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
                 <AlertTriangle color={colors.danger} size={18} />
@@ -67,9 +67,9 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                   width: 40,
                   height: 40,
                   borderRadius: 8,
-                  backgroundColor: colors.teal + "15",
+                  backgroundColor: colors.teal + '15',
                   borderWidth: 1,
-                  borderColor: colors.teal + "30",
+                  borderColor: colors.teal + '30'
                 }}
               />
             )}
@@ -77,8 +77,8 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
               <DialogTitle
                 style={{
                   fontSize: 16,
-                  fontWeight: "700",
-                  color: colors.heading,
+                  fontWeight: '700',
+                  color: colors.heading
                 }}
               >
                 {title}
@@ -87,7 +87,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 style={{
                   color: colors.label,
                   marginTop: 6,
-                  fontSize: 13,
+                  fontSize: 13
                 }}
               >
                 {description}
@@ -95,7 +95,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             </DialogHeader>
           </View>
 
-          <DialogFooter style={{ flexDirection: "row", gap: 10 }}>
+          <DialogFooter style={{ flexDirection: 'row', gap: 10 }}>
             <TouchableOpacity
               onPress={onClose}
               style={{
@@ -105,15 +105,15 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 borderWidth: 1,
                 borderColor: colors.border,
                 borderRadius: 8,
-                backgroundColor: "transparent",
+                backgroundColor: 'transparent'
               }}
             >
               <Text
                 style={{
-                  fontWeight: "600",
+                  fontWeight: '600',
                   fontSize: 13,
                   color: colors.label,
-                  textAlign: "center",
+                  textAlign: 'center'
                 }}
               >
                 Cancel
@@ -128,19 +128,19 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 borderRadius: 8,
                 borderWidth: 1,
                 borderColor: isDestructive
-                  ? colors.danger + "30"
-                  : colors.teal + "50",
+                  ? colors.danger + '30'
+                  : colors.teal + '50',
                 backgroundColor: isDestructive
-                  ? colors.danger + "15"
-                  : colors.teal + "20",
+                  ? colors.danger + '15'
+                  : colors.teal + '20'
               }}
             >
               <Text
                 style={{
-                  fontWeight: "600",
+                  fontWeight: '600',
                   fontSize: 13,
                   color: isDestructive ? colors.danger : colors.teal,
-                  textAlign: "center",
+                  textAlign: 'center'
                 }}
               >
                 {confirmText}
@@ -150,7 +150,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
         </View>
       </DialogContent>
     </Dialog>
-  );
-};
+  )
+}
 
-export default ConfirmationModal;
+export default ConfirmationModal
