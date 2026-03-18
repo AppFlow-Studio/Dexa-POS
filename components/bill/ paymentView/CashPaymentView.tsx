@@ -203,169 +203,132 @@ const CashPaymentView = () => {
     setView("payment-method-selection");
   };
 
+  const numpadHandler = (btn: string) => {
+    if (btn === "⌫") {
+      setAmountTendered((prev) => prev.length <= 1 ? "" : prev.slice(0, -1));
+    } else if (btn === ".") {
+      if (!amountTendered.includes(".")) setAmountTendered((prev) => (prev || "0") + ".");
+    } else {
+      setAmountTendered((prev) => {
+        if (!prev && btn === "0") return "0";
+        const [, dec = ""] = prev.split(".");
+        if (prev.includes(".") && dec.length >= 2) return prev;
+        return prev + btn;
+      });
+    }
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen }}>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
+    <View style={{ flex: 1, backgroundColor: colors.screen, flexDirection: "row" }}>
+      {/* LEFT: Amounts summary */}
+      <View style={{ width: "42%", borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.panel, padding: 20, justifyContent: "center", gap: 0 }}>
         {/* Header */}
-        <View style={{ alignItems: "center", paddingVertical: 20 }}>
-          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: `${colors.success}18`, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-            <Banknote size={28} color={colors.success} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 20 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${colors.success}18`, alignItems: "center", justifyContent: "center" }}>
+            <Banknote size={16} color={colors.success} />
           </View>
-          <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading }}>Cash Payment</Text>
-          <Text style={{ color: colors.muted, fontSize: 13, marginTop: 2 }}>
-            {activeSplit ? `Payment for ${activeSplit.customerName}` : "Enter amount received"}
+          <View>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Cash Payment</Text>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>
+              {activeSplit ? `For ${activeSplit.customerName}` : "Enter amount received"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Total Due */}
+        <View style={{ backgroundColor: colors.screen, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 10 }}>
+          <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Total Due</Text>
+          <Text style={{ fontSize: 28, fontWeight: "700", color: colors.teal }}>${displayTotal.toFixed(2)}</Text>
+        </View>
+
+        {/* Amount Received */}
+        <View style={{ backgroundColor: colors.screen, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 10 }}>
+          <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Amount Received</Text>
+          <Text style={{ fontSize: 22, fontWeight: "700", color: colors.heading }}>${amountTendered || "0.00"}</Text>
+        </View>
+
+        {/* Change Due */}
+        <View style={{ backgroundColor: isSufficient ? `${colors.success}10` : colors.screen, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: isSufficient ? `${colors.success}40` : colors.border }}>
+          <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Change Due</Text>
+          <Text style={{ fontSize: 22, fontWeight: "700", color: isSufficient ? colors.success : colors.muted }}>
+            ${displayChangeDue > 0 ? displayChangeDue.toFixed(2) : "0.00"}
           </Text>
         </View>
 
-        {/* Main Card */}
-        <View style={{ marginHorizontal: 16, backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
-          {/* Top Section: Amount Due */}
-          <View style={{ padding: 20, alignItems: "center", borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
-              Total Due
-            </Text>
-            <Text style={{ fontSize: 36, fontWeight: "700", color: colors.teal }}>
-              ${displayTotal.toFixed(2)}
-            </Text>
-          </View>
-
-          {/* Middle Section: Input + Numpad */}
-          <View style={{ padding: 16 }}>
-            <View style={{ flexDirection: "row", gap: 4 }}>
-              {/* Left: label + display + suggestions */}
-              <View style={{ flex: 3, justifyContent: "flex-start" }}>
-                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 6 }}>Amount Received</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, height: 52, marginBottom: 12 }}>
-                  <DollarSign size={16} color={colors.muted} />
-                  <Text style={{ flex: 1, fontSize: 24, fontWeight: "700", color: colors.heading, marginLeft: 8 }}>
-                    {amountTendered || "0.00"}
-                  </Text>
-                  {amountTendered.length > 0 && (
-                    <TouchableOpacity onPress={() => setAmountTendered("")}>
-                      <Delete size={18} color={colors.muted} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {/* Quick Suggestions */}
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                  <TouchableOpacity
-                    onPress={handleSelectExact}
-                    style={{ flexGrow: 1, backgroundColor: `${colors.teal}15`, borderWidth: 1, borderColor: `${colors.teal}50`, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
-                  >
-                    <Text style={{ color: colors.teal, fontWeight: "700", textAlign: "center", fontSize: 13 }}>Exact</Text>
-                  </TouchableOpacity>
-                  {suggestions.map((bill) => (
-                    <TouchableOpacity
-                      key={bill}
-                      onPress={() => handleSelectAmount(bill)}
-                      style={{ flexGrow: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
-                    >
-                      <Text style={{ color: colors.heading, fontWeight: "700", textAlign: "center", fontSize: 13 }}>${bill}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Right: Numpad */}
-              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 6 }}>
-                {[["1","2","3"],["4","5","6"],["7","8","9"],[".", "0", "⌫"]].map((row, i) => (
-                  <View key={i} style={{ flexDirection: "row", gap: 6 }}>
-                    {row.map((btn) => (
-                      <TouchableOpacity
-                        key={btn}
-                        onPress={() => {
-                          if (btn === "⌫") {
-                            setAmountTendered((prev) => prev.length <= 1 ? "" : prev.slice(0, -1));
-                          } else if (btn === ".") {
-                            if (!amountTendered.includes(".")) setAmountTendered((prev) => (prev || "0") + ".");
-                          } else {
-                            setAmountTendered((prev) => {
-                              if (!prev && btn === "0") return "0";
-                              const [, dec = ""] = prev.split(".");
-                              if (prev.includes(".") && dec.length >= 2) return prev;
-                              return prev + btn;
-                            });
-                          }
-                        }}
-                        style={{
-                          width: 56,
-                          height: 56,
-                          borderRadius: 10,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: colors.panel,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                        }}
-                      >
-                        {btn === "⌫"
-                          ? <Delete size={16} color={colors.muted} />
-                          : <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "600" }}>{btn}</Text>
-                        }
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Grand Total Section - Shows when tip is added */}
-          {/* <View className="p-4 bg-panel border-t border-border">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-gray-400 text-sm">Bill Total</Text>
-              <Text className="text-gray-400 text-sm">${total.toFixed(2)}</Text>
-            </View>
-            {tipAmount > 0 && (
-              <View className="flex-row justify-between items-center mt-1">
-                <Text className="text-green-400 text-sm">+ Tip</Text>
-                <Text className="text-green-400 text-sm">
-                  ${tipAmount.toFixed(2)}
-                </Text>
-              </View>
-            )}
-            <View className="flex-row justify-between items-center mt-2 pt-2 border-t border-border">
-              <Text className="text-white font-bold text-lg">Grand Total</Text>
-              <Text className="text-blue-400 font-bold text-2xl">
-                ${grandTotal.toFixed(2)}
-              </Text>
-            </View>
-          </View> */}
-
-          {/* Bottom Section: Change Calculation */}
-          <View style={{ padding: 20, flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: isSufficient ? `${colors.success}10` : "transparent" }}>
-            <Text style={{ fontSize: 15, fontWeight: "500", color: colors.muted }}>Change Due</Text>
-            <Text style={{ fontSize: 28, fontWeight: "700", color: isSufficient ? colors.success : colors.muted }}>
-              ${displayChangeDue > 0 ? displayChangeDue.toFixed(2) : "0.00"}
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Footer Buttons */}
-      <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: colors.screen, paddingTop: 12, paddingBottom: 32, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <View style={{ flexDirection: "row", gap: 12 }}>
+        {/* Footer buttons */}
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 20 }}>
           <TouchableOpacity
             onPress={handleBack}
             disabled={isProcessing}
-            style={{ flex: 1, paddingVertical: 14, backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, opacity: isProcessing ? 0.5 : 1 }}
+            style={{ flex: 1, paddingVertical: 10, backgroundColor: colors.panel, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, opacity: isProcessing ? 0.5 : 1 }}
           >
-            <ArrowLeft size={18} color={colors.muted} />
-            <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 15 }}>Back</Text>
+            <ArrowLeft size={14} color={colors.muted} />
+            <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 12 }}>Back</Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={handleProcessCashPayment}
             disabled={(!isSufficient && total > 0) || isProcessing}
-            style={{ flex: 2, paddingVertical: 14, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: (isSufficient || total === 0) && !isProcessing ? colors.teal : colors.panel, borderWidth: (isSufficient || total === 0) && !isProcessing ? 0 : 1, borderColor: colors.border }}
+            style={{ flex: 2, paddingVertical: 10, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: (isSufficient || total === 0) && !isProcessing ? colors.teal : colors.screen, borderWidth: (isSufficient || total === 0) && !isProcessing ? 0 : 1, borderColor: colors.border }}
           >
-            <Text style={{ fontWeight: "700", fontSize: 16, color: (isSufficient || total === 0) && !isProcessing ? "#000" : colors.muted }}>
+            <Text style={{ fontWeight: "700", fontSize: 12, color: (isSufficient || total === 0) && !isProcessing ? "#000" : colors.muted }}>
               {isProcessing ? "Processing..." : total === 0 ? "Complete Order" : "Finalize Payment"}
             </Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* RIGHT: Input + suggestions + numpad */}
+      <View style={{ flex: 1, backgroundColor: colors.screen, padding: 16, justifyContent: "center" }}>
+        {/* Display */}
+        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, height: 42, marginBottom: 10 }}>
+          <DollarSign size={14} color={colors.muted} />
+          <Text style={{ flex: 1, fontSize: 18, fontWeight: "700", color: colors.heading, marginLeft: 6 }}>
+            {amountTendered || "0.00"}
+          </Text>
+          {amountTendered.length > 0 && (
+            <TouchableOpacity onPress={() => setAmountTendered("")}>
+              <Delete size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Quick suggestions */}
+        <View style={{ flexDirection: "row", gap: 6, marginBottom: 12 }}>
+          <TouchableOpacity
+            onPress={handleSelectExact}
+            style={{ flex: 1, backgroundColor: `${colors.teal}15`, borderWidth: 1, borderColor: `${colors.teal}40`, paddingVertical: 6, borderRadius: 7, alignItems: "center" }}
+          >
+            <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 12 }}>Exact</Text>
+          </TouchableOpacity>
+          {suggestions.map((bill) => (
+            <TouchableOpacity
+              key={bill}
+              onPress={() => handleSelectAmount(bill)}
+              style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, paddingVertical: 6, borderRadius: 7, alignItems: "center" }}
+            >
+              <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 12 }}>${bill}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Numpad */}
+        <View style={{ alignItems: "center", gap: 6 }}>
+          {[["1","2","3"],["4","5","6"],["7","8","9"],[".", "0", "⌫"]].map((row, i) => (
+            <View key={i} style={{ flexDirection: "row", gap: 6 }}>
+              {row.map((btn) => (
+                <TouchableOpacity
+                  key={btn}
+                  onPress={() => numpadHandler(btn)}
+                  style={{ width: 82, height: 50, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+                >
+                  {btn === "⌫"
+                    ? <Delete size={16} color={colors.muted} />
+                    : <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "600" }}>{btn}</Text>
+                  }
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
         </View>
       </View>
     </View>

@@ -91,45 +91,45 @@ const SplitEvenlyView = () => {
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <TouchableOpacity
           onPress={handleGoBack}
-          style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 14 }}
+          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 10 }}
         >
-          <ArrowLeft size={18} color={colors.label} />
+          <ArrowLeft size={16} color={colors.label} />
         </TouchableOpacity>
         <View>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Split Evenly</Text>
-          <Text style={{ fontSize: 12, color: colors.muted }}>Divide the total bill equally.</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Split Evenly</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Divide the total bill equally.</Text>
         </View>
       </View>
 
       {/* Main Content */}
-      <View style={{ flex: 1, flexDirection: "row", padding: 20, gap: 16 }}>
+      <View style={{ flex: 1, flexDirection: "row", padding: 14, gap: 12 }}>
         {/* LEFT: Controls */}
-        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 20, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}>
+        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border, justifyContent: "center", alignItems: "center" }}>
           <View style={{ alignItems: "center" }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-              <Users size={30} color={colors.teal} />
+            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+              <Users size={20} color={colors.teal} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.label, marginBottom: 28 }}>Number of People</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label, marginBottom: 18 }}>Number of People</Text>
 
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 28 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 18 }}>
               <TouchableOpacity
                 onPress={handleDecrement}
                 disabled={numberOfPeople <= 2}
-                style={{ width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: numberOfPeople <= 2 ? colors.border : colors.label, backgroundColor: colors.screen, opacity: numberOfPeople <= 2 ? 0.4 : 1 }}
+                style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: numberOfPeople <= 2 ? colors.border : colors.label, backgroundColor: colors.screen, opacity: numberOfPeople <= 2 ? 0.4 : 1 }}
               >
-                <Minus size={32} color={numberOfPeople <= 2 ? colors.muted : colors.heading} />
+                <Minus size={20} color={numberOfPeople <= 2 ? colors.muted : colors.heading} />
               </TouchableOpacity>
 
-              <Text style={{ fontSize: 80, fontWeight: "700", color: colors.heading, width: 100, textAlign: "center" }}>{numberOfPeople}</Text>
+              <Text style={{ fontSize: 52, fontWeight: "700", color: colors.heading, width: 72, textAlign: "center" }}>{numberOfPeople}</Text>
 
               <TouchableOpacity
                 onPress={handleIncrement}
-                style={{ width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.label, backgroundColor: colors.screen }}
+                style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.label, backgroundColor: colors.screen }}
               >
-                <Plus size={32} color={colors.heading} />
+                <Plus size={20} color={colors.heading} />
               </TouchableOpacity>
             </View>
           </View>
@@ -137,59 +137,59 @@ const SplitEvenlyView = () => {
 
         {/* RIGHT: Summary & Action */}
         <View style={{ flex: 1, justifyContent: "space-between" }}>
-          <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 24, justifyContent: "center", marginBottom: 16 }}>
+          <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, justifyContent: "center", marginBottom: 10 }}>
             {/* Total Bill */}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <Text style={{ color: colors.muted, fontSize: 15, fontWeight: "500" }}>Total Bill</Text>
-              <Text style={{ fontSize: 26, fontWeight: "700", color: colors.label }}>${effectiveTotal.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "500" }}>Total Bill</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: colors.label }}>${effectiveTotal.toFixed(2)}</Text>
             </View>
 
             {/* Per Person */}
-            <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "500", marginBottom: 14 }}>Per Person Breakdown</Text>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Per Person Breakdown</Text>
 
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>Subtotal</Text>
-              <Text style={{ color: colors.label, fontSize: 15 }}>${subtotalPerPerson.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>Subtotal</Text>
+              <Text style={{ color: colors.label, fontSize: 13 }}>${subtotalPerPerson.toFixed(2)}</Text>
             </View>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>Tax</Text>
-              <Text style={{ color: colors.label, fontSize: 15 }}>${taxPerPerson.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>Tax</Text>
+              <Text style={{ color: colors.label, fontSize: 13 }}>${taxPerPerson.toFixed(2)}</Text>
             </View>
 
             {/* Card vs Cash */}
-            <View style={{ gap: 8, marginBottom: 12 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <CreditCard size={18} color={colors.teal} />
-                  <Text style={{ color: colors.label, fontWeight: "500" }}>Card Payment</Text>
+            <View style={{ gap: 6, marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <CreditCard size={14} color={colors.teal} />
+                  <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>Card</Text>
                 </View>
-                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.teal }}>${cardAmountPerPerson.toFixed(2)}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.teal }}>${cardAmountPerPerson.toFixed(2)}</Text>
               </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: `${colors.success}40` }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Banknote size={18} color={colors.success} />
-                  <Text style={{ color: colors.label, fontWeight: "500" }}>Cash Payment</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: `${colors.success}40` }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Banknote size={14} color={colors.success} />
+                  <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>Cash</Text>
                   {cashSavingsPerPerson > 0 && (
-                    <View style={{ marginLeft: 6, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: `${colors.success}20`, borderRadius: 10 }}>
-                      <Text style={{ color: colors.success, fontSize: 11, fontWeight: "700" }}>SAVE ${cashSavingsPerPerson.toFixed(2)}</Text>
+                    <View style={{ marginLeft: 4, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${colors.success}20`, borderRadius: 8 }}>
+                      <Text style={{ color: colors.success, fontSize: 10, fontWeight: "700" }}>-${cashSavingsPerPerson.toFixed(2)}</Text>
                     </View>
                   )}
                 </View>
-                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.success }}>${cashAmountPerPerson.toFixed(2)}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.success }}>${cashAmountPerPerson.toFixed(2)}</Text>
               </View>
             </View>
 
-            <Text style={{ color: colors.muted, fontSize: 11, textAlign: "center" }}>Each guest can choose their payment method</Text>
+            <Text style={{ color: colors.muted, fontSize: 10, textAlign: "center" }}>Each guest can choose their payment method</Text>
           </View>
 
           {/* Action Button */}
           <TouchableOpacity
             onPress={handleConfirmSplit}
-            style={{ width: "100%", paddingVertical: 18, backgroundColor: colors.teal, borderRadius: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 }}
+            style={{ width: "100%", paddingVertical: 11, backgroundColor: colors.teal, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
           >
-            <Check size={22} color="#000" />
-            <Text style={{ fontWeight: "700", fontSize: 18, color: "#000" }}>
+            <Check size={16} color="#000" />
+            <Text style={{ fontWeight: "700", fontSize: 14, color: "#000" }}>
               Create {numberOfPeople} Splits
             </Text>
           </TouchableOpacity>

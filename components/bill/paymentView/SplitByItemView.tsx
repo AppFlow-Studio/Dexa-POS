@@ -309,16 +309,16 @@ const SplitByItemView = () => {
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, height: 70 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <TouchableOpacity
           onPress={handleGoBack}
-          style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 14 }}
+          style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 10 }}
         >
-          <ArrowLeft size={18} color={colors.label} />
+          <ArrowLeft size={16} color={colors.label} />
         </TouchableOpacity>
         <View>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Split by Item</Text>
-          <Text style={{ fontSize: 12, color: colors.muted }}>Assign items to guests</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Split by Item</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Assign items to guests</Text>
         </View>
       </View>
 
@@ -493,17 +493,17 @@ const SplitByItemView = () => {
           onPress={handleStartPayment}
           disabled={!isAllAssigned}
           style={{
-            flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, borderRadius: 12, gap: 8,
+            flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 8, gap: 6,
             backgroundColor: isAllAssigned ? colors.teal : colors.panel,
             borderWidth: isAllAssigned ? 0 : 1, borderColor: colors.border,
             opacity: isAllAssigned ? 1 : 0.6,
           }}
         >
           {isAllAssigned
-            ? <Play size={18} color="#000" fill="#000" />
-            : <Circle size={18} color={colors.muted} />
+            ? <Play size={15} color="#000" fill="#000" />
+            : <Circle size={15} color={colors.muted} />
           }
-          <Text style={{ fontSize: 16, fontWeight: "700", color: isAllAssigned ? "#000" : colors.muted }}>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: isAllAssigned ? "#000" : colors.muted }}>
             {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
           </Text>
         </TouchableOpacity>

@@ -477,24 +477,24 @@ const PayForItemsView: React.FC = () => {
     return (
         <View style={{ flex: 1, backgroundColor: colors.screen }}>
             {/* Header */}
-            <View style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border, height: 70 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <TouchableOpacity
                     onPress={handleGoBack}
-                    style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 14 }}
+                    style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center", marginRight: 10 }}
                 >
-                    <ArrowLeft size={18} color={colors.label} />
+                    <ArrowLeft size={16} color={colors.label} />
                 </TouchableOpacity>
                 <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>Pay for Items</Text>
-                    <Text style={{ fontSize: 12, color: colors.muted }}>Select items to pay or manage payments</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Pay for Items</Text>
+                    <Text style={{ fontSize: 11, color: colors.muted }}>Select items to pay or manage payments</Text>
                 </View>
                 {payments.length > 0 && (
                     <TouchableOpacity
                         onPress={handleVoidAllPayments}
-                        style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: `${colors.danger}15`, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 6 }}
+                        style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: `${colors.danger}15`, borderRadius: 7, flexDirection: "row", alignItems: "center", gap: 5 }}
                     >
-                        <Trash2 size={15} color={colors.danger} />
-                        <Text style={{ color: colors.danger, fontWeight: "700", fontSize: 12 }}>VOID ALL</Text>
+                        <Trash2 size={13} color={colors.danger} />
+                        <Text style={{ color: colors.danger, fontWeight: "700", fontSize: 11 }}>VOID ALL</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -568,26 +568,26 @@ const PayForItemsView: React.FC = () => {
                 {/* RIGHT PANEL */}
                 <View style={{ width: "55%", backgroundColor: colors.screen }}>
                     {/* Totals Header */}
-                    <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                    <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                             <View style={{ alignItems: "center" }}>
-                                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading }}>${activeOrderTotal.toFixed(2)}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase" }}>Order Total</Text>
+                                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>${activeOrderTotal.toFixed(2)}</Text>
+                                <Text style={{ color: colors.muted, fontSize: 10, textTransform: "uppercase" }}>Order Total</Text>
                             </View>
                             <View style={{ alignItems: "center" }}>
-                                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
-                                    <Text style={{ fontSize: 20, fontWeight: "700", color: "#F97316" }}>${remainingAmount.toFixed(2)}</Text>
+                                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#F97316" }}>${remainingAmount.toFixed(2)}</Text>
                                     {remainingCashSavings > 0.01 && (
-                                        <Text style={{ fontSize: 13, fontWeight: "500", color: colors.success }}>(${remainingCashAmount.toFixed(2)} cash)</Text>
+                                        <Text style={{ fontSize: 11, fontWeight: "500", color: colors.success }}>(${remainingCashAmount.toFixed(2)} cash)</Text>
                                     )}
                                 </View>
-                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase" }}>
+                                <Text style={{ color: colors.muted, fontSize: 10, textTransform: "uppercase" }}>
                                     Remaining{remainingCashSavings > 0.01 ? " (Card / Cash)" : ""}
                                 </Text>
                             </View>
                             <View style={{ alignItems: "center" }}>
-                                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.success }}>${collectedAmount.toFixed(2)}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase" }}>Collected • {collectedPercent}%</Text>
+                                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.success }}>${collectedAmount.toFixed(2)}</Text>
+                                <Text style={{ color: colors.muted, fontSize: 10, textTransform: "uppercase" }}>Collected • {collectedPercent}%</Text>
                             </View>
                         </View>
                     </View>
@@ -655,21 +655,21 @@ const PayForItemsView: React.FC = () => {
 
                     {/* Footer */}
                     <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
-                        <View style={{ flexDirection: "row", gap: 10 }}>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
                             <TouchableOpacity
                                 onPress={handleBackToOrder}
-                                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.panel }}
+                                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.panel }}
                             >
-                                <Text style={{ color: colors.label, fontWeight: "700" }}>BACK TO ORDER</Text>
+                                <Text style={{ color: colors.label, fontWeight: "700", fontSize: 13 }}>BACK TO ORDER</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleContinueCharging}
                                 disabled={selectedItems.size === 0 || isProcessing}
-                                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center", backgroundColor: selectedItems.size > 0 ? colors.teal : colors.panel, borderWidth: selectedItems.size > 0 ? 0 : 1, borderColor: colors.border, opacity: selectedItems.size === 0 ? 0.5 : 1 }}
+                                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", backgroundColor: selectedItems.size > 0 ? colors.teal : colors.panel, borderWidth: selectedItems.size > 0 ? 0 : 1, borderColor: colors.border, opacity: selectedItems.size === 0 ? 0.5 : 1 }}
                             >
                                 {isProcessing
                                     ? <ActivityIndicator color="#000" />
-                                    : <Text style={{ fontWeight: "700", color: selectedItems.size > 0 ? "#000" : colors.muted }}>
+                                    : <Text style={{ fontWeight: "700", fontSize: 13, color: selectedItems.size > 0 ? "#000" : colors.muted }}>
                                         {selectedItems.size > 0
                                             ? `PAY $${paymentMethod === "cash" ? selectedCashTotals.total.toFixed(2) : selectedCardTotals.total.toFixed(2)}`
                                             : "SELECT ITEMS"}
