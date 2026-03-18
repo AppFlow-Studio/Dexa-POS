@@ -70,10 +70,12 @@ const RequestsPage = () => {
               onPress={() => setActiveTab(t.key)}
               style={{
                 flex: 1, paddingVertical: 7, borderRadius: 7, alignItems: 'center',
-                backgroundColor: isActive ? colors.teal : 'transparent',
+                backgroundColor: isActive ? colors.teal + '20' : 'transparent',
+                borderWidth: 1,
+                borderColor: isActive ? colors.teal + '40' : 'transparent',
               }}
             >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? '#0C0F1A' : colors.label }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: isActive ? colors.teal : colors.label }}>
                 {t.label}
               </Text>
             </TouchableOpacity>
