@@ -294,12 +294,7 @@ const TablesPanel: React.FC = () => {
       return 0
     })
     return filtered
-  }, [
-    activeTables,
-    selectedServerId,
-    liveSessions,
-    sortMode
-  ])
+  }, [activeTables, selectedServerId, liveSessions, sortMode])
 
   const occupiedTables = useMemo(() => {
     const activeStatuses = [

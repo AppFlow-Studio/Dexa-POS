@@ -191,7 +191,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           style={{
             position: 'absolute',
             right: -14,
-            top: "20%",
+            top: '20%',
             zIndex: 50,
             width: 32,
             height: 32,
