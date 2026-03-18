@@ -1,5 +1,4 @@
 import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
-import { images } from '@/lib/image'
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
@@ -13,13 +12,7 @@ import {
   Utensils
 } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
-import {
-  Image,
-  LayoutAnimation,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
+import { LayoutAnimation, Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -198,11 +191,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           style={{
             position: 'absolute',
             right: -14,
-            top: 28,
+            top: "20%",
             zIndex: 50,
-            width: 28,
-            height: 28,
-            borderRadius: 14,
+            width: 32,
+            height: 32,
+            borderRadius: 16,
             backgroundColor: colors.card,
             borderWidth: 1,
             borderColor: colors.border,
@@ -211,57 +204,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           {isExpanded ? (
-            <ChevronLeft size={14} color={colors.label} />
+            <ChevronLeft size={16} color={colors.label} />
           ) : (
-            <ChevronRight size={14} color={colors.label} />
+            <ChevronRight size={16} color={colors.label} />
           )}
         </TouchableOpacity>
 
-        {/* Header */}
-        <TouchableOpacity
-          onPress={toggleSidebar}
-          activeOpacity={0.8}
-          style={{
-            height: 56,
-            flexDirection: 'row',
-            alignItems: 'center',
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
-            paddingHorizontal: 16,
-            flexShrink: 0
-          }}
-        >
-          <View
-            style={{
-              width: 32,
-              height: 32,
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Image
-              source={images.dexalogo}
-              style={{ width: 26, height: 26 }}
-              resizeMode='contain'
-            />
-          </View>
-          {isExpanded && (
-            <Animated.Text
-              style={[
-                textStyle,
-                {
-                  marginLeft: 10,
-                  fontSize: 13,
-                  fontWeight: '700',
-                  color: colors.heading
-                }
-              ]}
-              numberOfLines={1}
-            >
-              Floor Plan
-            </Animated.Text>
-          )}
-        </TouchableOpacity>
+        {/* Header removed for density */}
 
         {/* Navigation Tabs */}
         <View

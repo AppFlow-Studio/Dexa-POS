@@ -203,12 +203,8 @@ const TablesPanel: React.FC = () => {
   const floorPlans = useFloorPlanStore(s => s.floorPlans)
   const tables = useFloorPlanStore(s => s.tables)
   const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
-  const sectionsById = useFloorPlanStore(s => s.sectionsById)
   const liveSessions = useTableSessionStore(s => s.sessions)
   const [sections, setSections] = useState<{ [key: string]: boolean }>({})
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
-    null
-  )
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
   const [expandedTableIds, setExpandedTableIds] = useState<
     Record<string, boolean>
@@ -233,12 +229,10 @@ const TablesPanel: React.FC = () => {
     t.category === 'table' || t.category === 'booth'
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
-  const { uniqueSections, uniqueServers, serverNames } = useMemo(() => {
-    const sectionSet = new Set<string>()
+  const { uniqueServers, serverNames } = useMemo(() => {
     const serverSet = new Set<string>()
     const nameMap: Record<string, string> = {}
     activeTables.forEach(table => {
-      if (table.section_id) sectionSet.add(table.section_id)
       const session = liveSessions[table.id] ?? table.session
       if (session?.server_staff_id) {
         const staffId = session.server_staff_id
@@ -249,11 +243,7 @@ const TablesPanel: React.FC = () => {
         }
       }
     })
-    return {
-      uniqueSections: Array.from(sectionSet),
-      uniqueServers: Array.from(serverSet),
-      serverNames: nameMap
-    }
+    return { uniqueServers: Array.from(serverSet), serverNames: nameMap }
   }, [activeTables, getEmployeeByStaffId, liveSessions])
 
   const STATUS_ORDER: Record<string, number> = {
@@ -277,8 +267,6 @@ const TablesPanel: React.FC = () => {
       seenSessionIds.add(sid)
       return true
     })
-    if (selectedSectionId)
-      filtered = filtered.filter(t => t.section_id === selectedSectionId)
     if (selectedServerId) {
       filtered = filtered.filter(table => {
         const session = liveSessions[table.id] ?? table.session
@@ -308,7 +296,6 @@ const TablesPanel: React.FC = () => {
     return filtered
   }, [
     activeTables,
-    selectedSectionId,
     selectedServerId,
     liveSessions,
     sortMode
@@ -441,15 +428,6 @@ const TablesPanel: React.FC = () => {
         }}
       >
         <View style={{ flexDirection: 'row', gap: 6 }}>
-          <InlineSelect
-            label='Section'
-            value={selectedSectionId}
-            options={uniqueSections.map(id => ({
-              value: id,
-              label: sectionsById[id]?.name || id.substring(0, 6)
-            }))}
-            onSelect={setSelectedSectionId}
-          />
           <InlineSelect
             label='Server'
             value={selectedServerId}
