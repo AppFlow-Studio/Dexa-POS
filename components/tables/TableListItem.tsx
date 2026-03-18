@@ -35,12 +35,26 @@ const formatDuration = (milliseconds: number): string => {
   return `${minutes}m`;
 };
 
+const getStatusAccentColor = (status: string, isOvertime: boolean): string => {
+  if (isOvertime) return colors.warning;
+  switch (status.toLowerCase()) {
+    case "available": return colors.success;
+    case "seated":    return colors.info;
+    case "ordered":   return colors.warning;
+    case "served":    return colors.teal;
+    case "check_presented": return "#8B5CF6";
+    case "paid":      return colors.success;
+    case "cleaning":  return colors.muted;
+    default:          return colors.border;
+  }
+};
+
 const StatusIndicator = ({
   status,
   tableId,
   isOvertime,
 }: {
-  status: string; // Simplified type as string since DB status is lowercase but UI might expect Mixed
+  status: string;
   tableId?: string;
   isOvertime: boolean;
 }) => {
@@ -54,40 +68,49 @@ const StatusIndicator = ({
   // Map to theme colors from theme-colors.js
   let color: string;
   if (isOvertime) {
-    color = colors.warning; // Amber for overtime
+    color = colors.warning;
   } else {
     switch (normalizedStatus) {
       case "available":
-        color = colors.tableAvailable; // Green
+        color = colors.tableAvailable;
         break;
       case "seated":
-        color = colors.tableSeated; // Blue
+        color = colors.tableSeated;
         break;
       case "ordered":
-        color = colors.tableOrdered; // Orange
+        color = colors.tableOrdered;
         break;
       case "served":
-        color = colors.tableServed; // Amber
+        color = colors.tableServed;
         break;
       case "check_presented":
-        color = colors.tableCheckPresented; // Purple
+        color = colors.tableCheckPresented;
         break;
       case "paid":
-        color = colors.tablePaid; // Red
+        color = colors.tablePaid;
         break;
       case "cleaning":
-        color = colors.tableCleaning; // Gray
+        color = colors.tableCleaning;
         break;
       case "blocked":
       case "not_in_service":
-        color = colors.tableNotInService; // Dark gray
+        color = colors.tableNotInService;
         break;
       default:
-        color = colors.tableInUse; // Blue as fallback
+        color = colors.tableInUse;
     }
   }
 
-  return <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />;
+  return (
+    <View
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: color,
+      }}
+    />
+  );
 };
 
 const QuickActionButton: React.FC<{
@@ -96,23 +119,39 @@ const QuickActionButton: React.FC<{
   variant?: "primary" | "secondary" | "destructive";
   disabled?: boolean;
 }> = ({ onPress, label, variant = "secondary", disabled = false }) => {
-  const baseStyle = "px-3 py-2 rounded-lg flex-row items-center gap-1";
-  const variantStyle =
-    variant === "primary"
-      ? "bg-blue-600"
-      : variant === "destructive"
-        ? "bg-red-600"
-        : "bg-gray-600";
-  const disabledStyle = disabled ? "opacity-50" : "";
+  const bg =
+    variant === "primary" ? colors.teal + "20"
+    : variant === "destructive" ? colors.danger + "15"
+    : colors.card;
+  const border =
+    variant === "primary" ? colors.teal + "50"
+    : variant === "destructive" ? colors.danger + "30"
+    : colors.border;
+  const textColor =
+    variant === "primary" ? colors.teal
+    : variant === "destructive" ? colors.danger
+    : colors.label;
+
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      className={`${baseStyle} ${variantStyle} ${disabledStyle}`}
+      style={{
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        backgroundColor: bg,
+        borderWidth: 1,
+        borderColor: border,
+        opacity: disabled ? 0.5 : 1,
+      }}
     >
-      {label.startsWith("Send") && <Send size={14} color="white" />}
-      {label === "Open Order" && <Pencil size={14} color="white" />}
-      <Text className="text-white font-semibold text-xs">{label}</Text>
+      {label.startsWith("Send") && <Send size={13} color={textColor} />}
+      {label === "Open Order" && <Pencil size={13} color={textColor} />}
+      <Text style={{ fontSize: 12, fontWeight: "600", color: textColor }}>{label}</Text>
     </TouchableOpacity>
   );
 };
@@ -291,7 +330,7 @@ const ExpandedView: React.FC<{
   tableData: NonNullable<ReturnType<typeof useTableData>>;
   onNavigateToOrder: () => void;
   onToggleExpand: () => void;
-  table: FloorPlanObject; // Need table obj to get IDs
+  table: FloorPlanObject;
 }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
   const updateSessionStatus = useTableSessionStore((s) => s.updateSessionStatus);
   const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
@@ -401,90 +440,148 @@ const ExpandedView: React.FC<{
     onToggleExpand();
   };
 
+  const hasItems = Object.keys(groupedItems).length > 0;
+
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(100)}
-      className="mt-3"
+      style={{
+        marginTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        paddingTop: 10,
+        backgroundColor: colors.screen,
+        borderRadius: 8,
+        padding: 10,
+      }}
     >
-      <View className="mb-3">
-        <Text className="text-xs text-gray-400">
-          Seated:{" "}
-          {tableData.seatedTime?.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+      {/* Seated time */}
+      {tableData.seatedTime && (
+        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 8, letterSpacing: 0.4 }}>
+          SEATED AT{" "}
+          {tableData.seatedTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </Text>
-      </View>
+      )}
 
-      <View className="mb-4 pr-2">
-        {Object.entries(groupedItems)
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([courseNumber, { items }]) => (
-            <View key={courseNumber} className="mb-2">
-              <Text className="text-base font-semibold text-blue-400 mb-1">
-                Course {courseNumber}
-              </Text>
-              {items.map((item) => (
-                <View key={item.id} className="flex-row items-center ml-2">
-                  <Text className="text-base text-gray-300">
-                    {item.quantity}x {item.name}
-                  </Text>
-                  <View className="ml-2">
-                    {(item.item_status === "Ready" ||
-                      item.item_status === "Served") && (
-                      <CheckCircle size={14} color={colors.success} />
-                    )}
-                    {(item.kitchen_status === "sent" ||
-                      item.item_status === "Preparing") && (
-                      <Clock size={14} color={colors.warning} />
-                    )}
+      {/* Items by course */}
+      {hasItems && (
+        <View style={{ marginBottom: 10 }}>
+          {Object.entries(groupedItems)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([courseNumber, { items }]) => (
+              <View key={courseNumber} style={{ marginBottom: 8 }}>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: "600",
+                    color: colors.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                    marginBottom: 5,
+                  }}
+                >
+                  Course {courseNumber}
+                </Text>
+                {items.map((item) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: 3,
+                      paddingHorizontal: 8,
+                      borderRadius: 5,
+                      backgroundColor: colors.card,
+                      marginBottom: 2,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.label, flex: 1 }}>
+                      <Text style={{ fontWeight: "600", color: colors.heading }}>
+                        {item.quantity}x
+                      </Text>
+                      {" "}{item.name}
+                    </Text>
+                    <View style={{ marginLeft: 8 }}>
+                      {(item.item_status === "Ready" || item.item_status === "Served") && (
+                        <CheckCircle size={13} color={colors.success} />
+                      )}
+                      {(item.kitchen_status === "sent" || item.item_status === "Preparing") && (
+                        <Clock size={13} color={colors.warning} />
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
-            </View>
-          ))}
-        <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
-          {/* Total */}
-          <View className="flex-row justify-between">
-            <Text className="text-base font-semibold text-white">Total</Text>
-            <Text className="text-base font-semibold text-white">
-              ${tableData.total?.toFixed(2)}
+                ))}
+              </View>
+            ))}
+        </View>
+      )}
+
+      {/* Totals */}
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          paddingTop: 8,
+          marginBottom: 10,
+          gap: 4,
+        }}
+      >
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Subtotal</Text>
+          <Text style={{ fontSize: 11, color: colors.label }}>
+            ${tableData.subtotal?.toFixed(2)}
+          </Text>
+        </View>
+
+        {tableData.amountPaid > 0 && (
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 11, color: colors.teal }}>Paid</Text>
+            <Text style={{ fontSize: 11, color: colors.teal }}>
+              ${tableData.amountPaid.toFixed(2)}
+              {(() => {
+                const payments = tableData.orders[0]?.payments;
+                if (!payments || payments.length === 0) return "";
+                if (payments.length === 1) return ` · ${payments[0].method.toLowerCase()}`;
+                return ` · ${payments.length} payments`;
+              })()}
             </Text>
           </View>
+        )}
 
-          {/* Paid — with payment method */}
-          {tableData.amountPaid > 0 && (
-            <View className="flex-row justify-between mt-1">
-              <Text className="text-sm" style={{ color: colors.teal }}>Paid</Text>
-              <Text className="text-sm" style={{ color: colors.teal }}>
-                ${tableData.amountPaid.toFixed(2)}{" "}
-                {(() => {
-                  const payments = tableData.orders[0]?.payments;
-                  if (!payments || payments.length === 0) return "";
-                  if (payments.length === 1) return payments[0].method.toLowerCase();
-                  return `(${payments.length} payments)`;
-                })()}
-              </Text>
-            </View>
-          )}
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Remaining</Text>
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "600",
+              color: tableData.amountDue <= 0 ? colors.success : colors.label,
+            }}
+          >
+            ${tableData.amountDue.toFixed(2)}
+          </Text>
+        </View>
 
-          {/* Remaining */}
-          <View className="flex-row justify-between mt-1">
-            <Text className="text-sm text-gray-400">Remaining</Text>
-            <Text
-              className="text-sm font-semibold"
-              style={{
-                color: tableData.amountDue <= 0 ? colors.success : colors.heading,
-              }}
-            >
-              ${tableData.amountDue.toFixed(2)}
-            </Text>
-          </View>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            marginTop: 2,
+            paddingTop: 6,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Total</Text>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+            ${tableData.total?.toFixed(2)}
+          </Text>
         </View>
       </View>
 
-      <View className="flex-row items-center gap-2">
+      {/* Action buttons */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <QuickActionButton
           label="Open Order"
           onPress={onNavigateToOrder}
@@ -500,6 +597,7 @@ const ExpandedView: React.FC<{
           variant="destructive"
         />
       </View>
+
       <ConfirmationModal
         isOpen={isVoidConfirmOpen}
         onClose={() => setVoidConfirmOpen(false)}
@@ -529,7 +627,7 @@ const ExpandedView: React.FC<{
 const TableListItem: React.FC<{
   table: FloorPlanObject;
   isExpanded: boolean;
-  onToggleExpand?: () => void; // Make optional
+  onToggleExpand?: () => void;
   onNavigateToOrder: () => void;
   // activeLayoutId removed/unused in new logic
   handleTablePress: (table: FloorPlanObject) => void;
@@ -594,73 +692,135 @@ const TableListItem: React.FC<{
     normalizedStatus !== "closing";
 
   const ChevronIcon = isExpanded ? ChevronUp : ChevronDown;
+  const accentColor = getStatusAccentColor(tableData.status, isOvertime);
+
+  const metaParts: string[] = [];
+  if (showActiveDetails && tableData.server && tableData.server !== "N/A") {
+    metaParts.push(tableData.server);
+  }
+  if (showActiveDetails && tableData.guestCount > 0) {
+    metaParts.push(`${tableData.guestCount} guest${tableData.guestCount !== 1 ? "s" : ""}`);
+  }
+  const metaLine = metaParts.join("  ·  ");
 
   return (
     <Animated.View
       layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-      className="mb-2 overflow-hidden"
+      style={{ marginBottom: 4, overflow: "hidden" }}
     >
       <TouchableOpacity
         onPress={handlePress}
-        className="p-3 rounded-xl"
-        style={{ backgroundColor: isExpanded ? "#1a2347" : colors.card }}
+        activeOpacity={0.8}
+        style={{
+          borderRadius: 10,
+          backgroundColor: isExpanded ? colors.teal + "08" : colors.panel,
+          borderWidth: 1,
+          borderColor: isExpanded ? colors.teal + "40" : colors.border,
+          borderLeftWidth: 3,
+          borderLeftColor: accentColor,
+          overflow: "hidden",
+        }}
       >
-        {/* Main Layout Container */}
-        <View className="flex-col w-full">
-          {/* Row 1: Dot + Name + spacer + contextual right side */}
-          <View className="flex-row items-center w-full">
-            <StatusIndicator
-              status={tableData.status}
-              tableId={table.id}
-              isOvertime={isOvertime}
-            />
-            <View className="ml-2 shrink">
+        {/* Collapsed row */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            gap: 10,
+          }}
+        >
+          {/* Status dot */}
+          <StatusIndicator
+            status={tableData.status}
+            tableId={table.id}
+            isOvertime={isOvertime}
+          />
+
+          {/* Name + meta */}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}
+              numberOfLines={1}
+            >
+              {tableData.displayName}
+            </Text>
+            {metaLine ? (
               <Text
-                className="text-white font-semibold text-base"
+                style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}
                 numberOfLines={1}
               >
-                {tableData.displayName}
+                {metaLine}
               </Text>
-              {/* Duration below name for active tables */}
-              {showActiveDetails && duration ? (
+            ) : null}
+          </View>
+
+          {/* Right side */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {/* Available label */}
+            {normalizedStatus === "available" && (
+              <Text style={{ fontSize: 11, color: colors.success, fontWeight: "600" }}>
+                Available
+              </Text>
+            )}
+
+            {/* Cleaning label */}
+            {(normalizedStatus === "cleaning" || normalizedStatus === "closing") && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <BrushCleaning size={13} color={colors.muted} />
+                <Text style={{ fontSize: 11, color: colors.muted }}>Cleaning</Text>
+              </View>
+            )}
+
+            {/* Duration badge */}
+            {showActiveDetails && duration ? (
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 3,
+                  borderRadius: 20,
+                  backgroundColor: isOvertime ? colors.warning + "15" : colors.teal + "15",
+                  borderWidth: 1,
+                  borderColor: isOvertime ? colors.warning + "30" : colors.teal + "30",
+                }}
+              >
                 <Text
-                  className="text-xs font-medium"
-                  style={{ color: colors.teal }}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "600",
+                    color: isOvertime ? colors.warning : colors.teal,
+                  }}
                 >
                   {duration}
                 </Text>
-              ) : null}
-            </View>
-            <View className="flex-1" />
-            {/* Available: "Empty" label */}
-            {normalizedStatus === "available" && (
-              <Text className="text-xs text-gray-500">Empty</Text>
-            )}
-            {/* Cleaning: sparkles icon */}
-            {(normalizedStatus === "cleaning" ||
-              normalizedStatus === "closing") && (
-              <BrushCleaning size={16} color={colors.danger} />
-            )}
-            {/* Active: total + chevron */}
-            {showActiveDetails && tableData.total > 0 ? (
-              <Text className="text-white font-bold text-sm mr-2">
+              </View>
+            ) : null}
+
+            {/* Total */}
+            {showActiveDetails && tableData.total > 0 && (
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
                 ${tableData.total.toFixed(2)}
               </Text>
-            ) : null}
+            )}
+
+            {/* Chevron */}
             {showActiveDetails && (
-              <ChevronIcon size={16} color={colors.muted} />
+              <ChevronIcon size={14} color={colors.muted} />
             )}
           </View>
         </View>
 
-        {/* Expanded Detail View */}
+        {/* Expanded detail view */}
         {isExpanded && showActiveDetails && (
-          <ExpandedView
-            tableData={tableData}
-            table={table}
-            onToggleExpand={onToggleExpand}
-            onNavigateToOrder={onNavigateToOrder}
-          />
+          <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+            <ExpandedView
+              tableData={tableData}
+              table={table}
+              onToggleExpand={onToggleExpand}
+              onNavigateToOrder={onNavigateToOrder}
+            />
+          </View>
         )}
       </TouchableOpacity>
     </Animated.View>

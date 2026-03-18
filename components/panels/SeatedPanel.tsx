@@ -1,13 +1,7 @@
 import TableListItem from "@/components/tables/TableListItem";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import SortDropdown, {
-  SortDirection,
-  SortOption,
-} from "@/components/ui/SortDropdown";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import SortDropdown, { SortDirection, SortOption } from "@/components/ui/SortDropdown";
+import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -26,31 +20,17 @@ const SeatedPanel: React.FC = () => {
   const { employees } = useEmployeeStore();
 
   const [activeFilter, setActiveFilter] = useState("All");
-  const [expandedServers, setExpandedServers] = useState<
-    Record<string, boolean>
-  >({});
+  const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({});
   const [sortOption, setSortOption] = useState<SortOption>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
-  const [dropdownPosition, setDropdownPosition] = useState({
-    x: 0,
-    y: 0,
-    width: 0,
-    height: 0,
-  });
-
+  const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const sortButtonRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
-
-  // Track expanded state for TableListItems managed by this panel
-  const [expandedTableIds, setExpandedTableIds] = useState<
-    Record<string, boolean>
-  >({});
-
+  const [expandedTableIds, setExpandedTableIds] = useState<Record<string, boolean>>({});
   const toggleTableExpand = useCallback((tableId: string) => {
     setExpandedTableIds((prev) => ({ ...prev, [tableId]: !prev[tableId] }));
   }, []);
 
-  // Pre-compute a lookup map from service_location_id to order for O(1) access
   const ordersByLocationId = useMemo(() => {
     const map: Record<string, (typeof ordersById)[string]> = {};
     for (const order of Object.values(ordersById)) {
@@ -61,70 +41,33 @@ const SeatedPanel: React.FC = () => {
     return map;
   }, [ordersById]);
 
-  const getTableOrderData = useCallback(
-    (tableId: string) => {
-      // Logic mirrors useTableData but simplified for sorting
-      // Check if table is merged
-      // We rely on service_location_id matching tableId for primary.
-      const order = ordersByLocationId[tableId];
-
-      // If table is part of merge group, we might want aggregate.
-      // But for sorting, primary order data is okay approximation.
-
-      return {
-        order,
-        seatedTime: order?.opened_at ? new Date(order.opened_at).getTime() : 0,
-        guestCount: order?.guest_count || 0,
-        total:
-          order?.items.reduce(
-            (sum, item) => sum + item.price * item.quantity,
-            0
-          ) || 0,
-      };
-    },
-    [ordersByLocationId]
-  );
+  const getTableOrderData = useCallback((tableId: string) => {
+    const order = ordersByLocationId[tableId];
+    return {
+      order,
+      seatedTime: order?.opened_at ? new Date(order.opened_at).getTime() : 0,
+      guestCount: order?.guest_count || 0,
+      total: order?.items.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0,
+    };
+  }, [ordersByLocationId]);
 
   const sortedSeatedTables = useMemo(() => {
-    // Only consider tables in active plan that are seated/active
-    const activeStates = [
-      "seated",
-      "ordered",
-      "served",
-      "in use",
-      "check_presented",
-      "paid",
-    ];
-
+    const activeStates = ["seated", "ordered", "served", "in use", "check_presented", "paid"];
     const seatedTables = tables.filter((table) => {
-      // Only show actual seatable objects (not walls, zones, decorations)
       if (table.category !== "table" && table.category !== "booth") return false;
       const session = liveSessions[table.id] ?? table.session;
-      const status = (session?.status || "available").toLowerCase();
-      // Also check 'In Use' for legacy compatibility if DB not updated
-      return activeStates.includes(status);
+      return activeStates.includes((session?.status || "available").toLowerCase());
     });
-
     return seatedTables.sort((a, b) => {
       const aData = getTableOrderData(a.id);
       const bData = getTableOrderData(b.id);
-
       let compare = 0;
       switch (sortOption) {
-        case "time":
-          compare = aData.seatedTime - bData.seatedTime;
-          break;
-        case "name":
-          compare = a.name.localeCompare(b.name);
-          break;
-        case "guests":
-          compare = aData.guestCount - bData.guestCount;
-          break;
-        case "total":
-          compare = aData.total - bData.total;
-          break;
+        case "time": compare = aData.seatedTime - bData.seatedTime; break;
+        case "name": compare = a.name.localeCompare(b.name); break;
+        case "guests": compare = aData.guestCount - bData.guestCount; break;
+        case "total": compare = aData.total - bData.total; break;
       }
-
       return sortDirection === "asc" ? compare : -compare;
     });
   }, [tables, getTableOrderData, sortOption, sortDirection, liveSessions]);
@@ -134,36 +77,24 @@ const SeatedPanel: React.FC = () => {
     sortedSeatedTables.forEach((table) => {
       const order = ordersByLocationId[table.id];
       const serverName = order?.server_name || "Unassigned";
-      if (!serverTableMap[serverName]) {
-        serverTableMap[serverName] = [];
-      }
+      if (!serverTableMap[serverName]) serverTableMap[serverName] = [];
       serverTableMap[serverName].push(table);
     });
     return serverTableMap;
   }, [sortedSeatedTables, ordersByLocationId]);
 
   const filteredSeatedTables = useMemo(() => {
-    if (activeFilter === "All") {
-      return sortedSeatedTables;
-    }
+    if (activeFilter === "All") return sortedSeatedTables;
     if (activeFilter === "My Tables") {
       const currentUser = employees.find((e) => e.id === activeEmployeeId);
       if (!currentUser) return [];
-
-      // Use the pre-computed lookup map instead of scanning all orders
-      return sortedSeatedTables.filter((t) => {
-        const order = ordersByLocationId[t.id];
-        return order?.server_name === currentUser.fullName;
-      });
+      return sortedSeatedTables.filter((t) => ordersByLocationId[t.id]?.server_name === currentUser.fullName);
     }
     return [];
   }, [activeFilter, sortedSeatedTables, ordersByLocationId, activeEmployeeId, employees]);
 
   const toggleServerSection = (serverName: string) => {
-    setExpandedServers((prev) => ({
-      ...prev,
-      [serverName]: !prev[serverName],
-    }));
+    setExpandedServers((prev) => ({ ...prev, [serverName]: !prev[serverName] }));
   };
 
   const handleSortChange = (option: SortOption, direction: SortDirection) => {
@@ -178,48 +109,35 @@ const SeatedPanel: React.FC = () => {
     });
   };
 
+  const FILTERS = ["All", "My Tables", "By Server"];
+
   const renderContent = () => {
     if (activeFilter === "By Server") {
       return (
         <FlatList
           data={Object.entries(serversWithTables)}
           keyExtractor={([serverName]) => serverName}
-          renderItem={({ item: [serverName, tables] }) => (
-            <Collapsible
-              key={serverName}
-              open={expandedServers[serverName] ?? true}
-              onOpenChange={() => toggleServerSection(serverName)}
-              className="space-y-1 mb-2"
-            >
-              <CollapsibleTrigger className="flex flex-row items-center w-full p-2 text-sm font-semibold rounded-md bg-gray-800">
-                {(expandedServers[serverName] ?? true) ? (
-                  <ChevronDown className="w-4 h-4 mr-2 text-slate-400" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 mr-2 text-slate-400" />
-                )}
-                <Text className="text-white font-semibold">{serverName}</Text>
+          renderItem={({ item: [serverName, serverTables] }) => (
+            <Collapsible key={serverName} open={expandedServers[serverName] ?? true} onOpenChange={() => toggleServerSection(serverName)} style={{ marginBottom: 8 }}>
+              <CollapsibleTrigger style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.card }}>
+                {(expandedServers[serverName] ?? true)
+                  ? <ChevronDown size={13} color={colors.muted} />
+                  : <ChevronRight size={13} color={colors.muted} />}
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, marginLeft: 6 }}>{serverName}</Text>
               </CollapsibleTrigger>
-              <CollapsibleContent className="pl-2 pt-2">
-                {tables.map((table) => (
-                  <View key={table.id} className="mb-4">
-                    <TableListItem
-                      table={table}
-                      isExpanded={expandedTableIds[table.id] || false}
-                      onToggleExpand={() => toggleTableExpand(table.id)}
-                      onNavigateToOrder={() => {}} // Navigation handled usually by tap if collapsed, or button if expanded
-                      handleTablePress={() => toggleTableExpand(table.id)} // In Seated panel, tap expands
-                    />
+              <CollapsibleContent style={{ paddingLeft: 4, paddingTop: 4 }}>
+                {serverTables.map((table) => (
+                  <View key={table.id} style={{ marginBottom: 4 }}>
+                    <TableListItem table={table} isExpanded={expandedTableIds[table.id] || false} onToggleExpand={() => toggleTableExpand(table.id)} onNavigateToOrder={() => {}} handleTablePress={() => toggleTableExpand(table.id)} />
                   </View>
                 ))}
               </CollapsibleContent>
             </Collapsible>
           )}
-          contentContainerStyle={{ padding: 12 }}
+          contentContainerStyle={{ padding: 8 }}
           ListEmptyComponent={() => (
-            <View className="flex-1 items-center justify-center p-8">
-              <Text className="text-gray-400 text-center">
-                No seated tables for this filter.
-              </Text>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center' }}>No seated tables for this filter.</Text>
             </View>
           )}
         />
@@ -231,22 +149,14 @@ const SeatedPanel: React.FC = () => {
         data={filteredSeatedTables}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View className="mb-4">
-            <TableListItem
-              table={item}
-              isExpanded={expandedTableIds[item.id] || false}
-              onToggleExpand={() => toggleTableExpand(item.id)}
-              onNavigateToOrder={() => {}}
-              handleTablePress={() => toggleTableExpand(item.id)}
-            />
+          <View style={{ marginBottom: 4 }}>
+            <TableListItem table={item} isExpanded={expandedTableIds[item.id] || false} onToggleExpand={() => toggleTableExpand(item.id)} onNavigateToOrder={() => {}} handleTablePress={() => toggleTableExpand(item.id)} />
           </View>
         )}
-        contentContainerStyle={{ padding: 12 }}
+        contentContainerStyle={{ padding: 8 }}
         ListEmptyComponent={() => (
-          <View className="flex-1 items-center justify-center p-8">
-            <Text className="text-gray-400 text-center">
-              No seated tables for this filter.
-            </Text>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center' }}>No seated tables for this filter.</Text>
           </View>
         )}
       />
@@ -254,42 +164,33 @@ const SeatedPanel: React.FC = () => {
   };
 
   return (
-    <View className="h-full flex-col bg-panel">
-      <View className="p-4 border-b border-gray-700 space-y-3">
-        <View className="flex-row gap-2">
-          {["All", "My Tables", "By Server"].map((filter) => (
+    <View style={{ flex: 1, flexDirection: 'column', backgroundColor: colors.screen }}>
+      {/* Filters + Sort */}
+      <View style={{ paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 10 }}>
+        {/* Filter pills */}
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {FILTERS.map((filter) => (
             <TouchableOpacity
               key={filter}
               onPress={() => setActiveFilter(filter)}
-              className={`py-2 px-4 rounded-full ${
-                activeFilter === filter ? "bg-blue-600" : "bg-gray-700"
-              }`}
+              style={{
+                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1,
+                backgroundColor: activeFilter === filter ? colors.teal + '20' : colors.screen,
+                borderColor: activeFilter === filter ? colors.teal + '50' : colors.border,
+              }}
             >
-              <Text
-                className={`text-xs font-bold ${
-                  activeFilter === filter ? "text-white" : "text-gray-300"
-                }`}
-              >
+              <Text style={{ fontSize: 11, fontWeight: '600', color: activeFilter === filter ? colors.teal : colors.label }}>
                 {filter}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <View className="flex-row justify-between items-center text-xs text-gray-400 mt-3">
-          <Text className="text-gray-400">Sort by</Text>
-          <TouchableOpacity
-            ref={sortButtonRef}
-            onPress={openSortDropdown}
-            className="flex-row items-center gap-1"
-          >
-            <SortDropdown
-              isOpen={isSortDropdownOpen}
-              setIsOpen={setIsSortDropdownOpen}
-              sortOption={sortOption}
-              sortDirection={sortDirection}
-              onSortChange={handleSortChange}
-              triggerPosition={dropdownPosition}
-            />
+
+        {/* Sort */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Sort by</Text>
+          <TouchableOpacity ref={sortButtonRef} onPress={openSortDropdown}>
+            <SortDropdown isOpen={isSortDropdownOpen} setIsOpen={setIsSortDropdownOpen} sortOption={sortOption} sortDirection={sortDirection} onSortChange={handleSortChange} triggerPosition={dropdownPosition} />
           </TouchableOpacity>
         </View>
       </View>
