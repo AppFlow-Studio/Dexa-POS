@@ -43,7 +43,17 @@ const LayoutEditorScreenContent = () => {
   const { layoutId: layoutIdParam } = useLocalSearchParams<{ layoutId?: string | string[] }>()
   const layoutId = Array.isArray(layoutIdParam) ? layoutIdParam[0] : layoutIdParam
 
-  const { floorPlans, tables: storeTables, selectedTableIds, toggleTableSelection, clearSelection, addTable, undo, redo, past, future, setActiveFloorPlan, activeFloorPlanId } = useFloorPlanStore()
+  const { floorPlans, tables: storeTables, selectedTableIds, selectMultipleTables, clearSelection, addTable, undo, redo, past, future, setActiveFloorPlan, activeFloorPlanId } = useFloorPlanStore()
+
+  // In edit mode: tapping an object selects only that object (single-select).
+  // Tapping the already-selected object deselects it.
+  const handleEditModeSelect = (tableId: string) => {
+    if (selectedTableIds.length === 1 && selectedTableIds[0] === tableId) {
+      clearSelection()
+    } else {
+      selectMultipleTables([tableId])
+    }
+  }
 
   const activeLayout = useMemo(() => floorPlans.find(l => l.id === layoutId), [floorPlans, layoutId])
   const tables = storeTables
@@ -258,8 +268,8 @@ const LayoutEditorScreenContent = () => {
                 layoutId={activeLayout.id}
                 isEditMode={true}
                 isSelected={selectedTableIds.includes(table.id)}
-                onSelect={() => toggleTableSelection(table.id)}
-                onPress={() => toggleTableSelection(table.id)}
+                onSelect={() => handleEditModeSelect(table.id)}
+                onPress={() => handleEditModeSelect(table.id)}
                 canvasScale={scale}
                 interactionMode='normal'
               />

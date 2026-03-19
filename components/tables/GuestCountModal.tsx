@@ -1,5 +1,5 @@
 import { colors } from '@/lib/theme'
-import { Delete } from 'lucide-react-native'
+import { Delete, Users } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
 import { Modal, Text, TouchableOpacity, View } from 'react-native'
 
@@ -13,27 +13,24 @@ const ROWS = [
   ['1', '2', '3'],
   ['4', '5', '6'],
   ['7', '8', '9'],
-  ['clear', '0', 'backspace']
+  ['clear', '0', 'backspace'],
 ]
 
-export const GuestCountModal: React.FC<GuestCountModalProps> = ({
-  isOpen,
-  onClose,
-  onSubmit
-}) => {
+
+export const GuestCountModal: React.FC<GuestCountModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const [count, setCount] = useState('2')
 
   useEffect(() => {
     if (!isOpen) {
-      const timer = setTimeout(() => setCount('2'), 300)
-      return () => clearTimeout(timer)
+      const t = setTimeout(() => setCount('2'), 300)
+      return () => clearTimeout(t)
     }
   }, [isOpen])
 
   const handleKey = (value: string) => {
     if (value === 'clear') { setCount('2'); return }
     if (value === 'backspace') {
-      setCount(prev => prev.length <= 1 ? '1' : prev.slice(0, -1))
+      setCount(prev => (prev.length <= 1 ? '1' : prev.slice(0, -1)))
       return
     }
     if (/^[0-9]$/.test(value)) {
@@ -52,60 +49,29 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
   const displayCount = parseInt(count, 10) || 0
 
   return (
-    <Modal
-      visible={isOpen}
-      transparent
-      animationType='fade'
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <View style={{
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.65)',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <View style={{
-          width: 320,
-          backgroundColor: colors.panel,
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: colors.border,
-          overflow: 'hidden'
-        }}>
+    <Modal visible={isOpen} transparent animationType='fade' onRequestClose={onClose} statusBarTranslucent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 380, backgroundColor: colors.panel, borderRadius: 20, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
 
-          {/* Title */}
-          <View style={{
-            paddingHorizontal: 20,
-            paddingTop: 18,
-            paddingBottom: 14,
-            alignItems: 'center',
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border
-          }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
-              Party Size
-            </Text>
+          {/* Header */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '40', alignItems: 'center', justifyContent: 'center' }}>
+                <Users size={14} color={colors.teal} />
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Party Size</Text>
+            </View>
           </View>
 
           {/* Display */}
-          <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12 }}>
-            <View style={{
-              backgroundColor: colors.screen,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: colors.border,
-              paddingVertical: 16,
-              alignItems: 'center'
-            }}>
-              <Text style={{ fontSize: 48, fontWeight: '700', color: colors.heading, letterSpacing: -2, lineHeight: 52 }}>
+          <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 }}>
+            <View style={{ backgroundColor: colors.screen, borderRadius: 14, borderWidth: 1, borderColor: displayCount > 0 ? colors.teal + '50' : colors.border, paddingVertical: 18, alignItems: 'center' }}>
+              <Text style={{ fontSize: 56, fontWeight: '800', color: colors.heading, letterSpacing: -2, lineHeight: 60 }}>
                 {count}
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
-                {displayCount === 1 ? 'guest' : 'guests'}
               </Text>
             </View>
           </View>
+
 
           {/* Numpad */}
           <View style={{ paddingHorizontal: 20, paddingBottom: 16, gap: 8 }}>
@@ -120,23 +86,18 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
                       onPress={() => handleKey(btn)}
                       activeOpacity={0.6}
                       style={{
-                        flex: 1,
-                        height: 52,
-                        borderRadius: 10,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: isBackspace ? colors.danger + '15' : colors.card,
+                        flex: 1, height: 54, borderRadius: 10,
+                        alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: isBackspace ? colors.danger + '15' : isClear ? colors.screen : colors.card,
                         borderWidth: 1,
-                        borderColor: isBackspace ? colors.danger + '35' : colors.border
+                        borderColor: isBackspace ? colors.danger + '35' : colors.border,
                       }}
                     >
                       {isBackspace
                         ? <Delete size={16} color={colors.danger} />
-                        : <Text style={{
-                            fontSize: isClear ? 13 : 18,
-                            fontWeight: '600',
-                            color: isClear ? colors.muted : colors.heading
-                          }}>{isClear ? 'C' : btn}</Text>
+                        : <Text style={{ fontSize: isClear ? 13 : 20, fontWeight: '600', color: isClear ? colors.muted : colors.heading }}>
+                            {isClear ? 'C' : btn}
+                          </Text>
                       }
                     </TouchableOpacity>
                   )
@@ -150,25 +111,14 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
             <TouchableOpacity
               onPress={onClose}
               activeOpacity={0.7}
-              style={{
-                flex: 1,
-                paddingVertical: 16,
-                alignItems: 'center',
-                borderRightWidth: 1,
-                borderRightColor: colors.border
-              }}
+              style={{ flex: 1, paddingVertical: 16, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border }}
             >
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.label }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSubmit}
               activeOpacity={0.7}
-              style={{
-                flex: 2,
-                paddingVertical: 16,
-                alignItems: 'center',
-                backgroundColor: colors.teal + '18'
-              }}
+              style={{ flex: 2, paddingVertical: 16, alignItems: 'center', backgroundColor: colors.teal + '18' }}
             >
               <Text style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}>
                 Seat {displayCount} {displayCount === 1 ? 'Guest' : 'Guests'}
