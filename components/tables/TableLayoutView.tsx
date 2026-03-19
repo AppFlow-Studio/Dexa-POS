@@ -381,16 +381,29 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                         y: mergedTable.y + mergedH / 2
                       }
                       return (
-                        <Line
-                          key={`${table.id}-${mergedId}`}
-                          x1={primaryCenter.x}
-                          y1={primaryCenter.y}
-                          x2={mergedCenter.x}
-                          y2={mergedCenter.y}
-                          stroke='#F59E0B'
-                          strokeWidth='4'
-                          strokeDasharray='8, 4'
-                        />
+                        <React.Fragment key={`${table.id}-${mergedId}`}>
+                          {/* Glow layer */}
+                          <Line
+                            x1={primaryCenter.x}
+                            y1={primaryCenter.y}
+                            x2={mergedCenter.x}
+                            y2={mergedCenter.y}
+                            stroke='#F59E0B'
+                            strokeWidth='6'
+                            strokeOpacity='0.15'
+                          />
+                          {/* Core line */}
+                          <Line
+                            x1={primaryCenter.x}
+                            y1={primaryCenter.y}
+                            x2={mergedCenter.x}
+                            y2={mergedCenter.y}
+                            stroke='#F59E0B'
+                            strokeWidth='1.5'
+                            strokeOpacity='0.7'
+                            strokeDasharray='6, 5'
+                          />
+                        </React.Fragment>
                       )
                     })
                   }

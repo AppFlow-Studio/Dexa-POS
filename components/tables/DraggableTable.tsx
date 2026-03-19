@@ -81,7 +81,7 @@ interface DraggableTableProps {
   layoutId: string // Kept for prop compatibility, though unused
   isEditMode: boolean
   isSelected: boolean
-  interactionMode: 'normal' | 'selection'
+  interactionMode: 'normal' | 'selection' | 'merge'
   onSelect: () => void
   canvasScale: SharedValue<number>
   onPress?: () => void
@@ -469,7 +469,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           <View className='absolute inset-0 items-center justify-center px-1'>
             <Text
               style={{
-                fontSize: 13,
+                fontSize: 10,
                 fontWeight: '700',
                 textAlign: 'center',
                 color: isTableType ? tableColor : colors.label,
@@ -483,7 +483,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             </Text>
 
             {isTableType && tableStatus === 'available' && (
-              <Text style={{ color: tableColor + 'AA', fontSize: 9, fontWeight: '600' }}>
+              <Text style={{ color: tableColor + 'AA', fontSize: 7, fontWeight: '600' }}>
                 {table.capacity ||
                   TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
                     ?.capacity ||
@@ -503,14 +503,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 tableStatus === 'paid') && (
                 <>
                   {!effectiveOrder && liveSession ? (
-                    <Text style={{ color: tableColor + '99', fontSize: 12, fontWeight: '600' }}>
+                    <Text style={{ color: tableColor + '99', fontSize: 9, fontWeight: '600' }}>
                       Loading...
                     </Text>
                   ) : (
                     <>
                       <Text style={{
                         color: '#FFFFFF',
-                        fontSize: 13,
+                        fontSize: 10,
                         fontWeight: '700',
                         textShadowColor: tableColor,
                         textShadowOffset: { width: 0, height: 0 },
@@ -519,11 +519,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                         ${orderTotal.toFixed(2)}
                       </Text>
                       {liveSession?.party_size ? (
-                        <Text style={{ color: tableColor + 'BB', fontSize: 9, fontWeight: '600' }}>
+                        <Text style={{ color: tableColor + 'BB', fontSize: 7, fontWeight: '600' }}>
                           {liveSession.party_size} guests
                         </Text>
                       ) : null}
-                      <Text style={{ color: tableColor + 'CC', fontSize: 11, fontWeight: '600' }}>
+                      <Text style={{ color: tableColor + 'CC', fontSize: 8, fontWeight: '600' }}>
                         {duration}
                       </Text>
                     </>

@@ -140,11 +140,18 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
             {!isSent && !aggregateStatus && courseItemCount > 0 && (
               <TouchableOpacity
                 onPress={() => runOnJS(onDoubleTap)(courseId)}
-                className="px-4 py-2 bg-blue-500 rounded-lg flex-row items-center gap-2 border border-blue-400 shadow-lg"
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 12, paddingVertical: 7,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + '18',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '50',
+                }}
                 activeOpacity={0.6}
               >
-                <Send size={16} color="white" />
-                <Text className="text-white text-sm font-bold">Send Kitchen</Text>
+                <Send size={13} color={colors.teal} />
+                <Text style={{ color: colors.teal, fontSize: 12, fontWeight: '700' }}>Send to Kitchen</Text>
               </TouchableOpacity>
             )}
             {isExpanded ? (

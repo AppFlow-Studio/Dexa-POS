@@ -596,6 +596,20 @@ const TablesScreen = () => {
             </View>
           )}
 
+          {/* Merge Mode Banner */}
+          {isMergeMode && (
+            <MergeActionBar
+              selectedCount={selectedTableIds.length}
+              canMergeAndSeat={canMergeAndSeat}
+              canAddToSession={canAddToSession}
+              canUnmerge={canUnmerge}
+              onMerge={handleMergeAndSeat}
+              onAdd={handleAddToSession}
+              onUnmerge={handleUnmerge}
+              onCancel={handleCancelMerge}
+            />
+          )}
+
           {/* Map Container */}
           <View style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
             {!isReady || (floorPlanLoading && tables.length === 0) ? (
@@ -611,20 +625,6 @@ const TablesScreen = () => {
                 onTableLongPress={isMergeMode ? undefined : handleTableLongPress}
                 disableLongPress={isMergeMode}
                 interactionMode={isMergeMode ? 'merge' : 'normal'}
-              />
-            )}
-
-            {/* Merge Mode Action Bar */}
-            {isMergeMode && (
-              <MergeActionBar
-                selectedCount={selectedTableIds.length}
-                canMergeAndSeat={canMergeAndSeat}
-                canAddToSession={canAddToSession}
-                canUnmerge={canUnmerge}
-                onMerge={handleMergeAndSeat}
-                onAdd={handleAddToSession}
-                onUnmerge={handleUnmerge}
-                onCancel={handleCancelMerge}
               />
             )}
 
