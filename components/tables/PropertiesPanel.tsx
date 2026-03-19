@@ -1,212 +1,185 @@
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { FloorPlanObject } from "@/types/db-floor-plan-types";
-import debounce from "lodash.debounce";
-import { RotateCcw, RotateCw, Trash2, X } from "lucide-react-native";
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { colors } from '@/lib/theme'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { FloorPlanObject } from '@/types/db-floor-plan-types'
+import debounce from 'lodash.debounce'
+import { RotateCcw, RotateCw, Trash2, X } from 'lucide-react-native'
+import React, { useCallback, useEffect, useState } from 'react'
+import { KeyboardAvoidingView, Modal, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native'
 
 interface PropertiesPanelProps {
-  table: FloorPlanObject;
-  layoutId: string;
+  table: FloorPlanObject
+  layoutId: string
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
-  table,
-  layoutId, // Kept but unused to avoid breaking prop interface if parent passes it
-}) => {
-  const { updateTableName, removeTable, clearSelection, updateTablePosition, updateTableSize } = useFloorPlanStore();
-  const [name, setName] = useState(table.name);
-  const [width, setWidth] = useState(String(table.width || 100));
-  const [height, setHeight] = useState(String(table.height || 100));
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+const labelStyle = {
+  color: colors.muted,
+  fontSize: 9,
+  fontWeight: '700' as const,
+  textTransform: 'uppercase' as const,
+  letterSpacing: 0.8,
+  marginBottom: 5,
+}
+
+const inputStyle = {
+  backgroundColor: colors.screen,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 8,
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+  fontSize: 13,
+  color: colors.heading,
+}
+
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
+  const { updateTableName, removeTable, clearSelection, updateTablePosition, updateTableSize } = useFloorPlanStore()
+  const [name, setName] = useState(table.name)
+  const [width, setWidth] = useState(String(table.width || 100))
+  const [height, setHeight] = useState(String(table.height || 100))
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const debouncedUpdateName = useCallback(
     debounce((newName: string) => {
-      if (table.id && newName) {
-        updateTableName(table.id, newName);
-      }
+      if (table.id && newName) updateTableName(table.id, newName)
     }, 300),
     [table.id, updateTableName]
-  );
-
-  useEffect(() => {
-    setName(table.name);
-  }, [table.name]);
-
-  useEffect(() => {
-    setWidth(String(table.width || 100));
-    setHeight(String(table.height || 100));
-  }, [table.width, table.height]);
-
-  const handleNameChange = (newName: string) => {
-    setName(newName);
-    debouncedUpdateName(newName);
-  };
-
-  const handleDelete = () => {
-    setShowDeleteConfirm(false);
-    if (table.id) {
-      removeTable(table.id);
-      clearSelection();
-    }
-  };
-
-  const handleRotate = (direction: "left" | "right") => {
-    const currentRotation = table.rotation || 0;
-    const newRotation = direction === "left"
-      ? currentRotation - 45
-      : currentRotation + 45;
-    const snappedRotation = Math.round(newRotation / 45) * 45;
-    updateTablePosition(table.id, table.x, table.y, snappedRotation);
-  };
+  )
 
   const debouncedUpdateSize = useCallback(
     debounce((w: number, h: number) => {
-      if (table.id && w > 0 && h > 0) {
-        updateTableSize(table.id, w, h);
-      }
+      if (table.id && w > 0 && h > 0) updateTableSize(table.id, w, h)
     }, 300),
     [table.id, updateTableSize]
-  );
+  )
 
-  const handleWidthChange = (value: string) => {
-    setWidth(value);
-    const num = parseInt(value, 10);
-    if (!isNaN(num)) {
-      debouncedUpdateSize(num, parseInt(height, 10) || 100);
-    }
-  };
+  useEffect(() => { setName(table.name) }, [table.name])
+  useEffect(() => {
+    setWidth(String(table.width || 100))
+    setHeight(String(table.height || 100))
+  }, [table.width, table.height])
 
-  const handleHeightChange = (value: string) => {
-    setHeight(value);
-    const num = parseInt(value, 10);
-    if (!isNaN(num)) {
-      debouncedUpdateSize(parseInt(width, 10) || 100, num);
-    }
-  };
+  const handleNameChange = (v: string) => { setName(v); debouncedUpdateName(v) }
+
+  const handleWidthChange = (v: string) => {
+    setWidth(v)
+    const n = parseInt(v, 10)
+    if (!isNaN(n)) debouncedUpdateSize(n, parseInt(height, 10) || 100)
+  }
+
+  const handleHeightChange = (v: string) => {
+    setHeight(v)
+    const n = parseInt(v, 10)
+    if (!isNaN(n)) debouncedUpdateSize(parseInt(width, 10) || 100, n)
+  }
+
+  const handleRotate = (dir: 'left' | 'right') => {
+    const next = Math.round(((table.rotation || 0) + (dir === 'left' ? -45 : 45)) / 45) * 45
+    updateTablePosition(table.id, table.x, table.y, next)
+  }
+
+  const handleDelete = () => {
+    setShowDeleteConfirm(false)
+    if (table.id) { removeTable(table.id); clearSelection() }
+  }
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="absolute bottom-5 right-5 w-[300px] bg-zinc-800 rounded-2xl p-5 shadow-lg gap-5"
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ position: 'absolute', bottom: 14, right: 14, width: 280, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
     >
-      {/* Close Button */}
-      <TouchableOpacity
-        onPress={clearSelection}
-        className="absolute -top-2 -right-2 bg-zinc-900/80 rounded-full p-1.5 z-10"
-      >
-        <X size={18} color="#E2E8F0" />
-      </TouchableOpacity>
-
-      <View className="flex-row justify-between items-center pb-3 border-b border-zinc-700">
-        <Text className="text-xl font-bold text-white">Properties</Text>
-        <View className="bg-zinc-700 px-3 py-1 rounded-full">
-          <Text className="text-xs font-medium text-zinc-300">
-            {table.name}
-          </Text>
-        </View>
-      </View>
-
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-zinc-400">Name</Text>
-        <TextInput
-          className="bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2.5 text-base text-white"
-          value={name}
-          onChangeText={handleNameChange}
-          placeholder="Enter object name"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-zinc-400">Size</Text>
-        <View className="flex-row gap-2">
-          <View className="flex-1">
-            <Text className="text-xs text-zinc-500 mb-1">Width</Text>
-            <TextInput
-              className="bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white"
-              value={width}
-              onChangeText={handleWidthChange}
-              placeholder="Width"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
-          </View>
-          <View className="flex-1">
-            <Text className="text-xs text-zinc-500 mb-1">Height</Text>
-            <TextInput
-              className="bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white"
-              value={height}
-              onChangeText={handleHeightChange}
-              placeholder="Height"
-              placeholderTextColor="#999"
-              keyboardType="numeric"
-            />
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '700' }}>Properties</Text>
+          <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.label, fontSize: 10, fontWeight: '600' }}>{table.name}</Text>
           </View>
         </View>
+        <TouchableOpacity onPress={clearSelection} style={{ padding: 5, borderRadius: 6, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
+          <X size={13} color={colors.label} />
+        </TouchableOpacity>
       </View>
 
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-zinc-400">Rotation</Text>
-        <View className="flex-row gap-2">
-          <TouchableOpacity
-            className="flex-1 bg-blue-600 flex-row items-center justify-center py-2.5 rounded-lg gap-1"
-            onPress={() => handleRotate("left")}
-          >
-            <RotateCcw size={16} color="#fff" />
-            <Text className="text-white text-sm font-semibold">-45°</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="flex-1 bg-blue-600 flex-row items-center justify-center py-2.5 rounded-lg gap-1"
-            onPress={() => handleRotate("right")}
-          >
-            <RotateCw size={16} color="#fff" />
-            <Text className="text-white text-sm font-semibold">+45°</Text>
-          </TouchableOpacity>
+      <View style={{ padding: 14, gap: 12 }}>
+        {/* Name */}
+        <View>
+          <Text style={labelStyle}>Name</Text>
+          <TextInput
+            value={name}
+            onChangeText={handleNameChange}
+            placeholder='Object name'
+            placeholderTextColor={colors.muted}
+            style={inputStyle}
+          />
         </View>
+
+        {/* Size */}
+        <View>
+          <Text style={labelStyle}>Size</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...labelStyle, marginBottom: 4 }}>W</Text>
+              <TextInput value={width} onChangeText={handleWidthChange} keyboardType='numeric' placeholderTextColor={colors.muted} style={inputStyle} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...labelStyle, marginBottom: 4 }}>H</Text>
+              <TextInput value={height} onChangeText={handleHeightChange} keyboardType='numeric' placeholderTextColor={colors.muted} style={inputStyle} />
+            </View>
+          </View>
+        </View>
+
+        {/* Rotation */}
+        <View>
+          <Text style={labelStyle}>Rotation</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => handleRotate('left')}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
+            >
+              <RotateCcw size={13} color={colors.label} />
+              <Text style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}>−45°</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleRotate('right')}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
+            >
+              <RotateCw size={13} color={colors.label} />
+              <Text style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}>+45°</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Delete */}
+        <TouchableOpacity
+          onPress={() => setShowDeleteConfirm(true)}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 8, backgroundColor: colors.danger + '14', borderWidth: 1, borderColor: colors.danger + '50' }}
+        >
+          <Trash2 size={13} color={colors.danger} />
+          <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 13 }}>Delete</Text>
+        </TouchableOpacity>
       </View>
 
-      <TouchableOpacity
-        className="bg-red-600 flex-row items-center justify-center py-3 rounded-lg gap-2"
-        onPress={() => setShowDeleteConfirm(true)}
-      >
-        <Trash2 size={18} color="#fff" />
-        <Text className="text-white text-base font-bold">Delete Element</Text>
-      </TouchableOpacity>
-
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent className="bg-zinc-800 border-zinc-700 w-[300px]">
-          <AlertDialogTitle className="text-white text-lg">Delete Element?</AlertDialogTitle>
-          <AlertDialogDescription className="text-zinc-400">
-            Are you sure you want to delete "{table.name}"? This action cannot be undone.
-          </AlertDialogDescription>
-          <View className="flex-row gap-2 justify-end pt-2">
-            <AlertDialogCancel className="bg-zinc-700 px-4 py-2 rounded-lg">
-              <Text className="text-white font-semibold">Cancel</Text>
-            </AlertDialogCancel>
-            <AlertDialogAction className="bg-red-600 px-4 py-2 rounded-lg" onPress={handleDelete}>
-              <Text className="text-white font-semibold">Delete</Text>
-            </AlertDialogAction>
+      {/* Delete Confirm Modal */}
+      <Modal visible={showDeleteConfirm} transparent animationType='fade' onRequestClose={() => setShowDeleteConfirm(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: 300, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+            <View style={{ padding: 18, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>Delete "{table.name}"?</Text>
+              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>This cannot be undone.</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, padding: 14 }}>
+              <TouchableOpacity onPress={() => setShowDeleteConfirm(false)} style={{ flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center', backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
+                <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleDelete} style={{ flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center', backgroundColor: colors.danger + '20', borderWidth: 1, borderColor: colors.danger + '60' }}>
+                <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 13 }}>Delete</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </AlertDialogContent>
-      </AlertDialog>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
-  );
-};
+  )
+}
 
-export default PropertiesPanel;
+export default PropertiesPanel

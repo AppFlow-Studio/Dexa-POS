@@ -1,10 +1,7 @@
 import { useDragToAddContext } from '@/contexts/DragToAddContext'
 import { SHAPE_OPTIONS, TABLE_SHAPES } from '@/lib/table-shapes'
-import { bottomSheetTheme } from '@/lib/theme'
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetView
-} from '@gorhom/bottom-sheet'
+import { bottomSheetTheme, colors } from '@/lib/theme'
+import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet'
 import React, { useMemo, useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { runOnJS, useAnimatedReaction } from 'react-native-reanimated'
@@ -21,33 +18,25 @@ const TABS = [
   { id: 'structure', label: 'Structure' },
   { id: 'decor', label: 'Decor' },
   { id: 'functional', label: 'Functional' },
-  { id: 'zone', label: 'Zones' }
+  { id: 'zone', label: 'Zones' },
 ]
 
-export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
-  bottomSheetRef,
-  onClose
-}) => {
+export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({ bottomSheetRef, onClose }) => {
   const snapPoints = useMemo(() => ['35%', '60%'], [])
   const [activeTab, setActiveTab] = useState('table')
   const { isDraggingNewObject } = useDragToAddContext()
 
-  const closeSheet = () => {
-    bottomSheetRef.current?.close()
-  }
+  const closeSheet = () => bottomSheetRef.current?.close()
 
   const filteredShapes = useMemo(
     () => SHAPE_OPTIONS.filter(shape => shape.category === activeTab),
     [activeTab]
   )
 
-  // Slide the catalog down as soon as drag-to-place starts.
   useAnimatedReaction(
     () => isDraggingNewObject.value,
     (isDragging, wasDragging) => {
-      if (isDragging && !wasDragging) {
-        runOnJS(closeSheet)()
-      }
+      if (isDragging && !wasDragging) runOnJS(closeSheet)()
     },
     [isDraggingNewObject]
   )
@@ -61,69 +50,49 @@ export const AddTableBottomSheet: React.FC<AddTableBottomSheetProps> = ({
       onClose={onClose}
       {...bottomSheetTheme}
       backdropComponent={props => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-        />
+        <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} />
       )}
     >
-      <BottomSheetView className='flex-1 bg-panel'>
-        <View className='px-4 pt-2 pb-2 border-b border-gray-700'>
-          <Text className='text-white text-xl font-bold'>
-            Add to Floor Plan
-          </Text>
-          <Text className='text-gray-400 text-sm mt-1'>
-            Select a category, then drag an object onto the canvas.
-          </Text>
+      <BottomSheetView style={{ flex: 1, backgroundColor: colors.card }}>
+        {/* Header */}
+        <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '700' }}>Add to Floor Plan</Text>
+          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>Long-press an object and drag it onto the canvas</Text>
         </View>
 
         {/* Tab Bar */}
-        <View className='flex-row w-full border-b border-gray-700 bg-transparent px-2'>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {TABS.map(tab => (
-              <TouchableOpacity
-                key={tab.id}
-                onPress={() => setActiveTab(tab.id)}
-                className={`py-3 px-4 items-center border-b-2 ${
-                  activeTab === tab.id
-                    ? 'border-blue-400'
-                    : 'border-transparent'
-                }`}
-              >
-                <Text
-                  className={`font-semibold ${
-                    activeTab === tab.id ? 'text-blue-400' : 'text-gray-400'
-                  }`}
+        <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10 }}>
+            {TABS.map(tab => {
+              const active = activeTab === tab.id
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setActiveTab(tab.id)}
+                  style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: active ? colors.teal : 'transparent', marginRight: 2 }}
                 >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={{ fontSize: 12, fontWeight: active ? '700' : '500', color: active ? colors.teal : colors.muted }}>{tab.label}</Text>
+                </TouchableOpacity>
+              )
+            })}
           </ScrollView>
         </View>
 
-        {/* Content Grid */}
+        {/* Shape Grid */}
         <ScrollView
           nestedScrollEnabled
           showsVerticalScrollIndicator={false}
-          className='flex-1 p-4'
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
         >
-          <View className='flex-row flex-wrap justify-start -mx-2'>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {filteredShapes.map(({ id, label, component: ShapeComponent }) => (
-              <View key={id} className='w-1/2 px-2 mb-4'>
+              <View key={id} style={{ width: '48%' }}>
                 <DraggableShape shapeId={id as keyof typeof TABLE_SHAPES}>
-                  <View className='p-3 rounded-xl items-center justify-center h-[110px] bg-surface'>
-                    <View className='flex-1 items-center justify-center'>
-                      <ShapeComponent color='#94A3B8' height={50} />
+                  <View style={{ padding: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', height: 100, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                      <ShapeComponent color={colors.label} height={48} />
                     </View>
-                    <Text
-                      className='mt-2 h-5 font-semibold text-xs text-center text-gray-300'
-                      numberOfLines={1}
-                    >
-                      {label}
-                    </Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, marginTop: 6 }} numberOfLines={1}>{label}</Text>
                   </View>
                 </DraggableShape>
               </View>

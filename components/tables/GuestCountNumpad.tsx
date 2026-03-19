@@ -1,68 +1,69 @@
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { colors } from '@/lib/theme'
+import React from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
+import { Delete } from 'lucide-react-native'
 
 interface GuestCountNumpadProps {
-    onKeyPress: (value: string) => void;
+  onKeyPress: (value: string) => void
 }
 
+const ROWS = [
+  ['1', '2', '3'],
+  ['4', '5', '6'],
+  ['7', '8', '9'],
+  ['clear', '0', 'backspace']
+]
+
 const GuestCountNumpad: React.FC<GuestCountNumpadProps> = ({ onKeyPress }) => {
-    const NumpadButton: React.FC<{
-        value: string;
-        onPress: () => void;
-        isDestructive?: boolean;
-    }> = ({ value, onPress, isDestructive }) => (
-        <TouchableOpacity
-            onPress={onPress}
-            className={`flex-1 h-20 rounded-lg items-center justify-center ${isDestructive ? "bg-red-600" : "bg-surface border border-gray-600"
-                }`}
-        >
-            <Text className="text-xl font-bold text-white">{value}</Text>
-        </TouchableOpacity>
-    );
+  return (
+    <View style={{ gap: 8 }}>
+      {ROWS.map((row, rowIdx) => (
+        <View key={rowIdx} style={{ flexDirection: 'row', gap: 8 }}>
+          {row.map(btn => {
+            const isBackspace = btn === 'backspace'
+            const isClear = btn === 'clear'
+            const isSpecial = isBackspace || isClear
 
-    const handleInput = (value: string) => {
-        // Clear all
-        if (value === "clear") {
-            onKeyPress("clear");
-            return;
-        }
-
-        // Backspace behavior
-        if (value === "backspace") {
-            onKeyPress("backspace");
-            return;
-        }
-
-        // Number input 0-9
-        const isDigit = /^[0-9]$/.test(value);
-        if (isDigit) {
-            onKeyPress(value);
-        }
-    };
-
-    const numpadButtons = [
-        ["1", "2", "3"],
-        ["4", "5", "6"],
-        ["7", "8", "9"],
-        ["clear", "0", "backspace"],
-    ];
-
-    return (
-        <View className="gap-2">
-            {numpadButtons.map((row, rowIndex) => (
-                <View key={rowIndex} className="flex-row gap-2">
-                    {row.map((btn) => (
-                        <NumpadButton
-                            key={btn}
-                            value={btn === "backspace" ? "⌫" : btn === "clear" ? "C" : btn}
-                            onPress={() => handleInput(btn)}
-                            isDestructive={btn === "backspace"}
-                        />
-                    ))}
-                </View>
-            ))}
+            return (
+              <TouchableOpacity
+                key={btn}
+                onPress={() => onKeyPress(btn)}
+                activeOpacity={0.65}
+                style={{
+                  flex: 1,
+                  height: 56,
+                  borderRadius: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isBackspace
+                    ? colors.danger + '18'
+                    : isClear
+                    ? colors.card
+                    : colors.card,
+                  borderWidth: 1,
+                  borderColor: isBackspace
+                    ? colors.danger + '40'
+                    : colors.border
+                }}
+              >
+                {isBackspace ? (
+                  <Delete size={18} color={colors.danger} />
+                ) : (
+                  <Text style={{
+                    fontSize: isClear ? 13 : 20,
+                    fontWeight: isClear ? '600' : '700',
+                    color: isClear ? colors.label : colors.heading
+                  }}>
+                    {isClear ? 'C' : btn}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )
+          })}
         </View>
-    );
-};
+      ))}
+    </View>
+  )
+}
 
-export default GuestCountNumpad;
+export default GuestCountNumpad

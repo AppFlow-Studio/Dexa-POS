@@ -397,13 +397,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({
             <View className="flex-row items-center py-2 px-3 gap-2.5">
               {/* Quantity pill */}
               <View
-                className="items-center justify-center rounded-md"
-                style={{ width: 22, height: 22, backgroundColor: isVoided ? "#374151" : "#2A3050" }}
+                style={{ width: 20, height: 20, borderRadius: 5, alignItems: 'center', justifyContent: 'center', backgroundColor: isVoided ? colors.border : colors.card }}
               >
-                <Text
-                  style={{ fontSize: 11, fontWeight: "700" }}
-                  className={isVoided ? "text-gray-500" : "text-gray-200"}
-                >
+                <Text style={{ fontSize: 10, fontWeight: "700", color: isVoided ? colors.muted : colors.label }}>
                   {item.quantity}
                 </Text>
               </View>
@@ -412,9 +408,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
               <View className="flex-1">
                 <View className="flex-row items-center gap-1.5">
                   <Text
-                    className={`font-semibold text-sm flex-shrink ${
-                      isVoided ? "text-gray-500 line-through" : "text-white"
-                    }`}
+                    style={{ fontSize: 12, fontWeight: '600', flexShrink: 1, color: isVoided ? colors.muted : colors.heading, textDecorationLine: isVoided ? 'line-through' : 'none' }}
                     numberOfLines={1}
                   >
                     {item.name}
@@ -474,8 +468,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
 
               {/* Price */}
               <Text
-                style={{ fontSize: 13, fontWeight: "600" }}
-                className={isVoided ? "text-gray-600 line-through" : "text-teal-400"}
+                style={{ fontSize: 11, fontWeight: "600", color: isVoided ? colors.muted : colors.teal, textDecorationLine: isVoided ? 'line-through' : 'none' }}
               >
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>

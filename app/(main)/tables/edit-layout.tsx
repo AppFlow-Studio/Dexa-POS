@@ -6,11 +6,12 @@ import {
   DragToAddProvider,
   useDragToAddContext
 } from '@/contexts/DragToAddContext'
+import { colors } from '@/lib/theme'
 import { SHAPE_OPTIONS, TABLE_SHAPES } from '@/lib/table-shapes'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import BottomSheet from '@gorhom/bottom-sheet'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Maximize, Minus, Plus, Redo2, Undo2 } from 'lucide-react-native'
+import { Maximize2, Minus, Plus, Redo2, Undo2 } from 'lucide-react-native'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -23,16 +24,14 @@ import Animated, {
 } from 'react-native-reanimated'
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg'
 
-// --- CONSTANTS ---
 const SHAPE_SIZE = 100
 const FINGER_Y_OFFSET = 0
 
-// --- GridPattern Component ---
 const GridPattern = () => (
   <Svg style={StyleSheet.absoluteFill} pointerEvents='none'>
     <Defs>
       <Pattern id='grid' width='40' height='40' patternUnits='userSpaceOnUse'>
-        <Circle cx='1' cy='1' r='2' fill='#4a4a4a' />
+        <Circle cx='1' cy='1' r='1.5' fill={colors.border} />
       </Pattern>
     </Defs>
     <Rect width='100%' height='100%' fill='url(#grid)' />
@@ -41,48 +40,32 @@ const GridPattern = () => (
 
 const LayoutEditorScreenContent = () => {
   const router = useRouter()
-  const { layoutId: layoutIdParam } = useLocalSearchParams<{
-    layoutId?: string | string[]
-  }>()
+  const { layoutId: layoutIdParam } = useLocalSearchParams<{ layoutId?: string | string[] }>()
+  const layoutId = Array.isArray(layoutIdParam) ? layoutIdParam[0] : layoutIdParam
 
-  const layoutId = Array.isArray(layoutIdParam)
-    ? layoutIdParam[0]
-    : layoutIdParam
+  const { floorPlans, tables: storeTables, selectedTableIds, selectMultipleTables, clearSelection, addTable, undo, redo, past, future, setActiveFloorPlan, activeFloorPlanId } = useFloorPlanStore()
 
-  const {
-    floorPlans,
-    tables: storeTables,
-    selectedTableIds,
-    toggleTableSelection,
-    clearSelection,
-    addTable,
-    undo,
-    redo,
-    past,
-    future,
-    setActiveFloorPlan,
-    activeFloorPlanId
-  } = useFloorPlanStore()
+  // In edit mode: tapping an object selects only that object (single-select).
+  // Tapping the already-selected object deselects it.
+  const handleEditModeSelect = (tableId: string) => {
+    if (selectedTableIds.length === 1 && selectedTableIds[0] === tableId) {
+      clearSelection()
+    } else {
+      selectMultipleTables([tableId])
+    }
+  }
 
-  const activeLayout = useMemo(
-    () => floorPlans.find(l => l.id === layoutId),
-    [floorPlans, layoutId]
-  )
-
+  const activeLayout = useMemo(() => floorPlans.find(l => l.id === layoutId), [floorPlans, layoutId])
   const tables = storeTables
 
   useEffect(() => {
-    if (
-      layoutId &&
-      layoutId !== useFloorPlanStore.getState().activeFloorPlanId
-    ) {
+    if (layoutId && layoutId !== useFloorPlanStore.getState().activeFloorPlanId) {
       setActiveFloorPlan(layoutId)
     }
     return () => clearSelection()
   }, [layoutId, setActiveFloorPlan, clearSelection])
 
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0)
-  const [canvasSize, setCanvasSize] = useState({ width: 1024, height: 768 })
   const [canvasOrigin, setCanvasOrigin] = useState({ x: 0, y: 0 })
   const canvasRef = useRef<View>(null)
   const scale = useSharedValue(1)
@@ -92,8 +75,7 @@ const LayoutEditorScreenContent = () => {
   const savedTranslateX = useSharedValue(0)
   const savedTranslateY = useSharedValue(0)
 
-  const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } =
-    useDragToAddContext()
+  const { draggedShapeId, dragPosition, isDraggingNewObject, dropPending } = useDragToAddContext()
 
   const panGesture = Gesture.Pan()
     .minDistance(8)
@@ -109,46 +91,31 @@ const LayoutEditorScreenContent = () => {
     })
 
   const pinchGesture = Gesture.Pinch()
-    .onUpdate(e => {
-      const nextScale = savedScale.value * e.scale
-      scale.value = Math.max(0.5, Math.min(3, nextScale))
-    })
-    .onEnd(() => {
-      savedScale.value = scale.value
-    })
+    .onUpdate(e => { scale.value = Math.max(0.5, Math.min(3, savedScale.value * e.scale)) })
+    .onEnd(() => { savedScale.value = scale.value })
 
-  const canvasInteractionGesture = Gesture.Simultaneous(
-    pinchGesture,
-    panGesture
-  )
+  const canvasInteractionGesture = Gesture.Simultaneous(pinchGesture, panGesture)
 
   const canvasAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value }
-    ]
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }]
   }))
 
-  const ghostShapeAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      position: 'absolute',
-      width: SHAPE_SIZE,
-      height: SHAPE_SIZE,
-      left: dragPosition.value.x - SHAPE_SIZE / 2,
-      top: dragPosition.value.y - SHAPE_SIZE / 2 - FINGER_Y_OFFSET,
-      opacity: isDraggingNewObject.value ? 0.8 : 0,
-      zIndex: 99999,
-      elevation: 99999,
-      pointerEvents: 'none'
-    }
-  })
+  const ghostShapeAnimatedStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    width: SHAPE_SIZE,
+    height: SHAPE_SIZE,
+    left: dragPosition.value.x - SHAPE_SIZE / 2,
+    top: dragPosition.value.y - SHAPE_SIZE / 2 - FINGER_Y_OFFSET,
+    opacity: isDraggingNewObject.value ? 0.8 : 0,
+    zIndex: 99999,
+    elevation: 99999,
+    pointerEvents: 'none'
+  }))
 
   const handleZoom = (direction: 'in' | 'out') => {
-    const newScale = direction === 'in' ? scale.value * 1.2 : scale.value / 1.2
-    const clampedScale = Math.max(0.5, Math.min(3, newScale))
-    scale.value = withTiming(clampedScale)
-    savedScale.value = clampedScale
+    const clamped = Math.max(0.5, Math.min(3, direction === 'in' ? scale.value * 1.2 : scale.value / 1.2))
+    scale.value = withTiming(clamped)
+    savedScale.value = clamped
   }
 
   const recenterCanvas = () => {
@@ -160,12 +127,8 @@ const LayoutEditorScreenContent = () => {
     savedTranslateY.value = 0
   }
 
-  const handleAddMultipleTables = (
-    items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
-  ) => {
-    const additions = items.flatMap(item =>
-      Array.from({ length: item.quantity }, () => addTable({ shape_id: item.shapeId as string }))
-    )
+  const handleAddMultipleTables = (items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]) => {
+    const additions = items.flatMap(item => Array.from({ length: item.quantity }, () => addTable({ shape_id: item.shapeId as string })))
     Promise.all(additions).catch(() => {})
     setQuickSetupOpen(false)
   }
@@ -176,9 +139,6 @@ const LayoutEditorScreenContent = () => {
   }, [selectedTableIds, tables])
 
   const addTableSheetRef = useRef<BottomSheet>(null)
-  const handleOpenAddTableSheet = () => {
-    addTableSheetRef.current?.expand()
-  }
 
   const resetDragToAddState = () => {
     draggedShapeId.value = null
@@ -186,225 +146,121 @@ const LayoutEditorScreenContent = () => {
     dropPending.value = false
   }
 
-  const updateCanvasMeasurements = () => {
-    canvasRef.current?.measureInWindow((x, y, width, height) => {
-      setCanvasOrigin({ x, y })
-      setCanvasSize({ width, height })
-    })
-  }
-
   const getCanvasMeasurements = () =>
-    new Promise<{ x: number; y: number; width: number; height: number }>(
-      resolve => {
-        canvasRef.current?.measureInWindow((x, y, width, height) => {
-          resolve({ x, y, width, height })
-        })
-      }
-    )
+    new Promise<{ x: number; y: number; width: number; height: number }>(resolve => {
+      canvasRef.current?.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }))
+    })
 
-  const performDrop = async (
-    shapeId: string,
-    absX: number,
-    absY: number,
-    currentScale: number,
-    currentTranslateX: number,
-    currentTranslateY: number
-  ) => {
-    if (!shapeId || !layoutId) {
-      resetDragToAddState()
-      return
-    }
-
+  const performDrop = async (shapeId: string, absX: number, absY: number, currentScale: number, currentTranslateX: number, currentTranslateY: number) => {
+    if (!shapeId || !layoutId) { resetDragToAddState(); return }
     if (activeFloorPlanId !== layoutId) {
-      try {
-        await setActiveFloorPlan(layoutId)
-      } catch (error) {
-        console.error(
-          '[edit-layout] Failed to activate floor plan before drop',
-          error
-        )
-        resetDragToAddState()
-        return
-      }
+      try { await setActiveFloorPlan(layoutId) } catch { resetDragToAddState(); return }
     }
-
     const shapeDef = TABLE_SHAPES[shapeId as keyof typeof TABLE_SHAPES]
-    if (!shapeDef) {
-      resetDragToAddState()
-      return
-    }
-    const actualWidth = shapeDef.width || 80
-    const actualHeight = shapeDef.height || 80
+    if (!shapeDef) { resetDragToAddState(); return }
 
     const measured = await getCanvasMeasurements()
-    const currentCanvasOriginX =
-      measured.width > 0 ? measured.x : canvasOrigin.x
-    const currentCanvasOriginY =
-      measured.height > 0 ? measured.y : canvasOrigin.y
-
-    const localX = absX - currentCanvasOriginX
-    const localY = absY - currentCanvasOriginY - FINGER_Y_OFFSET
-
-    const canvasX = localX / currentScale - currentTranslateX
-    const canvasY = localY / currentScale - currentTranslateY
-
-    const finalX = canvasX - actualWidth / 2
-    const finalY = canvasY - actualHeight / 2
+    const originX = measured.width > 0 ? measured.x : canvasOrigin.x
+    const originY = measured.height > 0 ? measured.y : canvasOrigin.y
+    const localX = absX - originX
+    const localY = absY - originY - FINGER_Y_OFFSET
+    const finalX = localX / currentScale - currentTranslateX - (shapeDef.width || 80) / 2
+    const finalY = localY / currentScale - currentTranslateY - (shapeDef.height || 80) / 2
 
     let defaultName = ''
     if (shapeDef.category === 'table') {
-      const existingTableNumbers = tables
-        .filter(t => t.name.startsWith('T-'))
-        .map(t => {
-          const num = parseInt(t.name.split('-')[1], 10)
-          return isNaN(num) ? 0 : num
-        })
-      const highestTableNumber =
-        existingTableNumbers.length > 0 ? Math.max(...existingTableNumbers) : 0
-      defaultName = `T-${highestTableNumber + 1}`
+      const nums = tables.filter(t => t.name.startsWith('T-')).map(t => parseInt(t.name.split('-')[1], 10)).filter(n => !isNaN(n))
+      defaultName = `T-${nums.length > 0 ? Math.max(...nums) + 1 : 1}`
     } else {
-      const baseName = shapeDef.label
-      const existingObjectsWithBaseName = tables.filter(t =>
-        t.name.startsWith(baseName)
-      )
-      if (existingObjectsWithBaseName.length === 0) {
-        defaultName = baseName
-      } else {
-        defaultName = `${baseName} ${existingObjectsWithBaseName.length + 1}`
-      }
+      const base = shapeDef.label
+      const existing = tables.filter(t => t.name.startsWith(base))
+      defaultName = existing.length === 0 ? base : `${base} ${existing.length + 1}`
     }
 
     try {
-      await addTable({
-        name: defaultName,
-        shape_id: shapeId,
-        x: finalX,
-        y: finalY
-      })
+      await addTable({ name: defaultName, shape_id: shapeId, x: finalX, y: finalY })
       addTableSheetRef.current?.close()
-    } catch (error) {
-      console.error('[edit-layout] Failed to add dropped object', error)
-    } finally {
-      resetDragToAddState()
-    }
+    } catch (e) { console.error('[edit-layout] drop failed', e) }
+    finally { resetDragToAddState() }
   }
 
-  const handleCanvasInteraction = () => {
-    if (dropPending.value && draggedShapeId.value) {
-      performDrop(
-        draggedShapeId.value,
-        dragPosition.value.x,
-        dragPosition.value.y,
-        scale.value,
-        translateX.value,
-        translateY.value
-      )
-    }
-  }
-
-  // Watch for drop events and process them
   useAnimatedReaction(
     () => dropPending.value,
     (isPending, wasPending) => {
       if (isPending && !wasPending && draggedShapeId.value) {
-        // Inline the drop logic to avoid reference issues
-        runOnJS(performDrop)(
-          draggedShapeId.value,
-          dragPosition.value.x,
-          dragPosition.value.y,
-          scale.value,
-          translateX.value,
-          translateY.value
-        )
+        runOnJS(performDrop)(draggedShapeId.value, dragPosition.value.x, dragPosition.value.y, scale.value, translateX.value, translateY.value)
       }
     },
     []
   )
 
+  const hasHistory = past.length > 0
+  const hasFuture = future.length > 0
+
   if (!activeLayout) {
     return (
-      <View className='flex-1 bg-screen items-center justify-center'>
-        <Text className='text-xl text-white'>Loading Floor Plan...</Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className='mt-4 p-3 bg-blue-600 rounded-lg'
-        >
-          <Text className='text-white text-base'>Go Back</Text>
+      <View style={{ flex: 1, backgroundColor: colors.screen, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: colors.label, fontSize: 14 }}>Loading floor plan…</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ color: colors.label, fontSize: 13 }}>Go Back</Text>
         </TouchableOpacity>
       </View>
     )
   }
 
-  const hasHistory = past.length > 0
-  const hasFuture = future.length > 0
   return (
-    <View className='flex-1 bg-screen'>
-      <View className='bg-panel p-4 flex-row justify-between items-center z-10'>
-        <View className='flex-row items-center gap-2'>
-          <Text className='text-2xl font-bold text-white'>
-            Testing / {activeLayout.name}
-          </Text>
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
+      {/* ── Top Bar ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, zIndex: 10 }}>
+        {/* Left: title */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View>
+            <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>{activeLayout.name}</Text>
+            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 1 }}>{tables.length} object{tables.length !== 1 ? 's' : ''} on canvas</Text>
+          </View>
 
-          {hasHistory && (
-            <View className='flex-row gap-1 ml-4 bg-[#424242] rounded-lg p-1'>
-              <TouchableOpacity
-                onPress={undo}
-                className='p-2 rounded'
-                disabled={!hasHistory}
-                style={{ opacity: hasHistory ? 1 : 0.3 }}
-              >
-                <Undo2 size={20} color='white' />
-              </TouchableOpacity>
-              <View className='w-[1px] bg-gray-500 my-1' />
-              <TouchableOpacity
-                onPress={redo}
-                className='p-2 rounded'
-                disabled={!hasFuture}
-                style={{ opacity: hasFuture ? 1 : 0.3 }}
-              >
-                <Redo2 size={20} color='white' />
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Undo / Redo */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: 'hidden' }}>
+            <TouchableOpacity onPress={undo} disabled={!hasHistory} style={{ padding: 8, opacity: hasHistory ? 1 : 0.3 }}>
+              <Undo2 size={15} color={colors.label} />
+            </TouchableOpacity>
+            <View style={{ width: 1, height: 20, backgroundColor: colors.border }} />
+            <TouchableOpacity onPress={redo} disabled={!hasFuture} style={{ padding: 8, opacity: hasFuture ? 1 : 0.3 }}>
+              <Redo2 size={15} color={colors.label} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View className='flex-row gap-3'>
+        {/* Right: Add + Save */}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
-            onPress={handleOpenAddTableSheet}
-            className='py-3 px-5 rounded-lg flex-row items-center bg-blue-500'
+            onPress={() => addTableSheetRef.current?.expand()}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '60' }}
           >
-            <Plus size={20} color='white' className='mr-1' />
-            <Text className='text-lg font-bold text-white'>Add Table</Text>
+            <Plus size={14} color={colors.teal} />
+            <Text style={{ color: colors.teal, fontWeight: '700', fontSize: 13 }}>Add Object</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => {
-              router.back()
-            }}
-            className='py-3 px-5 rounded-lg flex-row items-center bg-gray-600'
+            onPress={() => router.back()}
+            style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
           >
-            <Text className='text-lg font-bold text-white'>Save & Exit</Text>
+            <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Save & Exit</Text>
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* ── Canvas ── */}
       <GestureDetector gesture={canvasInteractionGesture}>
         <View
           ref={canvasRef}
-          className='flex-1 relative overflow-hidden z-0'
-          style={{ backgroundColor: 'rgba(127, 29, 29, 0.22)' }}
-          onLayout={() => updateCanvasMeasurements()}
+          style={{ flex: 1, position: 'relative', overflow: 'hidden', backgroundColor: colors.screen }}
+          onLayout={() => canvasRef.current?.measureInWindow((x, y) => { setCanvasOrigin({ x, y }) })}
         >
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
-            pointerEvents='auto'
-          >
+          <Animated.View style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]} pointerEvents='none'>
             <GridPattern />
           </Animated.View>
 
-          <Animated.View
-            style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]}
-            pointerEvents='box-none'
-          >
+          <Animated.View style={[StyleSheet.absoluteFillObject, canvasAnimatedStyle]} pointerEvents='box-none'>
             {tables.map(table => (
               <DraggableTable
                 key={table.id}
@@ -412,65 +268,45 @@ const LayoutEditorScreenContent = () => {
                 layoutId={activeLayout.id}
                 isEditMode={true}
                 isSelected={selectedTableIds.includes(table.id)}
-                onSelect={() => toggleTableSelection(table.id)}
-                onPress={() => toggleTableSelection(table.id)}
+                onSelect={() => handleEditModeSelect(table.id)}
+                onPress={() => handleEditModeSelect(table.id)}
                 canvasScale={scale}
+                interactionMode='normal'
               />
             ))}
           </Animated.View>
 
-          <View className='absolute top-4 left-4 flex-col gap-y-2 z-20'>
-            <TouchableOpacity
-              onPress={() => handleZoom('in')}
-              className='p-3 bg-panel border border-gray-600 rounded-lg'
-            >
-              <Plus color='#94A3B8' size={24} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleZoom('out')}
-              className='p-3 bg-panel border border-gray-600 rounded-lg'
-            >
-              <Minus color='#94A3B8' size={24} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={recenterCanvas}
-              className='p-3 bg-panel border border-gray-600 rounded-lg'
-            >
-              <Maximize color='#94A3B8' size={24} />
-            </TouchableOpacity>
+          {/* ── Zoom Controls ── */}
+          <View style={{ position: 'absolute', top: 14, left: 14, gap: 6, zIndex: 20 }}>
+            {[
+              { icon: <Plus size={15} color={colors.label} />, onPress: () => handleZoom('in') },
+              { icon: <Minus size={15} color={colors.label} />, onPress: () => handleZoom('out') },
+              { icon: <Maximize2 size={15} color={colors.label} />, onPress: recenterCanvas },
+            ].map((btn, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={btn.onPress}
+                style={{ width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+              >
+                {btn.icon}
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       </GestureDetector>
 
-      <QuickSetupPanel
-        isOpen={isQuickSetupOpen}
-        onClose={() => setQuickSetupOpen(false)}
-        onAddMultiple={handleAddMultipleTables}
-      />
+      <QuickSetupPanel isOpen={isQuickSetupOpen} onClose={() => setQuickSetupOpen(false)} onAddMultiple={handleAddMultipleTables} />
 
-      {selectedTable && layoutId && (
-        <PropertiesPanel table={selectedTable} layoutId={layoutId} />
-      )}
+      {selectedTable && layoutId && <PropertiesPanel table={selectedTable} layoutId={layoutId} />}
 
-      <AddTableBottomSheet
-        bottomSheetRef={addTableSheetRef as React.RefObject<BottomSheet>}
-        onClose={() => addTableSheetRef.current?.close()}
-      />
+      <AddTableBottomSheet bottomSheetRef={addTableSheetRef as React.RefObject<BottomSheet>} onClose={() => addTableSheetRef.current?.close()} />
 
       <Animated.View style={ghostShapeAnimatedStyle} pointerEvents='none'>
         {SHAPE_OPTIONS.map(option => {
           const ShapeComp = option.component
           return (
-            <GhostShapeWrapper
-              key={option.id}
-              id={option.id}
-              currentId={draggedShapeId}
-            >
-              <ShapeComp
-                color='#94A3B8'
-                height={SHAPE_SIZE}
-                width={SHAPE_SIZE}
-              />
+            <GhostShapeWrapper key={option.id} id={option.id} currentId={draggedShapeId}>
+              <ShapeComp color={colors.teal} height={SHAPE_SIZE} width={SHAPE_SIZE} />
             </GhostShapeWrapper>
           )
         })}
@@ -479,18 +315,8 @@ const LayoutEditorScreenContent = () => {
   )
 }
 
-const GhostShapeWrapper = ({
-  id,
-  currentId,
-  children
-}: {
-  id: string
-  currentId: any
-  children: React.ReactNode
-}) => {
-  const style = useAnimatedStyle(() => {
-    return { display: currentId.value === id ? 'flex' : 'none' }
-  })
+const GhostShapeWrapper = ({ id, currentId, children }: { id: string; currentId: any; children: React.ReactNode }) => {
+  const style = useAnimatedStyle(() => ({ display: currentId.value === id ? 'flex' : 'none' }))
   return <Animated.View style={style}>{children}</Animated.View>
 }
 
