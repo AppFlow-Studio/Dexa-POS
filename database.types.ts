@@ -496,6 +496,7 @@ export type Database = {
         Row: {
           created_at: string
           current_session_id: string | null
+          device_id: string | null
           drawer_number: number | null
           id: string
           is_active: boolean | null
@@ -509,6 +510,7 @@ export type Database = {
         Insert: {
           created_at?: string
           current_session_id?: string | null
+          device_id?: string | null
           drawer_number?: number | null
           id?: string
           is_active?: boolean | null
@@ -522,6 +524,7 @@ export type Database = {
         Update: {
           created_at?: string
           current_session_id?: string | null
+          device_id?: string | null
           drawer_number?: number | null
           id?: string
           is_active?: boolean | null
@@ -533,6 +536,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cash_drawers_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "device_catalog"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cash_drawers_location_id_fkey"
             columns: ["location_id"]
@@ -566,6 +576,13 @@ export type Database = {
             columns: ["merchant_id"]
             isOneToOne: false
             referencedRelation: "merchants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_drawers_station_id_fkey"
+            columns: ["station_id"]
+            isOneToOne: false
+            referencedRelation: "stations"
             referencedColumns: ["id"]
           },
         ]
@@ -11133,7 +11150,7 @@ export type Database = {
           location_id: string | null
           logo_url: string | null
           merchant_id: string
-          modifier_style: string | null
+          modifier_style: string
           show_allergy_alert: boolean | null
           show_barcode: boolean | null
           show_item_modifiers: boolean | null
@@ -11161,7 +11178,7 @@ export type Database = {
           location_id?: string | null
           logo_url?: string | null
           merchant_id: string
-          modifier_style?: string | null
+          modifier_style?: string
           show_allergy_alert?: boolean | null
           show_barcode?: boolean | null
           show_item_modifiers?: boolean | null
@@ -11189,7 +11206,7 @@ export type Database = {
           location_id?: string | null
           logo_url?: string | null
           merchant_id?: string
-          modifier_style?: string | null
+          modifier_style?: string
           show_allergy_alert?: boolean | null
           show_barcode?: boolean | null
           show_item_modifiers?: boolean | null
@@ -15190,32 +15207,32 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "cash_drawer_sessions_location_id_fkey"
+            foreignKeyName: "cash_drawer_sessions_opened_by_fkey"
+            columns: ["opened_by"]
+            isOneToOne: false
+            referencedRelation: "staff_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_drawers_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "location_summary"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "cash_drawer_sessions_location_id_fkey"
+            foreignKeyName: "cash_drawers_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "cash_drawer_sessions_location_id_fkey"
+            foreignKeyName: "cash_drawers_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "v_location_menu_items"
             referencedColumns: ["location_id"]
-          },
-          {
-            foreignKeyName: "cash_drawer_sessions_opened_by_fkey"
-            columns: ["opened_by"]
-            isOneToOne: false
-            referencedRelation: "staff_profiles"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -15776,6 +15793,18 @@ export type Database = {
         Returns: Json
       }
       clear_order_items: { Args: { p_order_id: string }; Returns: Json }
+      close_cash_drawer_session: {
+        Args: {
+          p_cash_drawer_id: string
+          p_closed_by: string
+          p_closing_amount: number
+          p_closing_count_details?: Json
+          p_is_blind_count?: boolean
+          p_session_id: string
+          p_variance_notes?: string
+        }
+        Returns: Json
+      }
       close_check: {
         Args: { p_order_id: string; p_staff_id?: string }
         Returns: Json
@@ -16517,6 +16546,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_eod_cash_summary: {
+        Args: { p_business_date?: string; p_location_id: string }
+        Returns: Json
+      }
       get_feature_adoption_rates: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -17123,6 +17156,17 @@ export type Database = {
         Args: { p_notification_type?: string; p_waitlist_id: string }
         Returns: Json
       }
+      open_cash_drawer_session: {
+        Args: {
+          p_cash_drawer_id: string
+          p_location_id: string
+          p_merchant_id: string
+          p_opened_by: string
+          p_opening_amount: number
+          p_opening_count_details?: Json
+        }
+        Returns: Json
+      }
       pos_staff_login: {
         Args: {
           p_auto_clock_in?: boolean
@@ -17302,6 +17346,20 @@ export type Database = {
       recall_kds_items: {
         Args: { p_order_item_ids: string[] }
         Returns: undefined
+      }
+      record_cash_operation: {
+        Args: {
+          p_amount: number
+          p_approved_by?: string
+          p_cash_drawer_id: string
+          p_operation_type: string
+          p_order_id?: string
+          p_payment_id?: string
+          p_performed_by: string
+          p_reason?: string
+          p_session_id: string
+        }
+        Returns: Json
       }
       record_refund_items: {
         Args: { p_items: Json; p_reversal_id: string }
