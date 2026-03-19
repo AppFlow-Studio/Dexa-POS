@@ -1,66 +1,64 @@
-import { ClerkVerificationScreen } from "@/components/tests/ClerkVerificationScreen";
-import { colors } from "@/lib/theme";
+import { colors, spinnerColor } from "@/lib/theme";
 import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import React from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import Svg, { ClipPath, Defs, G, Path, Rect } from "react-native-svg";
+
+const GoogleIcon = ({ size = 18 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 48 48">
+    <Defs>
+      <ClipPath id="clip">
+        <Rect width={48} height={48} rx={24} />
+      </ClipPath>
+    </Defs>
+    <G clipPath="url(#clip)">
+      <Path fill="#4285F4" d="M47.5 24.5c0-1.6-.1-3.2-.4-4.7H24v8.9h13.2c-.6 3-2.3 5.5-4.9 7.2v6h7.9c4.6-4.3 7.3-10.6 7.3-17.4z" />
+      <Path fill="#34A853" d="M24 48c6.5 0 12-2.2 16-5.8l-7.9-6c-2.2 1.5-5 2.3-8.1 2.3-6.2 0-11.5-4.2-13.4-9.9H2.5v6.2C6.4 42.6 14.6 48 24 48z" />
+      <Path fill="#FBBC05" d="M10.6 28.6c-.5-1.5-.8-3-.8-4.6s.3-3.1.8-4.6v-6.2H2.5C.9 16.4 0 20.1 0 24s.9 7.6 2.5 10.8l8.1-6.2z" />
+      <Path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.9 2.2 30.4 0 24 0 14.6 0 6.4 5.4 2.5 13.2l8.1 6.2C12.5 13.7 17.8 9.5 24 9.5z" />
+    </G>
+  </Svg>
+);
 
 const MerchantLoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
-  // console.log('useSignIn result:', {
-  //   signIn: !!signIn,
-  //   signInType: typeof signIn,
-  //   signInKeys: signIn ? Object.keys(signIn) : 'null',
-  //   isLoaded,
-  // })
   const router = useRouter();
   const LinkRedirectUrl = Linking.createURL("oauth-native-callback", {
     scheme: "dexapos",
   });
 
-  // Native OAuth flow - works in Expo Go
   const { startSSOFlow } = useSSO();
 
-  const [emailAddress, setEmailAddress] = React.useState("");
-  const [password, setPassword] = React.useState("");
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [emailAddress, setEmailAddress] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Simple email validation
-  const isValidEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  // Google OAuth Sign-In - Browser-based, works in Expo Go
   const signInWithGoogle = async () => {
     setIsGoogleLoading(true);
     setError(null);
-
     try {
-      const { createdSessionId, setActive: setActiveSession } =
-        await startSSOFlow({
-          strategy: "oauth_google",
-          redirectUrl: LinkRedirectUrl,
-        });
-
+      const { createdSessionId, setActive: setActiveSession } = await startSSOFlow({
+        strategy: "oauth_google",
+        redirectUrl: LinkRedirectUrl,
+      });
       if (createdSessionId) {
         await setActiveSession!({ session: createdSessionId });
         router.replace("/store-select");
       }
     } catch (err: any) {
-      console.log("OAuth error:", err);
-      // Don't show error for user cancellation
       if (!err?.message?.includes("cancel")) {
         setError("Google sign-in failed. Please try again.");
       }
@@ -69,75 +67,41 @@ const MerchantLoginScreen = () => {
     }
   };
 
-  // Email/Password Sign-In
   const handleLogin = async () => {
     if (!isLoaded) return;
 
     const trimmedEmail = emailAddress.trim().toLowerCase();
 
-    if (!trimmedEmail) {
-      setError("Please enter your email address");
-      return;
-    }
-
-    if (!isValidEmail(trimmedEmail)) {
-      setError("Please enter a valid email address");
-      return;
-    }
-
-    if (!password) {
-      setError("Please enter your password");
-      return;
-    }
+    if (!trimmedEmail) { setError("Please enter your email address"); return; }
+    if (!isValidEmail(trimmedEmail)) { setError("Please enter a valid email address"); return; }
+    if (!password) { setError("Please enter your password"); return; }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      console.log('[Auth Debug] signIn object:', {
-        exists: !!signIn,
-        supportedIdentifiers: signIn?.supportedIdentifiers,
-        supportedFirstFactors: signIn?.supportedFirstFactors,
-      });
-
-      const signInAttempt = await signIn.create({
-        identifier: trimmedEmail,
-        password,
-      });
-
-      console.log('[Auth Debug] signInAttempt:', {
-        status: signInAttempt.status,
-        supportedIdentifiers: signInAttempt.supportedIdentifiers,
-        supportedFirstFactors: signInAttempt.supportedFirstFactors,
-        createdSessionId: signInAttempt.createdSessionId,
-      });
+      const signInAttempt = await signIn.create({ identifier: trimmedEmail, password });
 
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
         router.replace("/store-select");
       } else {
-        console.error('[Auth Debug] Incomplete sign-in:', JSON.stringify(signInAttempt, null, 2));
         setError("Sign-in incomplete. Please try again.");
       }
     } catch (err: any) {
-      console.error("Sign-in error:", JSON.stringify(err, null, 2));
-      if (err.errors && err.errors.length > 0) {
-        const errorCode = err.errors[0].code;
-        if (errorCode === "form_identifier_not_found") {
-          setError("No account found with this email. Please sign up first.");
-        } else if (errorCode === "form_password_incorrect") {
+      if (err.errors?.length > 0) {
+        const code = err.errors[0].code;
+        if (code === "form_identifier_not_found") {
+          setError("No account found with this email.");
+        } else if (code === "form_password_incorrect") {
           setError("Incorrect password. Please try again.");
-        } else if (errorCode === "form_param_format_invalid") {
+        } else if (code === "form_param_format_invalid") {
           setError("Please enter a valid email address.");
         } else {
-          setError(
-            err.errors[0].longMessage ||
-              err.errors[0].message ||
-              "Invalid email or password"
-          );
+          setError(err.errors[0].longMessage || err.errors[0].message || "Invalid email or password");
         }
       } else {
-        setError("An error occurred during sign-in. Please try again.");
+        setError("An error occurred. Please try again.");
       }
     } finally {
       setIsLoading(false);
@@ -145,41 +109,62 @@ const MerchantLoginScreen = () => {
   };
 
   const isFormLoading = isLoading || isGoogleLoading;
-//  if( true ){
-//   return <DebugSignInScreen />
-//  }
+  const canSubmit = !!emailAddress && !!password && !isFormLoading;
+
   return (
-    <View className="w-full">
-      <Text className="text-3xl font-semibold text-white text-center mb-8">
+    <View style={{ width: "100%" }}>
+      {/* Title */}
+      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 4 }}>
         Merchant Login
       </Text>
+      <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 20 }}>
+        Sign in to your account to continue
+      </Text>
 
+      {/* Error banner */}
       {error && (
-        <View className="bg-red-500/20 border border-red-500 rounded-xl p-4 mb-4">
-          <Text className="text-red-400 text-center">{error}</Text>
+        <View
+          style={{
+            backgroundColor: colors.danger + "15",
+            borderWidth: 1,
+            borderColor: colors.danger + "40",
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            marginBottom: 14,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.danger, textAlign: "center" }}>
+            {error}
+          </Text>
         </View>
       )}
 
-      {/* Google Sign-In Button - Browser-based OAuth */}
+      {/* Google button */}
       <TouchableOpacity
         onPress={signInWithGoogle}
         disabled={isFormLoading}
-        className={`w-full p-4 rounded-xl items-center justify-center flex-row mb-6 ${
-          isFormLoading ? "bg-neutral-600" : "bg-white"
-        }`}
+        style={{
+          width: "100%",
+          paddingVertical: 10,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: isFormLoading ? colors.card : colors.panel,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          marginBottom: 16,
+          opacity: isFormLoading ? 0.6 : 1,
+        }}
       >
         {isGoogleLoading ? (
-          <ActivityIndicator color={colors.info} size="small" />
+          <ActivityIndicator color={spinnerColor} size="small" />
         ) : (
           <>
-            <Image
-              source={{
-                uri: "https://developers.google.com/identity/images/g-logo.png",
-              }}
-              className="w-6 h-6 mr-3"
-              resizeMode="contain"
-            />
-            <Text className="text-neutral-800 text-xl font-semibold">
+            <GoogleIcon size={18} />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
               Continue with Google
             </Text>
           </>
@@ -187,18 +172,31 @@ const MerchantLoginScreen = () => {
       </TouchableOpacity>
 
       {/* Divider */}
-      <View className="flex-row items-center mb-6">
-        <View className="flex-1 h-[1px] bg-neutral-600" />
-        <Text className="text-neutral-400 mx-4 text-lg">or</Text>
-        <View className="flex-1 h-[1px] bg-neutral-600" />
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 10 }}>
+        <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+        <Text style={{ fontSize: 11, color: colors.muted }}>or</Text>
+        <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
       </View>
 
-      <KeyboardAvoidingView behavior="padding" className="mb-4">
-        <Text className="text-xl font-medium text-white mb-2">Email</Text>
+      {/* Email */}
+      <KeyboardAvoidingView behavior="padding" style={{ marginBottom: 10 }}>
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 5 }}>
+          Email
+        </Text>
         <TextInput
-          className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl"
-          placeholder="john@gmail.com"
-          placeholderTextColor={colors.label}
+          style={{
+            width: "100%",
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            backgroundColor: colors.screen,
+            color: colors.heading,
+            fontSize: 13,
+          }}
+          placeholder="john@example.com"
+          placeholderTextColor={colors.muted}
           keyboardType="email-address"
           autoCapitalize="none"
           value={emailAddress}
@@ -207,47 +205,71 @@ const MerchantLoginScreen = () => {
         />
       </KeyboardAvoidingView>
 
-      <View className="mb-4">
-        <Text className="text-xl font-medium text-white mb-2">Password</Text>
-        <KeyboardAvoidingView behavior="position">
-          <TextInput
-            className="w-full p-4 h-16 border text-white border-neutral-200 rounded-xl text-xl"
-            placeholderTextColor={colors.label}
-            placeholder="••••••••"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            editable={!isFormLoading}
-          />
-        </KeyboardAvoidingView>
-      </View>
+      {/* Password */}
+      <KeyboardAvoidingView behavior="position" style={{ marginBottom: 8 }}>
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 5 }}>
+          Password
+        </Text>
+        <TextInput
+          style={{
+            width: "100%",
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            backgroundColor: colors.screen,
+            color: colors.heading,
+            fontSize: 13,
+          }}
+          placeholder="••••••••"
+          placeholderTextColor={colors.muted}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          editable={!isFormLoading}
+        />
+      </KeyboardAvoidingView>
 
-      <TouchableOpacity className="self-end mb-6">
-        <Text className="text-lg font-semibold text-white">
-          Forgot Password
+      {/* Forgot password */}
+      <TouchableOpacity style={{ alignSelf: "flex-end", marginBottom: 16 }}>
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
+          Forgot Password?
         </Text>
       </TouchableOpacity>
 
+      {/* Login button */}
       <TouchableOpacity
         onPress={handleLogin}
-        disabled={isFormLoading || !emailAddress || !password}
-        className={`w-full p-4 rounded-xl items-center ${
-          isFormLoading || !emailAddress || !password
-            ? "bg-blue-400"
-            : "bg-blue-600"
-        }`}
+        disabled={!canSubmit}
+        style={{
+          width: "100%",
+          paddingVertical: 11,
+          borderRadius: 10,
+          alignItems: "center",
+          backgroundColor: canSubmit ? colors.teal : colors.teal + "30",
+        }}
       >
         {isLoading ? (
-          <ActivityIndicator color="white" size="small" />
+          <ActivityIndicator color={colors.onSolid} size="small" />
         ) : (
-          <Text className="text-white text-xl font-bold">Login</Text>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "700",
+              color: canSubmit ? colors.onSolid : colors.muted,
+            }}
+          >
+            Sign In
+          </Text>
         )}
       </TouchableOpacity>
 
-      <View className="flex-row justify-center mt-6 gap-2">
-        <Text className="text-neutral-400 text-lg">Don't have an account?</Text>
+      {/* Sign up */}
+      <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 16, gap: 4 }}>
+        <Text style={{ fontSize: 12, color: colors.muted }}>Don't have an account?</Text>
         <TouchableOpacity onPress={() => router.push("/sign-up" as any)}>
-          <Text className="text-blue-400 text-lg font-semibold">Sign up</Text>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Sign up</Text>
         </TouchableOpacity>
       </View>
     </View>

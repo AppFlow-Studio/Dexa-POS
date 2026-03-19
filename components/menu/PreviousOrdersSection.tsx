@@ -55,11 +55,11 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
             key={name}
             onPress={() => onTabChange(name)}
             className="flex-row items-center px-3 rounded-md gap-x-1.5"
-            style={[{ flex: 1, alignSelf: "stretch", justifyContent: "center" }, isActive ? { backgroundColor: colors.teal } : undefined]}
+            style={[{ flex: 1, alignSelf: "stretch", justifyContent: "center", borderRadius: 6, borderWidth: 1 }, isActive ? { backgroundColor: colors.teal + "20", borderColor: colors.teal + "40" } : { borderColor: "transparent" }]}
           >
             <Text
               className="text-xs font-semibold"
-              style={{ color: isActive ? colors.onSolid : colors.label }}
+              style={{ color: isActive ? colors.teal : colors.label }}
             >
               {name}{count > 0 ? ` (${count})` : ""}
             </Text>

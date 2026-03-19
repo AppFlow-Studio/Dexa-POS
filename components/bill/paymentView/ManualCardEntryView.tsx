@@ -48,30 +48,30 @@ const VirtualCard = ({
     style={{
       width: "100%", aspectRatio: 1.586,
       backgroundColor: (type ? cardBgMap[type] : null) ?? cardBgMap["unknown"],
-      borderRadius: 16, padding: 24, justifyContent: "space-between",
+      borderRadius: 12, padding: 16, justifyContent: "space-between",
       borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", overflow: "hidden",
     }}
   >
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-      <View style={{ width: 48, height: 32, backgroundColor: "rgba(234,179,8,0.2)", borderRadius: 6, borderWidth: 1, borderColor: "rgba(234,179,8,0.4)" }} />
-      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14, textTransform: "uppercase", letterSpacing: 1 }}>
+      <View style={{ width: 36, height: 24, backgroundColor: "rgba(234,179,8,0.2)", borderRadius: 4, borderWidth: 1, borderColor: "rgba(234,179,8,0.4)" }} />
+      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>
         {type || "BANK CARD"}
       </Text>
     </View>
     <View>
-      <Text style={{ color: "#fff", fontSize: 22, fontWeight: "700", letterSpacing: 4, marginBottom: 16 }}>
+      <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700", letterSpacing: 3, marginBottom: 10 }}>
         {number || "•••• •••• •••• ••••"}
       </Text>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <View style={{ flex: 1, marginRight: 16 }}>
-          <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, textTransform: "uppercase", marginBottom: 2 }}>Card Holder</Text>
-          <Text style={{ color: "#fff", fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }} numberOfLines={1}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 9, textTransform: "uppercase", marginBottom: 2 }}>Card Holder</Text>
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }} numberOfLines={1}>
             {name || "YOUR NAME"}
           </Text>
         </View>
         <View>
-          <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, textTransform: "uppercase", marginBottom: 2 }}>Expires</Text>
-          <Text style={{ color: "#fff", fontWeight: "600" }}>{expiry || "MM/YY"}</Text>
+          <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 9, textTransform: "uppercase", marginBottom: 2 }}>Expires</Text>
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>{expiry || "MM/YY"}</Text>
         </View>
       </View>
     </View>
@@ -81,26 +81,26 @@ const VirtualCard = ({
 const ErrorText = ({ error }: { error?: string }) => {
   if (!error) return null;
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, marginLeft: 4, gap: 6 }}>
-      <AlertCircle size={12} color={colors.danger} />
-      <Text style={{ color: colors.danger, fontSize: 11 }}>{error}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3, marginLeft: 2, gap: 4 }}>
+      <AlertCircle size={11} color={colors.danger} />
+      <Text style={{ color: colors.danger, fontSize: 10 }}>{error}</Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  label: { color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 6, marginLeft: 2 },
+  label: { color: colors.muted, fontSize: 10, fontWeight: "700", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5, marginLeft: 2 },
   inputBase: {
     backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14,
-    fontSize: 15, color: colors.heading,
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: 13, color: colors.heading,
   },
   inputRow: {
     flexDirection: "row", alignItems: "center",
     backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 12, paddingHorizontal: 12,
+    borderRadius: 8, paddingHorizontal: 10,
   },
-  inputInRow: { flex: 1, fontSize: 15, color: colors.heading, paddingVertical: 14, paddingHorizontal: 6 },
+  inputInRow: { flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 10, paddingHorizontal: 4 },
 });
 
 const ManualCardEntryView = () => {
@@ -185,12 +185,12 @@ const ManualCardEntryView = () => {
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "padding"} style={{ backgroundColor: colors.screen }}>
       <View style={{ flexDirection: "row" }}>
         {/* LEFT: Card preview */}
-        <View style={{ width: "40%", backgroundColor: colors.panel, borderRightWidth: 1, borderRightColor: colors.border, padding: 32, justifyContent: "center", alignItems: "center" }}>
-          <View style={{ width: "100%", maxWidth: 380 }}>
+        <View style={{ width: "38%", backgroundColor: colors.panel, borderRightWidth: 1, borderRightColor: colors.border, padding: 20, justifyContent: "center", alignItems: "center" }}>
+          <View style={{ width: "100%", maxWidth: 340 }}>
             {/* Secure badge */}
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20, backgroundColor: `${colors.success}15`, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, alignSelf: "center", borderWidth: 1, borderColor: `${colors.success}30`, gap: 6 }}>
-              <Lock size={13} color={colors.success} />
-              <Text style={{ color: colors.success, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }}>Secure Transaction</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 14, backgroundColor: `${colors.success}15`, paddingVertical: 5, paddingHorizontal: 12, borderRadius: 20, alignSelf: "center", borderWidth: 1, borderColor: `${colors.success}30`, gap: 5 }}>
+              <Lock size={11} color={colors.success} />
+              <Text style={{ color: colors.success, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 }}>Secure Transaction</Text>
             </View>
 
             <VirtualCard
@@ -200,11 +200,11 @@ const ManualCardEntryView = () => {
               type={cardInfo.cardType}
             />
 
-            <View style={{ marginTop: 32, alignItems: "center" }}>
-              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+            <View style={{ marginTop: 20, alignItems: "center" }}>
+              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>
                 {activeSplit ? `Total for ${activeSplit.customerName}` : "Total Amount"}
               </Text>
-              <Text style={{ fontSize: 44, fontWeight: "700", color: colors.heading }}>
+              <Text style={{ fontSize: 32, fontWeight: "700", color: colors.heading }}>
                 ${amountToPay.toFixed(2)}
               </Text>
             </View>
@@ -214,13 +214,13 @@ const ManualCardEntryView = () => {
         {/* RIGHT: Form */}
         <View style={{ flex: 1, backgroundColor: colors.screen }}>
           <ScrollView
-            contentContainerStyle={{ padding: 32, paddingTop: 16, paddingBottom: 100 }}
+            contentContainerStyle={{ padding: 20, paddingTop: 14, paddingBottom: 80 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={{ fontSize: 22, fontWeight: "700", color: colors.heading, marginBottom: 24 }}>Enter Card Details</Text>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 16 }}>Enter Card Details</Text>
 
-            <View style={{ gap: 20, maxWidth: 600 }}>
+            <View style={{ gap: 14, maxWidth: 600 }}>
               {/* Name */}
               <View>
                 <Text style={styles.label}>Cardholder Name (Optional)</Text>
@@ -239,7 +239,7 @@ const ManualCardEntryView = () => {
               <View>
                 <Text style={styles.label}>Card Number</Text>
                 <View style={[styles.inputRow, errors.cardNumber ? { borderColor: colors.danger } : {}]}>
-                  <CreditCard size={18} color={colors.muted} />
+                  <CreditCard size={15} color={colors.muted} />
                   <TextInput
                     value={formatCardNumber(cardNumber)}
                     onChangeText={(t) => setCardNumber(t.replace(/\D/g, "").replace(/\s/g, ""))}
@@ -255,7 +255,7 @@ const ManualCardEntryView = () => {
               </View>
 
               {/* Expiry & CVV */}
-              <View style={{ flexDirection: "row", gap: 12 }}>
+              <View style={{ flexDirection: "row", gap: 10 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Expiry (MM/YY)</Text>
                   <View style={[styles.inputRow, errors.expiry ? { borderColor: colors.danger } : {}]}>
@@ -269,7 +269,7 @@ const ManualCardEntryView = () => {
                       placeholderTextColor={colors.muted}
                       style={[styles.inputInRow, { textAlign: "center" }]}
                     />
-                    <View style={{ width: 1, backgroundColor: colors.border, marginVertical: 8 }} />
+                    <View style={{ width: 1, backgroundColor: colors.border, marginVertical: 6 }} />
                     <TextInput
                       ref={expiryYearRef}
                       value={expiryYear}
@@ -288,7 +288,7 @@ const ManualCardEntryView = () => {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>CVV / CVC</Text>
                   <View style={styles.inputRow}>
-                    <ShieldCheck size={16} color={colors.muted} />
+                    <ShieldCheck size={14} color={colors.muted} />
                     <TextInput
                       ref={cvvRef}
                       value={cvv}
@@ -300,8 +300,8 @@ const ManualCardEntryView = () => {
                       placeholderTextColor={colors.muted}
                       style={styles.inputInRow}
                     />
-                    <TouchableOpacity onPress={() => setShowCvv(!showCvv)} style={{ padding: 8 }}>
-                      {showCvv ? <EyeOff size={18} color={colors.muted} /> : <Eye size={18} color={colors.muted} />}
+                    <TouchableOpacity onPress={() => setShowCvv(!showCvv)} style={{ padding: 6 }}>
+                      {showCvv ? <EyeOff size={15} color={colors.muted} /> : <Eye size={15} color={colors.muted} />}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -324,7 +324,7 @@ const ManualCardEntryView = () => {
               {/* Tip */}
               <View>
                 <Text style={styles.label}>Tip Amount (Optional)</Text>
-                <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
                   {TIP_PRESETS.map((percent) => {
                     const isActive = selectedTipPreset === percent;
                     return (
@@ -332,14 +332,14 @@ const ManualCardEntryView = () => {
                         key={percent}
                         onPress={() => handleTipPreset(percent)}
                         style={{
-                          flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+                          flex: 1, paddingVertical: 7, borderRadius: 8, borderWidth: 1,
                           backgroundColor: isActive ? `${colors.teal}15` : colors.panel,
                           borderColor: isActive ? colors.teal : colors.border,
                           alignItems: "center",
                         }}
                       >
-                        <Text style={{ fontWeight: "700", color: isActive ? colors.heading : colors.muted, fontSize: 14 }}>{percent}%</Text>
-                        <Text style={{ fontSize: 11, marginTop: 2, color: isActive ? colors.teal : colors.muted }}>
+                        <Text style={{ fontWeight: "700", color: isActive ? colors.heading : colors.muted, fontSize: 12 }}>{percent}%</Text>
+                        <Text style={{ fontSize: 10, marginTop: 1, color: isActive ? colors.teal : colors.muted }}>
                           ${((percent / 100) * amountToPay).toFixed(2)}
                         </Text>
                       </TouchableOpacity>
@@ -347,7 +347,7 @@ const ManualCardEntryView = () => {
                   })}
                 </View>
                 <View style={[styles.inputRow, { width: "50%" }]}>
-                  <DollarSign size={16} color={colors.muted} />
+                  <DollarSign size={14} color={colors.muted} />
                   <TextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
@@ -360,26 +360,26 @@ const ManualCardEntryView = () => {
               </View>
 
               {/* Buttons */}
-              <View style={{ flexDirection: "row", gap: 12, paddingTop: 16 }}>
+              <View style={{ flexDirection: "row", gap: 10, paddingTop: 8 }}>
                 <TouchableOpacity
                   onPress={() => setView("payment-method-selection")}
-                  style={{ flex: 1, paddingVertical: 14, backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
+                  style={{ flex: 1, paddingVertical: 10, backgroundColor: colors.panel, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
                 >
-                  <ArrowLeft size={18} color={colors.muted} />
-                  <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 15 }}>Back</Text>
+                  <ArrowLeft size={15} color={colors.muted} />
+                  <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 13 }}>Back</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={handleProcessPayment}
                   disabled={status === "processing"}
                   style={{
-                    flex: 2, paddingVertical: 14, borderRadius: 12,
+                    flex: 2, paddingVertical: 10, borderRadius: 8,
                     alignItems: "center", justifyContent: "center",
                     backgroundColor: status === "processing" ? `${colors.teal}40` : colors.teal,
                     opacity: status === "processing" ? 0.7 : 1,
                   }}
                 >
-                  <Text style={{ fontWeight: "700", fontSize: 16, color: "#000000" }}>
+                  <Text style={{ fontWeight: "700", fontSize: 13, color: "#000000" }}>
                     {status === "processing" ? "Processing..." : `Pay $${grandTotal.toFixed(2)}`}
                   </Text>
                 </TouchableOpacity>

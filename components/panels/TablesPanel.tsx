@@ -11,7 +11,6 @@ import React, { useCallback, useMemo, useState } from 'react'
 import {
   FlatList,
   RefreshControl,
-  ScrollView,
   Text,
   TouchableOpacity,
   View
@@ -25,53 +24,193 @@ interface SectionProps {
   children: React.ReactNode
 }
 
-// Local Section component for collapsible dining areas
 const Section: React.FC<SectionProps> = ({
   title,
   isOpen,
   onToggle,
   children
-}) => {
-  return (
-    <Animated.View
-      layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
-      className='flex-1 space-y-1'
+}) => (
+  <Animated.View
+    layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
+    style={{ flex: 1 }}
+  >
+    <TouchableOpacity
+      onPress={onToggle}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 8
+      }}
     >
-      <TouchableOpacity
-        onPress={onToggle}
-        className='flex-row items-center w-full p-2 text-sm font-semibold text-white hover:bg-gray-800 rounded-md'
-      >
-        {isOpen ? (
-          <ChevronDown size={16} color={colors.label} className='mr-2' />
-        ) : (
-          <ChevronRight size={16} color={colors.label} className='mr-2' />
-        )}
-        <Text className='text-white text-base font-semibold'>{title}</Text>
-      </TouchableOpacity>
-      {isOpen && (
-        <Animated.View
-          layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
-          className='flex-1 pl-2'
-        >
-          {children}
-        </Animated.View>
+      {isOpen ? (
+        <ChevronDown size={14} color={colors.muted} />
+      ) : (
+        <ChevronRight size={14} color={colors.muted} />
       )}
-    </Animated.View>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '600',
+          color: colors.muted,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+          marginLeft: 6
+        }}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+    {isOpen && (
+      <Animated.View
+        layout={Layout.easing(Easing.inOut(Easing.ease)).duration(200)}
+        style={{ flex: 1, paddingLeft: 4 }}
+      >
+        {children}
+      </Animated.View>
+    )}
+  </Animated.View>
+)
+
+interface InlineSelectProps<T extends string> {
+  label: string
+  value: T | null
+  options: { value: T; label: string }[]
+  onSelect: (value: T | null) => void
+  nullable?: boolean
+}
+
+function InlineSelect<T extends string> ({
+  label,
+  value,
+  options,
+  onSelect,
+  nullable = true
+}: InlineSelectProps<T>) {
+  const [open, setOpen] = useState(false)
+  const selectedLabel = value
+    ? options.find(o => o.value === value)?.label ?? value
+    : null
+
+  return (
+    <View style={{ flex: 1 }}>
+      <TouchableOpacity
+        onPress={() => setOpen(o => !o)}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          borderRadius: 8,
+          borderWidth: 1,
+          backgroundColor: value ? colors.teal + '15' : colors.card,
+          borderColor: value ? colors.teal + '40' : colors.border
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '600',
+            color: value ? colors.teal : colors.muted,
+            flex: 1
+          }}
+          numberOfLines={1}
+        >
+          {selectedLabel ?? label}
+        </Text>
+        <ChevronDown
+          size={12}
+          color={value ? colors.teal : colors.muted}
+          style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
+        />
+      </TouchableOpacity>
+
+      {open && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 34,
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            overflow: 'hidden'
+          }}
+        >
+          {nullable && (
+            <TouchableOpacity
+              onPress={() => {
+                onSelect(null)
+                setOpen(false)
+              }}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor: !value ? colors.teal + '15' : 'transparent',
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: !value ? colors.teal : colors.label
+                }}
+              >
+                All
+              </Text>
+            </TouchableOpacity>
+          )}
+          {options.map(opt => (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => {
+                onSelect(opt.value)
+                setOpen(false)
+              }}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor:
+                  value === opt.value ? colors.teal + '15' : 'transparent'
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: value === opt.value ? colors.teal : colors.label
+                }}
+                numberOfLines={1}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
   )
 }
 
 const TablesPanel: React.FC = () => {
-  // Use floorPlans and tables (for active plan only)
   const floorPlans = useFloorPlanStore(s => s.floorPlans)
   const tables = useFloorPlanStore(s => s.tables)
   const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
-  const sectionsById = useFloorPlanStore(s => s.sectionsById)
   const liveSessions = useTableSessionStore(s => s.sessions)
   const [sections, setSections] = useState<{ [key: string]: boolean }>({})
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
-    null
-  )
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
+  const [expandedTableIds, setExpandedTableIds] = useState<
+    Record<string, boolean>
+  >({})
+  type SortMode = 'name' | 'status' | 'duration'
+  const [sortMode, setSortMode] = useState<SortMode>('status')
 
   const activePlanName = useMemo(() => {
     return (
@@ -79,102 +218,99 @@ const TablesPanel: React.FC = () => {
     )
   }, [floorPlans, activeFloorPlanId])
 
-  // Init sections
   useMemo(() => {
     if (activeFloorPlanId && sections[activeFloorPlanId] === undefined) {
       setSections(prev => ({ ...prev, [activeFloorPlanId]: true }))
     }
   }, [activeFloorPlanId])
 
-  const activeTables = tables // These are already the tables for the active floor plan.
-
+  const activeTables = tables
   const isSeatable = (t: FloorPlanObject) =>
     t.category === 'table' || t.category === 'booth'
-
-  // Get unique sections and servers from tables
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
-  const { uniqueSections, uniqueServers, serverNames } = useMemo(() => {
-    const sectionSet = new Set<string>()
+  const { uniqueServers, serverNames } = useMemo(() => {
     const serverSet = new Set<string>()
     const nameMap: Record<string, string> = {}
-
     activeTables.forEach(table => {
-      if (table.section_id) sectionSet.add(table.section_id)
       const session = liveSessions[table.id] ?? table.session
       if (session?.server_staff_id) {
         const staffId = session.server_staff_id
         serverSet.add(staffId)
-        // Get server name if not already cached
         if (!nameMap[staffId]) {
           const employee = getEmployeeByStaffId(staffId)
           nameMap[staffId] = employee?.fullName || staffId.substring(0, 8)
         }
       }
     })
-
-    return {
-      uniqueSections: Array.from(sectionSet),
-      uniqueServers: Array.from(serverSet),
-      serverNames: nameMap
-    }
+    return { uniqueServers: Array.from(serverSet), serverNames: nameMap }
   }, [activeTables, getEmployeeByStaffId, liveSessions])
 
-  // Deduplicate merged tables: when T1+T2 are merged, both have the same
-  // session — only show the first one encountered per session id.
+  const STATUS_ORDER: Record<string, number> = {
+    ordered: 0,
+    seated: 1,
+    served: 2,
+    check_presented: 3,
+    paid: 4,
+    cleaning: 5,
+    available: 6
+  }
+
   const displayTables = useMemo(() => {
     const seenSessionIds = new Set<string>()
     let filtered = activeTables.filter(table => {
       if (!isSeatable(table)) return false
       const session = liveSessions[table.id] ?? table.session
-      // No merge — always show
       if (!session?.merged_tables?.length) return true
-      // For merged tables, only show first per session
       const sid = session.id
       if (seenSessionIds.has(sid)) return false
       seenSessionIds.add(sid)
       return true
     })
-
-    // Apply section filter
-    if (selectedSectionId) {
-      filtered = filtered.filter(
-        table => table.section_id === selectedSectionId
-      )
-    }
-
-    // Apply server filter
     if (selectedServerId) {
       filtered = filtered.filter(table => {
         const session = liveSessions[table.id] ?? table.session
         return session?.server_staff_id === selectedServerId
       })
     }
-
+    filtered = [...filtered].sort((a, b) => {
+      const sessionA = liveSessions[a.id] ?? a.session
+      const sessionB = liveSessions[b.id] ?? b.session
+      if (sortMode === 'name') return a.name.localeCompare(b.name)
+      if (sortMode === 'status') {
+        const sa = STATUS_ORDER[sessionA?.status?.toLowerCase() ?? ''] ?? 99
+        const sb = STATUS_ORDER[sessionB?.status?.toLowerCase() ?? ''] ?? 99
+        return sa - sb
+      }
+      if (sortMode === 'duration') {
+        const ta = sessionA?.seated_at
+          ? new Date(sessionA.seated_at).getTime()
+          : Infinity
+        const tb = sessionB?.seated_at
+          ? new Date(sessionB.seated_at).getTime()
+          : Infinity
+        return ta - tb // oldest first
+      }
+      return 0
+    })
     return filtered
-  }, [activeTables, selectedSectionId, selectedServerId, liveSessions])
+  }, [activeTables, selectedServerId, liveSessions, sortMode])
 
   const occupiedTables = useMemo(() => {
-    // Active session statuses (Phase 4.1: Include paid but not closed tables)
-    const activeSessionStatuses = [
+    const activeStatuses = [
       'seated',
       'ordered',
       'served',
       'check_presented',
-      'paid' // Include paid tables (not yet cleared/closed)
+      'paid'
     ]
-
     return displayTables.filter(table => {
       const session = liveSessions[table.id] ?? table.session
-      return activeSessionStatuses.includes(session?.status?.toLowerCase() || '')
+      return activeStatuses.includes(session?.status?.toLowerCase() || '')
     })
   }, [displayTables, liveSessions])
 
-  // Also include cleaning?
-  // Previous logic: 'In Use' or 'Needs Cleaning'.
-
   const totalTables = displayTables.length
-
   const capacityPercentage = useMemo(
     () =>
       totalTables > 0
@@ -184,20 +320,13 @@ const TablesPanel: React.FC = () => {
   )
 
   const [refreshing, setRefreshing] = useState(false)
-
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
       const locationId = useStoreSettingsStore.getState().selectedStore?.id
-      const { loadFloorPlanStatus } = useFloorPlanStore.getState()
-
-      // 1. Refresh Floor Plan Status (Waitlist, Tables, etc.)
-      await loadFloorPlanStatus()
-
-      // 2. Refresh Orders (Full sync)
-      if (locationId) {
+      await useFloorPlanStore.getState().loadFloorPlanStatus()
+      if (locationId)
         await useOrderStore.getState().initializeOrders(locationId, true)
-      }
     } catch (error) {
       console.error('Failed to refresh sidebar:', error)
     } finally {
@@ -208,170 +337,117 @@ const TablesPanel: React.FC = () => {
   const isSectionOpen = activeFloorPlanId
     ? sections[activeFloorPlanId] ?? true
     : true
-
   const handleToggleSection = useCallback(() => {
-    if (activeFloorPlanId) {
-      setSections(s => ({
-        ...s,
-        [activeFloorPlanId]: !s[activeFloorPlanId]
-      }))
-    }
+    if (activeFloorPlanId)
+      setSections(s => ({ ...s, [activeFloorPlanId]: !s[activeFloorPlanId] }))
   }, [activeFloorPlanId])
 
   const noopFn = useCallback(() => {}, [])
-
+  const toggleTableExpand = useCallback((tableId: string) => {
+    setExpandedTableIds(prev => ({ ...prev, [tableId]: !prev[tableId] }))
+  }, [])
   const renderTableItem = useCallback(
     ({ item }: { item: FloorPlanObject }) => (
       <TableListItem
         key={item.id}
         table={item}
-        isExpanded={false}
-        onToggleExpand={noopFn}
+        isExpanded={expandedTableIds[item.id] || false}
+        onToggleExpand={() => toggleTableExpand(item.id)}
         onNavigateToOrder={noopFn}
         handleTablePress={noopFn}
       />
     ),
-    [noopFn]
+    [expandedTableIds, noopFn, toggleTableExpand]
   )
-
   const keyExtractor = useCallback((item: FloorPlanObject) => item.id, [])
 
-  const ListEmptyComponent = useMemo(
-    () => (
-      <Text className='text-gray-400 text-sm p-2 italic'>
-        No tables assigned
-      </Text>
-    ),
-    []
-  )
-
   return (
-    <View className='h-full flex-col bg-panel'>
-      <View className='p-4 border-b border-gray-700'>
-        <View className='flex-row items-center justify-between text-xs text-gray-400 font-medium'>
-          <Text className='text-gray-400'>
+    <View
+      style={{
+        flex: 1,
+        flexDirection: 'column',
+        backgroundColor: colors.screen
+      }}
+    >
+      {/* Capacity bar */}
+      <View
+        style={{
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginBottom: 6
+          }}
+        >
+          <Text style={{ fontSize: 11, color: colors.muted }}>
             {occupiedTables.length}/{totalTables} tables
           </Text>
-          <Text className='text-gray-400'>{capacityPercentage}% capacity</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>
+            {capacityPercentage}% capacity
+          </Text>
         </View>
-        <View className='mt-2 h-2 bg-gray-700 rounded-full overflow-hidden'>
+        <View
+          style={{
+            height: 4,
+            backgroundColor: colors.card,
+            borderRadius: 2,
+            overflow: 'hidden'
+          }}
+        >
           <View
-            style={{ width: `${capacityPercentage}%` }}
-            className='h-full bg-blue-500'
+            style={{
+              width: `${capacityPercentage}%`,
+              height: '100%',
+              backgroundColor: colors.teal,
+              borderRadius: 2
+            }}
           />
         </View>
       </View>
 
-      {/* Filters */}
-      <View className='p-3 border-b border-gray-700'>
-        {/* Section Filter */}
-        {uniqueSections.length > 0 && (
-          <View className='mb-3'>
-            <Text className='text-xs text-gray-500 font-semibold mb-2'>
-              Section
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className='flex-row gap-2'
-            >
-              <TouchableOpacity
-                onPress={() => setSelectedSectionId(null)}
-                className={`px-3 py-1.5 rounded-full ${
-                  selectedSectionId === null ? 'bg-teal' : 'bg-gray-700'
-                }`}
-              >
-                <Text
-                  className={`text-xs font-semibold ${
-                    selectedSectionId === null ? 'text-white' : 'text-gray-300'
-                  }`}
-                >
-                  All
-                </Text>
-              </TouchableOpacity>
-              {uniqueSections.map(sectionId => {
-                const section = sectionsById[sectionId]
-                return (
-                  <TouchableOpacity
-                    key={sectionId}
-                    onPress={() => setSelectedSectionId(sectionId)}
-                    className={`px-3 py-1.5 rounded-full border ${
-                      selectedSectionId === sectionId
-                        ? 'bg-teal border-teal'
-                        : 'bg-gray-700 border-gray-600'
-                    }`}
-                  >
-                    <Text
-                      className={`text-xs font-semibold ${
-                        selectedSectionId === sectionId
-                          ? 'text-white'
-                          : 'text-gray-300'
-                      }`}
-                      numberOfLines={1}
-                    >
-                      {section?.name || sectionId.substring(0, 6)}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Server Filter */}
-        {uniqueServers.length > 0 && (
-          <View>
-            <Text className='text-xs text-gray-500 font-semibold mb-2'>
-              Server
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className='flex-row gap-2'
-            >
-              <TouchableOpacity
-                onPress={() => setSelectedServerId(null)}
-                className={`px-3 py-1.5 rounded-full ${
-                  selectedServerId === null ? 'bg-teal' : 'bg-gray-700'
-                }`}
-              >
-                <Text
-                  className={`text-xs font-semibold ${
-                    selectedServerId === null ? 'text-white' : 'text-gray-300'
-                  }`}
-                >
-                  All
-                </Text>
-              </TouchableOpacity>
-              {uniqueServers.map(serverId => (
-                <TouchableOpacity
-                  key={serverId}
-                  onPress={() => setSelectedServerId(serverId)}
-                  className={`px-3 py-1.5 rounded-full border ${
-                    selectedServerId === serverId
-                      ? 'bg-teal border-teal'
-                      : 'bg-gray-700 border-gray-600'
-                  }`}
-                >
-                  <Text
-                    className={`text-xs font-semibold ${
-                      selectedServerId === serverId
-                        ? 'text-white'
-                        : 'text-gray-300'
-                    }`}
-                    numberOfLines={1}
-                  >
-                    {serverNames[serverId] || serverId.substring(0, 8)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+      {/* Filters + Sort */}
+      <View
+        style={{
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          gap: 6,
+          zIndex: 10
+        }}
+      >
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <InlineSelect
+            label='Server'
+            value={selectedServerId}
+            options={uniqueServers.map(id => ({
+              value: id,
+              label: serverNames[id] || id.substring(0, 8)
+            }))}
+            onSelect={setSelectedServerId}
+          />
+          <InlineSelect
+            label='Sort'
+            value={sortMode}
+            options={[
+              { value: 'name', label: 'Name' },
+              { value: 'status', label: 'Status' },
+              { value: 'duration', label: 'Duration' }
+            ]}
+            onSelect={v => v && setSortMode(v)}
+            nullable={false}
+          />
+        </View>
       </View>
 
-      {/* Table Sections (Just one for active plan now) */}
-      <View className='flex-1 p-2'>
+      {/* Table list */}
+      <View style={{ flex: 1, padding: 8 }}>
         <Section
           title={activePlanName}
           isOpen={isSectionOpen}
@@ -382,18 +458,27 @@ const TablesPanel: React.FC = () => {
               data={displayTables}
               keyExtractor={keyExtractor}
               renderItem={renderTableItem}
-              ListEmptyComponent={ListEmptyComponent}
+              ListEmptyComponent={
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: colors.muted,
+                    padding: 8,
+                    fontStyle: 'italic'
+                  }}
+                >
+                  No tables assigned
+                </Text>
+              }
               initialNumToRender={8}
               maxToRenderPerBatch={5}
               windowSize={3}
-              removeClippedSubviews={true}
+              removeClippedSubviews={false}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
                   onRefresh={handleRefresh}
-                  tintColor='#ffffff'
-                  title='Syncing...'
-                  titleColor='#ffffff'
+                  tintColor={colors.teal}
                 />
               }
             />

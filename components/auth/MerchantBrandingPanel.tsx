@@ -13,7 +13,7 @@ import {
   Power,
   RefreshCw,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
 const MerchantBrandingPanel = () => {
@@ -55,45 +55,96 @@ const MerchantBrandingPanel = () => {
   };
 
   return (
-    <View className="flex-1 h-full rounded-2xl bg-panel p-8 justify-between">
-      {/* Top Section: Logo + Store Name */}
-      <View className="items-center">
+    <View
+      style={{
+        flex: 1,
+        height: "100%",
+        borderRadius: 16,
+        backgroundColor: colors.panel,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 24,
+        justifyContent: "space-between",
+      }}
+    >
+      {/* Top: Logo + Store Name */}
+      <View style={{ alignItems: "center", gap: 10 }}>
         {showOrgLogo ? (
           <Image
             source={{ uri: organizationLogoUrl }}
-            className="w-28 h-28 rounded-2xl mb-4"
+            style={{ width: 64, height: 64, borderRadius: 12 }}
             resizeMode="contain"
             onError={() => setLogoError(true)}
           />
         ) : (
           <Image
             source={images.dexalogo}
-            className="w-28 h-28 rounded-2xl mb-4"
+            style={{ width: 64, height: 64, borderRadius: 12 }}
             resizeMode="contain"
           />
         )}
         {selectedStore && (
-          <Text className="text-white text-2xl font-bold text-center">
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: "700",
+              color: colors.heading,
+              textAlign: "center",
+            }}
+          >
             {selectedStore.name}
           </Text>
         )}
       </View>
 
-      {/* Middle Section: Clock, Location, Station, Weather */}
-      <View className="items-center gap-6">
+      {/* Middle: Clock, Location, Station, Weather */}
+      <View style={{ alignItems: "center", gap: 16 }}>
         {/* Live Clock */}
-        <View className="items-center">
-          <Text className="text-white text-5xl font-light tracking-wider">
+        <View style={{ alignItems: "center" }}>
+          <Text
+            style={{
+              fontSize: 48,
+              fontWeight: "200",
+              color: colors.heading,
+              letterSpacing: 2,
+            }}
+          >
             {time}
           </Text>
-          <Text className="text-gray-400 text-lg mt-1">{date}</Text>
+          <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+            {date}
+          </Text>
         </View>
+
+        {/* Divider */}
+        <View
+          style={{
+            width: "60%",
+            height: 1,
+            backgroundColor: colors.border,
+          }}
+        />
 
         {/* Location */}
         {selectedStore && (
-          <View className="flex-row items-center gap-2">
-            <MapPin size={16} color={colors.label} />
-            <Text className="text-gray-400 text-base">
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 6,
+              paddingHorizontal: 8,
+            }}
+          >
+            <MapPin size={13} color={colors.muted} style={{ marginTop: 1 }} />
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.muted,
+                textAlign: "center",
+                flex: 1,
+                lineHeight: 16,
+              }}
+            >
               {selectedStore.address_line1}
               {selectedStore.address_line2
                 ? `, ${selectedStore.address_line2}`
@@ -105,48 +156,86 @@ const MerchantBrandingPanel = () => {
           </View>
         )}
 
-        {/* Station */}
+        {/* Station badge */}
         {selectedStation && (
-          <View className="flex-row items-center gap-2 bg-card px-4 py-2 rounded-lg">
-            <Monitor size={16} color={colors.info} />
-            <Text className="text-blue-400 text-base font-medium">
-              {selectedStation.station_name} #{selectedStation.station_number}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: colors.teal + "15",
+              borderWidth: 1,
+              borderColor: colors.teal + "40",
+              borderRadius: 20,
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+            }}
+          >
+            <Monitor size={13} color={colors.teal} />
+            <Text
+              style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}
+            >
+              {selectedStation.station_name}
+              {selectedStation.station_number > 0
+                ? ` #${selectedStation.station_number}`
+                : ""}
             </Text>
           </View>
         )}
 
         {/* Weather */}
         {weather && (
-          <View className="flex-row items-center gap-2">
-            <Cloud size={16} color={colors.label} />
-            <Text className="text-gray-400 text-base">
-              {weather.temperature}\u00B0F \u2022 {weather.description}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Cloud size={13} color={colors.muted} />
+            <Text style={{ fontSize: 11, color: colors.muted }}>
+              {weather.temperature}&deg;F &bull; {weather.description}
             </Text>
           </View>
         )}
       </View>
 
-      {/* Bottom Section: Actions */}
-      <View className="gap-3">
+      {/* Bottom: Actions */}
+      <View style={{ gap: 8 }}>
         <TouchableOpacity
           onPress={handleRefresh}
           disabled={isRefreshing}
-          className={`flex-row items-center justify-center gap-2 py-3 bg-blue-600/20 border border-blue-500/30 rounded-xl ${
-            isRefreshing && "opacity-50"
-          }`}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            paddingVertical: 10,
+            backgroundColor: colors.teal + "15",
+            borderWidth: 1,
+            borderColor: colors.teal + "40",
+            borderRadius: 10,
+            opacity: isRefreshing ? 0.5 : 1,
+          }}
         >
-          <RefreshCw size={18} color={colors.info} />
-          <Text className="text-blue-400 text-base font-semibold">
+          <RefreshCw size={14} color={colors.teal} />
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
             {isRefreshing ? "Refreshing..." : "Refresh Data"}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setDeactivateModalOpen(true)}
-          className="flex-row items-center justify-center gap-2 py-3 bg-red-600/20 border border-red-500/30 rounded-xl"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            paddingVertical: 10,
+            backgroundColor: colors.danger + "15",
+            borderWidth: 1,
+            borderColor: colors.danger + "30",
+            borderRadius: 10,
+          }}
         >
-          <Power size={18} color={colors.danger} />
-          <Text className="text-red-400 text-base font-semibold">
+          <Power size={14} color={colors.danger} />
+          <Text
+            style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}
+          >
             Deactivate Terminal
           </Text>
         </TouchableOpacity>

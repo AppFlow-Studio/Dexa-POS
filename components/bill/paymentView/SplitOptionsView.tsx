@@ -8,29 +8,29 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.screen },
   header: {
     flexDirection: "row", alignItems: "center",
-    padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 30, height: 30, borderRadius: 8,
     backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border,
-    alignItems: "center", justifyContent: "center", marginRight: 12,
+    alignItems: "center", justifyContent: "center", marginRight: 10,
   },
-  headerTitle: { fontSize: 18, fontWeight: "700", color: colors.heading },
-  headerSub: { fontSize: 12, color: colors.muted, marginTop: 1 },
-  grid: { flexDirection: "row", gap: 12 },
+  headerTitle: { fontSize: 15, fontWeight: "700", color: colors.heading },
+  headerSub: { fontSize: 11, color: colors.muted, marginTop: 1 },
+  grid: { flexDirection: "row", gap: 10 },
   card: {
     flex: 1, backgroundColor: colors.panel,
-    borderRadius: 14, padding: 16,
+    borderRadius: 12, padding: 14,
     borderWidth: 1, borderColor: colors.border,
-    justifyContent: "space-between", minHeight: 160,
+    justifyContent: "space-between", minHeight: 120,
   },
   iconBox: {
-    width: 44, height: 44, borderRadius: 10,
+    width: 36, height: 36, borderRadius: 9,
     alignItems: "center", justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  cardTitle: { fontSize: 14, fontWeight: "700", color: colors.heading, marginBottom: 4 },
-  cardDesc: { fontSize: 12, color: colors.muted, lineHeight: 17 },
+  cardTitle: { fontSize: 13, fontWeight: "700", color: colors.heading, marginBottom: 3 },
+  cardDesc: { fontSize: 11, color: colors.muted, lineHeight: 15 },
 });
 
 const SplitOptionsView: React.FC = () => {
@@ -55,14 +55,14 @@ const SplitOptionsView: React.FC = () => {
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 10 }} showsVerticalScrollIndicator={false}>
         <View style={styles.grid}>
           {options.slice(0, 2).map((opt) => {
             const Icon = opt.icon;
             return (
               <TouchableOpacity key={opt.title} style={styles.card} onPress={() => setView(opt.view)} activeOpacity={0.8}>
                 <View style={[styles.iconBox, { backgroundColor: opt.bg }]}>
-                  <Icon size={22} color={opt.color} />
+                  <Icon size={18} color={opt.color} />
                 </View>
                 <View>
                   <Text style={styles.cardTitle}>{opt.title}</Text>
@@ -78,7 +78,7 @@ const SplitOptionsView: React.FC = () => {
             return (
               <TouchableOpacity key={opt.title} style={styles.card} onPress={() => setView(opt.view)} activeOpacity={0.8}>
                 <View style={[styles.iconBox, { backgroundColor: opt.bg }]}>
-                  <Icon size={22} color={opt.color} />
+                  <Icon size={18} color={opt.color} />
                 </View>
                 <View>
                   <Text style={styles.cardTitle}>{opt.title}</Text>

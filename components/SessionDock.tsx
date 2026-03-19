@@ -11,12 +11,14 @@ import { colors } from "@/lib/theme";
 import {
   ArrowLeftRight,
   Bell,
+  ChevronDown,
   Coffee,
   LogOut,
   User,
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
 import PinInputModal from "./timeclock/PinInputModal";
@@ -361,6 +363,19 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 const SessionDock = () => {
   const { sessions, activeEmployeeId } = useTimeclockStore();
   const [isSwitchModalOpen, setSwitchModalOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const rotation = useSharedValue(0);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const toggleExpand = () => {
+    const next = !isExpanded;
+    setIsExpanded(next);
+    rotation.value = withTiming(next ? 180 : 0, { duration: 200 });
+  };
 
   const activeSessionId = Object.keys(sessions).find(
     (id) => sessions[id].employeeId === activeEmployeeId
@@ -371,11 +386,30 @@ const SessionDock = () => {
 
   return (
     <>
-      <View className="flex-row items-center gap-3">
-        {activeSessionId && <SessionChip sessionId={activeSessionId} />}
-        {otherSessionIds.map((id) => (
+      <View className="flex-row items-center gap-2">
+        {/* Other sessions — only visible when expanded */}
+        {isExpanded && otherSessionIds.map((id) => (
           <SessionChip key={id} sessionId={id} />
         ))}
+
+        {/* Active session always visible */}
+        {activeSessionId && <SessionChip sessionId={activeSessionId} />}
+
+        {/* Expand toggle — only show if there are other sessions */}
+        {otherSessionIds.length > 0 && (
+          <TouchableOpacity
+            onPress={toggleExpand}
+            activeOpacity={0.7}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)' }}
+          >
+            <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#2DD4BF33', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#2DD4BF', fontSize: 9, fontWeight: 'bold' }}>{otherSessionIds.length}</Text>
+            </View>
+            <Animated.View style={chevronStyle}>
+              <ChevronDown size={12} color={colors.label} />
+            </Animated.View>
+          </TouchableOpacity>
+        )}
       </View>
       <SwitchAccountModal
         isOpen={isSwitchModalOpen}

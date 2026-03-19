@@ -30,6 +30,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -77,7 +78,7 @@ const SkeletonBar = ({
         {
           width: typeof width === "number" ? width : undefined,
           height,
-          backgroundColor: "#4B5563",
+          backgroundColor: colors.border,
           borderRadius: 8,
         },
         animatedStyle,
@@ -109,7 +110,6 @@ interface FilterPillProps {
   onPress: () => void;
   icon?: React.ReactNode;
   count?: number;
-  activeBg?: string;
 }
 
 const FilterPill = ({
@@ -118,30 +118,37 @@ const FilterPill = ({
   onPress,
   icon,
   count,
-  activeBg = "bg-blue-600",
 }: FilterPillProps) => (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
-    className={`flex-row items-center gap-1.5 px-3 py-2 rounded-full border ${
-      isActive
-        ? `${activeBg} border-transparent`
-        : "bg-panel border-gray-600"
-    }`}
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      backgroundColor: isActive ? colors.teal : colors.screen,
+      borderColor: isActive ? colors.teal : colors.border,
+    }}
   >
     {icon}
-    <Text
-      className={`text-sm font-semibold ${isActive ? "text-white" : "text-gray-400"}`}
-    >
+    <Text style={{ fontSize: 12, fontWeight: "600", color: isActive ? colors.onSolid : colors.label }}>
       {label}
     </Text>
     {count != null && count > 0 && (
       <View
-        className={`rounded-full px-1.5 min-w-[20px] items-center ${isActive ? "bg-white/20" : "bg-gray-600"}`}
+        style={{
+          borderRadius: 999,
+          paddingHorizontal: 6,
+          minWidth: 20,
+          alignItems: "center",
+          backgroundColor: isActive ? colors.onSolid + "30" : colors.card,
+        }}
       >
-        <Text
-          className={`text-xs font-bold ${isActive ? "text-white" : "text-gray-300"}`}
-        >
+        <Text style={{ fontSize: 11, fontWeight: "700", color: isActive ? colors.onSolid : colors.label }}>
           {count}
         </Text>
       </View>
@@ -167,31 +174,43 @@ const SortSegmentGroup = ({
 
   return (
     <View
-      className="flex-row items-center rounded-lg overflow-hidden border border-border"
-      style={{ backgroundColor: "rgba(31, 41, 55, 0.5)" }}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        borderRadius: 8,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.panel,
+      }}
     >
       {segments.map((seg, idx) => {
         const isActive = sortBy === seg.key;
         return (
           <React.Fragment key={seg.key}>
             {idx > 0 && (
-              <View style={{ width: 1, backgroundColor: "#374151", alignSelf: "stretch" }} />
+              <View style={{ width: 1, backgroundColor: colors.border, alignSelf: "stretch" }} />
             )}
             <TouchableOpacity
               onPress={() => onSortChange(seg.key)}
               activeOpacity={0.7}
-              className={`flex-row items-center gap-1 px-3 py-2 ${isActive ? "bg-blue-600" : ""}`}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                backgroundColor: isActive ? colors.teal + "20" : "transparent",
+              }}
             >
-              <Text
-                className={`text-sm ${isActive ? "font-bold text-white" : "text-gray-400"}`}
-              >
+              <Text style={{ fontSize: 12, fontWeight: isActive ? "700" : "600", color: isActive ? colors.teal : colors.label }}>
                 {seg.label}
               </Text>
               {isActive &&
                 (sortOrder === "desc" ? (
-                  <ArrowDown color="#FFFFFF" size={12} />
+                  <ArrowDown color={colors.teal} size={12} />
                 ) : (
-                  <ArrowUp color="#FFFFFF" size={12} />
+                  <ArrowUp color={colors.teal} size={12} />
                 ))}
             </TouchableOpacity>
           </React.Fragment>
@@ -542,107 +561,87 @@ const PreviousOrdersScreen = () => {
     >
       <View className="flex-1 p-4 bg-screen">
         {/* ─── Toolbar ─────────────────────────────────── */}
-        <View className="mb-4 flex-row items-center gap-2 flex-wrap">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
           {/* Search bar */}
-          <View className="flex-row items-center bg-panel border border-gray-700 rounded-lg px-3 w-[350px]">
-            <Search color={colors.label} size={20} />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              width: 340,
+            }}
+          >
+            <Search color={colors.label} size={15} />
             <TextInput
-              placeholder="Search Order ID or Customer..."
-              placeholderTextColor={colors.label}
+              placeholder="Search order or customer..."
+              placeholderTextColor={colors.muted}
               value={searchText}
               onChangeText={setSearchText}
-              className="ml-2 text-lg px-4 py-3 h-14 flex-1 text-white"
+              style={{
+                marginLeft: 6,
+                fontSize: 13,
+                paddingVertical: 8,
+                height: 36,
+                flex: 1,
+                color: colors.heading,
+              }}
             />
           </View>
 
-          {/* Filter Pills */}
-          <FilterPill
-            label="Needs Attention"
-            isActive={activeFilters.has("needs-attention")}
-            onPress={() => toggleFilter("needs-attention")}
-            icon={
-              <AlertTriangle
-                color={
-                  activeFilters.has("needs-attention")
-                    ? "#FFFFFF"
-                    : "#EAB308"
-                }
-                size={14}
-              />
-            }
-            count={filterCounts.needsAttention}
-            activeBg="bg-yellow-600"
-          />
-          <FilterPill
-            label="Refunded"
-            isActive={activeFilters.has("refunded")}
-            onPress={() => toggleFilter("refunded")}
-            icon={
-              <RotateCcw
-                color={
-                  activeFilters.has("refunded") ? "#FFFFFF" : "#EF4444"
-                }
-                size={14}
-              />
-            }
-            count={filterCounts.refunded}
-            activeBg="bg-red-600"
-          />
-          <FilterPill
-            label="Dine-In"
-            isActive={activeFilters.has("dine-in")}
-            onPress={() => toggleFilter("dine-in")}
-            icon={
-              <Utensils
-                color={
-                  activeFilters.has("dine-in") ? "#FFFFFF" : "#A78BFA"
-                }
-                size={14}
-              />
-            }
-            count={filterCounts.dineIn}
-            activeBg="bg-purple-600"
-          />
-          <FilterPill
-            label="Takeaway"
-            isActive={activeFilters.has("takeaway")}
-            onPress={() => toggleFilter("takeaway")}
-            icon={
-              <ShoppingBag
-                color={
-                  activeFilters.has("takeaway") ? "#FFFFFF" : "#FB923C"
-                }
-                size={14}
-              />
-            }
-            count={filterCounts.takeaway}
-            activeBg="bg-orange-600"
-          />
-          <FilterPill
-            label="Delivery"
-            isActive={activeFilters.has("delivery")}
-            onPress={() => toggleFilter("delivery")}
-            icon={
-              <Truck
-                color={
-                  activeFilters.has("delivery") ? "#FFFFFF" : "#22D3EE"
-                }
-                size={14}
-              />
-            }
-            count={filterCounts.delivery}
-            activeBg="bg-cyan-600"
-          />
-
-          {/* Sort controls — cohesive pill group */}
-          <View className="ml-auto flex-row items-center gap-2">
-            <Text className="text-xs text-gray-500">Sort:</Text>
-            <SortSegmentGroup
-              sortBy={sortBy}
-              sortOrder={sortOrder}
-              onSortChange={handleSortChange}
+          {/* Scrollable filter pills */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6, alignItems: "center" }}
+            style={{ flex: 1 }}
+          >
+            <FilterPill
+              label="Needs Attention"
+              isActive={activeFilters.has("needs-attention")}
+              onPress={() => toggleFilter("needs-attention")}
+              icon={<AlertTriangle color={activeFilters.has("needs-attention") ? colors.onSolid : colors.warning} size={13} />}
+              count={filterCounts.needsAttention}
             />
-          </View>
+            <FilterPill
+              label="Refunded"
+              isActive={activeFilters.has("refunded")}
+              onPress={() => toggleFilter("refunded")}
+              icon={<RotateCcw color={activeFilters.has("refunded") ? colors.onSolid : colors.danger} size={13} />}
+              count={filterCounts.refunded}
+            />
+            <FilterPill
+              label="Dine-In"
+              isActive={activeFilters.has("dine-in")}
+              onPress={() => toggleFilter("dine-in")}
+              icon={<Utensils color={activeFilters.has("dine-in") ? colors.onSolid : colors.teal} size={13} />}
+              count={filterCounts.dineIn}
+            />
+            <FilterPill
+              label="Takeaway"
+              isActive={activeFilters.has("takeaway")}
+              onPress={() => toggleFilter("takeaway")}
+              icon={<ShoppingBag color={activeFilters.has("takeaway") ? colors.onSolid : colors.warning} size={13} />}
+              count={filterCounts.takeaway}
+            />
+            <FilterPill
+              label="Delivery"
+              isActive={activeFilters.has("delivery")}
+              onPress={() => toggleFilter("delivery")}
+              icon={<Truck color={activeFilters.has("delivery") ? colors.onSolid : colors.info} size={13} />}
+              count={filterCounts.delivery}
+            />
+          </ScrollView>
+
+          {/* Sort segment pinned right */}
+          <SortSegmentGroup
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={handleSortChange}
+          />
         </View>
 
         {/* ─── Order List ──────────────────────────────── */}
@@ -653,10 +652,10 @@ const PreviousOrdersScreen = () => {
             renderItem={renderItem}
             ListEmptyComponent={
               <View className="items-center justify-center py-16">
-                <Text className="text-xl text-gray-500">
+                <Text style={{ fontSize: 20, color: colors.muted }}>
                   No orders found
                 </Text>
-                <Text className="text-sm text-gray-600 mt-2">
+                <Text style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>
                   Try adjusting your filters or search
                 </Text>
               </View>
@@ -665,8 +664,8 @@ const PreviousOrdersScreen = () => {
               <RefreshControl
                 refreshing={isRefreshing}
                 onRefresh={handleRefresh}
-                tintColor="#3B82F6"
-                colors={["#3B82F6"]}
+                tintColor={colors.teal}
+                colors={[colors.teal]}
               />
             }
             contentContainerStyle={{ paddingTop: 4, paddingBottom: 16 }}
@@ -687,17 +686,23 @@ const PreviousOrdersScreen = () => {
               <TouchableOpacity
                 onPress={handleRefresh}
                 activeOpacity={0.8}
-                className="flex-row items-center gap-2 px-5 py-3 rounded-full bg-green-600 shadow-lg"
                 style={{
-                  shadowColor: "#22c55e",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingHorizontal: 20,
+                  paddingVertical: 12,
+                  borderRadius: 999,
+                  backgroundColor: colors.teal,
+                  shadowColor: colors.teal,
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.3,
                   shadowRadius: 8,
                   elevation: 8,
                 }}
               >
-                <RefreshCw size={16} color="#fff" />
-                <Text className="text-white font-semibold text-sm">
+                <RefreshCw size={16} color={colors.onSolid} />
+                <Text style={{ color: colors.onSolid, fontWeight: "600", fontSize: 14 }}>
                   {newOrdersCount} New Order{newOrdersCount > 1 ? "s" : ""} - Tap
                   to Refresh
                 </Text>

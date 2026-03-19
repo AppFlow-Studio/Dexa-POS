@@ -1,4 +1,5 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { colors, spinnerColor } from "@/lib/theme";
 import React, {
   createContext,
   ReactNode,
@@ -46,38 +47,53 @@ export const LoadingProvider = ({ children }: { children: ReactNode }) => {
       {/* Global Loading Dialog */}
       <Dialog open={isLoading}>
         <DialogContent className="w-fit min-w-[120px] max-w-[280px]">
-          <View className="rounded-2xl p-6 items-center bg-[#1a1a1a] border border-gray-800">
-            {/* Glowing spinner container */}
-            <View className="relative mb-4">
-              {/* Outer glow ring */}
-              <View
-                className="absolute -inset-2 rounded-full opacity-30"
-                style={{
-                  backgroundColor: "#3B82F6",
-                  shadowColor: "#3B82F6",
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0.8,
-                  shadowRadius: 20,
-                }}
-              />
-              {/* Spinner background */}
-              <View className="w-16 h-16 rounded-full bg-gray-800/50 items-center justify-center border border-gray-700">
-                <ActivityIndicator size="large" color="#3B82F6" />
-              </View>
+          <View
+            style={{
+              borderRadius: 14,
+              paddingVertical: 24,
+              paddingHorizontal: 28,
+              alignItems: "center",
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            {/* Spinner */}
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 999,
+                backgroundColor: colors.teal + "15",
+                borderWidth: 1,
+                borderColor: colors.teal + "40",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 14,
+              }}
+            >
+              <ActivityIndicator size="small" color={spinnerColor} />
             </View>
 
-            {/* Message (only if provided) */}
+            {/* Message */}
             {message && (
-              <Text className="text-gray-200 text-base font-medium text-center">
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "600",
+                  color: colors.heading,
+                  textAlign: "center",
+                }}
+              >
                 {message}
               </Text>
             )}
 
-            {/* Decorative dots animation placeholder */}
-            <View className="flex-row gap-1.5 mt-3">
-              <View className="w-2 h-2 rounded-full bg-blue-500 opacity-80" />
-              <View className="w-2 h-2 rounded-full bg-blue-500 opacity-50" />
-              <View className="w-2 h-2 rounded-full bg-blue-500 opacity-30" />
+            {/* Dots */}
+            <View style={{ flexDirection: "row", gap: 5, marginTop: 10 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 999, backgroundColor: colors.teal, opacity: 0.9 }} />
+              <View style={{ width: 5, height: 5, borderRadius: 999, backgroundColor: colors.teal, opacity: 0.5 }} />
+              <View style={{ width: 5, height: 5, borderRadius: 999, backgroundColor: colors.teal, opacity: 0.25 }} />
             </View>
           </View>
         </DialogContent>

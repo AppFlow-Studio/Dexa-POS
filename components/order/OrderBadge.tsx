@@ -4,7 +4,8 @@ import { useWasOrderRecentlyUpdated } from "@/stores/useConflictStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { formatOrderStatus } from "@/utils/orderStatusHelpers";
 import {
-  CheckCircle,
+  CheckCircle2,
+  ChevronRight,
   CreditCard,
   Eye,
   MoreHorizontal,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   Repeat2,
   RotateCcw,
+  ShoppingBag,
 } from "lucide-react-native";
 import React, { useCallback, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -188,310 +190,258 @@ const PopoverContent = React.memo<PopoverContentProps>(
 
     return (
       <View
-        className="rounded-xl shadow-lg border w-[340px]"
-        style={{ backgroundColor: colors.card, borderColor: colors.border }}
+        style={{
+          width: 300,
+          backgroundColor: colors.panel,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: "hidden",
+        }}
       >
-        {/* ── Row 1: Order ID · Type · Status pill ── */}
-        <View className="px-4 pt-4 pb-2">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2 flex-1 mr-2">
-              <Text className="text-lg font-bold" style={{ color: colors.heading }}>
+        {/* ── Header: dark screen-bg strip ── */}
+        <View
+          style={{
+            backgroundColor: colors.screen,
+            paddingHorizontal: 14,
+            paddingTop: 12,
+            paddingBottom: 10,
+          }}
+        >
+          {/* Order ID + status pill */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, marginRight: 8 }}>
+              {/* Icon box */}
+              <View style={{
+                width: 30, height: 30, borderRadius: 8,
+                backgroundColor: colors.teal + "15",
+                alignItems: "center", justifyContent: "center",
+              }}>
+                <ShoppingBag size={14} color={colors.teal} />
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
                 {displayId}
               </Text>
-              <Text style={{ color: colors.muted }}>·</Text>
-              <Text className="text-sm" style={{ color: colors.muted }}>
-                {order.order_type}
-              </Text>
+              {order.order_type ? (
+                <Text style={{ fontSize: 12, color: colors.muted }}>· {order.order_type}</Text>
+              ) : null}
             </View>
-            <View
-              className="px-2.5 py-1 rounded-full"
-              style={{ backgroundColor: statusPill.bg }}
-            >
-              <Text
-                className="text-xs font-semibold"
-                style={{ color: statusPill.textColor }}
-              >
+            <View style={{
+              paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
+              backgroundColor: statusPill.bg,
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: statusPill.textColor }}>
                 {statusPill.label}
               </Text>
             </View>
           </View>
 
-          {/* ── Row 2: Customer · Items · Time ── */}
-          <View className="flex-row items-center justify-between mt-1.5">
-            <View className="flex-row items-center gap-1.5 flex-1">
-              <Text className="text-sm" style={{ color: colors.label }}>
+          {/* Customer · Items · Time */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>
                 {order.customer_name || "Walk-In"}
               </Text>
               <Text style={{ color: colors.muted }}>·</Text>
-              <Text className="text-sm" style={{ color: colors.muted }}>
+              <Text style={{ fontSize: 12, color: colors.muted }}>
                 {order.items.length} item{order.items.length !== 1 ? "s" : ""}
               </Text>
             </View>
-            <Text className="text-sm" style={{ color: colors.muted }}>
-              {formattedTime}
-            </Text>
+            <Text style={{ fontSize: 11, color: colors.muted }}>{formattedTime}</Text>
           </View>
 
-          {/* ── Row 3: Status chips ── */}
-          <View className="flex-row flex-wrap gap-1.5 mt-2">
-            {/* Order Type chip */}
-            {order.order_type ? (
-              <View
-                className="px-2 py-0.5 rounded-md"
-                style={{ backgroundColor: "rgba(96,165,250,0.15)" }}
-              >
-                <Text
-                  className="text-xs font-medium"
-                  style={{ color: colors.info }}
-                >
-                  {order.order_type}
-                </Text>
-              </View>
-            ) : null}
-            {/* Order Status chip */}
+          {/* Chips row */}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 7 }}>
             {order.order_status ? (
-              <View
-                className="px-2 py-0.5 rounded-md"
-                style={{
-                  backgroundColor:
-                    getOrderDotColor(order.order_status, refundStatus) + "26",
-                }}
-              >
-                <Text
-                  className="text-xs font-medium"
-                  style={{
-                    color: getOrderDotColor(order.order_status, refundStatus),
-                  }}
-                >
+              <View style={{
+                paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                backgroundColor: getOrderDotColor(order.order_status, refundStatus) + "20",
+                borderWidth: 1,
+                borderColor: getOrderDotColor(order.order_status, refundStatus) + "40",
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: getOrderDotColor(order.order_status, refundStatus) }}>
                   {formatOrderStatus(order.order_status)}
                 </Text>
               </View>
             ) : null}
-            {/* Check Status chip */}
             {order.check_status ? (
-              <View
-                className="px-2 py-0.5 rounded-md"
-                style={{
-                  backgroundColor:
-                    order.check_status === "Opened"
-                      ? "rgba(34,197,94,0.15)"
-                      : "rgba(156,163,175,0.15)",
-                }}
-              >
-                <Text
-                  className="text-xs font-medium"
-                  style={{
-                    color:
-                      order.check_status === "Opened"
-                        ? colors.success
-                        : colors.muted,
-                  }}
-                >
+              <View style={{
+                paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20,
+                backgroundColor: order.check_status === "Opened" ? colors.success + "20" : colors.muted + "20",
+                borderWidth: 1,
+                borderColor: order.check_status === "Opened" ? colors.success + "40" : colors.muted + "30",
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: order.check_status === "Opened" ? colors.success : colors.muted }}>
                   {order.check_status}
                 </Text>
               </View>
             ) : null}
+            {isFromOtherStation && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                <Repeat2 color={colors.info} size={11} />
+                <Text style={{ fontSize: 11, color: colors.info }}>
+                  {order._sourceStationName}
+                </Text>
+              </View>
+            )}
           </View>
-
-          {/* Source station badge */}
-          {isFromOtherStation && (
-            <View className="flex-row items-center mt-2">
-              <Repeat2 color={colors.info} size={13} />
-              <Text className="text-xs ml-1" style={{ color: colors.info }}>
-                From: {order._sourceStationName}
-              </Text>
-            </View>
-          )}
         </View>
 
-        {/* ── Price section ── */}
-        <View
-          className="px-4 py-3 border-t"
-          style={{ borderColor: colors.border }}
-        >
-          <Text
-            className="text-2xl font-bold text-right"
-            style={{ color: colors.heading }}
-          >
-            ${totalAmount.toFixed(2)}
-          </Text>
-          {order.paid_status !== "Paid" &&
-            !refundStatus.hasRefund &&
-            cashSavings > 0.01 && (
-              <Text
-                className="text-sm text-right mt-0.5"
-                style={{ color: colors.success }}
-              >
-                Cash ${cashAmountDue.toFixed(2)} (save ${cashSavings.toFixed(2)})
+        {/* ── Amount row ── */}
+        <View style={{
+          flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+          paddingHorizontal: 14, paddingVertical: 10,
+          borderBottomWidth: 1, borderBottomColor: colors.border,
+        }}>
+          <View style={{ gap: 1 }}>
+            {refundStatus.totalRefunded > 0 && (
+              <Text style={{ fontSize: 11, color: colors.danger }}>
+                Refunded ${refundStatus.totalRefunded.toFixed(2)}
               </Text>
             )}
-          {refundStatus.totalRefunded > 0 && (
-            <Text
-              className="text-sm text-right mt-0.5"
-              style={{ color: colors.danger }}
-            >
-              Refunded: ${refundStatus.totalRefunded.toFixed(2)}
-            </Text>
-          )}
-
-          {/* ── Payment method lines ── */}
-          {(order.payments || []).filter((p) => !p.isVoided).length > 0 && (
-            <View className="mt-1.5">
-              {(order.payments || [])
-                .filter((p) => !p.isVoided)
-                .map((payment, idx) => (
-                  <Text
-                    key={idx}
-                    className="text-sm text-right"
-                    style={{ color: colors.label }}
-                  >
-                    {payment.method === "Cash"
-                      ? `💵 Cash  $${(payment.amount ?? 0).toFixed(2)}`
-                      : payment.cardBrand || payment.last4
-                        ? `💳 ${payment.cardBrand || "Card"}${payment.last4 ? ` ••••${payment.last4}` : ""}  $${(payment.amount ?? 0).toFixed(2)}`
-                        : `💳 Card  $${(payment.amount ?? 0).toFixed(2)}`}
-                  </Text>
-                ))}
-            </View>
-          )}
+            {order.paid_status !== "Paid" && !refundStatus.hasRefund && cashSavings > 0.01 && (
+              <Text style={{ fontSize: 11, color: colors.success }}>
+                Cash ${cashAmountDue.toFixed(2)} · save ${cashSavings.toFixed(2)}
+              </Text>
+            )}
+            {/* Payment methods */}
+            {(order.payments || []).filter((p) => !p.isVoided).map((payment, idx) => (
+              <Text key={idx} style={{ fontSize: 11, color: colors.muted }}>
+                {payment.method === "Cash"
+                  ? `Cash $${(payment.amount ?? 0).toFixed(2)}`
+                  : payment.cardBrand || payment.last4
+                    ? `${payment.cardBrand || "Card"}${payment.last4 ? ` ••${payment.last4}` : ""} $${(payment.amount ?? 0).toFixed(2)}`
+                    : `Card $${(payment.amount ?? 0).toFixed(2)}`}
+              </Text>
+            ))}
+          </View>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading }}>
+            ${totalAmount.toFixed(2)}
+          </Text>
         </View>
 
-        {/* ── Action buttons ── */}
-        <View
-          className="px-2 pt-1 pb-2 border-t"
-          style={{ borderColor: colors.border }}
-        >
+        {/* ── Action list ── */}
+        <View style={{ paddingVertical: 4 }}>
           {/* Mark as Done */}
-          {(order.order_status === "preparing" ||
-            order.order_status === "sent_to_kitchen") && (
+          {((order.order_status === "preparing" || order.order_status === "sent_to_kitchen") ||
+            (order.order_status === "ready" && order.paid_status === "Paid" && onMarkDone)) && (
             <TouchableOpacity
               onPress={() => {
-                onMarkReady();
+                if (order.order_status === "ready" && order.paid_status === "Paid" && onMarkDone) {
+                  onMarkDone();
+                } else {
+                  onMarkReady();
+                }
                 onClose();
               }}
-              className="flex-row items-center px-3 py-2.5 rounded-lg"
+              style={{
+                flexDirection: "row", alignItems: "center",
+                paddingHorizontal: 14, paddingVertical: 9,
+              }}
             >
-              <CheckCircle color={colors.orderReady} size={18} />
-              <Text
-                className="ml-3 font-semibold text-base"
-                style={{ color: colors.success }}
-              >
+              <View style={{
+                width: 28, height: 28, borderRadius: 8,
+                backgroundColor: colors.success + "15",
+                alignItems: "center", justifyContent: "center", marginRight: 10,
+              }}>
+                <CheckCircle2 size={14} color={colors.success} />
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.success, flex: 1 }}>
                 Mark as Done
               </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Mark as Done — for ready+paid orders */}
-          {order.order_status === "ready" && order.paid_status === "Paid" && onMarkDone && (
-            <TouchableOpacity
-              onPress={() => {
-                onMarkDone();
-                onClose();
-              }}
-              className="flex-row items-center px-3 py-2.5 rounded-lg"
-            >
-              <CheckCircle color={colors.orderReady} size={18} />
-              <Text
-                className="ml-3 font-semibold text-base"
-                style={{ color: colors.success }}
-              >
-                Mark as Done
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Print Receipt */}
-          {onPrintReceipt && order.paid_status === "Paid" && (
-            <TouchableOpacity
-              onPress={() => {
-                onPrintReceipt();
-                onClose();
-              }}
-              className="flex-row items-center px-3 py-2.5 rounded-lg"
-            >
-              <Printer color={colors.label} size={18} />
-              <Text
-                className="ml-3 font-semibold text-base"
-                style={{ color: colors.label }}
-              >
-                Print Receipt
-              </Text>
+              <ChevronRight size={14} color={colors.muted} />
             </TouchableOpacity>
           )}
 
           {/* View Items */}
           <TouchableOpacity
-            onPress={() => {
-              onViewItems();
-              onClose();
+            onPress={() => { onViewItems(); onClose(); }}
+            style={{
+              flexDirection: "row", alignItems: "center",
+              paddingHorizontal: 14, paddingVertical: 9,
             }}
-            className="flex-row items-center px-3 py-2.5 rounded-lg"
           >
-            <Eye color={colors.label} size={18} />
-            <Text
-              className="ml-3 font-semibold text-base"
-              style={{ color: colors.label }}
-            >
+            <View style={{
+              width: 28, height: 28, borderRadius: 8,
+              backgroundColor: colors.teal + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 10,
+            }}>
+              <Eye size={14} color={colors.teal} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label, flex: 1 }}>
               View Items
             </Text>
+            <ChevronRight size={14} color={colors.muted} />
           </TouchableOpacity>
 
-          {/* ── Bottom action: Retrieve / Reopen ── */}
-          {order.paid_status !== "Paid" &&
-          amountDue > 0.01 &&
-          order.check_status !== "Closed" ? (
+          {/* Print Receipt */}
+          {onPrintReceipt && order.paid_status === "Paid" && (
             <TouchableOpacity
-              onPress={() => {
-                onRetrieve();
-                onClose();
+              onPress={() => { onPrintReceipt(); onClose(); }}
+              style={{
+                flexDirection: "row", alignItems: "center",
+                paddingHorizontal: 14, paddingVertical: 9,
               }}
-              className="flex-row items-center justify-between px-3 py-2.5 rounded-lg mt-1"
-              style={{ backgroundColor: "rgba(96,165,250,0.12)" }}
             >
-              <View className="flex-row items-center">
-                <CreditCard color={colors.info} size={18} />
-                <Text
-                  className="ml-3 font-semibold text-base"
-                  style={{ color: colors.info }}
-                >
-                  {isPartiallyPaid ? "Pay Remaining" : "Retrieve to Pay"}
-                </Text>
+              <View style={{
+                width: 28, height: 28, borderRadius: 8,
+                backgroundColor: "rgba(255,255,255,0.05)",
+                alignItems: "center", justifyContent: "center", marginRight: 10,
+              }}>
+                <Printer size={14} color={colors.label} />
               </View>
-              <Text
-                className="font-bold text-base"
-                style={{ color: colors.info }}
-              >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label, flex: 1 }}>
+                Print Receipt
+              </Text>
+              <ChevronRight size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
+
+          {/* Retrieve to Pay / Pay Remaining */}
+          {order.paid_status !== "Paid" && amountDue > 0.01 && order.check_status !== "Closed" && (
+            <TouchableOpacity
+              onPress={() => { onRetrieve(); onClose(); }}
+              style={{
+                flexDirection: "row", alignItems: "center",
+                marginHorizontal: 8, marginTop: 4, marginBottom: 4,
+                paddingHorizontal: 10, paddingVertical: 9,
+                borderRadius: 10,
+                backgroundColor: colors.teal + "15",
+                borderWidth: 1, borderColor: colors.teal + "30",
+              }}
+            >
+              <CreditCard size={15} color={colors.teal} style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal, flex: 1 }}>
+                {isPartiallyPaid ? "Pay Remaining" : "Retrieve to Pay"}
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>
                 ${amountDue.toFixed(2)}
               </Text>
             </TouchableOpacity>
-          ) : order.paid_status !== "Paid" &&
-            amountDue >= 0.01 &&
-            order.check_status === "Closed" ? (
+          )}
+
+          {/* Reopen Check */}
+          {order.paid_status !== "Paid" && amountDue >= 0.01 && order.check_status === "Closed" && (
             <TouchableOpacity
-              onPress={() => {
-                onReopenCheck?.();
-                onClose();
+              onPress={() => { onReopenCheck?.(); onClose(); }}
+              style={{
+                flexDirection: "row", alignItems: "center",
+                marginHorizontal: 8, marginTop: 4, marginBottom: 4,
+                paddingHorizontal: 10, paddingVertical: 9,
+                borderRadius: 10,
+                backgroundColor: colors.warning + "15",
+                borderWidth: 1, borderColor: colors.warning + "30",
               }}
-              className="flex-row items-center justify-between px-3 py-2.5 rounded-lg mt-1"
-              style={{ backgroundColor: "rgba(251,191,36,0.12)" }}
             >
-              <View className="flex-row items-center">
-                <RotateCcw color={colors.warning} size={18} />
-                <Text
-                  className="ml-3 font-semibold text-base"
-                  style={{ color: colors.warning }}
-                >
-                  Reopen Check
-                </Text>
-              </View>
-              <Text
-                className="font-bold text-base"
-                style={{ color: colors.warning }}
-              >
+              <RotateCcw size={15} color={colors.warning} style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.warning, flex: 1 }}>
+                Reopen Check
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.warning }}>
                 ${amountDue.toFixed(2)}
               </Text>
             </TouchableOpacity>
-          ) : null}
+          )}
         </View>
       </View>
     );
@@ -570,7 +520,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
       onRequestClose={handleClose}
       // PERFORMANCE: Disable animation for instant appearance
       animationConfig={{ duration: 0 }}
-      popoverStyle={{ backgroundColor: colors.card, borderRadius: 12 }}
+      popoverStyle={{ backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
       from={
         <View
           className="flex-row items-center rounded-full border overflow-hidden"

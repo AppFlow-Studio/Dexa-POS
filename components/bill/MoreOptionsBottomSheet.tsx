@@ -13,7 +13,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { CheckCircle, Lock, Printer, Tag, Trash2, User, X } from "lucide-react-native";
+import { CheckCircle2, ChevronRight, Lock, Printer, Tag, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";
@@ -43,9 +43,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   ref
 ) {
   const snapPoints = useMemo(() => ["75%"], []);
-  const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
-  const [isTaxExempt, setIsTaxExempt] = useState(false);
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
@@ -144,30 +142,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }
   };
 
-  const handleApplyPromoCode = () => {
-    if (promoCode.trim()) {
-      show({
-        title: "Promo Code Applied",
-        message: `Promo code "${promoCode.trim()}" has been applied.`,
-        type: "success",
-      });
-      setPromoCode("");
-    }
-  };
-
-  const handleTaxExemptToggle = () => {
-    if (!isTaxExempt) {
-      setShowManagerPin(true);
-    } else {
-      setIsTaxExempt(false);
-      show({
-        title: "Tax Exempt Disabled",
-        message: "Tax exemption has been removed from this order.",
-        type: "success",
-      });
-    }
-  };
-
   const handleManagerPinSubmit = async () => {
     // Verify PIN against actual employee database
     const MANAGER_ROLES: MerchantRole[] = ["merchant.manager", "merchant.admin", "merchant.owner"];
@@ -175,7 +149,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     const isManager = employee && MANAGER_ROLES.includes(employee.role);
 
     if (isManager) {
-      setIsTaxExempt(true);
       show({
         title: "Tax Exempt Enabled",
         message: "The order is now tax-exempt.",
@@ -252,7 +225,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     setIsPrintingKitchen(true);
     try {
       const nonVoidedItems = (activeOrder.items || []).filter(
-        (item) => item.status !== "voided"
+        (item) => !item.is_voided
       );
       if (nonVoidedItems.length === 0) {
         show({ title: "No Items", message: "No non-voided items to print.", type: "error" });
@@ -301,6 +274,10 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     };
   });
 
+  const closeSheet = () => {
+    if (ref && "current" in ref && ref.current) ref.current.close();
+  };
+
   return (
     <>
       <BottomSheet
@@ -311,242 +288,300 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         {...bottomSheetTheme}
         backdropComponent={renderBackdrop}
       >
-        <BottomSheetScrollView className="flex-1 bg-panel rounded-t-3xl overflow-hidden">
-          <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
-            <Text className="text-2xl font-bold text-white">More Options</Text>
+        <BottomSheetScrollView style={{ flex: 1, backgroundColor: colors.panel }}>
+          {/* ── Header ── */}
+          <View style={{
+            flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+            paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
+            borderBottomWidth: 1, borderBottomColor: colors.border,
+          }}>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+              More Options
+            </Text>
             <TouchableOpacity
-              onPress={() => {
-                if (ref && "current" in ref && ref.current) {
-                  ref.current.close();
-                }
+              onPress={closeSheet}
+              style={{
+                padding: 6, borderRadius: 10,
+                backgroundColor: colors.teal + "10",
+                borderWidth: 1, borderColor: colors.teal + "30",
               }}
-              className="p-2 bg-surface rounded-full border border-gray-600"
             >
-              <X color={colors.label} size={20} />
+              <X size={16} color={colors.teal} />
             </TouchableOpacity>
           </View>
-          <View>
-            <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
-              <Text className="text-xl font-semibold text-white">
-                Cart Actions
-              </Text>
-              <TouchableOpacity
-                onPress={handleClearCart}
-                className="flex-row items-center gap-x-2 bg-surface border border-red-700 p-2 rounded-lg"
-              >
-                <Trash2 color={colors.danger} size={16} />
-                <Text className="text-base text-red-400 font-semibold">
-                  Clear Cart
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
-              <View>
-                <Text className="text-xl font-semibold text-white">
-                  Discounts
-                </Text>
-                {!canApplyDiscount && (
-                  <Text className="text-xs text-gray-500">
-                    Unavailable for refunded orders
-                  </Text>
-                )}
-              </View>
-              <TouchableOpacity
-                onPress={handleOpenDiscounts}
-                className={`flex-row items-center gap-x-2 p-2 rounded-lg ${
-                  canApplyDiscount
-                    ? "bg-surface border border-purple-700"
-                    : "bg-surface border border-gray-700 opacity-50"
-                }`}
-              >
-                <Tag color={canApplyDiscount ? "#a855f7" : colors.muted} size={16} />
-                <Text className={`text-base font-semibold ${
-                  canApplyDiscount ? "text-purple-400" : "text-gray-500"
-                }`}>
-                  Apply Discount
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
-              <View>
-                <Text className="text-xl font-semibold text-white">
-                  Order Actions
-                </Text>
-                <Text className="text-sm text-gray-500">
-                  This action cannot be undone.
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={handleVoidOrderClick}
-                disabled={!canVoid}
-                className={`flex-row items-center gap-x-2 p-2 rounded-lg ${
-                  canVoid
-                    ? "bg-surface border border-red-700"
-                    : "bg-surface border border-gray-700 opacity-50"
-                }`}
-              >
-                <Trash2 color={canVoid ? colors.danger : colors.muted} size={16} />
-                <Text
-                  className={`text-base font-semibold ${
-                    canVoid ? "text-red-400" : "text-gray-500"
-                  }`}
-                >
-                  Void Order
-                </Text>
-              </TouchableOpacity>
-            </View>
 
-            {/* Print Section */}
-            <View className="p-4 border-b border-gray-700">
-              <Text className="text-xl font-semibold text-white mb-3">Print</Text>
-              <View className="flex-row gap-x-3">
-                <TouchableOpacity
-                  onPress={handlePrintReceipt}
-                  disabled={!hasItems || isPrintingReceipt}
-                  className={`flex-1 flex-row items-center justify-center gap-x-2 p-3 rounded-lg ${
-                    hasItems && !isPrintingReceipt
-                      ? "bg-surface border border-blue-700"
-                      : "bg-surface border border-gray-700 opacity-50"
-                  }`}
-                >
-                  {isPrintingReceipt ? (
-                    <ActivityIndicator size="small" color={colors.info} />
-                  ) : (
-                    <Printer color={hasItems ? colors.info : colors.muted} size={16} />
-                  )}
-                  <Text
-                    className={`text-base font-semibold ${
-                      hasItems ? "text-blue-400" : "text-gray-500"
-                    }`}
-                  >
-                    Print Receipt
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handlePrintKitchenTicket}
-                  disabled={!hasItems || isPrintingKitchen}
-                  className={`flex-1 flex-row items-center justify-center gap-x-2 p-3 rounded-lg ${
-                    hasItems && !isPrintingKitchen
-                      ? "bg-surface border border-orange-700"
-                      : "bg-surface border border-gray-700 opacity-50"
-                  }`}
-                >
-                  {isPrintingKitchen ? (
-                    <ActivityIndicator size="small" color="#fb923c" />
-                  ) : (
-                    <Printer color={hasItems ? "#fb923c" : colors.muted} size={16} />
-                  )}
-                  <Text
-                    className={`text-base font-semibold ${
-                      hasItems ? "text-orange-400" : "text-gray-500"
-                    }`}
-                  >
-                    Kitchen Ticket
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Close Check Section - Only show when balance is $0 */}
-            {isBalanceZero && (
-              <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
-                <View>
-                  <Text className="text-xl font-semibold text-white">
-                    Close Check
-                  </Text>
-                  <Text className="text-sm text-gray-500">
-                    Finalize this order
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (ref && "current" in ref && ref.current) {
-                      ref.current.close();
-                    }
-                    setTimeout(() => {
-                      onCloseCheck?.();
-                    }, 250);
-                  }}
-                  className="flex-row items-center gap-x-2 bg-emerald-600 p-3 rounded-lg"
-                >
-                  <CheckCircle color="white" size={18} />
-                  <Text className="text-base text-white font-semibold">
-                    Close Check
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
-              <Text className="text-xl font-semibold text-white">Customer</Text>
-              <TouchableOpacity
-                onPress={handleAddCustomer}
-                className="flex-row items-center gap-x-2 bg-surface border border-gray-600 p-2 rounded-lg"
-              >
-                <User color={colors.label} size={16} />
-                <Text className="text-base text-gray-300">Add Customer</Text>
-              </TouchableOpacity>
-            </View>
-            <View className="p-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Order Notes
-              </Text>
-              <BottomSheetTextInput
-                value={orderNotes}
-                onChangeText={setOrderNotes}
-                placeholder="Add special instructions..."
-                multiline
-                numberOfLines={3}
-                className="p-3 bg-surface rounded-xl text-lg min-h-[90px] text-white border border-gray-600"
-                placeholderTextColor={colors.muted}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {onNoSale && (
-              <View className="px-4 pb-4 flex-row justify-between items-center">
-                <Text className="text-xl font-semibold text-white">
-                  No Sale
-                </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (ref && "current" in ref && ref.current) {
-                      ref.current.close();
-                    }
-                    setTimeout(() => onNoSale(), 250);
-                  }}
-                  className="flex-row items-center gap-x-2 px-5 py-2 bg-surface rounded-xl border border-gray-600"
-                >
-                  <Lock color={colors.label} size={16} />
-                  <Text className="text-base font-medium text-white">Open Drawer</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+          {/* ── Section label: Order ── */}
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Order
+            </Text>
           </View>
+
+          {/* Close Check */}
+          {isBalanceZero && (
+            <TouchableOpacity
+              onPress={() => { closeSheet(); setTimeout(() => onCloseCheck?.(), 250); }}
+              style={{
+                flexDirection: "row", alignItems: "center",
+                marginHorizontal: 12, marginBottom: 4,
+                paddingHorizontal: 12, paddingVertical: 10,
+                borderRadius: 10,
+                backgroundColor: colors.success + "15",
+                borderWidth: 1, borderColor: colors.success + "30",
+              }}
+            >
+              <View style={{
+                width: 30, height: 30, borderRadius: 8,
+                backgroundColor: colors.success + "20",
+                alignItems: "center", justifyContent: "center", marginRight: 12,
+              }}>
+                <CheckCircle2 size={15} color={colors.success} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.success }}>Close Check</Text>
+                <Text style={{ fontSize: 11, color: colors.success + "99", marginTop: 1 }}>Finalize this order</Text>
+              </View>
+              <ChevronRight size={14} color={colors.success + "80"} />
+            </TouchableOpacity>
+          )}
+
+          {/* Discounts row */}
+          <TouchableOpacity
+            onPress={handleOpenDiscounts}
+            disabled={!canApplyDiscount}
+            style={{
+              flexDirection: "row", alignItems: "center",
+              paddingHorizontal: 16, paddingVertical: 10,
+              opacity: canApplyDiscount ? 1 : 0.45,
+            }}
+          >
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: "#a855f715",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              <Tag size={14} color="#a855f7" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Apply Discount</Text>
+              {!canApplyDiscount && (
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>Unavailable for refunded orders</Text>
+              )}
+            </View>
+            <ChevronRight size={14} color={colors.muted} />
+          </TouchableOpacity>
+
+          {/* Add Customer row */}
+          <TouchableOpacity
+            onPress={handleAddCustomer}
+            style={{
+              flexDirection: "row", alignItems: "center",
+              paddingHorizontal: 16, paddingVertical: 10,
+            }}
+          >
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.teal + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              <User size={14} color={colors.teal} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}>
+              Add Customer
+            </Text>
+            <ChevronRight size={14} color={colors.muted} />
+          </TouchableOpacity>
+
+          {/* ── Section label: Print ── */}
+          <View style={{
+            paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+            borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4,
+          }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Print
+            </Text>
+          </View>
+
+          {/* Print Receipt row */}
+          <TouchableOpacity
+            onPress={handlePrintReceipt}
+            disabled={!hasItems || isPrintingReceipt}
+            style={{
+              flexDirection: "row", alignItems: "center",
+              paddingHorizontal: 16, paddingVertical: 10,
+              opacity: hasItems ? 1 : 0.45,
+            }}
+          >
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.info + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              {isPrintingReceipt
+                ? <ActivityIndicator size="small" color={colors.info} />
+                : <Printer size={14} color={colors.info} />}
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}>
+              Print Receipt
+            </Text>
+            <ChevronRight size={14} color={colors.muted} />
+          </TouchableOpacity>
+
+          {/* Kitchen Ticket row */}
+          <TouchableOpacity
+            onPress={handlePrintKitchenTicket}
+            disabled={!hasItems || isPrintingKitchen}
+            style={{
+              flexDirection: "row", alignItems: "center",
+              paddingHorizontal: 16, paddingVertical: 10,
+              opacity: hasItems ? 1 : 0.45,
+            }}
+          >
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.warning + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              {isPrintingKitchen
+                ? <ActivityIndicator size="small" color={colors.warning} />
+                : <Printer size={14} color={colors.warning} />}
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}>
+              Kitchen Ticket
+            </Text>
+            <ChevronRight size={14} color={colors.muted} />
+          </TouchableOpacity>
+
+          {/* ── Section label: Order Notes ── */}
+          <View style={{
+            paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8,
+            borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4,
+          }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Order Notes
+            </Text>
+          </View>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+            <BottomSheetTextInput
+              value={orderNotes}
+              onChangeText={setOrderNotes}
+              placeholder="Add special instructions..."
+              multiline
+              numberOfLines={3}
+              style={{
+                padding: 10,
+                backgroundColor: colors.screen,
+                borderRadius: 10,
+                borderWidth: 1, borderColor: colors.border,
+                color: colors.heading,
+                fontSize: 13,
+                minHeight: 72,
+                textAlignVertical: "top",
+              }}
+              placeholderTextColor={colors.muted}
+            />
+          </View>
+
+          {/* ── Section label: Danger zone ── */}
+          <View style={{
+            paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+            borderTopWidth: 1, borderTopColor: colors.border,
+          }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Danger Zone
+            </Text>
+          </View>
+
+          {/* Clear Cart row */}
+          <TouchableOpacity
+            onPress={handleClearCart}
+            style={{
+              flexDirection: "row", alignItems: "center",
+              paddingHorizontal: 16, paddingVertical: 10,
+            }}
+          >
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.danger + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              <Trash2 size={14} color={colors.danger} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger, flex: 1 }}>
+              Clear Cart
+            </Text>
+            <ChevronRight size={14} color={colors.muted} />
+          </TouchableOpacity>
+
+          {/* Void Order row */}
+          <TouchableOpacity
+            onPress={handleVoidOrderClick}
+            disabled={!canVoid}
+            style={{
+              flexDirection: "row", alignItems: "center",
+              paddingHorizontal: 16, paddingVertical: 10,
+              opacity: canVoid ? 1 : 0.45,
+            }}
+          >
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.danger + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              <Trash2 size={14} color={colors.danger} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger }}>Void Order</Text>
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>This action cannot be undone</Text>
+            </View>
+            <ChevronRight size={14} color={colors.muted} />
+          </TouchableOpacity>
+
+          {/* No Sale row */}
+          {onNoSale && (
+            <TouchableOpacity
+              onPress={() => { closeSheet(); setTimeout(() => onNoSale(), 250); }}
+              style={{
+                flexDirection: "row", alignItems: "center",
+                paddingHorizontal: 16, paddingVertical: 10,
+                marginBottom: 8,
+              }}
+            >
+              <View style={{
+                width: 30, height: 30, borderRadius: 8,
+                backgroundColor: "rgba(255,255,255,0.05)",
+                alignItems: "center", justifyContent: "center", marginRight: 12,
+              }}>
+                <Lock size={14} color={colors.label} />
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label, flex: 1 }}>
+                Open Drawer (No Sale)
+              </Text>
+              <ChevronRight size={14} color={colors.muted} />
+            </TouchableOpacity>
+          )}
+
+          <View style={{ height: 24 }} />
         </BottomSheetScrollView>
       </BottomSheet>
-      <Dialog
-        open={showManagerPin}
-        onOpenChange={() => setShowManagerPin(false)}
-      >
-        <DialogContent className="w-fit h-fit bg-surface border-gray-600 p-6">
+
+      {/* Manager PIN dialog */}
+      <Dialog open={showManagerPin} onOpenChange={() => setShowManagerPin(false)}>
+        <DialogContent style={{ width: "auto", backgroundColor: colors.card, borderColor: colors.border, padding: 24 }}>
           <DialogHeader>
-            <DialogTitle className="text-center text-2xl font-semibold text-white">
+            <DialogTitle style={{ textAlign: "center", fontSize: 16, fontWeight: "700", color: colors.heading }}>
               Manager Override
             </DialogTitle>
           </DialogHeader>
-          <Animated.View style={shakeStyle} className="py-4">
-            <Text className="text-center text-lg text-gray-300 mb-4">
-              Enter Manager PIN to access this item
+          <Animated.View style={[shakeStyle, { paddingVertical: 16 }]}>
+            <Text style={{ textAlign: "center", fontSize: 13, color: colors.label, marginBottom: 16 }}>
+              Enter Manager PIN to enable tax exemption
             </Text>
             <PinDisplay pinLength={managerPin.length} maxLength={4} />
             <PinNumpad
               onKeyPress={(input) => {
                 if (typeof input === "number") {
-                  if (managerPin.length < 4) {
-                    const newPin = managerPin + input.toString();
-                    setManagerPin(newPin);
-                  }
+                  if (managerPin.length < 4) setManagerPin(managerPin + input.toString());
                 } else if (input === "clear") {
                   setManagerPin("");
                 } else if (input === "backspace") {
@@ -556,15 +591,17 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             />
             <TouchableOpacity
               onPress={handleManagerPinSubmit}
-              className="py-3 bg-blue-600 rounded-lg w-full self-center mt-4"
+              style={{
+                marginTop: 16, paddingVertical: 10, borderRadius: 8,
+                backgroundColor: colors.teal, alignItems: "center",
+              }}
             >
-              <Text className="text-center text-lg font-bold text-white">
-                Enter
-              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>Confirm</Text>
             </TouchableOpacity>
           </Animated.View>
         </DialogContent>
       </Dialog>
+
       <ConfirmationModal
         isOpen={isClearCartConfirmOpen}
         onClose={() => setClearCartConfirmOpen(false)}
@@ -583,25 +620,26 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         confirmText="Yes, Void Order"
         variant="destructive"
       />
-      <Dialog
-        open={showRefundedDiscountDialog}
-        onOpenChange={() => setShowRefundedDiscountDialog(false)}
-      >
-        <DialogContent className="w-80 bg-surface border-gray-600 p-6">
+
+      {/* Cannot discount refunded order dialog */}
+      <Dialog open={showRefundedDiscountDialog} onOpenChange={() => setShowRefundedDiscountDialog(false)}>
+        <DialogContent style={{ width: 320, backgroundColor: colors.card, borderColor: colors.border, padding: 24 }}>
           <DialogHeader>
-            <DialogTitle className="text-center text-xl font-semibold text-white">
+            <DialogTitle style={{ textAlign: "center", fontSize: 15, fontWeight: "700", color: colors.heading }}>
               Cannot Add Discount
             </DialogTitle>
           </DialogHeader>
-          <Text className="text-center text-gray-300 mt-4">
-            Discounts cannot be applied to orders that have been refunded or
-            partially refunded.
+          <Text style={{ textAlign: "center", fontSize: 13, color: colors.label, marginTop: 12 }}>
+            Discounts cannot be applied to orders that have been refunded or partially refunded.
           </Text>
           <TouchableOpacity
             onPress={() => setShowRefundedDiscountDialog(false)}
-            className="mt-6 py-3 bg-blue-600 rounded-lg"
+            style={{
+              marginTop: 20, paddingVertical: 9, borderRadius: 8,
+              backgroundColor: colors.teal, alignItems: "center",
+            }}
           >
-            <Text className="text-center text-white font-semibold">OK</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSolid }}>OK</Text>
           </TouchableOpacity>
         </DialogContent>
       </Dialog>

@@ -13,8 +13,8 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Check, X } from "lucide-react-native";
-import React, { forwardRef, useEffect, useMemo, useState } from "react";
+import { Check, Tag, X } from "lucide-react-native";
+import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 
@@ -51,24 +51,6 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   const itemsWithAvailableDiscounts = cartItems.filter(
     (item) => !!item.availableDiscount,
   );
-
-  // Check if order has refunds - if so, show warning and close sheet
-  const hasRefunds = useMemo(() => {
-    const payments = activeOrder?.payments || [];
-    return payments.some((p) => (p.refundedAmount ?? 0) > 0);
-  }, [activeOrder?.payments]);
-
-  // Close sheet and show warning if order has refunds
-  // useEffect(() => {
-  //   if (hasRefunds && ref && "current" in ref && ref.current) {
-  //     show({
-  //       title: "Discounts Unavailable",
-  //       message: "Cannot add discounts to refunded orders.",
-  //       type: "warning",
-  //     });
-  //     ref.current.close();
-  //   }
-  // }, [hasRefunds, ref, show]);
 
   const eligibilityResults = useMemo(() => {
     if (!activeOrder) return [];
@@ -191,6 +173,8 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     [],
   );
 
+  const isCustomValid = !!customDiscountValue && parseFloat(customDiscountValue) > 0;
+
   return (
     <BottomSheet
       ref={ref}
@@ -199,288 +183,299 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       enablePanDownToClose={true}
       backdropComponent={renderBackdrop}
       {...bottomSheetTheme}
-      // FIX 2: Use 'interactive'.
-      // This synchronizes the sheet movement with the keyboard animation exactly.
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       topInset={60}
     >
-      <BottomSheetScrollView className="flex-1 bg-panel px-4 pb-6">
-        {/* Header */}
-        <View className="flex-row justify-between items-center mb-4 border-b border-gray-700 pb-3">
-          <Text className="text-xl font-bold text-white">Apply Discount</Text>
+      <BottomSheetScrollView style={{ flex: 1, backgroundColor: colors.panel }}>
+        {/* ── Header ── */}
+        <View style={{
+          flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+          paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12,
+          borderBottomWidth: 1, borderBottomColor: colors.border,
+        }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.teal + "15",
+              alignItems: "center", justifyContent: "center",
+            }}>
+              <Tag size={14} color={colors.teal} />
+            </View>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+              Apply Discount
+            </Text>
+          </View>
           <TouchableOpacity
             onPress={onClose}
-            className="p-1.5 bg-surface rounded-full border border-gray-600"
+            style={{
+              padding: 6, borderRadius: 10,
+              backgroundColor: colors.teal + "10",
+              borderWidth: 1, borderColor: colors.teal + "30",
+            }}
           >
-            <X color={colors.label} size={18} />
+            <X size={16} color={colors.teal} />
           </TouchableOpacity>
         </View>
 
-        {/* Current discount + remove */}
-        {activeOrder?.checkDiscount && (
-          <View className="mb-4 p-3 border border-blue-500/60 bg-blue-500/10 rounded-xl flex-row items-center justify-between">
-            <View>
-              <Text className="text-white font-semibold">
-                {activeOrder.checkDiscount.label || "Active Discount"}
-              </Text>
-              {activeOrder.checkDiscount.type === "percentage" ? (
-                <Text className="text-gray-300">
-                  {Math.round((activeOrder.checkDiscount.value || 0) * 100)}%
-                  off
+        <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 24 }}>
+          {/* ── Active discount banner ── */}
+          {activeOrder?.checkDiscount && (
+            <View style={{
+              flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+              marginBottom: 12, padding: 10,
+              borderRadius: 10,
+              backgroundColor: colors.teal + "10",
+              borderWidth: 1, borderColor: colors.teal + "30",
+            }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+                  {activeOrder.checkDiscount.label || "Active Discount"}
                 </Text>
-              ) : (
-                <Text className="text-gray-300">
-                  ${activeOrder.checkDiscount.value?.toFixed(2)} off
+                <Text style={{ fontSize: 12, color: colors.teal + "99", marginTop: 1 }}>
+                  {activeOrder.checkDiscount.type === "percentage"
+                    ? `${Math.round((activeOrder.checkDiscount.value || 0) * 100)}% off`
+                    : `$${activeOrder.checkDiscount.value?.toFixed(2)} off`}
                 </Text>
-              )}
+              </View>
+              <TouchableOpacity
+                onPress={handleRemoveCheckDiscount}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+                  backgroundColor: colors.danger + "15",
+                  borderWidth: 1, borderColor: colors.danger + "30",
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}>Remove</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              onPress={handleRemoveCheckDiscount}
-              className="px-3 py-2 bg-red-600 rounded-lg"
-            >
-              <Text className="text-white font-semibold">Remove</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          )}
 
-        {/* Tabs */}
-        <View className="flex-row bg-surface p-1 rounded-xl mb-5 border border-gray-700">
-          <TouchableOpacity
-            onPress={() => setActiveTab("check")}
-            className={`flex-1 py-2 rounded-lg items-center ${
-              activeTab === "check" ? "bg-[#4B5563]" : ""
-            }`}
-          >
-            <Text
-              className={`font-semibold ${activeTab === "check" ? "text-white" : "text-gray-400"}`}
-            >
-              Whole Check
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab("items")}
-            className={`flex-1 py-2 rounded-lg items-center ${
-              activeTab === "items" ? "bg-[#4B5563]" : ""
-            }`}
-          >
-            <Text
-              className={`font-semibold ${activeTab === "items" ? "text-white" : "text-gray-400"}`}
-            >
-              Specific Items
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Content */}
-        <View
-        // FIX 3: Add large bottom padding.
-        // This ensures that when the keyboard comes up, there is enough 'scrollable'
-        // area to push the input to the top of the screen.
-        >
-          {activeTab === "check" && (
-            <View className="flex-1">
-              {/* Custom Discount Section */}
-              <View className="mb-6">
-                <Text className="text-gray-400 text-sm mb-3 uppercase tracking-wider font-semibold">
-                  Custom Discount
+          {/* ── Tabs ── */}
+          <View style={{
+            flexDirection: "row",
+            backgroundColor: colors.screen,
+            borderRadius: 10, padding: 3,
+            borderWidth: 1, borderColor: colors.border,
+            marginBottom: 14,
+          }}>
+            {(["check", "items"] as const).map((tab) => (
+              <TouchableOpacity
+                key={tab}
+                onPress={() => setActiveTab(tab)}
+                style={{
+                  flex: 1, paddingVertical: 6, borderRadius: 8, alignItems: "center",
+                  backgroundColor: activeTab === tab ? colors.card : "transparent",
+                }}
+              >
+                <Text style={{
+                  fontSize: 13, fontWeight: "600",
+                  color: activeTab === tab ? colors.heading : colors.muted,
+                }}>
+                  {tab === "check" ? "Whole Check" : "Specific Items"}
                 </Text>
-                <View className="bg-surface border border-gray-700 rounded-xl p-4">
-                  {/* Discount Type Tabs */}
-                  <View className="flex-row bg-panel p-1 rounded-lg mb-4">
-                    <TouchableOpacity
-                      onPress={() => setCustomDiscountType("percentage")}
-                      className={`flex-1 py-2 rounded-md items-center ${
-                        customDiscountType === "percentage" ? "bg-blue-600" : ""
-                      }`}
-                    >
-                      <Text
-                        className={`font-semibold ${
-                          customDiscountType === "percentage"
-                            ? "text-white"
-                            : "text-gray-400"
-                        }`}
-                      >
-                        % Percentage
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setCustomDiscountType("fixed")}
-                      className={`flex-1 py-2 rounded-md items-center ${
-                        customDiscountType === "fixed" ? "bg-green-600" : ""
-                      }`}
-                    >
-                      <Text
-                        className={`font-semibold ${
-                          customDiscountType === "fixed"
-                            ? "text-white"
-                            : "text-gray-400"
-                        }`}
-                      >
-                        $ Dollar Amount
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-                  {/* Quick Value Buttons */}
-                  <View className="flex-row flex-wrap gap-2 mb-4">
-                    {customDiscountType === "percentage"
-                      ? [5, 10, 15, 20, 25, 50].map((pct) => (
-                          <TouchableOpacity
-                            key={pct}
-                            onPress={() =>
-                              setCustomDiscountValue(pct.toString())
-                            }
-                            className={`px-4 py-2 rounded-lg border ${
-                              customDiscountValue === pct.toString()
-                                ? "bg-blue-600 border-blue-500"
-                                : "bg-panel border-gray-600"
-                            }`}
-                          >
-                            <Text
-                              className={`font-semibold ${
-                                customDiscountValue === pct.toString()
-                                  ? "text-white"
-                                  : "text-gray-300"
-                              }`}
-                            >
-                              {pct}%
-                            </Text>
-                          </TouchableOpacity>
-                        ))
-                      : [5, 10, 15, 20, 25, 50].map((amt) => (
-                          <TouchableOpacity
-                            key={amt}
-                            onPress={() =>
-                              setCustomDiscountValue(amt.toString())
-                            }
-                            className={`px-4 py-2 rounded-lg border ${
-                              customDiscountValue === amt.toString()
-                                ? "bg-green-600 border-green-500"
-                                : "bg-panel border-gray-600"
-                            }`}
-                          >
-                            <Text
-                              className={`font-semibold ${
-                                customDiscountValue === amt.toString()
-                                  ? "text-white"
-                                  : "text-gray-300"
-                              }`}
-                            >
-                              ${amt}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                  </View>
+          {/* ── Whole Check tab ── */}
+          {activeTab === "check" && (
+            <View>
+              {/* Custom discount section label */}
+              <Text style={{
+                fontSize: 11, fontWeight: "600", color: colors.muted,
+                textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 8,
+              }}>
+                Custom Discount
+              </Text>
 
-                  {/* Custom Input */}
-                  <View className="flex-row items-center gap-3">
-                    <View className="flex-1 flex-row items-center bg-panel rounded-lg border border-gray-600 px-3">
-                      <Text className="text-gray-400 text-lg mr-1">
-                        {customDiscountType === "percentage" ? "%" : "$"}
-                      </Text>
-                      <BottomSheetTextInput
-                        value={customDiscountValue}
-                        onChangeText={setCustomDiscountValue}
-                        placeholder={
-                          customDiscountType === "percentage"
-                            ? "Enter %"
-                            : "Enter $"
-                        }
-                        placeholderTextColor={colors.muted}
-                        keyboardType="decimal-pad"
-                        className="flex-1 py-3 text-white text-lg"
-                        style={{ color: "#FFFFFF" }}
-                      />
-                    </View>
-                    <TouchableOpacity
-                      onPress={handleApplyCustomDiscount}
-                      disabled={
-                        !customDiscountValue ||
-                        parseFloat(customDiscountValue) <= 0
-                      }
-                      className={`px-6 py-3 rounded-lg ${
-                        customDiscountValue &&
-                        parseFloat(customDiscountValue) > 0
-                          ? customDiscountType === "percentage"
-                            ? "bg-blue-600"
-                            : "bg-green-600"
-                          : "bg-gray-600"
-                      }`}
-                    >
-                      <Text className="text-white font-bold">Apply</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Preview */}
-                  {customDiscountValue &&
-                    parseFloat(customDiscountValue) > 0 && (
-                      <View className="mt-3 p-2 bg-panel rounded-lg border border-dashed border-gray-600">
-                        <Text className="text-gray-400 text-sm text-center">
-                          Will save:{" "}
-                          <Text className="text-green-400 font-bold">
-                            {customDiscountType === "percentage"
-                              ? `${customDiscountValue}% off`
-                              : `$${parseFloat(customDiscountValue).toFixed(2)} off`}
-                          </Text>
-                        </Text>
-                      </View>
-                    )}
+              <View style={{
+                backgroundColor: colors.card,
+                borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+                padding: 12, marginBottom: 16,
+              }}>
+                {/* Type toggle */}
+                <View style={{
+                  flexDirection: "row",
+                  backgroundColor: colors.screen,
+                  borderRadius: 8, padding: 3,
+                  marginBottom: 12,
+                }}>
+                  <TouchableOpacity
+                    onPress={() => setCustomDiscountType("percentage")}
+                    style={{
+                      flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: "center",
+                      backgroundColor: customDiscountType === "percentage" ? colors.teal : "transparent",
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 12, fontWeight: "600",
+                      color: customDiscountType === "percentage" ? colors.onSolid : colors.muted,
+                    }}>
+                      % Percentage
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setCustomDiscountType("fixed")}
+                    style={{
+                      flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: "center",
+                      backgroundColor: customDiscountType === "fixed" ? colors.success : "transparent",
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 12, fontWeight: "600",
+                      color: customDiscountType === "fixed" ? colors.onSolid : colors.muted,
+                    }}>
+                      $ Fixed Amount
+                    </Text>
+                  </TouchableOpacity>
                 </View>
+
+                {/* Quick preset pills */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                  {[5, 10, 15, 20, 25, 50].map((val) => {
+                    const isSelected = customDiscountValue === val.toString();
+                    const accentColor = customDiscountType === "percentage" ? colors.teal : colors.success;
+                    return (
+                      <TouchableOpacity
+                        key={val}
+                        onPress={() => setCustomDiscountValue(val.toString())}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20,
+                          backgroundColor: isSelected ? accentColor + "20" : colors.screen,
+                          borderWidth: 1,
+                          borderColor: isSelected ? accentColor + "60" : colors.border,
+                        }}
+                      >
+                        <Text style={{
+                          fontSize: 12, fontWeight: "600",
+                          color: isSelected ? accentColor : colors.label,
+                        }}>
+                          {customDiscountType === "percentage" ? `${val}%` : `$${val}`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Input + Apply */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <View style={{
+                    flex: 1, flexDirection: "row", alignItems: "center",
+                    backgroundColor: colors.screen,
+                    borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+                    paddingHorizontal: 10,
+                  }}>
+                    <Text style={{ fontSize: 14, color: colors.muted, marginRight: 4 }}>
+                      {customDiscountType === "percentage" ? "%" : "$"}
+                    </Text>
+                    <BottomSheetTextInput
+                      value={customDiscountValue}
+                      onChangeText={setCustomDiscountValue}
+                      placeholder={customDiscountType === "percentage" ? "0" : "0.00"}
+                      placeholderTextColor={colors.muted}
+                      keyboardType="decimal-pad"
+                      style={{ flex: 1, paddingVertical: 9, fontSize: 14, color: colors.heading }}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleApplyCustomDiscount}
+                    disabled={!isCustomValid}
+                    style={{
+                      paddingHorizontal: 16, paddingVertical: 9, borderRadius: 8,
+                      backgroundColor: isCustomValid
+                        ? (customDiscountType === "percentage" ? colors.teal : colors.success)
+                        : colors.border,
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 13, fontWeight: "700",
+                      color: isCustomValid ? colors.onSolid : colors.muted,
+                    }}>
+                      Apply
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Preview */}
+                {isCustomValid && (
+                  <View style={{
+                    marginTop: 10, padding: 8, borderRadius: 8,
+                    backgroundColor: colors.screen,
+                    borderWidth: 1, borderColor: colors.border,
+                    borderStyle: "dashed",
+                  }}>
+                    <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
+                      Saves{" "}
+                      <Text style={{ color: colors.success, fontWeight: "700" }}>
+                        {customDiscountType === "percentage"
+                          ? `${customDiscountValue}% off`
+                          : `$${parseFloat(customDiscountValue).toFixed(2)} off`}
+                      </Text>
+                    </Text>
+                  </View>
+                )}
               </View>
 
-              {/* Available Discounts (Preset) */}
-              <Text className="text-gray-400 text-sm mb-3 uppercase tracking-wider font-semibold">
+              {/* Preset discounts */}
+              <Text style={{
+                fontSize: 11, fontWeight: "600", color: colors.muted,
+                textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 8,
+              }}>
                 Preset Discounts
               </Text>
-              <View className="flex-col gap-y-3">
-                {eligibilityResults.length === 0 ? (
-                  <Text className="text-gray-500">
-                    No preset discounts available
-                  </Text>
-                ) : (
-                  eligibilityResults.map((d) => (
+
+              {eligibilityResults.length === 0 ? (
+                <Text style={{ fontSize: 13, color: colors.muted, paddingVertical: 8 }}>
+                  No preset discounts available
+                </Text>
+              ) : (
+                <View style={{ gap: 6 }}>
+                  {eligibilityResults.map((d) => (
                     <TouchableOpacity
                       key={d.discount.id}
                       disabled={!d.eligible}
                       onPress={() => handleApplyCheckDiscount(d.discount)}
-                      className={`p-3 rounded-xl border ${
-                        d.eligible
-                          ? "border-blue-500 bg-blue-500/10"
-                          : "border-gray-700 bg-surface"
-                      }`}
+                      style={{
+                        padding: 10, borderRadius: 10,
+                        borderWidth: 1,
+                        backgroundColor: d.eligible ? colors.teal + "10" : colors.screen,
+                        borderColor: d.eligible ? colors.teal + "40" : colors.border,
+                        opacity: d.eligible ? 1 : 0.55,
+                      }}
                     >
-                      <View className="flex-row justify-between items-center">
-                        <View>
-                          <Text className="text-white font-semibold text-lg">
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                             {d.discount.name}
                           </Text>
-                          <Text className="text-gray-400">
+                          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
                             {d.discount.discount_type === "percentage"
                               ? `${d.discount.discount_value}% off`
                               : `$${d.discount.discount_value.toFixed(2)} off`}
                           </Text>
                         </View>
                         {d.eligible ? (
-                          <Text className="text-green-400 font-bold">
-                            -${d.calculated_savings.toFixed(2)}
+                          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.success }}>
+                            −${d.calculated_savings.toFixed(2)}
                           </Text>
                         ) : (
-                          <Text className="text-red-400 text-sm">
+                          <Text style={{ fontSize: 11, color: colors.danger, maxWidth: 100, textAlign: "right" }}>
                             {d.reason}
                           </Text>
                         )}
                       </View>
                     </TouchableOpacity>
-                  ))
-                )}
-              </View>
+                  ))}
+                </View>
+              )}
             </View>
           )}
 
+          {/* ── Specific Items tab ── */}
           {activeTab === "items" && (
-            <View className="gap-y-2">
+            <View style={{ gap: 6 }}>
               {itemsWithAvailableDiscounts.length > 0 ? (
                 itemsWithAvailableDiscounts.map((item) => {
                   const isApplied = !!item.appliedDiscount;
@@ -488,32 +483,38 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     <TouchableOpacity
                       key={item.id}
                       onPress={() => handleToggleItemDiscount(item)}
-                      className={`flex-row justify-between items-center p-3 rounded-xl border ${
-                        isApplied
-                          ? "bg-blue-900/20 border-blue-500"
-                          : "bg-surface border-gray-700"
-                      }`}
+                      style={{
+                        flexDirection: "row", alignItems: "center",
+                        padding: 10, borderRadius: 10,
+                        borderWidth: 1,
+                        backgroundColor: isApplied ? colors.teal + "10" : colors.screen,
+                        borderColor: isApplied ? colors.teal + "40" : colors.border,
+                      }}
                     >
-                      <View className="flex-1 mr-4">
-                        <Text className="text-white font-semibold text-lg">
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                           {item.name}
                         </Text>
-                        <Text className="text-gray-400 text-sm">
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
                           {item.availableDiscount?.label || "Discountable"}
                         </Text>
                       </View>
-                      <View
-                        className={`w-6 h-6 rounded-full items-center justify-center border ${isApplied ? "bg-blue-500 border-blue-500" : "border-gray-500"}`}
-                      >
-                        {isApplied && <Check size={14} color="white" />}
+                      <View style={{
+                        width: 22, height: 22, borderRadius: 11,
+                        alignItems: "center", justifyContent: "center",
+                        backgroundColor: isApplied ? colors.teal : "transparent",
+                        borderWidth: 1,
+                        borderColor: isApplied ? colors.teal : colors.border,
+                      }}>
+                        {isApplied && <Check size={12} color={colors.onSolid} />}
                       </View>
                     </TouchableOpacity>
                   );
                 })
               ) : (
-                <View className="items-center py-10">
-                  <Text className="text-gray-500 text-lg">
-                    No eligible items found.
+                <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                  <Text style={{ fontSize: 13, color: colors.muted }}>
+                    No eligible items found
                   </Text>
                 </View>
               )}

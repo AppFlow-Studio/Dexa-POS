@@ -12,9 +12,9 @@ import {
   Shield,
   ShoppingBag,
   Table,
-  UtensilsCrossed
+  UtensilsCrossed,
 } from 'lucide-react-native'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import PinDisplay from './auth/PinDisplay'
 import PinNumpad from './auth/PinNumpad'
@@ -27,7 +27,6 @@ interface MenuCardProps {
   onPress: () => void
   isLocked?: boolean
   onLockPress?: () => void
-  isHighlighted?: boolean
 }
 
 const MenuCard: React.FC<MenuCardProps> = ({
@@ -37,37 +36,76 @@ const MenuCard: React.FC<MenuCardProps> = ({
   onPress,
   isLocked = false,
   onLockPress,
-  isHighlighted = false
 }) => {
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${
-        isHighlighted ? 'bg-blue-50' : 'bg-surface'
-      }`}
-      style={{ minHeight: 140 }}
+      activeOpacity={0.75}
+      style={{
+        width: '100%',
+        height: '100%',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.panel,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12,
+      }}
     >
-      <View className='justify-center h-full w-full flex'>
-        <View className='flex-row justify-center items-center w-full h-full relative'>
-          <View className=' w-full h-full flex items-center justify-center'>
-            <View className='mb-3'>{icon}</View>
-            <Text className='text-3xl font-bold text-white mb-1 text-center'>
-              {title}
-            </Text>
-            <Text className='text-xl text-gray-200 text-center'>
-              {subtitle}
-            </Text>
-          </View>
-          {isLocked && (
-            <TouchableOpacity
-              onPress={onLockPress}
-              className='p-3 bg-gray-800 rounded-lg absolute top-0 right-0'
-            >
-              <Lock color='white' size={24} />
-            </TouchableOpacity>
-          )}
-        </View>
+      {isLocked && (
+        <TouchableOpacity
+          onPress={onLockPress}
+          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+          }}
+        >
+          <Lock color={colors.muted} size={13} />
+        </TouchableOpacity>
+      )}
+
+      {/* Icon */}
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 11,
+          backgroundColor: colors.teal + '18',
+          borderWidth: 1,
+          borderColor: colors.teal + '30',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 10,
+        }}
+      >
+        {icon}
       </View>
+
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: '700',
+          color: colors.heading,
+          textAlign: 'center',
+          marginBottom: 3,
+        }}
+        numberOfLines={1}
+      >
+        {title}
+      </Text>
+      <Text
+        style={{
+          fontSize: 11,
+          color: colors.muted,
+          textAlign: 'center',
+        }}
+        numberOfLines={1}
+      >
+        {subtitle}
+      </Text>
     </TouchableOpacity>
   )
 }
@@ -77,6 +115,7 @@ const MainMenu: React.FC = () => {
   const [pinDialogOpen, setPinDialogOpen] = useState(false)
   const [currentPin, setCurrentPin] = useState('')
   const [targetRoute, setTargetRoute] = useState<string | null>(null)
+
   const handleLockedAccess = (route: string) => {
     setTargetRoute(route)
     setPinDialogOpen(true)
@@ -84,13 +123,9 @@ const MainMenu: React.FC = () => {
   }
 
   const handlePinSubmit = () => {
-    // TODO: Implement actual PIN validation logic
-    // For now, we'll accept any 4-digit PIN
     if (currentPin.length === 4) {
       setPinDialogOpen(false)
-      if (targetRoute) {
-        router.push(targetRoute as any)
-      }
+      if (targetRoute) router.push(targetRoute as any)
       setCurrentPin('')
       setTargetRoute(null)
     }
@@ -99,153 +134,111 @@ const MainMenu: React.FC = () => {
   const menuItems = [
     {
       id: 'home',
-      icon: <Home color={colors.info} size={48} />,
+      icon: <Home color={colors.teal} size={22} />,
       title: 'Sales',
       subtitle: 'Process Orders',
       route: '/order-processing',
-      isHighlighted: false
     },
     {
       id: 'tables',
-      icon: <Table color={colors.info} size={48} />,
+      icon: <Table color={colors.teal} size={22} />,
       title: 'Tables',
       subtitle: 'Manage Seating',
       route: '/tables',
-      isHighlighted: false
     },
     {
       id: 'previous-orders',
-      icon: <History color={colors.info} size={48} />,
+      icon: <History color={colors.teal} size={22} />,
       title: 'Previous Orders',
       subtitle: 'Order History',
       route: '/previous-orders',
-      isHighlighted: false
     },
     {
       id: 'online-orders',
-      icon: <ShoppingBag color={colors.info} size={48} />,
+      icon: <ShoppingBag color={colors.teal} size={22} />,
       title: 'Online Orders',
       subtitle: 'Web & App Orders',
       route: '/online-orders',
-      isHighlighted: false
     },
     {
       id: 'kds',
-      icon: <ChefHat color={colors.info} size={48} />,
+      icon: <ChefHat color={colors.teal} size={22} />,
       title: 'Kitchen Display',
       subtitle: 'Manage Orders',
       route: '/kds',
-      isHighlighted: false
     },
-    // {
-    //   id: "order-test",
-    //   icon: <FlaskConical color="#10b981" size={48} />,
-    //   title: "Order Test",
-    //   subtitle: "Test Order Flow",
-    //   route: "/order-test",
-    //   isHighlighted: false,
-    // },
-    // {
-    //   id: "order-store-test",
-    //   icon: <TestTube color="#10b981" size={48} />,
-    //   title: "Order Store Test",
-    //   subtitle: "Debug Order Store",
-    //   route: "/order-store-test",
-    //   isHighlighted: false,
-    // },
     {
       id: 'scheduling',
-      icon: <CalendarClock color={colors.info} size={48} />,
+      icon: <CalendarClock color={colors.teal} size={22} />,
       title: 'Scheduling',
       subtitle: 'Time Management',
       route: '/scheduling',
       isLocked: true,
-      isHighlighted: false
     },
-    // {
-    //   id: "floorplan-test",
-    //   icon: <Table2 color="#10b981" size={48} />,
-    //   title: "Floor Plan Test",
-    //   subtitle: "Test Floor Plan",
-    //   route: "/floor-plan-test",
-    //   isLocked: false,
-    //   isHighlighted: false,
-    // },
-
-    // {
-    //     id: "customers",
-    //     icon: <Users color={colors.info} size={48} />,
-    //     title: "Customers",
-    //     subtitle: "Customer Database",
-    //     route: "/customers-list",
-    //     isHighlighted: false,
-    // },
     {
       id: 'menu-management',
-      icon: <UtensilsCrossed color={colors.info} size={48} />,
+      icon: <UtensilsCrossed color={colors.teal} size={22} />,
       title: 'Menu Management',
       subtitle: 'Edit Menu Items',
       route: '/menu',
       isLocked: true,
-      isHighlighted: false
     },
     {
       id: 'inventory',
-      icon: <Package color={colors.info} size={48} />,
+      icon: <Package color={colors.teal} size={22} />,
       title: 'Inventory',
       subtitle: 'Stock Management',
       route: '/inventory',
       isLocked: true,
-      isHighlighted: false
     },
     {
       id: 'analytics',
-      icon: <BarChart3 color={colors.info} size={48} />,
+      icon: <BarChart3 color={colors.teal} size={22} />,
       title: 'Analytics',
       subtitle: 'Sales Reports',
       route: '/analytics',
       isLocked: true,
-      isHighlighted: false
     },
     {
       id: 'settings',
-      icon: <Settings color={colors.info} size={48} />,
+      icon: <Settings color={colors.teal} size={22} />,
       title: 'Settings',
       subtitle: 'System Config',
       route: '/settings',
       isLocked: true,
-      isHighlighted: false
     },
     {
       id: 'castlestest',
-      icon: <Shield />,
+      icon: <Shield color={colors.teal} size={22} />,
       title: 'Castles Test',
       subtitle: 'Castles device test',
       route: '/castlestest',
-      isLocked: false,
-      isHighlighted: false
-    }
+    },
   ]
 
   return (
-    <View className='w-full h-full flex-1 bg-panel'>
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       <ScrollView
-        className='w-full flex-1'
+        style={{ flex: 1 }}
         contentContainerStyle={{
           flexGrow: 1,
           justifyContent: 'center',
           alignItems: 'center',
-          padding: 24
+          padding: 20,
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View className='flex-row flex-wrap gap-4 w-full items-center justify-center'>
-          {menuItems.map((item, index) => (
-            <View
-              key={item.id}
-              className='w-1/4 h-48'
-              style={{ marginBottom: 16 }}
-            >
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 12,
+            width: '100%',
+            justifyContent: 'center',
+          }}
+        >
+          {menuItems.map((item) => (
+            <View key={item.id} style={{ width: '14%', aspectRatio: 0.85 }}>
               <MenuCard
                 icon={item.icon}
                 title={item.title}
@@ -259,7 +252,6 @@ const MainMenu: React.FC = () => {
                 }}
                 isLocked={item.isLocked}
                 onLockPress={() => handleLockedAccess(item.route)}
-                isHighlighted={item.isHighlighted}
               />
             </View>
           ))}
@@ -268,42 +260,65 @@ const MainMenu: React.FC = () => {
 
       {/* Manager PIN Dialog */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-        <DialogContent className='w-fit h-fit bg-surface border-gray-600 p-8'>
-          <DialogHeader>
-            <DialogTitle className='text-center text-3xl font-semibold text-white'>
-              Manager Access Required
-            </DialogTitle>
-          </DialogHeader>
-          <View className='py-4'>
-            <Text className='text-center text-2xl text-gray-300 mb-6'>
-              Enter your manager PIN to access this feature
+        <DialogContent className="w-fit h-fit p-0">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 24,
+              minWidth: 320,
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading, textAlign: 'center' }}>
+                  Manager Access Required
+                </Text>
+              </DialogTitle>
+            </DialogHeader>
+
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center', marginTop: 6, marginBottom: 16 }}>
+              Enter your manager PIN to continue
             </Text>
+
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
-            <PinNumpad
-              onKeyPress={input => {
-                if (typeof input === 'number') {
-                  if (currentPin.length < 4) {
-                    const newPin = currentPin + input.toString()
-                    setCurrentPin(newPin)
-                    if (newPin.length === 4) {
-                      setTimeout(() => {
-                        handlePinSubmit()
-                      }, 100)
+
+            <View style={{ marginTop: 10 }}>
+              <PinNumpad
+                onKeyPress={(input) => {
+                  if (typeof input === 'number') {
+                    if (currentPin.length < 4) {
+                      const newPin = currentPin + input.toString()
+                      setCurrentPin(newPin)
+                      if (newPin.length === 4) setTimeout(handlePinSubmit, 100)
                     }
+                  } else if (input === 'clear') {
+                    setCurrentPin('')
+                  } else if (input === 'backspace') {
+                    setCurrentPin(currentPin.slice(0, -1))
                   }
-                } else if (input === 'clear') {
-                  setCurrentPin('')
-                } else if (input === 'backspace') {
-                  setCurrentPin(currentPin.slice(0, -1))
-                }
-              }}
-            />
+                }}
+              />
+            </View>
 
             <TouchableOpacity
               onPress={handlePinSubmit}
-              className='p-4 bg-blue-600 rounded-lg w-full self-center mt-6'
+              disabled={currentPin.length < 4}
+              style={{
+                marginTop: 14,
+                paddingVertical: 11,
+                backgroundColor: currentPin.length === 4 ? colors.teal : colors.teal + '30',
+                borderRadius: 10,
+                alignItems: 'center',
+              }}
             >
-              <Text className='text-center text-2xl font-bold text-white'>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: '700',
+                color: currentPin.length === 4 ? colors.onSolid : colors.muted,
+              }}>
                 Enter
               </Text>
             </TouchableOpacity>

@@ -516,17 +516,17 @@ const CardPaymentView = () => {
           {/* READY STATE */}
           {status === "ready" && (
             <View style={{ width: "100%", maxWidth: 400 }}>
-              <View style={{ alignItems: "center", marginBottom: 24 }}>
-                <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Total Due</Text>
-                <Text style={{ fontSize: 48, fontWeight: "700", color: colors.teal, marginBottom: 28 }}>
+              <View style={{ alignItems: "center", marginBottom: 16 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Total Due</Text>
+                <Text style={{ fontSize: 36, fontWeight: "700", color: colors.teal, marginBottom: 20 }}>
                   ${totalToPay.toFixed(2)}
                 </Text>
 
-                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, alignSelf: "flex-start" }}>
+                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6, alignSelf: "flex-start" }}>
                   Add Tip
                 </Text>
                 {/* Preset Tip Buttons */}
-                <View style={{ flexDirection: "row", gap: 8, width: "100%", marginBottom: 12 }}>
+                <View style={{ flexDirection: "row", gap: 6, width: "100%", marginBottom: 10 }}>
                   {TIP_PRESETS.map((percent) => {
                     const isActive = selectedTipPreset === percent;
                     return (
@@ -534,14 +534,14 @@ const CardPaymentView = () => {
                         key={percent}
                         onPress={() => handleTipPreset(percent)}
                         style={{
-                          flex: 1, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+                          flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1,
                           backgroundColor: isActive ? `${colors.teal}15` : colors.panel,
                           borderColor: isActive ? colors.teal : colors.border,
                           alignItems: "center",
                         }}
                       >
-                        <Text style={{ fontWeight: "700", color: isActive ? colors.heading : colors.muted }}>{percent}%</Text>
-                        <Text style={{ fontSize: 11, marginTop: 2, color: isActive ? colors.teal : colors.muted }}>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: isActive ? colors.heading : colors.muted }}>{percent}%</Text>
+                        <Text style={{ fontSize: 10, marginTop: 1, color: isActive ? colors.teal : colors.muted }}>
                           ${((percent / 100) * totalToPay).toFixed(2)}
                         </Text>
                       </TouchableOpacity>
@@ -549,21 +549,21 @@ const CardPaymentView = () => {
                   })}
                 </View>
                 {/* Custom Tip Input */}
-                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, height: 56, width: "100%", marginBottom: 24 }}>
-                  <Text style={{ color: colors.muted, fontSize: 18, marginRight: 6 }}>$</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, height: 44, width: "100%", marginBottom: 16 }}>
+                  <Text style={{ color: colors.muted, fontSize: 15, marginRight: 4 }}>$</Text>
                   <TextInput
                     value={tipInput}
                     onChangeText={handleTipInputChange}
                     placeholder="0.00"
                     keyboardType="numeric"
                     placeholderTextColor={colors.muted}
-                    style={{ flex: 1, fontSize: 22, fontWeight: "700", color: colors.heading }}
+                    style={{ flex: 1, fontSize: 16, fontWeight: "700", color: colors.heading }}
                   />
                 </View>
 
-                <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 14 }}>
-                  <Text style={{ color: colors.muted, fontSize: 16 }}>Grand Total</Text>
-                  <Text style={{ color: colors.heading, fontSize: 16, fontWeight: "700" }}>${grandTotal.toFixed(2)}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>Grand Total</Text>
+                  <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "700" }}>${grandTotal.toFixed(2)}</Text>
                 </View>
               </View>
             </View>
@@ -574,30 +574,30 @@ const CardPaymentView = () => {
             <View style={{ marginBottom: 24, alignItems: "center" }}>
               {status === "processing" && (
                 <Animated.View entering={FadeIn} style={{ alignItems: "center" }}>
-                  <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 2, borderColor: `${colors.teal}30` }}>
+                  <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 12, borderWidth: 1, borderColor: `${colors.teal}30` }}>
                     <ActivityIndicator size="large" color={colors.teal} />
                   </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.panel, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}>
-                    <Wifi size={16} color={colors.success} />
-                    <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 13 }}>Terminal Connected</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.panel, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}>
+                    <Wifi size={13} color={colors.success} />
+                    <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 12 }}>Terminal Connected</Text>
                   </View>
                 </Animated.View>
               )}
 
               {status === "success" && (
                 <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center" }}>
-                  <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: `${colors.success}15`, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 2, borderColor: `${colors.success}30` }}>
-                    <CheckCircle2 size={48} color={colors.success} />
+                  <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${colors.success}15`, alignItems: "center", justifyContent: "center", marginBottom: 12, borderWidth: 1, borderColor: `${colors.success}30` }}>
+                    <CheckCircle2 size={36} color={colors.success} />
                   </View>
-                  <Text style={{ color: colors.success, fontWeight: "700", fontSize: 16 }}>Approved</Text>
+                  <Text style={{ color: colors.success, fontWeight: "700", fontSize: 13 }}>Approved</Text>
                 </Animated.View>
               )}
 
-              <View style={{ marginTop: 24, alignItems: "center" }}>
-                <Text style={{ fontSize: 28, fontWeight: "700", color: colors.heading, marginBottom: 6, textAlign: "center" }}>
+              <View style={{ marginTop: 16, alignItems: "center" }}>
+                <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading, marginBottom: 4, textAlign: "center" }}>
                   {status === "processing" ? "Present Card" : "Payment Successful"}
                 </Text>
-                <Text style={{ color: colors.muted, fontSize: 16, textAlign: "center" }}>
+                <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center" }}>
                   {status === "processing" ? `Charging $${grandTotal.toFixed(2)}` : "Transaction completed"}
                 </Text>
               </View>
@@ -617,34 +617,34 @@ const CardPaymentView = () => {
         <Animated.View entering={FadeInDown.delay(200)} style={{ width: "100%" }}>
           {/* Receipt Breakdown */}
           {status !== "ready" && (
-            <View style={{ backgroundColor: colors.panel, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 }}>
+            <View style={{ backgroundColor: colors.panel, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10 }}>
               {activeSplit ? (
                 <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.muted, fontSize: 15 }}>{activeSplit.customerName} Share</Text>
-                  <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${activeSplit.amount.toFixed(2)}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>{activeSplit.customerName} Share</Text>
+                  <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "600" }}>${activeSplit.amount.toFixed(2)}</Text>
                 </View>
               ) : (
                 <>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
-                    <Text style={{ color: colors.muted, fontSize: 15 }}>Subtotal</Text>
-                    <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${activeOrderOutstandingSubtotal.toFixed(2)}</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+                    <Text style={{ color: colors.muted, fontSize: 13 }}>Subtotal</Text>
+                    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "600" }}>${activeOrderOutstandingSubtotal.toFixed(2)}</Text>
                   </View>
                   {activeOrderDiscount > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
-                      <Text style={{ color: colors.success, fontSize: 15 }}>Discount</Text>
-                      <Text style={{ color: colors.success, fontSize: 15, fontWeight: "600" }}>-${activeOrderDiscount.toFixed(2)}</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+                      <Text style={{ color: colors.success, fontSize: 13 }}>Discount</Text>
+                      <Text style={{ color: colors.success, fontSize: 13, fontWeight: "600" }}>-${activeOrderDiscount.toFixed(2)}</Text>
                     </View>
                   )}
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
-                    <Text style={{ color: colors.muted, fontSize: 15 }}>Tax</Text>
-                    <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${activeOrderOutstandingTax.toFixed(2)}</Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+                    <Text style={{ color: colors.muted, fontSize: 13 }}>Tax</Text>
+                    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "600" }}>${activeOrderOutstandingTax.toFixed(2)}</Text>
                   </View>
                 </>
               )}
               {tipAmount > 0 && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10 }}>
-                  <Text style={{ color: colors.muted, fontSize: 15 }}>Tip</Text>
-                  <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "600" }}>${tipAmount.toFixed(2)}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 8 }}>
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>Tip</Text>
+                  <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "600" }}>${tipAmount.toFixed(2)}</Text>
                 </View>
               )}
             </View>
@@ -656,7 +656,7 @@ const CardPaymentView = () => {
               onPress={handleChargeCard}
               disabled={!terminalReady}
               style={{
-                width: "100%", paddingVertical: 16, borderRadius: 12, marginBottom: 12,
+                width: "100%", paddingVertical: 11, borderRadius: 8, marginBottom: 8,
                 alignItems: "center",
                 backgroundColor: terminalReady ? colors.teal : colors.panel,
                 borderWidth: terminalReady ? 0 : 1,
@@ -664,7 +664,7 @@ const CardPaymentView = () => {
                 opacity: terminalReady ? 1 : 0.5,
               }}
             >
-              <Text style={{ color: terminalReady ? "#000" : colors.muted, fontWeight: "700", fontSize: 17 }}>
+              <Text style={{ color: terminalReady ? "#000" : colors.muted, fontWeight: "700", fontSize: 14 }}>
                 Charge Card ${grandTotal.toFixed(2)}
               </Text>
             </TouchableOpacity>
@@ -695,9 +695,9 @@ const CardPaymentView = () => {
                   close();
                 }
               }}
-              style={{ width: "100%", paddingVertical: 16, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, opacity: isCancelling ? 0.5 : 1 }}
+              style={{ width: "100%", paddingVertical: 10, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, opacity: isCancelling ? 0.5 : 1 }}
             >
-              <Text style={{ fontSize: 16, fontWeight: "700", color: colors.muted, textAlign: "center" }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.muted, textAlign: "center" }}>
                 {isCancelling ? "Cancelling..." : "Cancel Transaction"}
               </Text>
             </TouchableOpacity>

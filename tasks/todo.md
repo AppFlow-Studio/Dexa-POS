@@ -7,6 +7,11 @@
   - Identify gesture path blocking tap selection in merge mode
   - Update table gesture handling to allow tap-to-select while merge mode is active
   - Verify selection highlight and MergeActionBar counts update on tap
+- [x] Fix sidebar table row tap in TablesPanel
+  - Locate tap handler wiring in TablesPanel + Sidebar table list
+  - Confirm TableListItem expects table vs handler signature
+  - Fix handler so taps route correctly (match SeatedPanel)
+  - Validate tap works in sidebar table list
 
 ## Pending
 
