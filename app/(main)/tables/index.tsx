@@ -525,7 +525,7 @@ const TablesScreen = () => {
                 placeholderTextColor={colors.muted}
                 value={searchInput}
                 onChangeText={setSearchInput}
-                style={{ marginLeft: 6, fontSize: 12, flex: 1, color: colors.heading, includeFontPadding: false, padding: 0 }}
+                style={{ marginLeft: 6, fontSize: 12, flex: 1, color: colors.heading, includeFontPadding: false, padding: 4 }}
               />
             </View>
 

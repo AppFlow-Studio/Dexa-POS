@@ -1,8 +1,7 @@
 import React from "react";
 import { Svg, Text as SvgText } from "react-native-svg";
 
-const TextLabel = ({ color = "#888", width = 100, height = 50 }) => {
-  const defaultWidth = 100;
+const TextLabel = ({ color = "#94A3B8", width = 100, height = 50 }) => {
   const defaultHeight = 50;
   const scaleY = (height || defaultHeight) / defaultHeight;
 
@@ -16,6 +15,7 @@ const TextLabel = ({ color = "#888", width = 100, height = 50 }) => {
         fontSize={24 * scaleY}
         fontWeight="bold"
         fill={color}
+        fillOpacity="0.7"
       >
         Aa
       </SvgText>

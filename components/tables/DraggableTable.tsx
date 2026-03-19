@@ -69,7 +69,7 @@ const PulsingBorder = React.memo(
           height,
           borderRadius: 16,
           borderWidth: 2.5,
-          borderColor: `rgba(239,68,68,${opacity})`
+          borderColor: `rgba(248,113,113,${opacity})`
         }}
       />
     )
@@ -429,6 +429,26 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
         <View style={{ width: effectiveWidth, height: effectiveHeight }}>
+          {/* Neon glow layer */}
+          {isTableType && (
+            <View
+              pointerEvents='none'
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: effectiveWidth,
+                height: effectiveHeight,
+                borderRadius: 16,
+                shadowColor: tableColor,
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.85,
+                shadowRadius: 12,
+                elevation: 0
+              }}
+            />
+          )}
+
           {TableComponent ? (
             <TableComponent
               color={isTableType ? tableColor : colors.label}
@@ -448,16 +468,22 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           )}
           <View className='absolute inset-0 items-center justify-center px-1'>
             <Text
-              className={`text-base text-center font-bold ${
-                isTableType ? 'text-white' : 'text-hint'
-              }`}
+              style={{
+                fontSize: 13,
+                fontWeight: '700',
+                textAlign: 'center',
+                color: isTableType ? tableColor : colors.label,
+                textShadowColor: isTableType ? tableColor : 'transparent',
+                textShadowOffset: { width: 0, height: 0 },
+                textShadowRadius: 6
+              }}
               numberOfLines={1}
             >
               {displayName ? displayName : table.name}
             </Text>
 
             {isTableType && tableStatus === 'available' && (
-              <Text className='text-white font-semibold text-[9px]'>
+              <Text style={{ color: tableColor + 'AA', fontSize: 9, fontWeight: '600' }}>
                 {table.capacity ||
                   TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES]
                     ?.capacity ||
@@ -477,20 +503,27 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 tableStatus === 'paid') && (
                 <>
                   {!effectiveOrder && liveSession ? (
-                    <Text className='text-white/60 font-semibold text-sm'>
+                    <Text style={{ color: tableColor + '99', fontSize: 12, fontWeight: '600' }}>
                       Loading...
                     </Text>
                   ) : (
                     <>
-                      <Text className='text-white font-bold text-base'>
+                      <Text style={{
+                        color: '#FFFFFF',
+                        fontSize: 13,
+                        fontWeight: '700',
+                        textShadowColor: tableColor,
+                        textShadowOffset: { width: 0, height: 0 },
+                        textShadowRadius: 4
+                      }}>
                         ${orderTotal.toFixed(2)}
                       </Text>
                       {liveSession?.party_size ? (
-                        <Text className='text-white/70 font-semibold text-[9px]'>
+                        <Text style={{ color: tableColor + 'BB', fontSize: 9, fontWeight: '600' }}>
                           {liveSession.party_size} guests
                         </Text>
                       ) : null}
-                      <Text className='text-white font-semibold text-base'>
+                      <Text style={{ color: tableColor + 'CC', fontSize: 11, fontWeight: '600' }}>
                         {duration}
                       </Text>
                     </>
@@ -500,7 +533,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
             {isTableType &&
               (tableStatus === 'cleaning' || tableStatus === 'closing') && (
-                <BrushCleaning size={16} color='rgba(255,255,255,0.6)' />
+                <BrushCleaning size={16} color={tableColor + '99'} />
               )}
           </View>
 
@@ -514,16 +547,16 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 width: 20,
                 height: 20,
                 borderRadius: 10,
-                backgroundColor: sectionColor
-                  ? sectionColor + '99'
-                  : 'rgba(0,0,0,0.4)',
+                backgroundColor: 'rgba(0,0,0,0.6)',
+                borderWidth: 1,
+                borderColor: (sectionColor ?? tableColor) + '99',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
               <Text
                 style={{
-                  color: 'white',
+                  color: sectionColor ?? tableColor,
                   fontSize: 8,
                   fontWeight: '700'
                 }}
