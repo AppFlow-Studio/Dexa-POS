@@ -1,5 +1,5 @@
 import * as React from "react";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Rect } from "react-native-svg";
 
 interface TableSquare4ChairProps {
   color?: string;
@@ -8,6 +8,9 @@ interface TableSquare4ChairProps {
   height?: number;
 }
 
+// viewBox 0 0 97 97
+// Table body: x=8..88, y=8..88 (edges at 8 and 88)
+// Chairs flush against each edge, 11px tall/wide
 const TableSquare4Chair = ({
   color = "#2DD4BF",
   width = 97,
@@ -15,26 +18,21 @@ const TableSquare4Chair = ({
   ...props
 }: TableSquare4ChairProps) => (
   <Svg width={width} height={height} viewBox="0 0 97 97" fill="none" {...props}>
-    <Path
-      d="M36.668 4.66667C36.668 2.08934 38.7573 0 41.3346 0H55.1124C57.6897 0 59.7791 2.08934 59.7791 4.66667C59.7791 5.52578 59.0826 6.22222 58.2235 6.22222H38.2235C37.3644 6.22222 36.668 5.52578 36.668 4.66667Z"
-      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1"
-    />
-    <Path
-      d="M8.33398 15.5552C8.33398 12.622 8.33398 11.1555 9.24521 10.2442C10.1564 9.33301 11.623 9.33301 14.5562 9.33301H81.8895C84.8227 9.33301 86.2893 9.33301 87.2005 10.2442C88.1118 11.1555 88.1118 12.622 88.1118 15.5552V80.8886C88.1118 83.8217 88.1118 85.2883 87.2005 86.1996C86.2893 87.1108 84.8227 87.1108 81.8895 87.1108H14.5562C11.623 87.1108 10.1564 87.1108 9.24521 86.1996C8.33398 85.2883 8.33398 83.8217 8.33398 80.8886V15.5552Z"
-      fill={color} fillOpacity="0.12" stroke={color} strokeWidth="1.5"
-    />
-    <Path
-      d="M36.668 91.7782C36.668 90.9191 37.3644 90.2227 38.2235 90.2227H58.2235C59.0826 90.2227 59.7791 90.9191 59.7791 91.7782C59.7791 94.3555 57.6897 96.4449 55.1124 96.4449H41.3346C38.7573 96.4449 36.668 94.3555 36.668 91.7782Z"
-      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1"
-    />
-    <Path
-      d="M4.66667 36.668C2.08934 36.668 0 38.7573 0 41.3346V55.1124C0 57.6897 2.08934 59.7791 4.66667 59.7791C5.52578 59.7791 6.22222 59.0826 6.22222 58.2235V38.2235C6.22222 37.3644 5.52578 36.668 4.66667 36.668Z"
-      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1"
-    />
-    <Path
-      d="M91.7782 36.668C90.9191 36.668 90.2227 37.3644 90.2227 38.2235V58.2235C90.2227 59.0826 90.9191 59.7791 91.7782 59.7791C94.3555 59.7791 96.4449 57.6897 96.4449 55.1124V41.3346C96.4449 38.7573 94.3555 36.668 91.7782 36.668Z"
-      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1"
-    />
+    {/* Chair — top */}
+    <Rect x="29" y="1" width="39" height="11" rx="3"
+      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1" />
+    {/* Chair — bottom */}
+    <Rect x="29" y="85" width="39" height="11" rx="3"
+      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1" />
+    {/* Chair — left */}
+    <Rect x="1" y="29" width="11" height="39" rx="3"
+      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1" />
+    {/* Chair — right */}
+    <Rect x="85" y="29" width="11" height="39" rx="3"
+      fill={color} fillOpacity="0.08" stroke={color} strokeWidth="1" />
+    {/* Table surface — left edge at x=12 (flush with chair right edge), right edge at x=85 */}
+    <Rect x="12" y="12" width="73" height="73" rx="6"
+      fill={color} fillOpacity="0.12" stroke={color} strokeWidth="1.5" />
   </Svg>
 );
 
