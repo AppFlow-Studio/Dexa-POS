@@ -118,11 +118,11 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
               className="w-2 h-2 rounded-full mr-2.5"
               style={{ backgroundColor: isCurrent ? colors.success : colors.muted }}
             />
-            <Text className="text-base font-bold text-white">
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}>
               Course {courseId}
             </Text>
             {isSent && (
-              <Text className="text-sm font-semibold text-teal ml-2">Sent</Text>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal, marginLeft: 6 }}>Sent</Text>
             )}
             {aggregateStatus && (
               <View className={`ml-2 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}>
@@ -131,7 +131,7 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
                 </Text>
               </View>
             )}
-            <Text className="text-sm text-gray-500 ml-2">
+            <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>
               {courseItemCount} item{courseItemCount !== 1 ? "s" : ""}
             </Text>
           </View>
@@ -268,7 +268,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   if (!activeOrder) {
     return (
       <View className="flex-1 items-center justify-center">
-        <Text className="text-gray-400 text-lg">No active order.</Text>
+        <Text style={{ fontSize: 12, color: colors.muted }}>No active order.</Text>
       </View>
     );
   }
@@ -277,7 +277,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     <View className="flex-1 bg-panel p-4">
       {/* Main Header */}
       <View className="flex-row items-center justify-between pb-3 mb-2">
-        <Text className="text-lg font-bold text-white">
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
           Order{" "}
           {activeOrder.display_number
             ? activeOrder.display_number.startsWith("#")
@@ -295,7 +295,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
           activeOpacity={0.8}
         >
           <Plus size={16} color={colors.teal} />
-          <Text className="font-semibold text-teal text-sm">
+          <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}>
             New Course
           </Text>
         </TouchableOpacity>
@@ -318,7 +318,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
             ))
           ) : (
             <View className="flex-1 items-center justify-center mt-10">
-              <Text className="text-gray-400 text-lg">
+              <Text style={{ fontSize: 12, color: colors.muted }}>
                 Add items to start an order.
               </Text>
             </View>

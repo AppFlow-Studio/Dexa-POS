@@ -4,6 +4,7 @@ import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import TableBillSection from '@/components/bill/TableBillSection'
 import MenuSection from '@/components/menu/MenuSection'
 import OrderInfoHeader from '@/components/tables/OrderInfoHeader'
+import ServerSelectSheet from '@/components/tables/ServerSelectSheet'
 import TableAlertDialogs from '@/components/tables/TableAlertDialogs'
 import TableDetailSkeleton from '@/components/tables/TableDetailSkeleton'
 import { useLoading } from '@/contexts/LoadingContext'
@@ -99,6 +100,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const [isOrderClosedWarningOpen, setOrderClosedWarningOpen] = useState(false)
   const [courseToResend, setCourseToResend] = useState<number | null>(null)
   const [isReopenModalOpen, setReopenModalOpen] = useState(false)
+  const [serverSheetOpen, setServerSheetOpen] = useState(false)
   const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
     number | null
   >(null)
@@ -674,7 +676,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       {renderStage >= 1 ? (
         <>
           <View className='px-2 mt-2'>
-            <OrderInfoHeader duration={duration} tableId={currentTableId} />
+            <OrderInfoHeader duration={duration} tableId={currentTableId} onOpenServerSheet={() => setServerSheetOpen(true)} />
           </View>
 
           <View className='flex-1 flex-row'>
@@ -772,6 +774,16 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           <DiscountBottomSheet
             ref={discountSheetRef}
             onClose={() => discountSheetRef.current?.close()}
+          />
+
+          <ServerSelectSheet
+            isOpen={serverSheetOpen}
+            onClose={() => setServerSheetOpen(false)}
+            onSelect={(name) => {
+              updateActiveOrderDetails({ server_name: name });
+              setServerSheetOpen(false);
+            }}
+            currentServer={activeOrder?.server_name}
           />
 
           <TableAlertDialogs

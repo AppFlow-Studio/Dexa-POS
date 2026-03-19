@@ -3,25 +3,23 @@ import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { ChevronDown, Minus, Plus } from "lucide-react-native";
+import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import ServerSelectSheet from "./ServerSelectSheet";
 
 interface OrderInfoHeaderProps {
   duration?: string;
   tableId?: string;
+  onOpenServerSheet?: () => void;
 }
 
-const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, onOpenServerSheet }) => {
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const tablesById = useFloorPlanStore((s) => s.tablesById);
   const activeOrder = useActiveOrder();
   const openCustomerSheet = useCustomerSheetStore((s) => s.openSheet);
 
   const [numberOfGuests, setNumberOfGuests] = useState(1);
-  const [serverSheetOpen, setServerSheetOpen] = useState(false);
 
   const table = useMemo(() => {
     if (tableId) {
@@ -37,11 +35,6 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId }) 
   useEffect(() => {
     setNumberOfGuests(guestCount);
   }, [guestCount]);
-
-  const handleServerSelect = (name: string) => {
-    if (activeOrder) updateActiveOrderDetails({ server_name: name });
-    setServerSheetOpen(false);
-  };
 
   const handleGuestCountChange = (newCount: number) => {
     const count = Math.max(1, newCount);
@@ -64,135 +57,60 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId }) 
 
   if (!activeOrder) return null;
 
-  // --- Collapsed breadcrumb ---
-  if (!isExpanded) {
-    return (
-      <TouchableOpacity
-        onPress={() => setIsExpanded(true)}
-        activeOpacity={0.7}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          gap: 0,
-        }}
-      >
-        <Text style={{ fontSize: 12, color: colors.label, fontWeight: '500' }}>
-          {getTableDisplayName()}
-        </Text>
-        <Text style={{ color: colors.border, marginHorizontal: 8 }}>·</Text>
-        <Text style={{ fontSize: 12, color: colors.label }}>
-          {guestCount} guest{guestCount !== 1 ? "s" : ""}
-        </Text>
-        {duration && (
-          <>
-            <Text style={{ color: colors.border, marginHorizontal: 8 }}>·</Text>
-            <Text style={{ fontSize: 12, color: colors.label }}>{duration}</Text>
-          </>
-        )}
-        <TouchableOpacity onPress={openCustomerSheet} style={{ marginLeft: 8 }}>
-          <Text style={{ fontSize: 12, color: colors.teal, fontWeight: '500' }}>
-            {activeOrder.customer_name || "Assign Customer"}
-          </Text>
-        </TouchableOpacity>
-        <View style={{ marginLeft: 'auto' }}>
-          <ChevronDown color={colors.muted} size={14} />
-        </View>
-      </TouchableOpacity>
-    );
-  }
-
-  // --- Expanded detail panel ---
-  const ROW_STYLE = {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border + '60',
-  };
-  const LABEL_STYLE = { fontSize: 11, color: colors.muted, width: 72, textTransform: 'uppercase' as const, letterSpacing: 0.4 };
-
   return (
-    <>
-      <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        {/* Server */}
-        <TouchableOpacity onPress={() => setServerSheetOpen(true)} style={ROW_STYLE}>
-          <Text style={LABEL_STYLE}>Server</Text>
-          <Text style={{ fontSize: 13, color: activeOrder.server_name ? colors.heading : colors.teal }}>
-            {activeOrder.server_name || "Assign Server"}
-          </Text>
-        </TouchableOpacity>
+    <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
 
-        {/* Customer */}
-        <TouchableOpacity onPress={openCustomerSheet} style={ROW_STYLE}>
-          <Text style={LABEL_STYLE}>Customer</Text>
-          <Text style={{ fontSize: 13, color: activeOrder.customer_name ? colors.heading : colors.teal }}>
-            {activeOrder.customer_name || "Assign Customer"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Guests */}
-        <View style={ROW_STYLE}>
-          <Text style={LABEL_STYLE}>Guests</Text>
-          <Text style={{ fontSize: 13, color: colors.label, flex: 1 }}>Party size</Text>
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 8,
-            backgroundColor: colors.screen, paddingHorizontal: 6, paddingVertical: 4,
-            borderRadius: 20, borderWidth: 1, borderColor: colors.border
-          }}>
-            <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests - 1)} style={{ padding: 2 }}>
-              <Minus color={colors.label} size={12} />
-            </TouchableOpacity>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, minWidth: 18, textAlign: 'center' }}>
-              {numberOfGuests}
-            </Text>
-            <TouchableOpacity
-              onPress={() => handleGuestCountChange(numberOfGuests + 1)}
-              style={{ padding: 2, backgroundColor: colors.teal, borderRadius: 10 }}
-            >
-              <Plus color={colors.onSolid} size={12} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Table */}
-        <View style={ROW_STYLE}>
-          <Text style={LABEL_STYLE}>Table</Text>
-          <Text style={{ fontSize: 13, color: colors.heading }}>{getTableDisplayName()}</Text>
-        </View>
-
-        {/* Duration */}
-        {duration && (
-          <View style={ROW_STYLE}>
-            <Text style={LABEL_STYLE}>Duration</Text>
-            <Text style={{ fontSize: 13, color: colors.heading, fontWeight: '600' }}>{duration}</Text>
-          </View>
-        )}
-
-        {/* Collapse */}
-        <TouchableOpacity
-          onPress={() => setIsExpanded(false)}
-          style={{ alignItems: 'center', paddingVertical: 6 }}
-        >
-          <ChevronDown
-            style={{ transform: [{ rotate: "180deg" }] }}
-            color={colors.border}
-            size={14}
-          />
-        </TouchableOpacity>
+      {/* Table */}
+      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+        <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>TABLE</Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.heading }}>{getTableDisplayName()}</Text>
       </View>
 
-      <ServerSelectSheet
-        isOpen={serverSheetOpen}
-        onClose={() => setServerSheetOpen(false)}
-        onSelect={handleServerSelect}
-        currentServer={activeOrder.server_name}
-      />
-    </>
+      {/* Guests */}
+      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+        <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>GUESTS</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Minus color={colors.label} size={11} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.heading, minWidth: 16, textAlign: 'center' }}>{numberOfGuests}</Text>
+          <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests + 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Plus color={colors.label} size={11} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Server */}
+      <TouchableOpacity
+        onPress={onOpenServerSheet}
+        style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: activeOrder.server_name ? colors.card : colors.teal + '10', borderWidth: 1, borderColor: activeOrder.server_name ? colors.border : colors.teal + '40' }}
+      >
+        <Text style={{ fontSize: 9, color: activeOrder.server_name ? colors.muted : colors.teal, letterSpacing: 0.5, marginBottom: 1 }}>SERVER</Text>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: activeOrder.server_name ? colors.label : colors.teal }}>
+          {activeOrder.server_name || '— Assign'}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Customer */}
+      <TouchableOpacity
+        onPress={openCustomerSheet}
+        style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: activeOrder.customer_name ? colors.card : colors.teal + '10', borderWidth: 1, borderColor: activeOrder.customer_name ? colors.border : colors.teal + '40' }}
+      >
+        <Text style={{ fontSize: 9, color: activeOrder.customer_name ? colors.muted : colors.teal, letterSpacing: 0.5, marginBottom: 1 }}>CUSTOMER</Text>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: activeOrder.customer_name ? colors.label : colors.teal }}>
+          {activeOrder.customer_name || '— Assign'}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Duration */}
+      {duration && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>TIME</Text>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>{duration}</Text>
+        </View>
+      )}
+
+    </View>
   );
 };
 

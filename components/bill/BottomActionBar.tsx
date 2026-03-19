@@ -71,133 +71,79 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     }
   }, [isSyncing]);
 
-  // Shared styling — main buttons take remaining space, More is compact
-  const mainButtonClass =
-    "flex-1 flex-row items-center justify-center h-12 px-3 rounded-xl gap-2";
-  const moreButtonClass =
-    "flex-row items-center justify-center h-12 px-4 rounded-xl gap-2";
+  const mainBtn = {
+    flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const,
+    justifyContent: 'center' as const, height: 36, borderRadius: 8,
+    gap: 5, borderWidth: 1, paddingHorizontal: 10,
+  };
 
-  const renderDefaultButtons = () => (
-    <>
-      {/* Discount Button: Indigo (Distinct from Blue, fits dark theme) */}
-      {/* <TouchableOpacity
-        onPress={onPressDiscount}
-        className={`${mainButtonClass} bg-indigo-600`}
+  const renderDefaultButtons = () => {
+    const hasItems = (activeOrder?.items?.length ?? 0) > 0;
+    const isBalanceZero = hasItems && totalDisplayAmount <= 0 && !isSyncing;
+
+    if (isSyncing) {
+      return (
+        <Animated.View style={{ opacity: pulseAnim, flex: 1 }}>
+          <View style={{ ...mainBtn, backgroundColor: colors.border + '30', borderColor: colors.border }}>
+            <ActivityIndicator size="small" color={colors.muted} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} numberOfLines={1}>Syncing...</Text>
+          </View>
+        </Animated.View>
+      );
+    }
+
+    if (isBalanceZero) {
+      const paymentsText = paymentCount
+        ? `${paymentCount} payment${paymentCount > 1 ? "s" : ""} made`
+        : "Partially Paid";
+      return (
+        <View style={{ ...mainBtn, backgroundColor: colors.success + '15', borderColor: colors.success + '40' }}>
+          <CheckCircle size={13} color={colors.success} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.success }} numberOfLines={1}>{paymentsText}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        onPress={onPressTotal}
         activeOpacity={0.7}
+        style={{ ...mainBtn, backgroundColor: colors.teal + '18', borderColor: colors.teal + '50' }}
       >
-        <Percent size={18} color="white" />
-        <Text className="font-semibold text-white text-base">Discount</Text>
-      </TouchableOpacity> */}
-
-      {/* Total Button: Blue (Primary Action), Green Close Check (balance $0), or Gray (Syncing) */}
-      {(() => {
-        // Check if balance is zero (order is fully paid but may be reopened)
-        const hasItems = (activeOrder?.items?.length ?? 0) > 0;
-        const isBalanceZero = hasItems && totalDisplayAmount <= 0 && !isSyncing;
-
-        // Show syncing state with pulsing animation
-        if (isSyncing) {
-          return (
-            <Animated.View style={{ opacity: pulseAnim, flex: 1 }}>
-              <View className={`${mainButtonClass} bg-gray-600`}>
-                <ActivityIndicator size="small" color="white" />
-                <Text
-                  className="font-semibold text-white text-base"
-                  numberOfLines={1}
-                >
-                  Syncing...
-                </Text>
-              </View>
-            </Animated.View>
-          );
-        }
-
-        // When balance is $0, show payment status badge (non-clickable indicator)
-        // Close Check action has been moved to the More button's bottom sheet
-        if (isBalanceZero) {
-          const paymentsText = paymentCount
-            ? `${paymentCount} payment${paymentCount > 1 ? "s" : ""} made`
-            : "Partially Paid";
-
-          return (
-            <View
-              className={`${mainButtonClass} bg-emerald-600/20 border border-emerald-500`}
-            >
-              <CheckCircle size={18} color={colors.success} />
-              <Text
-                className="font-semibold text-emerald-400 text-base"
-                numberOfLines={1}
-              >
-                {paymentsText}
-              </Text>
-            </View>
-          );
-        }
-
-        // Normal case - show Total amount
-        return (
-          <TouchableOpacity
-            onPress={onPressTotal}
-            className={`${mainButtonClass} bg-teal`}
-            activeOpacity={0.7}
-          >
-            <Text
-              className="font-bold text-white text-base"
-              numberOfLines={1}
-            >
-              ${totalDisplayAmount.toFixed(2)}
-            </Text>
-            <ShoppingCart size={18} color="white" />
-          </TouchableOpacity>
-        );
-      })()}
-    </>
-  );
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }} numberOfLines={1}>
+          ${totalDisplayAmount.toFixed(2)}
+        </Text>
+        <ShoppingCart size={13} color={colors.teal} />
+      </TouchableOpacity>
+    );
+  };
 
   const renderPaidButtons = () => (
     <>
-      {/* Close Check: Emerald Green (Success/Finish) */}
-      <TouchableOpacity
-        onPress={onPressCloseCheck}
-        className={`${mainButtonClass} bg-emerald-600`}
-        activeOpacity={0.7}
-      >
-        <CheckCircle size={18} color="white" />
-        <Text className="font-semibold text-white text-base">Close</Text>
+      <TouchableOpacity onPress={onPressCloseCheck} activeOpacity={0.7}
+        style={{ ...mainBtn, backgroundColor: colors.success + '15', borderColor: colors.success + '40' }}>
+        <CheckCircle size={13} color={colors.success} />
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.success }}>Close</Text>
       </TouchableOpacity>
-
-      {/* Clear Table: Red (Destructive) */}
-      <TouchableOpacity
-        onPress={onPressClearTable}
-        className={`${mainButtonClass} bg-red-900/40 border border-red-500`}
-        activeOpacity={0.7}
-      >
-        <Trash2 size={18} color={colors.danger} />
-        <Text className="font-semibold text-red-100 text-base">Clear</Text>
+      <TouchableOpacity onPress={onPressClearTable} activeOpacity={0.7}
+        style={{ ...mainBtn, backgroundColor: colors.danger + '12', borderColor: colors.danger + '40' }}>
+        <Trash2 size={13} color={colors.danger} />
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.danger }}>Clear</Text>
       </TouchableOpacity>
     </>
   );
 
   const renderClosedButtons = () => (
     <>
-      {/* Reopen: Amber (Undo/Correction) */}
-      <TouchableOpacity
-        onPress={onPressReopenCheck}
-        className={`${mainButtonClass} bg-amber-600`}
-        activeOpacity={0.7}
-      >
-        <RotateCcw size={18} color="white" />
-        <Text className="font-semibold text-white text-base">Reopen</Text>
+      <TouchableOpacity onPress={onPressReopenCheck} activeOpacity={0.7}
+        style={{ ...mainBtn, backgroundColor: colors.warning + '15', borderColor: colors.warning + '40' }}>
+        <RotateCcw size={13} color={colors.warning} />
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.warning }}>Reopen</Text>
       </TouchableOpacity>
-
-      {/* Clear Table: Red */}
-      <TouchableOpacity
-        onPress={onPressClearTable}
-        className={`${mainButtonClass} bg-red-900/40 border border-red-500`}
-        activeOpacity={0.7}
-      >
-        <Trash2 size={18} color={colors.danger} />
-        <Text className="font-semibold text-red-100 text-base">Clear</Text>
+      <TouchableOpacity onPress={onPressClearTable} activeOpacity={0.7}
+        style={{ ...mainBtn, backgroundColor: colors.danger + '12', borderColor: colors.danger + '40' }}>
+        <Trash2 size={13} color={colors.danger} />
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.danger }}>Clear</Text>
       </TouchableOpacity>
     </>
   );
@@ -224,15 +170,14 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
 
   return (
     // Container: Removed "justify-between", added "gap-3"
-    <View className="flex-row items-center py-3 px-4 bg-surface border-t border-gray-700 gap-3">
-      {/* More Button: Compact, no flex */}
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.border, gap: 6 }}>
       <TouchableOpacity
         onPress={onPressMore}
-        className={`${moreButtonClass} bg-panel border border-gray-600`}
         activeOpacity={0.7}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 36, paddingHorizontal: 12, borderRadius: 8, gap: 5, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
       >
-        <MoreHorizontal size={20} color="white" />
-        <Text className="font-semibold text-white text-base">More</Text>
+        <MoreHorizontal size={14} color={colors.label} />
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>More</Text>
       </TouchableOpacity>
 
       {/* Dynamic Buttons (Discount/Total or Close/Clear) */}
