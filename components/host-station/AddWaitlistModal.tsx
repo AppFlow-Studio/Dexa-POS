@@ -1,14 +1,7 @@
 import { colors } from '@/lib/theme'
 import { X } from 'lucide-react-native'
 import React, { useCallback } from 'react'
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
+import { Modal, Platform, Text, TouchableOpacity, View, KeyboardAvoidingView } from 'react-native'
 import AddToWaitlistForm from './AddToWaitlistForm'
 
 type AddWaitlistPayload = {
@@ -29,49 +22,32 @@ interface AddWaitlistModalProps {
   isLoading: boolean
 }
 
-export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(
-  ({ visible, onClose, onSubmit, isLoading }) => {
-    const handleCancel = useCallback(() => {
-      onClose()
-    }, [onClose])
+export const AddWaitlistModal = React.memo<AddWaitlistModalProps>(({ visible, onClose, onSubmit, isLoading }) => {
+  const handleCancel = useCallback(() => onClose(), [onClose])
+  const handleSubmit = useCallback((data: AddWaitlistPayload) => onSubmit(data), [onSubmit])
 
-    const handleSubmit = useCallback(
-      (data: AddWaitlistPayload) => {
-        onSubmit(data)
-      },
-      [onSubmit]
-    )
-
-    return (
-      <Modal
-        visible={visible}
-        animationType='slide'
-        transparent
-        presentationStyle='pageSheet'
+  return (
+    <Modal visible={visible} animationType='fade' transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className='flex-1 bg-black/50'
-        >
-          <View className='flex-1 bg-screen mt-10 rounded-t-3xl'>
-            <View className='flex-row items-center justify-between px-4 pt-4 pb-4 border-b border-border'>
-              <Text className='text-white text-xl font-bold'>
-                Add to Waitlist
-              </Text>
-              <TouchableOpacity onPress={onClose}>
-                <X size={24} color={colors.label} />
-              </TouchableOpacity>
-            </View>
-            <AddToWaitlistForm
-              onSubmit={handleSubmit}
-              onCancel={handleCancel}
-              isLoading={isLoading}
-            />
+        <View style={{ width: 460, height: 580, backgroundColor: colors.screen, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '700' }}>Add to Waitlist</Text>
+            <TouchableOpacity onPress={onClose} style={{ padding: 4, borderRadius: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+              <X size={14} color={colors.label} />
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    )
-  }
-)
+          {/* Form takes up all remaining space */}
+          <View style={{ flex: 1 }}>
+            <AddToWaitlistForm onSubmit={handleSubmit} onCancel={handleCancel} isLoading={isLoading} />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  )
+})
 
 AddWaitlistModal.displayName = 'AddWaitlistModal'

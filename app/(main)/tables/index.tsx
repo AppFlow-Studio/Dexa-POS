@@ -37,7 +37,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   InteractionManager,
   Modal,
-  SafeAreaView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -677,27 +676,21 @@ const TablesScreen = () => {
       {/* Host Station Modal */}
       <Modal
         visible={isHostStationOpen}
-        animationType='slide'
-        presentationStyle='pageSheet'
+        animationType='fade'
+        transparent
         onRequestClose={() => setHostStationOpen(false)}
       >
-        <SafeAreaView className='flex-1 bg-screen'>
-          <View className='flex-row items-center justify-between px-4 py-3 border-b border-border'>
-            <Text className='text-xl font-bold text-white'>Host Station</Text>
-            <TouchableOpacity onPress={() => setHostStationOpen(false)}>
-              <X color={colors.label} size={24} />
-            </TouchableOpacity>
-          </View>
-          <View className='flex-1'>
+        <TouchableOpacity activeOpacity={1} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setHostStationOpen(false)}>
+          <TouchableOpacity activeOpacity={1} style={{ width: 480, height: '85%', backgroundColor: colors.screen, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
             {location_id ? (
               <HostStationScreenEnhanced location_id={location_id} />
             ) : (
-              <View className='flex-1 items-center justify-center'>
-                <Text className='text-label'>Please select a location</Text>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>Please select a location</Text>
               </View>
             )}
-          </View>
-        </SafeAreaView>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   )

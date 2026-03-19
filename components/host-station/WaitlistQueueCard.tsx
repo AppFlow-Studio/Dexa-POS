@@ -2,28 +2,12 @@ import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { colors } from '@/lib/theme'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import {
-  AlertCircle,
-  Bell,
-  Check,
-  ChevronLeft,
-  Clock,
-  GripVertical,
-  Lightbulb,
-  Mail,
-  Phone,
-  PhoneOff,
-  StickyNote,
-  Users,
-  X
+  AlertCircle, Bell, Check, ChevronDown, ChevronRight,
+  Clock, GripVertical, Lightbulb, Mail, Phone, PhoneOff,
+  StickyNote, Users, X
 } from 'lucide-react-native'
 import React, { useMemo, useRef, useState } from 'react'
-import {
-  Animated,
-  PanResponder,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
+import { Animated, PanResponder, Text, TouchableOpacity, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { SharedValue } from 'react-native-reanimated'
 
@@ -39,51 +23,40 @@ interface WaitlistQueueCardProps {
   isDragging?: SharedValue<boolean>
 }
 
-const getStatusColor = (
-  status: string,
-  isOverdue: boolean,
-  isApproaching: boolean
-) => {
-  if (isOverdue) return '#ef4444'
-  if (isApproaching) return '#f59e0b'
+const getStatusColor = (status: string, isOverdue: boolean, isApproaching: boolean) => {
+  if (isOverdue) return colors.danger
+  if (isApproaching) return colors.warning
   switch (status) {
-    case 'waiting':
-      return '#ffffff'
-    case 'notified':
-      return '#3b82f6'
-    case 'arrived':
-      return '#10b981'
-    case 'expired':
-      return '#ef4444'
-    default:
-      return '#6b7280'
+    case 'waiting': return colors.label
+    case 'notified': return colors.info
+    case 'arrived': return colors.success
+    case 'expired': return colors.danger
+    default: return colors.muted
   }
 }
 
 const getStatusLabel = (status: string) => {
   switch (status) {
-    case 'waiting':
-      return 'WAITING'
-    case 'notified':
-      return 'NOTIFIED'
-    case 'arrived':
-      return 'ARRIVED'
-    case 'expired':
-      return 'EXPIRED'
-    default:
-      return status.toUpperCase()
+    case 'waiting': return 'Waiting'
+    case 'notified': return 'Notified'
+    case 'arrived': return 'Arrived'
+    case 'expired': return 'Expired'
+    default: return status
   }
 }
 
-function getElapsedMinutes (createdAt: string): number {
-  if (!createdAt) return 0
-  return Math.max(
-    0,
-    Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000)
-  )
+const getInitials = (name: string) => {
+  const parts = name.trim().split(' ')
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  return name.slice(0, 2).toUpperCase()
 }
 
-function formatElapsed (minutes: number): string {
+function getElapsedMinutes(createdAt: string): number {
+  if (!createdAt) return 0
+  return Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000))
+}
+
+function formatElapsed(minutes: number): string {
   if (!minutes || minutes < 0) return '0m'
   if (minutes < 60) return `${minutes}m`
   const h = Math.floor(minutes / 60)
@@ -92,412 +65,222 @@ function formatElapsed (minutes: number): string {
 }
 
 export const WaitlistQueueCard: React.FC<WaitlistQueueCardProps> = ({
-  entry,
-  position,
-  onNotify,
-  onSeat,
-  onCancel,
-  onMarkNoShow,
-  onOfferComp,
-  dragGesture
+  entry, position, onNotify, onSeat, onCancel, onMarkNoShow, onOfferComp, dragGesture
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const [swipeOffset] = useState(new Animated.Value(0))
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) =>
-        Math.abs(gs.dx) > 5 && Math.abs(gs.dy) < 20,
-      onPanResponderMove: (_, gs) => {
-        if (gs.dx < 0) {
-          swipeOffset.setValue(gs.dx)
-        }
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dx < -80) {
-          Animated.timing(swipeOffset, {
-            toValue: -280,
-            duration: 300,
-            useNativeDriver: false
-          }).start()
-        } else {
-          Animated.timing(swipeOffset, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: false
-          }).start()
-        }
-      }
-    })
-  ).current
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 5 && Math.abs(gs.dy) < 20,
+    onPanResponderMove: (_, gs) => { if (gs.dx < 0) swipeOffset.setValue(gs.dx) },
+    onPanResponderRelease: (_, gs) => {
+      Animated.timing(swipeOffset, { toValue: gs.dx < -80 ? -260 : 0, duration: 220, useNativeDriver: false }).start()
+    }
+  })).current
 
   const tick = useTableTimerTick()
-  const elapsed = useMemo(
-    () => getElapsedMinutes(entry.created_at),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entry.created_at, tick]
-  )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const elapsed = useMemo(() => getElapsedMinutes(entry.created_at), [entry.created_at, tick])
   const isOverdue = elapsed > (entry.quoted_wait_minutes || 0)
-  const isApproaching =
-    elapsed > (entry.quoted_wait_minutes || 0) * 0.8 && !isOverdue
-
-  // Calculate if wait exceeds quoted by >10 minutes
-  const overtimeMinutes = Math.max(
-    0,
-    elapsed - (entry.quoted_wait_minutes || 0)
-  )
+  const isApproaching = elapsed > (entry.quoted_wait_minutes || 0) * 0.8 && !isOverdue
+  const overtimeMinutes = Math.max(0, elapsed - (entry.quoted_wait_minutes || 0))
   const isSignificantlyOverdue = overtimeMinutes > 10
-
-  const statusColor = getStatusColor(
-    entry.status,
-    isOverdue || isSignificantlyOverdue,
-    isApproaching
-  )
+  const statusColor = getStatusColor(entry.status, isOverdue || isSignificantlyOverdue, isApproaching)
   const hasPhone = Boolean(entry.phone?.replace(/\D/g, ''))
+  const progress = Math.min(1, elapsed / Math.max(1, entry.quoted_wait_minutes || 1))
 
-  const closeSwipe = () =>
-    Animated.timing(swipeOffset, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: false
-    }).start()
+  const closeSwipe = () => Animated.timing(swipeOffset, { toValue: 0, duration: 220, useNativeDriver: false }).start()
 
   return (
-    <View className='overflow-hidden rounded-xl bg-card border border-border'>
-      {/* Swipeable Background Actions */}
-      <View className='absolute inset-0 flex-row items-center justify-end gap-1 px-3'>
-        <TouchableOpacity
-          onPress={() => {
-            closeSwipe()
-            onMarkNoShow()
-          }}
-          className='px-3 py-2 rounded-lg bg-red-900/80'
-        >
-          <Text className='text-white text-xs font-semibold'>NO-SHOW</Text>
+    <View style={{
+      borderRadius: 12,
+      overflow: 'hidden',
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: isSignificantlyOverdue ? colors.danger + '70' : isOverdue ? colors.danger + '40' : isApproaching ? colors.warning + '30' : colors.border,
+    }}>
+      {/* Colored left accent bar */}
+      <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: statusColor, zIndex: 1 }} />
+
+      {/* Swipe Background Actions */}
+      <View style={{ position: 'absolute', inset: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, paddingHorizontal: 8 }}>
+        <TouchableOpacity onPress={() => { closeSwipe(); onMarkNoShow() }} style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.danger + '20', borderWidth: 1, borderColor: colors.danger + '50' }}>
+          <Text style={{ color: colors.danger, fontSize: 10, fontWeight: '700' }}>NO-SHOW</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            closeSwipe()
-            onCancel()
-          }}
-          className='px-3 py-2 rounded-lg bg-red-700/80'
-        >
-          <Text className='text-white text-xs font-semibold'>CANCEL</Text>
+        <TouchableOpacity onPress={() => { closeSwipe(); onCancel() }} style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.danger + '12', borderWidth: 1, borderColor: colors.danger + '35' }}>
+          <Text style={{ color: colors.danger, fontSize: 10, fontWeight: '700' }}>CANCEL</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            closeSwipe()
-            onNotify()
-          }}
-          className='px-3 py-2 rounded-lg bg-blue-600/80'
-        >
-          <Text className='text-white text-xs font-semibold'>NOTIFY</Text>
+        <TouchableOpacity onPress={() => { closeSwipe(); onNotify() }} style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.info + '18', borderWidth: 1, borderColor: colors.info + '50' }}>
+          <Text style={{ color: colors.info, fontSize: 10, fontWeight: '700' }}>NOTIFY</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            onSeat()
-            closeSwipe()
-          }}
-          className='px-3 py-2 rounded-lg bg-teal'
-        >
-          <Text className='text-white text-xs font-semibold'>SEAT</Text>
+        <TouchableOpacity onPress={() => { onSeat(); closeSwipe() }} style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '50' }}>
+          <Text style={{ color: colors.teal, fontSize: 10, fontWeight: '700' }}>SEAT</Text>
         </TouchableOpacity>
       </View>
 
       {/* Card Content */}
-      <Animated.View
-        style={{ transform: [{ translateX: swipeOffset }] }}
-        {...panResponder.panHandlers}
-        className='bg-card'
-      >
-        {/* Header */}
-        <View className='flex-row items-center px-4 py-3'>
-          {/* Drag Handle */}
-          {dragGesture && (
-            <GestureDetector gesture={dragGesture}>
-              <View className='mr-2 py-1 opacity-30'>
-                <GripVertical size={18} color={colors.label} />
+      <Animated.View style={{ transform: [{ translateX: swipeOffset }], backgroundColor: colors.card, paddingLeft: 3 }} {...panResponder.panHandlers}>
+        {/* Main Row */}
+        <TouchableOpacity onPress={() => setIsExpanded(!isExpanded)} activeOpacity={0.8}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, gap: 10 }}>
+
+            {/* Drag handle */}
+            {dragGesture && (
+              <GestureDetector gesture={dragGesture}>
+                <View style={{ opacity: 0.3 }}>
+                  <GripVertical size={14} color={colors.label} />
+                </View>
+              </GestureDetector>
+            )}
+
+            {/* Avatar with position */}
+            <View style={{ position: 'relative' }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: statusColor + '20', borderWidth: 1.5, borderColor: statusColor + '60', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: statusColor, fontSize: 13, fontWeight: '800' }}>{getInitials(entry.party_name)}</Text>
               </View>
-            </GestureDetector>
-          )}
-
-          <TouchableOpacity
-            onPress={() => setIsExpanded(!isExpanded)}
-            className='flex-1 flex-row items-center'
-          >
-            {/* Position Badge */}
-            <View
-              className='w-10 h-10 rounded-full items-center justify-center border-2'
-              style={{
-                borderColor: statusColor,
-                backgroundColor: isOverdue
-                  ? '#7f1d1d'
-                  : isApproaching
-                  ? '#7c3a0d'
-                  : 'transparent'
-              }}
-            >
-              <Text
-                className='font-bold text-sm'
-                style={{ color: statusColor }}
-              >
-                #{position}
-              </Text>
-            </View>
-
-            {/* Party Info */}
-            <View className='flex-1 ml-3'>
-              <Text
-                className='text-white font-semibold text-base'
-                numberOfLines={1}
-              >
-                {entry.party_name}
-              </Text>
-              <View className='flex-row items-center gap-1 mt-1'>
-                <Users size={12} color={colors.muted} />
-                <Text className='text-white text-xs font-medium'>
-                  {entry.party_size || 0}
-                </Text>
-                <Text className='text-muted text-xs mx-0.5'>•</Text>
-                <Text className='text-white text-xs font-medium'>
-                  Q: {formatElapsed(entry.quoted_wait_minutes || 0)}
-                </Text>
-                <Text className='text-muted text-xs mx-0.5'>•</Text>
-                <Clock size={12} color={colors.muted} />
-                <Text className='text-white text-xs font-medium'>
-                  {formatElapsed(elapsed) || '0m'}
-                </Text>
+              {/* Position badge */}
+              <View style={{ position: 'absolute', bottom: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: statusColor, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: colors.card }}>
+                <Text style={{ color: colors.screen, fontSize: 8, fontWeight: '900' }}>{position}</Text>
               </View>
             </View>
 
-            {/* Status Badge + No-Phone Icon */}
-            <View className='flex-row items-center gap-1.5 ml-3'>
-              {(entry.notification_failures ?? 0) > 0 && (
-                <View className='px-2 py-1 rounded-lg bg-red-600 border border-red-500'>
-                  <Text className='text-white text-xs font-bold'>
-                    SMS FAIL {entry.notification_failures}
+            {/* Party info */}
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <Text style={{ color: colors.heading, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>{entry.party_name}</Text>
+                {!hasPhone && <PhoneOff size={10} color={colors.muted} />}
+                {(entry.notification_failures ?? 0) > 0 && (
+                  <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: colors.danger + '20', borderWidth: 1, borderColor: colors.danger + '50' }}>
+                    <Text style={{ color: colors.danger, fontSize: 9, fontWeight: '700' }}>SMS ✕{entry.notification_failures}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Users size={10} color={colors.muted} />
+                  <Text style={{ color: colors.label, fontSize: 11 }}>{entry.party_size}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Clock size={10} color={isOverdue ? colors.danger : isApproaching ? colors.warning : colors.muted} />
+                  <Text style={{ color: isOverdue ? colors.danger : isApproaching ? colors.warning : colors.label, fontSize: 11, fontWeight: isOverdue ? '700' : '400' }}>
+                    {formatElapsed(elapsed)} / {formatElapsed(entry.quoted_wait_minutes || 0)}
                   </Text>
                 </View>
-              )}
-              <View
-                className='px-2.5 py-1 rounded-lg'
-                style={{
-                  backgroundColor: statusColor + '20',
-                  borderWidth: 1,
-                  borderColor: statusColor
-                }}
-              >
-                <Text
-                  className='text-xs font-bold'
-                  style={{ color: statusColor }}
-                >
-                  {getStatusLabel(entry.status)}
-                </Text>
+                {entry.seating_preference && entry.seating_preference !== 'No Preference' && (
+                  <Text style={{ color: colors.muted, fontSize: 10 }}>· {entry.seating_preference}</Text>
+                )}
               </View>
-              {!hasPhone && <PhoneOff size={12} color={colors.muted} />}
+
+              {/* Progress bar */}
+              <View style={{ height: 3, backgroundColor: colors.border, borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
+                <View style={{ height: 3, width: `${Math.min(100, Math.round(progress * 100))}%`, backgroundColor: isOverdue ? colors.danger : isApproaching ? colors.warning : colors.teal, borderRadius: 2 }} />
+              </View>
             </View>
 
-            {/* Chevron */}
-            <View className='ml-2'>
-              <Text className='text-label text-xl'>
-                {isExpanded ? '▼' : '▶'}
-              </Text>
+            {/* Status pill + chevron */}
+            <View style={{ alignItems: 'flex-end', gap: 6 }}>
+              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, backgroundColor: statusColor + '18', borderWidth: 1, borderColor: statusColor + '50' }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: statusColor }}>{getStatusLabel(entry.status)}</Text>
+              </View>
+              {isExpanded ? <ChevronDown size={13} color={colors.muted} /> : <ChevronRight size={13} color={colors.muted} />}
             </View>
-          </TouchableOpacity>
-        </View>
+          </View>
+        </TouchableOpacity>
 
         {/* Expanded Details */}
         {isExpanded && (
-          <View className='border-t border-border px-4 py-3 gap-3'>
-            {/* Wait Time Info */}
-            <View className='gap-2'>
-              <View className='flex-row items-center justify-between p-3 rounded-lg bg-screen/50'>
-                <View className='flex-row items-center gap-2'>
-                  <Clock size={14} color={colors.label} />
-                  <Text className='text-label text-sm'>Wait Time</Text>
-                </View>
-                <View className='flex-row items-center gap-2'>
-                  <Text className='text-white font-bold'>
-                    Quoted: {entry.quoted_wait_minutes}m
-                  </Text>
-                  <Text className='text-muted'>•</Text>
-                  <Text
-                    className='font-bold'
-                    style={{
-                      color: isOverdue
-                        ? '#ef4444'
-                        : isApproaching
-                        ? '#f59e0b'
-                        : '#10b981'
-                    }}
-                  >
-                    Actual: {formatElapsed(elapsed)}
-                  </Text>
-                </View>
-              </View>
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, padding: 12, gap: 8 }}>
 
-              {/* Ready Time Estimate */}
-              <View
-                style={{ borderColor: '#22C55E' }}
-                className='flex-row items-center gap-2 px-3 py-2 rounded-lg bg-screen/50 border'
-              >
-                <Clock size={12} color='#22C55E' />
-                <Text
-                  style={{ color: '#22C55E', fontSize: 12, fontWeight: '600' }}
-                  className='flex-1'
-                >
-                  {isOverdue ? 'Overdue' : 'Ready at approx'}{' '}
-                  {!isOverdue &&
-                    new Date(
-                      Date.now() +
-                        Math.round(
-                          Math.max(0, entry.quoted_wait_minutes - elapsed)
-                        ) *
-                          60000
-                    ).toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true
-                    })}
-                </Text>
+            {/* Wait breakdown */}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.screen, alignItems: 'center' }}>
+                <Text style={{ color: colors.muted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Quoted</Text>
+                <Text style={{ color: colors.label, fontSize: 14, fontWeight: '700' }}>{formatElapsed(entry.quoted_wait_minutes || 0)}</Text>
               </View>
+              <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, backgroundColor: isOverdue ? colors.danger + '12' : isApproaching ? colors.warning + '10' : colors.screen, alignItems: 'center', borderWidth: isOverdue ? 1 : 0, borderColor: colors.danger + '30' }}>
+                <Text style={{ color: colors.muted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Actual</Text>
+                <Text style={{ color: isOverdue ? colors.danger : isApproaching ? colors.warning : colors.success, fontSize: 14, fontWeight: '700' }}>{formatElapsed(elapsed)}</Text>
+              </View>
+              {!isOverdue && (
+                <View style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.success + '10', alignItems: 'center' }}>
+                  <Text style={{ color: colors.muted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Ready ~</Text>
+                  <Text style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}>
+                    {new Date(Date.now() + Math.round(Math.max(0, (entry.quoted_wait_minutes || 0) - elapsed)) * 60000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {/* Seating Preference */}
+            {/* Info rows */}
             {entry.seating_preference && (
-              <View className='flex-row items-center gap-2 px-3 py-2 rounded-lg bg-screen/30'>
-                <Lightbulb size={14} color={colors.label} />
-                <Text className='text-label text-sm'>
-                  {entry.seating_preference}
-                  {entry.preferred_section && ` • ${entry.preferred_section}`}
-                </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7, backgroundColor: colors.screen }}>
+                <Lightbulb size={12} color={colors.muted} />
+                <Text style={{ color: colors.label, fontSize: 12 }}>{entry.seating_preference}{entry.preferred_section ? ` · ${entry.preferred_section}` : ''}</Text>
               </View>
             )}
-
-            {/* Contact Info */}
-            {(entry.phone || entry.email) && (
-              <View className='gap-2'>
-                {entry.phone && (
-                  <View className='flex-row items-center gap-2 px-3 py-2 rounded-lg bg-screen/30'>
-                    <Phone size={14} color={colors.label} />
-                    <Text className='text-label text-sm'>{entry.phone}</Text>
-                  </View>
-                )}
-                {entry.email && (
-                  <View className='flex-row items-center gap-2 px-3 py-2 rounded-lg bg-screen/30'>
-                    <Mail size={14} color={colors.label} />
-                    <Text className='text-label text-sm'>{entry.email}</Text>
-                  </View>
-                )}
+            {entry.phone && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7, backgroundColor: colors.screen }}>
+                <Phone size={12} color={colors.muted} />
+                <Text style={{ color: colors.label, fontSize: 12 }}>{entry.phone}</Text>
               </View>
             )}
-
-            {/* Notes */}
+            {entry.email && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7, backgroundColor: colors.screen }}>
+                <Mail size={12} color={colors.muted} />
+                <Text style={{ color: colors.label, fontSize: 12 }}>{entry.email}</Text>
+              </View>
+            )}
             {entry.notes && (
-              <View className='flex-row items-start gap-2 px-3 py-2 rounded-lg bg-screen/30'>
-                <StickyNote
-                  size={14}
-                  color={colors.label}
-                  style={{ marginTop: 2 }}
-                />
-                <Text className='text-label text-sm flex-1'>{entry.notes}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7, backgroundColor: colors.screen }}>
+                <StickyNote size={12} color={colors.muted} style={{ marginTop: 1 }} />
+                <Text style={{ color: colors.label, fontSize: 12, flex: 1 }}>{entry.notes}</Text>
               </View>
             )}
 
-            {/* Overdue Warning */}
-            {isOverdue && (
-              <View className='flex-row items-start gap-2 px-3 py-2 rounded-lg bg-red-900/20 border border-red-700/50'>
-                <AlertCircle
-                  size={14}
-                  color='#ef4444'
-                  style={{ marginTop: 2 }}
-                />
-                <Text className='text-red-400 text-sm flex-1'>
-                  Party exceeded quoted wait time
-                </Text>
-              </View>
-            )}
-
-            {/* Significantly Overdue Alert - RED for >10 mins overtime */}
+            {/* Alert banners */}
             {isSignificantlyOverdue && (
-              <View className='gap-2'>
-                <View className='flex-row items-start gap-2 px-3 py-3 rounded-lg bg-red-900/40 border-2 border-red-600'>
-                  <AlertCircle
-                    size={16}
-                    color='#ef4444'
-                    style={{ marginTop: 1 }}
-                  />
-                  <View className='flex-1'>
-                    <Text className='text-red-300 text-sm font-bold'>
-                      Critical: {overtimeMinutes}+ mins over quoted time
-                    </Text>
-                    <Text className='text-red-300/80 text-xs mt-1'>
-                      Customer is significantly late. Consider gesture of
-                      goodwill.
-                    </Text>
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '50' }}>
+                  <AlertCircle size={13} color={colors.danger} style={{ marginTop: 1 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>Critical: {overtimeMinutes}+ mins over</Text>
+                    <Text style={{ color: colors.danger, fontSize: 11, opacity: 0.7, marginTop: 1 }}>Consider a gesture of goodwill</Text>
                   </View>
                 </View>
                 {onOfferComp && (
-                  <TouchableOpacity
-                    onPress={onOfferComp}
-                    className='flex-row items-center justify-center gap-1.5 py-2.5 rounded-lg bg-amber-600/80 border border-amber-600'
-                  >
-                    <AlertCircle size={14} color='white' />
-                    <Text className='text-white font-semibold text-sm'>
-                      Apologize & Offer Comp
-                    </Text>
+                  <TouchableOpacity onPress={onOfferComp} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.warning + '15', borderWidth: 1, borderColor: colors.warning + '50' }}>
+                    <AlertCircle size={12} color={colors.warning} />
+                    <Text style={{ color: colors.warning, fontWeight: '600', fontSize: 12 }}>Apologize & Offer Comp</Text>
                   </TouchableOpacity>
                 )}
               </View>
             )}
 
-            {/* SMS Failure Alert */}
             {(entry.notification_failures ?? 0) > 0 && (
-              <View className='flex-row items-center gap-2 px-3 py-2 rounded-lg bg-red-600 border border-red-500'>
-                <AlertCircle size={14} color='white' />
-                <Text className='text-white text-sm flex-1 font-semibold'>
-                  SMS failed {entry.notification_failures}x — notify by voice
-                </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 7, backgroundColor: colors.danger + '12', borderWidth: 1, borderColor: colors.danger + '35' }}>
+                <AlertCircle size={12} color={colors.danger} />
+                <Text style={{ color: colors.danger, fontSize: 11, flex: 1, fontWeight: '600' }}>SMS failed {entry.notification_failures}x — notify by voice</Text>
               </View>
             )}
 
-            {/* Action Buttons */}
-            <View className='flex-row gap-2 pt-2'>
-              <TouchableOpacity
-                onPress={onSeat}
-                className='flex-1 flex-row items-center justify-center gap-1.5 py-2.5 rounded-lg bg-teal'
-              >
-                <Check size={14} color='white' />
-                <Text className='text-white font-semibold text-sm'>Seat</Text>
+            {/* Action buttons */}
+            <View style={{ flexDirection: 'row', gap: 6, paddingTop: 2 }}>
+              <TouchableOpacity onPress={onSeat} style={{ flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 8, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '50' }}>
+                <Check size={13} color={colors.teal} />
+                <Text style={{ color: colors.teal, fontWeight: '700', fontSize: 12 }}>Seat Party</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={onNotify}
-                className='flex-1 flex-row items-center justify-center gap-1.5 py-2.5 rounded-lg border border-border'
-              >
-                <Bell size={14} color={colors.label} />
-                <Text className='text-label font-semibold text-sm'>Notify</Text>
+              <TouchableOpacity onPress={onNotify} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 8, backgroundColor: colors.info + '12', borderWidth: 1, borderColor: colors.info + '40' }}>
+                <Bell size={13} color={colors.info} />
+                <Text style={{ color: colors.info, fontWeight: '600', fontSize: 12 }}>Notify</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={onCancel}
-                className='w-10 h-10 items-center justify-center rounded-lg bg-red-900/30'
-              >
-                <X size={14} color={colors.danger} />
+              <TouchableOpacity onPress={onCancel} style={{ width: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: colors.danger + '10', borderWidth: 1, borderColor: colors.danger + '30' }}>
+                <X size={13} color={colors.danger} />
               </TouchableOpacity>
             </View>
           </View>
         )}
       </Animated.View>
-
-      {/* Swipe Hint */}
-      {!isExpanded && (
-        <View
-          pointerEvents='none'
-          className='absolute right-0 top-0 bottom-0 flex-row items-center pr-2'
-        >
-          <ChevronLeft size={16} color={colors.muted} />
-        </View>
-      )}
     </View>
   )
 }
