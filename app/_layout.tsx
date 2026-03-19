@@ -38,7 +38,8 @@ import {
   Theme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { Stack } from "expo-router";
+import { Stack, useNavigationContainerRef } from "expo-router";
+import { setRootNavigationRef } from "@/lib/rootNavigation";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
@@ -107,6 +108,12 @@ export default function RootLayout() {
   const isPinModalOpen = usePinOverrideStore((s) => s.isPinModalOpen);
   const isNoPrinterModalVisible = useNoPrinterModalStore((s) => s.visible);
   const isCustomizationOpen = useCustomizationStore((s) => s.isOpen);
+
+  // Store the navigation container ref for cross-group navigation
+  const navigationRef = useNavigationContainerRef();
+  React.useEffect(() => {
+    setRootNavigationRef(navigationRef);
+  }, [navigationRef]);
 
   useIsomorphicLayoutEffect(() => {
     if (hasMounted.current) {
@@ -194,6 +201,11 @@ export default function RootLayout() {
                           <CFDProvider>
                             <StatusBar style={"dark"} translucent />
                             <Stack screenOptions={{ headerShown: false }}>
+                              <Stack.Screen name="index" />
+                              <Stack.Screen name="(auth)" />
+                              <Stack.Screen name="(cfd)" />
+                              <Stack.Screen name="(main)" />
+                              <Stack.Screen name="(profiles-and-timeclock)" />
                               <Stack.Screen name="(main)/tables/[tableId]" options={{ animation: 'none' }} />
                               <Stack.Screen name="(main)/tables/waitlist" options={{ animation: 'none' }} />
                             </Stack>

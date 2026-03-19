@@ -1,3 +1,4 @@
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { CFDPairingData } from "@/types/cfd.types";
@@ -75,7 +76,7 @@ export default function CFDPairingScreen() {
 
   const handleExitCFDMode = () => {
     useStoreSettingsStore.getState().exitCFDMode();
-    router.replace("/store-select");
+    replaceRoute('(auth)', 'store-select');
   };
 
   return (

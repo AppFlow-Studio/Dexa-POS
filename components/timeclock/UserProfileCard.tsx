@@ -4,6 +4,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { colors } from "@/lib/theme";
 import * as Application from "expo-application";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { router } from "expo-router";
 import { Clock, Timer, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -112,7 +113,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
       console.log("[UserProfileCard] timeClock.startBreak completed");
       // Also update old store for local UI sync
       oldStartBreak();
-      router.replace("/pin-login"); // Redirect for break & switch
+      replaceRoute('(auth)', 'pin-login'); // Redirect for break & switch
     } else if (pinAction === "break_end") {
       console.log("[UserProfileCard] Calling timeClock.endBreak...");
       // Call backend
@@ -120,7 +121,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
       console.log("[UserProfileCard] timeClock.endBreak completed");
       // Also update old store for local UI sync
       if (employeeId) oldEndBreak(employeeId);
-      router.replace("/home");
+      replaceRoute('(main)', 'home');
     } else if (pinAction === "clock_out") {
       console.log("[UserProfileCard] Calling timeClock.clockOut...");
       // Call backend

@@ -15,6 +15,7 @@ import { PosStaffLoginResponse } from "@/types/station";
 import * as Application from "expo-application";
 import * as Device from "expo-device";
 import * as Network from "expo-network";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -305,7 +306,7 @@ const PinLoginScreen = () => {
       hideLoading();
       setPendingTakeoverPin(null);
       const isKDS = selectedStation?.station_type === "kds";
-      router.replace(isKDS ? "/kds" : "/home");
+      replaceRoute('(main)', isKDS ? 'kds' : 'home');
     } catch (error: any) {
       console.error("Takeover error details:", {
         message: error?.message,
@@ -535,7 +536,7 @@ const PinLoginScreen = () => {
 
       setPin("");
       const isKDS = selectedStation?.station_type === "kds";
-      router.replace(isKDS ? "/kds" : "/home");
+      replaceRoute('(main)', isKDS ? 'kds' : 'home');
     } catch (error: any) {
       console.error("Login error details:", {
         message: error?.message,

@@ -6,6 +6,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { clearLocationData, clearStationData } from "@/services/cacheService";
 import { PosStaffLogoutResponse } from "@/types/station";
 import { useClerk } from "@clerk/clerk-expo";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, TouchableOpacity, ViewStyle } from "react-native";
@@ -84,7 +85,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       setShowModal(false);
 
       // Navigate to station select
-      router.replace("/station-select");
+      replaceRoute('(auth)', 'station-select');
     } catch (error) {
       console.error("Error ending station session:", error);
       toastService.show({
@@ -114,7 +115,7 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
       setShowModal(false);
 
       // Navigate to login
-      router.replace("/login");
+      replaceRoute('(auth)', 'login');
     } catch (error) {
       console.error("Error during full logout:", error);
       toastService.show({

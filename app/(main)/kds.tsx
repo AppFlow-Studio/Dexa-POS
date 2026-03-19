@@ -17,6 +17,7 @@ import KDSSoundService, { DEFAULT_SOUND_CONFIG } from "@/services/kds/kdsSoundSe
 import KDSSettingsModal from "@/components/kds/KDSSettingsModal";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import PinInputModal from "@/components/timeclock/PinInputModal";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import {
   AlertTriangle,
@@ -928,8 +929,8 @@ const KitchenDisplayScreen = () => {
     }
     clearStationSession();
     clearStationData();
-    router.replace("/pin-login");
-  }, [stationSessionId, selectedStore?.id, supabase, clearStationSession, router]);
+    replaceRoute('(auth)', 'pin-login');
+  }, [stationSessionId, selectedStore?.id, supabase, clearStationSession]);
 
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore((s) => s.ticketsByStatus.pending);

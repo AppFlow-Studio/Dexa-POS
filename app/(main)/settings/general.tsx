@@ -7,6 +7,7 @@ import { toastService } from "@/lib/toastService";
 import { CacheStats, clearCache, getCacheStats } from "@/services/cacheService";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { format, parse } from "date-fns";
@@ -240,7 +241,7 @@ const GeneralSettingsScreen = () => {
       // Navigate to station-select for clean re-initialization
       clearSelectedStation();
       setStationSessionId(null);
-      router.replace("/station-select");
+      replaceRoute('(auth)', 'station-select');
     } catch (error) {
       toastService.show({
         title: "Error",
