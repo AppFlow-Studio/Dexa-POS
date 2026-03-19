@@ -36,9 +36,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   InteractionManager,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   SafeAreaView,
   Text,
   TextInput,
@@ -496,25 +494,23 @@ const TablesScreen = () => {
         />
 
         {/* Right Side: Floor Plan */}
-        <View className='flex-1 p-4'>
-          <View className='flex-row items-center mb-3 gap-3'>
+        <View style={{ flex: 1, padding: 12, gap: 8 }}>
+
+          {/* Top Bar */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+
             {/* Layout Tabs */}
-            <View className='flex-row items-center bg-panel border border-border p-1 rounded-xl ml-2'>
+            <View style={{ flexDirection: 'row', backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 3 }}>
               {floorPlans.map(layout => (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => setActiveFloorPlan(layout.id)}
-                  className={`py-2 px-4 rounded-lg ${
-                    activeFloorPlanId === layout.id ? 'bg-screen' : ''
-                  }`}
+                  style={[
+                    { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
+                    activeFloorPlanId === layout.id && { backgroundColor: colors.screen }
+                  ]}
                 >
-                  <Text
-                    className={`text-lg font-semibold ${
-                      activeFloorPlanId === layout.id
-                        ? 'text-teal'
-                        : 'text-label'
-                    }`}
-                  >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: activeFloorPlanId === layout.id ? colors.teal : colors.label }}>
                     {layout.name}
                   </Text>
                 </TouchableOpacity>
@@ -522,128 +518,77 @@ const TablesScreen = () => {
             </View>
 
             {/* Search Bar */}
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              className='flex-1 flex-row items-center bg-panel border border-border rounded-lg px-3 max-w-sm'
-            >
-              <Search color={colors.label} size={20} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, width: 200 }}>
+              <Search color={colors.muted} size={13} />
               <TextInput
-                placeholder='Search table name...'
-                placeholderTextColor={colors.label}
+                placeholder='Search tables...'
+                placeholderTextColor={colors.muted}
                 value={searchInput}
                 onChangeText={setSearchInput}
-                className='ml-2 text-lg h-12 flex-1 text-white'
+                style={{ marginLeft: 6, fontSize: 12, flex: 1, color: colors.heading, includeFontPadding: false, padding: 0 }}
               />
-            </KeyboardAvoidingView>
+            </View>
 
-            {/* Merge Tables Toggle Button */}
+            {/* Spacer */}
+            <View style={{ flex: 1 }} />
+
+            {/* Merge Tables Toggle */}
             <TouchableOpacity
-              onPress={() => {
-                if (isMergeMode) {
-                  handleCancelMerge()
-                } else {
-                  clearSelection()
-                  setMergeMode(true)
-                }
-              }}
-              className={`py-2 px-4 flex-row items-center justify-center rounded-lg border ${
-                isMergeMode
-                  ? 'bg-gray-600 border-gray-500'
-                  : 'bg-amber-600 border-amber-500'
-              }`}
+              onPress={() => { if (isMergeMode) { handleCancelMerge() } else { clearSelection(); setMergeMode(true) } }}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: isMergeMode ? colors.border + '30' : colors.warning + '15', borderColor: isMergeMode ? colors.border : colors.warning + '50' }}
             >
-              {isMergeMode ? (
-                <X color='white' size={20} />
-              ) : (
-                <GitMerge color='white' size={20} />
-              )}
-              <Text className='text-lg font-bold text-white ml-2'>
+              {isMergeMode ? <X color={colors.label} size={13} /> : <GitMerge color={colors.warning} size={13} />}
+              <Text style={{ fontSize: 12, fontWeight: '600', marginLeft: 5, color: isMergeMode ? colors.label : colors.warning }}>
                 {isMergeMode ? 'Cancel' : 'Merge Tables'}
               </Text>
             </TouchableOpacity>
 
-            {/* Server Sections Button */}
+            {/* Servers Button */}
             {sections.length > 0 && (
               <TouchableOpacity
                 onPress={() => setSectionManagerOpen(true)}
-                className='py-2 px-4 flex-row items-center justify-center rounded-lg bg-teal border border-teal'
+                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: colors.teal + '15', borderColor: colors.teal + '40' }}
               >
-                <Users color='black' size={18} />
-                <Text className='text-lg font-bold text-black ml-2'>
-                  Servers
-                </Text>
+                <Users color={colors.teal} size={13} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal, marginLeft: 5 }}>Servers</Text>
               </TouchableOpacity>
             )}
 
-            {/* Host Station Button */}
+            {/* Host Station */}
             <TouchableOpacity
               onPress={() => setHostStationOpen(true)}
-              className='py-2 px-4 flex-row items-center justify-center rounded-lg bg-purple-600 border border-purple-500'
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: colors.info + '15', borderColor: colors.info + '40' }}
             >
-              <UtensilsCrossed color='white' size={18} />
-              <Text className='text-lg font-bold text-white ml-2'>
-                Host Station
-              </Text>
+              <UtensilsCrossed color={colors.info} size={13} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.info, marginLeft: 5 }}>Host Station</Text>
             </TouchableOpacity>
 
-            {/* Edit Layout Button */}
+            {/* Edit Layout */}
             <TouchableOpacity
               onPress={() => router.push(`/tables/floor-plan` as Href)}
-              className='py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 border border-blue-500'
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, backgroundColor: colors.panel, borderColor: colors.border }}
             >
-              <Pencil color='white' size={18} />
-              <Text className='text-lg font-bold text-white ml-2'>
-                Edit Layout
-              </Text>
+              <Pencil color={colors.label} size={13} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, marginLeft: 5 }}>Edit Layout</Text>
             </TouchableOpacity>
           </View>
 
           {/* Section Filter Pills */}
           {sections.length > 0 && (
-            <View
-              className='flex-row gap-2 px-4 py-3 overflow-x-auto'
-              style={{ marginHorizontal: -8 }}
-            >
+            <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
               <TouchableOpacity
                 onPress={() => setActiveSectionId(null)}
-                className={`px-3 py-1.5 rounded-full border ${
-                  !activeSectionId
-                    ? 'bg-teal border-teal'
-                    : 'border-border bg-transparent'
-                }`}
+                style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1, backgroundColor: !activeSectionId ? colors.teal : 'transparent', borderColor: !activeSectionId ? colors.teal : colors.border }}
               >
-                <Text
-                  className={`text-sm font-semibold ${
-                    !activeSectionId ? 'text-black' : 'text-label'
-                  }`}
-                >
-                  All
-                </Text>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: !activeSectionId ? colors.onSolid : colors.label }}>All</Text>
               </TouchableOpacity>
               {sections.map(section => (
                 <TouchableOpacity
                   key={section.id}
-                  onPress={() =>
-                    setActiveSectionId(
-                      activeSectionId === section.id ? null : section.id
-                    )
-                  }
-                  className='px-3 py-1.5 rounded-full border'
-                  style={{
-                    borderColor: section.color,
-                    backgroundColor:
-                      activeSectionId === section.id
-                        ? section.color
-                        : 'transparent'
-                  }}
+                  onPress={() => setActiveSectionId(activeSectionId === section.id ? null : section.id)}
+                  style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, borderWidth: 1, borderColor: section.color, backgroundColor: activeSectionId === section.id ? section.color : 'transparent' }}
                 >
-                  <Text
-                    className='text-sm font-semibold text-white'
-                    style={{
-                      color:
-                        activeSectionId === section.id ? '#000' : section.color
-                    }}
-                  >
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: activeSectionId === section.id ? colors.onSolid : section.color }}>
                     {section.name}
                   </Text>
                 </TouchableOpacity>
@@ -652,7 +597,7 @@ const TablesScreen = () => {
           )}
 
           {/* Map Container */}
-          <View className='bg-screen border border-border rounded-xl flex-1 relative'>
+          <View style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
             {!isReady || (floorPlanLoading && tables.length === 0) ? (
               <TableLayoutSkeleton tableCount={10} showControls={true} />
             ) : (
@@ -663,9 +608,7 @@ const TablesScreen = () => {
                 showConnections={true}
                 layoutId={activeFloorPlanId || ''}
                 sectionsById={sectionsById}
-                onTableLongPress={
-                  isMergeMode ? undefined : handleTableLongPress
-                }
+                onTableLongPress={isMergeMode ? undefined : handleTableLongPress}
                 disableLongPress={isMergeMode}
                 interactionMode={isMergeMode ? 'merge' : 'normal'}
               />
@@ -685,91 +628,24 @@ const TablesScreen = () => {
               />
             )}
 
-            {/* Status Indicators (Bottom Center) */}
-            <View className='absolute bottom-3 left-0 right-0 flex-row justify-center'>
-              <View className='flex-row items-center gap-4 p-3 rounded-full bg-screen/90 border border-border flex-wrap'>
-                {/* Available */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{ backgroundColor: TABLE_STATUS_COLORS.available }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>
-                    Available
-                  </Text>
-                </View>
-                {/* Seated */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{ backgroundColor: TABLE_STATUS_COLORS.seated }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>
-                    Seated
-                  </Text>
-                </View>
-                {/* Ordered */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{ backgroundColor: TABLE_STATUS_COLORS.ordered }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>
-                    Ordered
-                  </Text>
-                </View>
-                {/* Served */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{ backgroundColor: TABLE_STATUS_COLORS.served }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>
-                    Served
-                  </Text>
-                </View>
-                {/* Check Presented */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{
-                      backgroundColor: TABLE_STATUS_COLORS.check_presented
-                    }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>
-                    Check
-                  </Text>
-                </View>
-                {/* Paid */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{ backgroundColor: TABLE_STATUS_COLORS.paid }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>Paid</Text>
-                </View>
-                {/* Cleaning */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{ backgroundColor: TABLE_STATUS_COLORS.cleaning }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>
-                    Cleaning
-                  </Text>
-                </View>
-                {/* Not in Service */}
-                <View className='flex-row items-center gap-2'>
-                  <View
-                    className='w-3 h-3 rounded-full'
-                    style={{
-                      backgroundColor: TABLE_STATUS_COLORS.not_in_service
-                    }}
-                  />
-                  <Text className='text-sm font-semibold text-label'>
-                    Blocked
-                  </Text>
-                </View>
+            {/* Status Legend */}
+            <View style={{ position: 'absolute', bottom: 10, left: 0, right: 0, alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: colors.panel + 'F0', borderWidth: 1, borderColor: colors.border }}>
+                {([
+                  ['available', 'Available'],
+                  ['seated', 'Seated'],
+                  ['ordered', 'Ordered'],
+                  ['served', 'Served'],
+                  ['check_presented', 'Check'],
+                  ['paid', 'Paid'],
+                  ['cleaning', 'Cleaning'],
+                  ['not_in_service', 'Blocked'],
+                ] as const).map(([status, label]) => (
+                  <View key={status} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: TABLE_STATUS_COLORS[status] }} />
+                    <Text style={{ fontSize: 11, fontWeight: '500', color: colors.label }}>{label}</Text>
+                  </View>
+                ))}
               </View>
             </View>
           </View>

@@ -433,50 +433,56 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         </Animated.View>
       </GestureDetector>
 
-      {/* Zoom Buttons - fixed at top of container */}
+      {/* Zoom Buttons - fixed at top-left of canvas */}
       <View
         style={{
           position: 'absolute',
-          top: 16,
-          left: 16,
+          top: 12,
+          left: 12,
           zIndex: 20,
+          gap: 4,
           pointerEvents: 'box-none'
         }}
       >
         <TouchableOpacity
           onPress={() => {
             const newScale = Math.min(3, scale.value + 0.2)
-            scale.value = withSpring(newScale, {
-              damping: 12,
-              mass: 1,
-              stiffness: 100
-            })
+            scale.value = withSpring(newScale, { damping: 12, mass: 1, stiffness: 100 })
             savedScale.value = newScale
           }}
           style={{
-            marginBottom: 8,
-            pointerEvents: 'auto'
+            pointerEvents: 'auto',
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border
           }}
-          className={`flex-row items-center bg-surface border border-gray-600 rounded-lg px-4 py-3 justify-start`}
         >
-          <Plus color={colors.label} size={24} />
+          <Plus color={colors.label} size={16} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
             const newScale = Math.max(0.5, scale.value - 0.2)
-            scale.value = withSpring(newScale, {
-              damping: 12,
-              mass: 1,
-              stiffness: 100
-            })
+            scale.value = withSpring(newScale, { damping: 12, mass: 1, stiffness: 100 })
             savedScale.value = newScale
           }}
           style={{
-            pointerEvents: 'auto'
+            pointerEvents: 'auto',
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border
           }}
-          className={`flex-row items-center bg-surface border border-gray-600 rounded-lg px-4 py-3 justify-start`}
         >
-          <Minus color={colors.label} size={24} />
+          <Minus color={colors.label} size={16} />
         </TouchableOpacity>
       </View>
     </View>
