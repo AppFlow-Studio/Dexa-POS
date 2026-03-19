@@ -315,7 +315,7 @@ class HardwareDetectionModule(private val reactContext: ReactApplicationContext)
         val model = Build.MODEL.uppercase()
 
         // Landi C-series POS devices have built-in thermal printers (via OmniDriver SDK)
-        if (manufacturer == "LANDI" && model.startsWith("C")) {
+        if (manufacturer == "LANDI" && (model.startsWith("C") || model.startsWith("M") || model.startsWith("P"))) {
             return true
         }
 

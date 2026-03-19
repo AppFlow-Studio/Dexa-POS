@@ -4,13 +4,13 @@ import android.util.Log
 import com.facebook.react.bridge.*
 import com.sdksuite.omnidriver.OmniConnection
 import com.sdksuite.omnidriver.OmniDriver
+import com.sdksuite.omnidriver.aidl.printer.ASCScale
+import com.sdksuite.omnidriver.aidl.printer.ASCSize
 import com.sdksuite.omnidriver.aidl.printer.Align
 import com.sdksuite.omnidriver.aidl.printer.ECLevel
-import com.sdksuite.omnidriver.aidl.printer.InitOption
-import com.sdksuite.omnidriver.aidl.printer.TextFormat
 import com.sdksuite.omnidriver.api.CashBox
 import com.sdksuite.omnidriver.api.OnPrintListener
-import com.sdksuite.omnidriver.api.VectorPrinter
+import com.sdksuite.omnidriver.api.Printer
 import org.json.JSONArray
 import org.json.JSONObject
 import android.os.Bundle
@@ -27,7 +27,7 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     override fun getName(): String = NAME
 
     private var isInitialized = false
-    private var vectorPrinter: VectorPrinter? = null
+    private var printer: Printer? = null
     private var cashBox: CashBox? = null
 
     // ==================== INITIALIZATION ====================
@@ -39,11 +39,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             driver.init(object : OmniConnection {
                 override fun onConnected() {
                     try {
-                        vectorPrinter = driver.getVectorPrinter(Bundle())
-                        vectorPrinter!!.openDevice(0)
+                        printer = driver.getPrinter(Bundle())
+                        printer!!.openDevice(0)
                         cashBox = driver.getCashBox(Bundle())
                         isInitialized = true
-                        Log.d(TAG, "OmniDriver initialized — VectorPrinter opened and CashBox acquired")
+                        Log.d(TAG, "OmniDriver initialized — Printer opened and CashBox acquired")
                         promise.resolve(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to acquire peripherals: ${e.message}")
@@ -52,9 +52,9 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 override fun onDisconnected(errorCode: Int) {
-                    try { vectorPrinter?.closeDevice() } catch (_: Exception) {}
+                    try { printer?.closeDevice() } catch (_: Exception) {}
                     isInitialized = false
-                    vectorPrinter = null
+                    printer = null
                     cashBox = null
                     Log.e(TAG, "OmniDriver disconnected with error code: $errorCode")
                     promise.reject("INIT_FAILED", "OmniDriver disconnected (error: $errorCode)")
@@ -71,13 +71,13 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getPrinterStatus(promise: Promise) {
         try {
-            val vp = requirePrinter(promise) ?: return
+            val p = requirePrinter(promise) ?: return
 
-            val status = vp.getStatus()
+            val status = p.getStatus()
             val result = Arguments.createMap().apply {
                 putBoolean("isOnline", status == STATUS_OK)
                 putBoolean("hasPaper", status != 1) // 1 = out of paper (common convention)
-                putBoolean("coverOpen", false) // VectorPrinter doesn't expose cover status
+                putBoolean("coverOpen", false) // Printer doesn't expose cover status
                 putString("statusCode", status.toString())
                 if (status != STATUS_OK) {
                     putString("errorMessage", "Printer error (status: $status)")
@@ -96,9 +96,9 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun printDocument(documentJson: String, promise: Promise) {
         try {
-            val vp = requirePrinter(promise) ?: return
+            val p = requirePrinter(promise) ?: return
 
-            val status = vp.getStatus()
+            val status = p.getStatus()
             if (status != STATUS_OK) {
                 promise.reject("PRINTER_ERROR", "Printer not ready (status: $status)")
                 return
@@ -107,21 +107,17 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
             val doc = JSONObject(documentJson)
             val nodes = doc.getJSONArray("nodes")
 
-            // Initialize with auto-cut enabled
-            val initOption = InitOption().apply {
-                autoCutPaper = true
-                autoWrapText = true
-                lineSpace = 2
-            }
-            vp.init(initOption)
-
             // Render each node
             for (i in 0 until nodes.length()) {
-                renderNode(vp, nodes.getJSONObject(i))
+                renderNode(p, nodes.getJSONObject(i))
             }
 
+            // Feed and cut before starting print
+            p.feedLine(3)
+            p.cutPaper()
+
             // Start printing
-            vp.startPrint(object : OnPrintListener {
+            p.startPrint(object : OnPrintListener {
                 override fun onSuccess() {
                     Log.d(TAG, "Print completed successfully")
                     promise.resolve(true)
@@ -159,34 +155,38 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
     // ==================== RENDERING ====================
 
-    private fun renderNode(vp: VectorPrinter, node: JSONObject) {
+    private fun renderNode(p: Printer, node: JSONObject) {
         when (node.getString("type")) {
             "text" -> {
-                applyFormat(vp, node.optJSONObject("format"))
+                applyFormat(p, node.optJSONObject("format"))
                 val align = parseAlign(node.optString("align", "left"))
-                vp.addText(node.getString("content"), align, 0)
+                p.addText(node.getString("content"), align, 0)
             }
 
             "text_line" -> {
-                applyFormat(vp, node.optJSONObject("format"))
+                applyFormat(p, node.optJSONObject("format"))
                 val align = parseAlign(node.optString("align", "left"))
-                vp.addText(node.getString("content"), align, 0)
-                vp.feedLine(1)
+                p.addText(node.getString("content"), align, 0)
+                p.feedLine(1)
             }
 
             "two_column" -> {
-                applyFormat(vp, node.optJSONObject("format"))
+                applyFormat(p, node.optJSONObject("format"))
                 val left = node.getString("left")
                 val right = node.getString("right")
-                vp.addTextColumns(
-                    arrayOf(left, right),
-                    intArrayOf(70, 30),
-                    intArrayOf(Align.LEFT, Align.RIGHT)
-                )
+                val lineWidth = node.optInt("lineWidth", 32)
+                val padding = lineWidth - left.length - right.length
+                val line = if (padding > 0) {
+                    left + " ".repeat(padding) + right
+                } else {
+                    left + " " + right
+                }
+                p.addText(line, Align.LEFT, 0)
+                p.feedLine(1)
             }
 
             "divider" -> {
-                resetFormat(vp)
+                resetFormat(p)
                 val lineWidth = node.getInt("lineWidth")
                 val style = node.getString("style")
                 val separator = when (style) {
@@ -195,60 +195,53 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                     "double" -> "=".repeat(lineWidth)
                     else -> "-".repeat(lineWidth)
                 }
-                vp.addText(separator, Align.LEFT, 0)
-                vp.feedLine(1)
+                p.addText(separator, Align.LEFT, 0)
+                p.feedLine(1)
             }
 
             "empty_line" -> {
-                vp.feedLine(1)
+                p.feedLine(1)
             }
 
             "feed" -> {
-                vp.feedLine(node.getInt("lines"))
+                p.feedLine(node.getInt("lines"))
             }
 
             "qr_code" -> {
                 val data = node.getString("data")
                 val size = node.optInt("size", 8)
-                vp.addQrCode(0, 0, data, ByteArray(0), size, ECLevel.M)
-                vp.feedLine(1)
+                p.addQrCode(size, ECLevel.M, data, Align.CENTER, 0)
+                p.feedLine(1)
             }
 
             "cut" -> {
-                // Handled by InitOption.autoCutPaper = true
-                // Feed extra lines for spacing before auto-cut
-                vp.feedLine(3)
+                p.cutPaper()
             }
-
-            // barcode, image, cash_drawer: not handled via VectorPrinter
         }
     }
 
-    private fun applyFormat(vp: VectorPrinter, formatObj: JSONObject?) {
-        val tf = TextFormat()
-        if (formatObj != null) {
-            tf.isBold = formatObj.optBoolean("bold", false)
-            tf.isUnderline = formatObj.optBoolean("underline", false)
-            tf.isItalic = formatObj.optBoolean("italic", false)
-            tf.isAntiColor = formatObj.optBoolean("inverted", false)
-
-            val doubleH = formatObj.optBoolean("doubleHeight", false)
-            val doubleW = formatObj.optBoolean("doubleWidth", false)
-            if (doubleH || doubleW) {
-                tf.scaleX = if (doubleW) 2.0f else 1.0f
-                tf.scaleY = if (doubleH) 2.0f else 1.0f
-            }
-
-            val fontSize = formatObj.optInt("fontSize", 0)
-            if (fontSize > 0) {
-                tf.fontSize = fontSize
-            }
+    private fun applyFormat(p: Printer, formatObj: JSONObject?) {
+        if (formatObj == null) {
+            resetFormat(p)
+            return
         }
-        vp.setFormat(tf)
+
+        val doubleH = formatObj.optBoolean("doubleHeight", false)
+        val doubleW = formatObj.optBoolean("doubleWidth", false)
+        val bold = formatObj.optBoolean("bold", false)
+
+        val scale = when {
+            (doubleH && doubleW) || (bold && doubleH) -> ASCScale.SC2x2
+            doubleH -> ASCScale.SC1x2
+            doubleW || bold -> ASCScale.SC2x1
+            else -> ASCScale.SC1x1
+        }
+
+        p.setFormat(ASCSize.DOT24x12, scale)
     }
 
-    private fun resetFormat(vp: VectorPrinter) {
-        vp.setFormat(TextFormat())
+    private fun resetFormat(p: Printer) {
+        p.setFormat(ASCSize.DOT24x12, ASCScale.SC1x1)
     }
 
     private fun parseAlign(align: String): Int {
@@ -259,12 +252,12 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun requirePrinter(promise: Promise): VectorPrinter? {
-        if (!isInitialized || vectorPrinter == null) {
+    private fun requirePrinter(promise: Promise): Printer? {
+        if (!isInitialized || printer == null) {
             promise.reject("NOT_INITIALIZED", "Printer service not initialized. Call initPrinter() first.")
             return null
         }
-        return vectorPrinter
+        return printer
     }
 
     // ==================== LIFECYCLE ====================
