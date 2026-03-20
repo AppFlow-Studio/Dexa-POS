@@ -94,20 +94,17 @@ const TableBillSection = ({
         {appliedDiscount && (
           <View className="px-4 pb-2">
             {/* Using bg-[#303030] to blend with footer area */}
-            <View
-              className="flex-row items-center justify-between p-1.5 pl-3 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
-              style={{ height: 44 }}
-            >
-              <View className="flex-row items-center">
-                <Text className="text-base font-bold text-blue-400">
-                  {appliedDiscount.label}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={handleRemoveDiscount}
-                className="p-1.5 bg-blue-600/30 rounded-full"
-              >
-                <X color={colors.info} size={20} />
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+              paddingHorizontal: 10, paddingVertical: 6, height: 36,
+              backgroundColor: colors.info + '15', borderWidth: 1, borderColor: colors.info + '40',
+              borderRadius: 8, gap: 8,
+            }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.info }}>
+                {appliedDiscount.label}
+              </Text>
+              <TouchableOpacity onPress={handleRemoveDiscount} style={{ padding: 4 }}>
+                <X color={colors.info} size={14} />
               </TouchableOpacity>
             </View>
           </View>

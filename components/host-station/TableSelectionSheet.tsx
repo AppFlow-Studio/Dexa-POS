@@ -1,16 +1,8 @@
 import { colors } from '@/lib/theme'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
-import { Check, Users, X } from 'lucide-react-native'
+import { ArrowRight, Users, X } from 'lucide-react-native'
 import React, { useMemo } from 'react'
-import {
-  FlatList,
-  Modal,
-  Pressable,
-  SafeAreaView,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
+import { FlatList, Modal, Pressable, Text, TouchableOpacity, View } from 'react-native'
 
 interface TableSelectionSheetProps {
   isOpen: boolean
@@ -20,74 +12,84 @@ interface TableSelectionSheetProps {
   tables: FloorPlanObject[]
 }
 
-export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
-  isOpen,
-  onClose,
-  onSelectTable,
-  entry,
-  tables
-}) => {
+export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({ isOpen, onClose, onSelectTable, entry, tables }) => {
   const availableTables = useMemo(
-    () =>
-      tables.filter(
-        t =>
-          (t.session?.status || 'available') === 'available' &&
-          (t.category === 'table' || t.category === 'booth')
-      ),
+    () => tables.filter(t => (t.session?.status || 'available') === 'available' && (t.category === 'table' || t.category === 'booth')),
     [tables]
   )
 
   const sortedTables = useMemo(() => {
     if (!entry) return availableTables
-
     return [...availableTables].sort((a, b) => {
-      const aCapacity = a.capacity || 0
-      const bCapacity = b.capacity || 0
-
-      const aIsIdeal =
-        aCapacity >= entry.party_size && aCapacity <= entry.party_size + 2
-      const bIsIdeal =
-        bCapacity >= entry.party_size && bCapacity <= entry.party_size + 2
-
-      if (aIsIdeal && !bIsIdeal) return -1
-      if (!aIsIdeal && bIsIdeal) return 1
-
-      return aCapacity - bCapacity
+      const aC = a.capacity || 0
+      const bC = b.capacity || 0
+      const aIdeal = aC >= entry.party_size && aC <= entry.party_size + 2
+      const bIdeal = bC >= entry.party_size && bC <= entry.party_size + 2
+      if (aIdeal && !bIdeal) return -1
+      if (!aIdeal && bIdeal) return 1
+      return aC - bC
     })
   }, [availableTables, entry])
 
-  const renderTableItem = ({ item }: { item: FloorPlanObject }) => {
-    const isIdeal =
-      entry &&
-      item.capacity &&
-      item.capacity >= entry.party_size &&
-      item.capacity <= entry.party_size + 2
+  const renderTableItem = ({ item, index }: { item: FloorPlanObject; index: number }) => {
+    const capacity = item.capacity || 0
+    const isIdeal = !!(entry && capacity >= entry.party_size && capacity <= entry.party_size + 2)
+    const isOver = !!(entry && capacity < entry.party_size)
+    const isBooth = item.category === 'booth'
 
     return (
       <Pressable
         onPress={() => onSelectTable([item.id])}
-        className='mx-3 mb-3 p-3 rounded-lg border border-border bg-card overflow-hidden'
+        style={({ pressed }) => ({
+          marginHorizontal: 14,
+          marginBottom: 8,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: isIdeal ? colors.teal + '60' : colors.border,
+          backgroundColor: pressed ? colors.screen : isIdeal ? colors.teal + '0A' : colors.card,
+          overflow: 'hidden',
+        })}
       >
-        <View className='flex-row items-center justify-between'>
-          <View className='flex-1'>
-            <Text className='text-white font-semibold text-base'>
-              {item.name}
-              {item.category === 'booth' ? ' (Booth)' : ''}
-            </Text>
-            <View className='flex-row items-center gap-2 mt-2'>
-              <Users size={14} color={colors.label} />
-              <Text className='text-label text-sm'>
-                Capacity: {item.capacity || 'N/A'}
-              </Text>
+        {/* Ideal accent bar */}
+        {isIdeal && <View style={{ height: 2, backgroundColor: colors.teal, marginBottom: 0 }} />}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 }}>
+          {/* Position number */}
+          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isIdeal ? colors.teal + '18' : colors.screen, borderWidth: 1, borderColor: isIdeal ? colors.teal + '40' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: isIdeal ? colors.teal : colors.muted, fontSize: 12, fontWeight: '700' }}>{index + 1}</Text>
+          </View>
+
+          {/* Info */}
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ color: colors.heading, fontWeight: '700', fontSize: 14 }}>{item.name}</Text>
+              {isBooth && (
+                <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.info + '18', borderWidth: 1, borderColor: colors.info + '40' }}>
+                  <Text style={{ color: colors.info, fontSize: 9, fontWeight: '700' }}>BOOTH</Text>
+                </View>
+              )}
               {isIdeal && (
-                <View className='ml-auto px-2 py-1 rounded bg-teal/20 border border-teal'>
-                  <Text className='text-teal text-xs font-semibold'>Ideal</Text>
+                <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + '18', borderWidth: 1, borderColor: colors.teal + '50' }}>
+                  <Text style={{ color: colors.teal, fontSize: 9, fontWeight: '700' }}>BEST FIT</Text>
                 </View>
               )}
             </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+              <Users size={11} color={isOver ? colors.warning : colors.muted} />
+              <Text style={{ color: isOver ? colors.warning : colors.label, fontSize: 12 }}>
+                Seats {capacity || 'unknown'}
+              </Text>
+              {entry && capacity > 0 && (
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  · {capacity - entry.party_size > 0 ? `+${capacity - entry.party_size} extra` : capacity < entry.party_size ? `${entry.party_size - capacity} short` : 'perfect fit'}
+                </Text>
+              )}
+            </View>
           </View>
-          <View className='ml-2'>
-            <Check size={20} color={colors.teal} />
+
+          {/* Action indicator */}
+          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isIdeal ? colors.teal + '18' : colors.screen, borderWidth: 1, borderColor: isIdeal ? colors.teal + '40' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+            <ArrowRight size={14} color={isIdeal ? colors.teal : colors.muted} />
           </View>
         </View>
       </Pressable>
@@ -95,51 +97,54 @@ export const TableSelectionSheet: React.FC<TableSelectionSheetProps> = ({
   }
 
   return (
-    <Modal
-      visible={isOpen}
-      transparent
-      animationType='slide'
-      onRequestClose={onClose}
-    >
-      <Pressable
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
-        onPress={onClose}
-      >
-        <Pressable onPress={e => e.stopPropagation()} style={{ maxHeight: '55%', backgroundColor: colors.panel, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
-          <SafeAreaView style={{ backgroundColor: colors.panel, borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
-            {/* Header */}
-            <View className='px-4 pt-2 pb-4 border-b border-border flex-row items-start justify-between'>
-              <View>
-                <Text className='text-white text-lg font-bold'>
-                  Select Table for {entry?.party_name}
-                </Text>
-                <Text className='text-muted text-sm mt-1'>
-                  {entry?.party_size} guest{entry && entry.party_size !== 1 ? 's' : ''}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={onClose} className='p-1'>
-                <X size={20} color={colors.label} />
+    <Modal visible={isOpen} transparent animationType='fade' onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center' }} onPress={onClose}>
+        <Pressable onPress={e => e.stopPropagation()} style={{ width: 460, maxHeight: '75%', backgroundColor: colors.screen, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+            <View>
+              <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>Seat Party</Text>
+              {entry && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Users size={11} color={colors.muted} />
+                    <Text style={{ color: colors.muted, fontSize: 11 }}>{entry.party_size} guest{entry.party_size !== 1 ? 's' : ''}</Text>
+                  </View>
+                  <Text style={{ color: colors.border, fontSize: 11 }}>·</Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>{entry.party_name}</Text>
+                </View>
+              )}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {availableTables.length > 0 && (
+                <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.success + '18', borderWidth: 1, borderColor: colors.success + '40' }}>
+                  <Text style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}>{availableTables.length} available</Text>
+                </View>
+              )}
+              <TouchableOpacity onPress={onClose} style={{ padding: 6, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
+                <X size={14} color={colors.label} />
               </TouchableOpacity>
             </View>
+          </View>
 
-            {availableTables.length === 0 ? (
-              <View className='items-center justify-center px-4 py-12'>
-                <Text className='text-muted text-center text-base'>
-                  No available tables
-                </Text>
-                <Text className='text-label text-center text-sm mt-2'>
-                  All tables are currently occupied
-                </Text>
+          {availableTables.length === 0 ? (
+            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
+              <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <Users size={22} color={colors.muted} />
               </View>
-            ) : (
-              <FlatList
-                data={sortedTables}
-                renderItem={renderTableItem}
-                keyExtractor={item => item.id}
-                contentContainerStyle={{ paddingTop: 12, paddingBottom: 20 }}
-              />
-            )}
-          </SafeAreaView>
+              <Text style={{ color: colors.label, fontSize: 14, fontWeight: '600' }}>No tables available</Text>
+              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>All tables are currently occupied</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={sortedTables}
+              renderItem={renderTableItem}
+              keyExtractor={item => item.id}
+              contentContainerStyle={{ paddingTop: 12, paddingBottom: 20 }}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
         </Pressable>
       </Pressable>
     </Modal>

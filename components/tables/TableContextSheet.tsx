@@ -16,7 +16,9 @@ import {
 } from '@gorhom/bottom-sheet'
 import {
   ArrowLeftRight,
+  ChevronRight,
   ChevronUp,
+  Clock,
   DollarSign,
   LogOut,
   Printer,
@@ -43,7 +45,7 @@ type ActionItem = {
   variant?: 'primary' | 'secondary' | 'danger'
 }
 
-function getActionsForStatus (
+function getActionsForStatus(
   status: TableStatus | undefined,
   table: FloorPlanObject,
   onSeatGuests: (t: FloorPlanObject) => void,
@@ -53,14 +55,13 @@ function getActionsForStatus (
   updateSessionStatus: (id: string, s: TableStatus) => void
 ): ActionItem[] {
   const actions: ActionItem[] = []
-
   const effectiveStatus = status || 'available'
 
   switch (effectiveStatus) {
     case 'available':
       actions.push({
         label: 'Seat Guests',
-        icon: <Users size={18} color={colors.info} />,
+        icon: <Users size={16} color={colors.teal} />,
         onPress: () => onSeatGuests(table),
         variant: 'primary'
       })
@@ -69,13 +70,13 @@ function getActionsForStatus (
     case 'reserved':
       actions.push({
         label: 'Seat Reservation',
-        icon: <Users size={18} color={colors.info} />,
+        icon: <Users size={16} color={colors.teal} />,
         onPress: () => onSeatGuests(table),
         variant: 'primary'
       })
       actions.push({
         label: 'Seat Walk-In',
-        icon: <Users size={18} color={colors.label} />,
+        icon: <Users size={16} color={colors.label} />,
         onPress: () => onSeatGuests(table)
       })
       break
@@ -87,14 +88,14 @@ function getActionsForStatus (
     case 'served':
       actions.push({
         label: 'View Order',
-        icon: <DollarSign size={18} color={colors.info} />,
+        icon: <DollarSign size={16} color={colors.teal} />,
         onPress: () => onNavigate(table.id),
         variant: 'primary'
       })
       if (effectiveStatus === 'served' || effectiveStatus === 'ordered') {
         actions.push({
           label: 'Present Check',
-          icon: <ChevronUp size={18} color={colors.label} />,
+          icon: <ChevronUp size={16} color={colors.label} />,
           onPress: () => updateSessionStatus(table.id, 'check_presented')
         })
       }
@@ -103,13 +104,13 @@ function getActionsForStatus (
     case 'check_presented':
       actions.push({
         label: 'View Order',
-        icon: <DollarSign size={18} color={colors.info} />,
+        icon: <DollarSign size={16} color={colors.teal} />,
         onPress: () => onNavigate(table.id),
         variant: 'primary'
       })
       actions.push({
         label: 'Take Payment',
-        icon: <DollarSign size={18} color={colors.label} />,
+        icon: <DollarSign size={16} color={colors.label} />,
         onPress: () => onNavigate(table.id)
       })
       break
@@ -117,31 +118,31 @@ function getActionsForStatus (
     case 'paying':
       actions.push({
         label: 'View Order',
-        icon: <DollarSign size={18} color={colors.info} />,
-        onPress: () => onNavigate(table.id)
+        icon: <DollarSign size={16} color={colors.teal} />,
+        onPress: () => onNavigate(table.id),
+        variant: 'primary'
       })
       break
 
     case 'paid':
       actions.push({
         label: 'View Order',
-        icon: <DollarSign size={18} color={colors.info} />,
-        onPress: () => onNavigate(table.id)
+        icon: <DollarSign size={16} color={colors.teal} />,
+        onPress: () => onNavigate(table.id),
+        variant: 'primary'
       })
       actions.push({
         label: 'Close Table',
-        icon: <LogOut size={18} color={colors.label} />,
-        onPress: () => clearTableSession(table.id),
-        variant: 'secondary'
+        icon: <LogOut size={16} color={colors.label} />,
+        onPress: () => clearTableSession(table.id)
       })
       break
 
     case 'cleaning':
       actions.push({
         label: 'Mark Clean',
-        icon: <Trash2 size={18} color={colors.label} />,
-        onPress: () => finishCleaning(table.id),
-        variant: 'secondary'
+        icon: <Trash2 size={16} color={colors.label} />,
+        onPress: () => finishCleaning(table.id)
       })
       break
 
@@ -149,9 +150,8 @@ function getActionsForStatus (
     case 'not_in_service':
       actions.push({
         label: 'Unblock Table',
-        icon: <Unlock size={18} color={colors.label} />,
-        onPress: () => updateSessionStatus(table.id, 'available'),
-        variant: 'secondary'
+        icon: <Unlock size={16} color={colors.label} />,
+        onPress: () => updateSessionStatus(table.id, 'available')
       })
       break
 
@@ -162,16 +162,26 @@ function getActionsForStatus (
   return actions
 }
 
-const KITCHEN_STATUS_COLORS = {
-  preparing: '#F59E0B', // amber
-  ready: '#22C55E', // green
-  served: '#3B82F6' // blue
-} as const
+const STATUS_LABELS: Record<string, string> = {
+  available: 'Available',
+  reserved: 'Reserved',
+  seating: 'Seating',
+  seated: 'Seated',
+  ordering: 'Ordering',
+  ordered: 'Ordered',
+  served: 'Served',
+  check_presented: 'Check Presented',
+  paying: 'Paying',
+  paid: 'Paid',
+  cleaning: 'Cleaning',
+  not_in_service: 'Not in Service',
+  blocked: 'Blocked',
+}
 
-const PAID_STATUS_CONFIG = {
-  Paid: { label: 'Paid', color: '#22C55E', bg: 'bg-green-900/30' },
-  Partial: { label: 'Partial', color: '#F59E0B', bg: 'bg-amber-900/30' },
-  Unpaid: { label: 'Unpaid', color: '#EF4444', bg: 'bg-red-900/30' }
+const KITCHEN_STATUS_COLORS = {
+  preparing: colors.warning,
+  ready: colors.success,
+  served: colors.info,
 } as const
 
 const TableContextSheet: React.FC<TableContextSheetProps> = ({
@@ -188,26 +198,19 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   const finishCleaning = useFloorPlanStore(s => s.finishCleaning)
   const updateSessionStatus = useFloorPlanStore(s => s.updateSessionStatus)
 
-  // Sync sheet open/close with table selection
   useEffect(() => {
-    if (table) {
-      sheetRef.current?.present()
-    } else {
-      sheetRef.current?.dismiss()
-    }
+    if (table) sheetRef.current?.present()
+    else sheetRef.current?.dismiss()
   }, [table])
 
-  const handleDismiss = useCallback(() => {
-    onClose()
-  }, [onClose])
+  const handleDismiss = useCallback(() => onClose(), [onClose])
 
   const liveSession = useTableSessionStore(s =>
     table ? s.sessions[table.id] : undefined
   )
   const status = (liveSession?.status ?? table?.session?.status) || 'available'
-  const tableColor = TABLE_STATUS_COLORS[status] || colors.info
+  const tableColor = TABLE_STATUS_COLORS[status] || colors.teal
 
-  // Resolve order ID from session (handles both local ID and db_order_id)
   const resolvedOrderId = useOrderStore(s => {
     const oid = liveSession?.order_id
     if (!oid) return null
@@ -218,13 +221,9 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   )
   const totals = useOrderTotals(resolvedOrderId)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-
   const isOccupied = !!order
-
-  // Seated duration (auto-updates every 60s via useSessionDuration)
   const { minutes: minutesSeated } = useSessionDuration(table?.id ?? '')
 
-  // Kitchen status summary
   const kitchenSummary = useMemo(() => {
     if (!order?.items?.length) return null
     const counts = { preparing: 0, ready: 0, served: 0 }
@@ -238,23 +237,13 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
     return counts.preparing || counts.ready || counts.served ? counts : null
   }, [order?.items])
 
-  // Items preview (first 5 non-voided)
   const itemsPreview = useMemo(() => {
     if (!order?.items?.length) return null
     const nonVoided = order.items.filter(i => !i.is_voided)
-    if (nonVoided.length === 0) return null
-    const shown = nonVoided.slice(0, 5)
-    const remaining = nonVoided.length - shown.length
-    return { items: shown, remaining }
+    if (!nonVoided.length) return null
+    return { items: nonVoided.slice(0, 4), remaining: nonVoided.length - 4 }
   }, [order?.items])
 
-  // Paid status
-  const paidStatus = order?.paid_status ?? 'Unpaid'
-  const paidConfig =
-    PAID_STATUS_CONFIG[paidStatus as keyof typeof PAID_STATUS_CONFIG] ??
-    PAID_STATUS_CONFIG.Unpaid
-
-  // Base actions from status
   const actions = useMemo(() => {
     if (!table) return []
 
@@ -268,65 +257,39 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
       (id, s) => updateSessionStatus(id, s)
     )
 
-    // Add transfer server action for occupied tables
-    const occupiedForTransfer = new Set([
-      "seated", "seating", "ordering", "ordered", "served", "check_presented",
-    ]);
-    if (onTransferServer && liveSession?.id && occupiedForTransfer.has(status) && table) {
+    const occupiedForTransfer = new Set(['seated', 'seating', 'ordering', 'ordered', 'served', 'check_presented'])
+    if (onTransferServer && liveSession?.id && occupiedForTransfer.has(status)) {
       baseActions.push({
-        label: "Transfer Server",
-        icon: <ArrowLeftRight size={18} color={colors.label} />,
+        label: 'Transfer Server',
+        icon: <ArrowLeftRight size={16} color={colors.label} />,
         onPress: () => onTransferServer(table.id, liveSession.id),
-      });
+      })
     }
 
-    // Add print actions for occupied tables
     if (order && selectedStore) {
-      const occupiedStatuses = new Set([
-        'ordered',
-        'served',
-        'check_presented',
-        'paid'
-      ])
-      if (occupiedStatuses.has(status)) {
+      if (['ordered', 'served', 'check_presented', 'paid'].includes(status)) {
         baseActions.push({
           label: 'Print Receipt',
-          icon: <Printer size={18} color={colors.label} />,
-          onPress: () => {
-            PrinterService.printReceipt(order, selectedStore)
-          }
+          icon: <Printer size={16} color={colors.label} />,
+          onPress: () => PrinterService.printReceipt(order, selectedStore),
         })
       }
-
-      const kitchenPrintStatuses = new Set(['seated', 'ordering', 'ordered'])
-      if (kitchenPrintStatuses.has(status)) {
+      if (['seated', 'ordering', 'ordered'].includes(status)) {
         baseActions.push({
           label: 'Print Kitchen Ticket',
-          icon: <UtensilsCrossed size={18} color={colors.label} />,
+          icon: <UtensilsCrossed size={16} color={colors.label} />,
           onPress: () => {
             const nonVoidedItems = order.items.filter(i => !i.is_voided)
-            PrinterService.printKitchenTickets(
-              order,
-              nonVoidedItems,
-              selectedStore
-            )
-          }
+            PrinterService.printKitchenTickets(order, nonVoidedItems, selectedStore)
+          },
         })
       }
     }
 
     return baseActions
-  }, [
-    table,
-    status,
-    onSeatGuests,
-    onNavigate,
-    clearTableSession,
-    finishCleaning,
-    updateSessionStatus,
-    order,
-    selectedStore
-  ])
+  }, [table, status, onSeatGuests, onNavigate, clearTableSession, finishCleaning, updateSessionStatus, order, selectedStore, liveSession, onTransferServer])
+
+  const partySize = liveSession?.party_size ?? table?.session?.party_size
 
   return (
     <BottomSheetModal
@@ -346,193 +309,199 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
       handleIndicatorStyle={bottomSheetTheme.handleIndicatorStyle}
       enablePanDownToClose
     >
-      <BottomSheetScrollView style={{ paddingBottom: 20 }}>
+      <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+
         {/* Header */}
-        <View className='px-5 py-3 border-b border-border'>
-          <View className='flex-row items-center gap-3 mb-1'>
-            <View
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: tableColor
-              }}
-            />
-            <Text className='text-white font-bold text-lg flex-1'>
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 20,
+          paddingVertical: 16,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          gap: 14,
+        }}>
+          {/* Color accent box */}
+          <View style={{
+            width: 32, height: 32, borderRadius: 8,
+            backgroundColor: tableColor + '18',
+            borderWidth: 1, borderColor: tableColor + '40',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tableColor }} />
+          </View>
+
+          {/* Name + status */}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>
               {table?.name}
             </Text>
-            <Text className='text-muted text-sm'>{status}</Text>
+            <Text style={{ fontSize: 11, color: tableColor, fontWeight: '600', marginTop: 1 }}>
+              {STATUS_LABELS[status] ?? status}
+            </Text>
           </View>
-          <View className='flex-row items-center flex-wrap'>
-            {table?.session?.party_size ? (
-              <Text className='text-label text-sm'>
-                {table.session.party_size} guests
-              </Text>
-            ) : null}
-            {order?.server_name ? (
-              <Text className='text-label text-sm'>
-                {table?.session?.party_size ? ' \u2022 ' : ''}Server:{' '}
-                {order.server_name}
-              </Text>
+
+          {/* Meta pills */}
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {partySize ? (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                backgroundColor: colors.card, borderRadius: 8,
+                paddingHorizontal: 8, paddingVertical: 4,
+                borderWidth: 1, borderColor: colors.border,
+              }}>
+                <Users size={11} color={colors.muted} />
+                <Text style={{ fontSize: 11, color: colors.label, fontWeight: '600' }}>{partySize}</Text>
+              </View>
             ) : null}
             {minutesSeated > 0 ? (
-              <Text className='text-label text-sm'>
-                {table?.session?.party_size || order?.server_name
-                  ? ' \u2022 '
-                  : ''}
-                {minutesSeated} min
-              </Text>
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+                backgroundColor: colors.card, borderRadius: 8,
+                paddingHorizontal: 8, paddingVertical: 4,
+                borderWidth: 1, borderColor: colors.border,
+              }}>
+                <Clock size={11} color={colors.muted} />
+                <Text style={{ fontSize: 11, color: colors.label, fontWeight: '600' }}>{minutesSeated}m</Text>
+              </View>
             ) : null}
           </View>
         </View>
 
-        {/* Financial Summary — occupied tables only */}
+        {/* Financial summary */}
         {isOccupied && totals ? (
-          <View className='px-5 py-3 border-b border-border flex-row items-center justify-between'>
-            <Text className='text-white font-bold text-base'>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center',
+            paddingHorizontal: 16, paddingVertical: 10,
+            borderBottomWidth: 1, borderBottomColor: colors.border,
+            gap: 8,
+          }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.heading, flex: 1 }}>
               {formatCurrency(totals.total)}
             </Text>
-            <Text className='text-label text-sm'>
+            <Text style={{ fontSize: 11, color: colors.muted }}>
               {totals.itemCount} {totals.itemCount === 1 ? 'item' : 'items'}
             </Text>
-            <View className={`px-2 py-0.5 rounded ${paidConfig.bg}`}>
-              <Text
-                style={{ color: paidConfig.color }}
-                className='text-xs font-semibold'
-              >
-                {paidConfig.label}
-              </Text>
-            </View>
+            {order?.paid_status ? (
+              <View style={{
+                paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
+                backgroundColor: order.paid_status === 'Paid' ? colors.success + '20' : order.paid_status === 'Partial' ? colors.warning + '20' : colors.danger + '20',
+              }}>
+                <Text style={{
+                  fontSize: 10, fontWeight: '700',
+                  color: order.paid_status === 'Paid' ? colors.success : order.paid_status === 'Partial' ? colors.warning : colors.danger,
+                }}>
+                  {order.paid_status}
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
-        {/* Kitchen Status — occupied tables only */}
+        {/* Kitchen status dots */}
         {isOccupied && kitchenSummary ? (
-          <View className='px-5 py-2 border-b border-border flex-row items-center gap-4'>
-            {kitchenSummary.preparing > 0 && (
-              <View className='flex-row items-center gap-1.5'>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: KITCHEN_STATUS_COLORS.preparing
-                  }}
-                />
-                <Text className='text-label text-sm'>
-                  {kitchenSummary.preparing} preparing
-                </Text>
-              </View>
-            )}
-            {kitchenSummary.ready > 0 && (
-              <View className='flex-row items-center gap-1.5'>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: KITCHEN_STATUS_COLORS.ready
-                  }}
-                />
-                <Text className='text-label text-sm'>
-                  {kitchenSummary.ready} ready
-                </Text>
-              </View>
-            )}
-            {kitchenSummary.served > 0 && (
-              <View className='flex-row items-center gap-1.5'>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: KITCHEN_STATUS_COLORS.served
-                  }}
-                />
-                <Text className='text-label text-sm'>
-                  {kitchenSummary.served} served
-                </Text>
-              </View>
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 12,
+            paddingHorizontal: 16, paddingVertical: 8,
+            borderBottomWidth: 1, borderBottomColor: colors.border,
+          }}>
+            {(['preparing', 'ready', 'served'] as const).map(k =>
+              kitchenSummary[k] > 0 ? (
+                <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: KITCHEN_STATUS_COLORS[k] }} />
+                  <Text style={{ fontSize: 11, color: colors.label }}>
+                    {kitchenSummary[k]} {k}
+                  </Text>
+                </View>
+              ) : null
             )}
           </View>
         ) : null}
 
-        {/* Items Preview — occupied tables only */}
+        {/* Items preview */}
         {isOccupied && itemsPreview ? (
-          <View className='px-5 py-2 border-b border-border gap-1'>
+          <View style={{
+            marginHorizontal: 12, marginTop: 8,
+            backgroundColor: colors.card,
+            borderRadius: 8, borderWidth: 1, borderColor: colors.border,
+            overflow: 'hidden',
+          }}>
             {itemsPreview.items.map((item, idx) => {
               const itemStatus = getEffectiveItemStatus(item)
-              const statusColor =
-                KITCHEN_STATUS_COLORS[
-                  itemStatus as keyof typeof KITCHEN_STATUS_COLORS
-                ]
+              const statusColor = KITCHEN_STATUS_COLORS[itemStatus as keyof typeof KITCHEN_STATUS_COLORS]
+              const isLast = idx === itemsPreview.items.length - 1 && itemsPreview.remaining <= 0
               return (
-                <View
-                  key={idx}
-                  className='flex-row items-center justify-between py-0.5'
-                >
-                  <Text className='text-label text-sm flex-1' numberOfLines={1}>
-                    {item.quantity}x {item.name}
+                <View key={idx} style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  paddingHorizontal: 10, paddingVertical: 6,
+                  borderBottomWidth: isLast ? 0 : 1,
+                  borderBottomColor: colors.border + '50',
+                  gap: 7,
+                }}>
+                  <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: statusColor ?? colors.border }} />
+                  <Text style={{ fontSize: 11, color: colors.label, flex: 1 }} numberOfLines={1}>
+                    {item.quantity}× {item.name}
                   </Text>
-                  {statusColor ? (
-                    <Text
-                      style={{ color: statusColor }}
-                      className='text-xs ml-2'
-                    >
-                      {itemStatus}
-                    </Text>
-                  ) : null}
+                  <Text style={{ fontSize: 10, color: colors.muted }}>
+                    {formatCurrency(item.price * item.quantity)}
+                  </Text>
                 </View>
               )
             })}
             {itemsPreview.remaining > 0 && (
-              <Text className='text-muted text-xs mt-0.5'>
-                +{itemsPreview.remaining} more{' '}
-                {itemsPreview.remaining === 1 ? 'item' : 'items'}
-              </Text>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 5 }}>
+                <Text style={{ fontSize: 10, color: colors.muted }}>
+                  +{itemsPreview.remaining} more
+                </Text>
+              </View>
             )}
           </View>
         ) : null}
 
+        {/* Server */}
+        {order?.server_name ? (
+          <Text style={{ fontSize: 11, color: colors.muted, paddingHorizontal: 16, marginTop: 6 }}>
+            Server: <Text style={{ color: colors.label, fontWeight: '600' }}>{order.server_name}</Text>
+          </Text>
+        ) : null}
+
         {/* Actions */}
-        <View className='px-5 py-4 gap-3'>
-          {actions.length > 0 ? (
-            actions.map((action, idx) => (
+        <View style={{ paddingHorizontal: 12, marginTop: 10, gap: 5 }}>
+          {actions.map((action, idx) => {
+            const isPrimary = action.variant === 'primary'
+            const isDanger = action.variant === 'danger'
+            return (
               <TouchableOpacity
                 key={idx}
-                onPress={() => {
-                  action.onPress()
-                  sheetRef.current?.dismiss()
-                }}
+                onPress={() => { action.onPress(); sheetRef.current?.dismiss() }}
                 activeOpacity={0.7}
-                className={`flex-row items-center px-4 py-3 rounded-lg border border-border ${
-                  action.variant === 'primary'
-                    ? 'bg-teal/20'
-                    : action.variant === 'danger'
-                    ? 'bg-red-900/20'
-                    : 'bg-surface'
-                }`}
+                style={{
+                  flexDirection: 'row', alignItems: 'center',
+                  paddingHorizontal: 12, paddingVertical: 10,
+                  borderRadius: 8, borderWidth: 1,
+                  backgroundColor: isPrimary ? colors.teal + '15' : isDanger ? colors.danger + '12' : colors.card,
+                  borderColor: isPrimary ? colors.teal + '50' : isDanger ? colors.danger + '40' : colors.border,
+                  gap: 8,
+                }}
               >
-                <View className='mr-3'>{action.icon}</View>
-                <Text
-                  className={`font-semibold text-base ${
-                    action.variant === 'primary'
-                      ? 'text-teal'
-                      : action.variant === 'danger'
-                      ? 'text-red-400'
-                      : 'text-label'
-                  }`}
-                >
+                {action.icon}
+                <Text style={{
+                  fontSize: 12, fontWeight: '600', flex: 1,
+                  color: isPrimary ? colors.teal : isDanger ? colors.danger : colors.heading,
+                }}>
                   {action.label}
                 </Text>
+                {isPrimary && <ChevronRight size={12} color={colors.teal + '80'} />}
               </TouchableOpacity>
-            ))
-          ) : (
-            <Text className='text-muted text-center py-4'>
+            )
+          })}
+          {actions.length === 0 && (
+            <Text style={{ fontSize: 12, color: colors.muted, textAlign: 'center', paddingVertical: 12 }}>
               No actions available
             </Text>
           )}
         </View>
+
       </BottomSheetScrollView>
     </BottomSheetModal>
   )

@@ -1,148 +1,127 @@
-import { colors } from "@/lib/theme";
-import { TABLE_SHAPES } from "@/lib/table-shapes";
-import React, { useState } from "react";
-import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
+import { colors } from '@/lib/theme'
+import { TABLE_SHAPES } from '@/lib/table-shapes'
+import React, { useState } from 'react'
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native'
 
 interface QuickSetupPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onAddMultiple: (
-    items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
-  ) => void;
+  isOpen: boolean
+  onClose: () => void
+  onAddMultiple: (items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]) => void
 }
 
-// Restyled ShapeInputRow to match the new design
 const ShapeInputRow = ({
   shape,
   onQuantityChange,
 }: {
-  shape: (typeof TABLE_SHAPES)[keyof typeof TABLE_SHAPES] & { id: string };
-  onQuantityChange: (shapeId: string, quantity: number) => void;
+  shape: (typeof TABLE_SHAPES)[keyof typeof TABLE_SHAPES] & { id: string }
+  onQuantityChange: (shapeId: string, quantity: number) => void
 }) => {
-  const [quantity, setQuantity] = useState("0");
+  const [quantity, setQuantity] = useState('0')
 
-  const handleTextChange = (text: string) => {
-    const num = parseInt(text, 10);
-    if (text === "" || (num >= 0 && num <= 99)) {
-      setQuantity(text);
-      onQuantityChange(shape.id, text === "" ? 0 : num);
+  const adjust = (delta: number) => {
+    const next = Math.max(0, Math.min(99, (parseInt(quantity, 10) || 0) + delta))
+    setQuantity(String(next))
+    onQuantityChange(shape.id, next)
+  }
+
+  const handleText = (text: string) => {
+    const num = parseInt(text, 10)
+    if (text === '' || (num >= 0 && num <= 99)) {
+      setQuantity(text)
+      onQuantityChange(shape.id, text === '' ? 0 : num)
     }
-  };
+  }
+
+  const qty = parseInt(quantity, 10) || 0
 
   return (
-    <View className="flex-row items-center justify-between p-4 bg-surface rounded-lg border border-gray-600">
-      <View className="flex-row items-center gap-5 flex-1">
-        <View className="w-20 items-center justify-center">
-          <shape.component color={colors.label} height={28} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: qty > 0 ? colors.teal + '40' : colors.border }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+        <View style={{ width: 56, alignItems: 'center', justifyContent: 'center' }}>
+          <shape.component color={qty > 0 ? colors.teal : colors.label} height={26} />
         </View>
-        <Text className="text-gray-200 text-lg font-medium">{shape.label}</Text>
+        <Text style={{ color: qty > 0 ? colors.heading : colors.label, fontSize: 13, fontWeight: qty > 0 ? '600' : '400' }}>{shape.label}</Text>
       </View>
-      <TextInput
-        value={quantity}
-        onChangeText={handleTextChange}
-        keyboardType="number-pad"
-        maxLength={2}
-        className="w-24 h-12 bg-surface border border-gray-500 rounded-md text-white text-lg text-center"
-      />
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+        <TouchableOpacity onPress={() => adjust(-1)} style={{ width: 30, height: 32, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: colors.border }}>
+          <Text style={{ color: qty > 0 ? colors.label : colors.muted, fontSize: 16, fontWeight: '600' }}>−</Text>
+        </TouchableOpacity>
+        <TextInput
+          value={quantity}
+          onChangeText={handleText}
+          keyboardType='number-pad'
+          maxLength={2}
+          style={{ width: 36, height: 32, textAlign: 'center', color: qty > 0 ? colors.teal : colors.heading, fontSize: 13, fontWeight: '700' }}
+        />
+        <TouchableOpacity onPress={() => adjust(1)} style={{ width: 30, height: 32, alignItems: 'center', justifyContent: 'center', borderLeftWidth: 1, borderLeftColor: colors.border }}>
+          <Text style={{ color: colors.label, fontSize: 16, fontWeight: '600' }}>+</Text>
+        </TouchableOpacity>
+      </View>
     </View>
-  );
-};
+  )
+}
 
-const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
-  isOpen,
-  onClose,
-  onAddMultiple,
-}) => {
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({ isOpen, onClose, onAddMultiple }) => {
+  const [quantities, setQuantities] = useState<Record<string, number>>({})
 
   const handleQuantityChange = (shapeId: string, quantity: number) => {
-    setQuantities((prev) => ({ ...prev, [shapeId]: quantity }));
-  };
+    setQuantities(prev => ({ ...prev, [shapeId]: quantity }))
+  }
 
   const handleApply = () => {
     const itemsToAdd = Object.entries(quantities)
-      .filter(([, quantity]) => quantity > 0)
-      .map(([shapeId, quantity]) => ({
-        shapeId: shapeId as keyof typeof TABLE_SHAPES,
-        quantity,
-      }));
+      .filter(([, q]) => q > 0)
+      .map(([shapeId, quantity]) => ({ shapeId: shapeId as keyof typeof TABLE_SHAPES, quantity }))
+    if (itemsToAdd.length > 0) onAddMultiple(itemsToAdd)
+    onClose()
+  }
 
-    if (itemsToAdd.length > 0) {
-      onAddMultiple(itemsToAdd);
-    }
-    onClose();
-  };
+  const totalTables = Object.values(quantities).reduce((sum, q) => sum + q, 0)
 
   const tableShapes = Object.entries(TABLE_SHAPES)
-    .filter(([, data]) => data.type === "table")
-    .map(([id, data]) => ({ id, ...data }));
+    .filter(([, data]) => data.type === 'table')
+    .map(([shapeKey, data]) => ({ ...data, id: shapeKey }))
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[580px] bg-surface rounded-xl border border-gray-700 shadow-2xl p-0">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          <DialogHeader className="p-6">
-            <DialogTitle className="text-xl font-bold text-white">
-              Quick Floor Setup
-            </DialogTitle>
-            <DialogDescription className="text-base text-gray-400 mt-1">
-              Add multiple tables at once to get started quickly.
-            </DialogDescription>
-          </DialogHeader>
-
-          <ScrollView
-            style={{ maxHeight: 420 }}
-            contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
-          >
-            <View className="gap-y-4">
-              {tableShapes.map((shape) => (
-                <ShapeInputRow
-                  key={shape.id}
-                  shape={shape}
-                  onQuantityChange={handleQuantityChange}
-                />
-              ))}
+    <Modal visible={isOpen} transparent animationType='fade' onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={{ width: 520, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+            {/* Header */}
+            <View style={{ paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.heading, fontSize: 14, fontWeight: '700' }}>Quick Floor Setup</Text>
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>Choose how many of each table type to add. You can rearrange them on the canvas afterwards.</Text>
             </View>
-          </ScrollView>
 
-          <DialogFooter className="flex-row gap-4 p-6 bg-surface border-t border-gray-700 rounded-b-xl">
-            <TouchableOpacity
-              onPress={onClose}
-              className="flex-1 py-3 bg-gray-600 rounded-lg items-center"
-            >
-              <Text className="text-base font-bold text-white">
-                Start with Blank Canvas
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleApply}
-              className="flex-1 bg-blue-600 py-3 rounded-lg items-center"
-            >
-              <Text className="text-white text-base font-bold">Add Tables</Text>
-            </TouchableOpacity>
-          </DialogFooter>
+            {/* Shape list */}
+            <ScrollView style={{ maxHeight: 400 }} contentContainerStyle={{ padding: 14, gap: 8 }}>
+              {tableShapes.map(shape => (
+                <ShapeInputRow key={shape.id} shape={shape} onQuantityChange={handleQuantityChange} />
+              ))}
+            </ScrollView>
+
+            {/* Footer */}
+            <View style={{ flexDirection: 'row', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <TouchableOpacity
+                onPress={onClose}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center', backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Blank Canvas</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleApply}
+                style={{ flex: 2, paddingVertical: 10, borderRadius: 9, alignItems: 'center', backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '60', opacity: totalTables === 0 ? 0.5 : 1 }}
+              >
+                <Text style={{ color: colors.teal, fontWeight: '800', fontSize: 13 }}>
+                  {totalTables > 0 ? `Add ${totalTables} Table${totalTables !== 1 ? 's' : ''}` : 'Add Tables'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </KeyboardAvoidingView>
-      </DialogContent>
-    </Dialog>
-  );
-};
+      </View>
+    </Modal>
+  )
+}
 
-export default QuickSetupPanel;
+export default QuickSetupPanel

@@ -1,20 +1,14 @@
 import { colors } from "@/lib/theme";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getFloorPlanClient, useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { Href, useRouter } from "expo-router";
-import { Edit, Plus, Trash2 } from "lucide-react-native";
+import { Edit2, LayoutGrid, Plus, Trash2 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Text,
   TextInput,
@@ -22,95 +16,60 @@ import {
   View,
 } from "react-native";
 
-// Reusable component for the modal to add/edit a layout name
 const LayoutNameModal = ({
-  isOpen,
-  onClose,
-  onSave,
-  initialName = "",
-  title,
+  isOpen, onClose, onSave, initialName = "", title,
 }: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (name: string) => void;
-  initialName?: string;
-  title: string;
+  isOpen: boolean; onClose: () => void; onSave: (name: string) => void; initialName?: string; title: string;
 }) => {
   const [name, setName] = useState(initialName);
 
-  React.useEffect(() => {
-    if (isOpen) {
-      setName(initialName);
-    }
+  useEffect(() => {
+    if (isOpen) setName(initialName);
   }, [isOpen, initialName]);
 
   const handleSave = () => {
-    if (name.trim()) {
-      onSave(name.trim());
-      onClose();
-    }
+    if (name.trim()) { onSave(name.trim()); onClose(); }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-panel border-gray-700 w-[450px]">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          <DialogHeader>
-            <DialogTitle className="text-white text-2xl">{title}</DialogTitle>
-          </DialogHeader>
-          <View className="py-3">
-            <Text className="text-lg text-gray-300 font-medium mb-1.5">
-              Room Name
-            </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g., Main Dining, Patio"
-              placeholderTextColor="#9CA3AF"
-              className="p-3 bg-screen border border-gray-600 rounded-lg text-lg text-white h-16"
-              autoFocus
-            />
+    <Modal visible={isOpen} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)" }}>
+        <View style={{ width: 420, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+          <View style={{ paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ color: colors.heading, fontSize: 14, fontWeight: "700" }}>{title}</Text>
           </View>
-          <DialogFooter className="flex-row gap-2">
-            <TouchableOpacity
-              onPress={onClose}
-              className="flex-1 py-3 bg-screen border border-gray-600 rounded-lg"
-            >
-              <Text className="text-center text-lg font-bold text-gray-300">
-                Cancel
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSave}
-              className="flex-1 py-3 bg-blue-600 rounded-lg"
-            >
-              <Text className="text-center text-lg font-bold text-white">
-                Save
-              </Text>
-            </TouchableOpacity>
-          </DialogFooter>
-        </KeyboardAvoidingView>
-      </DialogContent>
-    </Dialog>
+          <View style={{ padding: 18, gap: 12 }}>
+            <View>
+              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Room Name</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g., Main Dining, Patio"
+                placeholderTextColor={colors.muted}
+                autoFocus
+                style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: colors.heading }}
+              />
+            </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity onPress={onClose} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.screen }}>
+                <Text style={{ color: colors.label, fontWeight: "600", fontSize: 13 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleSave} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "60" }}>
+                <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 13 }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
 const FloorPlanManagementScreen = () => {
   const router = useRouter();
-  const {
-    floorPlans,
-    createFloorPlan,
-    updateFloorPlan,
-    deleteFloorPlan,
-    setActiveFloorPlan,
-    activeFloorPlanId,
-  } = useFloorPlanStore();
-  // tables only holds the active plan's objects — use for accurate count on active plan
+  const { floorPlans, createFloorPlan, updateFloorPlan, deleteFloorPlan, setActiveFloorPlan, activeFloorPlanId } = useFloorPlanStore();
   const activeTables = useFloorPlanStore((s) => s.tables);
 
-  // Reload floor plan list on mount to get up-to-date table_count from DB for all plans
   useEffect(() => {
     const { locationId, setFloorPlans } = useFloorPlanStore.getState();
     const supabase = getFloorPlanClient();
@@ -123,25 +82,15 @@ const FloorPlanManagementScreen = () => {
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [selectedLayout, setSelectedLayout] = useState<
-    (typeof floorPlans)[0] | null
-  >(null);
+  const [selectedLayout, setSelectedLayout] = useState<(typeof floorPlans)[0] | null>(null);
 
   const handleAddNewLayout = async (name: string) => {
-    try {
-      await createFloorPlan(name);
-    } catch (error) {
-      console.error("Failed to create floor plan:", error);
-    }
+    try { await createFloorPlan(name); } catch (e) { console.error(e); }
   };
 
   const handleEditLayout = async (name: string) => {
     if (selectedLayout) {
-      try {
-        await updateFloorPlan(selectedLayout.id, name);
-      } catch (error) {
-        console.error("Failed to update floor plan:", error);
-      }
+      try { await updateFloorPlan(selectedLayout.id, name); } catch (e) { console.error(e); }
     }
   };
 
@@ -151,104 +100,95 @@ const FloorPlanManagementScreen = () => {
         await deleteFloorPlan(selectedLayout.id);
         setDeleteModalOpen(false);
         setSelectedLayout(null);
-      } catch (error) {
-        console.error("Failed to delete floor plan:", error);
-      }
+      } catch (e) { console.error(e); }
     }
   };
 
   return (
-    <View className="flex-1 p-4 bg-screen">
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">Manage Rooms</Text>
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
+      {/* Header */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+        <View>
+          <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "700" }}>Floor Plans</Text>
+          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}>{floorPlans.length} room{floorPlans.length !== 1 ? "s" : ""} configured</Text>
+        </View>
         <TouchableOpacity
           onPress={() => setAddModalOpen(true)}
-          className="py-3 px-5 bg-blue-600 rounded-lg flex-row items-center"
+          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "60" }}
         >
-          <Plus color="white" size={20} className="mr-2" />
-          <Text className="text-lg font-bold text-white">Add New Room</Text>
+          <Plus size={14} color={colors.teal} />
+          <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 13 }}>New Room</Text>
         </TouchableOpacity>
       </View>
 
       <FlatList
         data={floorPlans}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={async () => {
-              // When editing, we might want to set this as active to load tables?
-              // The Edit Table screen likely relies on 'activeFloorPlanId'.
-              // Step 129 showed TableLayoutView uses tables from ACTIVE plan.
-              // So we must set active plan before navigating.
-              await setActiveFloorPlan(item.id);
-              router.push(`/tables/edit-layout?layoutId=${item.id}` as Href);
-            }}
-            className="flex-row items-center p-4 bg-panel border border-gray-700 rounded-xl mb-3"
-          >
-            <View className="flex-1">
-              <Text className="text-xl underline font-semibold text-white">
-                {item.name}
-              </Text>
-              <Text className="text-lg text-gray-400 mt-1">
-                {item.id === activeFloorPlanId
-                  ? activeTables.filter(t => t.category === 'table' || t.category === 'booth').length
-                  : (item.table_count || 0)} tables
-              </Text>
-            </View>
-            <View className="flex-row items-center gap-2">
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent navigating
-                  setSelectedLayout(item);
-                  setEditModalOpen(true);
-                }}
-                className="p-2 bg-screen rounded-lg border border-gray-600"
-              >
-                <Edit size={20} color={colors.label} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent navigating
-                  setSelectedLayout(item);
-                  setDeleteModalOpen(true);
-                }}
-                className="p-2 bg-red-900/30 rounded-lg border border-red-500"
-              >
-                <Trash2 size={20} color={colors.danger} />
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        )}
+        contentContainerStyle={{ padding: 14, gap: 8 }}
+        renderItem={({ item }) => {
+          const isActive = item.id === activeFloorPlanId;
+          const tableCount = isActive
+            ? activeTables.filter(t => t.category === "table" || t.category === "booth").length
+            : (item.table_count || 0);
+          return (
+            <TouchableOpacity
+              onPress={async () => {
+                await setActiveFloorPlan(item.id);
+                router.push(`/tables/edit-layout?layoutId=${item.id}` as Href);
+              }}
+              style={{ flexDirection: "row", alignItems: "center", padding: 14, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: isActive ? colors.teal + "50" : colors.border }}
+            >
+              {/* Icon */}
+              <View style={{ width: 42, height: 42, borderRadius: 10, backgroundColor: isActive ? colors.teal + "18" : colors.screen, borderWidth: 1, borderColor: isActive ? colors.teal + "40" : colors.border, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                <LayoutGrid size={18} color={isActive ? colors.teal : colors.muted} />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ color: colors.heading, fontSize: 14, fontWeight: "700" }}>{item.name}</Text>
+                  {isActive && (
+                    <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + "18", borderWidth: 1, borderColor: colors.teal + "40" }}>
+                      <Text style={{ color: colors.teal, fontSize: 9, fontWeight: "700" }}>ACTIVE</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>{tableCount} table{tableCount !== 1 ? "s" : ""}</Text>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation(); setSelectedLayout(item); setEditModalOpen(true); }}
+                  style={{ padding: 8, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
+                >
+                  <Edit2 size={15} color={colors.label} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation(); setSelectedLayout(item); setDeleteModalOpen(true); }}
+                  style={{ padding: 8, borderRadius: 8, backgroundColor: colors.danger + "12", borderWidth: 1, borderColor: colors.danger + "40" }}
+                >
+                  <Trash2 size={15} color={colors.danger} />
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={
-          <View className="items-center justify-center p-8">
-            <Text className="text-xl text-gray-500">No layouts found.</Text>
-            <Text className="text-lg text-gray-600 mt-2">
-              Click "Add New Room" to get started.
-            </Text>
+          <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
+            <LayoutGrid size={32} color={colors.muted} />
+            <Text style={{ color: colors.label, fontSize: 14, fontWeight: "600", marginTop: 12 }}>No rooms yet</Text>
+            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Tap "New Room" to create your first floor plan</Text>
           </View>
         }
       />
 
-      {/* Modals */}
-      <LayoutNameModal
-        isOpen={isAddModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        onSave={handleAddNewLayout}
-        title="Add New Room"
-      />
-      <LayoutNameModal
-        isOpen={isEditModalOpen}
-        onClose={() => setEditModalOpen(false)}
-        onSave={handleEditLayout}
-        title="Edit Room Name"
-        initialName={selectedLayout?.name || ""}
-      />
+      <LayoutNameModal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} onSave={handleAddNewLayout} title="New Room" />
+      <LayoutNameModal isOpen={isEditModalOpen} onClose={() => setEditModalOpen(false)} onSave={handleEditLayout} title="Rename Room" initialName={selectedLayout?.name || ""} />
       <ConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleDeleteLayout}
         title="Delete Layout"
-        description={`Are you sure you want to permanently delete the "${selectedLayout?.name}" layout? All tables within it will be removed.`}
+        description={`Are you sure you want to permanently delete "${selectedLayout?.name}"? All tables within it will be removed.`}
         confirmText="Delete"
         variant="destructive"
       />
