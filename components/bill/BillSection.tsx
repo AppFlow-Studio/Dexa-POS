@@ -507,7 +507,7 @@ const BillSectionContent = ({
                 isPayButtonDisabled
                   ? "bg-gray-600"
                   : isPartiallyPaid
-                    ? "bg-green-600"
+                    ? "bg-teal-400"
                     : "bg-teal-400"
               }`}
             >
@@ -515,7 +515,7 @@ const BillSectionContent = ({
                 <ActivityIndicator size={12} color="#FFFFFF" />
               ) : null}
               <Text
-                style={{ fontSize: 15, fontWeight: "700" }}
+                style={{ fontSize: 13, fontWeight: "700" }}
                 className={isPayButtonDisabled ? "text-gray-400" : "text-black"}
               >
                 {isPartiallyPaid
