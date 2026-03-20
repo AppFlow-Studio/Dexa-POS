@@ -2381,8 +2381,15 @@ function mergePayments(
     // Already in broadcast by DB ID? Skip — broadcast version is authoritative.
     if (lp.db_payment_id && broadcastDbIds.has(lp.db_payment_id)) return false;
 
-    // Synced payment (has db_payment_id) NOT in broadcast? Skip — may have been voided server-side.
-    if (lp.sync_status !== "pending" && lp.db_payment_id) return false;
+    // Synced payment (has db_payment_id) NOT in broadcast? Usually skip — may have been voided server-side.
+    if (lp.sync_status !== "pending" && lp.db_payment_id) {
+      // Never drop an active pre-auth — these represent real terminal holds
+      const isActivePreAuth = lp.isPreAuth && lp.status === "authorized" && !lp.isVoided;
+      // Never drop a locally-captured payment — broadcast may not reflect capture yet
+      const isLocalCapture = lp.status === "captured";
+      if (isActivePreAuth || isLocalCapture) return true;
+      return false;
+    }
 
     // Truly pending (no db_payment_id yet) — check heuristic match
     // Race condition: broadcast can arrive before syncPaymentToBackend tags db_payment_id
@@ -2916,6 +2923,16 @@ export const useOrderStore = create<OrderState>()(
                         ];
                       }
 
+                      // Detect locally-advanced payment state to avoid stale broadcast reverting paid_status
+                      const PAID_STATUS_RANK: Record<string, number> = {
+                        Unpaid: 0, Pending: 0, Partial: 1, Paid: 2,
+                      };
+                      const localPaidRank = PAID_STATUS_RANK[existingOrder.paid_status ?? ""] ?? -1;
+                      const broadcastPaidRank = PAID_STATUS_RANK[
+                        mapPaymentStatus(backendOrder.payment_status)
+                      ] ?? -1;
+                      const isPaymentLocallyAhead = localPaidRank > broadcastPaidRank;
+
                       // Build updated order
                       const updatedOrder: OrderProfile = {
                         ...existingOrder,
@@ -2928,13 +2945,17 @@ export const useOrderStore = create<OrderState>()(
                         // Update total_discount from broadcast
                         total_discount: backendOrder.discount_amount,
 
-                        // Always update payment-related fields (backend is source of truth)
-                        amount_paid: backendOrder.amount_paid,
-                        amount_due: backendOrder.amount_due,
-                        cash_amount_due: backendOrder.cash_amount_due,
-                        paid_status: mapPaymentStatus(
-                          backendOrder.payment_status,
-                        ),
+                        // Only update payment totals when broadcast is not stale
+                        ...(isPaymentLocallyAhead
+                          ? { cash_amount_due: backendOrder.cash_amount_due }
+                          : {
+                              amount_paid: backendOrder.amount_paid,
+                              amount_due: backendOrder.amount_due,
+                              cash_amount_due: backendOrder.cash_amount_due,
+                              paid_status: mapPaymentStatus(
+                                backendOrder.payment_status,
+                              ),
+                            }),
 
                         // Update payments from broadcast if available (preserves itemsCovered/covers_items)
                         ...(backendOrder.order_payments &&
@@ -2962,19 +2983,21 @@ export const useOrderStore = create<OrderState>()(
                           0,
 
                         // Don't let broadcast revert a locally-preparing order back to draft
-                        // This protects optimistic status updates after payment from being overwritten
+                        // or revert locally-advanced payment state
                         ...(() => {
                           const isLocalAhead =
-                            existingOrder.order_status === "preparing" &&
-                            backendOrder.status === "draft";
+                            (existingOrder.order_status === "preparing" &&
+                            backendOrder.status === "draft") ||
+                            isPaymentLocallyAhead;
                           return !hasPendingChanges && !isLocalAhead
                             ? {
                                 // Status
                                 order_status: backendOrder.status,
+                                // Guard check_status: never revert Closed -> Opened from stale broadcast
                                 check_status:
-                                  backendOrder.check_status ||
-                                  existingOrder.check_status ||
-                                  "Opened",
+                                  (existingOrder.check_status === "Closed" && backendOrder.check_status !== "Closed")
+                                    ? existingOrder.check_status
+                                    : (backendOrder.check_status || existingOrder.check_status || "Opened"),
 
                                 // Card totals (default display)
                                 total_amount: backendOrder.card_total,
@@ -3001,8 +3024,10 @@ export const useOrderStore = create<OrderState>()(
                         state.activeOrderSubtotal = backendOrder.card_subtotal;
                         state.activeOrderDiscount =
                           backendOrder.discount_amount;
-                        state.activeOrderOutstandingTotal =
-                          backendOrder.amount_due;
+                        if (!isPaymentLocallyAhead) {
+                          state.activeOrderOutstandingTotal =
+                            backendOrder.amount_due;
+                        }
                         state.activeOrderOutstandingCash =
                           backendOrder.cash_amount_due;
                         state.activeOrderTotalCash = backendOrder.cash_total;
@@ -3018,10 +3043,11 @@ export const useOrderStore = create<OrderState>()(
                         updates: {
                           // Order status and totals (skipped above when hasPendingChanges)
                           order_status: backendOrder.status,
+                          // Guard check_status: never revert Closed -> Opened from stale broadcast
                           check_status:
-                            backendOrder.check_status ||
-                            localOrder.check_status ||
-                            "Opened",
+                            (localOrder.check_status === "Closed" && backendOrder.check_status !== "Closed")
+                              ? localOrder.check_status
+                              : (backendOrder.check_status || localOrder.check_status || "Opened"),
                           total_amount: backendOrder.card_total,
                           total_tax: backendOrder.card_tax_amount,
                           sent_to_kitchen_at:
@@ -3550,6 +3576,31 @@ export const useOrderStore = create<OrderState>()(
                   const normalized = normalizeFetchedOrder(
                     serverOrder as FetchedOrderData,
                   );
+
+                  // Hydrate missing payments from server (MMKV may have stale data,
+                  // or onRehydrate sync may have failed due to no supabase client)
+                  const localOrder = get().ordersById[serverOrder.id];
+                  if (
+                    localOrder &&
+                    (!localOrder.payments || localOrder.payments.length === 0) &&
+                    normalized.order_payments &&
+                    normalized.order_payments.length > 0
+                  ) {
+                    const serverPayments =
+                      transformBroadcastPaymentsToProfile(
+                        normalized.order_payments,
+                        normalized.order_items,
+                      );
+                    if (serverPayments.length > 0) {
+                      console.log(
+                        `[FetchOwn] Hydrating ${serverPayments.length} missing payments for order ${serverOrder.id}`,
+                      );
+                      get().patchOrder(serverOrder.id, {
+                        payments: serverPayments,
+                      });
+                    }
+                  }
+
                   get().upsertOrder(normalized);
                 }
               }
@@ -3572,9 +3623,13 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
-            // Normalize and transform items
+            // Normalize and transform items + payments
             const normalized = normalizeFetchedOrder(serverOrder);
             const items = transformBroadcastItems(normalized.order_items);
+            const payments = transformBroadcastPaymentsToProfile(
+              normalized.order_payments,
+              normalized.order_items,
+            );
 
             // Map to local OrderProfile format (use DB UUID as id)
             const localOrder: OrderProfile = {
@@ -3609,8 +3664,9 @@ export const useOrderStore = create<OrderState>()(
               amount_due: serverOrder.amount_due ?? 0,
               cash_amount_due: serverOrder.cash_amount_due ?? 0,
 
-              // Items
+              // Items + payments
               items,
+              payments,
 
               // Timestamps
               opened_at: serverOrder.created_at,
@@ -9650,6 +9706,34 @@ export const useOrderStore = create<OrderState>()(
                 const exists = !!get().ordersById[serverOrder.id];
                 // Skip if already in store, UNLESS forceRefresh is true
                 if (exists && !forceRefresh) {
+                  // Hydrate missing payments from server data already fetched
+                  const localOrder = get().ordersById[serverOrder.id];
+                  const fetchedPayments = (serverOrder as any).order_payments;
+                  if (
+                    localOrder &&
+                    (!localOrder.payments ||
+                      localOrder.payments.length === 0) &&
+                    fetchedPayments?.length > 0
+                  ) {
+                    const normalized = normalizeFetchedOrder(
+                      serverOrder as FetchedOrderData,
+                    );
+                    const payments = transformBroadcastPaymentsToProfile(
+                      normalized.order_payments,
+                      normalized.order_items,
+                    );
+                    if (payments.length > 0) {
+                      console.log(
+                        `[initializeOrders] Hydrating ${payments.length} missing payments for order ${serverOrder.id}`,
+                      );
+                      set((state) => {
+                        const order = state.ordersById[serverOrder.id];
+                        if (order) {
+                          order.payments = payments;
+                        }
+                      });
+                    }
+                  }
                   continue;
                 }
 
@@ -10077,7 +10161,13 @@ export const useOrderStore = create<OrderState>()(
 
               // Transform payments to OrderProfile format with comprehensive fields
               const transformedPayments: OrderProfilePayment[] =
-                paymentsData.map((payment: any) => ({
+                paymentsData.map((payment: any) => {
+                  // Extract terminal response data for fallback card details + pre-auth fields
+                  const terminalResp = payment.terminal_response as Record<string, any> | undefined;
+                  const castlesTxn = terminalResp?.castles_transaction as Record<string, any> | undefined;
+                  const dejavooTxn = terminalResp?.dejavoo_transaction as Record<string, any> | undefined;
+
+                  return {
                   // Core identifiers
                   id: payment.id,
                   db_payment_id: payment.id,
@@ -10091,9 +10181,9 @@ export const useOrderStore = create<OrderState>()(
                   total_collected:
                     (payment.amount || 0) + (payment.tip_amount || 0),
 
-                  // Card details
-                  cardBrand: payment.card_type,
-                  last4: payment.card_last_four,
+                  // Card details (with terminal response fallback)
+                  cardBrand: payment.card_type ?? castlesTxn?.cardType ?? dejavooTxn?.CardType,
+                  last4: payment.card_last_four ?? castlesTxn?.cardLast4 ?? dejavooTxn?.Last4,
 
                   // Cash details
                   amountTendered: payment.amount_tendered,
@@ -10168,8 +10258,8 @@ export const useOrderStore = create<OrderState>()(
                     terminalType: payment.terminal_type,
                     authorizationCode:
                       payment.authorization_code || payment.auth_code,
-                    cardType: payment.card_type,
-                    last4: payment.card_last_four,
+                    cardType: payment.card_type ?? castlesTxn?.cardType ?? dejavooTxn?.CardType,
+                    last4: payment.card_last_four ?? castlesTxn?.cardLast4 ?? dejavooTxn?.Last4,
                     transactionId: payment.transaction_id,
                     amountTendered: payment.amount_tendered,
                     changeGiven: payment.change_given,
@@ -10185,13 +10275,25 @@ export const useOrderStore = create<OrderState>()(
                     invoiceNumber: payment.dejavoo_invoice_number,
                     entryMode:
                       payment.processor_response?.dejavoo_transaction
-                        ?.entryMode,
+                        ?.entryMode ?? castlesTxn?.entryMode,
                     referenceId: payment.reference_number,
+                    castlesTransaction: castlesTxn,
                   },
+
+                  // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
+                  isPreAuth: payment.status === 'authorized',
+                  ...(payment.status === 'authorized' ? {
+                    preAuthAmount: payment.amount,
+                    preAuthRrn: payment.rrn || castlesTxn?.rrn,
+                    preAuthStan: castlesTxn?.stan,
+                    preAuthAuthCode: payment.authorization_code || castlesTxn?.approvalCode,
+                    preAuthReferenceId: payment.reference_number || castlesTxn?.referenceId,
+                    preAuthTerminalType: (payment.terminal_type === 'castles' ? 'castles' : 'dejavoo') as 'castles' | 'dejavoo',
+                  } : {}),
 
                   // Sync status
                   sync_status: "synced" as const,
-                }));
+                };});
 
               // Calculate paid status from backend payment_status
               const paidStatus =
@@ -10219,14 +10321,16 @@ export const useOrderStore = create<OrderState>()(
 
               // Update local store with complete order data
               set((state) => {
-                const currentOrder = state.ordersById[storeKey];
-                if (!currentOrder) {
+                if (!state.ordersById[storeKey]) {
                   console.error(
                     "[syncOrderFromBackendComplete] ❌ Order not found in store during update!",
                     { orderId: storeKey },
                   );
                   return;
                 }
+                // Snapshot the draft to a plain object so downstream spreads
+                // and freeze() don't hit revoked Immer proxies.
+                const currentOrder = current(state.ordersById[storeKey]!);
                 console.log("PASSED LOCAL ID", storeKey);
                 console.log("ACTIVE ORDER", state.activeOrderId);
                 console.log("[syncOrderFromBackendComplete] Updating store:", {
@@ -10244,6 +10348,38 @@ export const useOrderStore = create<OrderState>()(
                   (item) => !item.db_order_item_id && !item.isDraft,
                 );
 
+                // Preserve local payments that haven't synced to backend yet
+                // (e.g. pre-auth payments added optimistically before syncPreAuthToBackend completes)
+                const localPendingPayments = currentOrder.payments?.filter(
+                  (p) => !p.db_payment_id && p.sync_status === "pending",
+                ) ?? [];
+
+                // Preserve locally-advanced payments (e.g. local="captured" vs server="authorized")
+                // This prevents realtime sync from regressing payment status when capture_preauth_v1
+                // hasn't completed on the server yet but closeCheck already incremented sync_version.
+                const PAYMENT_STATUS_ORDER: Record<string, number> = {
+                  authorized: 0, pending: 1, captured: 2, refunded: 3, voided: 3,
+                };
+                const localPaymentsByDbId = new Map<string, OrderProfilePayment>();
+                for (const p of currentOrder.payments ?? []) {
+                  if (p.db_payment_id) localPaymentsByDbId.set(p.db_payment_id, p);
+                }
+
+                let hasLocalAdvancedPayments = false;
+                const mergedPayments = transformedPayments.map((serverPmt) => {
+                  if (!serverPmt.db_payment_id) return serverPmt;
+                  const localPmt = localPaymentsByDbId.get(serverPmt.db_payment_id);
+                  if (
+                    localPmt &&
+                    (PAYMENT_STATUS_ORDER[localPmt.status ?? ""] ?? -1) >
+                      (PAYMENT_STATUS_ORDER[serverPmt.status ?? ""] ?? -1)
+                  ) {
+                    hasLocalAdvancedPayments = true;
+                    return localPmt;
+                  }
+                  return serverPmt;
+                });
+
                 // Conflict guard: preserve local status if we have pending changes
                 const hasLocalPending = currentOrder.items.some(
                   (item) => item.sync_status === "pending" || (!item.db_order_item_id && !item.isDraft),
@@ -10253,7 +10389,7 @@ export const useOrderStore = create<OrderState>()(
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
                   items: [...transformedItems, ...localPendingItems],
-                  payments: transformedPayments,
+                  payments: [...mergedPayments, ...localPendingPayments],
                   // Reversals and refund items from backend
                   reversals: reversalsData,
                   order_refund_items: orderRefundItemsData,
@@ -10266,11 +10402,12 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: orderData.card_total ?? orderData.total_amount,
                   total_tax: orderData.tax_amount,
                   total_discount: orderData.discount_amount,
-                  amount_paid: orderData.amount_paid,
-                  amount_due: orderData.amount_due,
+                  amount_paid: hasLocalAdvancedPayments ? currentOrder.amount_paid : orderData.amount_paid,
+                  amount_due: hasLocalAdvancedPayments ? currentOrder.amount_due : orderData.amount_due,
                   cash_amount_due: orderData.cash_amount_due,
-                  // Status fields — preserve local status when items are pending sync
-                  paid_status: hasLocalPending ? currentOrder.paid_status : paidStatus,
+                  // Status fields — preserve local status when items are pending sync or payments are ahead
+                  paid_status: hasLocalAdvancedPayments ? currentOrder.paid_status
+                    : (hasLocalPending ? currentOrder.paid_status : paidStatus),
                   order_status: hasLocalPending ? currentOrder.order_status : orderData.status,
                   sync_version: orderData.sync_version,
                   check_status:
@@ -10295,7 +10432,9 @@ export const useOrderStore = create<OrderState>()(
                     orderData.card_total ?? orderData.total_amount;
                   state.activeOrderTax = orderData.tax_amount;
                   state.activeOrderDiscount = orderData.discount_amount;
-                  state.activeOrderOutstandingTotal = orderData.amount_due;
+                  state.activeOrderOutstandingTotal = hasLocalAdvancedPayments
+                    ? (currentOrder.amount_due ?? orderData.amount_due)
+                    : orderData.amount_due;
                   state.activeOrderOutstandingCash = orderData.cash_amount_due;
                 }
               });

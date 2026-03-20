@@ -45,6 +45,9 @@ export interface CastlesRawResponse {
   txnCardAppLabel: string;
   txnCardExpiry: string;
 
+  /** STAN (System Trace Audit Number) — needed for incremental auth / capture */
+  txnStan?: string;
+
   /** Optional — only present on some responses */
   txnCardholderName?: string;
   txnReceiptData?: string;
@@ -147,6 +150,7 @@ export function buildCastlesTerminalResponse(raw: CastlesRawResponse, dbTerminal
   const cardBrand = raw.txnCardBrand ?? raw.txnCardType ?? '';
   const entryMode = raw.txnEntryMode ?? raw.txnCardEntryMode ?? '';
   const rrn = raw.txnRrn ?? raw.txnRRN ?? '';
+  const stan = raw.txnStan ?? '';
   const amountTotal = raw.txnAmtTrans ?? raw.txnAmtTotal ?? '';
   const batchNo = raw.txnBatchNo ?? raw.txnBatchNum ?? '';
 
@@ -158,6 +162,7 @@ export function buildCastlesTerminalResponse(raw: CastlesRawResponse, dbTerminal
       resultCode: raw.txnReturnCode,
       approvalCode: raw.txnApprovalCode,
       rrn,
+      stan,
       cardLast4: extractLast4(maskedPan),
       cardType: normalizeCardType(cardBrand),
       entryMode: normalizeEntryMode(entryMode),

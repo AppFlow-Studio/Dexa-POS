@@ -104,13 +104,19 @@ class CastlesUsbModule : Module() {
 
       devices.map { device ->
         val hasPermission = usbManager.hasPermission(device)
+
+        // These getters can throw SecurityException on Android 10+ without permission
+        val productName = try { device.productName ?: "" } catch (_: SecurityException) { "" }
+        val manufacturerName = try { device.manufacturerName ?: "" } catch (_: SecurityException) { "" }
+        val serialNumber = try { device.serialNumber ?: "" } catch (_: SecurityException) { "" }
+
         mapOf(
           "deviceId" to device.deviceId,
           "vendorId" to device.vendorId,
           "productId" to device.productId,
-          "productName" to (device.productName ?: ""),
-          "manufacturerName" to (device.manufacturerName ?: ""),
-          "serialNumber" to (device.serialNumber ?: ""),
+          "productName" to productName,
+          "manufacturerName" to manufacturerName,
+          "serialNumber" to serialNumber,
           "driverName" to (driverNamesById[device.deviceId] ?: ""),
           "hasPermission" to hasPermission
         )

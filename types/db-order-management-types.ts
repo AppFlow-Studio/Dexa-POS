@@ -725,3 +725,66 @@ export async function processPaymentV2(
 
   return { data: data as ProcessPaymentV2Response, error: null };
 }
+
+// ============================================================
+// PRE-AUTH RPC TYPES
+// ============================================================
+
+export interface ProcessPreAuthParams {
+  p_order_id: string;
+  p_amount: number;
+  p_terminal_response?: Record<string, unknown> | null;
+  p_staff_id?: string | null;
+}
+
+export interface ProcessPreAuthResponse {
+  success: boolean;
+  payment_id?: string;
+  authorized_amount?: number;
+  rrn?: string;
+  auth_code?: string;
+  error?: string;
+}
+
+export interface CapturePreAuthParams {
+  p_payment_id: string;
+  p_capture_amount: number;
+  p_tip_amount?: number;
+  p_terminal_response?: Record<string, unknown> | null;
+  p_staff_id?: string | null;
+}
+
+export interface CapturePreAuthResponse {
+  success: boolean;
+  payment_id?: string;
+  captured_amount?: number;
+  tip_amount?: number;
+  order_fully_paid?: boolean;
+  order_amount_due?: number;
+  error?: string;
+}
+
+export interface UpdatePreAuthAmountParams {
+  p_payment_id: string;
+  p_new_amount: number;
+  p_terminal_response?: Record<string, unknown> | null;
+}
+
+export interface UpdatePreAuthAmountResponse {
+  success: boolean;
+  payment_id?: string;
+  new_authorized_amount?: number;
+  error?: string;
+}
+
+export interface VoidPreAuthParams {
+  p_payment_id: string;
+  p_staff_id?: string | null;
+  p_reason?: string | null;
+}
+
+export interface VoidPreAuthResponse {
+  success: boolean;
+  payment_id?: string;
+  error?: string;
+}

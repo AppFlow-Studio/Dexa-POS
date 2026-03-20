@@ -10,7 +10,7 @@
  */
 
 import { calculateOrderTotals } from "@/lib/order-calculator";
-import type { OrderProfile } from "@/lib/types";
+import type { OrderProfile, OrderProfilePayment } from "@/lib/types";
 import { useMemo, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useOrderStore } from "../useOrderStore";
@@ -621,6 +621,38 @@ export function useActiveOrder(): OrderProfile | null {
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER: Check if order is from current station
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRE-AUTH SELECTORS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Returns the active pre-auth payment for an order, if any.
+ */
+export function useOrderPreAuth(orderId?: string): OrderProfilePayment | undefined {
+  return useOrderStore((s) => {
+    if (!orderId) return undefined;
+    const order = s.ordersById[orderId];
+    if (!order?.payments) return undefined;
+    return order.payments.find(
+      (p) => p.status === "authorized" && p.isPreAuth && !p.isVoided
+    );
+  });
+}
+
+/**
+ * Returns true if the order has an active (non-voided) pre-auth.
+ */
+export function useHasActivePreAuth(orderId?: string): boolean {
+  return useOrderStore((s) => {
+    if (!orderId) return false;
+    const order = s.ordersById[orderId];
+    if (!order?.payments) return false;
+    return order.payments.some(
+      (p) => p.status === "authorized" && p.isPreAuth && !p.isVoided
+    );
+  });
+}
 
 export function useIsOwnStationOrder(order: OrderProfile | null): boolean {
   const currentStationId = useOrderStore((s) => s.currentStationId);

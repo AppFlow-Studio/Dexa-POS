@@ -436,6 +436,49 @@ export class DejavooSpinAPI {
   }
 
   /**
+   * Create a PRE-AUTH transaction builder
+   *
+   * Places a hold on a customer's card without charging.
+   * Used for bar tabs and dine-in workflows.
+   *
+   * @returns PreAuthTransactionBuilder for method chaining
+   *
+   * @example
+   * ```typescript
+   * const result = await api
+   *   .preAuth()
+   *   .amount(50.00)
+   *   .refId('TAB_12345')
+   *   .execute();
+   * ```
+   */
+  preAuth(): PreAuthTransactionBuilder {
+    return new PreAuthTransactionBuilder(this);
+  }
+
+  /**
+   * Create a CAPTURE transaction builder
+   *
+   * Captures a previously authorized (pre-auth) transaction.
+   * Charges the final amount which may include tip.
+   *
+   * @returns CaptureTransactionBuilder for method chaining
+   *
+   * @example
+   * ```typescript
+   * const result = await api
+   *   .capture()
+   *   .amount(50.00)
+   *   .tip(10.00)
+   *   .referenceId('AUTH_12345')
+   *   .execute();
+   * ```
+   */
+  capture(): CaptureTransactionBuilder {
+    return new CaptureTransactionBuilder(this);
+  }
+
+  /**
    * Create an ABORT TRANSACTION builder
    *
    * Sends an abort request to cancel an in-flight transaction on the terminal.
@@ -2465,6 +2508,264 @@ export class VoidTransactionBuilder {
    */
   getTags(): (string | undefined)[] {
     return [this._tag1, this._tag2, this._tag3];
+  }
+}
+
+// ============================================================
+// PRE-AUTH TRANSACTION BUILDER
+// ============================================================
+
+/**
+ * Fluent builder for PRE-AUTH (Auth) transactions
+ *
+ * Places a hold on a customer's card without charging. Used for bar tabs
+ * and dine-in workflows. The hold is captured later via CaptureTransactionBuilder.
+ *
+ * @example
+ * ```typescript
+ * const result = await api
+ *   .preAuth()
+ *   .amount(50.00)
+ *   .refId('TAB_12345')
+ *   .execute();
+ * ```
+ */
+export class PreAuthTransactionBuilder {
+  private api: DejavooSpinAPI;
+  private _amount?: number;
+  private _paymentType: PaymentType = 'Credit';
+  private _refId?: string;
+  private _invoiceNumber?: string;
+  private _timeout?: number;
+
+  constructor(api: DejavooSpinAPI) {
+    this.api = api;
+  }
+
+  amount(value: number): this {
+    if (value <= 0) throw new Error('Amount must be greater than 0');
+    this._amount = value;
+    return this;
+  }
+
+  refId(value: string): this {
+    if (value.length > 50) throw new Error('RefId cannot exceed 50 characters');
+    this._refId = value;
+    return this;
+  }
+
+  paymentType(value: PaymentType): this {
+    this._paymentType = value;
+    return this;
+  }
+
+  invoiceNumber(value: string): this {
+    this._invoiceNumber = value;
+    return this;
+  }
+
+  timeout(value: number): this {
+    if (value < 1 || value > 720) throw new Error('Timeout must be between 1 and 720 seconds');
+    this._timeout = value;
+    return this;
+  }
+
+  async execute(): Promise<DejavooAPIResponse<DejavooSaleResponse>> {
+    if (!this._amount) {
+      const error = 'Amount is required. Call .amount() before execute()';
+      console.error('[PreAuthTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    if (!this._refId) {
+      this._refId = generateRefId('AUTH');
+      console.log('[PreAuthTransactionBuilder] Auto-generated RefId:', this._refId);
+    }
+
+    try {
+      const authParams = this.api.getAuthParams();
+
+      const request: DejavooSaleRequest = {
+        ...authParams,
+        TransType: 'Auth',
+        PaymentType: this._paymentType,
+        Amount: this._amount,
+        ReferenceId: this._refId,
+        InvoiceNumber: this._invoiceNumber,
+        OperationalTimeout: this._timeout || authParams.OperationalTimeout,
+      };
+
+      const response = await this.api.executeRequest<DejavooSaleResponse>(
+        '/v2/Payment/Auth',
+        request,
+      );
+
+      if (response.success) {
+        toastService.show({
+          title: 'Pre-Auth Approved',
+          message: `$${this._amount.toFixed(2)} hold placed`,
+          type: 'success',
+          duration: 3000,
+        });
+      } else {
+        const errorMsg = response.error || 'Pre-authorization failed';
+        const detailedMsg = response.errorCode
+          ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
+          : errorMsg;
+
+        toastService.show({
+          title: 'Pre-Auth Failed',
+          message: detailedMsg,
+          type: 'error',
+          duration: 5000,
+        });
+      }
+
+      return response;
+    } catch (err) {
+      console.error('[PreAuthTransactionBuilder] Execute failed:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+
+      toastService.show({
+        title: 'Pre-Auth Error',
+        message: errorMsg,
+        type: 'error',
+        duration: 5000,
+      });
+
+      return { success: false, error: errorMsg };
+    }
+  }
+}
+
+// ============================================================
+// CAPTURE TRANSACTION BUILDER
+// ============================================================
+
+/**
+ * Fluent builder for CAPTURE transactions
+ *
+ * Captures a previously authorized (pre-auth) transaction. Charges the final
+ * amount which may differ from the original auth (e.g., with tip added).
+ *
+ * @example
+ * ```typescript
+ * const result = await api
+ *   .capture()
+ *   .amount(50.00)
+ *   .tip(10.00)
+ *   .referenceId('AUTH_12345')
+ *   .execute();
+ * ```
+ */
+export class CaptureTransactionBuilder {
+  private api: DejavooSpinAPI;
+  private _amount?: number;
+  private _referenceId?: string;
+  private _tip?: number;
+  private _paymentType: PaymentType = 'Credit';
+  private _timeout?: number;
+
+  constructor(api: DejavooSpinAPI) {
+    this.api = api;
+  }
+
+  amount(value: number): this {
+    if (value <= 0) throw new Error('Amount must be greater than 0');
+    this._amount = value;
+    return this;
+  }
+
+  referenceId(value: string): this {
+    if (value.length > 50) throw new Error('ReferenceId cannot exceed 50 characters');
+    this._referenceId = value;
+    return this;
+  }
+
+  tip(value: number): this {
+    if (value < 0) throw new Error('Tip amount cannot be negative');
+    this._tip = value;
+    return this;
+  }
+
+  paymentType(value: PaymentType): this {
+    this._paymentType = value;
+    return this;
+  }
+
+  timeout(value: number): this {
+    if (value < 1 || value > 720) throw new Error('Timeout must be between 1 and 720 seconds');
+    this._timeout = value;
+    return this;
+  }
+
+  async execute(): Promise<DejavooAPIResponse<DejavooSaleResponse>> {
+    if (!this._amount) {
+      const error = 'Amount is required. Call .amount() before execute()';
+      console.error('[CaptureTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    if (!this._referenceId) {
+      const error = 'ReferenceId is required. Call .referenceId() before execute()';
+      console.error('[CaptureTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    try {
+      const authParams = this.api.getAuthParams();
+
+      const request = {
+        ...authParams,
+        TransType: 'Capture',
+        PaymentType: this._paymentType,
+        Amount: this._amount,
+        TipAmount: this._tip,
+        ReferenceId: this._referenceId,
+        OperationalTimeout: this._timeout || authParams.OperationalTimeout,
+      };
+
+      const response = await this.api.executeRequest<DejavooSaleResponse>(
+        '/v2/Payment/Capture',
+        request,
+      );
+
+      if (response.success) {
+        const total = this._amount + (this._tip || 0);
+        toastService.show({
+          title: 'Capture Approved',
+          message: `$${total.toFixed(2)} captured successfully`,
+          type: 'success',
+          duration: 3000,
+        });
+      } else {
+        const errorMsg = response.error || 'Capture failed';
+        const detailedMsg = response.errorCode
+          ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
+          : errorMsg;
+
+        toastService.show({
+          title: 'Capture Failed',
+          message: detailedMsg,
+          type: 'error',
+          duration: 5000,
+        });
+      }
+
+      return response;
+    } catch (err) {
+      console.error('[CaptureTransactionBuilder] Execute failed:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+
+      toastService.show({
+        title: 'Capture Error',
+        message: errorMsg,
+        type: 'error',
+        duration: 5000,
+      });
+
+      return { success: false, error: errorMsg };
+    }
   }
 }
 

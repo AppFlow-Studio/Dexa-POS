@@ -147,11 +147,23 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
       name: "print-queue-storage",
       storage: createJSONStorage(() => mmkvStorage),
       partialize: (state) => ({
-        // Only persist queued and failed jobs (not completed or processing)
-        jobs: state.jobs.filter(
-          (j) => j.status === "queued" || j.status === "failed",
-        ),
+        // Persist queued, failed, AND processing jobs (processing saved as queued for crash recovery)
+        jobs: state.jobs
+          .filter(
+            (j) => j.status === "queued" || j.status === "failed" || j.status === "processing",
+          )
+          .map((j) =>
+            j.status === "processing" ? { ...j, status: "queued" as PrintJobStatus } : j,
+          ),
       }),
+      onRehydrateStorage: () => (state) => {
+        // On hydration, reset any processing jobs back to queued (crash recovery)
+        if (state?.jobs) {
+          state.jobs = state.jobs.map((j) =>
+            j.status === "processing" ? { ...j, status: "queued" as PrintJobStatus } : j,
+          );
+        }
+      },
     },
   ),
 );

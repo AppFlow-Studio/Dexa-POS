@@ -1,14 +1,55 @@
 import { CFDScreenRouter } from "@/components/cfd-client/CFDScreenRouter";
 import { CFDExternalDisplayProvider } from "@/contexts/CFDDisplayDataContext";
 import { useCFDWSClient } from "@/hooks/useCFDWSClient";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router } from "expo-router";
-import React, { useEffect } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+
+const ADMIN_TAP_COUNT = 5;
+const ADMIN_TAP_WINDOW_MS = 2000;
 
 export default function CFDDisplayScreen() {
   const { sendTipSelection, reconnect } = useCFDWSClient();
   const { isPaired, connectionStatus } = useCFDClientStore();
+
+  const tapCountRef = useRef(0);
+  const lastTapTimeRef = useRef(0);
+
+  const showAdminMenu = useCallback(() => {
+    Alert.alert("CFD Admin", "Select an option:", [
+      {
+        text: "CFD Settings",
+        onPress: () => router.replace("/(cfd)/cfd-pairing"),
+      },
+      {
+        text: "Disconnect & Exit CFD",
+        style: "destructive",
+        onPress: () => {
+          useCFDClientStore.getState().clearPairing();
+          useStoreSettingsStore.getState().exitCFDMode();
+          replaceRoute("(auth)", "store-select");
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, []);
+
+  const handleAdminTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapTimeRef.current > ADMIN_TAP_WINDOW_MS) {
+      tapCountRef.current = 0;
+    }
+    lastTapTimeRef.current = now;
+    tapCountRef.current += 1;
+
+    if (tapCountRef.current >= ADMIN_TAP_COUNT) {
+      tapCountRef.current = 0;
+      showAdminMenu();
+    }
+  }, [showAdminMenu]);
 
   // Redirect to pairing if not paired
   useEffect(() => {
@@ -23,6 +64,10 @@ export default function CFDDisplayScreen() {
   if (connectionStatus === "disconnected") {
     return (
       <View style={styles.errorContainer}>
+        <Pressable
+          onPress={handleAdminTap}
+          style={[styles.connectionDot, { backgroundColor: "#ef4444" }]}
+        />
         <Text style={styles.errorTitle}>Disconnected</Text>
         <Text style={styles.errorText}>Could not connect to POS.</Text>
         <Pressable onPress={reconnect} style={styles.retryButton}>
@@ -41,8 +86,9 @@ export default function CFDDisplayScreen() {
   return (
     <CFDExternalDisplayProvider>
       <View style={styles.container}>
-        {/* Connection indicator */}
-        <View
+        {/* Connection indicator — 5-tap opens hidden admin menu */}
+        <Pressable
+          onPress={handleAdminTap}
           style={[
             styles.connectionDot,
             connectionStatus === "connected" && styles.connectionDotConnected,

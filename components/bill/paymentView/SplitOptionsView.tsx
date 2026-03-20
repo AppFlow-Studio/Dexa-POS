@@ -1,6 +1,8 @@
 import { colors } from "@/lib/theme";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { ArrowLeft, ListChecks, Receipt, Split, Users } from "lucide-react-native";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import { useHasActivePreAuth } from "@/stores/selectors/orderSelectors";
+import { ArrowLeft, ListChecks, Lock, Receipt, Split, Users } from "lucide-react-native";
 import React from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -35,6 +37,34 @@ const styles = StyleSheet.create({
 
 const SplitOptionsView: React.FC = () => {
   const setView = usePaymentStore((state) => state.setView);
+  const activeOrder = useActiveOrder();
+  const hasPreAuth = useHasActivePreAuth(activeOrder?.id);
+
+  // Guard: pre-auth active → disable split options
+  if (hasPreAuth) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setView("payment-method-selection")}>
+            <ArrowLeft size={18} color={colors.label} />
+          </TouchableOpacity>
+          <View>
+            <Text style={styles.headerTitle}>Split Bill</Text>
+            <Text style={styles.headerSub}>Choose how to divide the payment.</Text>
+          </View>
+        </View>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 30 }}>
+          <Lock size={32} color={colors.muted} />
+          <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "700", marginTop: 12, textAlign: "center" }}>
+            Split Payments Unavailable
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6, textAlign: "center", lineHeight: 18 }}>
+            This order has an open tab (pre-authorization). Close or release the tab first to use split payments.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   const options = [
     { title: "Split by Item", desc: "Assign specific items to specific guests.", icon: ListChecks, color: colors.info, bg: `${colors.info}15`, view: "split-by-item" as const },

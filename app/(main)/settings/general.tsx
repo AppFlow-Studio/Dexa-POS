@@ -1,6 +1,7 @@
 import { SessionLogoutButton } from "@/components/auth/SessionLogoutButton";
 import { OperatingHoursTimeSheet } from "@/components/settings/OperatingHoursTimeSheet";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { FailedSyncsPanel } from "@/components/settings/sync-status/FailedSyncsPanel";
 import { Switch } from "@/components/ui/switch";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
@@ -340,6 +341,11 @@ const GeneralSettingsScreen = () => {
         <View className="h-px w-full bg-gray-700 mb-6" />
 
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Failed Sync Operations (Dead Letter Queue) */}
+          <View className="mb-6">
+            <FailedSyncsPanel />
+          </View>
+
           {/* Business Information */}
           <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(

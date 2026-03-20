@@ -43,6 +43,17 @@ export class WebSocketServer {
     if (tcpServerEvents) {
       this.subscriptions.push(
         tcpServerEvents.addListener("onClientConnect", ({ clientId }) => {
+          // Clean up any existing non-upgraded connections from the same IP
+          // (stale pre-handshake connections from rapid reconnects)
+          const newIp = this.extractIp(clientId);
+          this.clients.forEach((existing) => {
+            if (existing.id !== clientId && !existing.isUpgraded && this.extractIp(existing.id) === newIp) {
+              if (__DEV__) console.log(`[WS] Cleaning pre-upgrade stale connection ${existing.id}`);
+              TcpServer.disconnect(existing.id);
+              this.clients.delete(existing.id);
+            }
+          });
+
           this.clients.set(clientId, {
             id: clientId,
             isUpgraded: false,
@@ -154,6 +165,22 @@ export class WebSocketServer {
     client.buffer = Buffer.alloc(0);
     client.lastPongTime = Date.now();
 
+    // Deduplicate: disconnect any existing upgraded client from the same IP
+    // (handles rapid reconnects where the old disconnect hasn't arrived yet)
+    const newIp = this.extractIp(client.id);
+    this.clients.forEach((existing) => {
+      if (
+        existing.id !== client.id &&
+        existing.isUpgraded &&
+        this.extractIp(existing.id) === newIp
+      ) {
+        if (__DEV__) console.log(`[WS] Dedup: disconnecting stale ${existing.id} (same IP as ${client.id})`);
+        TcpServer.disconnect(existing.id);
+        this.onDisconnect?.(existing.id);
+        this.clients.delete(existing.id);
+      }
+    });
+
     if (__DEV__) console.log("[WS] Client upgraded:", client.id);
     this.onConnect?.(client.id);
   }
@@ -233,6 +260,12 @@ export class WebSocketServer {
 
     // Keep unprocessed data
     client.buffer = Buffer.from(buffer.subarray(offset));
+  }
+
+  // Extract IP from clientId format "ip:port"
+  private extractIp(clientId: string): string {
+    const lastColon = clientId.lastIndexOf(":");
+    return lastColon > 0 ? clientId.substring(0, lastColon) : clientId;
   }
 
   private unmask(payload: Buffer, maskKey: Buffer): Buffer {

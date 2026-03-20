@@ -69,7 +69,7 @@ export interface BroadcastOrderPaymentData {
   amount: number;
   tip_amount: number;
   total_amount: number;
-  status: "pending" | "captured" | "failed" | "voided" | "refunded";
+  status: "pending" | "authorized" | "captured" | "failed" | "voided" | "refunded";
 
   // Portions
   subtotal_portion: number;
@@ -127,8 +127,12 @@ export interface BroadcastOrderPaymentData {
   return_reason?: string | null;
 
   // Timestamps
+  authorized_at?: string | null;
   captured_at: string | null;
   created_at: string;
+
+  // Terminal response JSONB (for pre-auth field extraction)
+  terminal_response?: Record<string, unknown> | null;
 }
 
 export interface BroadcastOrderData {
@@ -265,6 +269,7 @@ export const ordersQueryKeys = {
 export function useOrdersRealtime({
   locationId,
   enabled = true,
+  maxReconnectAttempts,
   onOrderChange,
   onPaymentChange,
 }: UseOrdersRealtimeOptions) {
@@ -418,6 +423,7 @@ export function useOrdersRealtime({
     events,
     onMessage: handleMessage,
     enabled: enabled && !!locationId && !!supabase, // Add supabase check
+    ...(maxReconnectAttempts != null && { maxReconnectAttempts }),
   });
 
   return {

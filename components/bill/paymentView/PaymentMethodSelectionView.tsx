@@ -1,10 +1,13 @@
 import { colors } from "@/lib/theme";
 import { PaymentView, usePaymentStore } from "@/stores/usePaymentStore";
-import { Banknote, CheckCircle2, Columns, CreditCard, Keyboard } from "lucide-react-native";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import { useHasActivePreAuth, useOrderPreAuth } from "@/stores/selectors/orderSelectors";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { Banknote, CheckCircle2, Columns, CreditCard, Keyboard, Lock } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
-type PaymentMethod = "Card Reader" | "Manual Key-in" | "Split" | "Cash";
+type PaymentMethod = "Card Reader" | "Manual Key-in" | "Split" | "Cash" | "Open Tab" | "Close Tab";
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.screen },
@@ -55,22 +58,46 @@ const PaymentMethodSelectionView: React.FC = () => {
   const activeSplitId = usePaymentStore((s) => s.activeSplitId);
   const splits = usePaymentStore((s) => s.splits);
   const splitSourceView = usePaymentStore((s) => s.splitSourceView);
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("Card Reader");
+  const setPreAuthMode = usePaymentStore((s) => s.setPreAuthMode);
+
+  const activeOrder = useActiveOrder();
+  const hasPreAuth = useHasActivePreAuth(activeOrder?.id);
+  const preAuth = useOrderPreAuth(activeOrder?.id);
+  const preAuthEnabled = (useStoreSettingsStore.getState() as any).preAuthSettings?.preAuthEnabled ?? false;
+
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(
+    hasPreAuth ? "Close Tab" : "Card Reader"
+  );
 
   const activeSplit = splits.find((s) => s.id === activeSplitId);
 
-  const paymentMethods = [
+  const paymentMethods: Array<{ name: PaymentMethod; icon: any; title: string; description: string; view: PaymentView }> = [
+    ...(hasPreAuth ? [
+      { name: "Close Tab" as PaymentMethod, icon: Lock, title: "Close Tab", description: `Capture $${preAuth?.preAuthAmount?.toFixed(2) ?? "0.00"} hold + tip`, view: "pre-auth" as PaymentView },
+    ] : []),
     { name: "Card Reader" as PaymentMethod, icon: CreditCard, title: "Card Reader", description: "Credit, Debit, or Corporate Cards", view: "card" as PaymentView },
     { name: "Manual Key-in" as PaymentMethod, icon: Keyboard, title: "Manual Key-in", description: "Manually enter card details", view: "manual" as PaymentView },
-    { name: "Split" as PaymentMethod, icon: Columns, title: "Split Bill", description: "Split by amount, item, or evenly", view: "split-options" as PaymentView },
+    ...(!hasPreAuth ? [
+      { name: "Split" as PaymentMethod, icon: Columns, title: "Split Bill", description: "Split by amount, item, or evenly", view: "split-options" as PaymentView },
+    ] : []),
     { name: "Cash" as PaymentMethod, icon: Banknote, title: "Cash", description: "Standard cash transaction", view: "cash" as PaymentView },
+    ...(!hasPreAuth && preAuthEnabled ? [
+      { name: "Open Tab" as PaymentMethod, icon: Lock, title: "Open Tab", description: "Pre-authorize and charge later", view: "pre-auth" as PaymentView },
+    ] : []),
   ];
 
-  const availableMethods = paymentMethods.filter((m) => !(activeSplit && m.name === "Split"));
+  const availableMethods = paymentMethods.filter((m) => !(activeSplit && (m.name === "Split" || m.name === "Open Tab" || m.name === "Close Tab")));
 
   const handleProceed = () => {
     const selected = availableMethods.find((p) => p.name === selectedMethod);
-    if (selected) { markPaymentAsDirty(); setView(selected.view); }
+    if (selected) {
+      markPaymentAsDirty();
+      // Set pre-auth mode before navigating
+      if (selected.name === "Open Tab") setPreAuthMode("open");
+      else if (selected.name === "Close Tab") setPreAuthMode("capture");
+      else setPreAuthMode(null);
+      setView(selected.view);
+    }
   };
 
   const handleBack = () => {

@@ -1346,7 +1346,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           <ActionButton
             icon={<CircleDollarSign size={16} color={colors.info} />}
             label={
-              terminalCanProcess ? 'Tip Adjust' : 'Tip Adjust — wrong terminal'
+              terminalCanProcess ? 'Tip Adjust' : `Tip Adjust — ${terminalBlockReason ?? 'unavailable'}`
             }
             onPress={onTipAdjust}
             variant='primary'
@@ -1354,7 +1354,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
           />
           <ActionButton
             icon={<RefreshCcw size={16} color={colors.danger} />}
-            label={terminalCanProcess ? 'Refund' : 'Refund — wrong terminal'}
+            label={terminalCanProcess ? 'Refund' : `Refund — ${terminalBlockReason ?? 'unavailable'}`}
             onPress={onRefund}
             variant='danger'
             disabled={paymentSummary.collected <= 0 || !terminalCanProcess}

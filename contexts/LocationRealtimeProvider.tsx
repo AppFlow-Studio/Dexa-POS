@@ -52,6 +52,8 @@ interface LocationRealtimeProviderProps {
   children: ReactNode;
   /** Enable/disable all subscriptions */
   enabled?: boolean;
+  /** Max reconnect attempts for realtime channels (default 5, increase for always-on KDS) */
+  maxReconnectAttempts?: number;
   /** Callbacks for handling events (optional) */
   callbacks?: {
     onSessionChange?: (payload: TableSessionPayload) => void;
@@ -92,12 +94,14 @@ export function LocationRealtimeProvider({
   locationId,
   children,
   enabled = true,
+  maxReconnectAttempts,
   callbacks,
 }: LocationRealtimeProviderProps) {
   // Floor realtime subscription
   const floorRealtime = useFloorRealtime({
     locationId,
     enabled,
+    maxReconnectAttempts,
     onSessionChange: callbacks?.onSessionChange,
     onTableAssignment: callbacks?.onTableAssignment,
     onSessionEvent: callbacks?.onSessionEvent,
@@ -115,6 +119,7 @@ export function LocationRealtimeProvider({
   const ordersRealtime = useOrdersRealtime({
     locationId,
     enabled,
+    maxReconnectAttempts,
     onOrderChange: callbacks?.onOrderChange,
     onPaymentChange: callbacks?.onPaymentChange,
   });

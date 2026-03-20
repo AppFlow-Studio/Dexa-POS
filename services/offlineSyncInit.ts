@@ -1331,6 +1331,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             p_create_order: createOrder ?? true,
             p_device_id: deviceId,
             p_station_id: stationId,
+            ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }),
           },
         );
 
@@ -1349,8 +1350,18 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               });
             } catch (mergeErr) {
               console.warn(
-                `[OfflineSync:seat_guests] Non-fatal merge error for ${extraTableId}:`,
+                `[OfflineSync:seat_guests] Merge failed for ${extraTableId}, queueing retry`,
                 mergeErr,
+              );
+              queueOperation({
+                type: "merge_table",
+                params: { sessionId: data.session_id!, tableId: extraTableId },
+                localOrderId: op.localOrderId,
+              }).catch((e) =>
+                console.error(
+                  "[OfflineSync:seat_guests] Failed to queue merge:",
+                  e,
+                ),
               );
             }
           }
@@ -1403,6 +1414,35 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           );
         }
 
+        return true;
+      }
+
+      case "merge_table": {
+        const { sessionId, tableId } = op.params;
+        if (!sessionId || !tableId) return true;
+
+        const resolvedMergeSessionId = resolveSessionId(sessionId) ?? sessionId;
+        if (!isValidUUID(resolvedMergeSessionId)) {
+          console.log(
+            `[OfflineSync:merge_table] Session ${sessionId} not synced yet`,
+          );
+          return false;
+        }
+
+        const { error: mergeError } =
+          await FloorPlanService.mergeTableToSession(_supabaseClient, {
+            p_session_id: resolvedMergeSessionId,
+            p_table_id: tableId,
+          });
+
+        if (mergeError) {
+          console.error("[OfflineSync:merge_table] Error:", mergeError);
+          return false;
+        }
+
+        console.log(
+          `[OfflineSync:merge_table] Merged table ${tableId} into session ${resolvedMergeSessionId}`,
+        );
         return true;
       }
 
@@ -1477,6 +1517,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             {
               p_order_id: resolvedOrderId,
               p_session_id: resolvedSessionId,
+              ...(op.idempotencyKey && { p_idempotency_key: op.idempotencyKey }),
             },
           );
 

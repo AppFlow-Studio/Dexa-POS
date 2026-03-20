@@ -797,8 +797,17 @@ export interface OrderProfilePayment {
   itemsCovered: OrderPaymentItemCoverage[];
 
   // Status and timestamps
-  status: "pending" | "captured" | "voided" | "refunded";
+  status: "pending" | "authorized" | "captured" | "voided" | "refunded";
   timestamp: string;
+
+  // Pre-auth fields (populated when status === 'authorized')
+  isPreAuth?: boolean;
+  preAuthAmount?: number;
+  preAuthRrn?: string;
+  preAuthStan?: string; // Castles only
+  preAuthAuthCode?: string;
+  preAuthReferenceId?: string;
+  preAuthTerminalType?: 'dejavoo' | 'castles';
 
   // Void tracking
   isVoided: boolean;

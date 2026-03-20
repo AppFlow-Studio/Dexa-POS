@@ -11,8 +11,10 @@ import {
   KDSTicket,
   KDSTicketItem,
 } from "@/types/kds";
+import { mmkvStorage } from "@/lib/storage";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { useOrderStore } from "./useOrderStore";
 import { useTableSessionStore } from "./useTableSessionStore";
 
@@ -455,7 +457,7 @@ function smartBucketTickets(
   };
 }
 
-export const useKDSStore = create<KDSState>((set, get) => ({
+export const useKDSStore = create<KDSState>()(persist((set, get) => ({
   tickets: [],
   ticketsByStatus: { pending: [], cooking: [], ready: [] },
   counts: { pending: 0, cooking: 0, ready: 0 },
@@ -1328,5 +1330,38 @@ export const useKDSStore = create<KDSState>((set, get) => ({
     _pendingActions.clear();
     if (_refetchTimeout) { clearTimeout(_refetchTimeout); _refetchTimeout = null; }
     _fetchInFlight = false;
+  },
+}), {
+  name: "kds-ticket-storage",
+  storage: createJSONStorage(() => mmkvStorage),
+  partialize: (state) => ({
+    // Persist only ticket data for offline durability
+    tickets: state.tickets,
+    ticketsByStatus: state.ticketsByStatus,
+    counts: state.counts,
+    doneTickets: state.doneTickets,
+    doneCount: state.doneCount,
+    _ticketsById: state._ticketsById,
+    // Persist display config so KDS knows its routing rules offline
+    kdsDisplayId: state.kdsDisplayId,
+    routingMode: state.routingMode,
+    cachedRules: state.cachedRules,
+    kdsDisplayConfig: state.kdsDisplayConfig,
+    prepStations: state.prepStations,
+    enrichedRules: state.enrichedRules,
+  }),
+  onRehydrateStorage: () => (state) => {
+    if (state) {
+      // Mark as hydrated so UI knows data is available
+      state._hasHydrated = true;
+      state.isInitialLoading = false;
+      // Convert Set fields back from serialized form
+      if (!(state.selectedTicketIds instanceof Set)) {
+        state.selectedTicketIds = new Set<string>();
+      }
+      if (!(state.prioritizedTicketIds instanceof Set)) {
+        state.prioritizedTicketIds = new Set<string>();
+      }
+    }
   },
 }));

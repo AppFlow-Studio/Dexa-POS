@@ -136,6 +136,12 @@ export interface StoreSettings {
 
   // CFD client mode
   isCFDMode: boolean
+
+  // Pre-auth settings
+  preAuthSettings: {
+    preAuthEnabled: boolean
+    defaultPreAuthAmount: number
+  }
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -184,6 +190,9 @@ interface StoreSettingsState extends StoreSettings {
   // CFD client mode actions
   setIsCFDMode: (value: boolean) => void
   exitCFDMode: () => void
+
+  // Pre-auth settings actions
+  updatePreAuthSettings: (updates: Partial<StoreSettings['preAuthSettings']>) => void
 }
 
 const initialData: StoreSettings = {
@@ -281,7 +290,13 @@ const initialData: StoreSettings = {
   deviceName: '',
 
   // CFD client mode
-  isCFDMode: false
+  isCFDMode: false,
+
+  // Pre-auth settings
+  preAuthSettings: {
+    preAuthEnabled: false,
+    defaultPreAuthAmount: 25,
+  },
 }
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -515,6 +530,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       setIsCFDMode: (value: boolean) => {
         set({ isCFDMode: value })
       },
+      updatePreAuthSettings: (updates) => {
+        const current = get().preAuthSettings
+        set({ preAuthSettings: { ...current, ...updates } })
+      },
 
       exitCFDMode: () => {
         set({ isCFDMode: false, selectedStation: null, stationSessionId: null })
@@ -577,7 +596,9 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         stationSessionId: state.stationSessionId,
         deviceName: state.deviceName,
         // CFD client mode
-        isCFDMode: state.isCFDMode
+        isCFDMode: state.isCFDMode,
+        // Pre-auth settings
+        preAuthSettings: state.preAuthSettings
       })
     }
   )

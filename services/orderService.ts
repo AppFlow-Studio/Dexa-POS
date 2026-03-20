@@ -614,7 +614,8 @@ export class OrderService {
         order_items (
           *,
           order_item_modifiers (*)
-        )
+        ),
+        order_payments (*)
       `,
       )
       .eq("id", orderId)

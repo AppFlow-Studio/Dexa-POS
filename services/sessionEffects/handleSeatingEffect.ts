@@ -12,6 +12,7 @@
  */
 
 import { FloorPlanService } from "@/services/floorPlanService";
+import { queueOperation } from "@/services/offlineSyncService";
 import type { TableSession } from "@/types/db-floor-plan-types";
 import type { SeatGuestsParams } from "@/types/sessionRpcTypes";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -108,9 +109,21 @@ export async function handleSeatingEffect(
     );
     mergeResults.forEach((result, i) => {
       if (result.status === 'rejected') {
+        const failedTableId = additionalTableIds[i];
         console.warn(
-          `[handleSeatingEffect] Non-fatal: failed to merge table ${additionalTableIds[i]}:`,
+          `[handleSeatingEffect] Non-fatal: failed to merge table ${failedTableId}, queuing for retry:`,
           result.reason,
+        );
+        // Queue failed merge for offline retry
+        queueOperation({
+          type: "merge_table",
+          params: {
+            sessionId: data.session_id!,
+            tableId: failedTableId,
+          },
+          localOrderId: data.session_id!,
+        }).catch((err) =>
+          console.error("[handleSeatingEffect] Failed to queue merge retry:", err),
         );
       }
     });
