@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { Schedule } from "@/lib/types";
-import { Clock, Plus, Trash2 } from "lucide-react-native";
+import { CalendarClock, Clock, Plus, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -10,6 +10,33 @@ export interface ScheduleManagerProps {
   onAdd: () => void;
   onEdit: (rule: Schedule, index: number) => void;
 }
+
+const formatTime = (time: string): string => {
+  if (!time) return "";
+  if (time.includes("T")) {
+    const date = new Date(time);
+    if (!isNaN(date.getTime())) {
+      let hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12 || 12;
+      const strMinutes = minutes < 10 ? "0" + minutes : minutes;
+      return `${hours}:${strMinutes} ${ampm}`;
+    }
+  }
+  const parts = time.split(":");
+  if (parts.length >= 2) {
+    let hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    if (!isNaN(hours) && !isNaN(minutes)) {
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12 || 12;
+      const strMinutes = minutes < 10 ? "0" + minutes : minutes;
+      return `${hours}:${strMinutes} ${ampm}`;
+    }
+  }
+  return time;
+};
 
 const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   value,
@@ -24,11 +51,22 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
   };
 
   return (
-    <View className="gap-2">
+    <View style={{ gap: 6 }}>
       {schedules.length === 0 && (
-        <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
-          <Text className="text-gray-300 text-lg">
-            No schedule rules defined.
+        <View
+          style={{
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            padding: 12,
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <CalendarClock size={16} color={colors.muted} />
+          <Text style={{ fontSize: 12, color: colors.muted }}>
+            No schedule rules — always available
           </Text>
         </View>
       )}
@@ -37,75 +75,80 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
         <TouchableOpacity
           key={rule.id}
           onPress={() => onEdit(rule, idx)}
-          className="bg-surface border rounded-lg p-3 border-gray-600"
+          style={{
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 9,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
         >
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-1.5">
-              <Clock size={16} color={colors.label} />
-              <Text className="text-white font-semibold text-xl">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+            <View
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                backgroundColor: colors.teal + "15",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Clock size={13} color={colors.teal} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
                 {rule.name || `Rule ${idx + 1}`}
               </Text>
+              <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+                {(rule.days || []).join(", ")} · {formatTime(rule.startTime)} – {formatTime(rule.endTime)}
+              </Text>
             </View>
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                removeRule(idx);
-              }}
-              className="p-1.5 bg-red-900/30 border border-red-500 rounded-lg"
-            >
-              <Trash2 size={18} color={colors.danger} />
-            </TouchableOpacity>
           </View>
-          <Text className="text-base text-gray-400 mt-1.5">
-            {(rule.days || []).join(", ")} from {formatTime(rule.startTime)} to{" "}
-            {formatTime(rule.endTime)}
-          </Text>
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              removeRule(idx);
+            }}
+            style={{
+              padding: 6,
+              backgroundColor: colors.danger + "15",
+              borderWidth: 1,
+              borderColor: colors.danger + "30",
+              borderRadius: 7,
+            }}
+          >
+            <Trash2 size={13} color={colors.danger} />
+          </TouchableOpacity>
         </TouchableOpacity>
       ))}
 
       <TouchableOpacity
         onPress={onAdd}
-        className="flex-row items-center gap-2 px-4 py-3 rounded-lg bg-blue-600 self-start"
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          alignSelf: "flex-start",
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 8,
+          backgroundColor: colors.teal + "20",
+          borderWidth: 1,
+          borderColor: colors.teal + "50",
+        }}
       >
-        <Plus size={18} color="#FFFFFF" />
-        <Text className="text-white font-bold text-lg">Add Schedule Rule</Text>
+        <Plus size={13} color={colors.teal} />
+        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+          Add Schedule Rule
+        </Text>
       </TouchableOpacity>
     </View>
   );
-};
-
-const formatTime = (time: string): string => {
-  if (!time) return "";
-
-  // Handle ISO string (e.g., "2023-01-01T13:00:00.000Z")
-  if (time.includes("T")) {
-    const date = new Date(time);
-    if (!isNaN(date.getTime())) {
-      let hours = date.getHours();
-      const minutes = date.getMinutes();
-      const ampm = hours >= 12 ? "PM" : "AM";
-      hours = hours % 12;
-      hours = hours ? hours : 12;
-      const strMinutes = minutes < 10 ? "0" + minutes : minutes;
-      return `${hours}:${strMinutes} ${ampm}`;
-    }
-  }
-
-  // Handle "HH:mm" format
-  const parts = time.split(":");
-  if (parts.length >= 2) {
-    let hours = parseInt(parts[0], 10);
-    const minutes = parseInt(parts[1], 10);
-    if (!isNaN(hours) && !isNaN(minutes)) {
-      const ampm = hours >= 12 ? "PM" : "AM";
-      hours = hours % 12;
-      hours = hours ? hours : 12;
-      const strMinutes = minutes < 10 ? "0" + minutes : minutes;
-      return `${hours}:${strMinutes} ${ampm}`;
-    }
-  }
-
-  return time;
 };
 
 export default ScheduleManager;

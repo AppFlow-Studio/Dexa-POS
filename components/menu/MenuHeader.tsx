@@ -55,47 +55,77 @@ const MenuHeader: React.FC<MenuHeaderProps> = ({
   });
 
   return (
-    <View className="flex-row items-center justify-between bg-panel mb-4">
-      <Text className="text-2xl font-bold text-white">{title}</Text>
-      <View className="flex-row items-center gap-x-3">
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 12,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+        {title}
+      </Text>
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         {onRefresh && (
           <TouchableOpacity
             onPress={onRefresh}
             disabled={isRefreshing}
-            className={`p-3 bg-surface border border-gray-600 rounded-lg ${
-              isRefreshing ? "opacity-50" : ""
-            }`}
+            style={{
+              padding: 6,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              opacity: isRefreshing ? 0.5 : 1,
+            }}
           >
-            {isRefreshing ? (
-              <Animated.View style={{ transform: [{ rotate: spin }] }}>
-                <RefreshCw color={colors.label} size={20} />
-              </Animated.View>
-            ) : (
-              <RefreshCw color={colors.label} size={20} />
-            )}
+            <Animated.View style={{ transform: [{ rotate: spin }] }}>
+              <RefreshCw color={colors.label} size={14} />
+            </Animated.View>
           </TouchableOpacity>
         )}
 
         <TouchableOpacity
           onPress={openSearch}
-          className="p-3 bg-surface border border-gray-600 rounded-lg"
+          style={{
+            padding: 6,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+          }}
         >
-          <Search color={colors.label} size={20} />
+          <Search color={colors.label} size={14} />
         </TouchableOpacity>
 
-        {/* Add Button */}
         <TouchableOpacity
           onPress={disabled ? undefined : onAddPress}
           disabled={disabled}
-          className={`flex-row items-center px-4 py-3 rounded-lg ${
-            disabled ? "bg-gray-600 opacity-50" : "bg-blue-600"
-          }`}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 8,
+            backgroundColor: disabled ? colors.card : colors.teal + "20",
+            borderWidth: 1,
+            borderColor: disabled ? colors.border : colors.teal + "50",
+            opacity: disabled ? 0.5 : 1,
+          }}
         >
-          <Plus size={20} color={disabled ? "#9CA3AF" : "white"} />
+          <Plus size={14} color={disabled ? colors.muted : colors.teal} />
           <Text
-            className={`text-base font-bold ml-2 ${
-              disabled ? "text-gray-400" : "text-white"
-            }`}
+            style={{
+              fontSize: 12,
+              fontWeight: "600",
+              color: disabled ? colors.muted : colors.teal,
+            }}
           >
             {addButtonLabel}
           </Text>

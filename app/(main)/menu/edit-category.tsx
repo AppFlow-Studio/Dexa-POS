@@ -5,7 +5,9 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { colors } from "@/lib/theme";
 import { router, useLocalSearchParams } from "expo-router";
+import { ArrowLeft, Globe } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -54,20 +56,32 @@ const EditCategoryScreen: React.FC = () => {
   );
   if (existing && (isGlobalCategory || !isLocalCategory)) {
     return (
-      <View className="flex-1 bg-panel items-center justify-center p-4">
-        <Text className="text-2xl text-white font-bold mb-2">
-          Global Category
-        </Text>
-        <Text className="text-lg text-gray-400 text-center mb-6">
-          This category belongs to all locations and cannot be edited from here.
-          Please contact your administrator to modify global categories.
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="bg-blue-600 px-6 py-3 rounded-lg"
-        >
-          <Text className="text-lg text-white font-medium">Go Back</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: colors.panel }}>
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+          >
+            <ArrowLeft size={14} color={colors.label} />
+            <Text style={{ fontSize: 13, color: colors.label, fontWeight: "500" }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
+          <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "30", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+            <Globe size={26} color={colors.teal} />
+          </View>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading, marginBottom: 8 }}>Global Category</Text>
+          <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center", lineHeight: 20, marginBottom: 24, maxWidth: 300 }}>
+            This category belongs to all locations and cannot be edited here. Contact your administrator to modify global categories.
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50" }}
+          >
+            <ArrowLeft size={13} color={colors.teal} />
+            <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }

@@ -1,7 +1,7 @@
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
-import { Eye, EyeOff, Settings, Trash2, Utensils } from "lucide-react-native";
+import { Edit2, Eye, EyeOff, Trash2, Utensils } from "lucide-react-native";
 import React from "react";
 import {
   Image,
@@ -11,7 +11,6 @@ import {
   View,
 } from "react-native";
 
-// Helper function for resolving image sources
 const getImageSource = (
   image: string | undefined
 ): ImageSourcePropType | undefined => {
@@ -38,78 +37,104 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
   onEdit,
   onDelete,
   onToggleAvailability,
-  onPriceEdit,
+  onPriceEdit: _onPriceEdit,
   editDisabled = false,
 }) => {
   const imageSource = getImageSource(item.image);
   const isAvailable = item.availability !== false;
+
   return (
-    // Main container is now a row
-    <View className="bg-surface rounded-lg border border-gray-700 p-3 w-full flex-row items-center">
-      {/* Image Section - smaller image */}
-      <View className="w-16 h-16 rounded-md border border-gray-600 overflow-hidden">
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        width: "100%",
+      }}
+    >
+      {/* Thumbnail */}
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: "hidden",
+          marginRight: 10,
+        }}
+      >
         {imageSource ? (
-          <Image
-            source={imageSource}
-            className="w-full h-full"
-            resizeMode="cover"
-          />
+          <Image source={imageSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
         ) : (
-          <View className="w-full h-full bg-gray-700 items-center justify-center">
-            <Utensils color={colors.label} size={24} />
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: colors.panel,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Utensils color={colors.muted} size={16} />
           </View>
         )}
       </View>
 
-      {/* Info Section - reduced margins and font sizes */}
-      <View className="flex-1 ml-3">
-        <Text className="text-lg font-semibold text-white" numberOfLines={1}>
+      {/* Info */}
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
           {item.name}
         </Text>
-        <Text className="text-base text-gray-400">
+        <Text style={{ fontSize: 12, color: colors.label }}>
           ${item.price.toFixed(2)}
         </Text>
         <View
-          className={`px-2 py-0.5 mt-1.5 rounded-full self-start ${
-            isAvailable ? "bg-green-900/30" : "bg-red-900/30"
-          }`}
+          style={{
+            alignSelf: "flex-start",
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 20,
+            backgroundColor: isAvailable ? colors.success + "20" : colors.danger + "15",
+            borderWidth: 1,
+            borderColor: isAvailable ? colors.success + "50" : colors.danger + "30",
+          }}
         >
-          <Text
-            className={`text-xs font-medium ${
-              isAvailable ? "text-green-400" : "text-red-400"
-            }`}
-          >
+          <Text style={{ fontSize: 10, fontWeight: "600", color: isAvailable ? colors.success : colors.danger }}>
             {isAvailable ? "Available" : "Unavailable"}
           </Text>
         </View>
       </View>
 
-      {/* Actions Section - smaller icons and less padding */}
-      <View className="flex-row items-center gap-0">
+      {/* Actions */}
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         <TouchableOpacity
           onPress={() => onToggleAvailability(item.id)}
           disabled={editDisabled}
-          className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
+          style={{ padding: 6, opacity: editDisabled ? 0.4 : 1 }}
         >
           {isAvailable ? (
-            <EyeOff size={20} color={editDisabled ? "#4B5563" : colors.label} />
+            <EyeOff size={14} color={colors.label} />
           ) : (
-            <Eye size={20} color={editDisabled ? "#4B5563" : colors.label} />
+            <Eye size={14} color={colors.label} />
           )}
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => onEdit(item)}
           disabled={editDisabled}
-          className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
+          style={{ padding: 6, opacity: editDisabled ? 0.4 : 1 }}
         >
-          <Settings size={20} color={editDisabled ? "#4B5563" : colors.label} />
+          <Edit2 size={14} color={colors.label} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => onDelete(item.id)}
           disabled={editDisabled}
-          className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
+          style={{ padding: 6, opacity: editDisabled ? 0.4 : 1 }}
         >
-          <Trash2 size={20} color={editDisabled ? "#4B5563" : colors.danger} />
+          <Trash2 size={14} color={colors.danger} />
         </TouchableOpacity>
       </View>
     </View>
