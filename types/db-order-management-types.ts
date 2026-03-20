@@ -241,9 +241,9 @@ export interface AddOrderItemResult {
 export interface ProcessPaymentParams {
   p_order_id: string;
   p_payment_method: PaymentMethod;
-  p_amount: number;
+  p_amount: number | null;
   p_tip_amount?: number;
-  p_amount_tendered?: number; // For cash: what customer gave
+  p_amount_tendered?: number | null; // For cash: what customer gave
   p_terminal_type?: TerminalType;
   p_terminal_id?: string;
   p_device_id?: string;
@@ -581,8 +581,8 @@ export interface ProcessPaymentV2Params {
   /** Payment method: 'card' or 'cash' */
   p_payment_method: PaymentMethod;
 
-  /** Payment amount (required, but may be ignored for split payments) */
-  p_amount: number;
+  /** Payment amount. null = pay full remaining (avoids frontend/backend rounding mismatch) */
+  p_amount: number | null;
 
   /** Tip amount (optional, default 0) */
   p_tip_amount?: number;

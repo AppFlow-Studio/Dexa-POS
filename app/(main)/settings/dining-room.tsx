@@ -66,7 +66,7 @@ const DiningRoomScreen = () => {
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Dining Room</Text>
         <Text className="text-gray-400 mt-2">
-          Manage floor plans, table configurations, and server sections.
+          Manage floor plans and table configurations.
         </Text>
       </View>
 
@@ -361,7 +361,7 @@ const DiningRoomScreen = () => {
           </Card>
 
           {/* Server Sections (Mock / Config) */}
-          <Card className="bg-panel border-gray-600">
+          {/* <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
                 <Users color="#8b5cf6" size={24} />
@@ -411,7 +411,7 @@ const DiningRoomScreen = () => {
                 </Text>
               </View>
             </CardContent>
-          </Card>
+          </Card> */}
         </View>
       </ScrollView>
     </View>

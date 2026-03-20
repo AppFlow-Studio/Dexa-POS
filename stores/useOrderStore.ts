@@ -79,6 +79,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import { detectConflict } from "@/services/conflictDetectionService";
+import { isOrderPendingVoid, clearOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
   generateConflictToast,
@@ -1562,11 +1563,17 @@ const syncPaymentToBackend = async (
         amount: alloc.amount,
       })) || null;
 
+    // Detect full-remaining payment: no item allocations, no split, no force card pricing
+    const isFullRemainingPayment =
+      !paymentDetails.itemAllocations?.length &&
+      !paymentDetails.splitCount &&
+      !paymentDetails.forceCardPricing;
+
     // Build payment params for process_payment_v2 (will be resolved when order syncs)
     const paymentParams = {
       p_order_id: order.id, // Will be resolved to db_order_id at sync time
       p_payment_method: isCash ? "cash" : "card",
-      p_amount: paymentDetails.amount,
+      p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
       p_amount_tendered: isCash
         ? paymentDetails.transactionDetails?.amountTendered ||
@@ -1623,10 +1630,16 @@ const syncPaymentToBackend = async (
       terminalResponse: terminalResponse,
     });
 
+    // Detect full-remaining payment: no item allocations, no split, no force card pricing
+    const isFullRemainingPayment =
+      !paymentDetails.itemAllocations?.length &&
+      !paymentDetails.splitCount &&
+      !paymentDetails.forceCardPricing;
+
     const { data, error } = await supabase.rpc("process_payment_v7", {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
-      p_amount: paymentDetails.amount,
+      p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
       p_amount_tendered: isCash
         ? paymentDetails.transactionDetails?.amountTendered ||
@@ -2757,58 +2770,67 @@ export const useOrderStore = create<OrderState>()(
 
                     // ═══════════════════════════════════════════════════════════
                     // Phase 6: Conflict Detection
+                    // Skip if this order is being voided locally (race window guard)
                     // ═══════════════════════════════════════════════════════════
-                    const serverOrderForConflict = {
-                      ...backendOrder,
-                      sync_version: backendOrder.sync_version ?? 0,
-                      total_amount: backendOrder.card_total,
-                      amount_paid: backendOrder.amount_paid,
-                      order_status: backendOrder.status,
-                      paid_status: mapPaymentStatus(
-                        backendOrder.payment_status,
-                      ),
-                      total_discount: backendOrder.discount_amount,
-                      items: backendOrder.order_items
-                        ? transformBroadcastItems(backendOrder.order_items)
-                        : [],
-                      _sourceStationName: backendOrder.station_name,
-                    };
+                    if (isOrderPendingVoid(localOrderId)) {
+                      if (__DEV__) console.log(
+                        "[OrderBroadcast] Skipping conflict detection — order pending void:",
+                        localOrderId,
+                      );
+                      clearOrderPendingVoid(localOrderId);
+                    } else {
+                      const serverOrderForConflict = {
+                        ...backendOrder,
+                        sync_version: backendOrder.sync_version ?? 0,
+                        total_amount: backendOrder.card_total,
+                        amount_paid: backendOrder.amount_paid,
+                        order_status: backendOrder.status,
+                        paid_status: mapPaymentStatus(
+                          backendOrder.payment_status,
+                        ),
+                        total_discount: backendOrder.discount_amount,
+                        items: backendOrder.order_items
+                          ? transformBroadcastItems(backendOrder.order_items)
+                          : [],
+                        _sourceStationName: backendOrder.station_name,
+                      };
 
-                    const conflict = detectConflict(
-                      localOrder,
-                      serverOrderForConflict as any,
-                    );
+                      const conflict = detectConflict(
+                        localOrder,
+                        serverOrderForConflict as any,
+                      );
 
-                    if (conflict) {
-                      // Add source station info
-                      conflict.sourceStationName =
-                        backendOrder.station_name ?? undefined;
-                      conflict.sourceStationId =
-                        backendOrder.station_id ?? undefined;
+                      if (conflict) {
+                        // Add source station info
+                        conflict.sourceStationName =
+                          backendOrder.station_name ?? undefined;
+                        conflict.sourceStationId =
+                          backendOrder.station_id ?? undefined;
 
-                      if (isConflictCritical(conflict)) {
-                        // Payment conflict - needs modal
-                        useConflictStore
-                          .getState()
-                          .addPaymentConflict(conflict);
-                        if (__DEV__) console.log(
-                          "[OrderBroadcast] Payment conflict detected:",
-                          conflict.conflictType,
-                        );
-                      } else {
-                        // Non-critical - record and show toast
-                        useConflictStore.getState().recordConflict(conflict);
+                        if (isConflictCritical(conflict)) {
+                          // Payment conflict - needs modal
+                          useConflictStore
+                            .getState()
+                            .addPaymentConflict(conflict);
+                          if (__DEV__) console.log(
+                            "[OrderBroadcast] Payment conflict detected:",
+                            conflict.conflictType,
+                          );
+                        } else {
+                          // Non-critical - record and show toast
+                          useConflictStore.getState().recordConflict(conflict);
 
-                        // Show toast notification for significant conflicts
-                        const toastData = generateConflictToast(conflict);
-                        if (conflict.severity !== "info") {
-                          toastService.show({
-                            title: "Order Update Conflict",
-                            type:
-                              toastData.type === "error" ? "error" : "warning",
-                            message: toastData.message,
-                            duration: toastData.duration ?? 5000,
-                          });
+                          // Show toast notification for significant conflicts
+                          const toastData = generateConflictToast(conflict);
+                          if (conflict.severity !== "info") {
+                            toastService.show({
+                              title: "Order Update Conflict",
+                              type:
+                                toastData.type === "error" ? "error" : "warning",
+                              message: toastData.message,
+                              duration: toastData.duration ?? 5000,
+                            });
+                          }
                         }
                       }
                     }
@@ -2837,8 +2859,8 @@ export const useOrderStore = create<OrderState>()(
                       const existingOrder = state.ordersById[localOrderId];
                       if (!existingOrder) return;
 
-                      // Never overwrite a locally-voided order with a stale broadcast
-                      if (existingOrder.order_status === "void") return;
+                      // Never overwrite a locally-voided or pending-void order with a stale broadcast
+                      if (existingOrder.order_status === "void" || isOrderPendingVoid(localOrderId)) return;
 
                       // Phase 2.5: Merge broadcast items with local items
                       // Strategy: Keep pending local items, update synced items from broadcast

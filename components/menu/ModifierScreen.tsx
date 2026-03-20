@@ -920,7 +920,7 @@ const ModifierScreen = () => {
               value={state.notes}
               onChangeText={(text) => dispatch({ type: "SET_NOTES", payload: text })}
               placeholder="No onions, extra sauce..."
-              multiline
+              numberOfLines={1}
               maxLength={80}
               className="px-3 py-2 text-sm min-h-[52px]"
               style={{ color: "#e8edf3" }}

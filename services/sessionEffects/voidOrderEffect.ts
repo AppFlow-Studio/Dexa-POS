@@ -12,6 +12,7 @@
  * 4. Clear local session store for the table
  */
 
+import { clearOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import type { SideEffectContext } from "@/lib/sessionSideEffects";
 import { InventoryService } from "@/services/inventoryService";
 import { useInventoryStore } from "@/stores/useInventoryStore";
@@ -80,4 +81,7 @@ export async function voidOrderEffect(ctx: SideEffectContext): Promise<void> {
   } else {
     console.warn("[voidOrderEffect] No session found for tableId:", tableId);
   }
+
+  // Clean up pending void flag (may already be cleared by broadcast handler)
+  clearOrderPendingVoid(orderId);
 }

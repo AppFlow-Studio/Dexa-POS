@@ -1,7 +1,7 @@
 CREATE OR REPLACE FUNCTION process_payment_v7(
     p_order_id uuid,
     p_payment_method text,
-    p_amount numeric,
+    p_amount numeric DEFAULT NULL,
     p_tip_amount numeric DEFAULT 0,
     p_amount_tendered numeric DEFAULT NULL,
     p_item_allocations jsonb DEFAULT NULL,
@@ -859,7 +859,30 @@ BEGIN
             v_unpaid_cash_total := 0;
         END IF;
     ELSE
-        v_order_fully_paid := (v_unpaid_items_count = 0);
+        -- Preserve section 11's amount-based result if it already determined fully paid.
+        -- Only fall back to item-count check if amounts don't confirm paid.
+        IF NOT v_order_fully_paid THEN
+            v_order_fully_paid := (v_unpaid_items_count = 0);
+        END IF;
+
+        -- If fully paid by amounts but items weren't marked (custom amount that
+        -- covered the full order, or rounding caused v_is_full_remaining=false),
+        -- mark all remaining items as paid for data consistency.
+        -- This mirrors the split-completion pattern at lines 846-859.
+        IF v_order_fully_paid AND v_unpaid_items_count > 0 THEN
+            UPDATE public.order_items
+            SET
+                paid_quantity = quantity + COALESCE(refunded_quantity, 0),
+                price_paid = COALESCE(price_paid, CASE WHEN v_use_cash_pricing THEN cash_price ELSE unit_price END),
+                updated_at = now()
+            WHERE order_id = p_order_id
+              AND is_voided = false
+              AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
+
+            v_unpaid_items_count := 0;
+            v_unpaid_card_total := 0;
+            v_unpaid_cash_total := 0;
+        END IF;
     END IF;
 
     -- ============================================

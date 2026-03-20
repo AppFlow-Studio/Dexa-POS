@@ -27,6 +27,7 @@ import {
 } from "@/lib/tableStateMachine";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
+import { markOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import { handleSeatingEffect } from "@/services/sessionEffects/handleSeatingEffect";
 import {
   FloorPlanObject,
@@ -455,7 +456,13 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         }
         // If no event (e.g. CLOSE_CHECK), skip transition — just fire effects
 
-        // 2. Fire side effects asynchronously
+        // 2. Mark void intent BEFORE queueMicrotask to close race window
+        // with broadcast handler's conflict detection
+        if (action.type === "VOID_ORDER") {
+          markOrderPendingVoid(action.orderId);
+        }
+
+        // 3. Fire side effects asynchronously
         const ctx: SideEffectContext = {
           action,
           tableId,
