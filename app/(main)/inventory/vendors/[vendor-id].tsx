@@ -9,7 +9,20 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
-import { Edit3, Plus, Search, Trash2 } from "lucide-react-native";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Box,
+  Building2,
+  Edit3,
+  Mail,
+  Package,
+  Phone,
+  Plus,
+  Search,
+  Trash2,
+  User,
+} from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -21,27 +34,46 @@ import {
   View,
 } from "react-native";
 
-const StatCard = ({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) => (
-  <View className="flex-1 bg-panel border border-border rounded-2xl p-4 mr-3">
-    <Text className="text-lg font-semibold text-gray-400">{label}</Text>
-    <Text className="text-2xl font-bold text-white mt-1">{value}</Text>
+const StatCard = ({ label, value, accent }: { label: string; value: string | number; accent?: string }) => (
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      padding: 12,
+      marginRight: 8,
+    }}
+  >
+    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+      {label}
+    </Text>
+    <Text style={{ fontSize: 20, fontWeight: "700", color: accent || colors.heading, marginTop: 4 }}>
+      {value}
+    </Text>
   </View>
 );
+
+const statusStyle = (status: string) => {
+  switch (status) {
+    case "Awaiting Payment":
+      return { bg: colors.success + "20", border: colors.success + "50", text: colors.success };
+    case "Pending Delivery":
+      return { bg: colors.info + "20", border: colors.info + "50", text: colors.info };
+    case "Draft":
+      return { bg: colors.muted + "20", border: colors.border, text: colors.muted };
+    default:
+      return { bg: colors.warning + "20", border: colors.warning + "50", text: colors.warning };
+  }
+};
 
 const VendorDetailsScreen = () => {
   const params = useLocalSearchParams();
   const router = useRouter();
   const rawId = (params as any).vendorId || (params as any)["vendor-id"];
   const vendorId = Array.isArray(rawId) ? rawId[0] : rawId;
-  const [activeTab, setActiveTab] = useState<
-    "purchase-orders" | "associated-items"
-  >("purchase-orders");
+  const [activeTab, setActiveTab] = useState<"purchase-orders" | "associated-items">("purchase-orders");
 
   const { vendors, purchaseOrders, inventoryItems } = useInventoryStore();
   const vendor = vendors.find((v) => v.id === vendorId);
@@ -55,47 +87,28 @@ const VendorDetailsScreen = () => {
     () => inventoryItems.filter((item) => item.vendorId === vendorId),
     [inventoryItems, vendorId]
   );
+
   const getItemName = (inventoryItemId: string) => {
     const item = inventoryItems.find((i) => i.id === inventoryItemId);
     return item?.name || "Item";
   };
+
   const stats = useMemo(() => {
     const totalPOs = vendorPOs.length;
-    const received = vendorPOs.filter(
-      (po) => po.status === "Awaiting Payment"
-    ).length;
+    const received = vendorPOs.filter((po) => po.status === "Awaiting Payment").length;
     const inDraft = vendorPOs.filter((po) => po.status === "Draft").length;
-    const sent = vendorPOs.filter(
-      (po) => po.status === "Pending Delivery"
-    ).length;
+    const sent = vendorPOs.filter((po) => po.status === "Pending Delivery").length;
     const totalLines = vendorPOs.reduce((acc, po) => acc + po.items.length, 0);
-    const totalQty = vendorPOs.reduce(
-      (acc, po) => acc + po.items.reduce((a, li) => a + li.quantity, 0),
-      0
-    );
-    const estSpend = vendorPOs.reduce(
-      (acc, po) =>
-        acc + po.items.reduce((a, li) => a + li.quantity * li.cost, 0),
-      0
-    );
-    return {
-      totalPOs,
-      received,
-      inDraft,
-      sent,
-      totalLines,
-      totalQty,
-      estSpend,
-    };
+    const totalQty = vendorPOs.reduce((acc, po) => acc + po.items.reduce((a, li) => a + li.quantity, 0), 0);
+    const estSpend = vendorPOs.reduce((acc, po) => acc + po.items.reduce((a, li) => a + li.quantity * li.cost, 0), 0);
+    return { totalPOs, received, inDraft, sent, totalLines, totalQty, estSpend };
   }, [vendorPOs]);
 
-  // Bottom sheet refs and search states
   const poSearchRef = useRef<BottomSheetMethods>(null);
   const itemSearchRef = useRef<BottomSheetMethods>(null);
   const createPOSheetRef = useRef<BottomSheetMethods>(null);
   const poBuilderSheetRef = useRef<BottomSheetMethods>(null);
 
-  // PO Builder state
   const [poLineItems, setPoLineItems] = useState<POLineItem[]>([]);
   const [selectedTemplatePo, setSelectedTemplatePo] = useState<any>(null);
   const [isEditingItem, setIsEditingItem] = useState<string | null>(null);
@@ -119,13 +132,7 @@ const VendorDetailsScreen = () => {
       const status = po.status?.toLowerCase() || "";
       const created = new Date(po.createdAt).toLocaleString().toLowerCase();
       const emp = `${po.createdByEmployeeName || ""}`.toLowerCase();
-      return (
-        inDates &&
-        (poNum.includes(q) ||
-          status.includes(q) ||
-          created.includes(q) ||
-          emp.includes(q))
-      );
+      return inDates && (poNum.includes(q) || status.includes(q) || created.includes(q) || emp.includes(q));
     });
   }, [poSearchText, vendorPOs, poStartDate, poEndDate]);
 
@@ -139,43 +146,26 @@ const VendorDetailsScreen = () => {
     });
   }, [itemSearchText, associatedItems]);
 
-  // PO Builder functions
   const openPOBuilder = (templatePo?: any) => {
     setSelectedTemplatePo(templatePo);
-    if (templatePo) {
-      setPoLineItems(templatePo.items);
-    } else {
-      setPoLineItems([]);
-    }
+    setPoLineItems(templatePo ? templatePo.items : []);
     createPOSheetRef.current?.close();
     poBuilderSheetRef.current?.snapToIndex?.(0);
   };
 
   const addItemToPO = (item: any) => {
-    const existingIndex = poLineItems.findIndex(
-      (li) => li.inventoryItemId === item.id
-    );
+    const existingIndex = poLineItems.findIndex((li) => li.inventoryItemId === item.id);
     if (existingIndex >= 0) {
       const updated = [...poLineItems];
-      updated[existingIndex] = {
-        ...updated[existingIndex],
-        quantity: updated[existingIndex].quantity + 1,
-      };
+      updated[existingIndex] = { ...updated[existingIndex], quantity: updated[existingIndex].quantity + 1 };
       setPoLineItems(updated);
     } else {
-      const newLineItem: POLineItem = {
-        inventoryItemId: item.id,
-        quantity: 1,
-        cost: item.cost,
-      };
-      setPoLineItems([...poLineItems, newLineItem]);
+      setPoLineItems([...poLineItems, { inventoryItemId: item.id, quantity: 1, cost: item.cost }]);
     }
   };
 
   const removeItemFromPO = (inventoryItemId: string) => {
-    setPoLineItems((prev) =>
-      prev.filter((li) => li.inventoryItemId !== inventoryItemId)
-    );
+    setPoLineItems((prev) => prev.filter((li) => li.inventoryItemId !== inventoryItemId));
   };
 
   const startEditItem = (inventoryItemId: string, currentQuantity: number) => {
@@ -190,11 +180,7 @@ const VendorDetailsScreen = () => {
       removeItemFromPO(isEditingItem);
     } else {
       setPoLineItems((prev) =>
-        prev.map((li) =>
-          li.inventoryItemId === isEditingItem
-            ? { ...li, quantity: newQuantity }
-            : li
-        )
+        prev.map((li) => li.inventoryItemId === isEditingItem ? { ...li, quantity: newQuantity } : li)
       );
     }
     setIsEditingItem(null);
@@ -208,81 +194,92 @@ const VendorDetailsScreen = () => {
 
   const createPurchaseOrder = async (status: "Draft" | "Pending Delivery") => {
     if (poLineItems.length === 0) {
-      Alert.alert(
-        "No Items",
-        "Please add at least one item to the purchase order."
-      );
+      Alert.alert("No Items", "Please add at least one item to the purchase order.");
       return;
     }
-
     try {
       const { createPurchaseOrder } = useInventoryStore.getState();
-      await createPurchaseOrder({
-        vendorId: vendorId!,
-        status,
-        items: poLineItems,
-      });
-
-      Alert.alert(
-        "Success",
-        `Purchase order ${
-          status === "Draft" ? "saved as draft" : "submitted"
-        } successfully!`
-      );
+      await createPurchaseOrder({ vendorId: vendorId!, status, items: poLineItems });
+      Alert.alert("Success", `Purchase order ${status === "Draft" ? "saved as draft" : "submitted"} successfully!`);
       setPoLineItems([]);
       setSelectedTemplatePo(null);
       poBuilderSheetRef.current?.close();
     } catch (error) {
-      Alert.alert(
-        "Error",
-        "Failed to create purchase order. Please try again."
-      );
+      Alert.alert("Error", "Failed to create purchase order. Please try again.");
     }
   };
 
-  // --- RENDER COMPONENTS FOR PO BUILDER ---
-
   const renderPOBuilderHeader = () => (
     <View>
-      <View className="px-4 py-3 border-b border-border w-full mb-3">
-        <View className="flex flex-row gap-2 justify-between">
-          <View className="flex flex-col gap-1">
-            <Text className="text-white text-xl font-bold">Build PO</Text>
-            <Text className="text-gray-300 text-sm">
-              Vendor:{" "}
-              <Text className="text-white font-semibold">{vendor?.name}</Text>
+      <View
+        style={{
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          marginBottom: 10,
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <View style={{ gap: 2 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Build PO</Text>
+          <Text style={{ fontSize: 12, color: colors.label }}>
+            Vendor: <Text style={{ color: colors.heading, fontWeight: "600" }}>{vendor?.name}</Text>
+          </Text>
+          {selectedTemplatePo && (
+            <Text style={{ fontSize: 11, color: colors.teal }}>
+              Template: {selectedTemplatePo.poNumber}
             </Text>
-            {selectedTemplatePo && (
-              <Text className="text-blue-300 text-sm">
-                Template: {selectedTemplatePo.poNumber}
-              </Text>
-            )}
-          </View>
-          <View className="flex-row gap-2 mb-4 w-1/2">
-            <TouchableOpacity
-              onPress={() => createPurchaseOrder("Draft")}
-              className="flex-1 bg-gray-600 justify-center border border-gray-500 rounded-lg px-3 py-2 items-center"
-            >
-              <Text className="text-white text-base font-semibold">
-                Save Draft
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => createPurchaseOrder("Pending Delivery")}
-              className="flex-1 bg-blue-600 border justify-center border-blue-500 rounded-lg px-3 py-2 items-center"
-            >
-              <Text className="text-white text-base font-semibold">Submit</Text>
-            </TouchableOpacity>
-          </View>
+          )}
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => createPurchaseOrder("Draft")}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Save Draft</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => createPurchaseOrder("Pending Delivery")}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              borderRadius: 8,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Submit</Text>
+          </TouchableOpacity>
         </View>
       </View>
-      <View className="px-4 mb-2">
-        <Text className="text-white text-lg font-semibold mb-2">
+      <View style={{ paddingHorizontal: 14, marginBottom: 6 }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
           Items ({poLineItems.length})
         </Text>
         {poLineItems.length === 0 && (
-          <View className="bg-screen border border-border rounded-lg p-4 items-center">
-            <Text className="text-gray-400 text-sm">No items added yet</Text>
+          <View
+            style={{
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              padding: 14,
+              alignItems: "center",
+              marginTop: 8,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: colors.muted }}>No items added yet</Text>
           </View>
         )}
       </View>
@@ -290,43 +287,72 @@ const VendorDetailsScreen = () => {
   );
 
   const renderPOBuilderFooter = () => (
-    <View className="px-4 py-4">
-      <Text className="text-white text-lg font-semibold mb-2">Add Items</Text>
-      <View className="flex-row items-center gap-1.5 mb-2">
-        <Search color={colors.label} size={16} />
+    <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+        Add Items
+      </Text>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: colors.screen,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 8,
+          paddingHorizontal: 10,
+          height: 38,
+          gap: 8,
+          marginBottom: 10,
+        }}
+      >
+        <Search size={14} color={colors.muted} />
         <BottomSheetTextInput
           value={itemSearchText}
           onChangeText={setItemSearchText}
           placeholder="Search items..."
-          className="flex-1 bg-screen border border-border rounded-lg px-2 py-1.5 text-white text-sm"
-          placeholderTextColor={colors.label}
+          placeholderTextColor={colors.muted}
+          style={{ flex: 1, fontSize: 13, color: colors.heading }}
         />
       </View>
-      <View>
+      <View style={{ gap: 6 }}>
         {filteredItems.length === 0 ? (
-          <View className="items-center justify-center py-4">
-            <Text className="text-gray-400 text-sm">No items found</Text>
+          <View style={{ alignItems: "center", paddingVertical: 16 }}>
+            <Text style={{ fontSize: 12, color: colors.muted }}>No items found</Text>
           </View>
         ) : (
           filteredItems.map((item, index) => (
             <TouchableOpacity
-              // FIX: Use unique key
               key={`${item.id}-${index}`}
               onPress={() => addItemToPO(item)}
-              className="bg-screen border border-border rounded-lg p-2 mb-1.5"
+              style={{
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 9,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
             >
-              <View className="flex-row justify-between items-center">
-                <View className="flex-1 pr-2">
-                  <Text className="text-white text-base font-semibold">
-                    {item.name}
-                  </Text>
-                  <Text className="text-gray-400 text-xs">
-                    {item.category} • ${item.cost.toFixed(2)} per {item.unit}
-                  </Text>
-                </View>
-                <View className="bg-blue-600 px-2 py-1 rounded">
-                  <Text className="text-white text-xs">Add</Text>
-                </View>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{item.name}</Text>
+                <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                  {item.category} · ${item.cost.toFixed(2)} per {item.unit}
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
+                  borderRadius: 6,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>+ Add</Text>
               </View>
             </TouchableOpacity>
           ))
@@ -339,62 +365,85 @@ const VendorDetailsScreen = () => {
     const item = inventoryItems.find((i) => i.id === lineItem.inventoryItemId);
     const isEditing = isEditingItem === lineItem.inventoryItemId;
     return (
-      <View className="bg-screen border border-border rounded-lg p-3 mx-4 mb-2">
-        <View className="flex-row justify-between items-center">
-          <View className="flex-1 pr-2">
-            <Text className="text-white text-base font-semibold">
-              {item?.name || "Unknown"}
-            </Text>
-            <Text className="text-gray-400 text-xs">
+      <View
+        style={{
+          backgroundColor: colors.screen,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 8,
+          padding: 12,
+          marginHorizontal: 14,
+          marginBottom: 6,
+        }}
+      >
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{item?.name || "Unknown"}</Text>
+            <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
               ${lineItem.cost.toFixed(2)} per {item?.unit}
             </Text>
           </View>
-          <View className="flex-row items-center gap-2">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             {isEditing ? (
               <>
                 <BottomSheetTextInput
                   value={editingQuantity}
                   onChangeText={setEditingQuantity}
                   keyboardType="number-pad"
-                  className="bg-screen border border-gray-600 rounded px-2 py-1 text-white text-center w-14 text-sm"
+                  style={{
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 6,
+                    paddingHorizontal: 8,
+                    color: colors.heading,
+                    fontSize: 13,
+                    textAlign: "center",
+                    width: 52,
+                    height: 32,
+                  }}
                 />
                 <TouchableOpacity
                   onPress={saveEditItem}
-                  className="bg-green-600 px-2 py-1 rounded"
+                  style={{
+                    backgroundColor: colors.success + "20",
+                    borderWidth: 1,
+                    borderColor: colors.success + "50",
+                    borderRadius: 6,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                  }}
                 >
-                  <Text className="text-white text-xs">Save</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.success }}>Save</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={cancelEditItem}
-                  className="bg-gray-600 px-2 py-1 rounded"
+                  style={{
+                    backgroundColor: "transparent",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 6,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                  }}
                 >
-                  <Text className="text-white text-xs">Cancel</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label }}>Cancel</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <Text className="text-white text-base">
-                  Qty: {lineItem.quantity}
-                </Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    startEditItem(lineItem.inventoryItemId, lineItem.quantity)
-                  }
-                  className="p-1.5"
-                >
-                  <Edit3 size={14} color={colors.label} />
+                <Text style={{ fontSize: 13, color: colors.heading }}>Qty: {lineItem.quantity}</Text>
+                <TouchableOpacity onPress={() => startEditItem(lineItem.inventoryItemId, lineItem.quantity)} style={{ padding: 5 }}>
+                  <Edit3 size={13} color={colors.label} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => removeItemFromPO(lineItem.inventoryItemId)}
-                  className="p-1.5"
-                >
-                  <Trash2 size={14} color={colors.danger} />
+                <TouchableOpacity onPress={() => removeItemFromPO(lineItem.inventoryItemId)} style={{ padding: 5 }}>
+                  <Trash2 size={13} color={colors.danger} />
                 </TouchableOpacity>
               </>
             )}
           </View>
         </View>
-        <Text className="text-white text-right mt-1.5 text-sm">
+        <Text style={{ fontSize: 11, color: colors.teal, textAlign: "right", marginTop: 6 }}>
           Total: ${(lineItem.quantity * lineItem.cost).toFixed(2)}
         </Text>
       </View>
@@ -403,22 +452,42 @@ const VendorDetailsScreen = () => {
 
   if (!vendor) {
     return (
-      <View className="flex-1 justify-center items-center bg-screen px-4">
-        <Text className="text-2xl font-bold text-white mb-3">
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.screen, padding: 16 }}>
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            backgroundColor: colors.danger + "15",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 12,
+          }}
+        >
+          <AlertTriangle size={22} color={colors.danger} />
+        </View>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 6 }}>
           Vendor Not Found
         </Text>
-        <Text className="text-base text-gray-400 mb-6 text-center">
+        <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center", marginBottom: 20 }}>
           This vendor does not exist or may have been removed.
         </Text>
         <TouchableOpacity
-          className="bg-blue-600 px-4 py-2 rounded-lg"
-          onPress={() => {
-            if (typeof window !== "undefined" && window.history.length > 1) {
-              window.history.back();
-            }
+          onPress={() => router.back()}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "50",
+            borderRadius: 8,
+            paddingHorizontal: 14,
+            paddingVertical: 8,
           }}
         >
-          <Text className="text-white text-base font-semibold">Go Back</Text>
+          <ArrowLeft size={14} color={colors.teal} />
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -426,185 +495,210 @@ const VendorDetailsScreen = () => {
 
   return (
     <>
-      <View className="flex-1 bg-screen">
-        <ScrollView className="flex-1" contentContainerStyle={{ padding: 12 }}>
-          {/* Header */}
-          <View className="bg-panel border border-border rounded-2xl p-4 mb-3">
-            <View className="flex-row justify-between items-start">
-              <View className="flex-1 pr-2 flex flex-row items-center">
-                <Text className="text-2xl font-bold text-white">
-                  {vendor.name}
-                </Text>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
+
+          {/* Vendor Header Card */}
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 14,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Building2 size={18} color={colors.teal} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>{vendor.name}</Text>
                 {!!vendor.description && (
-                  <Text className="text-gray-300 mt-1 text-lg">
-                    - {vendor.description}
-                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>{vendor.description}</Text>
                 )}
               </View>
             </View>
-            <View className="flex-row mt-3">
-              <View className="mr-4">
-                <Text className="text-lg font-semibold text-gray-400">
-                  Contact
-                </Text>
-                <Text className="text-white text-base mt-0.5">
-                  {vendor.contactPerson}
-                </Text>
+
+            <View style={{ flexDirection: "row", gap: 20 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <User size={12} color={colors.muted} />
+                <Text style={{ fontSize: 12, color: colors.label }}>{vendor.contactPerson || "—"}</Text>
               </View>
-              <View className="mr-4">
-                <Text className="text-lg font-semibold text-gray-400">
-                  Phone
-                </Text>
-                <Text className="text-white text-base mt-0.5">
-                  {vendor.phone}
-                </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Phone size={12} color={colors.muted} />
+                <Text style={{ fontSize: 12, color: colors.label }}>{vendor.phone || "—"}</Text>
               </View>
-              <View>
-                <Text className="text-lg font-semibold text-gray-400">
-                  Email
-                </Text>
-                <Text className="text-white text-base mt-0.5">
-                  {vendor.email}
-                </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Mail size={12} color={colors.muted} />
+                <Text style={{ fontSize: 12, color: colors.label }}>{vendor.email || "—"}</Text>
               </View>
             </View>
           </View>
 
-          {/* Stats */}
-          <View className="flex-row mb-3">
+          {/* Stats Row 1 */}
+          <View style={{ flexDirection: "row" }}>
             <StatCard label="Total POs" value={stats.totalPOs} />
-            <StatCard label="Received" value={stats.received} />
-            <StatCard label="Ordered" value={stats.sent} />
-            <StatCard label="Draft" value={stats.inDraft} />
+            <StatCard label="Received" value={stats.received} accent={colors.success} />
+            <StatCard label="Ordered" value={stats.sent} accent={colors.info} />
+            <StatCard label="Draft" value={stats.inDraft} accent={colors.muted} />
           </View>
-          <View className="flex-row mb-4">
+
+          {/* Stats Row 2 */}
+          <View style={{ flexDirection: "row", marginTop: -2 }}>
             <StatCard label="Line Items" value={stats.totalLines} />
             <StatCard label="Total Qty" value={stats.totalQty} />
-            <StatCard
-              label="Est. Spend"
-              value={`$${stats.estSpend.toFixed(2)}`}
-            />
+            <StatCard label="Est. Spend" value={`$${stats.estSpend.toFixed(2)}`} accent={colors.teal} />
+            <View style={{ flex: 1, marginRight: 8 }} />
           </View>
 
           {/* Tab Bar */}
-          <View className="bg-panel border border-border rounded-xl p-1 mb-3">
-            <View className="flex-row">
-              <TouchableOpacity
-                onPress={() => setActiveTab("purchase-orders")}
-                className={`flex-1 py-2 px-3 rounded-lg ${
-                  activeTab === "purchase-orders"
-                    ? "bg-blue-500"
-                    : "bg-transparent"
-                }`}
-              >
-                <Text
-                  className={`text-center font-semibold text-sm ${
-                    activeTab === "purchase-orders"
-                      ? "text-white"
-                      : "text-gray-400"
-                  }`}
+          <View
+            style={{
+              flexDirection: "row",
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            {(["purchase-orders", "associated-items"] as const).map((tab) => {
+              const isActive = activeTab === tab;
+              const label = tab === "purchase-orders" ? "Purchase Orders" : "Associated Items";
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setActiveTab(tab)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                    borderBottomWidth: 2,
+                    borderBottomColor: isActive ? colors.teal : "transparent",
+                    marginBottom: -1,
+                  }}
                 >
-                  Purchase Orders
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setActiveTab("associated-items")}
-                className={`flex-1 py-2 px-3 rounded-lg ${
-                  activeTab === "associated-items"
-                    ? "bg-blue-500"
-                    : "bg-transparent"
-                }`}
-              >
-                <Text
-                  className={`text-center font-semibold text-sm ${
-                    activeTab === "associated-items"
-                      ? "text-white"
-                      : "text-gray-400"
-                  }`}
-                >
-                  Associated Items
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.label }}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Tab Content */}
+          {/* Purchase Orders Tab */}
           {activeTab === "purchase-orders" && (
-            <View className="bg-panel border border-border rounded-xl p-3">
-              <View className="flex-row justify-between items-center">
-                <Text className="text-base font-bold text-white mb-2">
+            <View
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                overflow: "hidden",
+              }}
+            >
+              {/* Tab header */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  backgroundColor: colors.screen,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
                   Purchase Orders
                 </Text>
-                <View className="flex-row gap-1.5 items-center justify-center">
+                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                   <TouchableOpacity
-                    className="border border-border rounded-lg p-1.5"
                     onPress={() => poSearchRef.current?.snapToIndex?.(1)}
+                    style={{ backgroundColor: colors.teal + "15", borderRadius: 8, padding: 7 }}
                   >
-                    <Search size={20} color={colors.label} />
+                    <Search size={14} color={colors.teal} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    className="flex-row items-center gap-1.5 justify-center w-fit bg-blue-500 rounded-lg px-3 py-1.5"
                     onPress={() => createPOSheetRef.current?.snapToIndex?.(0)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 5,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
+                    }}
                   >
-                    <Plus size={20} color={"white"} />
-                    <Text className="text-white text-sm">Create</Text>
+                    <Plus size={13} color={colors.teal} />
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Create</Text>
                   </TouchableOpacity>
                 </View>
               </View>
+
               {vendorPOs.length === 0 ? (
-                <View className="py-8 items-center">
-                  <Text className="text-gray-400 text-sm">
-                    No purchase orders yet.
-                  </Text>
+                <View style={{ paddingVertical: 40, alignItems: "center", gap: 6 }}>
+                  <Package size={20} color={colors.muted} />
+                  <Text style={{ fontSize: 13, color: colors.muted }}>No purchase orders yet.</Text>
                 </View>
               ) : (
                 vendorPOs.map((po, index) => {
                   const itemsCount = po.items.length;
                   const qty = po.items.reduce((a, li) => a + li.quantity, 0);
-                  const amount = po.items.reduce(
-                    (a, li) => a + li.quantity * li.cost,
-                    0
-                  );
-                  const statusColor =
-                    po.status === "Awaiting Payment"
-                      ? "bg-green-600 text-green-100"
-                      : po.status === "Pending Delivery"
-                        ? "bg-blue-600"
-                        : "bg-yellow-600";
+                  const amount = po.items.reduce((a, li) => a + li.quantity * li.cost, 0);
+                  const s = statusStyle(po.status);
                   return (
-                    <Link
-                      // FIX: Safe Key
-                      key={`${po.id}-${index}`}
-                      href={`/inventory/purchase-orders/${po.id}`}
-                      className="border border-border py-2 rounded-lg my-1"
-                    >
-                      <View className="flex-row justify-between items-center p-1.5">
-                        <View className="flex-1 pr-2">
-                          <View className="flex-row items-center gap-1.5">
-                            <Text className="text-white text-xl font-semibold">
-                              {po.poNumber}
-                            </Text>
+                    <Link key={`${po.id}-${index}`} href={`/inventory/purchase-orders/${po.id}`} asChild>
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border,
+                        }}
+                      >
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{po.poNumber}</Text>
                             <View
-                              className={`px-1.5 py-0.5 rounded-full ${statusColor}`}
+                              style={{
+                                backgroundColor: s.bg,
+                                borderWidth: 1,
+                                borderColor: s.border,
+                                borderRadius: 20,
+                                paddingHorizontal: 7,
+                                paddingVertical: 2,
+                              }}
                             >
-                              <Text className="text-[9px] font-bold text-white">
-                                {po.status}
-                              </Text>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: s.text }}>{po.status}</Text>
                             </View>
                           </View>
-                          <Text className="text-gray-400 mt-0.5 text-base">
+                          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>
                             {new Date(po.createdAt).toLocaleString()}
                           </Text>
                         </View>
-                        <View className="items-end">
-                          <Text className="text-white font-semibold text-xl">
-                            ${amount.toFixed(2)}
-                          </Text>
-                          <Text className="text-gray-400 text-base mt-0.5">
-                            {itemsCount} lines • {qty} qty
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>${amount.toFixed(2)}</Text>
+                          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                            {itemsCount} lines · {qty} qty
                           </Text>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     </Link>
                   );
                 })
@@ -612,70 +706,89 @@ const VendorDetailsScreen = () => {
             </View>
           )}
 
+          {/* Associated Items Tab */}
           {activeTab === "associated-items" && (
-            <View className="bg-panel border border-border rounded-xl p-3">
-              <View className="flex-row justify-between items-center">
-                <Text className="text-base font-bold text-white mb-2">
+            <View
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                overflow: "hidden",
+              }}
+            >
+              {/* Tab header */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  backgroundColor: colors.screen,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
                   Associated Items
                 </Text>
-                <View className="flex-row gap-1.5 items-center justify-center">
-                  <TouchableOpacity
-                    className="border border-border rounded-lg p-1.5"
-                    onPress={() => itemSearchRef.current?.snapToIndex?.(0)}
-                  >
-                    <Search size={20} color={colors.label} />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  onPress={() => itemSearchRef.current?.snapToIndex?.(0)}
+                  style={{ backgroundColor: colors.teal + "15", borderRadius: 8, padding: 7 }}
+                >
+                  <Search size={14} color={colors.teal} />
+                </TouchableOpacity>
               </View>
+
               {associatedItems.length === 0 ? (
-                <View className="py-8 items-center">
-                  <Text className="text-gray-400 text-sm">
-                    No items linked yet.
-                  </Text>
+                <View style={{ paddingVertical: 40, alignItems: "center", gap: 6 }}>
+                  <Box size={20} color={colors.muted} />
+                  <Text style={{ fontSize: 13, color: colors.muted }}>No items linked yet.</Text>
                 </View>
               ) : (
                 associatedItems.map((item, index) => {
-                  const isLowStock =
-                    item.stockQuantity <= item.reorderThreshold;
+                  const isLowStock = item.stockQuantity <= item.reorderThreshold;
                   return (
-                    <Link
-                      // FIX: Safe Key
-                      key={`${item.id}-${index}`}
-                      href={`/inventory/ingredient-items/${item.id}`}
-                      className="border border-border py-2 rounded-lg my-0.5"
-                    >
-                      <View className="flex-row justify-between items-center px-3">
-                        <View className="flex-1 pr-2">
-                          <View className="flex-row items-center gap-1.5">
-                            <Text className="text-white font-semibold text-sm">
-                              {item.name}
-                            </Text>
+                    <Link key={`${item.id}-${index}`} href={`/inventory/ingredient-items/${item.id}`} asChild>
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border,
+                        }}
+                      >
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{item.name}</Text>
                             <View
-                              className={`px-1.5 py-0.5 rounded-full ${
-                                isLowStock
-                                  ? "bg-red-600 text-red-100"
-                                  : "bg-green-600 text-green-100"
-                              }`}
+                              style={{
+                                backgroundColor: isLowStock ? colors.danger + "20" : colors.success + "20",
+                                borderWidth: 1,
+                                borderColor: isLowStock ? colors.danger + "50" : colors.success + "50",
+                                borderRadius: 20,
+                                paddingHorizontal: 7,
+                                paddingVertical: 2,
+                              }}
                             >
-                              <Text className="text-[9px] font-bold">
-                                {isLowStock ? "Low" : "In Stock"}
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: isLowStock ? colors.danger : colors.success }}>
+                                {isLowStock ? "Low Stock" : "In Stock"}
                               </Text>
                             </View>
                           </View>
-                          <Text className="text-gray-400 mt-0.5 text-xs">
-                            {item.category} • {item.stockQuantity} {item.unit} •
-                            Reorder at {item.reorderThreshold}
+                          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>
+                            {item.category} · {item.stockQuantity} {item.unit} · Reorder at {item.reorderThreshold}
                           </Text>
                         </View>
-                        <View className="items-end">
-                          <Text className="text-white font-semibold text-sm">
-                            ${item.cost.toFixed(2)}
-                          </Text>
-                          <Text className="text-gray-400 text-[10px] mt-0.5">
-                            per {item.unit}
-                          </Text>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>${item.cost.toFixed(2)}</Text>
+                          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>per {item.unit}</Text>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     </Link>
                   );
                 })
@@ -685,7 +798,7 @@ const VendorDetailsScreen = () => {
         </ScrollView>
       </View>
 
-      {/* Purchase Orders Search Bottom Sheet */}
+      {/* PO Search Sheet */}
       <BottomSheet
         ref={poSearchRef as any}
         index={-1}
@@ -693,96 +806,89 @@ const VendorDetailsScreen = () => {
         enablePanDownToClose
         {...bottomSheetTheme}
         backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
         )}
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >
-        <View className="flex-row items-center rounded-2xl px-4">
-          <View className="flex-row items-center flex-1 border rounded-lg p-1.5 border-border">
-            <Search color={colors.muted} size={20} />
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              height: 38,
+              gap: 8,
+            }}
+          >
+            <Search size={14} color={colors.muted} />
             <BottomSheetTextInput
               value={poSearchText}
               onChangeText={setPoSearchText}
-              placeholder="Search POs"
-              className="flex-1 py-3 ml-2 text-xl text-white"
-              placeholderTextColor={colors.label}
+              placeholder="Search POs..."
+              placeholderTextColor={colors.muted}
+              style={{ flex: 1, fontSize: 13, color: colors.heading }}
             />
           </View>
-          <TouchableOpacity
-            onPress={() => {
-              setPoSearchText("");
-              poSearchRef.current?.close();
-            }}
-            className="flex-row items-center ml-2 p-1.5"
-          >
-            <Text className="ml-1 text-lg font-semibold text-gray-400">
-              Cancel
-            </Text>
+          <TouchableOpacity onPress={() => { setPoSearchText(""); poSearchRef.current?.close(); }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
           </TouchableOpacity>
         </View>
-        <View className="px-4 py-2">
-          <Text className="text-white mb-1.5 text-sm">Date Range</Text>
+        <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
+          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 6 }}>Date Range</Text>
           <DateRangePicker
             startDate={poStartDate}
             endDate={poEndDate}
-            onDateRangeChange={(start, end) => {
-              setPoStartDate(start);
-              setPoEndDate(end);
-            }}
+            onDateRangeChange={(start, end) => { setPoStartDate(start); setPoEndDate(end); }}
             placeholder="Select date range"
           />
         </View>
-
         <BottomSheetFlatList
           data={filteredPOs}
-          // FIX: Safe Key Extractor
           keyExtractor={(po, index) => `${po.id}-${index}`}
           renderItem={({ item: po }) => (
-            <Link
-              href={`/inventory/purchase-orders/${po.id}`}
-              className="px-4 py-3 border-b border-border"
-            >
-              <View className="flex-row justify-between items-center">
-                <View className="flex-1 pr-2">
-                  <Text className="text-white text-lg font-semibold">
-                    {po.poNumber}
+            <Link href={`/inventory/purchase-orders/${po.id}`} asChild>
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{po.poNumber}</Text>
+                  <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                    {po.status} · {new Date(po.createdAt).toLocaleDateString()}
                   </Text>
-                  <Text className="text-gray-300 mt-0.5 text-base">
-                    {po.status} • {new Date(po.createdAt).toLocaleDateString()}
-                  </Text>
-                  {po.createdByEmployeeName ? (
-                    <Text className="text-gray-400 mt-0.5 text-sm">
-                      By: {po.createdByEmployeeName}
-                    </Text>
-                  ) : null}
+                  {po.createdByEmployeeName && (
+                    <Text style={{ fontSize: 11, color: colors.muted }}>By: {po.createdByEmployeeName}</Text>
+                  )}
                 </View>
-                <Text className="text-white font-semibold text-base">
-                  $
-                  {po.items
-                    .reduce((a, li) => a + li.quantity * li.cost, 0)
-                    .toFixed(2)}
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                  ${po.items.reduce((a, li) => a + li.quantity * li.cost, 0).toFixed(2)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </Link>
           )}
           ListEmptyComponent={
-            <View className="items-center justify-center h-40">
-              <Text className="text-xl text-gray-400">
-                No purchase orders found
-              </Text>
+            <View style={{ alignItems: "center", justifyContent: "center", height: 120 }}>
+              <Text style={{ fontSize: 13, color: colors.muted }}>No purchase orders found</Text>
             </View>
           }
         />
       </BottomSheet>
 
-      {/* Associated Items Search Bottom Sheet */}
+      {/* Associated Items Search Sheet */}
       <BottomSheet
         ref={itemSearchRef as any}
         index={-1}
@@ -790,74 +896,76 @@ const VendorDetailsScreen = () => {
         enablePanDownToClose
         {...bottomSheetTheme}
         backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
         )}
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >
-        <View className="flex-row items-center rounded-2xl px-4">
-          <View className="flex-row items-center flex-1 border rounded-lg p-1.5 border-border">
-            <Search color={colors.muted} size={20} />
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              height: 38,
+              gap: 8,
+            }}
+          >
+            <Search size={14} color={colors.muted} />
             <BottomSheetTextInput
               value={itemSearchText}
               onChangeText={setItemSearchText}
-              placeholder="Search Items"
-              className="flex-1 py-3 ml-2 text-xl text-white"
-              placeholderTextColor={colors.label}
+              placeholder="Search items..."
+              placeholderTextColor={colors.muted}
+              style={{ flex: 1, fontSize: 13, color: colors.heading }}
             />
           </View>
-          <TouchableOpacity
-            onPress={() => {
-              setItemSearchText("");
-              itemSearchRef.current?.close();
-            }}
-            className="flex-row items-center ml-2 p-1.5"
-          >
-            <Text className="ml-1 text-lg font-semibold text-gray-400">
-              Cancel
-            </Text>
+          <TouchableOpacity onPress={() => { setItemSearchText(""); itemSearchRef.current?.close(); }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
           </TouchableOpacity>
         </View>
         <BottomSheetFlatList
           data={filteredItems}
-          // FIX: Safe Key Extractor
           keyExtractor={(it, index) => `${it.id}-${index}`}
           renderItem={({ item: it }) => (
-            <Link
-              href={`/inventory/ingredient-items/${it.id}`}
-              className="px-4 py-3 border-b border-border"
-            >
-              <View className="flex-row justify-between items-center">
-                <View className="flex-1 pr-2">
-                  <Text className="text-white text-lg font-semibold">
-                    {it.name}
-                  </Text>
-                  <Text className="text-gray-300 mt-0.5 text-base">
-                    {it.category} • {it.stockQuantity} {it.unit}
+            <Link href={`/inventory/ingredient-items/${it.id}`} asChild>
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{it.name}</Text>
+                  <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                    {it.category} · {it.stockQuantity} {it.unit}
                   </Text>
                 </View>
-                <Text className="text-white font-semibold text-base">
-                  ${it.cost.toFixed(2)}
-                </Text>
-              </View>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>${it.cost.toFixed(2)}</Text>
+              </TouchableOpacity>
             </Link>
           )}
           ListEmptyComponent={
-            <View className="items-center justify-center h-40">
-              <Text className="text-xl text-gray-400">No items found</Text>
+            <View style={{ alignItems: "center", justifyContent: "center", height: 120 }}>
+              <Text style={{ fontSize: 13, color: colors.muted }}>No items found</Text>
             </View>
           }
-          enableFooterMarginAdjustment={true}
+          enableFooterMarginAdjustment
         />
       </BottomSheet>
 
-      {/* Create Purchase Bottom Sheet (vendor preselected + templates) */}
+      {/* Create PO Sheet */}
       <BottomSheet
         ref={createPOSheetRef as any}
         index={-1}
@@ -865,87 +973,103 @@ const VendorDetailsScreen = () => {
         enablePanDownToClose
         {...bottomSheetTheme}
         backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
         )}
       >
-        <View className="px-4 py-3 border-b border-border">
-          <Text className="text-white text-xl font-bold">Create Purchase</Text>
-          <Text className="text-gray-300 mt-0.5 text-sm">
-            Vendor:
-            <Text className="text-white font-semibold">{vendor?.name}</Text>
+        <View
+          style={{
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Create Purchase</Text>
+          <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+            Vendor: <Text style={{ color: colors.heading, fontWeight: "600" }}>{vendor?.name}</Text>
           </Text>
         </View>
-        <View className="px-4 py-3 gap-2">
+        <View style={{ paddingHorizontal: 14, paddingVertical: 12, gap: 10 }}>
           <TouchableOpacity
-            className="bg-blue-600 border border-blue-500 rounded-lg px-3 py-2 items-center"
             onPress={() => openPOBuilder()}
+            style={{
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              borderRadius: 8,
+              paddingVertical: 10,
+              alignItems: "center",
+            }}
           >
-            <Text className="text-white text-base font-semibold">
-              Start New Purchase
-            </Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>Start New Purchase</Text>
           </TouchableOpacity>
 
-          <View className="mt-1.5">
-            <View className="flex-row justify-between items-center mb-1.5">
-              <Text className="text-white text-lg font-semibold">
+          <View style={{ marginTop: 4 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
                 Use Past Order as Template
               </Text>
-              <Text className="text-gray-400 text-sm">
-                {vendorPOs.length} available
-              </Text>
+              <Text style={{ fontSize: 11, color: colors.muted }}>{vendorPOs.length} available</Text>
             </View>
             <BottomSheetFlatList
               data={vendorPOs}
-              // FIX: Safe Key Extractor
               keyExtractor={(po, index) => `${po.id}-${index}`}
               renderItem={({ item: po }) => (
-                <View className="border border-border rounded-lg mb-2 p-2">
-                  <View className="flex-row justify-between items-center">
-                    <View className="flex-1 pr-2">
-                      <Text className="text-white text-base font-semibold">
-                        {po.poNumber}
-                      </Text>
-                      <Text className="text-gray-400 text-xs mt-0.5">
-                        {po.status} •
-                        {new Date(po.createdAt).toLocaleDateString()}
-                      </Text>
-                      <View className="mt-1.5 flex-row flex-wrap gap-1.5">
-                        {po.items.map((li, idx) => (
-                          <View
-                            key={`${po.id}_${idx}`}
-                            className="px-1.5 py-0.5 rounded-full bg-screen border border-border"
-                          >
-                            <Text className="text-[10px] text-gray-200">
-                              {getItemName(li.inventoryItemId)} x{li.quantity}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                      <Text className="text-gray-400 text-xs mt-0.5">
-                        Lines: {po.items.length}
-                      </Text>
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    marginBottom: 8,
+                    padding: 10,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{po.poNumber}</Text>
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                      {po.status} · {new Date(po.createdAt).toLocaleDateString()}
+                    </Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                      {po.items.map((li, idx) => (
+                        <View
+                          key={`${po.id}_${idx}`}
+                          style={{
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 20,
+                            paddingHorizontal: 7,
+                            paddingVertical: 2,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, color: colors.label }}>
+                            {getItemName(li.inventoryItemId)} x{li.quantity}
+                          </Text>
+                        </View>
+                      ))}
                     </View>
-                    <TouchableOpacity
-                      className="bg-blue-500 px-2 py-1.5 rounded-lg"
-                      onPress={() => openPOBuilder(po)}
-                    >
-                      <Text className="text-white font-semibold text-sm">
-                        Use
-                      </Text>
-                    </TouchableOpacity>
                   </View>
+                  <TouchableOpacity
+                    onPress={() => openPOBuilder(po)}
+                    style={{
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Use</Text>
+                  </TouchableOpacity>
                 </View>
               )}
               ListEmptyComponent={
-                <View className="items-center justify-center py-4">
-                  <Text className="text-gray-400 text-sm">
-                    No past orders for this vendor.
-                  </Text>
+                <View style={{ alignItems: "center", paddingVertical: 16 }}>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>No past orders for this vendor.</Text>
                 </View>
               }
               contentContainerStyle={{ paddingBottom: 20 }}
@@ -954,7 +1078,7 @@ const VendorDetailsScreen = () => {
         </View>
       </BottomSheet>
 
-      {/* PO Builder BottomSheet - REFACTORED TO USE FLATLIST */}
+      {/* PO Builder Sheet */}
       <BottomSheet
         ref={poBuilderSheetRef as any}
         index={-1}
@@ -962,29 +1086,18 @@ const VendorDetailsScreen = () => {
         enablePanDownToClose
         {...bottomSheetTheme}
         backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
         )}
         keyboardBehavior="interactive"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
-        >
-          {/* Main List Container */}
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <BottomSheetFlatList
             data={poLineItems}
             keyExtractor={(item, index) => `${item.inventoryItemId}-${index}`}
             renderItem={renderPOLineItem}
-            // Header: Contains the "Build PO" title and buttons
             ListHeaderComponent={renderPOBuilderHeader}
-            // Footer: Contains "Add Items" search and list
             ListFooterComponent={renderPOBuilderFooter}
             contentContainerStyle={{ paddingBottom: 30 }}
           />

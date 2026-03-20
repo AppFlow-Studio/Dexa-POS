@@ -1,3 +1,4 @@
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -5,7 +6,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { Link } from "expo-router";
-import { Check } from "lucide-react-native";
+import { AlertTriangle, Check, Search } from "lucide-react-native";
 import React, {
   forwardRef,
   useCallback,
@@ -14,7 +15,6 @@ import React, {
   useState,
 } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface MenuSearchSheetProps {
   menuItems: MenuItemType[];
@@ -22,9 +22,6 @@ interface MenuSearchSheetProps {
   onToggle: (id: string) => void;
 }
 
-// ---------------------------------------------------------
-// 1. Optimized Row Component
-// ---------------------------------------------------------
 const MenuItemRow = React.memo(
   ({
     item,
@@ -35,62 +32,73 @@ const MenuItemRow = React.memo(
     isSelected: boolean;
     onToggle: (id: string) => void;
   }) => {
-    // Stock Logic for Color
     const isLowStock =
       typeof item.stockQuantity === "number" &&
       typeof item.reorderThreshold === "number" &&
       item.stockQuantity <= item.reorderThreshold;
 
     return (
-      <View className="flex-row items-center px-4 py-3 border-b border-border">
-        {/* Selection Checkbox - Optimized Hit Area */}
-        <View className="w-[10%] mr-2">
-          <TouchableOpacity
-            onPress={() => onToggle(item.id)}
-            activeOpacity={0.7}
-            className={`h-6 w-6 items-center justify-center border rounded ${
-              isSelected ? "bg-blue-600 border-blue-500" : "border-gray-500"
-            }`}
-          >
-            {isSelected && <Check color="#fff" size={14} />}
-          </TouchableOpacity>
-        </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+          paddingVertical: 9,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        {/* Checkbox */}
+        <TouchableOpacity
+          onPress={() => onToggle(item.id)}
+          activeOpacity={0.7}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: isSelected ? colors.teal : colors.border,
+            backgroundColor: isSelected ? colors.teal + "20" : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 10,
+          }}
+        >
+          {isSelected && <Check size={12} color={colors.teal} />}
+        </TouchableOpacity>
 
-        {/* Content - Click to Navigate */}
+        {/* Content */}
         <Link href={`/inventory/menu-items/${item.id}`} asChild>
-          <TouchableOpacity className="flex-1 flex-row items-center">
+          <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
             {/* Name & Category */}
-            <View className="flex-1 pr-2">
+            <View style={{ flex: 1, paddingRight: 8 }}>
               <Text
-                className="text-white text-lg font-semibold"
                 numberOfLines={1}
+                style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}
               >
                 {item.name}
               </Text>
-              <Text className="text-gray-400 text-sm" numberOfLines={1}>
-                {Array.isArray(item.category)
-                  ? item.category.join(", ")
-                  : item.category}
+              <Text numberOfLines={1} style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                {Array.isArray(item.category) ? item.category.join(", ") : item.category}
               </Text>
             </View>
 
             {/* Price */}
-            <View className="w-[20%] items-end mr-4">
-              <Text className="text-gray-300 text-base">
-                ${item.price.toFixed(2)}
-              </Text>
-            </View>
+            <Text
+              style={{ width: "18%", fontSize: 12, color: colors.label, textAlign: "right", paddingRight: 12 }}
+              numberOfLines={1}
+            >
+              ${item.price.toFixed(2)}
+            </Text>
 
-            {/* Stock (Read Only) */}
-            <View className="w-[15%] items-end">
+            {/* Stock */}
+            <View style={{ width: "15%", alignItems: "flex-end", flexDirection: "row", justifyContent: "flex-end", gap: 4 }}>
+              {isLowStock && <AlertTriangle size={11} color={colors.warning} />}
               <Text
-                className={`text-base font-medium ${
-                  isLowStock ? "text-red-400" : "text-gray-300"
-                }`}
+                numberOfLines={1}
+                style={{ fontSize: 12, fontWeight: "600", color: isLowStock ? colors.warning : colors.label }}
               >
-                {typeof item.stockQuantity === "number"
-                  ? `${item.stockQuantity}`
-                  : "—"}
+                {typeof item.stockQuantity === "number" ? item.stockQuantity : "—"}
               </Text>
             </View>
           </TouchableOpacity>
@@ -98,52 +106,33 @@ const MenuItemRow = React.memo(
       </View>
     );
   },
-  // Custom Comparison for Performance
-  (prev, next) => {
-    return (
-      prev.isSelected === next.isSelected &&
-      prev.item.id === next.item.id &&
-      prev.item.stockQuantity === next.item.stockQuantity
-    );
-  }
+  (prev, next) =>
+    prev.isSelected === next.isSelected &&
+    prev.item.id === next.item.id &&
+    prev.item.stockQuantity === next.item.stockQuantity
 );
 
-// ---------------------------------------------------------
-// 2. Main Sheet Component
-// ---------------------------------------------------------
 const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
   ({ menuItems, selectedIds, onToggle }, ref) => {
     const [searchQuery, setSearchQuery] = useState("");
     const snapPoints = useMemo(() => ["50%", "90%"], []);
 
-    // OPTIMIZATION: Local Set for O(1) lookup and Instant Feedback
     const [optimisticSelection, setOptimisticSelection] = useState<Set<string>>(
       new Set(selectedIds)
     );
 
-    // Sync local state when parent props change (e.g. "Select All" pressed in parent)
     useEffect(() => {
       setOptimisticSelection(new Set(selectedIds));
     }, [selectedIds]);
 
-    // THE FIX: Instant Update Wrapper
     const handleOptimisticToggle = useCallback(
       (id: string) => {
-        // 1. Update UI Immediately (Instant Feedback)
         setOptimisticSelection((prev) => {
           const next = new Set(prev);
-          if (next.has(id)) {
-            next.delete(id);
-          } else {
-            next.add(id);
-          }
+          next.has(id) ? next.delete(id) : next.add(id);
           return next;
         });
-
-        // 2. Update Parent in next frame (prevents UI freeze)
-        requestAnimationFrame(() => {
-          onToggle(id);
-        });
+        requestAnimationFrame(() => onToggle(id));
       },
       [onToggle]
     );
@@ -151,47 +140,32 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
     const filteredMenu = useMemo(() => {
       const seenIds = new Set<string>();
       const query = searchQuery.toLowerCase().trim();
-
       return menuItems.filter((item) => {
         if (seenIds.has(item.id)) return false;
         seenIds.add(item.id);
-
         if (!query) return true;
-
-        const nameMatch = item.name.toLowerCase().includes(query);
-        const catMatch = item.category.some(
-          (c) => c && c.toLowerCase().includes(query)
+        return (
+          item.name.toLowerCase().includes(query) ||
+          item.category.some((c) => c && c.toLowerCase().includes(query))
         );
-
-        return nameMatch || catMatch;
       });
     }, [menuItems, searchQuery]);
 
     const renderBackdrop = useCallback(
       (props: any) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.5}
-        />
+        <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.5} />
       ),
       []
     );
 
     const renderItem = useCallback(
-      ({ item }: { item: MenuItemType }) => {
-        // Use .has() on Set (Much faster than Array.includes)
-        const isSelected = optimisticSelection.has(item.id);
-
-        return (
-          <MenuItemRow
-            item={item}
-            isSelected={isSelected}
-            onToggle={handleOptimisticToggle}
-          />
-        );
-      },
+      ({ item }: { item: MenuItemType }) => (
+        <MenuItemRow
+          item={item}
+          isSelected={optimisticSelection.has(item.id)}
+          onToggle={handleOptimisticToggle}
+        />
+      ),
       [optimisticSelection, handleOptimisticToggle]
     );
 
@@ -207,23 +181,61 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
         keyboardBlurBehavior="restore"
         topInset={60}
       >
-        <View className="px-4 pb-2 pt-2 border-b border-border">
-          <BottomSheetTextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search menu items..."
-            placeholderTextColor={colors.label}
+        {/* Search bar */}
+        <View
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <View
             style={{
+              flexDirection: "row",
+              alignItems: "center",
               backgroundColor: colors.screen,
-              borderColor: colors.border,
               borderWidth: 1,
+              borderColor: colors.border,
               borderRadius: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 12,
-              color: "white",
-              fontSize: 16,
+              paddingHorizontal: 10,
+              height: 38,
+              gap: 8,
             }}
-          />
+          >
+            <Search size={14} color={colors.muted} />
+            <BottomSheetTextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search menu items..."
+              placeholderTextColor={colors.muted}
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: colors.heading,
+                paddingVertical: 0,
+                height: 38,
+              }}
+            />
+          </View>
+        </View>
+
+        {/* Column headers */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            backgroundColor: colors.screen,
+          }}
+        >
+          <View style={{ width: 30 }} />
+          <Text style={{ flex: 1, fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Name</Text>
+          <Text style={{ width: "18%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, textAlign: "right", paddingRight: 12 }}>Price</Text>
+          <Text style={{ width: "15%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, textAlign: "right" }}>Stock</Text>
         </View>
 
         <BottomSheetFlatList
@@ -235,6 +247,11 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
           initialNumToRender={15}
           maxToRenderPerBatch={15}
           windowSize={5}
+          ListEmptyComponent={
+            <View style={{ alignItems: "center", paddingVertical: 40 }}>
+              <Text style={{ fontSize: 13, color: colors.muted }}>No menu items found</Text>
+            </View>
+          }
         />
       </BottomSheet>
     );

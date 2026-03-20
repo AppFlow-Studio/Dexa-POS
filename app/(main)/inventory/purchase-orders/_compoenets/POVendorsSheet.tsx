@@ -3,20 +3,26 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
+  BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { Building2, Search } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
-import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 type POVendorsSheetProps = {
   onUseTemplate: (poId: string) => void;
   onSelectVendor?: (vendorId: string) => void;
+};
+
+const statusStyle = (status: string) => {
+  switch (status) {
+    case "Awaiting Payment": return { bg: colors.success + "20", text: colors.success };
+    case "Pending Delivery": return { bg: colors.info + "20", text: colors.info };
+    case "Draft": return { bg: colors.muted + "15", text: colors.muted };
+    case "Paid": return { bg: colors.teal + "20", text: colors.teal };
+    case "Cancelled": return { bg: colors.danger + "20", text: colors.danger };
+    default: return { bg: colors.warning + "20", text: colors.warning };
+  }
 };
 
 const VendorRow = ({
@@ -34,104 +40,94 @@ const VendorRow = ({
     () =>
       purchaseOrders
         .filter((po) => po.vendorId === vendorId)
-        .sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        )
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 3),
     [purchaseOrders, vendorId]
   );
 
+  const getItemName = (inventoryItemId: string) =>
+    inventoryItems.find((i) => i.id === inventoryItemId)?.name || "Item";
+
   const formatAmount = (poId: string) => {
     const po = purchaseOrders.find((p) => p.id === poId);
     if (!po) return "$0.00";
-    const sum = po.items.reduce((acc, li) => acc + li.quantity * li.cost, 0);
-    return `$${sum.toFixed(2)}`;
-  };
-
-  const getItemName = (inventoryItemId: string) => {
-    const item = inventoryItems.find((i) => i.id === inventoryItemId);
-    return item?.name || "Item";
+    return `$${po.items.reduce((a, li) => a + li.quantity * li.cost, 0).toFixed(2)}`;
   };
 
   if (!vendor) return null;
+
   return (
-    <View className="border-b border-border py-3">
-      <View className="flex-row items-center justify-between">
-        <View className="flex-1 pr-2">
-          <Text className="text-white text-base font-semibold">
-            {vendor.name}{" "}
-          </Text>
-          {!!vendor.description && (
-            <Text className="text-gray-400 text-xs mt-0.5">
-              {vendor.description}
-            </Text>
-          )}
+    <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 12 }}>
+      {/* Vendor header */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+          <View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "30", alignItems: "center", justifyContent: "center" }}>
+            <Building2 size={13} color={colors.teal} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{vendor.name}</Text>
+            {!!vendor.description && (
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }} numberOfLines={1}>{vendor.description}</Text>
+            )}
+          </View>
         </View>
         {onSelectVendor && (
           <TouchableOpacity
             onPress={() => onSelectVendor(vendorId)}
-            className="px-2 py-1 h-10 flex-row items-center justify-center rounded-lg bg-blue-500"
+            style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 7 }}
           >
-            <Text className="text-white text-[10px] font-bold">Select</Text>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Select</Text>
           </TouchableOpacity>
         )}
       </View>
-      <View className="mt-2 bg-screen border border-border rounded-xl p-2">
-        <Text className="text-white font-semibold mb-1.5 text-sm">
+
+      {/* Recent POs */}
+      <View style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10 }}>
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
           Recent POs
         </Text>
         {vendorPOs.length === 0 ? (
-          <Text className="text-gray-400 text-sm">No recent POs</Text>
+          <Text style={{ fontSize: 12, color: colors.muted }}>No recent POs</Text>
         ) : (
-          vendorPOs.map((po) => {
-            const preview = po.items.slice(0, 6);
+          vendorPOs.map((po, idx) => {
+            const preview = po.items.slice(0, 5);
             const remaining = Math.max(po.items.length - preview.length, 0);
+            const s = statusStyle(po.status);
             return (
-              <View
-                key={po.id}
-                className="py-2 border-t border-gray-800 first:border-t-0"
-              >
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-1 pr-2">
-                    <Text className="text-white font-medium text-sm">
-                      {po.poNumber}
-                    </Text>
-                    <Text className="text-gray-500 text-[10px]">
-                      {new Date(po.createdAt).toLocaleDateString()} •{" "}
-                      {po.status}
+              <View key={po.id} style={{ paddingTop: idx === 0 ? 0 : 8, marginTop: idx === 0 ? 0 : 8, borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: colors.border }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>{po.poNumber}</Text>
+                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, backgroundColor: s.bg, borderRadius: 4 }}>
+                        <Text style={{ fontSize: 10, fontWeight: "600", color: s.text }}>{po.status}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ fontSize: 11, color: colors.muted }}>
+                      {new Date(po.createdAt).toLocaleDateString()}
                     </Text>
                   </View>
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-white font-semibold text-sm">
-                      {formatAmount(po.id)}
-                    </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>{formatAmount(po.id)}</Text>
                     <TouchableOpacity
                       onPress={() => onUseTemplate(po.id)}
-                      className="px-2 py-1 h-10 flex-row items-center justify-center rounded-lg bg-blue-500"
+                      style={{ paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 6 }}
                     >
-                      <Text className="text-white text-[10px] font-bold">
-                        Use
-                      </Text>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Use</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-                <View className="mt-1.5 flex-row flex-wrap gap-1.5">
-                  {preview.map((li, idx) => (
-                    <View
-                      key={`${po.id}_${idx}`}
-                      className="px-1.5 py-0.5 rounded-full bg-screen border border-border"
-                    >
-                      <Text className="text-[10px] text-gray-200">
-                        {getItemName(li.inventoryItemId)} x{li.quantity}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                  {preview.map((li, i) => (
+                    <View key={`${po.id}_${i}`} style={{ paddingHorizontal: 7, paddingVertical: 2, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 20 }}>
+                      <Text style={{ fontSize: 10, color: colors.label }}>
+                        {getItemName(li.inventoryItemId)} ×{li.quantity}
                       </Text>
                     </View>
                   ))}
                   {remaining > 0 && (
-                    <View className="px-1.5 py-0.5 rounded-full bg-screen border border-border">
-                      <Text className="text-[10px] text-gray-300">
-                        +{remaining} more
-                      </Text>
+                    <View style={{ paddingHorizontal: 7, paddingVertical: 2, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 20 }}>
+                      <Text style={{ fontSize: 10, color: colors.muted }}>+{remaining} more</Text>
                     </View>
                   )}
                 </View>
@@ -167,45 +163,42 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
         snapPoints={snapPoints}
         enablePanDownToClose
         backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-          />
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
         )}
         {...bottomSheetTheme}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1"
-        >
-          <View className="px-3 pb-1.5">
-            <Text className="text-white text-base font-bold mb-1.5">
-              Select Vendor
-            </Text>
-            <View className="bg-screen border border-border rounded-xl px-2 py-1.5">
-              <TextInput
-                placeholder="Search vendors..."
-                placeholderTextColor={colors.label}
-                value={query}
-                onChangeText={setQuery}
-                className="text-white h-16 text-base"
-              />
-            </View>
+        {/* Header */}
+        <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading, marginBottom: 8 }}>Select Vendor</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, height: 38, gap: 8 }}>
+            <Search size={14} color={colors.muted} />
+            <BottomSheetTextInput
+              placeholder="Search vendors..."
+              placeholderTextColor={colors.muted}
+              value={query}
+              onChangeText={setQuery}
+              style={{ flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 0, height: 38 }}
+            />
           </View>
-          <BottomSheetFlatList
-            data={filteredVendors}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
-            renderItem={({ item }) => (
-              <VendorRow
-                vendorId={item.id}
-                onUseTemplate={onUseTemplate}
-                onSelectVendor={onSelectVendor}
-              />
-            )}
-          />
-        </KeyboardAvoidingView>
+        </View>
+
+        <BottomSheetFlatList
+          data={filteredVendors}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 30 }}
+          renderItem={({ item }) => (
+            <VendorRow
+              vendorId={item.id}
+              onUseTemplate={onUseTemplate}
+              onSelectVendor={onSelectVendor}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: "center", paddingVertical: 40 }}>
+              <Text style={{ fontSize: 13, color: colors.muted }}>No vendors found</Text>
+            </View>
+          }
+        />
       </BottomSheet>
     );
   }

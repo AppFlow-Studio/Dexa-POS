@@ -6,7 +6,7 @@ import { PurchaseOrder } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { Link, useRouter } from "expo-router";
-import { Plus, Trash2 } from "lucide-react-native";
+import { Package, Plus, Receipt, Search, Trash2 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
@@ -18,118 +18,108 @@ import {
   View,
 } from "react-native";
 
-const PurchaseOrderRow: React.FC<{
-  item: PurchaseOrder;
-  onEdit: () => void;
-  onDelete: () => void;
-}> = ({ item, onEdit, onDelete }) => {
-  const router = useRouter();
-  const vendors = useInventoryStore((state) => state.vendors);
-  const { employees } = useEmployeeStore();
-  const vendor = vendors.find((v) => v.id === item.vendorId);
-  const totalItems = item.items.reduce(
-    (acc, current) => acc + current.quantity,
-    0
-  );
-  const totalCost = item.items.reduce(
-    (acc, current) => acc + current.cost * current.quantity,
-    0
-  );
+const statusStyle = (status: string) => {
+  switch (status) {
+    case "Awaiting Payment":
+      return { bg: colors.success + "20", border: colors.success + "50", text: colors.success };
+    case "Pending Delivery":
+      return { bg: colors.info + "20", border: colors.info + "50", text: colors.info };
+    case "Draft":
+      return { bg: colors.muted + "15", border: colors.border, text: colors.muted };
+    case "Paid":
+      return { bg: colors.teal + "20", border: colors.teal + "50", text: colors.teal };
+    case "Cancelled":
+      return { bg: colors.danger + "20", border: colors.danger + "50", text: colors.danger };
+    default:
+      return { bg: colors.warning + "20", border: colors.warning + "50", text: colors.warning };
+  }
+};
 
-  const statusStyles: Record<
-    string,
-    { bg: string; text: string; label: string }
-  > = {
-    Draft: { bg: "bg-gray-700", text: "text-gray-200", label: "Draft" },
-    "Pending Delivery": {
-      bg: "bg-yellow-600",
-      text: "text-yellow-100",
-      label: "Pending Delivery",
-    },
-    "Awaiting Payment": {
-      bg: "bg-blue-600",
-      text: "text-blue-100",
-      label: "Awaiting Payment",
-    },
-    Paid: { bg: "bg-green-600", text: "text-green-100", label: "Paid" },
-    Cancelled: { bg: "bg-red-600", text: "text-red-100", label: "Cancelled" },
-  };
+const PurchaseOrderRow: React.FC<{ item: PurchaseOrder; onDelete: () => void }> = ({ item, onDelete }) => {
+  const vendors = useInventoryStore((s) => s.vendors);
+  const vendor = vendors.find((v) => v.id === item.vendorId);
+  const totalQty = item.items.reduce((a, li) => a + li.quantity, 0);
+  const totalCost = item.items.reduce((a, li) => a + li.cost * li.quantity, 0);
+  const s = statusStyle(item.status);
 
   return (
-    <Link
-      href={`/inventory/purchase-orders/${item.id}`}
-      className="flex-row w-full flex-1 flex items-center p-3 border-b border-border"
-    >
-      <View className="flex-row w-full flex-1 flex items-center">
-        <Text className="w-[15%] text-lg font-semibold text-white">
+    <Link href={`/inventory/purchase-orders/${item.id}`} asChild>
+      <TouchableOpacity
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        {/* PO Number */}
+        <Text numberOfLines={1} style={{ width: "14%", fontSize: 13, fontWeight: "600", color: colors.heading }}>
           {item.poNumber}
         </Text>
-        <Text className="w-[20%] text-lg text-gray-300">
-          {vendor?.name || "Unknown"}
+
+        {/* Vendor */}
+        <Text numberOfLines={1} style={{ width: "18%", fontSize: 12, color: colors.label }}>
+          {vendor?.name || "—"}
         </Text>
-        <View className="w-[15%]">
-          {(() => {
-            const sty = statusStyles[item.status] || statusStyles["Draft"];
-            return (
-              <View className={`px-2.5 py-1 rounded-lg self-start ${sty.bg}`}>
-                <Text className={`font-bold text-base ${sty.text}`}>
-                  {sty.label}
-                </Text>
-              </View>
-            );
-          })()}
+
+        {/* Status */}
+        <View style={{ width: "16%" }}>
+          <View style={{ alignSelf: "flex-start", paddingHorizontal: 7, paddingVertical: 3, backgroundColor: s.bg, borderWidth: 1, borderColor: s.border, borderRadius: 20 }}>
+            <Text style={{ fontSize: 10, fontWeight: "600", color: s.text }}>{item.status}</Text>
+          </View>
         </View>
-        <Text className="w-[15%] text-lg text-gray-300">
+
+        {/* Date */}
+        <Text numberOfLines={1} style={{ width: "14%", fontSize: 12, color: colors.label }}>
           {new Date(item.createdAt).toLocaleDateString()}
         </Text>
-        <Text className="w-[15%] text-lg text-gray-300" numberOfLines={1}>
+
+        {/* Employee */}
+        <Text numberOfLines={1} style={{ width: "16%", fontSize: 12, color: colors.label }}>
           {item.createdByEmployeeName || "—"}
         </Text>
-        <Text className="w-[10%] text-lg text-gray-300">{totalItems}</Text>
-        <Text className="w-[15%] text-lg font-semibold text-white">
+
+        {/* Items */}
+        <Text numberOfLines={1} style={{ width: "9%", fontSize: 12, color: colors.label }}>
+          {totalQty}
+        </Text>
+
+        {/* Total */}
+        <Text numberOfLines={1} style={{ width: "10%", fontSize: 13, fontWeight: "600", color: colors.heading }}>
           ${totalCost.toFixed(2)}
         </Text>
-      </View>
+
+        {/* Delete */}
+        <View style={{ flex: 1, alignItems: "flex-end" }}>
+          <TouchableOpacity
+            onPress={(e) => { e.stopPropagation?.(); onDelete(); }}
+            style={{ padding: 6 }}
+          >
+            <Trash2 size={14} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
     </Link>
   );
 };
 
 const PurchaseOrdersScreen = () => {
-  const {
-    purchaseOrders,
-    deletePurchaseOrder,
-    externalExpenses,
-    addExternalExpense,
-    removeExternalExpense,
-    inventoryItems,
-  } = useInventoryStore();
-  const { employees, activeEmployeeId } = useEmployeeStore();
+  const { purchaseOrders, deletePurchaseOrder, externalExpenses, removeExternalExpense } = useInventoryStore();
   const router = useRouter();
   const { show } = useToast();
 
   const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
   const [query, setQuery] = useState("");
-  const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
+  const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [activeTab, setActiveTab] = useState<"purchase-orders" | "expenses">("purchase-orders");
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<"purchase-orders" | "expenses">(
-    "purchase-orders"
-  );
-
-  // Bottom sheet refs
-  const snapPoints = useMemo(() => ["70%", "95%"], []);
-
-  const handleRemoveExternalExpense = (expenseId: string) => {
-    const expenseToRemove = externalExpenses.find((e) => e.id === expenseId);
+  const handleRemoveExpense = (expenseId: string) => {
+    const e = externalExpenses.find((x) => x.id === expenseId);
     removeExternalExpense(expenseId);
-    show({
-      title: "Expense Removed",
-      message: `Expense ${
-        expenseToRemove?.expenseNumber || ""
-      } has been successfully removed.`,
-      type: "success",
-    });
+    show({ title: "Expense Removed", message: `Expense ${e?.expenseNumber || ""} removed.`, type: "success" });
   };
 
   const filtered = useMemo(() => {
@@ -137,184 +127,170 @@ const PurchaseOrdersScreen = () => {
     const sd = startDate ? new Date(startDate + "T00:00:00") : null;
     const ed = endDate ? new Date(endDate + "T23:59:59") : null;
     return purchaseOrders.filter((po) => {
-      const inDates =
-        (!sd || new Date(po.createdAt) >= sd) &&
-        (!ed || new Date(po.createdAt) <= ed);
+      const inDates = (!sd || new Date(po.createdAt) >= sd) && (!ed || new Date(po.createdAt) <= ed);
       if (!q) return inDates;
-      const poNum = po.poNumber?.toLowerCase() || "";
-      const vendorName =
-        useInventoryStore
-          .getState()
-          .vendors.find((v) => v.id === po.vendorId)
-          ?.name?.toLowerCase() || "";
-      const emp = `${po.createdByEmployeeName || ""}`.toLowerCase();
-      const status = po.status.toLowerCase();
-      return (
-        inDates &&
-        (poNum.includes(q) ||
-          vendorName.includes(q) ||
-          emp.includes(q) ||
-          status.includes(q))
+      const vendorName = useInventoryStore.getState().vendors.find((v) => v.id === po.vendorId)?.name?.toLowerCase() || "";
+      return inDates && (
+        (po.poNumber?.toLowerCase() || "").includes(q) ||
+        vendorName.includes(q) ||
+        (po.createdByEmployeeName || "").toLowerCase().includes(q) ||
+        po.status.toLowerCase().includes(q)
       );
     });
   }, [purchaseOrders, query, startDate, endDate]);
 
-  const handleOpenDeleteConfirm = (po: PurchaseOrder) => {
-    setPoToDelete(po);
-  };
-
-  const handleConfirmDelete = () => {
-    if (poToDelete) {
-      deletePurchaseOrder(poToDelete.id);
-      show({
-        title: "PO Deleted",
-        message: `Purchase Order "${poToDelete.poNumber}" has been deleted.`,
-        type: "success",
-      });
-    }
-    setPoToDelete(null);
-  };
-
   const TABLE_HEADERS = [
-    "PO Number",
-    "Vendor",
-    "Status",
-    "Date Created",
-    "Employee",
-    "Total Items",
-    "Total Cost",
-    "",
+    { label: "PO Number", width: "14%" },
+    { label: "Vendor", width: "18%" },
+    { label: "Status", width: "16%" },
+    { label: "Date", width: "14%" },
+    { label: "Employee", width: "16%" },
+    { label: "Qty", width: "9%" },
+    { label: "Total", width: "10%" },
+    { label: "", flex: 1 },
   ];
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1"
-    >
-      {/* Changed: Replaced ScrollView with View flex-1 */}
-      <View className="flex-1 flex-col p-2">
-        {/* Header with Tab Bar (Static) */}
-        <View className="mb-3">
-          <View className="flex-row justify-between items-center mb-3">
-            <Text className="text-2xl font-bold text-white">
-              {activeTab === "purchase-orders"
-                ? "Purchase Orders"
-                : "External Expenses"}
-            </Text>
-            {activeTab === "purchase-orders" ? (
-              <TouchableOpacity
-                onPress={() => router.push("/inventory/purchase-orders/create")}
-                className="py-3 px-4 bg-blue-600 rounded-lg flex-row items-center"
-              >
-                <Plus color="white" size={20} className="mr-1.5" />
-                <Text className="text-xl font-bold text-white">Create PO</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                onPress={() =>
-                  router.push("/inventory/purchase-orders/create-expense")
-                }
-                className="py-3 px-4 bg-blue-600 rounded-lg flex-row items-center"
-              >
-                <Plus color="white" size={20} className="mr-1.5" />
-                <Text className="text-xl font-bold text-white">
-                  Add Expense
-                </Text>
-              </TouchableOpacity>
-            )}
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+
+        {/* Tab bar + actions */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingHorizontal: 2,
+            paddingBottom: 8,
+          }}
+        >
+          <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            {(["purchase-orders", "expenses"] as const).map((tab) => {
+              const isActive = activeTab === tab;
+              const label = tab === "purchase-orders" ? "Purchase Orders" : "External Expenses";
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setActiveTab(tab)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                    borderBottomWidth: 2,
+                    borderBottomColor: isActive ? colors.teal : "transparent",
+                    marginBottom: -1,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.label }}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          <View className="flex-row bg-panel border border-border rounded-lg p-1">
+          {activeTab === "purchase-orders" ? (
             <TouchableOpacity
-              onPress={() => setActiveTab("purchase-orders")}
-              className={`flex-1 py-2 rounded-lg items-center ${
-                activeTab === "purchase-orders"
-                  ? "bg-blue-600"
-                  : "bg-transparent"
-              }`}
+              onPress={() => router.push("/inventory/purchase-orders/create")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+                paddingHorizontal: 10,
+                paddingVertical: 7,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+                borderRadius: 8,
+              }}
             >
-              <Text
-                className={`text-base font-semibold ${
-                  activeTab === "purchase-orders"
-                    ? "text-white"
-                    : "text-gray-400"
-                }`}
-              >
-                Purchase Orders
-              </Text>
+              <Plus size={13} color={colors.teal} />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Create PO</Text>
             </TouchableOpacity>
+          ) : (
             <TouchableOpacity
-              onPress={() => setActiveTab("expenses")}
-              className={`flex-1 py-2 rounded-lg items-center ${
-                activeTab === "expenses" ? "bg-blue-600" : "bg-transparent"
-              }`}
+              onPress={() => router.push("/inventory/purchase-orders/create-expense")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+                paddingHorizontal: 10,
+                paddingVertical: 7,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+                borderRadius: 8,
+              }}
             >
-              <Text
-                className={`text-base font-semibold ${
-                  activeTab === "expenses" ? "text-white" : "text-gray-400"
-                }`}
-              >
-                External Expenses
-              </Text>
+              <Plus size={13} color={colors.teal} />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Add Expense</Text>
             </TouchableOpacity>
-          </View>
+          )}
         </View>
 
-        {/* Purchase Orders Tab Content */}
+        {/* Purchase Orders Tab */}
         {activeTab === "purchase-orders" && (
-          <View className="flex-1 bg-panel border border-border rounded-xl overflow-hidden">
-            <View className="p-3 border-b border-border">
-              <View className="gap-2 flex-row w-full justify-between">
-                <View className="flex-1">
-                  <Text className="text-gray-300 mb-1 text-sm">Search</Text>
+          <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: "hidden" }}>
+            {/* Filters */}
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                backgroundColor: colors.screen,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>Search</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, height: 38, gap: 8 }}>
+                  <Search size={13} color={colors.muted} />
                   <TextInput
                     value={query}
                     onChangeText={setQuery}
-                    placeholder="e.g., PO-2025, Alice..."
-                    placeholderTextColor={colors.label}
-                    className="bg-screen h-14 border border-border rounded-lg px-2 py-2 text-white text-sm"
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-gray-300 mb-1 text-sm">Date Range</Text>
-                  <DateRangePicker
-                    startDate={startDate}
-                    endDate={endDate}
-                    onDateRangeChange={(start, end) => {
-                      setStartDate(start);
-                      setEndDate(end);
-                    }}
-                    className="w-full h-14"
-                    placeholder="Select date range"
+                    placeholder="PO number, vendor, employee..."
+                    placeholderTextColor={colors.muted}
+                    style={{ flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 0 }}
                   />
                 </View>
               </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>Date Range</Text>
+                <DateRangePicker
+                  startDate={startDate}
+                  endDate={endDate}
+                  onDateRangeChange={(s, e) => { setStartDate(s); setEndDate(e); }}
+                  placeholder="Select date range"
+                />
+              </View>
             </View>
-            <View className="flex-row p-4 bg-gray-800/50 rounded-t-xl border-b border-border">
-              {TABLE_HEADERS.map((header) => (
+
+            {/* Table headers */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                backgroundColor: colors.screen,
+              }}
+            >
+              {TABLE_HEADERS.map((h, i) => (
                 <Text
-                  key={header}
-                  className={`font-bold text-lg text-gray-400 ${
-                    header === "PO Number"
-                      ? "w-[15%]"
-                      : header === "Vendor"
-                        ? "w-[20%]"
-                        : header === "Status"
-                          ? "w-[15%]"
-                          : header === "Date Created"
-                            ? "w-[15%]"
-                            : header === "Total Items"
-                              ? "w-[11%]"
-                              : header === "Total Cost"
-                                ? "w-[15%]"
-                                : "w-[13%]"
-                  }`}
+                  key={i}
+                  style={[
+                    { fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 },
+                    h.width ? { width: h.width } : { flex: 1 },
+                  ]}
                 >
-                  {header}
+                  {h.label}
                 </Text>
               ))}
             </View>
-            {/* FlatList is now the direct child of the container, scrolling independently */}
+
             <FlatList
               data={filtered}
               keyExtractor={(item) => item.id}
@@ -322,113 +298,103 @@ const PurchaseOrdersScreen = () => {
               renderItem={({ item }) => (
                 <PurchaseOrderRow
                   item={item}
-                  onEdit={() =>
-                    router.push(`/inventory/purchase-orders/edit/${item.id}`)
-                  }
-                  onDelete={() => handleOpenDeleteConfirm(item)}
+                  onDelete={() => setPoToDelete(item)}
                 />
               )}
               ListEmptyComponent={
-                <View className="p-6 items-center">
-                  <Text className="text-lg text-gray-400">
-                    No purchase orders found.
-                  </Text>
+                <View style={{ alignItems: "center", paddingVertical: 48, gap: 8 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+                    <Package size={20} color={colors.teal} />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.heading }}>No purchase orders</Text>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>Create your first PO to get started</Text>
                 </View>
               }
             />
           </View>
         )}
 
-        {/* External Expenses Tab Content */}
+        {/* Expenses Tab */}
         {activeTab === "expenses" && (
-          <View className="flex-1 bg-panel border border-border rounded-xl overflow-hidden">
-            {externalExpenses.length > 0 ? (
-              <View className="flex-1 p-4">
-                <FlatList
-                  data={externalExpenses}
-                  keyExtractor={(item) => item.id}
-                  contentContainerStyle={{ paddingBottom: 20 }}
-                  renderItem={({ item }) => (
-                    <View className="bg-screen border border-border rounded-lg p-3 mb-2">
-                      <View className="flex-row justify-between items-start mb-2">
-                        <View className="flex-1">
-                          <Text className="text-white font-semibold text-base">
-                            {item.expenseNumber} - Items ({item.items.length})
-                          </Text>
-                          <Text className="text-gray-400 text-base">
-                            By {item.purchasedByEmployeeName}
-                          </Text>
-                          <Text className="text-gray-400 text-sm">
-                            {new Date(item.purchasedAt).toLocaleString()}
-                          </Text>
-                        </View>
-                        <View className="items-end">
-                          <Text className="text-green-400 font-bold text-base">
-                            ${item.totalAmount.toFixed(2)}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() => handleRemoveExternalExpense(item.id)}
-                            className="mt-1.5 p-1"
-                          >
-                            <Trash2 color={colors.danger} size={14} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      <View className="mb-2">
-                        {item.items.map((lineItem, index) => (
-                          <View
-                            key={index}
-                            className="flex-row justify-between items-center py-1 border-b border-border last:border-b-0"
-                          >
-                            <View className="flex-1">
-                              <Text className="text-white text-base">
-                                {lineItem.itemName} x{lineItem.quantity}
-                              </Text>
-                              <Text className="text-gray-400 text-sm">
-                                ${lineItem.unitPrice.toFixed(2)} each
-                              </Text>
-                            </View>
-                            <Text className="text-green-400 font-semibold text-base">
-                              ${lineItem.totalAmount.toFixed(2)}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                      {item.notes && (
-                        <Text className="text-gray-300 text-xs">
-                          Notes: {item.notes}
-                        </Text>
-                      )}
-                    </View>
-                  )}
-                  ListEmptyComponent={
-                    <View className="p-6 items-center">
-                      <Text className="text-lg text-gray-400">
-                        No external expenses recorded.
+          <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: "hidden" }}>
+            <FlatList
+              data={externalExpenses}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ padding: 12, paddingBottom: 20 }}
+              renderItem={({ item }) => (
+                <View
+                  style={{
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 10,
+                    padding: 12,
+                    marginBottom: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                        {item.expenseNumber} · {item.items.length} items
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                        By {item.purchasedByEmployeeName}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                        {new Date(item.purchasedAt).toLocaleString()}
                       </Text>
                     </View>
-                  }
-                />
-              </View>
-            ) : (
-              <View className="p-6 items-center">
-                <Text className="text-gray-400 text-base">
-                  No external expenses recorded
-                </Text>
-                <Text className="text-gray-500 text-xs mt-1">
-                  Add expenses for items from other sources
-                </Text>
-              </View>
-            )}
+                    <View style={{ alignItems: "flex-end", gap: 6 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: colors.success }}>
+                        ${item.totalAmount.toFixed(2)}
+                      </Text>
+                      <TouchableOpacity onPress={() => handleRemoveExpense(item.id)} style={{ padding: 4 }}>
+                        <Trash2 size={14} color={colors.danger} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  {item.items.map((li, index) => (
+                    <View
+                      key={index}
+                      style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5, borderTopWidth: 1, borderTopColor: colors.border }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 12, color: colors.heading }}>{li.itemName} ×{li.quantity}</Text>
+                        <Text style={{ fontSize: 11, color: colors.muted }}>${li.unitPrice.toFixed(2)} each</Text>
+                      </View>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.success }}>${li.totalAmount.toFixed(2)}</Text>
+                    </View>
+                  ))}
+                  {item.notes && (
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 6 }}>Notes: {item.notes}</Text>
+                  )}
+                </View>
+              )}
+              ListEmptyComponent={
+                <View style={{ alignItems: "center", paddingVertical: 48, gap: 8 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+                    <Receipt size={20} color={colors.teal} />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.heading }}>No expenses recorded</Text>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>Add expenses for items from other sources</Text>
+                </View>
+              }
+            />
           </View>
         )}
 
         <ConfirmationModal
           isOpen={!!poToDelete}
           onClose={() => setPoToDelete(null)}
-          onConfirm={handleConfirmDelete}
+          onConfirm={() => {
+            if (poToDelete) {
+              deletePurchaseOrder(poToDelete.id);
+              show({ title: "PO Deleted", message: `"${poToDelete.poNumber}" deleted.`, type: "success" });
+            }
+            setPoToDelete(null);
+          }}
           title="Delete PO"
-          description={`Delete "${poToDelete?.poNumber}"?`}
+          description={`Delete "${poToDelete?.poNumber}"? This cannot be undone.`}
           confirmText="Delete"
           variant="destructive"
         />

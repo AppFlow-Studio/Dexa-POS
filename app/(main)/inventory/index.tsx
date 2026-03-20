@@ -24,6 +24,8 @@ import { Link, useRouter } from "expo-router";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronRight,
   Edit,
   Globe,
   MoreHorizontal,
@@ -43,6 +45,26 @@ import {
   View,
 } from "react-native";
 
+const inputStyle = {
+  backgroundColor: colors.screen,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 8,
+  color: colors.heading,
+  fontSize: 14,
+  height: 40,
+  paddingHorizontal: 12,
+};
+
+const fieldLabel = {
+  fontSize: 11,
+  fontWeight: "600" as const,
+  color: colors.muted,
+  textTransform: "uppercase" as const,
+  letterSpacing: 0.5,
+  marginBottom: 6,
+};
+
 const InventoryCatalogRow: React.FC<{
   item: InventoryItem;
   onEdit: () => void;
@@ -54,62 +76,74 @@ const InventoryCatalogRow: React.FC<{
 
   return (
     <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
-      <TouchableOpacity className="flex-row items-center px-4 py-4 border-b border-border">
+      <TouchableOpacity
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
         {/* Name: 25% */}
-        <View className="w-[25%] flex-row items-center gap-1">
-          <Text className="text-xl font-semibold text-white" numberOfLines={1}>
+        <View style={{ width: "25%", flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Text
+            numberOfLines={1}
+            style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}
+          >
             {item.name}
           </Text>
-          {item.isGlobal && (
-            <Globe color={colors.info} size={16} /> // Blue globe for global items
-          )}
+          {item.isGlobal && <Globe color={colors.info} size={14} />}
         </View>
 
-        {/* Stock: 15% (Centered) */}
-        <View className="w-[15%] items-center justify-center">
-          <Text
-            className={`text-xl font-semibold ${
-              isLowStock ? "text-red-400" : "text-white"
-            }`}
-          >
+        {/* Stock: 15% */}
+        <View style={{ width: "15%", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: isLowStock ? colors.danger : colors.heading }}>
             {item?.stockQuantity?.toFixed(0)} {item.unit}
           </Text>
         </View>
 
-        {/* Reorder: 15% (Centered) */}
-        <View className="w-[15%] items-center justify-center">
-          <Text className="text-xl text-gray-300">
+        {/* Reorder: 15% */}
+        <View style={{ width: "15%", alignItems: "center" }}>
+          <Text style={{ fontSize: 13, color: colors.label }}>
             {item.reorderThreshold} {item.unit}
           </Text>
         </View>
 
         {/* Cost: 15% */}
-        <Text className="w-[15%] text-xl text-gray-300">
+        <Text style={{ fontSize: 13, color: colors.label, width: "15%" }}>
           ${item.cost.toFixed(2)}
         </Text>
 
         {/* Vendor: 20% */}
-        <Text className="w-[20%] text-xl text-gray-300" numberOfLines={1}>
+        <Text numberOfLines={1} style={{ fontSize: 13, color: colors.label, width: "20%" }}>
           {vendor?.name || "Unknown"}
         </Text>
 
-        {/* Actions: 10% (Right Aligned) */}
-        <View className="w-[10%] items-end">
+        {/* Actions: 10% */}
+        <View style={{ width: "10%", alignItems: "flex-end" }}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              {/* Increased touch area */}
-              <TouchableOpacity className="p-3">
-                <MoreHorizontal size={24} color={colors.label} />
+              <TouchableOpacity style={{ padding: 6 }}>
+                <MoreHorizontal size={16} color={colors.muted} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-48 bg-panel border-border">
+            <DropdownMenuContent
+              className="w-44"
+              style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+            >
               <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-5 w-5" color={colors.label} />
-                <Text className="text-lg text-white">Edit Item</Text>
+                <Edit size={14} color={colors.label} />
+                <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
+                  Edit Item
+                </Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-5 w-5" color={colors.danger} />
-                <Text className="text-lg text-red-400">Delete Item</Text>
+                <Trash2 size={14} color={colors.danger} />
+                <Text style={{ fontSize: 13, color: colors.danger, marginLeft: 8 }}>
+                  Delete Item
+                </Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -138,28 +172,19 @@ const InventoryScreen = () => {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  // Menu item actions state
-  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItemType | null>(
-    null
-  );
+  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItemType | null>(null);
   const [isStockModalOpen, setStockModalOpen] = useState(false);
   const [stockQuantity, setStockQuantity] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
-  // Bulk selection/actions for menu items
   const [selectedMenuIds, setSelectedMenuIds] = useState<string[]>([]);
   const [isBulkStockModalOpen, setBulkStockModalOpen] = useState(false);
   const [bulkStockQuantity, setBulkStockQuantity] = useState("");
   const [bulkReorderThreshold, setBulkReorderThreshold] = useState("");
-  // Inventory bottom sheet multi-select & bulk
-  const [selectedInventoryIds, setSelectedInventoryIds] = useState<string[]>(
-    []
-  );
-  const [isBulkInventoryStockModalOpen, setBulkInventoryStockModalOpen] =
-    useState(false);
-  const [bulkInventoryStockQuantity, setBulkInventoryStockQuantity] =
-    useState("");
-  const [bulkInventoryReorderThreshold, setBulkInventoryReorderThreshold] =
-    useState("");
+  const [selectedInventoryIds, setSelectedInventoryIds] = useState<string[]>([]);
+  const [isBulkInventoryStockModalOpen, setBulkInventoryStockModalOpen] = useState(false);
+  const [bulkInventoryStockQuantity, setBulkInventoryStockQuantity] = useState("");
+  const [bulkInventoryReorderThreshold, setBulkInventoryReorderThreshold] = useState("");
+  const [alertExpanded, setAlertExpanded] = useState(false);
 
   const handleOpenAddModal = () => {
     setSelectedItem(null);
@@ -178,10 +203,7 @@ const InventoryScreen = () => {
 
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
 
-  const handleSaveItem = async (
-    data: Omit<InventoryItem, "id">,
-    id?: string
-  ) => {
+  const handleSaveItem = async (data: Omit<InventoryItem, "id">, id?: string) => {
     if (!selectedStore?.id) {
       alert("No store selected");
       return;
@@ -211,7 +233,6 @@ const InventoryScreen = () => {
     setSelectedItem(null);
   };
 
-  // Menu item action handlers
   const handleToggleAvailability = (item: MenuItemType) => {
     toggleItemAvailability(item.id);
   };
@@ -225,15 +246,9 @@ const InventoryScreen = () => {
 
   const handleSaveStock = () => {
     if (!selectedMenuItem) return;
-
     const stockQty = stockQuantity ? parseInt(stockQuantity) : undefined;
     const threshold = reorderThreshold ? parseInt(reorderThreshold) : undefined;
-
-    updateMenuItem(selectedMenuItem.id, {
-      stockQuantity: stockQty,
-      reorderThreshold: threshold,
-    });
-
+    updateMenuItem(selectedMenuItem.id, { stockQuantity: stockQty, reorderThreshold: threshold });
     setStockModalOpen(false);
     setSelectedMenuItem(null);
     setStockQuantity("");
@@ -246,7 +261,7 @@ const InventoryScreen = () => {
     setStockQuantity("");
     setReorderThreshold("");
   };
-  // Bulk selection helpers
+
   const isAllSelected =
     selectedMenuIds.length > 0 && selectedMenuIds.length === menuItems.length;
   const toggleSelectMenuItem = (id: string) => {
@@ -262,7 +277,7 @@ const InventoryScreen = () => {
     }
   };
   const clearSelection = () => setSelectedMenuIds([]);
-  // Bulk actions
+
   const handleBulkSetAvailability = (available: boolean) => {
     if (selectedMenuIds.length === 0) return;
     selectedMenuIds.forEach((id) => {
@@ -277,17 +292,10 @@ const InventoryScreen = () => {
   };
   const handleSaveBulkStock = () => {
     if (selectedMenuIds.length === 0) return;
-    const stockQty = bulkStockQuantity
-      ? parseInt(bulkStockQuantity)
-      : undefined;
-    const threshold = bulkReorderThreshold
-      ? parseInt(bulkReorderThreshold)
-      : undefined;
+    const stockQty = bulkStockQuantity ? parseInt(bulkStockQuantity) : undefined;
+    const threshold = bulkReorderThreshold ? parseInt(bulkReorderThreshold) : undefined;
     selectedMenuIds.forEach((id) => {
-      updateMenuItem(id, {
-        stockQuantity: stockQty,
-        reorderThreshold: threshold,
-      });
+      updateMenuItem(id, { stockQuantity: stockQty, reorderThreshold: threshold });
     });
     setBulkStockModalOpen(false);
     setBulkStockQuantity("");
@@ -300,25 +308,9 @@ const InventoryScreen = () => {
     setBulkReorderThreshold("");
   };
 
-  const TABLE_HEADERS_INVENTORY = [
-    "Name",
-    "In Stock",
-    "Reorder Point",
-    "Cost",
-    "Vendor",
-    "",
-  ];
-  const TABLE_HEADERS_MENU = [
-    "Select",
-    "Name",
-    "Price",
-    "Stock",
-    "Reorder Point",
-    "Availability",
-    "",
-  ];
+  const TABLE_HEADERS_INVENTORY = ["Name", "In Stock", "Reorder Point", "Cost", "Vendor", ""];
+  const TABLE_HEADERS_MENU = ["Select", "Name", "Price", "Stock", "Reorder Point", "Availability", ""];
 
-  // Bottom sheet refs and search state
   const menuSearchSheetRef = React.useRef<BottomSheetModal>(null);
   const invSearchSheetRef = React.useRef<BottomSheetModal>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -350,7 +342,6 @@ const InventoryScreen = () => {
     );
   }, [searchQuery, inventoryItems]);
 
-  // Inventory selection helpers (for the bottom sheet)
   const isAllInventorySelected =
     selectedInventoryIds.length > 0 &&
     selectedInventoryIds.length === filteredInventory.length;
@@ -359,11 +350,9 @@ const InventoryScreen = () => {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
-
   const handleToggleAllInventory = (ids: string[]) => {
     setSelectedInventoryIds(ids);
   };
-
   const toggleSelectAllInventory = () => {
     if (isAllInventorySelected) {
       setSelectedInventoryIds([]);
@@ -379,9 +368,7 @@ const InventoryScreen = () => {
   };
   const handleSaveBulkInventoryStock = () => {
     if (selectedInventoryIds.length === 0) return;
-    const stockQty = bulkInventoryStockQuantity
-      ? parseInt(bulkInventoryStockQuantity)
-      : undefined;
+    const stockQty = bulkInventoryStockQuantity ? parseInt(bulkInventoryStockQuantity) : undefined;
     const threshold = bulkInventoryReorderThreshold
       ? parseInt(bulkInventoryReorderThreshold)
       : undefined;
@@ -392,7 +379,6 @@ const InventoryScreen = () => {
         {
           stockQuantity: stockQty ?? (undefined as any),
           reorderThreshold: threshold ?? (undefined as any),
-          // keep other fields unchanged via partial update
         } as any,
         selectedStore.id
       );
@@ -407,194 +393,270 @@ const InventoryScreen = () => {
     setBulkInventoryStockQuantity("");
     setBulkInventoryReorderThreshold("");
   };
+
   const renderBackdrop = useMemo(
-    () => (props: any) =>
-      (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+    () => (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
+
   return (
     <BottomSheetModalProvider>
-      <View className="flex-1">
+      <View style={{ flex: 1 }}>
+        {/* Low Stock Alert Banner */}
         {lowStockItems.length > 0 && (
-          <View className="mb-4 p-4 bg-red-900/30 border border-red-500 rounded-xl">
-            <View className="flex-row items-center mb-2">
-              <AlertTriangle color={colors.danger} size={20} />
-              <Text className="text-2xl font-bold text-red-400 ml-1.5">
+          <View
+            style={{
+              marginBottom: 12,
+              backgroundColor: colors.danger + "15",
+              borderWidth: 1,
+              borderColor: colors.danger + "30",
+              borderRadius: 10,
+              overflow: "hidden",
+            }}
+          >
+            {/* Collapsed header — always visible */}
+            <TouchableOpacity
+              onPress={() => setAlertExpanded((v) => !v)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 12,
+                paddingVertical: 9,
+                gap: 8,
+              }}
+              activeOpacity={0.7}
+            >
+              <AlertTriangle color={colors.danger} size={14} />
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.danger, flex: 1 }}>
                 Low Stock Alerts
               </Text>
-            </View>
-            <View className="gap-y-1.5">
-              {lowStockItems.map((item) => (
-                <View
-                  key={item.id}
-                  className="flex-row justify-between p-2 bg-red-800/20 rounded-md"
-                >
-                  <Text className="text-xl text-white font-medium">
-                    {item.name}
-                  </Text>
-                  <Text className="text-lg text-red-300">
-                    Stock: {item.stockQuantity} (Threshold:{" "}
-                    {item.reorderThreshold})
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity
-              onPress={() => router.push("/inventory/purchase-orders/create")}
-              className="mt-3 py-2 px-4 bg-blue-600 self-start rounded-lg"
-            >
-              <Text className="text-xl text-white font-semibold">
-                Create PO
-              </Text>
+              {/* Count badge */}
+              <View
+                style={{
+                  backgroundColor: colors.danger + "30",
+                  borderRadius: 20,
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  marginRight: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.danger }}>
+                  {lowStockItems.length}
+                </Text>
+              </View>
+              {alertExpanded ? (
+                <ChevronDown size={14} color={colors.danger} />
+              ) : (
+                <ChevronRight size={14} color={colors.danger} />
+              )}
             </TouchableOpacity>
+
+            {/* Expanded content */}
+            {alertExpanded && (
+              <View
+                style={{
+                  paddingHorizontal: 10,
+                  paddingBottom: 10,
+                  gap: 4,
+                }}
+              >
+                {lowStockItems.map((item) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      backgroundColor: colors.danger + "10",
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "500" }}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.danger }}>
+                      Stock: {item.stockQuantity} · Threshold: {item.reorderThreshold}
+                    </Text>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  onPress={() => router.push("/inventory/purchase-orders/create")}
+                  style={{
+                    marginTop: 4,
+                    paddingVertical: 6,
+                    paddingHorizontal: 12,
+                    backgroundColor: colors.teal + "20",
+                    borderWidth: 1,
+                    borderColor: colors.teal + "50",
+                    borderRadius: 8,
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+                    Create PO
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
 
-        <View className="mb-3 flex-row gap-2">
-          <TouchableOpacity
-            onPress={() => setActiveTab("menu")}
-            className={`px-3 py-1.5 rounded-lg border ${
-              activeTab === "menu"
-                ? "bg-blue-600 border-blue-500"
-                : "bg-panel border-border"
-            }`}
-          >
-            <Text
-              className={`text-lg font-semibold ${
-                activeTab === "menu" ? "text-white" : "text-gray-300"
-              }`}
-            >
-              Menu Items
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab("inventory")}
-            className={`px-3 py-1.5 rounded-lg border ${
-              activeTab === "inventory"
-                ? "bg-blue-600 border-blue-500"
-                : "bg-panel border-border"
-            }`}
-          >
-            <Text
-              className={`text-lg font-semibold ${
-                activeTab === "inventory" ? "text-white" : "text-gray-300"
-              }`}
-            >
-              Inventory Items
-            </Text>
-          </TouchableOpacity>
+        {/* Tab Switcher */}
+        <View style={{ flexDirection: "row", gap: 0, marginBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          {(["menu", "inventory"] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            const label = tab === "menu" ? "Menu Items" : "Inventory Items";
+            return (
+              <TouchableOpacity
+                key={tab}
+                onPress={() => setActiveTab(tab)}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 9,
+                  borderBottomWidth: 2,
+                  borderBottomColor: isActive ? colors.teal : "transparent",
+                  marginBottom: -1,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.label }}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        <View className="flex-1 bg-panel border border-border rounded-xl">
-          {/* --- Header Section --- */}
-          <View className="flex-row py-3 px-4 bg-gray-800/50 rounded-t-xl border-b items-center border-border">
-            {(activeTab === "inventory"
-              ? TABLE_HEADERS_INVENTORY
-              : TABLE_HEADERS_MENU
-            ).map((header) => {
-              // Helper logic to determine width and alignment based on tab and header name
-              let widthClass = "";
-              let alignClass = "text-left"; // Default alignment
+        {/* Table */}
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+          }}
+        >
+          {/* Table Header */}
+          <View
+            style={{
+              flexDirection: "row",
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              backgroundColor: colors.screen,
+              borderTopLeftRadius: 12,
+              borderTopRightRadius: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              alignItems: "center",
+            }}
+          >
+            {(activeTab === "inventory" ? TABLE_HEADERS_INVENTORY : TABLE_HEADERS_MENU).map(
+              (header) => {
+                let widthStyle: any = {};
 
-              if (activeTab === "inventory") {
-                switch (header) {
-                  case "Name":
-                    widthClass = "w-[25%]";
-                    break;
-                  case "In Stock":
-                    widthClass = "w-[15%]";
-                    alignClass = "text-center";
-                    break;
-                  case "Reorder Point":
-                    widthClass = "w-[15%]";
-                    alignClass = "text-center";
-                    break;
-                  case "Cost":
-                    widthClass = "w-[15%]";
-                    break;
-                  case "Vendor":
-                    widthClass = "w-[20%]";
-                    break;
-                  default:
-                    widthClass = "w-[10%]"; // Empty column for actions
+                if (activeTab === "inventory") {
+                  switch (header) {
+                    case "Name": widthStyle = { width: "25%" }; break;
+                    case "In Stock": widthStyle = { width: "15%", textAlign: "center" }; break;
+                    case "Reorder Point": widthStyle = { width: "15%", textAlign: "center" }; break;
+                    case "Cost": widthStyle = { width: "15%" }; break;
+                    case "Vendor": widthStyle = { width: "20%" }; break;
+                    default: widthStyle = { width: "10%" };
+                  }
+                } else {
+                  switch (header) {
+                    case "Select": widthStyle = { width: "6%" }; break;
+                    case "Name": widthStyle = { width: "24%" }; break;
+                    case "Price": widthStyle = { width: "15%" }; break;
+                    case "Stock": widthStyle = { width: "15%", textAlign: "center" }; break;
+                    case "Reorder Point": widthStyle = { width: "15%", textAlign: "center" }; break;
+                    case "Availability": widthStyle = { width: "15%", textAlign: "center" }; break;
+                    default: widthStyle = { width: "10%" };
+                  }
                 }
-              } else {
-                // Menu Tab
-                switch (header) {
-                  case "Select":
-                    widthClass = "w-[6%]";
-                    break;
-                  case "Name":
-                    widthClass = "w-[24%]";
-                    break;
-                  case "Price":
-                    widthClass = "w-[15%]";
-                    break;
-                  case "Stock":
-                    widthClass = "w-[15%]";
-                    alignClass = "text-center";
-                    break;
-                  case "Reorder Point":
-                    widthClass = "w-[15%]";
-                    alignClass = "text-center";
-                    break;
-                  case "Availability":
-                    widthClass = "w-[15%]";
-                    alignClass = "text-center";
-                    break;
-                  default:
-                    widthClass = "w-[10%]"; // Empty column for actions
+
+                if (header === "Select") {
+                  return (
+                    <View key="select" style={{ width: "6%" }}>
+                      <TouchableOpacity
+                        onPress={toggleSelectAllMenu}
+                        style={{
+                          height: 16,
+                          width: 16,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderWidth: 1,
+                          borderRadius: 3,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        {isAllSelected && <Check color={colors.teal} size={10} />}
+                      </TouchableOpacity>
+                    </View>
+                  );
                 }
-              }
 
-              return (
-                <Text
-                  key={header}
-                  className={`font-bold text-lg text-gray-400 ${widthClass} ${alignClass}`}
-                >
-                  {header === "Select" ? (
-                    <TouchableOpacity
-                      onPress={toggleSelectAllMenu}
-                      className="h-5 w-5 items-center justify-center border border-border rounded"
-                    >
-                      <>{isAllSelected && <Check color="#fff" size={12} />}</>
-                    </TouchableOpacity>
-                  ) : (
-                    header
-                  )}
-                </Text>
-              );
-            })}
-
-            {/* Header Actions (Search/Add) */}
-            <View className="flex-row items-center flex-1 justify-end gap-x-4 absolute right-4 top-2 bottom-2">
-              <View className="flex-row items-center justify-end gap-x-4 ml-auto">
-                <TouchableOpacity
-                  onPress={openSearchSheet}
-                  className="flex-row items-center bg-panel border border-border rounded-lg p-2"
-                >
-                  <Search color={colors.label} size={18} />
-                </TouchableOpacity>
-                {activeTab === "inventory" && (
-                  <TouchableOpacity
-                    onPress={() => addItemSheetRef.current?.expand()}
-                    className="py-2 px-4 bg-blue-600 rounded-lg flex-row items-center justify-center"
+                return (
+                  <Text
+                    key={header}
+                    style={[
+                      {
+                        fontSize: 11,
+                        fontWeight: "600",
+                        color: colors.muted,
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                      },
+                      widthStyle,
+                    ]}
                   >
-                    <Plus color="white" size={18} className="mr-1.5" />
-                  </TouchableOpacity>
-                )}
-              </View>
+                    {header}
+                  </Text>
+                );
+              }
+            )}
+
+            {/* Header Actions */}
+            <View style={{ position: "absolute", right: 12, top: 0, bottom: 0, flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TouchableOpacity
+                onPress={openSearchSheet}
+                style={{
+                  backgroundColor: colors.teal + "15",
+                  borderRadius: 8,
+                  padding: 7,
+                }}
+              >
+                <Search color={colors.teal} size={16} />
+              </TouchableOpacity>
+              {activeTab === "inventory" && (
+                <TouchableOpacity
+                  onPress={() => addItemSheetRef.current?.expand()}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                    backgroundColor: colors.teal + "20",
+                    borderWidth: 1,
+                    borderColor: colors.teal + "50",
+                    borderRadius: 8,
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  <Plus color={colors.teal} size={16} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
-          {/* --- Lists --- */}
+          {/* Lists */}
           {activeTab === "inventory" ? (
             <FlatList
               data={inventoryItems}
@@ -611,13 +673,11 @@ const InventoryScreen = () => {
             <FlatList
               data={menuItems}
               keyExtractor={(item) => item.id}
-              // Optional: Optimize window size for faster scrolling
               initialNumToRender={10}
               windowSize={5}
               renderItem={({ item }) => (
                 <MenuCatalogRow
                   item={item}
-                  // Check parent state for initial value
                   initialIsSelected={selectedMenuIds.includes(item.id)}
                   onToggle={toggleSelectMenuItem}
                   onToggleAvailability={handleToggleAvailability}
@@ -628,41 +688,83 @@ const InventoryScreen = () => {
           )}
         </View>
 
+        {/* Bulk Action Bar */}
         {activeTab === "menu" && selectedMenuIds.length > 0 && (
-          <View className="mt-2 p-3 bg-panel border border-border rounded-xl flex-row items-center justify-between">
-            <Text className="text-white text-base">
+          <View
+            style={{
+              marginTop: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text style={{ fontSize: 12, color: colors.label }}>
               Selected: {selectedMenuIds.length}
             </Text>
-            <View className="flex-row gap-2">
+            <View style={{ flexDirection: "row", gap: 6 }}>
               <TouchableOpacity
                 onPress={() => handleBulkSetAvailability(true)}
-                className="px-3 py-2 bg-green-600 rounded-lg"
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: colors.success + "20",
+                  borderWidth: 1,
+                  borderColor: colors.success + "30",
+                  borderRadius: 8,
+                }}
               >
-                <Text className="text-white text-base font-semibold">
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.success }}>
                   Set On
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleBulkSetAvailability(false)}
-                className="px-3 py-2 bg-yellow-600 rounded-lg"
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: colors.warning + "20",
+                  borderWidth: 1,
+                  borderColor: colors.warning + "30",
+                  borderRadius: 8,
+                }}
               >
-                <Text className="text-white text-base font-semibold">
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.warning }}>
                   Set Off
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleOpenBulkStockModal}
-                className="px-3 py-2 bg-blue-600 rounded-lg"
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
+                  borderRadius: 8,
+                }}
               >
-                <Text className="text-white text-base font-semibold">
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
                   Update Stock
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={clearSelection}
-                className="px-3 py-2 bg-gray-600 rounded-lg"
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  backgroundColor: "transparent",
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                }}
               >
-                <Text className="text-white text-base font-semibold">
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
                   Clear
                 </Text>
               </TouchableOpacity>
@@ -687,6 +789,7 @@ const InventoryScreen = () => {
           variant="destructive"
         />
 
+        {/* Stock Update Modal */}
         <Modal
           visible={isStockModalOpen}
           transparent
@@ -695,51 +798,81 @@ const InventoryScreen = () => {
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1"
+            style={{ flex: 1 }}
           >
-            <View className="flex-1 bg-black/50 justify-center items-center px-4">
-              <View className="bg-panel rounded-xl p-4 w-full max-w-sm">
-                <Text className="text-xl font-bold text-white mb-3">
-                  Update Stock - {selectedMenuItem?.name}
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: "rgba(0,0,0,0.6)",
+                justifyContent: "center",
+                alignItems: "center",
+                paddingHorizontal: 16,
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: colors.panel,
+                  borderRadius: 12,
+                  padding: 14,
+                  width: "100%",
+                  maxWidth: 400,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading, marginBottom: 12 }}>
+                  Update Stock — {selectedMenuItem?.name}
                 </Text>
-                <View className="mb-3">
-                  <Text className="text-base text-gray-300 mb-1.5">
-                    Stock Quantity
-                  </Text>
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={fieldLabel}>Stock Quantity</Text>
                   <TextInput
                     value={stockQuantity}
                     onChangeText={setStockQuantity}
                     placeholder="Enter quantity"
+                    placeholderTextColor={colors.muted}
                     keyboardType="numeric"
-                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
+                    style={inputStyle}
                   />
                 </View>
-                <View className="mb-4">
-                  <Text className="text-base text-gray-300 mb-1.5">
-                    Reorder Threshold
-                  </Text>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={fieldLabel}>Reorder Threshold</Text>
                   <TextInput
                     value={reorderThreshold}
                     onChangeText={setReorderThreshold}
                     placeholder="Enter threshold"
+                    placeholderTextColor={colors.muted}
                     keyboardType="numeric"
-                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
+                    style={inputStyle}
                   />
                 </View>
-                <View className="flex-row gap-2">
+                <View style={{ flexDirection: "row", gap: 8 }}>
                   <TouchableOpacity
                     onPress={handleCloseStockModal}
-                    className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      backgroundColor: "transparent",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      alignItems: "center",
+                    }}
                   >
-                    <Text className="text-white text-base font-semibold text-center">
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
                       Cancel
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleSaveStock}
-                    className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
+                      alignItems: "center",
+                    }}
                   >
-                    <Text className="text-white text-base font-semibold text-center">
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
                       Save
                     </Text>
                   </TouchableOpacity>
@@ -749,7 +882,7 @@ const InventoryScreen = () => {
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* --- MODAL 2: BULK INVENTORY STOCK UPDATE --- */}
+        {/* Bulk Inventory Stock Update Modal */}
         <Modal
           visible={isBulkInventoryStockModalOpen}
           transparent
@@ -758,51 +891,81 @@ const InventoryScreen = () => {
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1"
+            style={{ flex: 1 }}
           >
-            <View className="flex-1 bg-black/50 justify-center items-center px-4">
-              <View className="bg-panel rounded-xl p-4 w-full max-w-sm">
-                <Text className="text-xl font-bold text-white mb-3">
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: "rgba(0,0,0,0.6)",
+                justifyContent: "center",
+                alignItems: "center",
+                paddingHorizontal: 16,
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: colors.panel,
+                  borderRadius: 12,
+                  padding: 14,
+                  width: "100%",
+                  maxWidth: 400,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading, marginBottom: 12 }}>
                   Update Stock ({selectedInventoryIds.length} items)
                 </Text>
-                <View className="mb-3">
-                  <Text className="text-base text-gray-300 mb-1.5">
-                    Stock Quantity
-                  </Text>
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={fieldLabel}>Stock Quantity</Text>
                   <TextInput
                     value={bulkInventoryStockQuantity}
                     onChangeText={setBulkInventoryStockQuantity}
                     placeholder="(Optional)"
+                    placeholderTextColor={colors.muted}
                     keyboardType="numeric"
-                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
+                    style={inputStyle}
                   />
                 </View>
-                <View className="mb-4">
-                  <Text className="text-base text-gray-300 mb-1.5">
-                    Reorder Threshold
-                  </Text>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={fieldLabel}>Reorder Threshold</Text>
                   <TextInput
                     value={bulkInventoryReorderThreshold}
                     onChangeText={setBulkInventoryReorderThreshold}
                     placeholder="(Optional)"
+                    placeholderTextColor={colors.muted}
                     keyboardType="numeric"
-                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
+                    style={inputStyle}
                   />
                 </View>
-                <View className="flex-row gap-2">
+                <View style={{ flexDirection: "row", gap: 8 }}>
                   <TouchableOpacity
                     onPress={handleCloseBulkInventoryStockModal}
-                    className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      backgroundColor: "transparent",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      alignItems: "center",
+                    }}
                   >
-                    <Text className="text-white text-base font-semibold text-center">
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
                       Cancel
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleSaveBulkInventoryStock}
-                    className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
+                      alignItems: "center",
+                    }}
                   >
-                    <Text className="text-white text-base font-semibold text-center">
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
                       Save
                     </Text>
                   </TouchableOpacity>
@@ -812,7 +975,7 @@ const InventoryScreen = () => {
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* --- MODAL 3: BULK MENU STOCK UPDATE --- */}
+        {/* Bulk Menu Stock Update Modal */}
         <Modal
           visible={isBulkStockModalOpen}
           transparent
@@ -821,51 +984,81 @@ const InventoryScreen = () => {
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1"
+            style={{ flex: 1 }}
           >
-            <View className="flex-1 bg-black/50 justify-center items-center px-4">
-              <View className="bg-panel rounded-xl p-4 w-full max-w-sm">
-                <Text className="text-xl font-bold text-white mb-3">
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: "rgba(0,0,0,0.6)",
+                justifyContent: "center",
+                alignItems: "center",
+                paddingHorizontal: 16,
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: colors.panel,
+                  borderRadius: 12,
+                  padding: 14,
+                  width: "100%",
+                  maxWidth: 400,
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading, marginBottom: 12 }}>
                   Update Stock ({selectedMenuIds.length} items)
                 </Text>
-                <View className="mb-3">
-                  <Text className="text-base text-gray-300 mb-1.5">
-                    Stock Quantity
-                  </Text>
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={fieldLabel}>Stock Quantity</Text>
                   <TextInput
                     value={bulkStockQuantity}
                     onChangeText={setBulkStockQuantity}
                     placeholder="(Optional)"
+                    placeholderTextColor={colors.muted}
                     keyboardType="numeric"
-                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
+                    style={inputStyle}
                   />
                 </View>
-                <View className="mb-4">
-                  <Text className="text-base text-gray-300 mb-1.5">
-                    Reorder Threshold
-                  </Text>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={fieldLabel}>Reorder Threshold</Text>
                   <TextInput
                     value={bulkReorderThreshold}
                     onChangeText={setBulkReorderThreshold}
                     placeholder="(Optional)"
+                    placeholderTextColor={colors.muted}
                     keyboardType="numeric"
-                    className="bg-screen border border-border rounded-lg px-3 py-2 text-white text-base h-16"
+                    style={inputStyle}
                   />
                 </View>
-                <View className="flex-row gap-2">
+                <View style={{ flexDirection: "row", gap: 8 }}>
                   <TouchableOpacity
                     onPress={handleCloseBulkStockModal}
-                    className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      backgroundColor: "transparent",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      alignItems: "center",
+                    }}
                   >
-                    <Text className="text-white text-base font-semibold text-center">
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
                       Cancel
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleSaveBulkStock}
-                    className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
+                      alignItems: "center",
+                    }}
                   >
-                    <Text className="text-white text-base font-semibold text-center">
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
                       Save
                     </Text>
                   </TouchableOpacity>

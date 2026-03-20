@@ -25,18 +25,15 @@ const MenuCatalogRow = React.memo(
     onToggleAvailability: (item: MenuItemType) => void;
     onOpenStockModal: (item: MenuItemType) => void;
   }) => {
-    // 1. Local state for 0ms lag
     const [isSelected, setIsSelected] = useState(initialIsSelected);
 
-    // 2. Sync with parent (e.g., if "Select All" is clicked in parent)
     React.useEffect(() => {
       setIsSelected(initialIsSelected);
     }, [initialIsSelected]);
 
-    // 3. Instant Handler
     const handlePress = useCallback(() => {
-      setIsSelected((prev) => !prev); // Visual update instantly
-      onToggle(item.id); // Data update in background
+      setIsSelected((prev) => !prev);
+      onToggle(item.id);
     }, [item.id, onToggle]);
 
     const isLowStock =
@@ -44,94 +41,115 @@ const MenuCatalogRow = React.memo(
       typeof item.reorderThreshold === "number" &&
       item.stockQuantity <= item.reorderThreshold;
 
+    const isAvailable = item.availability !== false;
+
     return (
-      <View className="flex-row items-center px-4 py-3 border-b border-border">
-        {/* 1. Checkbox (Outside Link) */}
-        <View className="w-[6%]">
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        {/* Checkbox */}
+        <View style={{ width: "6%" }}>
           <TouchableOpacity
             onPress={handlePress}
             activeOpacity={0.7}
-            className={`h-6 w-6 items-center justify-center border rounded ${
-              isSelected ? "bg-blue-600 border-blue-500" : "border-gray-600"
-            }`}
+            style={{
+              height: 20,
+              width: 20,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderRadius: 4,
+              backgroundColor: isSelected ? colors.teal : "transparent",
+              borderColor: isSelected ? colors.teal : colors.border,
+            }}
           >
-            {isSelected && <Check color="#fff" size={14} />}
+            {isSelected && <Check color={colors.onSolid} size={12} />}
           </TouchableOpacity>
         </View>
 
-        {/* 2. Content (Inside Link) */}
+        {/* Content */}
         <Link href={`/inventory/menu-items/${item.id}`} asChild>
-          <TouchableOpacity className="flex-row w-[84%] items-center">
-            <View className="w-[28.57%] flex-row items-center pr-2">
-              <Text className="text-white text-xl flex-1" numberOfLines={1}>
+          <TouchableOpacity style={{ flexDirection: "row", width: "84%", alignItems: "center" }}>
+            <View style={{ width: "28.57%", paddingRight: 8 }}>
+              <Text
+                numberOfLines={1}
+                style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}
+              >
                 {item.name}
               </Text>
             </View>
 
-            <Text className="text-gray-300 text-xl w-[17.86%]">
+            <Text style={{ fontSize: 13, color: colors.label, width: "17.86%" }}>
               ${item.price.toFixed(2)}
             </Text>
 
-            <View className="w-[17.86%] flex-row items-center justify-center">
-              <Text
-                className={`text-xl ${
-                  isLowStock ? "text-red-400" : "text-gray-300"
-                }`}
-              >
-                {typeof item.stockQuantity === "number"
-                  ? item.stockQuantity
-                  : "—"}
+            <View style={{ width: "17.86%", alignItems: "center" }}>
+              <Text style={{ fontSize: 13, color: isLowStock ? colors.danger : colors.heading }}>
+                {typeof item.stockQuantity === "number" ? item.stockQuantity : "—"}
               </Text>
             </View>
 
-            <View className="w-[17.86%] flex-row items-center justify-center">
-              <Text
-                className={`text-xl ${
-                  isLowStock ? "text-red-400" : "text-gray-300"
-                }`}
-              >
-                {typeof item.reorderThreshold === "number"
-                  ? `${item.reorderThreshold}`
-                  : ""}
+            <View style={{ width: "17.86%", alignItems: "center" }}>
+              <Text style={{ fontSize: 13, color: isLowStock ? colors.danger : colors.label }}>
+                {typeof item.reorderThreshold === "number" ? `${item.reorderThreshold}` : ""}
               </Text>
             </View>
 
-            <View className="w-[17.86%] items-center justify-center">
-              <Text
-                className={`text-lg px-2 py-0.5 rounded ${
-                  item.availability !== false
-                    ? "bg-green-600 text-green-50"
-                    : "bg-red-600 text-red-50"
-                }`}
+            <View style={{ width: "17.86%", alignItems: "center" }}>
+              <View
+                style={{
+                  backgroundColor: isAvailable ? colors.success + "20" : colors.danger + "20",
+                  borderWidth: 1,
+                  borderColor: isAvailable ? colors.success + "50" : colors.danger + "50",
+                  borderRadius: 20,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                }}
               >
-                {item.availability !== false ? "On" : "Off"}
-              </Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: "600",
+                    color: isAvailable ? colors.success : colors.danger,
+                  }}
+                >
+                  {isAvailable ? "On" : "Off"}
+                </Text>
+              </View>
             </View>
           </TouchableOpacity>
         </Link>
 
-        {/* 3. Actions (Outside Link) */}
-        <View className="w-[10%] items-end">
+        {/* Actions */}
+        <View style={{ width: "10%", alignItems: "flex-end" }}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <TouchableOpacity className="p-3">
-                <MoreHorizontal color={colors.label} size={24} />
+              <TouchableOpacity style={{ padding: 6 }}>
+                <MoreHorizontal size={16} color={colors.muted} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-panel border-border">
+            <DropdownMenuContent
+              className="w-44"
+              style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+            >
               <DropdownMenuItem
                 onPress={() => onToggleAvailability(item)}
                 className="flex-row items-center p-2"
               >
-                <>
-                  {item.availability !== false ? (
-                    <EyeOff color={colors.label} size={14} />
-                  ) : (
-                    <Eye color={colors.label} size={14} />
-                  )}
-                </>
-                <Text className="text-white ml-1.5 text-sm">
-                  {item.availability !== false ? "Make Off" : "Make On"}
+                {isAvailable ? (
+                  <EyeOff color={colors.label} size={14} />
+                ) : (
+                  <Eye color={colors.label} size={14} />
+                )}
+                <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
+                  {isAvailable ? "Make Off" : "Make On"}
                 </Text>
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -139,7 +157,9 @@ const MenuCatalogRow = React.memo(
                 className="flex-row items-center p-2"
               >
                 <Edit color={colors.label} size={14} />
-                <Text className="text-white ml-1.5 text-sm">Update Stock</Text>
+                <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
+                  Update Stock
+                </Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -147,7 +167,6 @@ const MenuCatalogRow = React.memo(
       </View>
     );
   },
-  // Performance Optimization: Only re-render if data actually changed
   (prev, next) => {
     return (
       prev.initialIsSelected === next.initialIsSelected &&

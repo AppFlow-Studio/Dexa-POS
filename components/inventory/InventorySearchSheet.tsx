@@ -4,6 +4,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { InventoryItem, Vendor } from "@/lib/types";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -11,7 +12,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { Link } from "expo-router";
-import { Check, Edit, MoreHorizontal, Trash2 } from "lucide-react-native";
+import { AlertTriangle, Check, Edit, MoreHorizontal, Search, Trash2 } from "lucide-react-native";
 import React, {
   forwardRef,
   useCallback,
@@ -20,7 +21,6 @@ import React, {
   useState,
 } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface InventorySearchSheetProps {
   inventoryItems: InventoryItem[];
@@ -50,10 +50,8 @@ const InventorySearchRow = React.memo(
     onEdit: () => void;
     onDelete: () => void;
   }) => {
-    // Local state for 0ms lag
     const [isSelected, setIsSelected] = useState(initialIsSelected);
 
-    // Sync if parent changes (e.g. Select All)
     useEffect(() => {
       setIsSelected(initialIsSelected);
     }, [initialIsSelected]);
@@ -66,93 +64,111 @@ const InventorySearchRow = React.memo(
     const isLowStock = item.stockQuantity <= item.reorderThreshold;
 
     return (
-      <View className="flex-row items-center px-4 py-3 border-b border-border h-16">
-        {/* Checkbox (6%) */}
-        <View className="w-[6%] mr-2">
-          <TouchableOpacity
-            onPress={handlePress}
-            activeOpacity={0.7}
-            className={`h-6 w-6 items-center justify-center border rounded ${
-              isSelected ? "bg-blue-600 border-blue-500" : "border-border"
-            }`}
-          >
-            {isSelected && <Check color="#fff" size={14} />}
-          </TouchableOpacity>
-        </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+          paddingVertical: 9,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        {/* Checkbox */}
+        <TouchableOpacity
+          onPress={handlePress}
+          activeOpacity={0.7}
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: isSelected ? colors.teal : colors.border,
+            backgroundColor: isSelected ? colors.teal + "20" : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 10,
+          }}
+        >
+          {isSelected && <Check size={12} color={colors.teal} />}
+        </TouchableOpacity>
 
-        {/* Content Container (Remaining Width) */}
+        {/* Content */}
         <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
-          <TouchableOpacity className="flex-1 flex-row items-center">
-            {/* Name (25%) */}
+          <TouchableOpacity style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+            {/* Name */}
             <Text
-              className="w-[25%] text-lg font-semibold text-white pr-2"
               numberOfLines={1}
+              style={{ width: "25%", fontSize: 13, fontWeight: "600", color: colors.heading, paddingRight: 8 }}
             >
               {item.name}
             </Text>
 
-            {/* Stock (15%) */}
-            <View className="w-[15%] items-center justify-center">
+            {/* Stock */}
+            <View style={{ width: "15%", flexDirection: "row", alignItems: "center", gap: 4 }}>
+              {isLowStock && <AlertTriangle size={10} color={colors.warning} />}
               <Text
-                className={`text-lg font-semibold ${
-                  isLowStock ? "text-red-400" : "text-white"
-                }`}
                 numberOfLines={1}
+                style={{ fontSize: 12, fontWeight: "600", color: isLowStock ? colors.warning : colors.label }}
               >
                 {item.stockQuantity?.toFixed(0)} {item.unit}
               </Text>
             </View>
 
-            {/* Reorder (15%) */}
-            <View className="w-[15%] items-center justify-center">
-              <Text className="text-lg text-gray-300" numberOfLines={1}>
-                {item.reorderThreshold}
-              </Text>
-            </View>
+            {/* Reorder */}
+            <Text
+              numberOfLines={1}
+              style={{ width: "15%", fontSize: 12, color: colors.label }}
+            >
+              {item.reorderThreshold}
+            </Text>
 
-            {/* Cost (15%) */}
-            <Text className="w-[15%] text-lg text-gray-300" numberOfLines={1}>
+            {/* Cost */}
+            <Text
+              numberOfLines={1}
+              style={{ width: "15%", fontSize: 12, color: colors.label }}
+            >
               ${item.cost.toFixed(2)}
             </Text>
 
-            {/* Vendor (20%) */}
-            <Text className="w-[20%] text-lg text-gray-300" numberOfLines={1}>
+            {/* Vendor */}
+            <Text
+              numberOfLines={1}
+              style={{ width: "20%", fontSize: 12, color: colors.muted }}
+            >
               {vendorName}
             </Text>
           </TouchableOpacity>
         </Link>
 
-        {/* Actions (Floating Right) */}
-        <View className="absolute right-2 top-0 bottom-0 justify-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <TouchableOpacity className="p-3">
-                <MoreHorizontal size={24} color={colors.label} />
-              </TouchableOpacity>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-48 bg-panel border-border">
-              <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-5 w-5" color={colors.label} />
-                <Text className="text-lg text-white">Edit Item</Text>
-              </DropdownMenuItem>
-              <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-5 w-5" color={colors.danger} />
-                <Text className="text-lg text-red-400">Delete Item</Text>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </View>
+        {/* Actions */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TouchableOpacity style={{ padding: 6 }}>
+              <MoreHorizontal size={15} color={colors.muted} />
+            </TouchableOpacity>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-44"
+            style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+          >
+            <DropdownMenuItem onPress={onEdit}>
+              <Edit size={14} color={colors.label} />
+              <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>Edit Item</Text>
+            </DropdownMenuItem>
+            <DropdownMenuItem onPress={onDelete}>
+              <Trash2 size={14} color={colors.danger} />
+              <Text style={{ fontSize: 13, color: colors.danger, marginLeft: 8 }}>Delete Item</Text>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </View>
     );
   },
-  // Performance comparison
-  (prev, next) => {
-    return (
-      prev.initialIsSelected === next.initialIsSelected &&
-      prev.item.id === next.item.id &&
-      prev.item.stockQuantity === next.item.stockQuantity
-    );
-  }
+  (prev, next) =>
+    prev.initialIsSelected === next.initialIsSelected &&
+    prev.item.id === next.item.id &&
+    prev.item.stockQuantity === next.item.stockQuantity
 );
 
 const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
@@ -173,29 +189,21 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
     const [searchQuery, setSearchQuery] = useState("");
     const snapPoints = useMemo(() => ["85%"], []);
 
-    // Create Set for fast lookups
     const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-    // Filter & Deduplicate
     const filteredInventory = useMemo(() => {
       const seenIds = new Set<string>();
       const query = searchQuery.trim().toLowerCase();
-
       return inventoryItems.filter((i) => {
-        // Fix Duplicate Key Error
         if (seenIds.has(i.id)) return false;
         seenIds.add(i.id);
-
         if (!query) return true;
-        return [i.name, i.category].some((s) =>
-          String(s).toLowerCase().includes(query)
-        );
+        return [i.name, i.category].some((s) => String(s).toLowerCase().includes(query));
       });
     }, [searchQuery, inventoryItems]);
 
     const isAllSelected =
-      filteredInventory.length > 0 &&
-      selectedIds.length >= filteredInventory.length;
+      filteredInventory.length > 0 && selectedIds.length >= filteredInventory.length;
 
     const handleToggleAll = () => {
       if (isAllSelected) {
@@ -207,12 +215,7 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
 
     const renderBackdrop = useCallback(
       (props: any) => (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
+        <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
       ),
       []
     );
@@ -223,11 +226,10 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
         return (
           <InventorySearchRow
             item={item}
-            vendorName={vendor?.name || "Unknown"}
+            vendorName={vendor?.name || "—"}
             initialIsSelected={selectedIdsSet.has(item.id)}
             onToggle={onToggle}
             onEdit={() => {
-              // @ts-ignore - Close sheet logic handles in parent or here
               (ref as any)?.current?.close();
               onEdit(item);
             }}
@@ -250,37 +252,78 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
         topInset={60}
         enablePanDownToClose
       >
-        {/* Search Header */}
-        <View className="px-3 pb-2 pt-2 border-b border-border bg-panel">
-          <BottomSheetTextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search inventory..."
-            placeholderTextColor={colors.label}
+        {/* Search bar */}
+        <View
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
+        >
+          <View
             style={{
+              flexDirection: "row",
+              alignItems: "center",
               backgroundColor: colors.screen,
-              borderColor: colors.border,
               borderWidth: 1,
+              borderColor: colors.border,
               borderRadius: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 12,
-              color: "white",
-              fontSize: 16,
+              paddingHorizontal: 10,
+              height: 38,
+              gap: 8,
             }}
-          />
+          >
+            <Search size={14} color={colors.muted} />
+            <BottomSheetTextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search inventory..."
+              placeholderTextColor={colors.muted}
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: colors.heading,
+                paddingVertical: 0,
+                height: 38,
+              }}
+            />
+          </View>
         </View>
 
-        {/* Select All Header */}
-        <View className="flex-row items-center px-4 py-2 border-b border-border bg-panel">
-          <View className="w-[6%] mr-2">
-            <TouchableOpacity
-              onPress={handleToggleAll}
-              className="h-5 w-5 items-center justify-center border border-border rounded"
-            >
-              {isAllSelected && <Check color="#fff" size={12} />}
-            </TouchableOpacity>
-          </View>
-          <Text className="text-gray-400 text-sm font-medium">Select All</Text>
+        {/* Column headers + select all */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            backgroundColor: colors.screen,
+          }}
+        >
+          <TouchableOpacity
+            onPress={handleToggleAll}
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: 5,
+              borderWidth: 1,
+              borderColor: isAllSelected ? colors.teal : colors.border,
+              backgroundColor: isAllSelected ? colors.teal + "20" : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 10,
+            }}
+          >
+            {isAllSelected && <Check size={12} color={colors.teal} />}
+          </TouchableOpacity>
+          <Text style={{ width: "25%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Name</Text>
+          <Text style={{ width: "15%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>In Stock</Text>
+          <Text style={{ width: "15%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Reorder</Text>
+          <Text style={{ width: "15%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Cost</Text>
+          <Text style={{ width: "20%", fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Vendor</Text>
         </View>
 
         {/* List */}
@@ -292,26 +335,47 @@ const InventorySearchSheet = forwardRef<BottomSheet, InventorySearchSheetProps>(
           initialNumToRender={10}
           maxToRenderPerBatch={10}
           windowSize={5}
+          ListEmptyComponent={
+            <View style={{ alignItems: "center", paddingVertical: 40 }}>
+              <Text style={{ fontSize: 13, color: colors.muted }}>No inventory items found</Text>
+            </View>
+          }
         />
 
         {/* Bulk Actions Footer */}
         {selectedIds.length > 0 && (
-          <View className="absolute bottom-5 left-4 right-4 bg-screen p-4 rounded-xl border border-border shadow-xl flex-row items-center justify-between">
-            <Text className="text-white font-semibold">
-              {selectedIds.length} items selected
+          <View
+            style={{
+              position: "absolute",
+              bottom: 16,
+              left: 12,
+              right: 12,
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+              {selectedIds.length} selected
             </Text>
-            <View className="flex-row gap-3">
+            <View style={{ flexDirection: "row", gap: 8 }}>
               <TouchableOpacity
                 onPress={onClear}
-                className="px-4 py-2 bg-gray-700 rounded-lg"
+                style={{ paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}
               >
-                <Text className="text-white font-medium">Clear</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Clear</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={onBulkUpdate}
-                className="px-4 py-2 bg-blue-600 rounded-lg"
+                style={{ paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8 }}
               >
-                <Text className="text-white font-medium">Bulk Update</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Bulk Update</Text>
               </TouchableOpacity>
             </View>
           </View>
