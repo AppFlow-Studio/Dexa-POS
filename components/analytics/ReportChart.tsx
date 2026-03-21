@@ -36,7 +36,7 @@ export default function ReportChart({
   if (!data || data.length === 0) {
     return (
       <View className="h-64 bg-panel rounded-2xl border border-border items-center justify-center p-4">
-        <Text className="text-gray-400 text-lg">No data available</Text>
+        <Text style={{ color: colors.label, fontSize: 13 }}>No data available</Text>
       </View>
     );
   }
@@ -57,7 +57,7 @@ export default function ReportChart({
           topLabelComponent: () => (
             <Text
               style={{
-                color: "white",
+                color: colors.label,
                 fontSize: 10,
                 width: 50,
                 textAlign: "center",
@@ -79,14 +79,14 @@ export default function ReportChart({
             width={chartWidth}
             disableScroll
             spacing={20}
-            frontColor={colors.info}
+            frontColor={colors.teal}
             rotateLabel
             xAxisLabelTextStyle={{
-              color: "white",
+              color: colors.label,
               fontSize: 10,
               textAlign: "center",
             }}
-            yAxisTextStyle={{ color: "white" }}
+            yAxisTextStyle={{ color: colors.label }}
             xAxisColor={colors.border}
             yAxisColor={colors.border}
             rulesColor={colors.border}
@@ -145,14 +145,14 @@ export default function ReportChart({
             disableScroll
             focusEnabled
             spacing={dataSpacing}
-            startFillColor={colors.info}
-            endFillColor={`${colors.info}33`}
-            startOpacity={0.8}
-            endOpacity={0.3}
-            color={colors.info}
+            startFillColor={colors.teal}
+            endFillColor={`${colors.teal}33`}
+            startOpacity={0.6}
+            endOpacity={0.1}
+            color={colors.teal}
             thickness={2}
-            xAxisLabelTextStyle={{ color: "white" }}
-            yAxisTextStyle={{ color: "white" }}
+            xAxisLabelTextStyle={{ color: colors.label }}
+            yAxisTextStyle={{ color: colors.label }}
             xAxisColor={colors.border}
             yAxisColor={colors.border}
             rulesColor={colors.border}
@@ -174,12 +174,12 @@ export default function ReportChart({
                   onDataPointPress(items[0].originalData);
                 }
                 return (
-                  <View className="h-24 w-28 justify-center items-center mt-[-4px] ml-[-40px]">
-                    <Text className="text-white text-center mb-2">
+                  <View style={{ height: 64, width: 110, justifyContent: 'center', alignItems: 'center', marginTop: -4, marginLeft: -40 }}>
+                    <Text style={{ color: colors.label, fontSize: 10, textAlign: 'center', marginBottom: 4 }}>
                       {items[0].date}
                     </Text>
-                    <View className="px-4 py-2 rounded-2xl bg-white">
-                      <Text className="font-bold text-center">
+                    <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                      <Text style={{ color: colors.teal, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
                         {"$" + items[0].value.toFixed(2)}
                       </Text>
                     </View>
@@ -207,7 +207,7 @@ export default function ReportChart({
       default:
         return (
           <View className="h-56 items-center justify-center">
-            <Text className="text-gray-400">
+            <Text style={{ color: colors.muted, fontSize: 12 }}>
               Unsupported chart type: {chartType}
             </Text>
           </View>
@@ -216,9 +216,9 @@ export default function ReportChart({
   };
 
   return (
-    <View className="bg-panel min-h-[350px] overflow-hidden">
+    <View className="bg-panel min-h-[300px] overflow-hidden">
       {title && (
-        <Text className="text-white text-lg font-semibold mb-4">{title}</Text>
+        <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '700', marginBottom: 12 }}>{title}</Text>
       )}
       <View>{renderChart()}</View>
     </View>

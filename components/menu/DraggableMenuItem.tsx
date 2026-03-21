@@ -81,31 +81,38 @@ const DraggableMenuItem = React.memo(({
 
   return (
     <Animated.View
-      style={animatedStyle}
-      className={`flex-row items-center justify-between bg-surface border border-gray-600 rounded-lg px-3 py-2 mb-2 ${
-        isEditable ? "pr-2" : ""
-      }`}
+      style={[
+        animatedStyle,
+        {
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 8,
+          width: 110,
+        },
+      ]}
     >
-      <View className="flex-row items-center flex-1 gap-2">
+      <TouchableOpacity
+        onPress={() => onItemPriceEdit(item, categoryId, menuId)}
+        style={{ padding: 8 }}
+      >
         {isEditable && (
           <GestureDetector gesture={panGesture}>
-            <View className="p-2 -ml-2 cursor-grab">
-              <GripVertical size={20} color={colors.muted} />
+            <View style={{ position: "absolute", top: 4, right: 4 }}>
+              <GripVertical size={11} color={colors.muted} />
             </View>
           </GestureDetector>
         )}
-        <TouchableOpacity
-          onPress={() => onItemPriceEdit(item, categoryId, menuId)}
-          className="flex-1"
+        <Text
+          style={{ fontSize: 11, fontWeight: "600", color: colors.heading, marginBottom: 3 }}
+          numberOfLines={2}
         >
-          <View className="flex-row items-center justify-between flex-1">
-            <Text className="text-lg text-white">{item.name}</Text>
-            <Text className="text-lg text-gray-300">
-              ${item.price.toFixed(2)}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+          {item.name}
+        </Text>
+        <Text style={{ fontSize: 11, color: colors.teal, fontWeight: "600" }}>
+          ${item.price.toFixed(2)}
+        </Text>
+      </TouchableOpacity>
     </Animated.View>
   );
 });

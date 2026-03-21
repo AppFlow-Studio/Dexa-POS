@@ -1,3 +1,4 @@
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
@@ -7,17 +8,30 @@ import BottomSheet, {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { router } from "expo-router";
-import { Search } from "lucide-react-native";
+import {
+  Eye,
+  EyeOff,
+  Layers,
+  ListOrdered,
+  Search,
+  Settings,
+  Sliders,
+  Utensils,
+  X,
+} from "lucide-react-native";
 import React, { forwardRef, useEffect, useMemo, useState } from "react";
-import { Alert, Text, View } from "react-native";
-import { bottomSheetTheme, colors } from "@/lib/theme";
-import { CategoryCard } from "./CategoryCard";
-import { DraggableMenu as MenuCard } from "./MenuCard";
-import { MenuItemCard } from "./MenuItemCard";
-import { ModifierGroupCard } from "./ModifierGroupCard";
+import { Alert, Text, TouchableOpacity, View } from "react-native";
 import { ScheduleCard } from "./ScheduleCard";
 
 type SidebarTab = "menus" | "categories" | "items" | "modifiers" | "schedules";
+
+const TAB_ICON: Record<SidebarTab, React.ComponentType<any>> = {
+  menus: Layers,
+  categories: ListOrdered,
+  items: Utensils,
+  modifiers: Sliders,
+  schedules: Settings,
+};
 
 interface MenuSearchSheetProps {
   activeTab: SidebarTab;
@@ -36,148 +50,302 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
     const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
     const [searchQuery, setSearchQuery] = useState("");
 
-    const searchResults = useMemo(() => {
-      const query = searchQuery.toLowerCase().trim();
-
-      // Always filter based on query for ALL tabs
-      switch (activeTab) {
-        case "items":
-          return menuItems.filter((item) =>
-            query ? item.name.toLowerCase().includes(query) : false
-          );
-        case "categories":
-          return storeCategories.filter((cat) =>
-            query ? cat.name.toLowerCase().includes(query) : false
-          );
-        case "menus":
-          return storeMenus.filter((menu) =>
-            query ? menu.name.toLowerCase().includes(query) : false
-          );
-        case "modifiers":
-          return modifierGroups.filter((mod) =>
-            query ? mod.name.toLowerCase().includes(query) : false
-          );
-        case "schedules":
-          const scheduledMenus = storeMenus
-            .filter((m) => {
-              const hasSchedules = m.schedules && m.schedules.length > 0;
-              const matchesSearch = m.name.toLowerCase().includes(query);
-              return hasSchedules && matchesSearch;
-            })
-            .map((m) => ({
-              ...m,
-              type: "menu" as const,
-              schedules: m.schedules || [],
-            }));
-
-          const scheduledCategories = storeCategories
-            .filter((c) => {
-              const hasSchedules = c.schedules && c.schedules.length > 0;
-              const matchesSearch = c.name.toLowerCase().includes(query);
-              return hasSchedules && matchesSearch;
-            })
-            .map((c) => ({
-              ...c,
-              type: "category" as const,
-              schedules: c.schedules || [],
-            }));
-
-          return [...scheduledMenus, ...scheduledCategories];
-
-        default:
-          return [];
-      }
-    }, [
-      searchQuery,
-      activeTab,
-      menuItems,
-      storeCategories,
-      storeMenus,
-      modifierGroups,
-    ]);
-
     useEffect(() => {
       setSearchQuery("");
     }, [activeTab]);
 
-    const handleDeleteItem = (id: string) => {
+    const searchResults = useMemo(() => {
+      const query = searchQuery.toLowerCase().trim();
+      if (!query) return [];
+
+      switch (activeTab) {
+        case "items":
+          return menuItems.filter((item) =>
+            item.name.toLowerCase().includes(query)
+          );
+        case "categories":
+          return storeCategories.filter((cat) =>
+            cat.name.toLowerCase().includes(query)
+          );
+        case "menus":
+          return storeMenus.filter((menu) =>
+            menu.name.toLowerCase().includes(query)
+          );
+        case "modifiers":
+          return modifierGroups.filter((mod) =>
+            mod.name.toLowerCase().includes(query)
+          );
+        case "schedules": {
+          const scheduledMenus = storeMenus
+            .filter(
+              (m) =>
+                m.schedules?.length &&
+                m.name.toLowerCase().includes(query)
+            )
+            .map((m) => ({ ...m, type: "menu" as const, schedules: m.schedules || [] }));
+          const scheduledCategories = storeCategories
+            .filter(
+              (c) =>
+                c.schedules?.length &&
+                c.name.toLowerCase().includes(query)
+            )
+            .map((c) => ({ ...c, type: "category" as const, schedules: c.schedules || [] }));
+          return [...scheduledMenus, ...scheduledCategories];
+        }
+        default:
+          return [];
+      }
+    }, [searchQuery, activeTab, menuItems, storeCategories, storeMenus, modifierGroups]);
+
+    const handleDeleteItem = (id: string) =>
       Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteMenuItem(id),
-        },
+        { text: "Delete", style: "destructive", onPress: () => deleteMenuItem(id) },
       ]);
-    };
+
+    const TabIcon = TAB_ICON[activeTab];
+    const tabLabel = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
 
     const renderItem = ({ item }: { item: any }) => {
       switch (activeTab) {
-        case "items":
+        case "items": {
+          const isAvailable = item.availability !== false;
           return (
-            <View className="w-[48%] aspect-[3/4] mb-4">
-              <MenuItemCard
-                item={item}
-                onEdit={(itemToEdit) => {
-                  closeSearch();
-                  router.push(`/menu/edit-item?itemId=${itemToEdit.id}`);
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 10,
+                marginBottom: 6,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+                  ${item.price.toFixed(2)}
+                </Text>
+              </View>
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 20,
+                  backgroundColor: isAvailable ? colors.success + "20" : colors.danger + "15",
+                  borderWidth: 1,
+                  borderColor: isAvailable ? colors.success + "50" : colors.danger + "30",
                 }}
-                onDelete={handleDeleteItem}
-                onToggleAvailability={toggleItemAvailability}
-              />
+              >
+                <Text style={{ fontSize: 10, fontWeight: "600", color: isAvailable ? colors.success : colors.danger }}>
+                  {isAvailable ? "Available" : "Off"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => toggleItemAvailability(item.id)}
+                style={{ padding: 6 }}
+              >
+                {isAvailable
+                  ? <EyeOff size={14} color={colors.label} />
+                  : <Eye size={14} color={colors.label} />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleDeleteItem(item.id)}
+                style={{ padding: 6 }}
+              >
+                <X size={13} color={colors.danger} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { closeSearch(); router.push(`/menu/edit-item?itemId=${item.id}`); }}
+                style={{
+                  padding: 6,
+                  backgroundColor: colors.panel,
+                  borderRadius: 7,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Settings size={13} color={colors.label} />
+              </TouchableOpacity>
             </View>
           );
-        case "categories":
+        }
+
+        case "categories": {
+          const isActive = item.isActive;
           return (
-            <CategoryCard
-              categoryName={item.name}
-              isExpanded={false}
-              onToggleExpand={() => {}}
-              onEdit={() => {
-                closeSearch();
-                router.push(`/menu/edit-category?id=${item.id}`);
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 10,
+                marginBottom: 6,
+                flexDirection: "row",
+                alignItems: "center",
               }}
-            />
+            >
+              <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                {item.name}
+              </Text>
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 20,
+                  backgroundColor: isActive ? colors.success + "20" : colors.danger + "15",
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.success + "50" : colors.danger + "30",
+                  marginRight: 8,
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: "600", color: isActive ? colors.success : colors.danger }}>
+                  {isActive ? "Active" : "Inactive"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { closeSearch(); router.push(`/menu/edit-category?id=${item.id}`); }}
+                style={{
+                  padding: 6,
+                  backgroundColor: colors.panel,
+                  borderRadius: 7,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Settings size={13} color={colors.label} />
+              </TouchableOpacity>
+            </View>
           );
-        case "menus":
-          const menu = { ...item, isAvailableNow: isMenuAvailableNow(item.id) };
+        }
+
+        case "menus": {
+          const isActive = item.isActive;
+          const isAvailableNow = isMenuAvailableNow(item.id);
+          const statusOk = isActive && isAvailableNow;
           return (
-            <MenuCard
-              menu={menu}
-              onToggleActive={() => toggleMenuActive(item.id)}
-              onEdit={() => {
-                closeSearch();
-                router.push(`/menu/edit-menu?id=${item.id}`);
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 10,
+                marginBottom: 6,
+                flexDirection: "row",
+                alignItems: "center",
               }}
-            />
+            >
+              <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                {item.name}
+              </Text>
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 20,
+                  backgroundColor: statusOk ? colors.success + "20" : colors.danger + "15",
+                  borderWidth: 1,
+                  borderColor: statusOk ? colors.success + "50" : colors.danger + "30",
+                  marginRight: 8,
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: "600", color: statusOk ? colors.success : colors.danger }}>
+                  {isActive ? (isAvailableNow ? "Available" : "Unavailable") : "Inactive"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => toggleMenuActive(item.id)}
+                style={{ padding: 6, marginRight: 4 }}
+              >
+                {isActive
+                  ? <Eye size={14} color={colors.success} />
+                  : <EyeOff size={14} color={colors.danger} />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { closeSearch(); router.push(`/menu/edit-menu?id=${item.id}`); }}
+                style={{
+                  padding: 6,
+                  backgroundColor: colors.panel,
+                  borderRadius: 7,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Settings size={13} color={colors.label} />
+              </TouchableOpacity>
+            </View>
           );
-        case "modifiers":
+        }
+
+        case "modifiers": {
+          const isRequired = item.type === "required";
           return (
-            <ModifierGroupCard
-              modifierGroup={item}
-              onEdit={() => {
-                closeSearch();
-                router.push(`/menu/edit-modifier?id=${item.id}`);
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 10,
+                marginBottom: 6,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
               }}
-            />
+            >
+              <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <View
+                style={{
+                  paddingHorizontal: 7,
+                  paddingVertical: 2,
+                  borderRadius: 20,
+                  backgroundColor: isRequired ? colors.danger + "15" : colors.teal + "15",
+                  borderWidth: 1,
+                  borderColor: isRequired ? colors.danger + "30" : colors.teal + "30",
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: "600", color: isRequired ? colors.danger : colors.teal }}>
+                  {isRequired ? "Required" : "Optional"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { closeSearch(); router.push(`/menu/edit-modifier?id=${item.id}`); }}
+                style={{
+                  padding: 6,
+                  backgroundColor: colors.panel,
+                  borderRadius: 7,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Settings size={13} color={colors.label} />
+              </TouchableOpacity>
+            </View>
           );
+        }
+
         case "schedules":
           return <ScheduleCard item={item} />;
+
         default:
           return null;
       }
     };
 
-    const numColumns = useMemo(
-      () => (activeTab === "items" ? 2 : 1),
-      [activeTab]
-    );
-
     return (
       <BottomSheet
         ref={ref}
         index={-1}
-        snapPoints={["85%", "90%"]}
+        snapPoints={["55%"]}
         enablePanDownToClose
         onClose={closeSearch}
         backdropComponent={(props) => (
@@ -189,40 +357,105 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
         )}
         {...bottomSheetTheme}
       >
-        <BottomSheetView className="flex-1">
-          <View className="p-4 border-b border-gray-700">
-            <Text className="text-white text-xl font-bold">
-              Search {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
-            </Text>
+        <BottomSheetView style={{ flex: 1 }}>
+          {/* Header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + "15",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <TabIcon size={14} color={colors.teal} />
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
+                Search {tabLabel}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={closeSearch}
+              style={{
+                padding: 6,
+                backgroundColor: colors.card,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <X size={14} color={colors.label} />
+            </TouchableOpacity>
           </View>
-          <View className="p-4">
-            <View className="flex-row items-center bg-surface border border-gray-600 rounded-lg px-3">
-              <Search color={colors.label} size={20} />
+
+          {/* Search input */}
+          <View
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                gap: 8,
+              }}
+            >
+              <Search size={14} color={colors.muted} />
               <BottomSheetTextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder={`Search for a ${activeTab.slice(0, -1)}...`}
-                placeholderTextColor={colors.label}
-                className="flex-1 h-12 ml-2 text-white text-base"
+                placeholder={`Search ${activeTab}…`}
+                placeholderTextColor={colors.muted}
+                style={{
+                  flex: 1,
+                  height: 38,
+                  fontSize: 13,
+                  color: colors.heading,
+                }}
+                autoFocus
               />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")}>
+                  <X size={13} color={colors.muted} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
+
+          {/* Results */}
           <BottomSheetFlatList
-            key={activeTab} // Using activeTab as key is smart for re-renders
+            key={activeTab}
             data={searchResults}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
-            numColumns={numColumns}
-            columnWrapperStyle={
-              numColumns > 1 ? { justifyContent: "space-between" } : undefined
-            }
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 48 }}
+            contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 40 }}
             ListEmptyComponent={
-              <View className="items-center justify-center p-10">
-                <Text className="text-lg text-gray-400">
-                  {searchQuery
-                    ? "No results found."
-                    : "Start typing to search."}
+              <View style={{ alignItems: "center", paddingTop: 32, gap: 8 }}>
+                <Search size={24} color={colors.muted} />
+                <Text style={{ fontSize: 13, color: colors.muted }}>
+                  {searchQuery ? "No results found." : "Start typing to search."}
                 </Text>
               </View>
             }

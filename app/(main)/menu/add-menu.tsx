@@ -4,6 +4,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { colors } from "@/lib/theme";
 import React, { useState } from "react";
 import { Alert, View } from "react-native";
 
@@ -98,7 +99,7 @@ const AddMenuScreen: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-panel">
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
       <MenuForm
         onSubmit={handleSubmit}
         isSaving={isSaving}

@@ -227,94 +227,112 @@ const DraggableMenu = React.memo(({
   });
 
   const isAvailable = checkAvailability(menu.schedules);
+  const statusActive = menu.isActive && isAvailable;
 
   return (
     <Animated.View
-      style={animatedStyle}
-      className="bg-surface rounded-lg border border-gray-700 p-4 mb-3"
+      style={[
+        animatedStyle,
+        {
+          backgroundColor: colors.card,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          padding: 12,
+          marginBottom: 8,
+        },
+      ]}
     >
-      <View className="flex-row items-center justify-between mb-1.5">
-        <View className="flex-row items-center gap-2">
+      {/* Menu row */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
           <GestureDetector gesture={panGesture}>
-            <View className="p-2 cursor-grab">
-              <GripVertical size={20} color={colors.label} />
+            <View style={{ padding: 4 }}>
+              <GripVertical size={14} color={colors.muted} />
             </View>
           </GestureDetector>
-          <Text className="text-2xl font-semibold text-white">{menu.name}</Text>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }} numberOfLines={1}>
+            {menu.name}
+          </Text>
           <View
-            className={`px-2.5 py-1.5 rounded-full ${
-              menu.isActive && isAvailable
-                ? "bg-green-900/30 border border-green-500"
-                : "bg-red-900/30 border border-red-500"
-            }`}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 20,
+              backgroundColor: statusActive ? colors.success + "20" : colors.danger + "15",
+              borderWidth: 1,
+              borderColor: statusActive ? colors.success + "50" : colors.danger + "30",
+            }}
           >
-            <Text
-              className={`text-lg font-medium ${
-                menu.isActive && isAvailable ? "text-green-400" : "text-red-400"
-              }`}
-            >
-              {menu.isActive
-                ? isAvailable
-                  ? "Available Now"
-                  : "Unavailable Now"
-                : "Inactive"}
+            <Text style={{ fontSize: 10, fontWeight: "600", color: statusActive ? colors.success : colors.danger }}>
+              {menu.isActive ? (isAvailable ? "Available" : "Unavailable") : "Inactive"}
             </Text>
           </View>
         </View>
 
-        <View className="flex-row items-center gap-2">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <TouchableOpacity
             onPress={() => onToggleMenuActive(menu.id)}
             disabled={!isEditable}
-            className={`p-2 bg-panel rounded border ${
-              isEditable ? "border-gray-600" : "border-gray-800 opacity-50"
-            }`}
+            style={{
+              padding: 6,
+              backgroundColor: colors.panel,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              opacity: isEditable ? 1 : 0.4,
+            }}
           >
             {menu.isActive ? (
-              <Eye size={20} color={isEditable ? "#10B981" : "#4B5563"} />
+              <Eye size={14} color={isEditable ? colors.success : colors.muted} />
             ) : (
-              <EyeOff size={20} color={isEditable ? colors.danger : "#4B5563"} />
+              <EyeOff size={14} color={isEditable ? colors.danger : colors.muted} />
             )}
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onEdit}
             disabled={!isEditable}
-            className={`p-2 bg-panel rounded border ${
-              isEditable ? "border-gray-600" : "border-gray-800 opacity-50"
-            }`}
+            style={{
+              padding: 6,
+              backgroundColor: colors.panel,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              opacity: isEditable ? 1 : 0.4,
+            }}
           >
-            <Settings size={20} color={isEditable ? colors.label : "#4B5563"} />
+            <Settings size={14} color={isEditable ? colors.label : colors.muted} />
           </TouchableOpacity>
         </View>
       </View>
-      <View className="ml-6">
-        <Text className="text-xl font-medium text-gray-300 mb-1.5">
+
+      {/* Categories */}
+      <View style={{ marginLeft: 22, gap: 4 }}>
+        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
           Categories ({menu.categories.length})
         </Text>
-        <View className="gap-2">
-          {menu.categories.map((category: any, categoryIndex: number) => (
-            <DraggableMenuCategory
-              key={category.id}
-              category={category}
-              menuId={menu.id}
-              index={categoryIndex}
-              onReorder={(fromIndex, toIndex) =>
-                onReorderCategories(menu.id, fromIndex, toIndex)
-              }
-              onToggleActive={onToggleCategoryActive}
-              items={category.items || []}
-              onItemPriceEdit={onItemPriceEdit}
-              onReorderItems={onReorderItems}
-              isEditable={
-                !!(
-                  category.location_id &&
-                  isEditable &&
-                  category.location_id === menu.location_id
-                )
-              } // Simplistic check - refined in main component if needed
-            />
-          ))}
-        </View>
+        {menu.categories.map((category: any, categoryIndex: number) => (
+          <DraggableMenuCategory
+            key={category.id}
+            category={category}
+            menuId={menu.id}
+            index={categoryIndex}
+            onReorder={(fromIndex, toIndex) =>
+              onReorderCategories(menu.id, fromIndex, toIndex)
+            }
+            onToggleActive={onToggleCategoryActive}
+            items={category.items || []}
+            onItemPriceEdit={onItemPriceEdit}
+            onReorderItems={onReorderItems}
+            isEditable={
+              !!(
+                category.location_id &&
+                isEditable &&
+                category.location_id === menu.location_id
+              )
+            }
+          />
+        ))}
       </View>
     </Animated.View>
   );
@@ -395,82 +413,85 @@ const DraggableMenuCategory = React.memo(({
 
   return (
     <Animated.View
-      style={animatedStyle}
-      className="bg-panel rounded border border-gray-700"
+      style={[
+        animatedStyle,
+        {
+          backgroundColor: colors.panel,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+      ]}
     >
-      <View className="flex-row items-center justify-between p-4">
-        <View className="flex-row items-center gap-2">
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, paddingVertical: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
           <GestureDetector gesture={panGesture}>
-            <View className="p-2 -ml-2 cursor-grab">
-              <GripVertical size={20} color={colors.muted} />
+            <View style={{ padding: 2 }}>
+              <GripVertical size={12} color={colors.muted} />
             </View>
           </GestureDetector>
           <TouchableOpacity
             onPress={() => setIsExpanded(!isExpanded)}
-            className="flex-row items-center gap-2"
+            style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
           >
             {isExpanded ? (
-              <ChevronUp size={18} color={colors.label} />
+              <ChevronUp size={14} color={colors.label} />
             ) : (
-              <ChevronDown size={18} color={colors.label} />
+              <ChevronDown size={14} color={colors.label} />
             )}
-            <Text className="text-gray-200 text-xl">{category.name}</Text>
-            <View className="bg-blue-900/30 border border-blue-500 px-2 py-1 rounded">
-              <Text className="text-sm text-blue-400">
-                {items.length} items
-              </Text>
-            </View>
+            <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "500" }}>{category.name}</Text>
           </TouchableOpacity>
+          <View style={{ backgroundColor: colors.teal + "15", borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>{items.length}</Text>
+          </View>
           <View
-            className={`px-2.5 py-1.5 rounded-full ${
-              category.isActive
-                ? "bg-green-900/30 border border-green-500"
-                : "bg-red-900/30 border border-red-500"
-            }`}
+            style={{
+              paddingHorizontal: 7,
+              paddingVertical: 2,
+              borderRadius: 20,
+              backgroundColor: category.isActive ? colors.success + "20" : colors.danger + "15",
+              borderWidth: 1,
+              borderColor: category.isActive ? colors.success + "50" : colors.danger + "30",
+            }}
           >
-            <Text
-              className={`text-lg ${
-                category.isActive ? "text-green-400" : "text-red-400"
-              }`}
-            >
-              {category.isActive ? "Available Now" : "Unavailable"}
+            <Text style={{ fontSize: 10, fontWeight: "600", color: category.isActive ? colors.success : colors.danger }}>
+              {category.isActive ? "Active" : "Inactive"}
             </Text>
           </View>
         </View>
 
-        <View className="flex-row items-center gap-2">
-          <TouchableOpacity
-            onPress={() => onToggleActive(menuId, category.id)}
-            disabled={!isEditable}
-            className={`p-2 ${!isEditable ? "opacity-50" : ""}`}
-          >
-            {category.isActive ? (
-              <Eye size={20} color={isEditable ? "#10B981" : "#4B5563"} />
-            ) : (
-              <EyeOff size={20} color={isEditable ? colors.danger : "#4B5563"} />
-            )}
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => onToggleActive(menuId, category.id)}
+          disabled={!isEditable}
+          style={{ padding: 4, opacity: isEditable ? 1 : 0.4 }}
+        >
+          {category.isActive ? (
+            <Eye size={13} color={isEditable ? colors.success : colors.muted} />
+          ) : (
+            <EyeOff size={13} color={isEditable ? colors.danger : colors.muted} />
+          )}
+        </TouchableOpacity>
       </View>
 
-      {/* Expandable Items List for Level 5 Menu Price Editing */}
       {isExpanded && (
-        <View className="px-4 pb-4 gap-2">
+        <View style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
           {items.length === 0 ? (
-            <Text className="text-gray-400">No items in this category</Text>
+            <Text style={{ fontSize: 12, color: colors.muted }}>No items in this category</Text>
           ) : (
-            items.map((item, itemIndex) => (
-              <DraggableMenuItem
-                key={item.id}
-                item={item}
-                index={itemIndex}
-                categoryId={category.id}
-                menuId={menuId}
-                onReorder={(from, to) => onReorderItems(category.id, from, to)}
-                onItemPriceEdit={onItemPriceEdit}
-                isEditable={isEditable}
-              />
-            ))
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {items.map((item, itemIndex) => (
+                <DraggableMenuItem
+                  key={item.id}
+                  item={item}
+                  index={itemIndex}
+                  categoryId={category.id}
+                  menuId={menuId}
+                  onReorder={(from, to) => onReorderItems(category.id, from, to)}
+                  onItemPriceEdit={onItemPriceEdit}
+                  isEditable={isEditable}
+                />
+              ))}
+            </View>
           )}
         </View>
       )}
@@ -831,7 +852,7 @@ const MenuPage: React.FC = () => {
   }, [selectedStore?.id]);
 
   const renderMenusContent = () => (
-    <View className="flex-1 p-4 bg-panel">
+    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
@@ -883,7 +904,7 @@ const MenuPage: React.FC = () => {
   );
 
   const renderCategoriesContent = () => (
-    <View className="flex-1 p-4 bg-panel">
+    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Categories (${storeCategories.length})`}
         onAddPress={handleAddCategory}
@@ -896,7 +917,7 @@ const MenuPage: React.FC = () => {
         key="categories-list"
         data={storeCategories}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ gap: 12 }}
+        contentContainerStyle={{ gap: 8 }}
         removeClippedSubviews={true}
         maxToRenderPerBatch={8}
         windowSize={5}
@@ -904,11 +925,18 @@ const MenuPage: React.FC = () => {
         renderItem={({ item: categoryName }) => {
             const categoryItems = getItemsInCategory(categoryName.name);
             const isExpanded = !!expandedCategories[categoryName.name];
+            const editable = isEntityEditable(categoryName.location_id, categoryName.name);
             return (
               <View
-                className="bg-surface rounded-lg border border-gray-700 p-4"
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 12,
+                }}
               >
-                <View className="flex-row justify-between items-center">
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <TouchableOpacity
                     onPress={() =>
                       setExpandedCategories((prev) => ({
@@ -916,65 +944,54 @@ const MenuPage: React.FC = () => {
                         [categoryName.name]: !isExpanded,
                       }))
                     }
-                    className="flex-row items-center gap-2 flex-1"
+                    style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}
                   >
                     {isExpanded ? (
-                      <ChevronUp size={20} color={colors.label} />
+                      <ChevronUp size={14} color={colors.label} />
                     ) : (
-                      <ChevronDown size={20} color={colors.label} />
+                      <ChevronDown size={14} color={colors.label} />
                     )}
-                    <Text className="font-medium text-white text-2xl">
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                       {categoryName.name}
                     </Text>
-                    <View className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded">
-                      <Text className="text-lg text-blue-400">
-                        {categoryItems.length} items
+                    <View style={{ backgroundColor: colors.teal + "15", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>
+                        {categoryItems.length}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        paddingHorizontal: 7,
+                        paddingVertical: 2,
+                        borderRadius: 20,
+                        backgroundColor: categoryName.isActive ? colors.success + "20" : colors.danger + "15",
+                        borderWidth: 1,
+                        borderColor: categoryName.isActive ? colors.success + "50" : colors.danger + "30",
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: categoryName.isActive ? colors.success : colors.danger }}>
+                        {categoryName.isActive ? "Active" : "Inactive"}
                       </Text>
                     </View>
                   </TouchableOpacity>
 
-                  <View className="flex-row items-center gap-2">
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                     <TouchableOpacity
                       onPress={() => handleCategoryActive(categoryName?.id)}
-                      disabled={
-                        !isEntityEditable(
-                          categoryName.location_id,
-                          categoryName.name
-                        )
-                      }
-                      className={`p-2 bg-panel rounded border ${
-                        isEntityEditable(
-                          categoryName.location_id,
-                          categoryName.name
-                        )
-                          ? "border-gray-600"
-                          : "border-gray-800 opacity-50"
-                      }`}
+                      disabled={!editable}
+                      style={{
+                        padding: 6,
+                        backgroundColor: colors.panel,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        opacity: editable ? 1 : 0.4,
+                      }}
                     >
                       {categoryName.isActive ? (
-                        <Eye
-                          size={20}
-                          color={
-                            isEntityEditable(
-                              categoryName.location_id,
-                              categoryName.name
-                            )
-                              ? "#10B981"
-                              : "#4B5563"
-                          }
-                        />
+                        <Eye size={14} color={editable ? colors.success : colors.muted} />
                       ) : (
-                        <EyeOff
-                          size={20}
-                          color={
-                            isEntityEditable(
-                              categoryName.location_id,
-                              categoryName.name
-                            )
-                              ? colors.danger
-                              : "#4B5563"
-                          }
-                        />
+                        <EyeOff size={14} color={editable ? colors.danger : colors.muted} />
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -985,44 +1002,29 @@ const MenuPage: React.FC = () => {
                         if (cat)
                           router.push(`/menu/edit-category?id=${cat.id}`);
                       }}
-                      disabled={
-                        !isEntityEditable(
-                          categoryName.location_id,
-                          categoryName.name
-                        )
-                      }
-                      className={`p-2 bg-panel rounded border ${
-                        isEntityEditable(
-                          categoryName.location_id,
-                          categoryName.name
-                        )
-                          ? "border-gray-600"
-                          : "border-gray-800 opacity-50"
-                      }`}
+                      disabled={!editable}
+                      style={{
+                        padding: 6,
+                        backgroundColor: colors.panel,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        opacity: editable ? 1 : 0.4,
+                      }}
                     >
-                      <Settings
-                        size={20}
-                        color={
-                          isEntityEditable(
-                            categoryName.location_id,
-                            categoryName.name
-                          )
-                            ? colors.label
-                            : "#4B5563"
-                        }
-                      />
+                      <Settings size={14} color={editable ? colors.label : colors.muted} />
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {isExpanded && (
-                  <View className="mt-3 gap-2">
+                  <View style={{ marginTop: 10, gap: 4 }}>
                     {categoryItems.length === 0 ? (
-                      <Text className="text-lg text-gray-400">
+                      <Text style={{ fontSize: 12, color: colors.muted }}>
                         No items in this category.
                       </Text>
                     ) : (
-                      <View className="gap-2 flex flex-row flex-wrap">
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                         {categoryItems.map((item) => {
                           const category = storeCategories.find(
                             (c) => c.name === categoryName.name
@@ -1052,36 +1054,27 @@ const MenuPage: React.FC = () => {
                                   }
                                 );
                               }}
-                              className="flex-row items-center justify-between bg-panel border border-gray-700 rounded-lg px-3 py-2"
+                              style={{
+                                width: 110,
+                                backgroundColor: colors.panel,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                borderRadius: 8,
+                                padding: 8,
+                              }}
                             >
-                              <View className="flex-row items-center gap-2 ">
-                                <Text className="text-lg text-white">
-                                  {item.name}
-                                </Text>
+                              <Text
+                                style={{ fontSize: 11, fontWeight: "600", color: colors.heading, marginBottom: 3 }}
+                                numberOfLines={2}
+                              >
+                                {item.name}
+                              </Text>
+                              <Text style={{ fontSize: 11, fontWeight: "600", color: hasCustomPricing ? colors.warning : colors.teal }}>
+                                ${categoryPrice.toFixed(2)}
                                 {hasCustomPricing && (
-                                  <View className="rounded">
-                                    <Text className="text-base text-yellow-400">
-                                      Custom
-                                    </Text>
-                                  </View>
+                                  <Text style={{ fontSize: 10, color: colors.warning }}> Custom</Text>
                                 )}
-                              </View>
-                              <View className="flex-row items-center gap-2 ml-2">
-                                <Text
-                                  className={`text-lg ${
-                                    hasCustomPricing
-                                      ? "text-yellow-400"
-                                      : "text-gray-300"
-                                  }`}
-                                >
-                                  ${categoryPrice.toFixed(2)}
-                                </Text>
-                                {hasCustomPricing && (
-                                  <Text className="text-base text-gray-500 line-through">
-                                    ${item.price.toFixed(2)}
-                                  </Text>
-                                )}
-                              </View>
+                              </Text>
                             </TouchableOpacity>
                           );
                         })}
@@ -1097,7 +1090,7 @@ const MenuPage: React.FC = () => {
   );
 
   const renderItemsContent = () => (
-    <View className="flex-1 p-4 bg-panel">
+    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Menu Items (${filteredItems.length})`}
         onAddPress={handleAddItem}
@@ -1106,59 +1099,141 @@ const MenuPage: React.FC = () => {
         isRefreshing={isRefreshing}
       />
 
-      <FlatList
-        key="items-list"
-        data={filteredItems}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        className="flex-1"
-        columnWrapperStyle={{
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={8}
-        windowSize={5}
-        initialNumToRender={8}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View className="flex-1 items-center justify-center">
-            <Text className="text-xl text-gray-400 text-center">
-              No menu items found matching your criteria.
-            </Text>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        {filteredItems.length === 0 ? (
+          <View style={{ alignItems: "center", justifyContent: "center", paddingTop: 40 }}>
+            <Text style={{ fontSize: 13, color: colors.muted }}>No menu items found.</Text>
           </View>
-        }
-        renderItem={({ item }) => (
-          <View className="w-[49%]">
-            <MenuItemCard
-              item={item}
-              onEdit={handleEditItem}
-              onDelete={handleDeleteItem}
-              onToggleAvailability={handleToggleAvailability}
-              onPriceEdit={(editItem) => {
-                priceEditRef.current?.open(
-                  {
-                    id: editItem.id,
-                    name: editItem.name,
-                    currentPrice: editItem.price,
-                    currentCashPrice: editItem.cashPrice,
-                    currentAvailability: editItem.availability,
-                  },
-                  { categoryId: null, menuId: null }
-                );
-              }}
-              editDisabled={
-                !isEntityEditable(item.location_id, item.name)
-              }
-            />
+        ) : (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+            {filteredItems.map((item) => {
+              const editable = isEntityEditable(item.location_id, item.name);
+              const isAvailable = item.availability !== false;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    priceEditRef.current?.open(
+                      {
+                        id: item.id,
+                        name: item.name,
+                        currentPrice: item.price,
+                        currentCashPrice: item.cashPrice,
+                        currentAvailability: item.availability,
+                      },
+                      { categoryId: null, menuId: null }
+                    );
+                  }}
+                  style={{
+                    width: 225,
+                    backgroundColor: colors.card,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    overflow: "hidden",
+                    flexDirection: "row",
+                    alignItems: "center",
+                  }}
+                >
+                  {/* Thumbnail */}
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      backgroundColor: colors.teal + "12",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      margin: 8,
+                      borderRadius: 8,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {getImageSource(item.image) ? (
+                      <Image
+                        source={getImageSource(item.image) as any}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Utensils size={20} color={colors.teal + "90"} />
+                    )}
+                  </View>
+
+                  {/* Name + price + status */}
+                  <View style={{ flex: 1, paddingVertical: 10, gap: 3 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>
+                      ${item.price.toFixed(2)}
+                    </Text>
+                    <View
+                      style={{
+                        alignSelf: "flex-start",
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 20,
+                        backgroundColor: isAvailable ? colors.success + "20" : colors.danger + "15",
+                        borderWidth: 1,
+                        borderColor: isAvailable ? colors.success + "50" : colors.danger + "40",
+                      }}
+                    >
+                      <Text style={{ fontSize: 9, fontWeight: "700", color: isAvailable ? colors.success : colors.danger }}>
+                        {isAvailable ? "Available" : "Off"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Right: vertical action strip */}
+                  <View
+                    style={{
+                      width: 38,
+                      alignSelf: "stretch",
+                      borderLeftWidth: 1,
+                      borderLeftColor: colors.border,
+                      justifyContent: "space-evenly",
+                      alignItems: "center",
+                    }}
+                  >
+                    <TouchableOpacity
+                      onPress={() => handleToggleAvailability(item.id)}
+                      disabled={!editable}
+                      style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
+                    >
+                      {isAvailable
+                        ? <EyeOff size={14} color={colors.label} />
+                        : <Eye size={14} color={colors.success} />}
+                    </TouchableOpacity>
+                    <View style={{ height: 1, width: 20, backgroundColor: colors.border }} />
+                    <TouchableOpacity
+                      onPress={() => handleEditItem(item)}
+                      disabled={!editable}
+                      style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
+                    >
+                      <Edit size={13} color={colors.teal} />
+                    </TouchableOpacity>
+
+                    <View style={{ height: 1, width: 20, backgroundColor: colors.border }} />
+                    <TouchableOpacity
+                      onPress={() => handleDeleteItem(item)}
+                      disabled={!editable}
+                      style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
+                    >
+                      <Trash2 size={14} color={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
-      />
+      </ScrollView>
     </View>
   );
 
   const renderModifiersContent = () => (
-    <View className="flex-1 p-4 bg-panel">
+    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
       <MenuHeader
         title={`Modifier Groups (${uniqueModifierGroups.length})`}
         onAddPress={() => router.push("/menu/add-modifier")}
@@ -1171,389 +1246,337 @@ const MenuPage: React.FC = () => {
         key="modifiers-list"
         data={uniqueModifierGroups}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ gap: 12 }}
+        contentContainerStyle={{ gap: 8 }}
         removeClippedSubviews={true}
         maxToRenderPerBatch={5}
         windowSize={5}
         initialNumToRender={5}
-        renderItem={({ item: modifierGroup }) => (
+        renderItem={({ item: modifierGroup }) => {
+          const editable = isEntityEditable(modifierGroup.location_id, modifierGroup.name);
+          return (
             <View
-              className="bg-surface rounded-lg border border-gray-700 p-4"
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 12,
+              }}
             >
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="flex-row items-center gap-2 flex-wrap">
-                  <Text className="text-2xl font-semibold text-white">
+              {/* Header row */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, flexWrap: "wrap" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
                     {modifierGroup.name}
                   </Text>
 
-                  {/* Location Badge */}
                   {modifierGroup.location_id ? (
-                    <View className="flex-row items-center bg-purple-900/30 border border-purple-500 px-2.5 py-1 rounded-full gap-1">
-                      <MapPin size={14} color="#C084FC" />
-                      <Text className="text-sm font-medium text-purple-400">
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#7C3AED20", borderWidth: 1, borderColor: "#7C3AED50", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
+                      <MapPin size={10} color="#A78BFA" />
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#A78BFA" }}>
                         {modifierGroup.location_name || "Local"}
                       </Text>
                     </View>
                   ) : (
-                    <View className="bg-green-900/30 border border-green-500 px-2.5 py-1 rounded-full">
-                      <Text className="text-sm font-medium text-green-400">
-                        Global
-                      </Text>
+                    <View style={{ backgroundColor: colors.success + "20", borderWidth: 1, borderColor: colors.success + "50", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.success }}>Global</Text>
                     </View>
                   )}
 
                   <View
-                    className={`px-3 py-1 rounded-full ${
-                      modifierGroup.type === "required"
-                        ? "bg-red-900/30 border border-red-500"
-                        : "bg-blue-900/30 border border-blue-500"
-                    }`}
+                    style={{
+                      paddingHorizontal: 7,
+                      paddingVertical: 2,
+                      borderRadius: 20,
+                      backgroundColor: modifierGroup.type === "required" ? colors.danger + "15" : colors.teal + "15",
+                      borderWidth: 1,
+                      borderColor: modifierGroup.type === "required" ? colors.danger + "30" : colors.teal + "30",
+                    }}
                   >
-                    <Text
-                      className={`text-sm font-medium ${
-                        modifierGroup.type === "required"
-                          ? "text-red-400"
-                          : "text-blue-400"
-                      }`}
-                    >
-                      {modifierGroup.type === "required"
-                        ? "Required"
-                        : "Optional"}
+                    <Text style={{ fontSize: 10, fontWeight: "600", color: modifierGroup.type === "required" ? colors.danger : colors.teal }}>
+                      {modifierGroup.type === "required" ? "Required" : "Optional"}
                     </Text>
                   </View>
-                  <View className="bg-gray-600/30 border border-gray-500 px-3 py-1 rounded-full">
-                    <Text className="text-sm text-gray-300">
-                      {modifierGroup.selectionType === "single"
-                        ? "Single"
-                        : "Multiple"}
+
+                  <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
+                    <Text style={{ fontSize: 10, color: colors.label }}>
+                      {modifierGroup.selectionType === "single" ? "Single" : "Multi"}
                     </Text>
                   </View>
                 </View>
 
-                <View className="flex-row items-center gap-2">
-                  <TouchableOpacity
-                    onPress={() =>
-                      router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)
-                    }
-                    disabled={
-                      !isEntityEditable(
-                        modifierGroup.location_id,
-                        modifierGroup.name
-                      )
-                    }
-                    className={`p-2 bg-panel rounded border ${
-                      isEntityEditable(
-                        modifierGroup.location_id,
-                        modifierGroup.name
-                      )
-                        ? "border-gray-600"
-                        : "border-gray-800 opacity-50"
-                    }`}
-                  >
-                    <Settings
-                      size={20}
-                      color={
-                        isEntityEditable(
-                          modifierGroup.location_id,
-                          modifierGroup.name
-                        )
-                          ? colors.label
-                          : "#4B5563"
-                      }
-                    />
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  onPress={() => router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)}
+                  disabled={!editable}
+                  style={{
+                    padding: 6,
+                    backgroundColor: colors.panel,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    opacity: editable ? 1 : 0.4,
+                  }}
+                >
+                  <Settings size={14} color={editable ? colors.label : colors.muted} />
+                </TouchableOpacity>
               </View>
 
-              {/* Modifier Options */}
-              <View className="mb-3">
-                <Text className="text-lg font-medium text-gray-300 mb-1.5">
+              {/* Options */}
+              <View style={{ marginBottom: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
                   Options ({modifierGroup.options.length})
                 </Text>
-                <View className="flex-row flex-wrap gap-2">
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
                   {modifierGroup.options.slice(0, 5).map((option, index) => (
                     <View
                       key={index}
-                      className="bg-panel border border-gray-600 px-3 py-2 rounded-lg"
+                      style={{
+                        backgroundColor: colors.panel,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                      }}
                     >
-                      <Text className="text-lg text-gray-200">
+                      <Text style={{ fontSize: 11, color: colors.heading }}>
                         {option.name}
                         {option.price > 0 && (
-                          <Text className="text-green-400">
-                            {" "}
-                            (+${option.price.toFixed(2)})
-                          </Text>
+                          <Text style={{ color: colors.success }}> (+${option.price.toFixed(2)})</Text>
                         )}
                       </Text>
                     </View>
                   ))}
                   {modifierGroup.options.length > 5 && (
-                    <View className="bg-panel border border-gray-600 px-3 py-2 rounded-lg">
-                      <Text className="text-lg text-gray-400">
-                        +{modifierGroup.options.length - 5} more
-                      </Text>
+                    <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 11, color: colors.muted }}>+{modifierGroup.options.length - 5} more</Text>
                     </View>
                   )}
                 </View>
               </View>
 
               {/* Items using this modifier */}
-              <View className="ml-4">
-                <Text className="text-lg font-medium text-gray-300 mb-1.5">
-                  Used by Items ({modifierGroup.items.length})
-                </Text>
-                <View className="gap-2">
-                  {modifierGroup.items.slice(0, 3).map((item) => (
-                    <View
-                      key={item.id}
-                      className="flex-row items-center justify-between bg-panel p-3 rounded border border-gray-700"
-                    >
-                      <View className="flex-row items-center gap-3">
-                        <View className="w-10 h-10 rounded border border-gray-600 overflow-hidden">
+              {modifierGroup.items.length > 0 && (
+                <View>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                    Used by ({modifierGroup.items.length})
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5 }}>
+                    {modifierGroup.items.slice(0, 6).map((item) => (
+                      <View
+                        key={item.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 7,
+                          backgroundColor: colors.panel,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <View style={{ width: 26, height: 26, borderRadius: 6, overflow: "hidden", backgroundColor: colors.card }}>
                           {getImageSource(item.image) ? (
                             <Image
                               source={
                                 typeof getImageSource(item.image) === "string"
-                                  ? MENU_IMAGE_MAP[
-                                      item.image as keyof typeof MENU_IMAGE_MAP
-                                    ]
+                                  ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
                                   : getImageSource(item.image)
                               }
-                              className="w-full h-full object-cover"
+                              style={{ width: "100%", height: "100%" }}
+                              resizeMode="cover"
                             />
                           ) : (
-                            <View className="w-full h-full bg-gray-600 items-center justify-center">
-                              <Utensils color={colors.label} size={20} />
+                            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                              <Utensils color={colors.muted} size={12} />
                             </View>
                           )}
                         </View>
-                        <View>
-                          <Text className="text-lg text-gray-200 font-medium">
-                            {item.name}
-                          </Text>
-                          <Text className="text-base text-gray-400">
-                            {Array.isArray(item.category)
-                              ? item.category.join(", ")
-                              : item.category || ""}{" "}
-                            • ${item.price.toFixed(2)}
-                          </Text>
-                        </View>
-                      </View>
-                      <View
-                        className={`px-2.5 py-1.5 rounded-full ${
-                          item.availability !== false
-                            ? "bg-green-900/30 border border-green-500"
-                            : "bg-red-900/30 border border-red-500"
-                        }`}
-                      >
-                        <Text
-                          className={`text-base ${
-                            item.availability !== false
-                              ? "text-green-400"
-                              : "text-red-400"
-                          }`}
-                        >
-                          {item.availability !== false
-                            ? "Available"
-                            : "Unavailable"}
+                        <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>
+                          ${item.price.toFixed(2)}
                         </Text>
                       </View>
-                    </View>
-                  ))}
-                  {modifierGroup.items.length > 3 && (
-                    <View className="bg-panel p-3 rounded border border-gray-700 items-center">
-                      <Text className="text-lg text-gray-400">
-                        +{modifierGroup.items.length - 3} more items use this
-                        modifier
-                      </Text>
-                    </View>
-                  )}
+                    ))}
+                    {modifierGroup.items.length > 6 && (
+                      <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 8 }}>
+                        <Text style={{ fontSize: 11, color: colors.muted }}>+{modifierGroup.items.length - 6} more</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
-          )}
+          );
+        }}
       />
     </View>
   );
 
   const renderSchedulesContent = () => (
-    <View className="flex-1 p-4 bg-panel">
-      <View className="flex-row items-center justify-between mb-4">
-        <Text className="text-2xl font-bold text-white">Schedules</Text>
-        <View className="flex-row bg-surface border border-gray-600 rounded-lg p-1">
+    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
+      {/* Header */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Schedules</Text>
+        <View style={{ flexDirection: "row", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 2, gap: 2 }}>
           <TouchableOpacity
             onPress={() => setScheduleViewType("menus")}
-            className={`px-4 py-2 rounded-md ${
-              scheduleViewType === "menus" ? "bg-blue-600" : ""
-            }`}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+              borderRadius: 6,
+              backgroundColor: scheduleViewType === "menus" ? colors.teal + "20" : "transparent",
+              borderWidth: scheduleViewType === "menus" ? 1 : 0,
+              borderColor: colors.teal + "50",
+            }}
           >
-            <Text
-              className={`text-lg font-medium ${
-                scheduleViewType === "menus" ? "text-white" : "text-gray-300"
-              }`}
-            >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: scheduleViewType === "menus" ? colors.teal : colors.label }}>
               Menus
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setScheduleViewType("categories")}
-            className={`px-4 py-2 rounded-md ${
-              scheduleViewType === "categories" ? "bg-blue-600" : ""
-            }`}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+              borderRadius: 6,
+              backgroundColor: scheduleViewType === "categories" ? colors.teal + "20" : "transparent",
+              borderWidth: scheduleViewType === "categories" ? 1 : 0,
+              borderColor: colors.teal + "50",
+            }}
           >
-            <Text
-              className={`text-lg font-medium ${
-                scheduleViewType === "categories"
-                  ? "text-white"
-                  : "text-gray-300"
-              }`}
-            >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: scheduleViewType === "categories" ? colors.teal : colors.label }}>
               Categories
             </Text>
           </TouchableOpacity>
         </View>
       </View>
-      <ScrollView className="flex-1">
-        <View className="gap-3">
+
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        <View style={{ gap: 8 }}>
           {scheduleViewType === "menus"
-            ? menus.map((menu) => (
-                <View
-                  key={menu.id}
-                  className="bg-surface rounded-lg border border-gray-700 p-4"
-                >
-                  <View className="flex-row items-center justify-between mb-1.5">
-                    <Text className="text-xl text-white font-semibold">
-                      {menu.name}
-                    </Text>
-                    <View
-                      className={`px-2.5 py-1.5 rounded-full ${
-                        menu.isActive && menu.isAvailableNow
-                          ? "bg-green-900/30 border border-green-500"
-                          : "bg-red-900/30 border border-red-500"
-                      }`}
-                    >
-                      <Text
-                        className={`text-lg ${
-                          menu.isActive && menu.isAvailableNow
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }`}
+            ? menus.map((menu) => {
+                const statusActive = menu.isActive && menu.isAvailableNow;
+                return (
+                  <View
+                    key={menu.id}
+                    style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{menu.name}</Text>
+                      <View
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 20,
+                          backgroundColor: statusActive ? colors.success + "20" : colors.danger + "15",
+                          borderWidth: 1,
+                          borderColor: statusActive ? colors.success + "50" : colors.danger + "30",
+                        }}
                       >
-                        {menu.isActive
-                          ? menu.isAvailableNow
-                            ? "Available Now"
-                            : "Unavailable Now"
-                          : "Inactive"}
-                      </Text>
+                        <Text style={{ fontSize: 10, fontWeight: "600", color: statusActive ? colors.success : colors.danger }}>
+                          {menu.isActive ? (menu.isAvailableNow ? "Available" : "Unavailable") : "Inactive"}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                  {(menu.schedules ?? []).length === 0 ? (
-                    <View>
-                      <Text className="text-lg text-gray-400">
-                        Always available (no schedule rules)
-                      </Text>
-                    </View>
-                  ) : (
-                    <View className="gap-1.5">
-                      {menu.schedules!.map((r) => (
-                        <View
-                          key={r.id}
-                          className="flex-row justify-between bg-panel p-3 rounded border border-gray-700"
-                        >
-                          <Text className="text-lg text-gray-200">
-                            {r.name || r.id}
-                          </Text>
-                          <Text className="text-lg text-gray-400">
-                            {(r.days || []).join(", ")} •{" "}
-                            {formatTimeDisplay(r.startTime)} -{" "}
-                            {formatTimeDisplay(r.endTime)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  <View className="mt-2.5">
+                    {(menu.schedules ?? []).length === 0 ? (
+                      <Text style={{ fontSize: 12, color: colors.muted }}>Always available (no schedule rules)</Text>
+                    ) : (
+                      <View style={{ gap: 4 }}>
+                        {menu.schedules!.map((r) => (
+                          <View
+                            key={r.id}
+                            style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: colors.panel, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                          >
+                            <Text style={{ fontSize: 12, color: colors.heading }}>{r.name || r.id}</Text>
+                            <Text style={{ fontSize: 12, color: colors.label }}>
+                              {(r.days || []).join(", ")} · {formatTimeDisplay(r.startTime)} – {formatTimeDisplay(r.endTime)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                     <TouchableOpacity
-                      onPress={() =>
-                        router.push(`/menu/edit-menu?id=${menu.id}`)
-                      }
-                      className="self-start px-3 py-2 rounded-lg bg-blue-600"
+                      onPress={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+                      style={{
+                        alignSelf: "flex-start",
+                        marginTop: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        backgroundColor: colors.teal + "20",
+                        borderWidth: 1,
+                        borderColor: colors.teal + "50",
+                      }}
                     >
-                      <Text className="text-lg text-white">Edit Schedules</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit Schedules</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
-              ))
-            : storeCategories.map((category) => (
-                <View
-                  key={category.id}
-                  className="bg-surface rounded-lg border border-gray-700 p-4"
-                >
-                  <View className="flex-row items-center justify-between mb-1.5">
-                    <Text className="text-xl text-white font-semibold">
-                      {category.name}
-                    </Text>
-                    <View
-                      className={`px-2.5 py-1.5 rounded-full ${
-                        category.isActive &&
-                        isCategoryAvailableNow(category.name)
-                          ? "bg-green-900/30 border border-green-500"
-                          : "bg-red-900/30 border border-red-500"
-                      }`}
-                    >
-                      <Text
-                        className={`text-lg ${
-                          category.isActive &&
-                          isCategoryAvailableNow(category.name)
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }`}
+                );
+              })
+            : storeCategories.map((category) => {
+                const catAvailable = category.isActive && isCategoryAvailableNow(category.name);
+                return (
+                  <View
+                    key={category.id}
+                    style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{category.name}</Text>
+                      <View
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 20,
+                          backgroundColor: catAvailable ? colors.success + "20" : colors.danger + "15",
+                          borderWidth: 1,
+                          borderColor: catAvailable ? colors.success + "50" : colors.danger + "30",
+                        }}
                       >
-                        {category.isActive
-                          ? isCategoryAvailableNow(category.name)
-                            ? "Available Now"
-                            : "Unavailable Now"
-                          : "Inactive"}
-                      </Text>
+                        <Text style={{ fontSize: 10, fontWeight: "600", color: catAvailable ? colors.success : colors.danger }}>
+                          {category.isActive ? (isCategoryAvailableNow(category.name) ? "Available" : "Unavailable") : "Inactive"}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                  {(category.schedules ?? []).length === 0 ? (
-                    <View>
-                      <Text className="text-lg text-gray-400">
-                        Always available (no schedule rules)
-                      </Text>
-                    </View>
-                  ) : (
-                    <View className="gap-1.5">
-                      {category.schedules!.map((r) => (
-                        <View
-                          key={r.id}
-                          className="flex-row justify-between bg-panel p-3 rounded border border-gray-700"
-                        >
-                          <Text className="text-lg text-gray-200">
-                            {r.name || r.id}
-                          </Text>
-                          <Text className="text-lg text-gray-400">
-                            {(r.days || []).join(", ")} •{" "}
-                            {formatTimeDisplay(r.startTime)} -{" "}
-                            {formatTimeDisplay(r.endTime)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  <View className="mt-2.5">
+                    {(category.schedules ?? []).length === 0 ? (
+                      <Text style={{ fontSize: 12, color: colors.muted }}>Always available (no schedule rules)</Text>
+                    ) : (
+                      <View style={{ gap: 4 }}>
+                        {category.schedules!.map((r) => (
+                          <View
+                            key={r.id}
+                            style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: colors.panel, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                          >
+                            <Text style={{ fontSize: 12, color: colors.heading }}>{r.name || r.id}</Text>
+                            <Text style={{ fontSize: 12, color: colors.label }}>
+                              {(r.days || []).join(", ")} · {formatTimeDisplay(r.startTime)} – {formatTimeDisplay(r.endTime)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                     <TouchableOpacity
-                      onPress={() =>
-                        router.push(`/menu/edit-category?id=${category.id}`)
-                      }
-                      className="self-start px-3 py-2 rounded-lg bg-blue-600"
+                      onPress={() => router.push(`/menu/edit-category?id=${category.id}`)}
+                      style={{
+                        alignSelf: "flex-start",
+                        marginTop: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        backgroundColor: colors.teal + "20",
+                        borderWidth: 1,
+                        borderColor: colors.teal + "50",
+                      }}
                     >
-                      <Text className="text-lg text-white">Edit Schedules</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit Schedules</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
-              ))}
+                );
+              })}
         </View>
       </ScrollView>
     </View>

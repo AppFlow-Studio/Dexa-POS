@@ -3,7 +3,8 @@ import ScheduleManager from "@/components/menu/ScheduleManager";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
-import { Category, CustomPricing, MenuItemType, Schedule } from "@/lib/types";
+import { bottomSheetTheme, colors } from "@/lib/theme";
+import { Category, MenuItemType, Schedule } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -35,7 +36,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { bottomSheetTheme, colors } from "@/lib/theme";
 
 interface CategoryFormData {
   name: string;
@@ -56,12 +56,8 @@ export interface CategoryFormProps {
 }
 
 const getImageSource = (image: string | undefined) => {
-  if (image && image.length > 200) {
-    return { uri: `data:image/jpeg;base64,${image}` };
-  }
-  if (image) {
-    return `${image}`;
-  }
+  if (image && image.length > 200) return { uri: `data:image/jpeg;base64,${image}` };
+  if (image) return image;
   return undefined;
 };
 
@@ -76,118 +72,72 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 }) => {
   const allItems = useMenuStore((s) => s.menuItems);
   const addCustomPricing = useMenuStore((s) => s.addCustomPricing);
-  const updateCustomPricing = useMenuStore((s) => s.updateCustomPricing);
   const deleteCustomPricing = useMenuStore((s) => s.deleteCustomPricing);
-  const toggleCustomPricingActive = useMenuStore((s) => s.toggleCustomPricingActive);
 
   const [name, setName] = useState(initialData?.name || "");
   const [isActive, setIsActive] = useState(initialData?.isActive ?? true);
-  const [schedules, setSchedules] = useState<Schedule[]>(
-    initialData?.schedules || []
-  );
-  const [selectedItemIds, setSelectedItemIds] =
-    useState<string[]>(initialItems);
+  const [schedules, setSchedules] = useState<Schedule[]>(initialData?.schedules || []);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>(initialItems);
+  const [pendingCustomPrices, setPendingCustomPrices] = useState<Record<string, number>>({});
+  const [newPricing, setNewPricing] = useState<{ itemId: string; price: number } | null>(null);
+  const [newPricingText, setNewPricingText] = useState("");
 
-  // Custom Pricing State
-  const [editingPricing, setEditingPricing] = useState<{
-    itemId: string;
-    pricing: CustomPricing;
-  } | null>(null);
-  const [editingPricingText, setEditingPricingText] = useState<string>("");
-  const [newPricing, setNewPricing] = useState<{
-    itemId: string;
-    price: number;
-  } | null>(null);
-  const [newPricingText, setNewPricingText] = useState<string>("");
-
-  // Change Tracking
   const [hasChanges, setHasChanges] = useState(false);
   const hasSavedRef = useRef(false);
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
     hasChanges && !hasSavedRef.current
   );
 
-  useEffect(() => {
-    // Determine if dirty
-    const nameChanged = (initialData?.name || "") !== name;
-    const activeChanged = (initialData?.isActive ?? true) !== isActive;
-    const schedulesChanged =
-      JSON.stringify(initialData?.schedules || []) !==
-      JSON.stringify(schedules);
-    const itemsChanged =
-      JSON.stringify(initialItems.sort()) !==
-      JSON.stringify(selectedItemIds.sort());
-
-    // For new categories, we consider it changed if user has typed anything
-    const isNewAndChanged =
-      !initialData &&
-      (name !== "" || selectedItemIds.length > 0 || schedules.length > 0);
-
-    if (initialData) {
-      setHasChanges(
-        nameChanged || activeChanged || schedulesChanged || itemsChanged
-      );
-    } else {
-      setHasChanges(isNewAndChanged);
-    }
-  }, [name, isActive, schedules, selectedItemIds, initialData, initialItems]);
-
-  // Sheets
   const quickSearchSheetRef = useRef<BottomSheet>(null);
   const [quickSearchQuery, setQuickSearchQuery] = useState("");
   const scheduleSheetRef = useRef<BottomSheet>(null);
   const [editingRule, setEditingRule] = useState<Schedule | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
+  const isEditMode = !!initialData;
+
+  useEffect(() => {
+    const nameChanged = (initialData?.name || "") !== name;
+    const activeChanged = (initialData?.isActive ?? true) !== isActive;
+    const schedulesChanged = JSON.stringify(initialData?.schedules || []) !== JSON.stringify(schedules);
+    const itemsChanged = JSON.stringify(initialItems.sort()) !== JSON.stringify(selectedItemIds.sort());
+    const isNewAndChanged = !initialData && (name !== "" || selectedItemIds.length > 0 || schedules.length > 0);
+    setHasChanges(initialData
+      ? nameChanged || activeChanged || schedulesChanged || itemsChanged
+      : isNewAndChanged
+    );
+  }, [name, isActive, schedules, selectedItemIds, initialData, initialItems]);
+
   const filteredItems = useMemo(() => {
     const q = quickSearchQuery.trim().toLowerCase();
     if (!q) return allItems;
-    return allItems.filter(
-      (i) =>
-        i.name.toLowerCase().includes(q) ||
-        i.description?.toLowerCase().includes(q)
+    return allItems.filter((i) =>
+      i.name.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q)
     );
   }, [allItems, quickSearchQuery]);
 
-  // Handlers
   const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert("Validation", "Name is required");
-      return;
-    }
-
-    const formData: CategoryFormData = {
+    if (!name.trim()) { Alert.alert("Validation", "Name is required"); return; }
+    const success = await onSubmit({
       name: name.trim(),
       isActive,
       schedules,
       selectedItems: selectedItemIds,
-      customPricing: {}, // Custom pricing is handled directly via store actions in Edit mode, but we can pass it up if needed.
-      // However currently add-category handles custom pricing differently (local state) vs edit (store).
-      // For uniformity, we should ideally handle custom pricing AFTER category creation in "Add" mode,
-      // or pass pending rules.
-      // For this refactor, we will rely on the parent to handle the 'customPricing' logic based on the mode.
-      // We'll only pass the basics here.
-    };
-
-    const success = await onSubmit(formData);
+      customPricing: {},
+    });
     if (success) {
       hasSavedRef.current = true;
       setHasChanges(false);
-      if (router.canGoBack()) {
-        router.back();
-      }
+      if (router.canGoBack()) router.back();
     }
   };
 
   const toggleItem = (item: MenuItemType) => {
     setSelectedItemIds((prev) =>
-      prev.includes(item.id)
-        ? prev.filter((id) => id !== item.id)
-        : [...prev, item.id]
+      prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id]
     );
   };
 
-  // Schedule Handlers
   const openScheduleSheet = (rule?: Schedule, index?: number) => {
     setEditingRule(rule || null);
     setEditingIndex(index ?? null);
@@ -196,66 +146,25 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 
   const handleSaveSchedule = (newRule: Schedule) => {
     if (editingIndex !== null) {
-      const nextSchedules = schedules.map((r, i) =>
-        i === editingIndex ? newRule : r
-      );
-      setSchedules(nextSchedules);
+      setSchedules(schedules.map((r, i) => (i === editingIndex ? newRule : r)));
     } else {
       setSchedules([...schedules, newRule]);
     }
   };
 
-  // Custom Pricing Handlers (Direct Store Interaction Wrapper)
-  // Note: These interaction require the Category ID to exist (Edit Mode).
-  // For Add Mode, we might need a different UI or defer it.
-  // The original add-category allowed setting custom prices BEFORE creation.
-  // To support both, we'll expose UI for custom pricing only if initialData exists (Edit Mode)
-  // OR if we implement a local buffer for Add Mode.
-  // Given the complexity gap, let's implement the localized buffer approach later if requested.
-  // For now, we mimic edit-category behavior mostly, but for Add Category we might hide the complex
-  // per-item pricing rows until it's created, OR implement the local state version from add-category.
-
-  // Let's implement the Local State version for "Add" mode compatibility if initialData is missing.
-  // But wait, "Edit" mode uses direct store calls. "Add" mode uses local state.
-  // We need to support both or unify.
-  // Unification Strategy:
-  // If `initialData` matches `useMenuStore` category, we use Store Actions.
-  // If not (Add Mode), we use local state and pass it in `onSubmit`.
-
-  const [pendingCustomPrices, setPendingCustomPrices] = useState<
-    Record<string, number>
-  >({});
-
-  const isEditMode = !!initialData;
-
   const handleAddCustomPricing = (itemId: string) => {
     const item = allItems.find((i) => i.id === itemId);
-    if (item) {
-      setNewPricing({ itemId, price: item.price });
-      setNewPricingText(item.price.toFixed(2));
-    }
+    if (item) { setNewPricing({ itemId, price: item.price }); setNewPricingText(item.price.toFixed(2)); }
   };
 
   const handleCommitCustomPricing = () => {
     if (!newPricing) return;
     const parsed = parseFloat(newPricingText.replace(",", "."));
-    if (isNaN(parsed)) {
-      Alert.alert("Invalid price", "Please enter a valid number.");
-      return;
-    }
-
+    if (isNaN(parsed)) { Alert.alert("Invalid price", "Please enter a valid number."); return; }
     if (isEditMode) {
-      addCustomPricing(newPricing.itemId, {
-        categoryId: initialData.id,
-        categoryName: initialData.name,
-        price: parsed,
-        isActive: true,
-      });
+      addCustomPricing(newPricing.itemId, { categoryId: initialData.id, categoryName: initialData.name, price: parsed, isActive: true });
     } else {
-      setPendingCustomPrices((prev) => ({
-        ...prev,
-        [newPricing.itemId]: parsed,
-      }));
+      setPendingCustomPrices((prev) => ({ ...prev, [newPricing.itemId]: parsed }));
     }
     setNewPricing(null);
     setNewPricingText("");
@@ -265,81 +174,139 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
     if (isEditMode && pricingId) {
       Alert.alert("Delete Custom Pricing", "Are you sure?", [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteCustomPricing(itemId, pricingId),
-        },
+        { text: "Delete", style: "destructive", onPress: () => deleteCustomPricing(itemId, pricingId) },
       ]);
     } else {
-      setPendingCustomPrices((prev) => {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      });
+      setPendingCustomPrices((prev) => { const next = { ...prev }; delete next[itemId]; return next; });
     }
   };
 
   return (
-    <View className="flex-1 bg-panel">
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-surface">
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          className="flex-row items-center"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            backgroundColor: colors.teal + "10",
+            borderRadius: 10,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+          }}
         >
-          <ArrowLeft size={20} color={colors.label} />
-          <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
+          <ArrowLeft size={16} color={colors.teal} />
+          <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>Back</Text>
         </TouchableOpacity>
-        <View className="flex-row gap-2">
+
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>{title}</Text>
+
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           {onDelete && (
             <TouchableOpacity
               onPress={onDelete}
-              className="px-4 py-2 rounded-lg border border-red-500 bg-red-900/30"
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                backgroundColor: colors.danger + "15",
+                borderWidth: 1,
+                borderColor: colors.danger + "30",
+              }}
             >
-              <Text className="text-xl text-red-400">Delete</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}>Delete</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
-            className={`flex-row items-center px-4 py-2 rounded-lg ${
-              isSaving ? "bg-blue-400" : "bg-blue-600"
-            }`}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 8,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              opacity: isSaving ? 0.7 : 1,
+            }}
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color="white" />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : (
-              <Save size={20} color="white" />
+              <Save size={14} color={colors.teal} />
             )}
-            <Text className="text-xl text-white ml-1.5">
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
               {isSaving ? "Saving..." : submitButtonLabel}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        <ScrollView className="flex-1 p-4">
-          <Text className="text-2xl font-bold text-white mb-4">{title}</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 16 }} showsVerticalScrollIndicator={false}>
 
-          {/* Name */}
-          <View className="mb-4">
-            <Text className="text-xl font-semibold text-white mb-2">Name</Text>
-            <TextInput
-              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-              value={name}
-              onChangeText={setName}
-              placeholder="Category name"
-              placeholderTextColor={colors.label}
-            />
+          {/* Basic Info */}
+          <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Basic Info
+              </Text>
+              <TouchableOpacity
+                onPress={() => setIsActive(!isActive)}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 20,
+                  backgroundColor: isActive ? colors.success + "20" : colors.danger + "15",
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.success + "50" : colors.danger + "30",
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? colors.success : colors.danger }}>
+                  {isActive ? "Active" : "Inactive"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Category Name *</Text>
+              <TextInput
+                style={{
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 13,
+                  color: colors.heading,
+                }}
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g. Starters, Mains, Desserts"
+                placeholderTextColor={colors.muted}
+              />
+            </View>
           </View>
 
-          {/* Schedule */}
-          <View className="mb-4">
-            <Text className="text-xl font-semibold text-white mb-2">
+          {/* Availability */}
+          <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
               Availability Schedule
             </Text>
             <ScheduleManager
@@ -350,237 +317,247 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             />
           </View>
 
-          {/* Selected Items List */}
+          {/* Selected items summary chips */}
           {selectedItemIds.length > 0 && (
-            <View className="mb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Selected Items ({selectedItemIds.length})
+            <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10 }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Selected · {selectedItemIds.length}
               </Text>
-              <View className="bg-surface border border-gray-600 rounded-lg p-3">
-                <View className="flex-row flex-wrap gap-1.5">
-                  {selectedItemIds.map((itemId) => {
-                    const item = allItems.find(
-                      (i: MenuItemType) => i.id === itemId
-                    );
-                    return item ? (
-                      <View
-                        key={itemId}
-                        className="flex-row items-center bg-blue-600/20 border border-blue-500 px-3 py-2 rounded-lg"
-                      >
-                        <Text className="text-blue-400 text-lg font-medium">
-                          {item.name}
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => toggleItem(item)}
-                          className="ml-1.5"
-                        >
-                          <X size={16} color={colors.info} />
-                        </TouchableOpacity>
-                      </View>
-                    ) : null;
-                  })}
-                </View>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {selectedItemIds.map((itemId) => {
+                  const item = allItems.find((i) => i.id === itemId);
+                  return item ? (
+                    <View
+                      key={itemId}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: colors.teal + "15",
+                        borderWidth: 1,
+                        borderColor: colors.teal + "40",
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 20,
+                        gap: 6,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>{item.name}</Text>
+                      <TouchableOpacity onPress={() => toggleItem(item)}>
+                        <X size={11} color={colors.teal} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : null;
+                })}
               </View>
             </View>
           )}
 
-          {/* Item Selection & Custom Pricing */}
-          <View className="mb-4">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-xl font-semibold text-white">
-                Select Items & Pricing
+          {/* Item Selection */}
+          <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Items · {selectedItemIds.length}/{allItems.length}
               </Text>
-              <View className="flex-row items-center gap-2">
-                <Text className="text-lg text-gray-400">
-                  {selectedItemIds.length} of {allItems.length} selected
-                </Text>
-                <TouchableOpacity
-                  onPress={() => quickSearchSheetRef.current?.expand()}
-                  className="p-2 rounded-lg bg-panel border border-gray-600"
-                  accessibilityLabel="Quick search items"
-                >
-                  <Search size={20} color={colors.label} />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={() => quickSearchSheetRef.current?.expand()}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 5,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 8,
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Search size={12} color={colors.label} />
+                <Text style={{ fontSize: 11, color: colors.label }}>Search</Text>
+              </TouchableOpacity>
             </View>
 
             {allItems.length === 0 ? (
-              <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
-                <Utensils size={36} color={colors.label} />
-                <Text className="text-xl text-gray-400 text-center mt-3">
-                  No menu items found.
-                </Text>
+              <View style={{ backgroundColor: colors.panel, borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 20, alignItems: "center", gap: 8 }}>
+                <Utensils size={20} color={colors.muted} />
+                <Text style={{ fontSize: 12, color: colors.muted }}>No menu items found.</Text>
               </View>
             ) : (
-              <View className="gap-2.5 flex flex-row flex-wrap">
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {allItems.map((item) => {
                   const isSelected = selectedItemIds.includes(item.id);
-
-                  // Helper to find existing custom price
-                  // Edit Mode: check item.customPricing for this category
-                  // Add Mode: check pendingCustomPrices
                   let activeCustomPrice: number | null = null;
-                  let pricingId: string | undefined = undefined;
+                  let pricingId: string | undefined;
 
                   if (isEditMode) {
-                    const cp = item.customPricing?.find(
-                      (p) => p.categoryId === initialData.id
-                    );
-                    if (cp && cp.isActive) {
-                      activeCustomPrice = cp.price;
-                      pricingId = cp.id;
-                    }
-                  } else {
-                    if (pendingCustomPrices[item.id] !== undefined) {
-                      activeCustomPrice = pendingCustomPrices[item.id];
-                    }
+                    const cp = item.customPricing?.find((p) => p.categoryId === initialData.id);
+                    if (cp?.isActive) { activeCustomPrice = cp.price; pricingId = cp.id; }
+                  } else if (pendingCustomPrices[item.id] !== undefined) {
+                    activeCustomPrice = pendingCustomPrices[item.id];
                   }
+
+                  const imgSrc = getImageSource(item.image);
 
                   return (
                     <TouchableOpacity
                       key={item.id}
                       onPress={() => toggleItem(item)}
-                      className={`bg-surface rounded-lg w-[32.5%] border p-3 ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-900/20"
-                          : "border-gray-700"
-                      }`}
+                      style={{
+                        width: 140,
+                        backgroundColor: isSelected ? colors.teal + "08" : colors.panel,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: isSelected ? colors.teal + "40" : colors.border,
+                        overflow: "hidden",
+                      }}
                     >
-                      <View className="flex-row items-center gap-3">
-                        <View className="h-20 aspect-square rounded-lg border border-gray-600 overflow-hidden">
-                          {getImageSource(item.image) ? (
-                            <Image
-                              source={
-                                typeof getImageSource(item.image) === "string"
-                                  ? MENU_IMAGE_MAP[
-                                      item.image as keyof typeof MENU_IMAGE_MAP
-                                    ]
-                                  : getImageSource(item.image)
-                              }
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <View className="w-full h-full bg-gray-600 items-center justify-center">
-                              <Utensils color={colors.label} size={20} />
-                            </View>
-                          )}
-                        </View>
-                        <View className="flex-1">
-                          <Text className="text-white font-medium text-base">
-                            {item.name}
-                          </Text>
+                      {/* Thumbnail */}
+                      <View style={{ height: 72, backgroundColor: colors.screen }}>
+                        {imgSrc ? (
+                          <Image
+                            source={typeof imgSrc === "string" ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP] : imgSrc}
+                            style={{ width: "100%", height: "100%" }}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                            <Utensils size={20} color={colors.muted} />
+                          </View>
+                        )}
+                        {/* Check badge */}
+                        {isSelected && (
+                          <View
+                            style={{
+                              position: "absolute",
+                              top: 5,
+                              right: 5,
+                              width: 18,
+                              height: 18,
+                              borderRadius: 9,
+                              backgroundColor: colors.teal,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Check size={11} color={colors.onSolid} />
+                          </View>
+                        )}
+                      </View>
 
-                          <View className="flex-row items-center gap-2 mt-1">
-                            <Text className="text-blue-400 font-semibold text-sm">
+                      {/* Info */}
+                      <View style={{ padding: 8, gap: 3 }}>
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: activeCustomPrice !== null ? colors.warning : colors.teal }}>
+                            ${(activeCustomPrice ?? item.price).toFixed(2)}
+                          </Text>
+                          {activeCustomPrice !== null && (
+                            <Text style={{ fontSize: 10, color: colors.muted, textDecorationLine: "line-through" }}>
                               ${item.price.toFixed(2)}
                             </Text>
-                            {activeCustomPrice !== null && (
-                              <Text className="text-yellow-400 text-[10px]">
-                                (Cat: ${activeCustomPrice.toFixed(2)})
-                              </Text>
-                            )}
-                          </View>
-
-                          {/* Custom Pricing UI */}
-                          {isSelected && (
-                            <View className="mt-2">
-                              {activeCustomPrice !== null ? (
-                                <View className="flex-row items-center gap-1.5 self-start">
-                                  <TouchableOpacity
-                                    onPress={() =>
-                                      handleRemoveCustomPricing(
-                                        item.id,
-                                        pricingId
-                                      )
-                                    }
-                                    className="bg-red-900/40 border border-red-500 rounded px-2 py-1"
-                                  >
-                                    <X size={12} color={colors.danger} />
-                                  </TouchableOpacity>
-                                </View>
-                              ) : (
-                                <TouchableOpacity
-                                  onPress={() =>
-                                    handleAddCustomPricing(item.id)
-                                  }
-                                  className="flex-row items-center gap-1 bg-yellow-900/30 border border-yellow-500 px-1.5 py-0.5 rounded self-start"
-                                >
-                                  <DollarSign size={10} color={colors.warning} />
-                                  <Text className="text-yellow-400 text-[10px]">
-                                    Set Price
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
-
-                              {/* Inline Edit for New Custom Pricing */}
-                              {newPricing?.itemId === item.id && (
-                                <View className="flex-col items-center gap-1.5 mt-1.5 bg-panel p-2 rounded border border-gray-600 absolute z-10 w-[150%]">
-                                  <View className="flex-row items-center gap-1.5">
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        const c = parseFloat(
-                                          newPricingText.replace(",", ".")
-                                        );
-                                        setNewPricingText(
-                                          (isNaN(c)
-                                            ? 0
-                                            : Math.max(0, c - 0.25)
-                                          ).toFixed(2)
-                                        );
-                                      }}
-                                      className="p-1"
-                                    >
-                                      <Minus size={12} color="white" />
-                                    </TouchableOpacity>
-                                    <TextInput
-                                      className="bg-black/20 text-white rounded px-2 py-1 text-center w-16"
-                                      value={newPricingText}
-                                      onChangeText={setNewPricingText}
-                                      keyboardType="decimal-pad"
-                                    />
-                                    <TouchableOpacity
-                                      onPress={() => {
-                                        const c = parseFloat(
-                                          newPricingText.replace(",", ".")
-                                        );
-                                        setNewPricingText(
-                                          (isNaN(c) ? 0 : c + 0.25).toFixed(2)
-                                        );
-                                      }}
-                                      className="p-1"
-                                    >
-                                      <Plus size={12} color="white" />
-                                    </TouchableOpacity>
-                                  </View>
-                                  <View className="flex-row gap-2">
-                                    <TouchableOpacity
-                                      onPress={handleCommitCustomPricing}
-                                      className="bg-green-600 p-1 rounded"
-                                    >
-                                      <Save size={14} color="white" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                      onPress={() => setNewPricing(null)}
-                                      className="bg-gray-600 p-1 rounded"
-                                    >
-                                      <X size={14} color="white" />
-                                    </TouchableOpacity>
-                                  </View>
-                                </View>
-                              )}
-                            </View>
                           )}
                         </View>
-                        {/* Selection Indicator */}
-                        <View
-                          className={`w-5 h-5 rounded-full border-2 items-center justify-center ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-600"
-                              : "border-gray-500"
-                          }`}
-                        >
-                          {isSelected && <Check size={12} color="white" />}
-                        </View>
+
+                        {/* Custom pricing controls — only when selected */}
+                        {isSelected && (
+                          <View style={{ marginTop: 2 }}>
+                            {activeCustomPrice !== null ? (
+                              <TouchableOpacity
+                                onPress={() => handleRemoveCustomPricing(item.id, pricingId)}
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 3,
+                                  alignSelf: "flex-start",
+                                  backgroundColor: colors.danger + "15",
+                                  borderWidth: 1,
+                                  borderColor: colors.danger + "30",
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 6,
+                                }}
+                              >
+                                <X size={10} color={colors.danger} />
+                                <Text style={{ fontSize: 10, color: colors.danger }}>Reset</Text>
+                              </TouchableOpacity>
+                            ) : newPricing?.itemId === item.id ? (
+                              <View style={{ gap: 4 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                  <TouchableOpacity
+                                    onPress={() => {
+                                      const c = parseFloat(newPricingText.replace(",", "."));
+                                      setNewPricingText((isNaN(c) ? 0 : Math.max(0, c - 0.25)).toFixed(2));
+                                    }}
+                                    style={{ padding: 3 }}
+                                  >
+                                    <Minus size={11} color={colors.label} />
+                                  </TouchableOpacity>
+                                  <TextInput
+                                    style={{
+                                      flex: 1,
+                                      backgroundColor: colors.screen,
+                                      borderWidth: 1,
+                                      borderColor: colors.border,
+                                      borderRadius: 6,
+                                      paddingHorizontal: 6,
+                                      paddingVertical: 3,
+                                      fontSize: 11,
+                                      color: colors.heading,
+                                      textAlign: "center",
+                                    }}
+                                    value={newPricingText}
+                                    onChangeText={setNewPricingText}
+                                    keyboardType="decimal-pad"
+                                  />
+                                  <TouchableOpacity
+                                    onPress={() => {
+                                      const c = parseFloat(newPricingText.replace(",", "."));
+                                      setNewPricingText((isNaN(c) ? 0 : c + 0.25).toFixed(2));
+                                    }}
+                                    style={{ padding: 3 }}
+                                  >
+                                    <Plus size={11} color={colors.label} />
+                                  </TouchableOpacity>
+                                </View>
+                                <View style={{ flexDirection: "row", gap: 4 }}>
+                                  <TouchableOpacity
+                                    onPress={handleCommitCustomPricing}
+                                    style={{ flex: 1, backgroundColor: colors.success + "20", borderWidth: 1, borderColor: colors.success + "50", borderRadius: 6, paddingVertical: 3, alignItems: "center" }}
+                                  >
+                                    <Text style={{ fontSize: 10, fontWeight: "600", color: colors.success }}>Set</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => setNewPricing(null)}
+                                    style={{ flex: 1, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 6, paddingVertical: 3, alignItems: "center" }}
+                                  >
+                                    <Text style={{ fontSize: 10, color: colors.label }}>Cancel</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            ) : (
+                              <TouchableOpacity
+                                onPress={() => handleAddCustomPricing(item.id)}
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 3,
+                                  alignSelf: "flex-start",
+                                  backgroundColor: colors.warning + "15",
+                                  borderWidth: 1,
+                                  borderColor: colors.warning + "30",
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 6,
+                                }}
+                              >
+                                <DollarSign size={10} color={colors.warning} />
+                                <Text style={{ fontSize: 10, color: colors.warning }}>Custom $</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        )}
                       </View>
                     </TouchableOpacity>
                   );
@@ -591,96 +568,109 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <UnsavedChangesDialog
-        isOpen={isDialogVisible}
-        onCancel={handleCancel}
-        onDiscard={handleDiscard}
-      />
-
-      <ScheduleFormSheet
-        ref={scheduleSheetRef}
-        rule={editingRule}
-        onSave={handleSaveSchedule}
-      />
+      <UnsavedChangesDialog isOpen={isDialogVisible} onCancel={handleCancel} onDiscard={handleDiscard} />
+      <ScheduleFormSheet ref={scheduleSheetRef} rule={editingRule} onSave={handleSaveSchedule} />
 
       {/* Quick Search Sheet */}
       <BottomSheet
         ref={quickSearchSheetRef}
         index={-1}
-        snapPoints={["70%", "90%"]}
+        snapPoints={["60%"]}
         enablePanDownToClose
         backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            disappearsOnIndex={-1}
-            appearsOnIndex={0}
-          />
+          <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} />
         )}
         {...bottomSheetTheme}
       >
-        <View className="p-3 border-b border-gray-700">
-          <Text className="text-white text-xl font-bold">Add Items</Text>
-          <Text className="text-gray-400 text-base mt-1">
-            Quickly search and toggle items for this category
-          </Text>
-        </View>
-        <View className="p-3">
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            gap: 10,
+          }}
+        >
+          <Search size={14} color={colors.muted} />
           <BottomSheetTextInput
             value={quickSearchQuery}
             onChangeText={setQuickSearchQuery}
-            placeholder="Search items..."
-            placeholderTextColor={colors.label}
-            className="bg-surface border border-gray-600 rounded-lg h-16 px-3 py-2 text-white text-base"
+            placeholder="Search items…"
+            placeholderTextColor={colors.muted}
+            style={{
+              flex: 1,
+              height: 36,
+              fontSize: 13,
+              color: colors.heading,
+            }}
+            autoFocus
           />
+          {quickSearchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setQuickSearchQuery("")}>
+              <X size={13} color={colors.muted} />
+            </TouchableOpacity>
+          )}
         </View>
+
         <BottomSheetFlatList
           data={filteredItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 8, paddingBottom: 32 }}
           renderItem={({ item }) => {
             const isSelected = selectedItemIds.includes(item.id);
+            const imgSrc = getImageSource(item.image);
             return (
               <TouchableOpacity
                 onPress={() => toggleItem(item)}
-                className={`flex-row items-center justify-between bg-surface border rounded-lg px-3 py-2.5 mb-2 ${
-                  isSelected
-                    ? "border-blue-500 bg-blue-900/20"
-                    : "border-gray-700"
-                }`}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: isSelected ? colors.teal + "08" : colors.card,
+                  borderWidth: 1,
+                  borderColor: isSelected ? colors.teal + "40" : colors.border,
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  marginBottom: 6,
+                }}
               >
-                <View className="flex-row items-center gap-2.5 flex-1">
-                  <View className="w-10 h-10 rounded border border-gray-600 overflow-hidden">
-                    {getImageSource(item.image) ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 6, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+                    {imgSrc ? (
                       <Image
-                        source={
-                          typeof getImageSource(item.image) === "string"
-                            ? MENU_IMAGE_MAP[
-                                item.image as keyof typeof MENU_IMAGE_MAP
-                              ]
-                            : getImageSource(item.image)
-                        }
-                        className="w-full h-full object-cover"
+                        source={typeof imgSrc === "string" ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP] : imgSrc}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
                       />
                     ) : (
-                      <View className="w-full h-full bg-gray-600 items-center justify-center">
-                        <Utensils color={colors.label} size={16} />
+                      <View style={{ flex: 1, backgroundColor: colors.panel, alignItems: "center", justifyContent: "center" }}>
+                        <Utensils size={13} color={colors.muted} />
                       </View>
                     )}
                   </View>
-                  <View className="flex-1 pr-2">
-                    <Text className="text-white text-base" numberOfLines={1}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: colors.heading }} numberOfLines={1}>
                       {item.name}
                     </Text>
+                    <Text style={{ fontSize: 11, color: colors.label }}>${item.price.toFixed(2)}</Text>
                   </View>
                 </View>
                 <View
-                  className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
-                    isSelected
-                      ? "bg-blue-600 border-blue-600"
-                      : "border-gray-500"
-                  }`}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    borderWidth: 2,
+                    borderColor: isSelected ? colors.teal : colors.border,
+                    backgroundColor: isSelected ? colors.teal : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
                 >
-                  {isSelected && <Check size={14} color="white" />}
+                  {isSelected && <Check size={11} color={colors.onSolid} />}
                 </View>
               </TouchableOpacity>
             );

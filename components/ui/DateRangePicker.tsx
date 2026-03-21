@@ -1,5 +1,5 @@
 import { colors } from '@/lib/theme';
-import { Calendar, X } from 'lucide-react-native';
+import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 
@@ -11,217 +11,250 @@ interface DateRangePickerProps {
     className?: string;
 }
 
+const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+];
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export const DateRangePicker: React.FC<DateRangePickerProps> = ({
     startDate,
     endDate,
     onDateRangeChange,
-    placeholder = "Select date range",
-    className = "",
+    placeholder = 'Select date range',
 }) => {
+    const today = new Date();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [tempStartDate, setTempStartDate] = useState(startDate);
-    const [tempEndDate, setTempEndDate] = useState(endDate);
+    const [tempStart, setTempStart] = useState(startDate);
+    const [tempEnd, setTempEnd] = useState(endDate);
+    const [viewMonth, setViewMonth] = useState(today.getMonth());
+    const [viewYear, setViewYear] = useState(today.getFullYear());
 
     const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric'
-        });
+        return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
     const getDisplayText = () => {
-        if (startDate && endDate) {
-            return `${formatDate(startDate)} - ${formatDate(endDate)}`;
-        } else if (startDate) {
-            return `From ${formatDate(startDate)}`;
-        } else if (endDate) {
-            return `Until ${formatDate(endDate)}`;
-        }
+        if (startDate && endDate) return `${formatDate(startDate)} – ${formatDate(endDate)}`;
+        if (startDate) return `From ${formatDate(startDate)}`;
+        if (endDate) return `Until ${formatDate(endDate)}`;
         return placeholder;
     };
 
-    const handleSave = () => {
-        onDateRangeChange(tempStartDate, tempEndDate);
-        setIsModalOpen(false);
+    const hasValue = !!(startDate || endDate);
+
+    const prevMonth = () => {
+        if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+        else setViewMonth(m => m - 1);
     };
 
-    const handleClear = () => {
-        setTempStartDate('');
-        setTempEndDate('');
-        onDateRangeChange('', '');
-        setIsModalOpen(false);
+    const nextMonth = () => {
+        if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+        else setViewMonth(m => m + 1);
     };
 
-    const generateCalendarDays = () => {
-        const today = new Date();
-        const currentMonth = today.getMonth();
-        const currentYear = today.getFullYear();
+    const generateDays = () => {
+        const firstDay = new Date(viewYear, viewMonth, 1);
+        const lastDay = new Date(viewYear, viewMonth + 1, 0);
+        const days: Array<{ day: number; dateStr: string; isSelected: boolean; isInRange: boolean; isToday: boolean; isStart: boolean; isEnd: boolean } | null> = [];
 
-        const firstDay = new Date(currentYear, currentMonth, 1);
-        const lastDay = new Date(currentYear, currentMonth + 1, 0);
-        const startDateObj = tempStartDate ? new Date(tempStartDate) : null;
-        const endDateObj = tempEndDate ? new Date(tempEndDate) : null;
+        for (let i = 0; i < firstDay.getDay(); i++) days.push(null);
 
-        const days = [];
-        const startWeekday = firstDay.getDay();
+        const startObj = tempStart ? new Date(tempStart + 'T00:00:00') : null;
+        const endObj = tempEnd ? new Date(tempEnd + 'T00:00:00') : null;
+        const todayStr = today.toISOString().split('T')[0];
 
-        // Add empty cells for days before the first day of the month
-        for (let i = 0; i < startWeekday; i++) {
-            days.push(null);
-        }
-
-        // Add days of the month
         for (let day = 1; day <= lastDay.getDate(); day++) {
-            const date = new Date(currentYear, currentMonth, day);
+            const date = new Date(viewYear, viewMonth, day);
             const dateStr = date.toISOString().split('T')[0];
-
-            let isSelected = false;
-            let isInRange = false;
-
-            if (startDateObj && endDateObj) {
-                isSelected = dateStr === tempStartDate || dateStr === tempEndDate;
-                isInRange = date >= startDateObj && date <= endDateObj;
-            } else if (startDateObj) {
-                isSelected = dateStr === tempStartDate;
-            }
-
-            days.push({
-                day,
-                dateStr,
-                isSelected,
-                isInRange,
-                isToday: date.toDateString() === today.toDateString(),
-            });
+            const isStart = dateStr === tempStart;
+            const isEnd = dateStr === tempEnd;
+            const isSelected = isStart || isEnd;
+            const isInRange = !!(startObj && endObj && date > startObj && date < endObj);
+            days.push({ day, dateStr, isSelected, isInRange, isToday: dateStr === todayStr, isStart, isEnd });
         }
 
         return days;
     };
 
     const handleDateSelect = (dateStr: string) => {
-        if (!tempStartDate || (tempStartDate && tempEndDate)) {
-            // Start new selection
-            setTempStartDate(dateStr);
-            setTempEndDate('');
-        } else if (tempStartDate && !tempEndDate) {
-            // Complete the range
-            if (dateStr >= tempStartDate) {
-                setTempEndDate(dateStr);
-            } else {
-                setTempEndDate(tempStartDate);
-                setTempStartDate(dateStr);
-            }
+        if (!tempStart || (tempStart && tempEnd)) {
+            setTempStart(dateStr);
+            setTempEnd('');
+        } else {
+            if (dateStr >= tempStart) setTempEnd(dateStr);
+            else { setTempEnd(tempStart); setTempStart(dateStr); }
         }
     };
 
-    const calendarDays = generateCalendarDays();
-    const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    const today = new Date();
-    const currentMonth = monthNames[today.getMonth()];
-    const currentYear = today.getFullYear();
+    const handleSave = () => {
+        onDateRangeChange(tempStart, tempEnd);
+        setIsModalOpen(false);
+    };
+
+    const handleClear = () => {
+        setTempStart(''); setTempEnd('');
+        onDateRangeChange('', '');
+        setIsModalOpen(false);
+    };
+
+    const handleOpen = () => {
+        setTempStart(startDate);
+        setTempEnd(endDate);
+        setViewMonth(today.getMonth());
+        setViewYear(today.getFullYear());
+        setIsModalOpen(true);
+    };
+
+    const days = generateDays();
 
     return (
         <>
             <TouchableOpacity
-                onPress={() => setIsModalOpen(true)}
-                className={`flex-row items-center w-[33%] justify-between bg-panel border border-gray-700 rounded-lg px-3 py-3 ${className}`}
+                onPress={handleOpen}
+                style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    height: 38,
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: hasValue ? colors.teal + '50' : colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    gap: 8,
+                }}
             >
-                <Text className={`text-lg ${startDate || endDate ? 'text-white' : 'text-gray-400'}`}>
+                <Text style={{ flex: 1, fontSize: 13, color: hasValue ? colors.heading : colors.muted }} numberOfLines={1}>
                     {getDisplayText()}
                 </Text>
-                <Calendar color={colors.label} size={20} />
+                {hasValue ? (
+                    <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation?.(); onDateRangeChange('', ''); }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                        <X size={13} color={colors.muted} />
+                    </TouchableOpacity>
+                ) : (
+                    <Calendar size={13} color={colors.muted} />
+                )}
             </TouchableOpacity>
 
-            <Modal
-                visible={isModalOpen}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setIsModalOpen(false)}
-            >
-                <View className="flex-1 bg-black/50 justify-center items-center px-4">
-                    <View className="bg-surface rounded-2xl p-6 w-full max-w-3xl">
+            <Modal visible={isModalOpen} transparent animationType="fade" onRequestClose={() => setIsModalOpen(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16 }}>
+                    <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 20, width: '100%', maxWidth: 420 }}>
+
                         {/* Header */}
-                        <View className="flex-row items-center justify-between mb-6">
-                            <Text className="text-2xl font-bold text-white">Select Date Range</Text>
-                            <TouchableOpacity onPress={() => setIsModalOpen(false)}>
-                                <X color={colors.label} size={24} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Select Date Range</Text>
+                            <TouchableOpacity onPress={() => setIsModalOpen(false)} style={{ padding: 4 }}>
+                                <X size={16} color={colors.muted} />
                             </TouchableOpacity>
                         </View>
 
-                        {/* Month/Year */}
-                        <Text className="text-xl font-semibold text-white text-center mb-4">
-                            {currentMonth} {currentYear}
-                        </Text>
-
-                        {/* Calendar Grid */}
-                        <View className="mb-6">
-                            {/* Day headers */}
-                            <View className="flex-row mb-2">
-                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                                    <View key={day} className="flex-1 items-center py-2">
-                                        <Text className="text-gray-400 text-sm font-medium">{day}</Text>
-                                    </View>
-                                ))}
+                        {/* Selected range display */}
+                        {(tempStart || tempEnd) && (
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                                <View style={{ flex: 1, backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '40', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>From</Text>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal, marginTop: 1 }}>
+                                        {tempStart ? formatDate(tempStart) : '—'}
+                                    </Text>
+                                </View>
+                                <View style={{ flex: 1, backgroundColor: colors.teal + '15', borderWidth: 1, borderColor: colors.teal + '40', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
+                                    <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>To</Text>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal, marginTop: 1 }}>
+                                        {tempEnd ? formatDate(tempEnd) : '—'}
+                                    </Text>
+                                </View>
                             </View>
+                        )}
 
-                            {/* Calendar days */}
-                            <View className="flex-row flex-wrap">
-                                {calendarDays.map((dayData, index) => {
-                                    if (!dayData) {
-                                        return <View key={index} className="w-[14.28%] h-10" />;
-                                    }
+                        {/* Month navigator */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                            <TouchableOpacity onPress={prevMonth} style={{ padding: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 7 }}>
+                                <ChevronLeft size={14} color={colors.label} />
+                            </TouchableOpacity>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+                                {MONTH_NAMES[viewMonth]} {viewYear}
+                            </Text>
+                            <TouchableOpacity onPress={nextMonth} style={{ padding: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 7 }}>
+                                <ChevronRight size={14} color={colors.label} />
+                            </TouchableOpacity>
+                        </View>
 
-                                    const { day, dateStr, isSelected, isInRange, isToday } = dayData;
+                        {/* Day headers */}
+                        <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+                            {DAY_NAMES.map((d) => (
+                                <View key={d} style={{ flex: 1, alignItems: 'center', paddingVertical: 4 }}>
+                                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted }}>{d}</Text>
+                                </View>
+                            ))}
+                        </View>
 
-                                    return (
-                                        <TouchableOpacity
-                                            key={index}
-                                            onPress={() => handleDateSelect(dateStr)}
-                                            className={`w-[14.28%] h-10 aspect-square items-center justify-center ${isSelected
-                                                ? 'bg-blue-600 rounded-full'
+                        {/* Calendar grid */}
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 }}>
+                            {days.map((dayData, index) => {
+                                if (!dayData) {
+                                    return <View key={`empty-${index}`} style={{ width: '14.28%', height: 36 }} />;
+                                }
+                                const { day, dateStr, isSelected, isInRange, isToday, isStart, isEnd } = dayData;
+                                return (
+                                    <TouchableOpacity
+                                        key={dateStr}
+                                        onPress={() => handleDateSelect(dateStr)}
+                                        style={{
+                                            width: '14.28%',
+                                            height: 36,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            backgroundColor: isSelected
+                                                ? colors.teal
                                                 : isInRange
-                                                    ? 'bg-blue-600/30'
+                                                    ? colors.teal + '20'
+                                                    : 'transparent',
+                                            borderRadius: isStart || isEnd ? 8 : isInRange ? 0 : 8,
+                                            borderTopLeftRadius: isStart || (!isInRange && !isSelected) ? 8 : isInRange ? 0 : 8,
+                                            borderBottomLeftRadius: isStart || (!isInRange && !isSelected) ? 8 : isInRange ? 0 : 8,
+                                            borderTopRightRadius: isEnd || (!isInRange && !isSelected) ? 8 : isInRange ? 0 : 8,
+                                            borderBottomRightRadius: isEnd || (!isInRange && !isSelected) ? 8 : isInRange ? 0 : 8,
+                                        }}
+                                    >
+                                        <Text style={{
+                                            fontSize: 12,
+                                            fontWeight: isSelected || isToday ? '700' : '400',
+                                            color: isSelected
+                                                ? colors.onSolid
+                                                : isInRange
+                                                    ? colors.teal
                                                     : isToday
-                                                        ? 'bg-gray-600 rounded-full'
-                                                        : ''
-                                                }`}
-                                        >
-                                            <Text
-                                                className={`text-sm ${isSelected
-                                                    ? 'text-white font-bold'
-                                                    : isInRange
-                                                        ? 'text-blue-200'
-                                                        : isToday
-                                                            ? 'text-white font-semibold'
-                                                            : 'text-gray-300'
-                                                    }`}
-                                            >
-                                                {day}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
+                                                        ? colors.teal
+                                                        : colors.label,
+                                        }}>
+                                            {day}
+                                        </Text>
+                                        {isToday && !isSelected && (
+                                            <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.teal, position: 'absolute', bottom: 4 }} />
+                                        )}
+                                    </TouchableOpacity>
+                                );
+                            })}
                         </View>
 
                         {/* Action buttons */}
-                        <View className="flex-row gap-3">
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
                             <TouchableOpacity
                                 onPress={handleClear}
-                                className="flex-1 py-3 rounded-lg border border-gray-600 items-center"
+                                style={{ flex: 1, paddingVertical: 9, borderWidth: 1, borderColor: colors.border, borderRadius: 8, alignItems: 'center' }}
                             >
-                                <Text className="text-gray-300 text-lg">Clear</Text>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.label }}>Clear</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleSave}
-                                className="flex-1 py-3 rounded-lg bg-blue-600 items-center"
+                                style={{ flex: 1, paddingVertical: 9, backgroundColor: colors.teal + '20', borderWidth: 1, borderColor: colors.teal + '50', borderRadius: 8, alignItems: 'center' }}
                             >
-                                <Text className="text-white text-lg font-semibold">Save</Text>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>Apply</Text>
                             </TouchableOpacity>
                         </View>
                     </View>

@@ -15,17 +15,21 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { Link, useRouter } from "expo-router";
 import {
+  Building2,
   Edit,
+  Mail,
   MoreHorizontal,
+  Phone,
   Plus,
   Search,
   Trash2,
+  User,
 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import {
   FlatList,
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -39,30 +43,85 @@ const VendorRow: React.FC<{
 }> = ({ item, onEdit, onDelete }) => {
   return (
     <Link href={`/inventory/vendors/${item.id}`} asChild>
-      <TouchableOpacity className="flex-row w-full flex items-center p-2 border-b border-border">
-        <Text className="w-[20%] text-lg font-semibold text-white">
-          {item.name}
-        </Text>
-        <Text className="w-[15%] text-lg text-gray-300">
-          {item.contactPerson}
-        </Text>
-        <Text className="w-[30%] text-lg text-gray-300">{item.email}</Text>
-        <Text className="w-[20%] text-lg text-gray-300">{item.phone}</Text>
-        <View className="w-[10%] items-end">
+      <TouchableOpacity
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        {/* Name */}
+        <View style={{ width: "22%", flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              backgroundColor: colors.teal + "15",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Building2 size={14} color={colors.teal} />
+          </View>
+          <Text
+            numberOfLines={1}
+            style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}
+          >
+            {item.name}
+          </Text>
+        </View>
+
+        {/* Contact */}
+        <View style={{ width: "18%", flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <User size={12} color={colors.muted} />
+          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.label }}>
+            {item.contactPerson || "—"}
+          </Text>
+        </View>
+
+        {/* Email */}
+        <View style={{ width: "30%", flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Mail size={12} color={colors.muted} />
+          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.label }}>
+            {item.email || "—"}
+          </Text>
+        </View>
+
+        {/* Phone */}
+        <View style={{ width: "20%", flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Phone size={12} color={colors.muted} />
+          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.label }}>
+            {item.phone || "—"}
+          </Text>
+        </View>
+
+        {/* Actions */}
+        <View style={{ width: "10%", alignItems: "flex-end" }}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <TouchableOpacity className="p-2">
-                <MoreHorizontal size={20} color={colors.label} />
+              <TouchableOpacity style={{ padding: 6 }}>
+                <MoreHorizontal size={16} color={colors.muted} />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-48 bg-panel border-border">
+            <DropdownMenuContent
+              className="w-44"
+              style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+            >
               <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-5 w-5" color={colors.label} />
-                <Text className="text-base text-white">Edit Vendor</Text>
+                <Edit size={14} color={colors.label} />
+                <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
+                  Edit Vendor
+                </Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-5 w-5 text-red-400" color={colors.danger} />
-                <Text className="text-base text-red-400">Delete Vendor</Text>
+                <Trash2 size={14} color={colors.danger} />
+                <Text style={{ fontSize: 13, color: colors.danger, marginLeft: 8 }}>
+                  Delete Vendor
+                </Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -73,8 +132,7 @@ const VendorRow: React.FC<{
 };
 
 const VendorScreen = () => {
-  const { vendors, addVendor, updateVendor, deleteVendor } =
-    useInventoryStore();
+  const { vendors, addVendor, updateVendor, deleteVendor } = useInventoryStore();
   const router = useRouter();
 
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null);
@@ -132,49 +190,109 @@ const VendorScreen = () => {
     setSelectedVendor(null);
   };
 
-  const TABLE_HEADERS = ["Vendor Name", "Contact Person", "Email", "Phone", ""];
+  const TABLE_HEADERS = ["Vendor Name", "Contact", "Email", "Phone", ""];
 
   return (
-    <View className="flex-1">
-      <View className="flex-1 bg-panel border border-border rounded-xl">
-        <View className="flex-row p-2 bg-gray-800/50 rounded-t-xl border-b items-center border-border">
-          {TABLE_HEADERS.map((header) => (
-            <Text
-              key={header}
-              className={`font-bold text-lg text-gray-400 ${
-                header === "Vendor Name"
-                  ? "w-[20%]"
-                  : header === "Contact Person"
-                    ? "w-[15%]"
-                    : header === "Email"
-                      ? "w-[30%]"
-                      : header === "Phone"
-                        ? "w-[15%]"
-                        : "w-[0%]"
-              }`}
-            >
-              {header}
-            </Text>
-          ))}
-          <View className="flex-row items-center flex-1 justify-end gap-x-6">
+    <View style={{ flex: 1 }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+        }}
+      >
+        {/* Table Header */}
+        <View
+          style={{
+            flexDirection: "row",
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            backgroundColor: colors.screen,
+            borderTopLeftRadius: 12,
+            borderTopRightRadius: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            alignItems: "center",
+          }}
+        >
+          {TABLE_HEADERS.map((header) => {
+            let widthStyle: any = {};
+            switch (header) {
+              case "Vendor Name": widthStyle = { width: "22%" }; break;
+              case "Contact":     widthStyle = { width: "18%" }; break;
+              case "Email":       widthStyle = { width: "30%" }; break;
+              case "Phone":       widthStyle = { width: "20%" }; break;
+              default:            widthStyle = { width: "10%" }; break;
+            }
+            return (
+              <Text
+                key={header}
+                style={[
+                  {
+                    fontSize: 11,
+                    fontWeight: "600",
+                    color: colors.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  },
+                  widthStyle,
+                ]}
+              >
+                {header}
+              </Text>
+            );
+          })}
+
+          {/* Actions */}
+          <View
+            style={{
+              position: "absolute",
+              right: 12,
+              top: 0,
+              bottom: 0,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
             <TouchableOpacity
               onPress={() => {
                 setIsSearchOpen(true);
                 setTimeout(() => sheetRef.current?.expand(), 0);
               }}
-              className="flex-row items-center bg-panel border border-border rounded-lg p-2"
+              style={{
+                backgroundColor: colors.teal + "15",
+                borderRadius: 8,
+                padding: 7,
+              }}
             >
-              <Search color={colors.label} size={20} />
+              <Search size={16} color={colors.teal} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleOpenAddModal}
-              className="py-2 px-4 w-1/3 bg-blue-600 rounded-lg flex-row items-center justify-center"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 7,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+                borderRadius: 8,
+              }}
             >
-              <Plus color="white" size={20} className="mr-2" />
-              {/* <Text className="text-lg font-bold text-white">Add New Item</Text> */}
+              <Plus size={14} color={colors.teal} />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+                Add Vendor
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* List */}
         <FlatList
           data={vendors}
           keyExtractor={(item) => item.id}
@@ -185,6 +303,29 @@ const VendorScreen = () => {
               onDelete={() => handleOpenDeleteConfirm(item)}
             />
           )}
+          ListEmptyComponent={
+            <View style={{ alignItems: "center", paddingVertical: 48, gap: 8 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  backgroundColor: colors.teal + "15",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 4,
+                }}
+              >
+                <Building2 size={20} color={colors.teal} />
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.heading }}>
+                No vendors yet
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.muted }}>
+                Add your first vendor to get started
+              </Text>
+            </View>
+          }
         />
       </View>
 
@@ -221,18 +362,34 @@ const VendorScreen = () => {
           />
         )}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          <View className="p-2 border-b border-border">
-            <View className="flex-row items-center bg-screen rounded-lg px-3 py-1 border border-border">
-              <Search color={colors.label} size={20} />
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>
+          <View
+            style={{
+              padding: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                height: 40,
+                gap: 8,
+              }}
+            >
+              <Search size={15} color={colors.muted} />
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search vendors..."
-                placeholderTextColor={colors.label}
-                className="flex-1 text-white ml-3 p-2 text-lg"
+                placeholderTextColor={colors.muted}
+                style={{ flex: 1, fontSize: 14, color: colors.heading }}
               />
             </View>
           </View>
@@ -247,19 +404,37 @@ const VendorScreen = () => {
                 setIsSearchOpen(false);
                 router.push(`/inventory/vendors/${item.id}`);
               }}
-              className="p-2 border-b border-border"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                gap: 10,
+              }}
             >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-1">
-                  <Text className="text-white text-lg font-semibold">
-                    {item.name}
-                  </Text>
-                  <Text className="text-gray-400 text-sm">
-                    {item.contactPerson} • {item.phone}
-                  </Text>
-                  <Text className="text-gray-500 text-sm">{item.email}</Text>
-                </View>
+              <View
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  backgroundColor: colors.teal + "15",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Building2 size={15} color={colors.teal} />
               </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                  {item.name}
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                  {item.contactPerson} · {item.phone}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, color: colors.muted }}>{item.email}</Text>
             </TouchableOpacity>
           )}
           contentContainerStyle={{ paddingBottom: 20 }}

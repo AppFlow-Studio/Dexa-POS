@@ -53,7 +53,7 @@ export default function GiftedChartsSalesTrendChart() {
   if (isLoading) {
     return (
       <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
-        <Text className="text-gray-400 text-lg">Loading chart...</Text>
+        <Text style={{ color: colors.label, fontSize: 13 }}>Loading chart...</Text>
       </View>
     );
   }
@@ -61,7 +61,7 @@ export default function GiftedChartsSalesTrendChart() {
   if (error) {
     return (
       <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
-        <Text className="text-red-400 text-lg">Error loading chart</Text>
+        <Text style={{ color: colors.danger, fontSize: 13 }}>Error loading chart</Text>
       </View>
     );
   }
@@ -69,7 +69,7 @@ export default function GiftedChartsSalesTrendChart() {
   if (!formattedData || formattedData.length === 0) {
     return (
       <View className="h-[300px] w-full bg-panel rounded-2xl border border-border items-center justify-center">
-        <Text className="text-gray-400 text-lg">No data available</Text>
+        <Text style={{ color: colors.label, fontSize: 13 }}>No data available</Text>
       </View>
     );
   }
@@ -86,31 +86,31 @@ export default function GiftedChartsSalesTrendChart() {
         spacing={dataSpacing}
         animateOnDataChange
         animationDuration={1000}
-        startFillColor={colors.info}
-        endFillColor={`${colors.info}33`}
-        startOpacity={0.8}
-        endOpacity={0.3}
-        color={colors.info}
+        startFillColor={colors.teal}
+        endFillColor={`${colors.teal}33`}
+        startOpacity={0.6}
+        endOpacity={0.1}
+        color={colors.teal}
         thickness={2}
         pointerConfig={{
           pointerStripHeight: 160,
-          pointerStripColor: "lightgray",
-          pointerStripWidth: 2,
-          pointerColor: "lightgray",
-          radius: 6,
+          pointerStripColor: colors.border,
+          pointerStripWidth: 1,
+          pointerColor: colors.teal,
+          radius: 5,
           pointerLabelWidth: 100,
-          pointerLabelHeight: 90,
+          pointerLabelHeight: 70,
           activatePointersOnLongPress: true,
           autoAdjustPointerLabelPosition: false,
           pointerLabelComponent: (items: any): JSX.Element => {
             const item = items[0];
             return (
-              <View className="h-36 w-28 justify-center -mt-8 -ml-10">
-                <Text className="color-white text-sm mb-1.5 text-center">
+              <View style={{ height: 60, width: 100, justifyContent: 'center', marginTop: -32, marginLeft: -40 }}>
+                <Text style={{ color: colors.label, fontSize: 10, textAlign: 'center', marginBottom: 3 }}>
                   {item.date}
                 </Text>
-                <View className="px-3.5 py-1.5 rounded-2xl bg-white">
-                  <Text className="font-bold text-center">
+                <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+                  <Text style={{ color: colors.teal, fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
                     {"$ " + item.value.toFixed(2)}
                   </Text>
                 </View>
@@ -119,13 +119,13 @@ export default function GiftedChartsSalesTrendChart() {
           },
         }}
         xAxisColor={colors.border}
-        xAxisLabelTextStyle={{ color: "white" }}
+        xAxisLabelTextStyle={{ color: colors.label, fontSize: 10 }}
         xAxisLabelTexts={xAxisLabels.filter((l) => l)}
         rotateLabel
-        xAxisIndicesHeight={10}
-        xAxisIndicesColor="white"
+        xAxisIndicesHeight={8}
+        xAxisIndicesColor={colors.border}
         yAxisColor={colors.border}
-        yAxisTextStyle={{ color: "white" }}
+        yAxisTextStyle={{ color: colors.label, fontSize: 10 }}
         noOfSections={4}
         hideDataPoints
       />

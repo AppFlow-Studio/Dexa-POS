@@ -3,11 +3,11 @@ import ScheduleManager from "@/components/menu/ScheduleManager";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { colors } from "@/lib/theme";
 import { Menu, Schedule } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { router } from "expo-router";
-import { colors } from "@/lib/theme";
 import {
   ArrowLeft,
   Check,
@@ -49,7 +49,6 @@ const getImageSource = (image: string | undefined) => {
     return { uri: `data:image/jpeg;base64,${image}` };
   }
   if (image) {
-    // Try to get image from assets first if it's a key
     if (MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP]) {
       return MENU_IMAGE_MAP[image as keyof typeof MENU_IMAGE_MAP];
     }
@@ -88,20 +87,17 @@ const MenuForm: React.FC<MenuFormProps> = ({
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // Change Tracking
   const [hasChanges, setHasChanges] = useState(false);
   const hasSavedRef = useRef(false);
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
     hasChanges && !hasSavedRef.current
   );
 
-  // Sheets
   const scheduleSheetRef = useRef<BottomSheet>(null);
   const [editingRule, setEditingRule] = useState<Schedule | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    // Determine if dirty
     const nameChanged = (initialData?.name || "") !== name;
     const descChanged = (initialData?.description || "") !== description;
     const activeChanged = (initialData?.isActive ?? true) !== isActive;
@@ -112,7 +108,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
       JSON.stringify(initialData?.schedules || []) !==
       JSON.stringify(schedules);
 
-    // For new menus, consider changed if user typed anything
     const isNewAndChanged =
       !initialData &&
       (name !== "" ||
@@ -133,14 +128,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
     }
   }, [name, description, isActive, selectedCategories, schedules, initialData]);
 
-  // Helper function to check if an ID is a valid UUID (for backend sync)
-  const isValidUUID = (id: string) => {
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(id);
-  };
-
-  // Get available active categories - show all, backend calls will filter by UUID
   const availableCategories = useMemo(
     () =>
       categories
@@ -149,11 +136,10 @@ const MenuForm: React.FC<MenuFormProps> = ({
     [categories]
   );
 
-  // Handlers
   const toggleCategorySelection = (categoryName: string) => {
     setSelectedCategories((prev) =>
       prev.includes(categoryName)
-        ? prev.filter((name) => name !== categoryName)
+        ? prev.filter((n) => n !== categoryName)
         : [...prev, categoryName]
     );
   };
@@ -161,7 +147,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
   const toggleCategoryExpansion = (categoryName: string) => {
     setExpandedCategories((prev) =>
       prev.includes(categoryName)
-        ? prev.filter((name) => name !== categoryName)
+        ? prev.filter((n) => n !== categoryName)
         : [...prev, categoryName]
     );
   };
@@ -171,12 +157,10 @@ const MenuForm: React.FC<MenuFormProps> = ({
       Alert.alert("Error", "Please enter a menu name");
       return false;
     }
-
     if (selectedCategories.length === 0) {
       Alert.alert("Error", "Please select at least one category for this menu");
       return false;
     }
-
     return true;
   };
 
@@ -187,7 +171,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
   const confirmSave = async () => {
     setShowConfirmation(false);
-
     const formData = {
       name: name.trim(),
       description: description.trim() || undefined,
@@ -195,24 +178,14 @@ const MenuForm: React.FC<MenuFormProps> = ({
       categories: selectedCategories,
       schedules,
     };
-
     const success = await onSubmit(formData);
-
     if (success) {
       hasSavedRef.current = true;
       setHasChanges(false);
-      // Determine navigation - replace if editing to refresh, back if adding
-      if (initialData) {
-        // Using replace to force refresh on previous screen often helps in these apps,
-        // but simple back is standard. Let's align with ItemForm behavior.
-        if (router.canGoBack()) router.back();
-      } else {
-        if (router.canGoBack()) router.back();
-      }
+      if (router.canGoBack()) router.back();
     }
   };
 
-  // Previews
   const getPreviewItems = () => {
     const allItems: { [key: string]: any[] } = {};
     selectedCategories.forEach((categoryName) => {
@@ -224,7 +197,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
   const previewItems = getPreviewItems();
   const totalItems = Object.values(previewItems).flat().length;
 
-  // Schedule Handlers
   const openScheduleSheet = (rule?: Schedule, index?: number) => {
     setEditingRule(rule || null);
     setEditingIndex(index ?? null);
@@ -233,49 +205,89 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
   const handleSaveSchedule = (newRule: Schedule) => {
     if (editingIndex !== null) {
-      const nextSchedules = schedules.map((r, i) =>
-        i === editingIndex ? newRule : r
-      );
-      setSchedules(nextSchedules);
+      setSchedules(schedules.map((r, i) => (i === editingIndex ? newRule : r)));
     } else {
       setSchedules([...schedules, newRule]);
     }
   };
 
   return (
-    <View className="flex-1 bg-panel">
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-surface">
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          backgroundColor: colors.panel,
+        }}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          className="flex-row items-center"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            backgroundColor: colors.teal + "10",
+            borderRadius: 10,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+          }}
         >
-          <ArrowLeft size={20} color={colors.label} />
-          <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
+          <ArrowLeft size={16} color={colors.teal} />
+          <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>
+            Back
+          </Text>
         </TouchableOpacity>
 
-        <View className="flex-row gap-2">
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+          {title}
+        </Text>
+
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
           {onDelete && (
             <TouchableOpacity
               onPress={onDelete}
-              className="px-4 py-2 rounded-lg border border-red-500 bg-red-900/30"
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                backgroundColor: colors.danger + "15",
+                borderWidth: 1,
+                borderColor: colors.danger + "30",
+              }}
             >
-              <Text className="text-xl text-red-400">Delete</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}>
+                Delete
+              </Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
-            className={`flex-row items-center px-4 py-2 rounded-lg ${
-              isSaving ? "bg-blue-400" : "bg-blue-600"
-            }`}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 14,
+              paddingVertical: 6,
+              borderRadius: 8,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              opacity: isSaving ? 0.7 : 1,
+            }}
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color="white" />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : (
-              <Save size={20} color="white" />
+              <Save size={14} color={colors.teal} />
             )}
-            <Text className="text-xl text-white font-medium ml-1.5">
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
               {isSaving ? "Saving..." : submitButtonLabel}
             </Text>
           </TouchableOpacity>
@@ -284,58 +296,106 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
+        style={{ flex: 1 }}
       >
-        <ScrollView className="flex-1 p-4">
-          <Text className="text-2xl font-bold text-white mb-4">{title}</Text>
-
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 14, gap: 16 }}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Name & Description */}
-          <View className="mb-4">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Menu Name
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 14,
+              gap: 12,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Basic Info
             </Text>
-            <TextInput
-              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16 mb-4"
-              placeholder="e.g., Lunch Menu, Dinner Specials"
-              placeholderTextColor={colors.label}
-              value={name}
-              onChangeText={setName}
-            />
 
-            <Text className="text-xl font-semibold text-white mb-2">
-              Description (Optional)
-            </Text>
-            <TextInput
-              className="bg-surface border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-24 mb-4"
-              placeholder="Describe this menu..."
-              placeholderTextColor={colors.label}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+                Menu Name *
+              </Text>
+              <TextInput
+                style={{
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 13,
+                  color: colors.heading,
+                }}
+                placeholder="e.g., Lunch Menu, Dinner Specials"
+                placeholderTextColor={colors.muted}
+                value={name}
+                onChangeText={setName}
+              />
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+                Description
+                <Text style={{ color: colors.muted }}> (Optional)</Text>
+              </Text>
+              <TextInput
+                style={{
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  fontSize: 13,
+                  color: colors.heading,
+                  height: 72,
+                  textAlignVertical: "top",
+                }}
+                placeholder="Describe this menu..."
+                placeholderTextColor={colors.muted}
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
           </View>
 
           {/* Schedules */}
-          <View className="mb-4">
-            <View className="flex-row items-center justify-between mb-2">
-              <Text className="text-xl font-semibold text-white">
-                Schedules
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 14,
+              gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Availability
               </Text>
               <TouchableOpacity
                 onPress={() => setIsActive(!isActive)}
-                className={`px-3 py-2 rounded-lg border ${
-                  isActive
-                    ? "bg-green-900/30 border-green-500"
-                    : "bg-red-900/30 border-red-500"
-                }`}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 20,
+                  backgroundColor: isActive ? colors.success + "20" : colors.danger + "15",
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.success + "50" : colors.danger + "30",
+                }}
               >
-                <Text
-                  className={`text-lg ${
-                    isActive ? "text-green-400" : "text-red-400"
-                  }`}
-                >
+                <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? colors.success : colors.danger }}>
                   {isActive ? "Master: On" : "Master: Off"}
                 </Text>
               </TouchableOpacity>
@@ -349,34 +409,59 @@ const MenuForm: React.FC<MenuFormProps> = ({
           </View>
 
           {/* Categories */}
-          <View className="mb-4">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-xl font-semibold text-white">
-                Select Categories
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 14,
+              gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Categories
               </Text>
-              <Text className="text-lg text-gray-400">
-                {selectedCategories.length} of {availableCategories.length}{" "}
-                selected
+              <Text style={{ fontSize: 11, color: colors.muted }}>
+                {selectedCategories.length} of {availableCategories.length} selected
               </Text>
             </View>
 
             {availableCategories.length === 0 ? (
-              <View className="bg-surface border border-gray-600 rounded-lg p-4 items-center">
-                <Utensils size={36} color={colors.label} />
-                <Text className="text-xl text-gray-400 text-center mt-3">
+              <View
+                style={{
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 10,
+                  padding: 20,
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <Utensils size={24} color={colors.muted} />
+                <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center" }}>
                   No categories available.
                 </Text>
                 <TouchableOpacity
                   onPress={() => router.push("/menu/add-category")}
-                  className="mt-3 bg-blue-600 px-4 py-2 rounded-lg"
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: colors.teal + "20",
+                    borderWidth: 1,
+                    borderColor: colors.teal + "50",
+                  }}
                 >
-                  <Text className="text-white text-lg font-medium">
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
                     Create Category
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              <View className="gap-3">
+              <View style={{ gap: 6 }}>
                 {availableCategories.map((category) => {
                   const isSelected = selectedCategories.includes(category.name);
                   const isExpanded = expandedCategories.includes(category.name);
@@ -385,52 +470,70 @@ const MenuForm: React.FC<MenuFormProps> = ({
                   return (
                     <View
                       key={category.id}
-                      className={`bg-surface rounded-lg border ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-900/20"
-                          : "border-gray-700"
-                      }`}
+                      style={{
+                        backgroundColor: isSelected ? colors.teal + "08" : colors.panel,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: isSelected ? colors.teal + "40" : colors.border,
+                      }}
                     >
                       <TouchableOpacity
                         onPress={() => toggleCategorySelection(category.name)}
-                        className="p-4"
+                        style={{ padding: 12 }}
                       >
-                        <View className="flex-row items-center justify-between">
-                          <View className="flex-1">
-                            <View className="flex-row items-center gap-2 mb-1.5">
-                              <Text className="text-white font-medium text-2xl">
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <View style={{ flex: 1, gap: 6 }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                                 {category.name}
                               </Text>
-                              <View className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded">
-                                <Text className="text-lg text-gray-300">
-                                  {categoryItems.length} items
+                              <View
+                                style={{
+                                  backgroundColor: isSelected ? colors.teal + "20" : colors.card,
+                                  borderRadius: 10,
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                }}
+                              >
+                                <Text style={{ fontSize: 10, fontWeight: "600", color: isSelected ? colors.teal : colors.muted }}>
+                                  {categoryItems.length}
                                 </Text>
                               </View>
                             </View>
 
                             {!isExpanded && categoryItems.length > 0 && (
-                              <View className="flex-row flex-wrap gap-1.5 w-full">
-                                {categoryItems
-                                  .slice(0, 3)
-                                  .map((item, index) => (
-                                    <View
-                                      key={index}
-                                      className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded"
-                                    >
-                                      <Text className="text-lg text-gray-300">
-                                        {item.name}
-                                      </Text>
-                                    </View>
-                                  ))}
+                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                                {categoryItems.slice(0, 3).map((item, index) => (
+                                  <View
+                                    key={index}
+                                    style={{
+                                      backgroundColor: colors.card,
+                                      borderWidth: 1,
+                                      borderColor: colors.border,
+                                      paddingHorizontal: 7,
+                                      paddingVertical: 3,
+                                      borderRadius: 6,
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 11, color: colors.label }}>{item.name}</Text>
+                                  </View>
+                                ))}
                                 {categoryItems.length > 3 && (
                                   <TouchableOpacity
                                     onPress={(e) => {
                                       e.stopPropagation();
                                       toggleCategoryExpansion(category.name);
                                     }}
-                                    className="bg-blue-600/30 border border-blue-500 px-2.5 py-1.5 rounded"
+                                    style={{
+                                      backgroundColor: colors.teal + "15",
+                                      borderWidth: 1,
+                                      borderColor: colors.teal + "30",
+                                      paddingHorizontal: 7,
+                                      paddingVertical: 3,
+                                      borderRadius: 6,
+                                    }}
                                   >
-                                    <Text className="text-lg text-blue-300">
+                                    <Text style={{ fontSize: 11, color: colors.teal }}>
                                       +{categoryItems.length - 3} more
                                     </Text>
                                   </TouchableOpacity>
@@ -439,67 +542,104 @@ const MenuForm: React.FC<MenuFormProps> = ({
                             )}
                           </View>
 
-                          <View className="flex-row items-center gap-1.5">
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 10 }}>
                             {categoryItems.length > 3 && (
                               <TouchableOpacity
                                 onPress={(e) => {
                                   e.stopPropagation();
                                   toggleCategoryExpansion(category.name);
                                 }}
-                                className="p-1.5"
+                                style={{ padding: 4 }}
                               >
                                 {isExpanded ? (
-                                  <ChevronUp size={20} color={colors.label} />
+                                  <ChevronUp size={14} color={colors.label} />
                                 ) : (
-                                  <ChevronDown size={20} color={colors.label} />
+                                  <ChevronDown size={14} color={colors.label} />
                                 )}
                               </TouchableOpacity>
                             )}
 
                             <View
-                              className={`w-7 h-7 rounded-full border-2 items-center justify-center ${
-                                isSelected
-                                  ? "bg-blue-600 border-blue-600"
-                                  : "border-gray-500"
-                              }`}
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: 11,
+                                borderWidth: 2,
+                                borderColor: isSelected ? colors.teal : colors.border,
+                                backgroundColor: isSelected ? colors.teal : "transparent",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
                             >
-                              {isSelected && <Check size={18} color="white" />}
+                              {isSelected && <Check size={12} color={colors.onSolid} />}
                             </View>
                           </View>
                         </View>
                       </TouchableOpacity>
 
                       {isExpanded && categoryItems.length > 0 && (
-                        <View className="border-t border-gray-700 p-4 bg-surface">
-                          <Text className="text-lg text-gray-400 font-medium mb-2">
-                            All Items in {category.name}:
+                        <View
+                          style={{
+                            borderTopWidth: 1,
+                            borderTopColor: colors.border,
+                            padding: 12,
+                            gap: 8,
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            All items in {category.name}
                           </Text>
-                          <View className="flex-row flex-wrap gap-2 w-full">
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                             {categoryItems.map((item, index) => (
                               <View
                                 key={index}
-                                className="bg-gray-600/30 border w-[24%] border-gray-500 px-3 py-2 rounded-lg flex-row items-center gap-2"
+                                style={{
+                                  backgroundColor: colors.card,
+                                  borderWidth: 1,
+                                  borderColor: colors.border,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 6,
+                                  borderRadius: 8,
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  width: "48%",
+                                }}
                               >
-                                <View className="w-8 h-8 rounded border border-gray-600 overflow-hidden">
+                                <View
+                                  style={{
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 6,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                    overflow: "hidden",
+                                  }}
+                                >
                                   {getImageSource(item.image) ? (
                                     <Image
                                       source={getImageSource(item.image)}
-                                      className="w-full h-full object-cover"
+                                      style={{ width: "100%", height: "100%" }}
+                                      resizeMode="cover"
                                     />
                                   ) : (
-                                    <View className="w-full h-full bg-gray-600 items-center justify-center">
-                                      <Utensils color={colors.label} size={18} />
+                                    <View
+                                      style={{
+                                        flex: 1,
+                                        backgroundColor: colors.panel,
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                      }}
+                                    >
+                                      <Utensils color={colors.muted} size={12} />
                                     </View>
                                   )}
                                 </View>
-                                <View className="flex-1">
-                                  <Text
-                                    className="text-white text-lg font-medium"
-                                    numberOfLines={1}
-                                  >
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 11, color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
                                     {item.name}
                                   </Text>
-                                  <Text className="text-gray-400 text-base">
+                                  <Text style={{ fontSize: 10, color: colors.label }}>
                                     ${item.price.toFixed(2)}
                                   </Text>
                                 </View>
@@ -515,81 +655,146 @@ const MenuForm: React.FC<MenuFormProps> = ({
             )}
           </View>
 
-          {/* Items Preview Summary */}
+          {/* Preview Summary */}
           {selectedCategories.length > 0 && (
-            <View className="mb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Menu Preview ({totalItems} items)
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                padding: 14,
+                gap: 10,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Preview · {totalItems} items
               </Text>
-              <View className="bg-surface border border-gray-600 rounded-lg p-4">
-                {Object.entries(previewItems).map(([categoryName, items]) => (
-                  <View key={categoryName} className="mb-3 last:mb-0">
-                    <Text className="text-blue-400 font-medium mb-1.5 text-lg">
-                      {categoryName} ({items.length} items)
-                    </Text>
-                    <View className="flex-row flex-wrap gap-1.5">
-                      {items.slice(0, 5).map((item, index) => (
-                        <View
-                          key={index}
-                          className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded"
-                        >
-                          <Text className="text-lg text-gray-300">
-                            {item.name}
-                          </Text>
-                        </View>
-                      ))}
-                      {items.length > 5 && (
-                        <View className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded">
-                          <Text className="text-lg text-gray-300">
-                            +{items.length - 5} more
-                          </Text>
-                        </View>
-                      )}
-                    </View>
+              {Object.entries(previewItems).map(([categoryName, items]) => (
+                <View key={categoryName} style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+                    {categoryName}
+                    <Text style={{ color: colors.muted, fontWeight: "400" }}> ({items.length})</Text>
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                    {items.slice(0, 6).map((item, index) => (
+                      <View
+                        key={index}
+                        style={{
+                          backgroundColor: colors.panel,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 6,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: colors.label }}>{item.name}</Text>
+                      </View>
+                    ))}
+                    {items.length > 6 && (
+                      <View
+                        style={{
+                          backgroundColor: colors.panel,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 6,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: colors.muted }}>+{items.length - 6} more</Text>
+                      </View>
+                    )}
                   </View>
-                ))}
-              </View>
+                </View>
+              ))}
             </View>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Confirm Modal */}
       <Modal
         visible={showConfirmation}
         transparent={true}
         animationType="fade"
         onRequestClose={() => setShowConfirmation(false)}
       >
-        <View className="flex-1 bg-black/50 items-center justify-center p-4">
-          <View className="bg-surface rounded-2xl p-4 w-full max-w-md border border-gray-600">
-            <View className="items-center mb-4">
-              <View className="w-16 h-16 bg-blue-600/20 rounded-full items-center justify-center mb-3">
-                <Save size={32} color={colors.info} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderRadius: 16,
+              padding: 20,
+              width: "100%",
+              maxWidth: 380,
+              borderWidth: 1,
+              borderColor: colors.border,
+              gap: 16,
+            }}
+          >
+            <View style={{ alignItems: "center", gap: 10 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "40",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Save size={20} color={colors.teal} />
               </View>
-              <Text className="text-2xl font-bold text-white text-center">
+              <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, textAlign: "center" }}>
                 {initialData ? "Update Menu?" : "Create Menu?"}
               </Text>
-              <Text className="text-xl text-gray-400 text-center mt-1.5">
-                {initialData ? "Save changes to" : "Create"} &quot;{name}&quot;
-                with {selectedCategories.length} categories?
+              <Text style={{ fontSize: 12, color: colors.label, textAlign: "center" }}>
+                {initialData ? "Save changes to" : "Create"} "{name}" with {selectedCategories.length} {selectedCategories.length === 1 ? "category" : "categories"}?
               </Text>
             </View>
 
-            <View className="flex-row gap-3">
+            <View style={{ flexDirection: "row", gap: 10 }}>
               <TouchableOpacity
                 onPress={() => setShowConfirmation(false)}
-                className="flex-1 bg-panel border border-gray-600 rounded-lg py-3 items-center"
+                style={{
+                  flex: 1,
+                  backgroundColor: "transparent",
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  paddingVertical: 10,
+                  alignItems: "center",
+                }}
               >
-                <Text className="text-xl text-gray-300 font-medium">
-                  Cancel
-                </Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={confirmSave}
                 disabled={isSaving}
-                className="flex-1 bg-blue-600 rounded-lg py-3 items-center"
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
+                  borderRadius: 8,
+                  paddingVertical: 10,
+                  alignItems: "center",
+                  opacity: isSaving ? 0.7 : 1,
+                }}
               >
-                <Text className="text-xl text-white font-medium">
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
                   {isSaving ? "Saving..." : initialData ? "Save" : "Create"}
                 </Text>
               </TouchableOpacity>

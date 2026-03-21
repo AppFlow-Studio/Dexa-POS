@@ -75,16 +75,16 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         </View> */}
         {totals.discount > 0 && (
           <View className="flex-row justify-between items-center">
-            <Text className="text-base text-green-400">Discount</Text>
-            <Text className="text-base font-medium text-green-400">
+            <Text className="text-xs text-green-400">Discount</Text>
+            <Text className="text-xs font-medium text-green-400">
               -${totals.discount.toFixed(2)}
             </Text>
           </View>
         )}
 
         <View className="flex-row justify-between items-center">
-          <Text className="text-base text-gray-300">Tax</Text>
-          <Text className="text-base font-medium text-white">
+          <Text className="text-xs text-gray-300">Tax</Text>
+          <Text className="text-xs font-medium text-white">
             ${totals.tax.toFixed(2)}
           </Text>
         </View>
@@ -108,8 +108,8 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       {/* Amount Paid (only show if partial payment made) */}
       {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
         <View className="flex-row justify-between items-center mt-1">
-          <Text className="text-lg text-green-400">Paid</Text>
-          <Text className="text-lg font-medium text-green-400">
+          <Text className="text-xs text-green-400">Paid</Text>
+          <Text className="text-xs font-medium text-green-400">
             -${paymentInfo.amountPaid.toFixed(2)}
           </Text>
         </View>
@@ -118,8 +118,8 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       {/* Refunded amount */}
       {paymentInfo?.totalRefunded > 0 && (
         <View className="flex-row justify-between items-center mt-1">
-          <Text className="text-lg text-red-400">Refunded</Text>
-          <Text className="text-lg font-medium text-red-400">
+          <Text className="text-xs text-red-400">Refunded</Text>
+          <Text className="text-xs font-medium text-red-400">
             +${paymentInfo?.totalRefunded?.toFixed(2)}
           </Text>
         </View>
@@ -128,8 +128,8 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       {/* Balance Due (only show if there's a remaining balance after payment) */}
       {paymentInfo.hasPayments && !paymentInfo.isPaid && paymentInfo.balanceDue > 0.01 && (
         <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-yellow-600/50">
-          <Text className="text-lg font-bold text-yellow-400">Balance Due</Text>
-          <Text className="text-lg font-bold text-yellow-400">
+          <Text className="text-xs font-bold text-yellow-400">Balance Due</Text>
+          <Text className="text-xs font-bold text-yellow-400">
             ${paymentInfo.balanceDue.toFixed(2)}
           </Text>
         </View>
@@ -148,8 +148,8 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       {/* Fully Paid indicator */}
       {paymentInfo.isPaid && (
         <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-green-600/50">
-          <Text className="text-lg font-bold text-green-400">Fully Paid</Text>
-          <Text className="text-lg font-bold text-green-400">✓</Text>
+          <Text className="text-xs font-bold text-green-400">Fully Paid</Text>
+          <Text className="text-xs font-bold text-green-400">✓</Text>
         </View>
       )}
     </View>

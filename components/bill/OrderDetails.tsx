@@ -332,10 +332,10 @@ const OrderDetailsComponent: React.FC = () => {
             className="w-full flex-row items-center justify-between p-2 rounded-xl h-10 bg-surface"
             onPress={openDrawer}
           >
-            <Text className="text-l ml-2 text-base font-medium text-white">
+            <Text className="ml-2 text-sm font-medium text-white">
               {orderType}
             </Text>
-            <Text className="text-white text-l">▼</Text>
+            <Text className="text-white text-sm">▼</Text>
           </TouchableOpacity>
         </View>
       </View>
