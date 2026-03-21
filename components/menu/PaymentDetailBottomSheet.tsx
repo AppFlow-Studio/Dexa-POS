@@ -3763,9 +3763,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   {}
 > = (props, ref) => {
   const { show } = useToast()
-  const router = useRouter()
   const supabase = useSupabaseClient()
-  const internalRef = useRef<BottomSheetMethods>(null)
   const [tipProcessing, setTipProcessing] = useState(false)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
@@ -3913,6 +3911,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     let totalCollected = 0
     let totalTips = 0
     const payments: PaymentRowData[] = []
+    // console.log('[PaymentDetailBottomSheet] Order', order)
     console.log('order.payments', order.payments?.[0])
     if (order.payments && order.payments.length > 0) {
       order.payments.forEach((payment: OrderProfilePayment, index: number) => {

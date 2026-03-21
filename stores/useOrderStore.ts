@@ -2371,38 +2371,54 @@ function mergePayments(
   localPayments: OrderProfilePayment[],
   broadcastPayments: OrderProfilePayment[],
 ): OrderProfilePayment[] {
-  // Build set of broadcast db_payment_ids for O(1) lookup
+  // Payment status precedence (same as syncOrderFromBackendComplete)
+  const PAYMENT_STATUS_ORDER: Record<string, number> = {
+    authorized: 0, pending: 1, captured: 2, refunded: 3, voided: 3,
+  };
+
+  // Build local lookup by db_payment_id
+  const localByDbId = new Map<string, OrderProfilePayment>();
+  for (const lp of localPayments) {
+    if (lp.db_payment_id) localByDbId.set(lp.db_payment_id, lp);
+  }
+
+  // Build broadcast db_payment_id set
   const broadcastDbIds = new Set(
     broadcastPayments.map((bp) => bp.db_payment_id).filter(Boolean),
   );
 
-  // Filter local payments to find truly pending ones not represented in broadcast
+  // For each broadcast payment, pick the version with more advanced status
+  const mergedFromBroadcast = broadcastPayments.map((bp) => {
+    if (!bp.db_payment_id) return bp;
+    const lp = localByDbId.get(bp.db_payment_id);
+    if (
+      lp &&
+      (PAYMENT_STATUS_ORDER[lp.status ?? ""] ?? -1) >
+        (PAYMENT_STATUS_ORDER[bp.status ?? ""] ?? -1)
+    ) {
+      return lp; // Local is more advanced — preserve it
+    }
+    return bp; // Broadcast is same or more advanced
+  });
+
+  // Keep local payments NOT in broadcast
   const pendingLocal = localPayments.filter((lp) => {
-    // Already in broadcast by DB ID? Skip — broadcast version is authoritative.
     if (lp.db_payment_id && broadcastDbIds.has(lp.db_payment_id)) return false;
 
-    // Synced payment (has db_payment_id) NOT in broadcast? Usually skip — may have been voided server-side.
     if (lp.sync_status !== "pending" && lp.db_payment_id) {
-      // Never drop an active pre-auth — these represent real terminal holds
       const isActivePreAuth = lp.isPreAuth && lp.status === "authorized" && !lp.isVoided;
-      // Never drop a locally-captured payment — broadcast may not reflect capture yet
       const isLocalCapture = lp.status === "captured";
       if (isActivePreAuth || isLocalCapture) return true;
       return false;
     }
 
-    // Truly pending (no db_payment_id yet) — check heuristic match
-    // Race condition: broadcast can arrive before syncPaymentToBackend tags db_payment_id
     if (!lp.db_payment_id) {
       const hasHeuristicMatch = broadcastPayments.some(
         (bp) =>
           bp.amount === lp.amount &&
           bp.method === lp.method &&
-          lp.timestamp &&
-          bp.timestamp &&
-          Math.abs(
-            new Date(bp.timestamp).getTime() - new Date(lp.timestamp).getTime(),
-          ) < 60000,
+          lp.timestamp && bp.timestamp &&
+          Math.abs(new Date(bp.timestamp).getTime() - new Date(lp.timestamp).getTime()) < 60000,
       );
       if (hasHeuristicMatch) return false;
     }
@@ -2410,9 +2426,7 @@ function mergePayments(
     return true;
   });
 
-  // Use broadcast payments as the base (they have correct itemsCovered from covers_items)
-  // Then append any truly pending local payments (not yet in broadcast)
-  return [...broadcastPayments, ...pendingLocal];
+  return [...mergedFromBroadcast, ...pendingLocal];
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -8962,8 +8976,7 @@ export const useOrderStore = create<OrderState>()(
                   supabase
                     .from("order_payments")
                     .select("*")
-                    .eq("order_id", dbOrderId)
-                    .eq("status", "captured"),
+                    .eq("order_id", dbOrderId),
                   supabase
                     .from("order_item_payments")
                     .select("*")
@@ -9152,37 +9165,54 @@ export const useOrderStore = create<OrderState>()(
 
                 // Map payments from database
                 const syncedPayments: OrderProfilePayment[] =
-                  dbPayments?.map((p) => ({
-                    id: p.id,
-                    db_payment_id: p.id, // Ensure db_payment_id is set
-                    amount: p.amount,
-                    method: (p.payment_method === "card"
-                      ? "Card"
-                      : "Cash") as PaymentType,
-                    cardBrand: p.card_brand,
-                    last4: p.card_last4,
-                    tip_amount: p.tip_amount || 0,
-                    total_collected: p.amount + (p.tip_amount || 0),
-                    // Convert backend item_ids to new format with quantities
-                    // Backend doesn't store quantities per payment, so default to 1
-                    itemsCovered: (p.item_ids || []).map((itemId: string) => ({
-                      itemId,
-                      itemName: "Item", // Placeholder
-                      quantity: 1,
-                      unitPrice: 0, // Placeholder
-                      subtotal: 0, // Placeholder
-                    })),
-                    timestamp: p.created_at,
-                    status:
-                      p.status === "voided"
-                        ? "voided"
-                        : p.status === "refunded"
-                          ? "refunded"
-                          : "captured",
-                    isVoided: p.status === "voided",
-                    sync_status: "synced",
-                    sync_attempt_count: 0,
-                  })) ||
+                  dbPayments?.map((p) => {
+                    // Proper status mapping — preserve authorized for pre-auth
+                    const status: OrderProfilePayment["status"] =
+                      p.status === "voided" ? "voided" :
+                      p.status === "refunded" ? "refunded" :
+                      p.status === "authorized" ? "authorized" :
+                      p.status === "captured" ? "captured" :
+                      "pending";
+
+                    const isPreAuth = p.status === "authorized";
+                    const terminalResponse = (p as any).terminal_response as Record<string, any> | undefined;
+                    const castlesTxn = terminalResponse?.castles_transaction as Record<string, any> | undefined;
+
+                    return {
+                      id: p.id,
+                      db_payment_id: p.id,
+                      amount: p.amount,
+                      method: (p.payment_method === "card"
+                        ? "Card"
+                        : "Cash") as PaymentType,
+                      cardBrand: p.card_brand,
+                      last4: p.card_last4,
+                      tip_amount: p.tip_amount || 0,
+                      total_collected: p.amount + (p.tip_amount || 0),
+                      itemsCovered: (p.item_ids || []).map((itemId: string) => ({
+                        itemId,
+                        itemName: "Item",
+                        quantity: 1,
+                        unitPrice: 0,
+                        subtotal: 0,
+                      })),
+                      timestamp: p.created_at,
+                      status,
+                      isVoided: p.status === "voided",
+                      sync_status: "synced" as const,
+                      sync_attempt_count: 0,
+                      // Pre-auth fields
+                      isPreAuth,
+                      ...(isPreAuth ? {
+                        preAuthAmount: p.amount,
+                        preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                        preAuthStan: castlesTxn?.stan,
+                        preAuthAuthCode: (p as any).authorization_code || castlesTxn?.approvalCode,
+                        preAuthReferenceId: (p as any).reference_number || castlesTxn?.referenceId,
+                        preAuthTerminalType: (terminalResponse?.terminal_vendor === 'castles' ? 'castles' : 'dejavoo') as 'dejavoo' | 'castles' | undefined,
+                      } : {}),
+                    };
+                  }) ||
                   localOrder?.payments ||
                   [];
 
@@ -9318,8 +9348,7 @@ export const useOrderStore = create<OrderState>()(
               const { data: dbPayments, error: paymentsError } = await supabase
                 .from("order_payments")
                 .select("*")
-                .eq("order_id", order.db_order_id)
-                .eq("status", "captured");
+                .eq("order_id", order.db_order_id);
 
               if (paymentsError) {
                 console.warn(
@@ -9369,6 +9398,10 @@ export const useOrderStore = create<OrderState>()(
                       ? p.original_amount - p.amount
                       : undefined;
 
+                  const isPreAuth = p.status === "authorized";
+                  const terminalResponse = (p as any).terminal_response as Record<string, any> | undefined;
+                  const castlesTxn = terminalResponse?.castles_transaction as Record<string, any> | undefined;
+
                   return {
                     id: `payment_${p.id}`,
                     db_payment_id: p.id,
@@ -9391,13 +9424,25 @@ export const useOrderStore = create<OrderState>()(
                       ? "voided"
                       : p.status === "refunded"
                         ? "refunded"
-                        : p.status === "captured"
-                          ? "captured"
-                          : "pending",
+                        : p.status === "authorized"
+                          ? "authorized"
+                          : p.status === "captured"
+                            ? "captured"
+                            : "pending",
                     timestamp: p.captured_at ?? p.created_at,
                     isVoided: p.is_voided ?? false,
                     voidReason: p.void_reason ?? undefined,
                     sync_status: "synced",
+                    // Pre-auth fields
+                    isPreAuth,
+                    ...(isPreAuth ? {
+                      preAuthAmount: p.amount,
+                      preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                      preAuthStan: castlesTxn?.stan,
+                      preAuthAuthCode: (p as any).authorization_code || castlesTxn?.approvalCode,
+                      preAuthReferenceId: (p as any).reference_number || castlesTxn?.referenceId,
+                      preAuthTerminalType: (terminalResponse?.terminal_vendor === 'castles' ? 'castles' : 'dejavoo') as 'dejavoo' | 'castles' | undefined,
+                    } : {}),
                   };
                 }) || [];
 
@@ -9878,15 +9923,23 @@ export const useOrderStore = create<OrderState>()(
             // Auto-manage paid_status from payments
             const hasItems = (order.items?.length || 0) > 0;
             if (hasItems) {
-              const correctPaidStatus = calculatePaidStatusFromPayments(
-                order.payments,
-                totals.total_amount,
+              // Skip paid_status recalculation for orders with pre-auth payments —
+              // calculatePaidStatus doesn't understand pre-auth semantics,
+              // trust the backend-synced paid_status instead
+              const hasPreAuthPayments = order.payments?.some(
+                (p) => !p.isVoided && (p.isPreAuth || p.status === "authorized"),
               );
-              if (correctPaidStatus !== order.paid_status) {
-                set((state) => {
-                  const o = state.ordersById[orderId];
-                  if (o) o.paid_status = correctPaidStatus;
-                });
+              if (!hasPreAuthPayments) {
+                const correctPaidStatus = calculatePaidStatusFromPayments(
+                  order.payments,
+                  totals.total_amount,
+                );
+                if (correctPaidStatus !== order.paid_status) {
+                  set((state) => {
+                    const o = state.ordersById[orderId];
+                    if (o) o.paid_status = correctPaidStatus;
+                  });
+                }
               }
             }
 
