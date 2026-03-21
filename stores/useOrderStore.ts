@@ -8461,6 +8461,20 @@ export const useOrderStore = create<OrderState>()(
               // Clear split path lock if no payments remain
               if (updatedPayments.length === 0) {
                 o.split_payment_path = null;
+
+                // Clear on backend too
+                if (order.db_order_id) {
+                  const supabase = getOrderStoreSupabaseClient();
+                  if (supabase) {
+                    supabase
+                      .from("orders")
+                      .update({ split_payment_path: null })
+                      .eq("id", order.db_order_id)
+                      .then(({ error }) => {
+                        if (error) console.warn("[OrderStore] Failed to clear split_payment_path:", error.message);
+                      });
+                  }
+                }
               }
 
               // Update active order totals if this is the active order
@@ -8552,6 +8566,21 @@ export const useOrderStore = create<OrderState>()(
               const o = state.ordersById[orderId];
               if (o) o.split_payment_path = null;
             });
+
+            // Clear on backend too
+            const orderForClear = get().ordersById[orderId];
+            if (orderForClear?.db_order_id) {
+              const supabase = getOrderStoreSupabaseClient();
+              if (supabase) {
+                supabase
+                  .from("orders")
+                  .update({ split_payment_path: null })
+                  .eq("id", orderForClear.db_order_id)
+                  .then(({ error }) => {
+                    if (error) console.warn("[OrderStore] Failed to clear split_payment_path on voidAll:", error.message);
+                  });
+              }
+            }
 
             return true;
           },
@@ -10499,6 +10528,9 @@ export const useOrderStore = create<OrderState>()(
                     orderData.customer_id ?? currentOrder.customer_id,
                   delivery_address:
                     orderData.delivery_address ?? currentOrder.delivery_address,
+                  // Split payment path (multi-station sync)
+                  split_payment_path:
+                    (orderData as any).split_payment_path ?? currentOrder.split_payment_path ?? null,
                 };
 
                 state.ordersById[storeKey] = freeze(updatedOrder);

@@ -1,3 +1,4 @@
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { CartItem } from "@/lib/types";
 
 export type EffectiveItemStatus =
@@ -26,4 +27,11 @@ export function getEffectiveItemStatus(item: CartItem): EffectiveItemStatus {
 export function isItemReadyOrServed(item: CartItem): boolean {
   const s = getEffectiveItemStatus(item);
   return s === "ready" || s === "served";
+}
+
+/** Returns "preparing" in 2-step mode, "sent" in 3-step (default) */
+export function getKitchenSentStatus(): "sent" | "preparing" {
+  const mode =
+    useStoreSettingsStore.getState().selectedStore?.kds_workflow_mode;
+  return mode === "2-step" ? "preparing" : "sent";
 }

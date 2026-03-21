@@ -584,6 +584,9 @@ export function transformBroadcastToOrder(
     // Order source
     order_source: backendOrder.order_source ?? undefined,
 
+    // Split payment path (multi-station sync)
+    split_payment_path: (backendOrder.split_payment_path as import("@/lib/types").SplitPaymentPath) ?? null,
+
     // Sync status - already synced since from DB
     sync_status: "synced",
     sync_version: backendOrder.sync_version ?? 0,
@@ -622,6 +625,7 @@ export interface FetchedOrderData {
   check_status?: string | null;
   session_id?: string | null;
   order_source?: string | null;
+  split_payment_path?: string | null;
   order_type: string;
   status: string;
   table_number?: string | null;
@@ -1040,6 +1044,9 @@ export function normalizeFetchedOrder(
 
     // Order source
     order_source: fetchedOrder.order_source ?? null,
+
+    // Split payment path
+    split_payment_path: fetchedOrder.split_payment_path ?? null,
 
     // Sync
     sync_version: fetchedOrder.sync_version ?? 1,

@@ -2,6 +2,7 @@ import { mmkvStorage } from '@/lib/storage'
 import { toastService } from '@/lib/toastService'
 import { TaxRate, TaxRatesMap } from '@/types/menu'
 import { SelectedStation } from '@/types/station'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
@@ -22,6 +23,7 @@ export interface SelectedLocation {
   timezone: string
   is_active: boolean
   is_accepting_orders: boolean
+  kds_workflow_mode?: '2-step' | '3-step'
   pricing_strategy?: string | null
   dual_pricing_percentage?: number | null
   business_hours: Record<
@@ -169,6 +171,7 @@ interface StoreSettingsState extends StoreSettings {
   // Selected store actions
   setSelectedStore: (store: SelectedLocation) => void
   clearSelectedStore: () => void
+  refreshSelectedStore: (supabase: SupabaseClient) => Promise<void>
 
   // Organization branding
   setOrganizationLogoUrl: (url: string | null) => void
@@ -483,6 +486,17 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
 
       clearSelectedStore: () => {
         set({ selectedStore: null, organizationLogoUrl: null })
+      },
+
+      refreshSelectedStore: async (supabase: SupabaseClient) => {
+        const current = get().selectedStore;
+        if (!current?.id) return;
+        const { data } = await supabase
+          .from('locations')
+          .select('*')
+          .eq('id', current.id)
+          .single();
+        if (data) set({ selectedStore: data as SelectedLocation });
       },
 
       setOrganizationLogoUrl: (url: string | null) => {

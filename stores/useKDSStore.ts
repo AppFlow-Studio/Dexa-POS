@@ -3,6 +3,7 @@ import type {
   BroadcastOrderItemData,
   OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
+import { getKitchenSentStatus } from "@/lib/kitchenStatusUtils";
 import { OrderService } from "@/services/orderService";
 import {
   KDSDisplayConfig,
@@ -298,12 +299,13 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
     const fireTimeEpoch = fireTimeMs ? Math.floor(fireTimeMs / 1000) : 0;
 
     // Derive ticket status (same logic as SQL: all ready → ready, any sent → pending, else cooking)
+    // In 2-step mode, remap "pending" to "cooking" (items skip Pending bucket)
     const allReady = roundItems.every((i) => i.kitchen_status === "ready");
     const anySent = roundItems.some((i) => i.kitchen_status === "sent");
     const ticketStatus: KDSTicket["status"] = allReady
       ? "ready"
       : anySent
-        ? "pending"
+        ? (getKitchenSentStatus() === "preparing" ? "cooking" : "pending")
         : "cooking";
 
     const ticketItems: KDSTicketItem[] = roundItems.map((item) => ({
@@ -626,7 +628,11 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
           start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
         })),
       );
-      const { merged, mergedById, changed } = mergeTickets(processed, get()._ticketsById);
+      // In 2-step mode, remap any "pending" tickets to "cooking" (Pending bucket is hidden)
+      const remapped = getKitchenSentStatus() === "preparing"
+        ? processed.map(t => t.status === "pending" ? { ...t, status: "cooking" as KDSTicket["status"] } : t)
+        : processed;
+      const { merged, mergedById, changed } = mergeTickets(remapped, get()._ticketsById);
 
       if (!changed && get()._hasHydrated) {
         set({ isInitialLoading: false, isFetching: false });
@@ -704,7 +710,11 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
           start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
         })),
       );
-      const { merged, mergedById, changed } = mergeTickets(processed, get()._ticketsById);
+      // In 2-step mode, remap any "pending" tickets to "cooking"
+      const remapped = getKitchenSentStatus() === "preparing"
+        ? processed.map(t => t.status === "pending" ? { ...t, status: "cooking" as KDSTicket["status"] } : t)
+        : processed;
+      const { merged, mergedById, changed } = mergeTickets(remapped, get()._ticketsById);
 
       if (!changed && get()._hasHydrated) {
         set({ isFetching: false });
@@ -951,27 +961,29 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     if (!ticket || ticket.status !== "ready") return;
 
     const itemIds = ticket.items.map((i) => i.id);
+    const recallStatus = getKitchenSentStatus();
+    const recallTicketStatus: KDSTicket["status"] = recallStatus === "preparing" ? "cooking" : "pending";
 
     // Register pending action (full ticket override — recall replaces all item statuses)
     const itemStatusMap = new Map<string, string>();
-    for (const id of itemIds) itemStatusMap.set(id, "sent");
+    for (const id of itemIds) itemStatusMap.set(id, recallStatus);
     _pendingActions.set(ticketId, {
       ticketId,
-      targetStatus: "pending",
+      targetStatus: recallTicketStatus,
       itemStatuses: itemStatusMap,
       timestamp: Date.now(),
     });
 
 
-    // Optimistic: reset all items to "sent", ticket to "pending"
+    // Optimistic: reset all items, ticket to recall status
     const updatedTickets = tickets.map((t) =>
       t.ticket_id === ticketId
         ? {
             ...t,
-            status: "pending" as KDSTicket["status"],
+            status: recallTicketStatus,
             items: t.items.map((item) => ({
               ...item,
-              kitchen_status: "sent",
+              kitchen_status: recallStatus,
             })),
           }
         : t,
@@ -986,7 +998,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     if (client && itemIds.length > 0) {
       scheduleRetry(
         retryKey,
-        () => OrderService.recallOrderItems(client, itemIds),
+        () => OrderService.recallOrderItems(client, itemIds, recallStatus),
         0,
         () => { _pendingActions.delete(ticketId); },
         () => {
@@ -1142,12 +1154,14 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     if (!ticket) return;
 
     const itemIds = ticket.items.map((i) => i.id);
+    const recallStatus = getKitchenSentStatus();
+    const recallTicketStatus: KDSTicket["status"] = recallStatus === "preparing" ? "cooking" : "pending";
 
-    // Move from done → active tickets as "pending"
+    // Move from done → active tickets with workflow-aware status
     const restoredTicket: KDSTicket = {
       ...ticket,
-      status: "pending" as KDSTicket["status"],
-      items: ticket.items.map((item) => ({ ...item, kitchen_status: "sent" })),
+      status: recallTicketStatus,
+      items: ticket.items.map((item) => ({ ...item, kitchen_status: recallStatus })),
     };
     const updatedDone = doneTickets.filter((t) => t.ticket_id !== ticketId);
     const updatedTickets = [...tickets, restoredTicket];
@@ -1163,7 +1177,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     // Backend: recall via existing RPC
     const client = getClient();
     if (client && itemIds.length > 0) {
-      OrderService.recallOrderItems(client, itemIds).catch((err) => {
+      OrderService.recallOrderItems(client, itemIds, recallStatus).catch((err) => {
         console.error("[KDSStore] recallDoneTicket backend error:", err);
         const lastLoc = get()._lastLocationId;
         if (lastLoc) get().scheduleRefetch(lastLoc);

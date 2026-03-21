@@ -745,6 +745,21 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             const o = state.ordersById[activeOrderId];
             if (o) o.split_payment_path = splitSourceView as SplitPaymentPath;
           });
+
+          // Persist to backend for multi-station sync
+          const dbOrderId = currentOrder.db_order_id;
+          if (dbOrderId) {
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase) {
+              supabase
+                .from("orders")
+                .update({ split_payment_path: splitSourceView })
+                .eq("id", dbOrderId)
+                .then(({ error }) => {
+                  if (error) console.warn("[PaymentStore] Failed to persist split_payment_path:", error.message);
+                });
+            }
+          }
         }
       }
 

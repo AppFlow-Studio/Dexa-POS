@@ -242,7 +242,12 @@ const SplitByItemView = () => {
     // (avoids duplicate IDs from Date.now() in tight addSplit loop)
     const newSplits = sorted.map((key, idx) => {
       const name = key === "shared" ? "Shared" : `Seat ${key}`;
-      const items = seatGroups[key].map(item => ({ ...item, quantity: item.quantity }));
+      const items = seatGroups[key]
+        .filter(item => item.quantity > (item.paidQuantity || 0))
+        .map(item => ({
+          ...item,
+          quantity: item.quantity - (item.paidQuantity || 0),
+        }));
       return {
         id: `split_${Date.now()}_${idx}`,
         customerName: name,
@@ -250,7 +255,12 @@ const SplitByItemView = () => {
         amount: 0,
         status: "pending" as const,
       };
-    });
+    }).filter(split => split.items.length > 0);
+
+    if (newSplits.length === 0) {
+      addSplit("Guest 1");
+      return;
+    }
 
     usePaymentStore.setState({ splits: newSplits, isDirty: true });
     setActiveSplitId(newSplits[0].id);
@@ -272,9 +282,11 @@ const SplitByItemView = () => {
     [ordersById, activeOrderId],
   );
 
-  // Filter out voided items - they should not be included in splits
+  // Filter out voided and fully-paid items - they should not be included in splits
   const masterItems = useMemo(
-    () => (activeOrder?.items || []).filter((item) => !item.is_voided),
+    () => (activeOrder?.items || []).filter(
+      (item) => !item.is_voided && item.quantity > (item.paidQuantity || 0)
+    ),
     [activeOrder?.items],
   );
   // console.log('[activeOrder | SplitByItemView] activeOrder', activeOrder);
@@ -282,6 +294,7 @@ const SplitByItemView = () => {
   // --- LOGIC: Calculate Item Distribution ---
   const itemData = useMemo(() => {
     return masterItems.map((item) => {
+      const unpaidQty = item.quantity - (item.paidQuantity || 0);
       const currentSplit = splits.find((s) => s.id === activeSplitId);
       const qtyInCurrent =
         currentSplit?.items.find((i) => i.id === item.id)?.quantity || 0;
@@ -292,14 +305,14 @@ const SplitByItemView = () => {
         if (found) totalAssigned += found.quantity;
       });
 
-      const qtyRemaining = item.quantity - totalAssigned;
+      const qtyRemaining = unpaidQty - totalAssigned;
 
       return {
         ...item,
         qtyInCurrent,
         qtyRemaining,
         totalAssigned,
-        isFullyAssigned: item.quantity === totalAssigned,
+        isFullyAssigned: unpaidQty === totalAssigned,
       };
     });
   }, [masterItems, splits, activeSplitId]);
@@ -371,7 +384,11 @@ const SplitByItemView = () => {
 
   const handleGoBack = () => {
     resetSplits();
-    setView("split-options");
+    if (activeOrder?.split_payment_path) {
+      setView("payment-method-selection");
+    } else {
+      setView("split-options");
+    }
   };
 
   return (
@@ -455,6 +472,15 @@ const SplitByItemView = () => {
 
         {/* RIGHT PANEL — Items + Summary + Action (70%) */}
         <View style={{ width: "70%", flex: 1 }}>
+
+          {/* Paid summary banner */}
+          {(activeOrder?.amount_paid ?? 0) > 0 && (
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, backgroundColor: `${colors.success}15`, borderBottomWidth: 1, borderBottomColor: `${colors.success}30` }}>
+              <Text style={{ fontSize: 12, color: colors.success, fontWeight: "600" }}>
+                ${(activeOrder?.amount_paid ?? 0).toFixed(2)} already paid. Showing remaining unpaid items.
+              </Text>
+            </View>
+          )}
 
           {/* Active Guest Header (pinned) */}
           {activeSplit && (

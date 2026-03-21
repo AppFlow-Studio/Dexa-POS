@@ -7,6 +7,7 @@
  */
 
 import type { SideEffectContext } from "@/lib/sessionSideEffects";
+import { getKitchenSentStatus } from "@/lib/kitchenStatusUtils";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import { OrderService } from "@/services/orderService";
 import { getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
@@ -72,10 +73,11 @@ export async function sendToKitchenEffect(ctx: SideEffectContext): Promise<void>
         }
       }
 
+      const targetStatus = getKitchenSentStatus();
       const result = await OrderService.bulkUpdateOrderItemStatus(
         supabase,
         dbItemIds,
-        "sent",
+        targetStatus,
       );
       if (result?.error) {
         await queueFailedOperation(

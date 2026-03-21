@@ -1,5 +1,5 @@
 import { colors } from "@/lib/theme";
-import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
+import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
   ArrowLeft,
@@ -10,7 +10,7 @@ import {
   Plus,
   Users,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const SplitEvenlyView = () => {
@@ -18,6 +18,7 @@ const SplitEvenlyView = () => {
   const splitEvenly = usePaymentStore((s) => s.splitEvenly);
   const startSplitPaymentFlow = usePaymentStore((s) => s.startSplitPaymentFlow);
   const resetSplits = usePaymentStore((s) => s.resetSplits);
+  const activeOrder = useActiveOrder();
   const orderTotals = useActiveOrderTotals();
   const activeOrderOutstandingTotal = orderTotals?.amountDue ?? 0;
   const activeOrderTotal = orderTotals?.total ?? 0;
@@ -28,7 +29,26 @@ const SplitEvenlyView = () => {
   const activeOrderSubtotal = orderTotals?.subtotal ?? 0;
   const activeOrderTax = orderTotals?.tax ?? 0;
 
-  const [numberOfPeople, setNumberOfPeople] = useState(2);
+  // Detect existing split-evenly payments for re-entry
+  const existingSplitInfo = useMemo(() => {
+    const payments = (activeOrder?.payments ?? []).filter(
+      (p) => !p.isVoided && p.splitInfo
+    );
+    if (payments.length === 0) return null;
+    const totalPortions = payments[0]?.splitInfo?.totalPortions ?? 0;
+    return {
+      paidCount: payments.length,
+      totalPortions,
+      remainingCount: totalPortions > 0 ? totalPortions - payments.length : 0,
+      amountCollected: payments.reduce((sum, p) => sum + (p.amount ?? 0), 0),
+    };
+  }, [activeOrder?.payments]);
+
+  const [numberOfPeople, setNumberOfPeople] = useState(
+    existingSplitInfo?.remainingCount && existingSplitInfo.remainingCount > 0
+      ? existingSplitInfo.remainingCount
+      : 2
+  );
 
   // Card pricing: Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
   const effectiveCardTotal =
@@ -77,7 +97,11 @@ const SplitEvenlyView = () => {
 
   const handleGoBack = () => {
     resetSplits();
-    setView("split-options");
+    if (activeOrder?.split_payment_path) {
+      setView("payment-method-selection");
+    } else {
+      setView("split-options");
+    }
   };
 
   const handleConfirmSplit = () => {
@@ -87,6 +111,11 @@ const SplitEvenlyView = () => {
     // 2. Flow: Start paying for Guest 1 immediately
     startSplitPaymentFlow("split-evenly");
   };
+
+  const isReEntry = existingSplitInfo && existingSplitInfo.paidCount > 0;
+  const buttonLabel = isReEntry
+    ? `Continue Payments (${numberOfPeople} remaining)`
+    : `Create ${numberOfPeople} Splits`;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
@@ -103,6 +132,15 @@ const SplitEvenlyView = () => {
           <Text style={{ fontSize: 11, color: colors.muted }}>Divide the total bill equally.</Text>
         </View>
       </View>
+
+      {/* Payment progress banner */}
+      {isReEntry && (
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, backgroundColor: `${colors.success}15`, borderBottomWidth: 1, borderBottomColor: `${colors.success}30` }}>
+          <Text style={{ fontSize: 12, color: colors.success, fontWeight: "600" }}>
+            {existingSplitInfo.paidCount} of {existingSplitInfo.totalPortions} guests have paid (${existingSplitInfo.amountCollected.toFixed(2)} collected). Splitting remaining ${effectiveTotal.toFixed(2)}.
+          </Text>
+        </View>
+      )}
 
       {/* Main Content */}
       <View style={{ flex: 1, flexDirection: "row", padding: 14, gap: 12 }}>
@@ -140,7 +178,7 @@ const SplitEvenlyView = () => {
           <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, justifyContent: "center", marginBottom: 10 }}>
             {/* Total Bill */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "500" }}>Total Bill</Text>
+              <Text style={{ color: colors.muted, fontSize: 13, fontWeight: "500" }}>{isReEntry ? "Remaining Bill" : "Total Bill"}</Text>
               <Text style={{ fontSize: 18, fontWeight: "700", color: colors.label }}>${effectiveTotal.toFixed(2)}</Text>
             </View>
 
@@ -190,7 +228,7 @@ const SplitEvenlyView = () => {
           >
             <Check size={16} color="#000" />
             <Text style={{ fontWeight: "700", fontSize: 14, color: "#000" }}>
-              Create {numberOfPeople} Splits
+              {buttonLabel}
             </Text>
           </TouchableOpacity>
         </View>

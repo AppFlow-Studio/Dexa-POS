@@ -820,12 +820,14 @@ export class OrderService {
   static async recallOrderItems(
     client: SupabaseClient,
     orderItemIds: string[],
+    targetStatus: string = "sent",
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
     }
     const { data, error } = await client.rpc("recall_kds_items", {
       p_order_item_ids: orderItemIds,
+      p_target_status: targetStatus,
     });
     return { data, error };
   }

@@ -899,7 +899,16 @@ const KitchenDisplayScreen = () => {
     [kdsHighlightNotes, kdsItemNameLines, kdsDisplayModifierGroupName, kdsDisplayExclusionsAtTop, kdsAlphabeticalSort, kdsAggregateIdenticalItems],
   );
 
-  const [activeStatus, setActiveStatus] = useState<StatusFilter>("pending");
+  const workflowMode = useStoreSettingsStore((s) => s.selectedStore?.kds_workflow_mode) ?? '3-step';
+
+  const visibleStatusTabs = useMemo(() =>
+    workflowMode === '2-step' ? STATUS_TABS.filter((t) => t.key !== 'pending') : STATUS_TABS,
+    [workflowMode]
+  );
+
+  const [activeStatus, setActiveStatus] = useState<StatusFilter>(
+    workflowMode === '2-step' ? 'cooking' : 'pending'
+  );
   const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -1491,7 +1500,7 @@ const KitchenDisplayScreen = () => {
         >
           {/* Status tabs */}
           <View style={{ flexDirection: "row", gap: 6 }}>
-            {STATUS_TABS.map((tab) => {
+            {visibleStatusTabs.map((tab) => {
               const isActive = activeStatus === tab.key;
               return (
                 <TouchableOpacity

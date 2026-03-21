@@ -184,6 +184,7 @@ BEGIN
       'sync_version', NEW.sync_version,
       'is_offline', NEW.is_offline,
       'order_source', NEW.order_source,
+      'split_payment_path', NEW.split_payment_path,
       'order_items', order_items_data
     );
 

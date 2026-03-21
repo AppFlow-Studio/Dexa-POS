@@ -536,6 +536,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           // Refresh stale floor plan data
           floorPlanStore.loadFloorPlanStatusIfStale();
 
+          // Refresh location settings (KDS workflow mode, etc.) from DB
+          storeSettings.refreshSelectedStore(supabase);
+
           // Refresh orders when app resumes via query invalidation
           if (storeSettings.selectedStore?.id) {
             queryClient.invalidateQueries({

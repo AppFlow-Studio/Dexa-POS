@@ -30,6 +30,7 @@ import {
     queueOperation,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
+import { getKitchenSentStatus } from "@/lib/kitchenStatusUtils";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -801,7 +802,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             // Update order status and item statuses
             const updatedItems = order.items.map((item) => ({
               ...item,
-              kitchen_status: "sent" as const,
+              kitchen_status: getKitchenSentStatus(),
               item_status: "Preparing" as const,
             }));
 
@@ -1261,7 +1262,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               await OrderService.bulkUpdateOrderItemStatus(
                 _supabaseClient,
                 [data.order_item_id],
-                "sent",
+                getKitchenSentStatus(),
               );
             } catch (retroErr) {
               console.warn(
@@ -1652,7 +1653,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               await OrderService.bulkUpdateOrderItemStatus(
                 _supabaseClient,
                 resolvedItemIds,
-                "sent",
+                getKitchenSentStatus(),
               );
 
             if (itemError) {

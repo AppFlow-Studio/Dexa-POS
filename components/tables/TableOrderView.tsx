@@ -15,7 +15,7 @@ import SeatSelector from '@/components/tables/SeatSelector'
 import { useTableDuration } from '@/hooks/useTableDuration'
 import { useTablePaymentSync } from '@/hooks/useTablePaymentSync'
 import { useTableSession } from '@/hooks/useTableSession'
-import { isItemReadyOrServed } from '@/lib/kitchenStatusUtils'
+import { isItemReadyOrServed, getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
 import { isActiveSession } from '@/lib/tableStateMachine'
 import { colors } from '@/lib/theme'
 import { PrinterService } from '@/services/printing/PrinterService'
@@ -487,7 +487,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     // Optimistically mark items as sent/queued (single batched set() call)
     batchUpdateItemKitchenStatus(
       itemsInCourse.map((i) => i.id),
-      "sent",
+      getKitchenSentStatus(),
     );
 
     // Mark course as sent IMMEDIATELY (drives CourseGroup UI via isSent prop)
