@@ -1061,6 +1061,12 @@ const addItemToBackend = async (
         p_quantity: item.quantity,
         p_special_instructions: item.customizations?.notes || undefined,
         p_is_tax_exempt: item.is_tax_exempt || undefined,
+        p_seat_number: (() => {
+          try {
+            const { useSeatingStore } = require('@/stores/useSeatingStore') as typeof import('@/stores/useSeatingStore');
+            return useSeatingStore.getState().getActiveSeat(order.id) ?? undefined;
+          } catch { return undefined; }
+        })(),
       };
 
       if (__DEV__) console.log(
@@ -1289,6 +1295,12 @@ const addItemToBackend = async (
       // Kitchen/Coursing
       p_course_number:
         useCoursingStore.getState().getWorkingCourse(order.id) || 1, // Use working course or default to 1
+      p_seat_number: (() => {
+        try {
+          const { useSeatingStore } = require('@/stores/useSeatingStore') as typeof import('@/stores/useSeatingStore');
+          return useSeatingStore.getState().getActiveSeat(order.id) ?? undefined;
+        } catch { return undefined; }
+      })(),
 
       // Menu/Category context
       p_menu_id: item.addedFromMenuId || undefined,
@@ -8446,6 +8458,11 @@ export const useOrderStore = create<OrderState>()(
                 ? ("Closed" as const)
                 : ("Opened" as const);
 
+              // Clear split path lock if no payments remain
+              if (updatedPayments.length === 0) {
+                o.split_payment_path = null;
+              }
+
               // Update active order totals if this is the active order
               if (orderId === activeOrderId) {
                 state.activeOrderOutstandingTotal = totals.outstanding_total;
@@ -8529,6 +8546,12 @@ export const useOrderStore = create<OrderState>()(
                 return false; // Stop if any void fails
               }
             }
+
+            // Safety-net: ensure split payment path lock is cleared
+            set((state) => {
+              const o = state.ordersById[orderId];
+              if (o) o.split_payment_path = null;
+            });
 
             return true;
           },

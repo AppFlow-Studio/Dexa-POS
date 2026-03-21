@@ -11,9 +11,11 @@ interface OrderInfoHeaderProps {
   duration?: string;
   tableId?: string;
   onOpenServerSheet?: () => void;
+  hideGuests?: boolean;
+  inline?: boolean;
 }
 
-const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, onOpenServerSheet }) => {
+const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, onOpenServerSheet, hideGuests, inline }) => {
   const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
   const tablesById = useFloorPlanStore((s) => s.tablesById);
   const activeOrder = useActiveOrder();
@@ -58,7 +60,10 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
   if (!activeOrder) return null;
 
   return (
-    <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+    <View style={inline
+      ? { flexDirection: 'row', alignItems: 'center', gap: 6 }
+      : { borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }
+    }>
 
       {/* Table */}
       <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
@@ -67,18 +72,20 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration, tableId, on
       </View>
 
       {/* Guests */}
-      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-        <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>GUESTS</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Minus color={colors.label} size={11} />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.heading, minWidth: 16, textAlign: 'center' }}>{numberOfGuests}</Text>
-          <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests + 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Plus color={colors.label} size={11} />
-          </TouchableOpacity>
+      {!hideGuests && (
+        <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: 9, color: colors.muted, letterSpacing: 0.5, marginBottom: 1 }}>GUESTS</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Minus color={colors.label} size={11} />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.heading, minWidth: 16, textAlign: 'center' }}>{numberOfGuests}</Text>
+            <TouchableOpacity onPress={() => handleGuestCountChange(numberOfGuests + 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Plus color={colors.label} size={11} />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Server */}
       <TouchableOpacity

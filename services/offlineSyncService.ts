@@ -55,6 +55,8 @@ export type OperationType =
   | "reopen_check"          // Reopen closed check
   // Coursing operations
   | "fire_course"
+  // Seating operations
+  | "set_item_seat"
   // Pre-auth operations (terminal call must be online; only backend sync queued)
   | "process_preauth"
   | "capture_preauth"
@@ -85,8 +87,9 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   remove_item: 3,
   void_item: 3,
 
-  // Coursing and kitchen after items
+  // Coursing, seating, and kitchen after items
   fire_course: 4,
+  set_item_seat: 3,
   update_order_status: 4,
   send_to_kitchen: 4,       // Kitchen send after items synced
   

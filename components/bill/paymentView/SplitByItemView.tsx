@@ -5,6 +5,8 @@ import {
   useOrderStore,
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   ArrowLeft,
@@ -14,6 +16,7 @@ import {
   Minus,
   Play,
   Plus,
+  Trash2,
   User,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
@@ -189,13 +192,68 @@ const SplitByItemView = () => {
 
   const [activeSplitId, setActiveSplitId] = useState<string | null>(null);
 
-  // Initialize first guest
+  // Initialize guests — auto-populate from seat data when per-seat ordering is on
   useEffect(() => {
-    if (splits.length === 0) {
-      addSplit("Guest 1");
-    } else if (!activeSplitId && splits.length > 0) {
-      setActiveSplitId(splits[0].id);
+    if (splits.length > 0) {
+      if (!activeSplitId && splits.length > 0) {
+        setActiveSplitId(splits[0].id);
+      }
+      return;
     }
+
+    const enablePerSeatOrdering = useSettingsStore.getState().enablePerSeatOrdering;
+
+    if (!enablePerSeatOrdering || !activeOrder?.service_location_id) {
+      addSplit("Guest 1");
+      return;
+    }
+
+    // Group items by seat
+    const orderId = activeOrderId;
+    const seatingState = orderId ? useSeatingStore.getState().getForOrder(orderId) : null;
+    const itemSeatMap = seatingState?.itemSeatMap;
+
+    if (!itemSeatMap || Object.keys(itemSeatMap).length === 0) {
+      addSplit("Guest 1");
+      return;
+    }
+
+    // Build seat → items mapping
+    const seatGroups: Record<string, CartItem[]> = {};
+    for (const item of masterItems) {
+      const seat = item.seatNumber ?? itemSeatMap[item.id] ?? null;
+      const key = seat === null ? "shared" : String(seat);
+      if (!seatGroups[key]) seatGroups[key] = [];
+      seatGroups[key].push(item);
+    }
+
+    // Sort: numbered seats first, then shared
+    const seatKeys = Object.keys(seatGroups);
+    const numbered = seatKeys.filter(k => k !== "shared").map(Number).sort((a, b) => a - b);
+    const sorted: string[] = numbered.map(String);
+    if (seatGroups["shared"]) sorted.push("shared");
+
+    if (sorted.length === 0) {
+      addSplit("Guest 1");
+      return;
+    }
+
+    // Batch-create all splits with pre-assigned items in one setState call
+    // (avoids duplicate IDs from Date.now() in tight addSplit loop)
+    const newSplits = sorted.map((key, idx) => {
+      const name = key === "shared" ? "Shared" : `Seat ${key}`;
+      const items = seatGroups[key].map(item => ({ ...item, quantity: item.quantity }));
+      return {
+        id: `split_${Date.now()}_${idx}`,
+        customerName: name,
+        items,
+        amount: 0,
+        status: "pending" as const,
+      };
+    });
+
+    usePaymentStore.setState({ splits: newSplits, isDirty: true });
+    setActiveSplitId(newSplits[0].id);
   }, [splits.length]);
 
   // Sync active split
@@ -268,6 +326,16 @@ const SplitByItemView = () => {
       )
     : { subtotal: 0, tax: 0, total: 0 };
 
+  // Per-split totals for guest cards in left panel
+  const splitTotalsMap = useMemo(() => {
+    const map: Record<string, { total: number }> = {};
+    for (const split of splits) {
+      const { total } = calculateSplitTax(split.items, taxRatesMap, masterItems);
+      map[split.id] = { total };
+    }
+    return map;
+  }, [splits, taxRatesMap, masterItems]);
+
   // Calculate savings when paying cash vs card
   const cashSavings = Math.max(
     0,
@@ -322,79 +390,176 @@ const SplitByItemView = () => {
         </View>
       </View>
 
-      {/* Guest Tabs */}
-      <View style={{ height: 70, backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16, alignItems: "center" }}
-        >
+      {/* Main Content: Left-Right Split */}
+      <View style={{ flex: 1, flexDirection: "row" }}>
+
+        {/* LEFT PANEL — Guest List (30%) */}
+        <View style={{ width: "30%", borderRightWidth: 1, borderRightColor: colors.border }}>
+          {/* Add Guest Button (pinned) */}
           <TouchableOpacity
             onPress={handleAddGuest}
-            style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panel, gap: 6 }}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", height: 44, marginHorizontal: 10, marginTop: 10, marginBottom: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panel, gap: 6 }}
           >
             <Plus size={16} color={colors.teal} />
-            <Text style={{ color: colors.teal, fontWeight: "600", fontSize: 13 }}>Add</Text>
+            <Text style={{ color: colors.teal, fontWeight: "600", fontSize: 13 }}>Add Guest</Text>
           </TouchableOpacity>
 
-          {splits.map((split) => {
-            const isActive = split.id === activeSplitId;
-            return (
-              <TouchableOpacity
-                key={split.id}
-                onPress={() => setActiveSplitId(split.id)}
-                style={{
-                  flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderRadius: 20, borderWidth: 1, gap: 6,
-                  backgroundColor: isActive ? `${colors.teal}15` : colors.panel,
-                  borderColor: isActive ? colors.teal : colors.border,
-                }}
-              >
-                <User size={14} color={isActive ? colors.teal : colors.label} />
-                <Text style={{ fontWeight: "600", fontSize: 13, color: isActive ? colors.heading : colors.muted }}>
-                  {split.customerName}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
+          {/* Guest Cards (scrollable) */}
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            {splits.map((split) => {
+              const isActive = split.id === activeSplitId;
+              const splitTotal = splitTotalsMap[split.id]?.total ?? 0;
+              const itemCount = split.items.reduce((sum, i) => sum + i.quantity, 0);
+              return (
+                <TouchableOpacity
+                  key={split.id}
+                  onPress={() => setActiveSplitId(split.id)}
+                  style={{
+                    flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
+                    backgroundColor: isActive ? `${colors.teal}15` : "transparent",
+                    borderLeftWidth: isActive ? 3 : 0, borderLeftColor: isActive ? colors.teal : "transparent",
+                  }}
+                >
+                  {/* Left: icon + name + item count */}
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <User size={14} color={isActive ? colors.teal : colors.label} />
+                      <Text style={{ fontWeight: "700", fontSize: 13, color: isActive ? colors.heading : colors.label }} numberOfLines={1}>
+                        {split.customerName}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2, marginLeft: 20 }}>
+                      {itemCount} {itemCount === 1 ? "item" : "items"}
+                    </Text>
+                  </View>
 
-      {/* Active Guest Summary */}
-      {activeSplit && (
-        <View style={{ padding: 16, backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-            <View>
-              <TextInput
-                style={{ fontSize: 20, fontWeight: "700", color: colors.heading, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 4, minWidth: 150 }}
-                value={activeSplit.customerName}
-                onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
-                placeholderTextColor={colors.muted}
-              />
-              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Tap items below to assign</Text>
-            </View>
-            <View style={{ alignItems: "flex-end", gap: 2 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text style={{ color: colors.muted, fontSize: 11 }}>Subtotal:</Text>
-                <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.subtotal.toFixed(2)}</Text>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text style={{ color: colors.muted, fontSize: 11 }}>Tax:</Text>
-                <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.tax.toFixed(2)}</Text>
-              </View>
-            </View>
-          </View>
+                  {/* Right: total + delete */}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.label }}>
+                      ${splitTotal.toFixed(2)}
+                    </Text>
+                    {splits.length > 1 && (
+                      <TouchableOpacity
+                        onPress={() => removeSplit(split.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Trash2 size={16} color={colors.danger} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
 
-          {activeSplit.items.length > 0 && (
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+        {/* RIGHT PANEL — Items + Summary + Action (70%) */}
+        <View style={{ width: "70%", flex: 1 }}>
+
+          {/* Active Guest Header (pinned) */}
+          {activeSplit && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <View>
+                <TextInput
+                  style={{ fontSize: 18, fontWeight: "700", color: colors.heading, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 4, minWidth: 150 }}
+                  value={activeSplit.customerName}
+                  onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
+                  placeholderTextColor={colors.muted}
+                />
+                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Tap items to assign</Text>
+              </View>
+              <View style={{ alignItems: "flex-end", gap: 2 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>Subtotal:</Text>
+                  <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.subtotal.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>Tax:</Text>
+                  <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.tax.toFixed(2)}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Item List (scrollable) */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+            {itemData.map((item) => {
+              const isSelected = item.qtyInCurrent > 0;
+              const isFullyAssignedToOthers = item.qtyRemaining === 0 && item.qtyInCurrent === 0;
+              const canAdd = item.qtyRemaining > 0;
+              const canRemove = item.qtyInCurrent > 0;
+              return (
+                <View
+                  key={item.id}
+                  style={{
+                    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                    padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
+                    backgroundColor: isSelected ? `${colors.teal}15` : isFullyAssignedToOthers ? colors.screen : colors.panel,
+                    opacity: isFullyAssignedToOthers ? 0.4 : 1,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: "600", color: isSelected ? colors.heading : isFullyAssignedToOthers ? colors.muted : colors.label }}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ fontSize: 13, marginTop: 2, color: isSelected ? colors.teal : colors.muted }}>
+                      ${item.price.toFixed(2)}
+                    </Text>
+                  </View>
+
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    {isFullyAssignedToOthers ? (
+                      <Text style={{ color: colors.muted, fontSize: 11, fontStyle: "italic" }}>Assigned to others</Text>
+                    ) : (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveFromGuest(item)}
+                          disabled={!canRemove}
+                          style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canRemove ? colors.danger : colors.panel, opacity: canRemove ? 1 : 0.3 }}
+                        >
+                          <Minus size={14} color={canRemove ? "#fff" : colors.muted} />
+                        </TouchableOpacity>
+
+                        <View style={{ minWidth: 36, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.panel }}>
+                          <Text style={{ fontSize: 13, fontWeight: "700", color: isSelected ? "#000" : colors.muted }}>
+                            {item.qtyInCurrent}x
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => handleAddToGuest(item)}
+                          disabled={!canAdd}
+                          style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canAdd ? colors.success : colors.panel, opacity: canAdd ? 1 : 0.3 }}
+                        >
+                          <Plus size={14} color={canAdd ? "#fff" : colors.muted} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {item.qtyRemaining > 0 && !isFullyAssignedToOthers && (
+                      <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "600" }}>{item.qtyRemaining} left</Text>
+                    )}
+                    {item.qtyRemaining === 0 && isSelected && (
+                      <Text style={{ color: colors.success, fontSize: 11, fontWeight: "600" }}>✓ All assigned</Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* Card/Cash Totals Strip */}
+          {activeSplit && activeSplit.items.length > 0 && (
+            <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.panel }}>
+              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <CreditCard size={15} color={colors.teal} />
                   <Text style={{ color: colors.muted, fontSize: 12 }}>Card</Text>
                 </View>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.teal }}>${activeSplitTotals.total.toFixed(2)}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.teal }}>${activeSplitTotals.total.toFixed(2)}</Text>
               </View>
 
-              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: `${colors.success}40` }}>
+              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: `${colors.success}40` }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Banknote size={15} color={colors.success} />
                   <Text style={{ color: colors.muted, fontSize: 12 }}>Cash</Text>
@@ -404,109 +569,40 @@ const SplitByItemView = () => {
                     </View>
                   )}
                 </View>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.success }}>${activeSplitCashTotals.total.toFixed(2)}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.success }}>${activeSplitCashTotals.total.toFixed(2)}</Text>
               </View>
             </View>
           )}
+
+          {/* Footer */}
+          <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>Items Remaining</Text>
+              <Text style={{ fontWeight: "700", fontSize: 15, color: globalRemainingItems > 0 ? colors.danger : colors.success }}>
+                {globalRemainingItems}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleStartPayment}
+              disabled={!isAllAssigned}
+              style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 8, gap: 6,
+                backgroundColor: isAllAssigned ? colors.teal : colors.panel,
+                borderWidth: isAllAssigned ? 0 : 1, borderColor: colors.border,
+                opacity: isAllAssigned ? 1 : 0.6,
+              }}
+            >
+              {isAllAssigned
+                ? <Play size={15} color="#000" fill="#000" />
+                : <Circle size={15} color={colors.muted} />
+              }
+              <Text style={{ fontSize: 13, fontWeight: "700", color: isAllAssigned ? "#000" : colors.muted }}>
+                {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      )}
-
-      {/* Item List */}
-      <View style={{ flex: 1, backgroundColor: colors.screen }}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
-          {itemData.map((item) => {
-            const isSelected = item.qtyInCurrent > 0;
-            const isFullyAssignedToOthers = item.qtyRemaining === 0 && item.qtyInCurrent === 0;
-            const canAdd = item.qtyRemaining > 0;
-            const canRemove = item.qtyInCurrent > 0;
-            return (
-              <View
-                key={item.id}
-                style={{
-                  flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-                  padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border,
-                  backgroundColor: isSelected ? `${colors.teal}15` : isFullyAssignedToOthers ? colors.screen : colors.panel,
-                  opacity: isFullyAssignedToOthers ? 0.4 : 1,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: isSelected ? colors.heading : isFullyAssignedToOthers ? colors.muted : colors.label }}>
-                    {item.name}
-                  </Text>
-                  <Text style={{ fontSize: 13, marginTop: 2, color: isSelected ? colors.teal : colors.muted }}>
-                    ${item.price.toFixed(2)}
-                  </Text>
-                </View>
-
-                <View style={{ alignItems: "flex-end", gap: 4 }}>
-                  {isFullyAssignedToOthers ? (
-                    <Text style={{ color: colors.muted, fontSize: 11, fontStyle: "italic" }}>Assigned to others</Text>
-                  ) : (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <TouchableOpacity
-                        onPress={() => handleRemoveFromGuest(item)}
-                        disabled={!canRemove}
-                        style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canRemove ? colors.danger : colors.panel, opacity: canRemove ? 1 : 0.3 }}
-                      >
-                        <Minus size={14} color={canRemove ? "#fff" : colors.muted} />
-                      </TouchableOpacity>
-
-                      <View style={{ minWidth: 36, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.panel }}>
-                        <Text style={{ fontSize: 13, fontWeight: "700", color: isSelected ? "#000" : colors.muted }}>
-                          {item.qtyInCurrent}x
-                        </Text>
-                      </View>
-
-                      <TouchableOpacity
-                        onPress={() => handleAddToGuest(item)}
-                        disabled={!canAdd}
-                        style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canAdd ? colors.success : colors.panel, opacity: canAdd ? 1 : 0.3 }}
-                      >
-                        <Plus size={14} color={canAdd ? "#fff" : colors.muted} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {item.qtyRemaining > 0 && !isFullyAssignedToOthers && (
-                    <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "600" }}>{item.qtyRemaining} left</Text>
-                  )}
-                  {item.qtyRemaining === 0 && isSelected && (
-                    <Text style={{ color: colors.success, fontSize: 11, fontWeight: "600" }}>✓ All assigned</Text>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Footer */}
-      <View style={{ padding: 16, backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.border }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <Text style={{ color: colors.muted, fontSize: 13 }}>Items Remaining</Text>
-          <Text style={{ fontWeight: "700", fontSize: 15, color: globalRemainingItems > 0 ? colors.danger : colors.success }}>
-            {globalRemainingItems}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          onPress={handleStartPayment}
-          disabled={!isAllAssigned}
-          style={{
-            flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 8, gap: 6,
-            backgroundColor: isAllAssigned ? colors.teal : colors.panel,
-            borderWidth: isAllAssigned ? 0 : 1, borderColor: colors.border,
-            opacity: isAllAssigned ? 1 : 0.6,
-          }}
-        >
-          {isAllAssigned
-            ? <Play size={15} color="#000" fill="#000" />
-            : <Circle size={15} color={colors.muted} />
-          }
-          <Text style={{ fontSize: 13, fontWeight: "700", color: isAllAssigned ? "#000" : colors.muted }}>
-            {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
-          </Text>
-        </TouchableOpacity>
       </View>
     </View>
   );

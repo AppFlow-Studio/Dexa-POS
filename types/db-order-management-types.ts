@@ -218,6 +218,7 @@ export interface AddOrderItemParams {
 
   // Kitchen/Coursing
   p_course_number?: number;
+  p_seat_number?: number | null;
 
   // Menu/Category context
   p_menu_id?: string;

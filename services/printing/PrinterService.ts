@@ -822,6 +822,7 @@ function buildKitchenTicketData(
       isVoided: item.is_voided,
       station: item.category_name,
       allergyAlert,
+      seatNumber: item.seatNumber ?? null,
     };
   });
 

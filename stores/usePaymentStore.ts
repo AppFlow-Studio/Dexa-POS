@@ -1,6 +1,6 @@
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import { toastService } from "@/lib/toastService";
-import { CartItem, OrderPaymentTransactionDetails } from "@/lib/types";
+import { CartItem, OrderPaymentTransactionDetails, SplitPaymentPath } from "@/lib/types";
 import {
   getFailedPayments,
   getPendingPaymentsCount,
@@ -735,6 +735,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (!paymentSuccess) {
         close();
         return;
+      }
+
+      // Lock split payment path on first split payment
+      if (splitSourceView) {
+        const currentOrder = useOrderStore.getState().ordersById[activeOrderId];
+        if (currentOrder && !currentOrder.split_payment_path) {
+          useOrderStore.setState((state) => {
+            const o = state.ordersById[activeOrderId];
+            if (o) o.split_payment_path = splitSourceView as SplitPaymentPath;
+          });
+        }
       }
 
       // Track cash payment in drawer (fire-and-forget)

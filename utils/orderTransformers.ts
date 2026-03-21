@@ -110,6 +110,7 @@ export interface BackendItemInput {
   item_status?: string | null;
   kitchen_status?: string | null;
   course_number?: number | null;
+  seat_number?: number | null;
 
   // Flags
   is_voided?: boolean | null;
@@ -199,6 +200,7 @@ export function mapBackendItemToCartItem(
     kitchen_status:
       (item.kitchen_status as CartItem["kitchen_status"]) || undefined,
     courseNumber: item.course_number || 1,
+    seatNumber: item.seat_number ?? null,
 
     // Item flags
     is_voided: item.is_voided || false,

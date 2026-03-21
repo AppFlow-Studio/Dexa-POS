@@ -1129,6 +1129,10 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               itemData?.is_tax_exempt ??
               addItemParams?.p_is_tax_exempt ??
               false,
+            p_seat_number:
+              itemData?.seatNumber ??
+              (addItemParams as AddOpenItemParams)?.p_seat_number ??
+              undefined,
           } as AddOpenItemParams;
         } else {
           // Build the item params if we only have itemData (queued from initial failure)
@@ -1718,6 +1722,28 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           return true;
         } catch (err) {
           console.error("[OfflineSync] Error firing course:", err);
+          return false;
+        }
+      }
+
+      case "set_item_seat": {
+        const { dbItemId, seatNumber } = op.params;
+        if (!dbItemId) {
+          console.log("[OfflineSync] set_item_seat: No dbItemId, will retry later");
+          return false;
+        }
+        try {
+          const { error } = await _supabaseClient.rpc("set_item_seat", {
+            p_order_item_id: dbItemId,
+            p_seat_number: seatNumber,
+          });
+          if (error) {
+            console.error("[OfflineSync] Failed to set item seat:", error);
+            return false;
+          }
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync] Error setting item seat:", err);
           return false;
         }
       }

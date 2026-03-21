@@ -20,6 +20,7 @@ CREATE OR REPLACE FUNCTION add_order_item_v2(
     p_modifiers jsonb DEFAULT NULL,
     p_special_instructions text DEFAULT NULL,
     p_course_number integer DEFAULT 1,
+    p_seat_number integer DEFAULT NULL,
     p_menu_id uuid DEFAULT NULL,
     p_menu_name text DEFAULT NULL,
     p_category_id uuid DEFAULT NULL
@@ -159,6 +160,7 @@ BEGIN
         special_instructions,
         item_status,
         course_number,
+        seat_number,
         -- Payment tracking
         paid_quantity,
         -- Timestamps
@@ -195,6 +197,7 @@ BEGIN
         p_special_instructions,
         'pending',
         COALESCE(p_course_number, 1),
+        p_seat_number,
         -- Payment
         0,
         -- Timestamps

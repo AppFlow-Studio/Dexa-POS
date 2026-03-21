@@ -40,6 +40,7 @@ export interface ReceiptTemplateConfig {
   showModsLarge: boolean;
   largeItemText: boolean;
   groupByStation: boolean;
+  groupBySeat: boolean;
   modifierStyle: ModifierStyle;
 }
 
@@ -70,6 +71,7 @@ export const DEFAULT_RECEIPT_TEMPLATE: ReceiptTemplateConfig = {
   showModsLarge: true,
   largeItemText: true,
   groupByStation: true,
+  groupBySeat: false,
   modifierStyle: "inverted",
 };
 
@@ -146,6 +148,7 @@ export function receiptTemplateRowToConfig(
     showModsLarge: row.show_mods_large ?? true,
     largeItemText: row.large_item_text ?? true,
     groupByStation: row.group_by_station ?? true,
+    groupBySeat: (row as any).group_by_seat ?? false,
     modifierStyle: (row.modifier_style as ModifierStyle) ?? "inverted",
   };
 }

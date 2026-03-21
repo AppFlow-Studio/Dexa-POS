@@ -10,6 +10,8 @@ import TableDetailSkeleton from '@/components/tables/TableDetailSkeleton'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableCoursing } from '@/hooks/useTableCoursing'
+import { useTableSeating } from '@/hooks/useTableSeating'
+import SeatSelector from '@/components/tables/SeatSelector'
 import { useTableDuration } from '@/hooks/useTableDuration'
 import { useTablePaymentSync } from '@/hooks/useTablePaymentSync'
 import { useTableSession } from '@/hooks/useTableSession'
@@ -58,6 +60,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   } = useTableSession(currentTableId, undefined, onClose)
 
   const coursingHook = useTableCoursing(activeOrder)
+
   useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
 
   const isTableActive = isActiveSession(tableStatus) || tableStatus === 'paid'
@@ -70,6 +73,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const isModifierSidebarOpen = useModifierSidebarStore(s => s.isOpen)
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
+
+  const enablePerSeatOrdering = useSettingsStore(s => s.enablePerSeatOrdering)
+  const enableCoursing = useSettingsStore(s => s.enableCoursing)
+  const partySize = session?.party_size ?? 2
+  const seatingHook = useTableSeating(activeOrder, partySize, enablePerSeatOrdering)
+
   const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
   const dispatchAction = useTableSessionStore(s => s.dispatchAction)
   const openPaymentSheet = usePaymentStore(s => s.open)
@@ -572,6 +581,31 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     return false
   }, [isFullyPaid, activeOrder?.check_status])
 
+  const handleAddSeat = useCallback(() => {
+    const newCount = seatingHook.addSeat()
+    updateActiveOrderDetails({ guest_count: newCount })
+    useTableSessionStore.getState().dispatch(currentTableId, {
+      type: 'PATCH', updates: { party_size: newCount }
+    })
+  }, [seatingHook.addSeat, updateActiveOrderDetails, currentTableId])
+
+  const handleRemoveSeat = useCallback(() => {
+    const { removedSeat, reassignedItemCount } = seatingHook.removeSeat()
+    if (removedSeat === 0) return
+    const newCount = removedSeat - 1
+    updateActiveOrderDetails({ guest_count: newCount })
+    useTableSessionStore.getState().dispatch(currentTableId, {
+      type: 'PATCH', updates: { party_size: newCount }
+    })
+    if (reassignedItemCount > 0) {
+      show({
+        title: 'Seat Removed',
+        message: `${reassignedItemCount} item(s) moved to Shared`,
+        type: 'warning'
+      })
+    }
+  }, [seatingHook.removeSeat, updateActiveOrderDetails, currentTableId, show])
+
   const handleSelectCourse = useCallback(
     (courseId: number | null) => {
       setSelectedCourseIdForTracker(courseId)
@@ -664,6 +698,29 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           <ChevronLeft color={colors.heading} size={26} />
           <Text className='text-heading text-lg font-medium ml-1'>Back</Text>
         </TouchableOpacity>
+
+        {enablePerSeatOrdering && (
+          <View style={{ flex: 1, marginLeft: 4 }}>
+            <SeatSelector
+              seatCount={seatingHook.seatCount}
+              activeSeat={seatingHook.activeSeat}
+              onSelectSeat={seatingHook.setActiveSeat}
+              onAddSeat={handleAddSeat}
+              onRemoveSeat={handleRemoveSeat}
+              canRemoveSeat={seatingHook.seatCount > 1}
+            />
+          </View>
+        )}
+
+        <View style={{ marginLeft: 'auto' }}>
+          <OrderInfoHeader
+            duration={duration}
+            tableId={currentTableId}
+            onOpenServerSheet={() => setServerSheetOpen(true)}
+            hideGuests={enablePerSeatOrdering}
+            inline
+          />
+        </View>
       </View>
 
       {isOvertime && (
@@ -678,10 +735,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       {/* Stage 1: OrderInfoHeader + TableBillSection (user sees their bill first) */}
       {renderStage >= 1 ? (
         <>
-          <View className='px-2 mt-2'>
-            <OrderInfoHeader duration={duration} tableId={currentTableId} onOpenServerSheet={() => setServerSheetOpen(true)} />
-          </View>
-
           {/* Tab (Pre-Auth) Info Banner */}
           {hasPreAuth && preAuth && (
             <View
@@ -757,6 +810,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               onPressProceedToPayment={handleProceedToPayment}
               onPressStartNewCourse={finalizeCurrentCourse}
               isFullyPaid={isFullyPaid}
+              itemSeatMap={seatingHook.itemSeatMap}
+              activeSeat={seatingHook.activeSeat}
+              seatCount={seatingHook.seatCount}
+              onSelectSeat={seatingHook.setActiveSeat}
+              enablePerSeatOrdering={enablePerSeatOrdering}
+              enableCoursing={enableCoursing}
             />
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}

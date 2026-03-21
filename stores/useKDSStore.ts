@@ -320,6 +320,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       prep_station: item.prep_station,
       rush: item.rush,
       is_prioritized: item.is_prioritized,
+      seat_number: item.seat_number ?? null,
     }));
 
     tickets.push({

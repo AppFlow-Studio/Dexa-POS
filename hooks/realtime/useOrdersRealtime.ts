@@ -41,6 +41,7 @@ export interface BroadcastOrderItemData {
   refunded_quantity?: number;
   refunded_amount?: number;
   course_number: number | null;
+  seat_number?: number | null;
   is_voided: boolean;
   is_open_item: boolean;
   open_item_name: string | null;

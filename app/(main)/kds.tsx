@@ -528,6 +528,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         {item.quantity}
                       </Text>
                     </View>
+                    {item.seat_number != null && (
+                      <Text style={{ color: "#14b8a6", fontSize: 11, fontWeight: "700", marginRight: 4 }}>
+                        [S{item.seat_number}]
+                      </Text>
+                    )}
                     <Text
                       style={{
                         color: "#fff",

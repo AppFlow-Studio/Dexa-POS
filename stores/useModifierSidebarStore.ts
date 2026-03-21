@@ -1,6 +1,7 @@
 import { CartItem, MenuItemType, ModifierCategory } from "@/lib/types";
 import { create } from "zustand";
 import { useMenuStore } from "./useMenuStore";
+import { useSeatingStore } from "./useSeatingStore";
 
 // ============================================================================
 // SYNCHRONOUS TOUCH BLOCKING - For same-frame menu blocking
@@ -81,6 +82,9 @@ interface ModifierSidebarState {
   activeModifierCategory: string | null;
   precomputedForItemId: string | null; // Track which item precomputed values are for (prevents race conditions)
   draftCreatedId: string | null; // Draft item ID created by open(), null if not created
+
+  seatOverride: number | null; // null = shared / use active seat
+  setSeatOverride: (seat: number | null) => void;
 
   preWarm: (item: MenuItemType, categoryId?: string, menuId?: string) => void;
   preWarmMany: (items: MenuItemType[], categoryId?: string, menuId?: string) => void;
@@ -335,6 +339,10 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
   selectedItemPosition: null,
   activeEditingItemId: null, // Track which bill item is being edited
 
+  // Seat override for per-seat ordering
+  seatOverride: null,
+  setSeatOverride: (seat: number | null) => set({ seatOverride: seat }),
+
   // Pre-computed data starts empty
   precomputedModifiers: null,
   precomputedCategoriesById: null,
@@ -416,6 +424,22 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
         precomputed = precomputeModifierData(sourceItem, resolvedCatId, resolvedMenuId, cartItemParam ?? null, set);
       }
 
+      // Resolve initial seat override
+      const { useOrderStore } = require("./useOrderStore");
+      const { activeOrderId } = useOrderStore.getState();
+      let initialSeatOverride: number | null = null;
+      if (activeOrderId) {
+        if (cartItemParam) {
+          // Edit mode: use the item's current seat
+          initialSeatOverride = useSeatingStore.getState().getItemSeat(
+            activeOrderId, cartItemParam.id, cartItemParam.db_order_item_id
+          );
+        } else {
+          // Add mode: use the active seat
+          initialSeatOverride = useSeatingStore.getState().getActiveSeat(activeOrderId);
+        }
+      }
+
       // Determine menuItem field: include sourceItem in state if adding from menu or explicitly requested
       const stateMenuItem = (menuItemParam || includeMenuItemInState) ? sourceItem : null;
 
@@ -446,9 +470,16 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
         precomputedForItemId: precomputed.forItemId,
         activeEditingItemId: cartItemParam?.id ?? null,
         draftCreatedId,
+        seatOverride: initialSeatOverride,
       });
     } else if (cartItemParam) {
       // Fallback: no menu item found, use cart item data directly
+      const { useOrderStore: uos } = require("./useOrderStore");
+      const { activeOrderId: fallbackOrderId } = uos.getState();
+      const fallbackSeat = fallbackOrderId
+        ? useSeatingStore.getState().getItemSeat(fallbackOrderId, cartItemParam.id, cartItemParam.db_order_item_id)
+        : null;
+
       set({
         isOpen: true,
         isMenuBlocked: true,
@@ -466,6 +497,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
         activeModifierCategory: null,
         precomputedForItemId: cartItemParam.menuItemId,
         activeEditingItemId: cartItemParam.id,
+        seatOverride: fallbackSeat,
       });
     }
   },
@@ -511,6 +543,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       activeModifierCategory: null,
       precomputedForItemId: null,
       draftCreatedId: null,
+      seatOverride: null,
     });
   },
 
@@ -565,6 +598,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
       activeModifierCategory: null,
       precomputedForItemId: null,
       draftCreatedId: null,
+      seatOverride: null,
     });
   },
 
@@ -653,3 +687,11 @@ export const selectSetSelectedItemPosition = (state: ModifierSidebarState) =>
 /** Selector for activeEditingItemId - use for bill item highlight */
 export const selectActiveEditingItemId = (state: ModifierSidebarState) =>
   state.activeEditingItemId;
+
+/** Selector for seatOverride - use in ModifierScreen for per-seat ordering */
+export const selectSeatOverride = (state: ModifierSidebarState) =>
+  state.seatOverride;
+
+/** Selector for setSeatOverride action */
+export const selectSetSeatOverride = (state: ModifierSidebarState) =>
+  state.setSeatOverride;
