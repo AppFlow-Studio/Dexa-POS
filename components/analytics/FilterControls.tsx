@@ -27,13 +27,23 @@ const FilterChip: React.FC<FilterChipProps> = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className="flex-row items-center bg-panel border border-border rounded-xl px-4 py-3 mr-3"
+    style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      marginRight: 8
+    }}
     activeOpacity={0.8}
   >
     {icon}
-    <Text className="text-white font-medium ml-2 mr-2">{label}:</Text>
-    <Text className="text-blue-400 font-semibold">{value}</Text>
-    <ChevronDown color={colors.label} size={16} className="ml-2" />
+    <Text style={{ fontSize: 12, color: colors.label, marginLeft: 6, marginRight: 4 }}>{label}:</Text>
+    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: '600' }}>{value}</Text>
+    <ChevronDown color={colors.label} size={14} style={{ marginLeft: 4 }} />
   </TouchableOpacity>
 );
 
@@ -160,14 +170,21 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
   };
 
   return (
-    <View className="mb-6">
-      <View className="flex-row items-center justify-between mb-4">
-        <Text className="text-xl font-bold text-white">Filters</Text>
+    <View style={{ marginBottom: 12 }}>
+      <View className="flex-row items-center justify-between mb-3">
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>Filters</Text>
         <TouchableOpacity
           onPress={resetFilters}
-          className="px-4 py-2 bg-gray-600 rounded-xl"
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 4,
+            backgroundColor: 'transparent',
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8
+          }}
         >
-          <Text className="text-white text-sm">Reset</Text>
+          <Text style={{ fontSize: 12, color: colors.label }}>Reset</Text>
         </TouchableOpacity>
       </View>
 
@@ -179,21 +196,21 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         <FilterChip
           label="Date Range"
           value={formatDateRange()}
-          icon={<Calendar color={colors.label} size={16} />}
+          icon={<Calendar color={colors.label} size={14} />}
           onPress={() => setShowDateModal(true)}
         />
 
         <FilterChip
           label="Location"
           value={getLocationName()}
-          icon={<MapPin color={colors.label} size={16} />}
+          icon={<MapPin color={colors.label} size={14} />}
           onPress={() => setShowLocationModal(true)}
         />
 
         <FilterChip
           label="Employee"
           value={getEmployeeName()}
-          icon={<User color={colors.label} size={16} />}
+          icon={<User color={colors.label} size={14} />}
           onPress={() => setShowEmployeeModal(true)}
         />
       </ScrollView>
@@ -206,22 +223,30 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         onRequestClose={() => setShowDateModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-panel rounded-t-3xl p-6 max-h-[80%]">
-            <View className="flex-row items-center justify-between mb-6">
-              <Text className="text-2xl font-bold text-white">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 16,
+              maxHeight: '80%'
+            }}
+          >
+            <View className="flex-row items-center justify-between mb-4">
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
                 Select Date Range
               </Text>
               <TouchableOpacity
                 onPress={() => setShowDateModal(false)}
-                className="p-2"
+                style={{ padding: 4 }}
               >
-                <Text className="text-blue-400 text-lg">Cancel</Text>
+                <Text style={{ color: colors.teal, fontSize: 13 }}>Cancel</Text>
               </TouchableOpacity>
             </View>
 
             {/* Date Presets */}
-            <View className="mb-6">
-              <Text className="text-lg font-semibold text-white mb-3">
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading, marginBottom: 8 }}>
                 Quick Select
               </Text>
               <View className="flex-row flex-wrap gap-2">
@@ -229,33 +254,50 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                   <TouchableOpacity
                     key={preset.label}
                     onPress={() => handleDatePreset(preset.days)}
-                    className="px-4 py-2 bg-screen border border-border rounded-xl"
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 5,
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 20
+                    }}
                   >
-                    <Text className="text-white">{preset.label}</Text>
+                    <Text style={{ fontSize: 12, color: colors.heading }}>{preset.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
 
             {/* Custom Date Range */}
-            <View className="mb-6">
-              <Text className="text-lg font-semibold text-white mb-3">
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading, marginBottom: 8 }}>
                 Custom Range
               </Text>
-              <View className="gap-y-4">
+              <View className="gap-y-3">
                 <View>
-                  <Text className="text-gray-400 mb-2">From Date</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>From Date</Text>
                   <TouchableOpacity
                     onPress={() => setShowFromDatePicker(true)}
-                    className="bg-screen border border-border rounded-xl px-4 py-3 flex-row items-center justify-between"
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
                   >
-                    <Text className="text-white text-lg">
+                    <Text style={{ fontSize: 13, color: colors.heading }}>
                       {new Date(tempDateRange.start).toLocaleDateString()}
                     </Text>
-                    <Calendar color={colors.label} size={20} />
+                    <Calendar color={colors.label} size={16} />
                   </TouchableOpacity>
                   {showFromDatePicker && (
-                    <View className="mt-2">
+                    <View style={{ marginTop: 4 }}>
                       <DateTimePicker
                         value={new Date(tempDateRange.start)}
                         mode="date"
@@ -266,27 +308,45 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                       {Platform.OS === "ios" && (
                         <TouchableOpacity
                           onPress={() => setShowFromDatePicker(false)}
-                          className="bg-blue-600 py-2 px-4 rounded-lg mt-2"
+                          style={{
+                            backgroundColor: colors.teal + '20',
+                            borderWidth: 1,
+                            borderColor: colors.teal + '50',
+                            borderRadius: 8,
+                            paddingVertical: 6,
+                            paddingHorizontal: 12,
+                            marginTop: 4
+                          }}
                         >
-                          <Text className="text-white text-center">Done</Text>
+                          <Text style={{ color: colors.teal, textAlign: 'center', fontSize: 13, fontWeight: '600' }}>Done</Text>
                         </TouchableOpacity>
                       )}
                     </View>
                   )}
                 </View>
                 <View>
-                  <Text className="text-gray-400 mb-2">To Date</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>To Date</Text>
                   <TouchableOpacity
                     onPress={() => setShowToDatePicker(true)}
-                    className="bg-screen border border-border rounded-xl px-4 py-3 flex-row items-center justify-between"
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}
                   >
-                    <Text className="text-white text-lg">
+                    <Text style={{ fontSize: 13, color: colors.heading }}>
                       {new Date(tempDateRange.end).toLocaleDateString()}
                     </Text>
-                    <Calendar color={colors.label} size={20} />
+                    <Calendar color={colors.label} size={16} />
                   </TouchableOpacity>
                   {showToDatePicker && (
-                    <View className="mt-2">
+                    <View style={{ marginTop: 4 }}>
                       <DateTimePicker
                         value={new Date(tempDateRange.end)}
                         mode="date"
@@ -297,9 +357,17 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                       {Platform.OS === "ios" && (
                         <TouchableOpacity
                           onPress={() => setShowToDatePicker(false)}
-                          className="bg-blue-600 py-2 px-4 rounded-lg mt-2"
+                          style={{
+                            backgroundColor: colors.teal + '20',
+                            borderWidth: 1,
+                            borderColor: colors.teal + '50',
+                            borderRadius: 8,
+                            paddingVertical: 6,
+                            paddingHorizontal: 12,
+                            marginTop: 4
+                          }}
                         >
-                          <Text className="text-white text-center">Done</Text>
+                          <Text style={{ color: colors.teal, textAlign: 'center', fontSize: 13, fontWeight: '600' }}>Done</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -310,9 +378,16 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
 
             <TouchableOpacity
               onPress={handleDateConfirm}
-              className="bg-blue-600 py-4 rounded-xl items-center"
+              style={{
+                backgroundColor: colors.teal + '20',
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                borderRadius: 8,
+                paddingVertical: 10,
+                alignItems: 'center'
+              }}
             >
-              <Text className="text-white text-lg font-semibold">Apply</Text>
+              <Text style={{ color: colors.teal, fontSize: 13, fontWeight: '600' }}>Apply</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -326,16 +401,24 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         onRequestClose={() => setShowLocationModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-panel rounded-t-3xl p-6 max-h-[60%]">
-            <View className="flex-row items-center justify-between mb-6">
-              <Text className="text-2xl font-bold text-white">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 16,
+              maxHeight: '60%'
+            }}
+          >
+            <View className="flex-row items-center justify-between mb-4">
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
                 Select Location
               </Text>
               <TouchableOpacity
                 onPress={() => setShowLocationModal(false)}
-                className="p-2"
+                style={{ padding: 4 }}
               >
-                <Text className="text-blue-400 text-lg">Cancel</Text>
+                <Text style={{ color: colors.teal, fontSize: 13 }}>Cancel</Text>
               </TouchableOpacity>
             </View>
 
@@ -355,18 +438,20 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                       }
                     }, 100);
                   }}
-                  className={`p-4 rounded-xl mb-2 ${
-                    filters.location === location.id
-                      ? "bg-blue-900/30 border border-blue-500"
-                      : "bg-screen border border-border"
-                  }`}
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    marginBottom: 6,
+                    borderWidth: 1,
+                    borderColor: filters.location === location.id ? colors.teal + '50' : colors.border,
+                    backgroundColor: filters.location === location.id ? colors.teal + '15' : colors.screen
+                  }}
                 >
                   <Text
-                    className={`text-lg ${
-                      filters.location === location.id
-                        ? "text-blue-400"
-                        : "text-white"
-                    }`}
+                    style={{
+                      fontSize: 13,
+                      color: filters.location === location.id ? colors.teal : colors.heading
+                    }}
                   >
                     {location.name}
                   </Text>
@@ -385,16 +470,24 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
         onRequestClose={() => setShowEmployeeModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-panel rounded-t-3xl p-6 max-h-[60%]">
-            <View className="flex-row items-center justify-between mb-6">
-              <Text className="text-2xl font-bold text-white">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 16,
+              maxHeight: '60%'
+            }}
+          >
+            <View className="flex-row items-center justify-between mb-4">
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
                 Select Employee
               </Text>
               <TouchableOpacity
                 onPress={() => setShowEmployeeModal(false)}
-                className="p-2"
+                style={{ padding: 4 }}
               >
-                <Text className="text-blue-400 text-lg">Cancel</Text>
+                <Text style={{ color: colors.teal, fontSize: 13 }}>Cancel</Text>
               </TouchableOpacity>
             </View>
 
@@ -414,18 +507,20 @@ const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
                       }
                     }, 100);
                   }}
-                  className={`p-4 rounded-xl mb-2 ${
-                    filters.employee === employee.id
-                      ? "bg-blue-900/30 border border-blue-500"
-                      : "bg-screen border border-border"
-                  }`}
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    marginBottom: 6,
+                    borderWidth: 1,
+                    borderColor: filters.employee === employee.id ? colors.teal + '50' : colors.border,
+                    backgroundColor: filters.employee === employee.id ? colors.teal + '15' : colors.screen
+                  }}
                 >
                   <Text
-                    className={`text-lg ${
-                      filters.employee === employee.id
-                        ? "text-blue-400"
-                        : "text-white"
-                    }`}
+                    style={{
+                      fontSize: 13,
+                      color: filters.employee === employee.id ? colors.teal : colors.heading
+                    }}
                   >
                     {employee.name}
                   </Text>

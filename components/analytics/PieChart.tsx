@@ -150,19 +150,28 @@ const Tooltip: FC<{ item: PieChartDataItem }> = ({ item }) => {
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(200)}
-      className="absolute -top-5 bg-gray-900 p-3 rounded-lg border border-gray-600 shadow-lg z-10"
+      style={{
+        position: 'absolute',
+        top: -20,
+        backgroundColor: themeColors.card,
+        padding: 10,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: themeColors.border,
+        zIndex: 10,
+      }}
     >
-      <Text className="text-base font-bold text-white text-center mb-1">
+      <Text style={{ fontSize: 12, fontWeight: '700', color: themeColors.heading, textAlign: 'center', marginBottom: 2 }}>
         {item.name}
       </Text>
-      <Text className="text-gray-300 text-center">
+      <Text style={{ fontSize: 11, color: themeColors.label, textAlign: 'center' }}>
         ${item.value.toFixed(2)} ({(item.percent * 100).toFixed(1)}%)
       </Text>
     </Animated.View>
   );
 };
 
-const DEFAULT_COLORS = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7"];
+const DEFAULT_COLORS = [themeColors.teal, "#60A5FA", "#FBBF24", "#34D399", "#F87171", "#A78BFA", "#FB923C"];
 
 const convertToPieChartData = (
   data: RevenueDataItem[],
@@ -221,8 +230,8 @@ export const PieChart = ({
 
   if (!data || data.length === 0) {
     return (
-      <View className="bg-gray-800 rounded-xl p-4 border border-gray-700 shadow-lg items-center justify-center h-48">
-        <Text className="text-base text-gray-400">No data available</Text>
+      <View style={{ backgroundColor: themeColors.panel, borderRadius: 10, padding: 16, borderWidth: 1, borderColor: themeColors.border, alignItems: 'center', justifyContent: 'center', height: 180 }}>
+        <Text style={{ fontSize: 13, color: themeColors.label }}>No data available</Text>
       </View>
     );
   }
@@ -284,22 +293,23 @@ export const PieChart = ({
           <TouchableOpacity
             key={item.name}
             onPress={() => handleSegmentPress(index)}
-            className={`flex-row items-center p-2 rounded-md mb-2 ${
-              selectedSegment === index ? "bg-gray-700" : "bg-transparent"
-            }`}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              padding: 6,
+              borderRadius: 8,
+              marginBottom: 4,
+              backgroundColor: selectedSegment === index ? themeColors.card : 'transparent',
+            }}
           >
             <View
-              className="w-3 h-3 rounded-full mr-3"
-              style={{ backgroundColor: item.color }}
+              style={{ width: 10, height: 10, borderRadius: 5, marginRight: 8, backgroundColor: item.color }}
             />
-            <View className="flex-1">
-              <Text
-                className="text-white text-sm font-medium"
-                numberOfLines={1}
-              >
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: themeColors.heading, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
                 {item.name}
               </Text>
-              <Text className="text-gray-400 text-xs">
+              <Text style={{ color: themeColors.label, fontSize: 11 }}>
                 ${item.value.toFixed(2)}
               </Text>
             </View>

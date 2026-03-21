@@ -1,5 +1,6 @@
 // components/analytics/ReportTable.tsx
 
+import { colors } from '@/lib/theme';
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
@@ -16,12 +17,20 @@ interface ReportTableProps {
 export default function ReportTable({ data, title }: ReportTableProps) {
     if (!data || !data.headers || !data.rows || data.rows.length === 0) {
         return (
-            <View className="bg-panel w-full rounded-2xl border border-border p-6">
+            <View
+                style={{
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 12,
+                    padding: 14
+                }}
+            >
                 {title && (
-                    <Text className="text-white text-lg font-semibold mb-4">{title}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading, marginBottom: 8 }}>{title}</Text>
                 )}
-                <View className="items-center justify-center py-8">
-                    <Text className="text-gray-400 text-lg">No data available</Text>
+                <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 24 }}>
+                    <Text style={{ fontSize: 13, color: colors.label }}>No data available</Text>
                 </View>
             </View>
         );
@@ -29,26 +38,49 @@ export default function ReportTable({ data, title }: ReportTableProps) {
 
     const headerWidth = data.headers.length;
     return (
-        <View className="bg-panel w-full rounded-2xl border border-border overflow-hidden">
+        <View
+            style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                overflow: 'hidden'
+            }}
+        >
             {title && (
-                <View className="p-4 border-b border-border">
-                    <Text className="text-white text-lg font-semibold">{title}</Text>
+                <View
+                    style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border
+                    }}
+                >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>{title}</Text>
                 </View>
             )}
 
-            <ScrollView 
-            className="w-full"
-            contentContainerClassName="w-full"
-            horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView
+                className="w-full"
+                contentContainerClassName="w-full"
+                horizontal showsHorizontalScrollIndicator={false}>
                 <View className="w-full">
                     {/* Header Row */}
                     <View className="flex-row bg-card">
                         {data.headers.map((header, index) => (
                             <View
                                 key={index}
-                                className={`px-4 py-3 border-r border-border min-w-[120px] w-1/${headerWidth} `}
+                                className={`px-3 py-2 border-r border-border min-w-[120px] w-1/${headerWidth} `}
                             >
-                                <Text className="text-white font-semibold text-sm">
+                                <Text
+                                    style={{
+                                        fontSize: 11,
+                                        fontWeight: '600',
+                                        color: colors.label,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: 0.5
+                                    }}
+                                >
                                     {header}
                                 </Text>
                             </View>
@@ -64,9 +96,9 @@ export default function ReportTable({ data, title }: ReportTableProps) {
                             {row.map((cell, cellIndex) => (
                                 <View
                                     key={cellIndex}
-                                    className={`px-4 py-3 border-r border-border min-w-[120px] w-1/${headerWidth}`}
+                                    className={`px-3 py-2 border-r border-border min-w-[120px] w-1/${headerWidth}`}
                                 >
-                                    <Text className="text-gray-300 text-sm">
+                                    <Text style={{ fontSize: 12, color: colors.heading }}>
                                         {cell}
                                     </Text>
                                 </View>
@@ -78,7 +110,7 @@ export default function ReportTable({ data, title }: ReportTableProps) {
 
             {/* Footer with row count */}
             <View className="p-3 bg-card border-t border-border">
-                <Text className="text-gray-400 text-xs text-center">
+                <Text style={{ fontSize: 10, color: colors.muted, textAlign: 'center' }}>
                     {data.rows.length} row{data.rows.length !== 1 ? 's' : ''} • {data.headers.length} column{data.headers.length !== 1 ? 's' : ''}
                 </Text>
             </View>

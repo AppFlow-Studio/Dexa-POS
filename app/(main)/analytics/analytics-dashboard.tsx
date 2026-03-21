@@ -10,15 +10,18 @@ import { useRouter } from 'expo-router'
 import {
   BarChart3,
   Calendar,
+  DollarSign,
+  Hash,
   Package,
   PieChart,
   Plus,
   ShoppingCart,
+  ShoppingBag,
   TrendingUp,
   Users
 } from 'lucide-react-native'
 import React, { useEffect } from 'react'
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
 interface ReportCardProps {
   title: string
@@ -35,16 +38,38 @@ const ReportCard: React.FC<ReportCardProps> = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className='bg-panel p-6 rounded-2xl border border-border mb-4'
+    style={{
+      backgroundColor: colors.panel,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 8,
+      width: '48.5%'
+    }}
     activeOpacity={0.8}
   >
-    <View className='flex-row items-center mb-3'>
-      <View className='w-12 h-12 bg-blue-900/30 rounded-xl items-center justify-center mr-4'>
+    <View className='flex-row items-center mb-2'>
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          backgroundColor: colors.teal + '15',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 10
+        }}
+      >
         {icon}
       </View>
       <View className='flex-1'>
-        <Text className='text-xl font-bold text-white'>{title}</Text>
-        <Text className='text-sm text-gray-400 mt-1'>{description}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+          {title}
+        </Text>
+        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+          {description}
+        </Text>
       </View>
     </View>
   </TouchableOpacity>
@@ -108,63 +133,63 @@ const AnalyticsDashboardScreen = () => {
       id: 'sales-summary',
       title: 'Sales Summary',
       description: 'Overview of total sales, orders, and key metrics',
-      icon: <TrendingUp color={colors.info} size={24} />,
+      icon: <TrendingUp color={colors.teal} size={16} />,
       chartType: 'line'
     },
     {
       id: 'item-sales',
       title: 'Item Sales',
       description: 'Best selling items and sales performance',
-      icon: <ShoppingCart color={colors.info} size={24} />,
+      icon: <ShoppingCart color={colors.teal} size={16} />,
       chartType: 'pie'
     },
     {
       id: 'sales-by-hour',
       title: 'Sales by Hour',
       description: 'Peak hours and hourly sales patterns',
-      icon: <Calendar color={colors.info} size={24} />,
+      icon: <Calendar color={colors.teal} size={16} />,
       chartType: 'line'
     },
     {
       id: 'sales-by-employee',
       title: 'Sales by Employee',
       description: 'Individual employee performance metrics',
-      icon: <Users color={colors.info} size={24} />,
+      icon: <Users color={colors.teal} size={16} />,
       chartType: 'pie'
     },
     {
       id: 'discounts',
       title: 'Discounts',
       description: 'Discount usage and impact on revenue',
-      icon: <PieChart color={colors.info} size={24} />,
+      icon: <PieChart color={colors.teal} size={16} />,
       chartType: 'line'
     },
     {
       id: 'payments',
       title: 'Payments',
       description: 'Payment methods and transaction analysis',
-      icon: <Package color={colors.info} size={24} />,
+      icon: <Package color={colors.teal} size={16} />,
       chartType: 'pie'
     },
     {
       id: 'revenue-by-category',
       title: 'Revenue by Category',
       description: 'Revenue breakdown by menu categories',
-      icon: <PieChart color={colors.info} size={24} />,
+      icon: <PieChart color={colors.teal} size={16} />,
       chartType: 'pie'
     },
     {
       id: 'items-sold-by-category',
       title: 'Items Sold by Category',
       description: 'Number of items sold per menu category',
-      icon: <BarChart3 color={colors.info} size={24} />,
+      icon: <BarChart3 color={colors.teal} size={16} />,
       chartType: 'pie'
     },
     {
       id: 'category-performance',
       title: 'Category Performance',
       description: 'Comprehensive category analysis with revenue and volume',
-      icon: <TrendingUp color={colors.info} size={24} />,
+      icon: <TrendingUp color={colors.teal} size={16} />,
       chartType: 'bar'
     }
   ]
@@ -194,13 +219,13 @@ const AnalyticsDashboardScreen = () => {
 
   return (
     <View className='flex-1 bg-screen'>
-      <ScrollView contentContainerClassName='p-6'>
+      <ScrollView contentContainerStyle={{ padding: 14 }}>
         {/* Header */}
-        <View className='mb-6'>
-          <Text className='text-3xl font-bold text-white mb-2'>
+        <View className='mb-4'>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading, marginBottom: 2 }}>
             Analytics & Reports
           </Text>
-          <Text className='text-lg text-gray-400'>
+          <Text style={{ fontSize: 12, color: colors.label }}>
             Analyze your business performance with detailed reports
           </Text>
         </View>
@@ -214,67 +239,109 @@ const AnalyticsDashboardScreen = () => {
             console.log('🔄 Debug: Force refreshing analytics...')
             forceRefresh()
           }}
-          className='mt-4 bg-blue-600 w-fit p-3 rounded-lg'
+          style={{
+            marginTop: 8,
+            backgroundColor: 'transparent',
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            alignSelf: 'flex-start'
+          }}
         >
-          <Text className='text-white text-center font-bold'>
-            🔄 Force Refresh Analytics
+          <Text style={{ color: colors.muted, fontSize: 11 }}>
+            Force Refresh
           </Text>
         </TouchableOpacity>
 
         {/* KPI Cards */}
-        {currentReportData && (
-          <View className='mt-6'>
-            <Text className='text-xl font-bold text-white mb-4'>
+        {isLoading && !currentReportData && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
               Key Performance Indicators
             </Text>
-            <View className='flex-row flex-wrap gap-4'>
-              <View className='bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]'>
-                <View className='flex-row items-center justify-between mb-2'>
-                  <Text className='text-sm text-gray-400'>Gross Margin</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {[0, 1, 2, 3].map(i => (
+                <View key={i} style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, height: 90 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.card, marginBottom: 10 }} />
+                  <View style={{ width: '60%', height: 14, borderRadius: 6, backgroundColor: colors.card, marginBottom: 6 }} />
+                  <View style={{ width: '40%', height: 10, borderRadius: 4, backgroundColor: colors.card }} />
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+        {currentReportData && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
+              Key Performance Indicators
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* Gross Margin */}
+              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <TrendingUp size={14} color={colors.teal} />
+                  </View>
                   <KpiTooltip definition='Percentage of revenue remaining after subtracting cost of goods sold' />
                 </View>
-                <Text className='text-2xl font-bold text-white'>
-                  {currentReportData.kpis.grossMargin.toFixed(1)}%
-                </Text>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>{currentReportData.kpis.grossMargin.toFixed(1)}%</Text>
+                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Gross Margin</Text>
               </View>
 
-              <View className='bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]'>
-                <View className='flex-row items-center justify-between mb-2'>
-                  <Text className='text-sm text-gray-400'>Total Revenue</Text>
+              {/* Total Revenue */}
+              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <DollarSign size={14} color={colors.success} />
+                  </View>
                   <KpiTooltip definition='Total sales revenue for the selected period' />
                 </View>
-                <Text className='text-2xl font-bold text-white'>
-                  ${currentReportData.kpis.totalRevenue.toFixed(0)}
-                </Text>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>${currentReportData.kpis.totalRevenue.toFixed(0)}</Text>
+                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Total Revenue</Text>
               </View>
 
-              <View className='bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]'>
-                <View className='flex-row items-center justify-between mb-2'>
-                  <Text className='text-sm text-gray-400'>Avg Order Value</Text>
+              {/* Avg Order Value */}
+              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShoppingBag size={14} color={colors.info} />
+                  </View>
                   <KpiTooltip definition='Average value per order' />
                 </View>
-                <Text className='text-2xl font-bold text-white'>
-                  ${currentReportData.kpis.averageOrderValue.toFixed(2)}
-                </Text>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>${currentReportData.kpis.averageOrderValue.toFixed(2)}</Text>
+                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Avg Order Value</Text>
               </View>
 
-              <View className='bg-panel p-4 rounded-xl border border-border flex-1 min-w-[150px]'>
-                <View className='flex-row items-center justify-between mb-2'>
-                  <Text className='text-sm text-gray-400'>Total Orders</Text>
+              {/* Total Orders */}
+              <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.warning + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <Hash size={14} color={colors.warning} />
+                  </View>
                   <KpiTooltip definition='Total number of orders placed' />
                 </View>
-                <Text className='text-2xl font-bold text-white'>
-                  {currentReportData.kpis.totalOrders}
-                </Text>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.heading }}>{currentReportData.kpis.totalOrders}</Text>
+                <Text style={{ fontSize: 11, color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>Total Orders</Text>
               </View>
             </View>
           </View>
         )}
 
         {/* Sales Trend Chart */}
+        {isLoading && !currentReportData && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>Sales Trend</Text>
+            <View style={{ height: 220, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator color={colors.teal} size="small" />
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>Loading chart...</Text>
+            </View>
+          </View>
+        )}
         {currentReportData && (
-          <View className='mt-8'>
-            <Text className='text-xl font-bold text-white mb-4'>
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
               Sales Trend
             </Text>
             {/* <ReportChart
@@ -288,26 +355,34 @@ const AnalyticsDashboardScreen = () => {
 
         {/* Fast & Slow Movers */}
         {currentReportData && (
-          <View className='mt-8'>
-            <Text className='text-xl font-bold text-white mb-4'>
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
               Inventory Analysis
             </Text>
-            <View className='flex-row gap-4'>
+            <View className='flex-row gap-3'>
               <View className='flex-1'>
-                <Text className='text-lg font-semibold text-white mb-3'>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
                   Top 5 Fast Movers
                 </Text>
-                <View className='bg-panel rounded-xl border border-border p-4'>
+                <View
+                  style={{
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 12,
+                    padding: 12
+                  }}
+                >
                   {currentReportData.inventoryAnalysis.fastMovers.map(
                     (item, index) => (
                       <View
                         key={index}
                         className='flex-row justify-between items-center py-2 border-b border-border last:border-b-0'
                       >
-                        <Text className='text-white text-sm flex-1'>
+                        <Text style={{ fontSize: 12, color: colors.heading, flex: 1 }}>
                           {item.itemName}
                         </Text>
-                        <Text className='text-blue-400 text-sm font-semibold'>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
                           {item.totalSold}
                         </Text>
                       </View>
@@ -317,20 +392,28 @@ const AnalyticsDashboardScreen = () => {
               </View>
 
               <View className='flex-1'>
-                <Text className='text-lg font-semibold text-white mb-3'>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
                   Top 5 Slow Movers
                 </Text>
-                <View className='bg-panel rounded-xl border border-border p-4'>
+                <View
+                  style={{
+                    backgroundColor: colors.panel,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 12,
+                    padding: 12
+                  }}
+                >
                   {currentReportData.inventoryAnalysis.slowMovers.map(
                     (item, index) => (
                       <View
                         key={index}
                         className='flex-row justify-between items-center py-2 border-b border-border last:border-b-0'
                       >
-                        <Text className='text-white text-sm flex-1'>
+                        <Text style={{ fontSize: 12, color: colors.heading, flex: 1 }}>
                           {item.itemName}
                         </Text>
-                        <Text className='text-red-400 text-sm font-semibold'>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.danger }}>
                           {item.totalSold}
                         </Text>
                       </View>
@@ -343,7 +426,7 @@ const AnalyticsDashboardScreen = () => {
         )}
 
         {/* Wait Time Accuracy Metrics */}
-        <View className='mt-8'>
+        <View style={{ marginTop: 16 }}>
           <WaitTimeAccuracyCard
             client={supabaseClient}
             locationId={currentLocationId}
@@ -353,64 +436,94 @@ const AnalyticsDashboardScreen = () => {
         </View>
 
         {/* Pre-built Reports Section */}
-        <View className='mt-8'>
-          <Text className='text-2xl font-bold text-white mb-4'>
+        <View style={{ marginTop: 16 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
             Pre-built Reports
           </Text>
-          {preBuiltReports.map(report => (
-            <ReportCard
-              key={report.id}
-              title={report.title}
-              description={report.description}
-              icon={report.icon}
-              onPress={() => handleReportPress(report.id, report.chartType)}
-            />
-          ))}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {preBuiltReports.map(report => (
+              <ReportCard
+                key={report.id}
+                title={report.title}
+                description={report.description}
+                icon={report.icon}
+                onPress={() => handleReportPress(report.id, report.chartType)}
+              />
+            ))}
+          </View>
         </View>
 
         {/* Custom Reports Section */}
-        <View className='mt-8'>
-          <View className='flex-row items-center justify-between mb-4'>
-            <Text className='text-2xl font-bold text-white'>
+        <View style={{ marginTop: 16 }}>
+          <View className='flex-row items-center justify-between mb-3'>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
               Custom Reports
             </Text>
             <TouchableOpacity
               onPress={handleCreateCustomReport}
-              className='flex-row items-center bg-blue-600 px-4 py-2 rounded-xl'
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.teal + '20',
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 5
+              }}
               activeOpacity={0.8}
             >
-              <Plus color='white' size={20} />
-              <Text className='text-white font-semibold ml-2'>Create</Text>
+              <Plus color={colors.teal} size={14} />
+              <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 12, marginLeft: 4 }}>Create</Text>
             </TouchableOpacity>
           </View>
 
           {savedCustomReports.length > 0 ? (
-            savedCustomReports.map(report => (
-              <ReportCard
-                key={report.id}
-                title={report.name}
-                description={`Metrics: ${report.metrics.join(
-                  ', '
-                )} | Breakdown: ${report.breakdown}`}
-                icon={<BarChart3 color={colors.info} size={24} />}
-                onPress={() => handleCustomReportPress(report)}
-              />
-            ))
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {savedCustomReports.map(report => (
+                <ReportCard
+                  key={report.id}
+                  title={report.name}
+                  description={`Metrics: ${report.metrics.join(
+                    ', '
+                  )} | Breakdown: ${report.breakdown}`}
+                  icon={<BarChart3 color={colors.teal} size={16} />}
+                  onPress={() => handleCustomReportPress(report)}
+                />
+              ))}
+            </View>
           ) : (
-            <View className='bg-panel p-8 rounded-2xl border border-border items-center'>
-              <BarChart3 color={colors.muted} size={48} />
-              <Text className='text-lg text-gray-400 mt-4 text-center'>
+            <View
+              style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 24,
+                alignItems: 'center'
+              }}
+            >
+              <BarChart3 color={colors.muted} size={36} />
+              <Text style={{ fontSize: 13, color: colors.label, marginTop: 10, textAlign: 'center' }}>
                 No custom reports yet
               </Text>
-              <Text className='text-sm text-gray-500 mt-2 text-center'>
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4, textAlign: 'center' }}>
                 Create your first custom report to get started
               </Text>
               <TouchableOpacity
                 onPress={handleCreateCustomReport}
-                className='mt-4 bg-blue-600 px-6 py-3 rounded-xl'
+                style={{
+                  marginTop: 12,
+                  backgroundColor: colors.teal + '20',
+                  borderWidth: 1,
+                  borderColor: colors.teal + '50',
+                  borderRadius: 8,
+                  paddingHorizontal: 16,
+                  paddingVertical: 7
+                }}
                 activeOpacity={0.8}
               >
-                <Text className='text-white font-semibold'>Create Report</Text>
+                <Text style={{ color: colors.teal, fontWeight: '600', fontSize: 12 }}>Create Report</Text>
               </TouchableOpacity>
             </View>
           )}

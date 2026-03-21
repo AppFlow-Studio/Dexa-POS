@@ -224,16 +224,37 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
 
   if (loading) {
     return (
-      <View className='bg-panel p-6 rounded-2xl border border-border mb-4 items-center justify-center h-48'>
-        <ActivityIndicator color={colors.info} size={32} />
+      <View
+        style={{
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 8,
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: 120
+        }}
+      >
+        <ActivityIndicator color={colors.teal} size={24} />
       </View>
     )
   }
 
   if (!effectiveLocationId) {
     return (
-      <View className='bg-panel p-6 rounded-2xl border border-border mb-4'>
-        <Text className='text-gray-300 text-sm'>
+      <View
+        style={{
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 8
+        }}
+      >
+        <Text style={{ fontSize: 12, color: colors.label }}>
           Select a store location to view wait time accuracy metrics.
         </Text>
       </View>
@@ -242,8 +263,17 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
 
   if (error || !metrics) {
     return (
-      <View className='bg-panel p-6 rounded-2xl border border-border mb-4'>
-        <Text className='text-red-400'>
+      <View
+        style={{
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 8
+        }}
+      >
+        <Text style={{ color: colors.danger, fontSize: 12 }}>
           {error || 'Failed to load metrics'}
         </Text>
       </View>
@@ -257,34 +287,53 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
 
   const isUnderestimating = metrics.pessimisticCount > metrics.optimisticCount
   const trendIcon = isUnderestimating ? (
-    <TrendingDown color='#ef4444' size={20} />
+    <TrendingDown color={colors.danger} size={16} />
   ) : (
-    <TrendingUp color='#10b981' size={20} />
+    <TrendingUp color={colors.success} size={16} />
   )
 
   return (
-    <View className='bg-panel p-6 rounded-2xl border border-border mb-4'>
+    <View
+      style={{
+        backgroundColor: colors.panel,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 8
+      }}
+    >
       {/* Header */}
-      <View className='flex-row items-center mb-4'>
-        <View className='w-12 h-12 bg-purple-900/30 rounded-xl items-center justify-center mr-4'>
-          <Clock color='#a78bfa' size={24} />
+      <View className='flex-row items-center mb-3'>
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: colors.teal + '15',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 10
+          }}
+        >
+          <Clock color={colors.teal} size={16} />
         </View>
         <View className='flex-1'>
-          <Text className='text-xl font-bold text-white'>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
             Wait Time Accuracy
           </Text>
-          <Text className='text-xs text-gray-400 mt-1'>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
             Based on {metrics.totalSamples} seating
             {metrics.totalSamples !== 1 ? 's' : ''}
           </Text>
-          <Text className='text-[10px] text-gray-500 mt-1'>
+          <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
             Seated rows seen: {metrics.seatedRowsSeen}
           </Text>
-          <Text className='text-[10px] text-gray-500 mt-1'>
+          <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
             Source: {metrics.dataSource}
           </Text>
           {metrics.usedAllTimeFallback && (
-            <Text className='text-[10px] text-amber-400 mt-1'>
+            <Text style={{ fontSize: 10, color: colors.warning, marginTop: 1 }}>
               Showing all-time data (current date filter had no seated rows)
             </Text>
           )}
@@ -292,15 +341,22 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
       </View>
 
       {/* Main Metric */}
-      <View className='bg-screen/50 p-4 rounded-xl mb-4'>
+      <View
+        style={{
+          backgroundColor: colors.screen,
+          padding: 12,
+          borderRadius: 10,
+          marginBottom: 10
+        }}
+      >
         <View className='flex-row items-baseline gap-2 mb-2'>
-          <Text className='text-4xl font-bold text-white'>
+          <Text style={{ fontSize: 24, fontWeight: '700', color: colors.heading }}>
             {metrics.avgAbsoluteDelta}
           </Text>
-          <Text className='text-gray-400'>minutes avg error</Text>
+          <Text style={{ fontSize: 12, color: colors.label }}>minutes avg error</Text>
           {metrics.avgDelta !== 0 && trendIcon}
         </View>
-        <Text className='text-sm text-gray-400'>
+        <Text style={{ fontSize: 11, color: colors.muted }}>
           {metrics.avgAbsoluteDelta <= 2
             ? 'Excellent estimate accuracy'
             : metrics.avgAbsoluteDelta <= 5
@@ -309,7 +365,7 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
             ? 'Fair estimate accuracy'
             : 'Estimates need improvement'}
         </Text>
-        <Text className='text-xs text-gray-500 mt-1'>
+        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
           Bias:{' '}
           {metrics.avgDelta === 0
             ? 'on target'
@@ -322,13 +378,31 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
       {/* Accuracy Breakdown */}
       <View className='gap-2'>
         {/* Accurate */}
-        <View className='flex-row items-center justify-between p-3 rounded-lg bg-green-900/20'>
-          <Text className='text-green-300 text-sm font-medium'>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: colors.success + '15'
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.success, fontWeight: '500' }}>
             Within ±5 min (Accurate)
           </Text>
           <View className='flex-row items-center gap-2'>
-            <View className='w-12 h-6 bg-green-600/40 rounded items-center justify-center'>
-              <Text className='text-green-300 text-xs font-bold'>
+            <View
+              style={{
+                width: 44,
+                height: 22,
+                backgroundColor: colors.success + '30',
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Text style={{ fontSize: 11, color: colors.success, fontWeight: '700' }}>
                 {metrics.totalSamples > 0
                   ? Math.round(
                       (metrics.accurateCount / metrics.totalSamples) * 100
@@ -337,20 +411,38 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
                 %
               </Text>
             </View>
-            <Text className='text-green-300 text-xs'>
+            <Text style={{ fontSize: 11, color: colors.success }}>
               {metrics.accurateCount}/{metrics.totalSamples}
             </Text>
           </View>
         </View>
 
         {/* Overestimated (good) */}
-        <View className='flex-row items-center justify-between p-3 rounded-lg bg-blue-900/20'>
-          <Text className='text-blue-300 text-sm font-medium'>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: colors.info + '15'
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.info, fontWeight: '500' }}>
             Faster than quoted (Optimistic)
           </Text>
           <View className='flex-row items-center gap-2'>
-            <View className='w-12 h-6 bg-blue-600/40 rounded items-center justify-center'>
-              <Text className='text-blue-300 text-xs font-bold'>
+            <View
+              style={{
+                width: 44,
+                height: 22,
+                backgroundColor: colors.info + '30',
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Text style={{ fontSize: 11, color: colors.info, fontWeight: '700' }}>
                 {metrics.totalSamples > 0
                   ? Math.round(
                       (metrics.optimisticCount / metrics.totalSamples) * 100
@@ -359,20 +451,38 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
                 %
               </Text>
             </View>
-            <Text className='text-blue-300 text-xs'>
+            <Text style={{ fontSize: 11, color: colors.info }}>
               {metrics.optimisticCount}/{metrics.totalSamples}
             </Text>
           </View>
         </View>
 
         {/* Underestimated (bad) */}
-        <View className='flex-row items-center justify-between p-3 rounded-lg bg-red-900/20'>
-          <Text className='text-red-300 text-sm font-medium'>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: colors.danger + '15'
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '500' }}>
             Slower than quoted (Pessimistic)
           </Text>
           <View className='flex-row items-center gap-2'>
-            <View className='w-12 h-6 bg-red-600/40 rounded items-center justify-center'>
-              <Text className='text-red-300 text-xs font-bold'>
+            <View
+              style={{
+                width: 44,
+                height: 22,
+                backgroundColor: colors.danger + '30',
+                borderRadius: 4,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Text style={{ fontSize: 11, color: colors.danger, fontWeight: '700' }}>
                 {metrics.totalSamples > 0
                   ? Math.round(
                       (metrics.pessimisticCount / metrics.totalSamples) * 100
@@ -381,7 +491,7 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
                 %
               </Text>
             </View>
-            <Text className='text-red-300 text-xs'>
+            <Text style={{ fontSize: 11, color: colors.danger }}>
               {metrics.pessimisticCount}/{metrics.totalSamples}
             </Text>
           </View>
@@ -389,13 +499,20 @@ export const WaitTimeAccuracyCard: React.FC<WaitTimeAccuracyCardProps> = ({
       </View>
 
       {/* Interpretation */}
-      <View className='mt-4 pt-4 border-t border-border'>
-        <Text className='text-xs text-gray-400'>
+      <View
+        style={{
+          marginTop: 10,
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: colors.border
+        }}
+      >
+        <Text style={{ fontSize: 11, color: colors.muted }}>
           {metrics.avgDelta > 0
-            ? '🔴 Guests are waiting longer than quoted. Consider adjusting turn time estimates.'
+            ? 'Guests are waiting longer than quoted. Consider adjusting turn time estimates.'
             : metrics.avgDelta < 0
-            ? '🟢 Guests are getting seated faster than expected. Great efficiency!'
-            : '🟡 Wait estimates are well-calibrated.'}
+            ? 'Guests are getting seated faster than expected. Great efficiency!'
+            : 'Wait estimates are well-calibrated.'}
         </Text>
       </View>
     </View>

@@ -340,6 +340,8 @@ const CustomReportBuilderScreen = () => {
     ]);
   };
 
+  const isFormValid = !!(reportName && selectedMetrics.length > 0 && selectedBreakdown);
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -347,81 +349,107 @@ const CustomReportBuilderScreen = () => {
     >
       <View className="flex-1 bg-screen">
         {/* Header */}
-        <View className="flex-row items-center justify-between p-6 border-b border-border">
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 14,
+            paddingVertical: 9,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            backgroundColor: colors.panel
+          }}
+        >
           <View className="flex-row items-center">
             <TouchableOpacity
               onPress={() => router.back()}
-              className="mr-4 p-2"
+              style={{
+                marginRight: 10,
+                padding: 6,
+                backgroundColor: colors.teal + '10',
+                borderRadius: 10
+              }}
             >
-              <ArrowLeft color={colors.label} size={24} />
+              <ArrowLeft color={colors.teal} size={16} />
             </TouchableOpacity>
-            <Text className="text-2xl font-bold text-white">
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
               Custom Report Builder
             </Text>
           </View>
         </View>
 
-        <ScrollView contentContainerClassName="p-6">
+        <ScrollView contentContainerStyle={{ padding: 14 }}>
           {/* Report Name */}
-          <View className="mb-8">
-            <Text className="text-xl font-bold text-white mb-4">
+          <View style={{ marginBottom: 20 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
               Report Name
             </Text>
-            <View className="bg-panel border border-border h-26 rounded-xl p-4">
-              <TextInput
-                value={reportName}
-                onChangeText={setReportName}
-                placeholder="Enter report name..."
-                placeholderTextColor={colors.label}
-                className="text-white text-lg px-6 py-4 h-20"
-              />
-            </View>
+            <TextInput
+              value={reportName}
+              onChangeText={setReportName}
+              placeholder="Enter report name..."
+              placeholderTextColor={colors.muted}
+              style={{
+                backgroundColor: colors.screen,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                color: colors.heading,
+                fontSize: 13
+              }}
+            />
           </View>
 
           {/* Date Range Selection */}
-          <View className="mb-8">
-            <Text className="text-xl font-bold text-white mb-4">
+          <View style={{ marginBottom: 20 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 4 }}>
               Date Range
             </Text>
-            <Text className="text-gray-400 mb-4">
+            <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
               Choose the time period for your report
             </Text>
 
-            <View className="gap-y-3">
+            <View className="gap-y-2">
               {dateRangeOptions.map((option) => (
                 <TouchableOpacity
                   key={option.id}
                   onPress={() => setSelectedDateRange(option.id)}
-                  className={`p-4 rounded-xl border ${
-                    selectedDateRange === option.id
-                      ? "bg-blue-900/30 border-blue-500"
-                      : "bg-panel border-border"
-                  }`}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: selectedDateRange === option.id ? colors.teal + '50' : colors.border,
+                    backgroundColor: selectedDateRange === option.id ? colors.teal + '15' : colors.panel
+                  }}
                   activeOpacity={0.8}
                 >
                   <View className="flex-row items-center justify-between">
                     <View className="flex-1">
                       <Text
-                        className={`text-lg font-semibold ${
-                          selectedDateRange === option.id
-                            ? "text-blue-400"
-                            : "text-white"
-                        }`}
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '600',
+                          color: selectedDateRange === option.id ? colors.teal : colors.heading
+                        }}
                       >
                         {option.label}
                       </Text>
                     </View>
                     <View
-                      className={`w-6 h-6 rounded-full border-2 ${
-                        selectedDateRange === option.id
-                          ? "bg-blue-500 border-blue-500"
-                          : "border-gray-400"
-                      }`}
-                    >
-                      {selectedDateRange === option.id && (
-                        <View className="w-full h-full rounded-full bg-blue-500" />
-                      )}
-                    </View>
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: selectedDateRange === option.id ? colors.teal : colors.border,
+                        backgroundColor: selectedDateRange === option.id ? colors.teal : 'transparent',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    />
                   </View>
                 </TouchableOpacity>
               ))}
@@ -429,25 +457,43 @@ const CustomReportBuilderScreen = () => {
 
             {/* Custom Date Inputs */}
             {selectedDateRange === "custom" && (
-              <View className="mt-4 gap-y-4">
+              <View style={{ marginTop: 12, gap: 10 }}>
                 <View>
-                  <Text className="text-white text-lg mb-2">Start Date</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>Start Date</Text>
                   <TextInput
                     value={customStartDate}
                     onChangeText={setCustomStartDate}
                     placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.label}
-                    className="bg-panel border border-border rounded-xl p-4 text-white text-lg"
+                    placeholderTextColor={colors.muted}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      color: colors.heading,
+                      fontSize: 13
+                    }}
                   />
                 </View>
                 <View>
-                  <Text className="text-white text-lg mb-2">End Date</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 4 }}>End Date</Text>
                   <TextInput
                     value={customEndDate}
                     onChangeText={setCustomEndDate}
                     placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.label}
-                    className="bg-panel border border-border rounded-xl p-4 text-white text-lg"
+                    placeholderTextColor={colors.muted}
+                    style={{
+                      backgroundColor: colors.screen,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      color: colors.heading,
+                      fontSize: 13
+                    }}
                   />
                 </View>
               </View>
@@ -455,52 +501,53 @@ const CustomReportBuilderScreen = () => {
           </View>
 
           {/* Metrics Selection */}
-          <View className="mb-8">
-            <Text className="text-xl font-bold text-white mb-4">
+          <View style={{ marginBottom: 20 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 4 }}>
               Select Metrics ({selectedMetrics.length} selected)
             </Text>
-            <Text className="text-gray-400 mb-4">
+            <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
               Choose the data points you want to analyze
             </Text>
 
-            <View className="gap-y-3">
+            <View className="gap-y-2">
               {availableMetrics.map((metric) => (
                 <TouchableOpacity
                   key={metric.id}
                   onPress={() => handleMetricToggle(metric.id)}
-                  className={`p-4 rounded-xl border ${
-                    selectedMetrics.includes(metric.id)
-                      ? "bg-blue-900/30 border-blue-500"
-                      : "bg-panel border-border"
-                  }`}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: selectedMetrics.includes(metric.id) ? colors.teal + '50' : colors.border,
+                    backgroundColor: selectedMetrics.includes(metric.id) ? colors.teal + '15' : colors.panel
+                  }}
                   activeOpacity={0.8}
                 >
                   <View className="flex-row items-center justify-between">
                     <View className="flex-1">
                       <Text
-                        className={`text-lg font-semibold ${
-                          selectedMetrics.includes(metric.id)
-                            ? "text-blue-400"
-                            : "text-white"
-                        }`}
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '600',
+                          color: selectedMetrics.includes(metric.id) ? colors.teal : colors.heading
+                        }}
                       >
                         {metric.label}
                       </Text>
-                      <Text className="text-sm text-gray-400 mt-1">
+                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                         {metric.description}
                       </Text>
                     </View>
                     <View
-                      className={`w-6 h-6 rounded-full border-2 ${
-                        selectedMetrics.includes(metric.id)
-                          ? "bg-blue-500 border-blue-500"
-                          : "border-gray-400"
-                      }`}
-                    >
-                      {selectedMetrics.includes(metric.id) && (
-                        <View className="w-full h-full rounded-full bg-blue-500" />
-                      )}
-                    </View>
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: selectedMetrics.includes(metric.id) ? colors.teal : colors.border,
+                        backgroundColor: selectedMetrics.includes(metric.id) ? colors.teal : 'transparent'
+                      }}
+                    />
                   </View>
                 </TouchableOpacity>
               ))}
@@ -508,52 +555,53 @@ const CustomReportBuilderScreen = () => {
           </View>
 
           {/* Breakdown Selection */}
-          <View className="mb-8">
-            <Text className="text-xl font-bold text-white mb-4">
+          <View style={{ marginBottom: 20 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 4 }}>
               Breakdown Dimension
             </Text>
-            <Text className="text-gray-400 mb-4">
+            <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
               Choose how to group and analyze your data
             </Text>
 
-            <View className="gap-y-3">
+            <View className="gap-y-2">
               {availableDimensions.map((dimension) => (
                 <TouchableOpacity
                   key={dimension.id}
                   onPress={() => setSelectedBreakdown(dimension.id)}
-                  className={`p-4 rounded-xl border ${
-                    selectedBreakdown === dimension.id
-                      ? "bg-blue-900/30 border-blue-500"
-                      : "bg-panel border-border"
-                  }`}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: selectedBreakdown === dimension.id ? colors.teal + '50' : colors.border,
+                    backgroundColor: selectedBreakdown === dimension.id ? colors.teal + '15' : colors.panel
+                  }}
                   activeOpacity={0.8}
                 >
                   <View className="flex-row items-center justify-between">
                     <View className="flex-1">
                       <Text
-                        className={`text-lg font-semibold ${
-                          selectedBreakdown === dimension.id
-                            ? "text-blue-400"
-                            : "text-white"
-                        }`}
+                        style={{
+                          fontSize: 13,
+                          fontWeight: '600',
+                          color: selectedBreakdown === dimension.id ? colors.teal : colors.heading
+                        }}
                       >
                         {dimension.label}
                       </Text>
-                      <Text className="text-sm text-gray-400 mt-1">
+                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                         {dimension.description}
                       </Text>
                     </View>
                     <View
-                      className={`w-6 h-6 rounded-full border-2 ${
-                        selectedBreakdown === dimension.id
-                          ? "bg-blue-500 border-blue-500"
-                          : "border-gray-400"
-                      }`}
-                    >
-                      {selectedBreakdown === dimension.id && (
-                        <View className="w-full h-full rounded-full bg-blue-500" />
-                      )}
-                    </View>
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        borderWidth: 2,
+                        borderColor: selectedBreakdown === dimension.id ? colors.teal : colors.border,
+                        backgroundColor: selectedBreakdown === dimension.id ? colors.teal : 'transparent'
+                      }}
+                    />
                   </View>
                 </TouchableOpacity>
               ))}
@@ -561,29 +609,35 @@ const CustomReportBuilderScreen = () => {
           </View>
 
           {/* Chart Type Selection */}
-          <View className="mb-8">
-            <Text className="text-xl font-bold text-white mb-4">
+          <View style={{ marginBottom: 20 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
               Chart Type
             </Text>
-            <View className="flex-row gap-4">
+            <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setChartType("bar")}
-                className={`flex-1 p-4 rounded-xl border ${
-                  chartType === "bar"
-                    ? "bg-blue-900/30 border-blue-500"
-                    : "bg-panel border-border"
-                }`}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: chartType === "bar" ? colors.teal + '50' : colors.border,
+                  backgroundColor: chartType === "bar" ? colors.teal + '15' : colors.panel
+                }}
                 activeOpacity={0.8}
               >
                 <View className="items-center">
                   <BarChart3
-                    color={chartType === "bar" ? colors.info : colors.label}
-                    size={32}
+                    color={chartType === "bar" ? colors.teal : colors.label}
+                    size={20}
                   />
                   <Text
-                    className={`text-lg font-semibold mt-2 ${
-                      chartType === "bar" ? "text-blue-400" : "text-white"
-                    }`}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      marginTop: 6,
+                      color: chartType === "bar" ? colors.teal : colors.heading
+                    }}
                   >
                     Bar Chart
                   </Text>
@@ -592,45 +646,58 @@ const CustomReportBuilderScreen = () => {
 
               <TouchableOpacity
                 onPress={() => setChartType("line")}
-                className={`flex-1 p-4 rounded-xl border ${
-                  chartType === "line"
-                    ? "bg-blue-900/30 border-blue-500"
-                    : "bg-panel border-border"
-                }`}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: chartType === "line" ? colors.teal + '50' : colors.border,
+                  backgroundColor: chartType === "line" ? colors.teal + '15' : colors.panel
+                }}
                 activeOpacity={0.8}
               >
                 <View className="items-center">
                   <TrendingUp
-                    color={chartType === "line" ? colors.info : colors.label}
-                    size={32}
+                    color={chartType === "line" ? colors.teal : colors.label}
+                    size={20}
                   />
                   <Text
-                    className={`text-lg font-semibold mt-2 ${
-                      chartType === "line" ? "text-blue-400" : "text-white"
-                    }`}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      marginTop: 6,
+                      color: chartType === "line" ? colors.teal : colors.heading
+                    }}
                   >
                     Line Chart
                   </Text>
                 </View>
               </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={() => setChartType("pie")}
-                className={`flex-1 p-4 rounded-xl border ${
-                  chartType === "pie"
-                    ? "bg-blue-900/30 border-blue-500"
-                    : "bg-panel border-border"
-                }`}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: chartType === "pie" ? colors.teal + '50' : colors.border,
+                  backgroundColor: chartType === "pie" ? colors.teal + '15' : colors.panel
+                }}
                 activeOpacity={0.8}
               >
                 <View className="items-center">
                   <PieChart
-                    color={chartType === "pie" ? colors.info : colors.label}
-                    size={32}
+                    color={chartType === "pie" ? colors.teal : colors.label}
+                    size={20}
                   />
                   <Text
-                    className={`text-lg font-semibold mt-2 ${
-                      chartType === "pie" ? "text-blue-400" : "text-white"
-                    }`}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '600',
+                      marginTop: 6,
+                      color: chartType === "pie" ? colors.teal : colors.heading
+                    }}
                   >
                     Pie Chart
                   </Text>
@@ -641,23 +708,31 @@ const CustomReportBuilderScreen = () => {
 
           {/* Report Preview */}
           {reportName && selectedMetrics.length > 0 && selectedBreakdown && (
-            <View className="mb-8">
-              <Text className="text-xl font-bold text-white mb-4">
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading, marginBottom: 8 }}>
                 Report Preview
               </Text>
-              <View className="bg-panel border border-border rounded-xl p-4">
-                <Text className="text-lg font-semibold text-blue-400 mb-2">
+              <View
+                style={{
+                  backgroundColor: colors.panel,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  padding: 12
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal, marginBottom: 6 }}>
                   {reportName}
                 </Text>
-                <Text className="text-gray-400 mb-2">
-                  <Text className="text-white">Date Range:</Text>{" "}
+                <Text style={{ fontSize: 12, color: colors.label, marginBottom: 4 }}>
+                  <Text style={{ color: colors.heading }}>Date Range:</Text>{" "}
                   {
                     dateRangeOptions.find((d) => d.id === selectedDateRange)
                       ?.label
                   }
                 </Text>
-                <Text className="text-gray-400 mb-2">
-                  <Text className="text-white">Metrics:</Text>{" "}
+                <Text style={{ fontSize: 12, color: colors.label, marginBottom: 4 }}>
+                  <Text style={{ color: colors.heading }}>Metrics:</Text>{" "}
                   {selectedMetrics
                     .map(
                       (m) =>
@@ -666,15 +741,15 @@ const CustomReportBuilderScreen = () => {
                     )
                     .join(", ")}
                 </Text>
-                <Text className="text-gray-400 mb-2">
-                  <Text className="text-white">Breakdown:</Text>{" "}
+                <Text style={{ fontSize: 12, color: colors.label, marginBottom: 4 }}>
+                  <Text style={{ color: colors.heading }}>Breakdown:</Text>{" "}
                   {
                     availableDimensions.find((d) => d.id === selectedBreakdown)
                       ?.label
                   }
                 </Text>
-                <Text className="text-gray-400">
-                  <Text className="text-white">Chart Type:</Text>{" "}
+                <Text style={{ fontSize: 12, color: colors.label }}>
+                  <Text style={{ color: colors.heading }}>Chart Type:</Text>{" "}
                   {chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart
                 </Text>
               </View>
@@ -682,51 +757,45 @@ const CustomReportBuilderScreen = () => {
           )}
 
           {/* Action Buttons */}
-          <View className="flex-row gap-4 mt-8">
+          <View className="flex-row gap-3" style={{ marginTop: 8, marginBottom: 16 }}>
             <TouchableOpacity
               onPress={handleRunReport}
-              className="flex-1 bg-blue-600 py-4 rounded-xl items-center"
-              activeOpacity={0.8}
-              disabled={
-                !reportName ||
-                selectedMetrics.length === 0 ||
-                !selectedBreakdown
-              }
               style={{
-                opacity:
-                  !reportName ||
-                  selectedMetrics.length === 0 ||
-                  !selectedBreakdown
-                    ? 0.5
-                    : 1,
+                flex: 1,
+                backgroundColor: colors.teal + '20',
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                borderRadius: 8,
+                paddingVertical: 10,
+                alignItems: 'center',
+                opacity: isFormValid ? 1 : 0.5
               }}
+              activeOpacity={0.8}
+              disabled={!isFormValid}
             >
-              <Text className="text-white text-lg font-semibold">
+              <Text style={{ color: colors.teal, fontSize: 13, fontWeight: '600' }}>
                 Run Report
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={handleSaveReport}
-              className="flex-1 bg-panel border border-border py-4 rounded-xl items-center"
-              activeOpacity={0.8}
-              disabled={
-                !reportName ||
-                selectedMetrics.length === 0 ||
-                !selectedBreakdown
-              }
               style={{
-                opacity:
-                  !reportName ||
-                  selectedMetrics.length === 0 ||
-                  !selectedBreakdown
-                    ? 0.5
-                    : 1,
+                flex: 1,
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                paddingVertical: 10,
+                alignItems: 'center',
+                opacity: isFormValid ? 1 : 0.5
               }}
+              activeOpacity={0.8}
+              disabled={!isFormValid}
             >
               <View className="flex-row items-center">
-                <Save color={colors.label} size={20} />
-                <Text className="text-white text-lg font-semibold ml-2">
+                <Save color={colors.label} size={14} />
+                <Text style={{ color: colors.label, fontSize: 13, fontWeight: '600', marginLeft: 6 }}>
                   Save Report
                 </Text>
               </View>
