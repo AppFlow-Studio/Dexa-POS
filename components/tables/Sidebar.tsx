@@ -216,9 +216,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           style={{
             padding: 8,
             flexShrink: 0,
-            borderBottomWidth: 1,
+            borderBottomWidth: isExpanded ? 1 : 0,
             borderBottomColor: colors.border,
-            flexDirection: 'row',
+            flexDirection: isExpanded ? 'row' : 'column',
             gap: 4
           }}
         >
@@ -242,7 +242,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   }
                 }}
                 style={{
-                  flex: 1,
+                  flex: isExpanded ? 1 : undefined,
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',

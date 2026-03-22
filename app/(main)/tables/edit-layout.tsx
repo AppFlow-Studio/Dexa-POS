@@ -277,7 +277,7 @@ const LayoutEditorScreenContent = () => {
           </Animated.View>
 
           {/* ── Zoom Controls ── */}
-          <View style={{ position: 'absolute', top: 14, left: 14, gap: 6, zIndex: 20 }}>
+          <View style={{ position: 'absolute', bottom: 14, right: 14, gap: 6, zIndex: 20 }}>
             {[
               { icon: <Plus size={15} color={colors.label} />, onPress: () => handleZoom('in') },
               { icon: <Minus size={15} color={colors.label} />, onPress: () => handleZoom('out') },

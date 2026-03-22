@@ -446,12 +446,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         </Animated.View>
       </GestureDetector>
 
-      {/* Zoom Buttons - fixed at top-left of canvas */}
+      {/* Zoom Buttons - fixed at bottom-right of canvas */}
       <View
         style={{
           position: 'absolute',
-          top: 12,
-          left: 12,
+          bottom: 12,
+          right: 12,
           zIndex: 20,
           gap: 4,
           pointerEvents: 'box-none'
