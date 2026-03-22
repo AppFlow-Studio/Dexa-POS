@@ -8,6 +8,11 @@
 
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { toastService } from "@/lib/toastService";
+import {
+  getDeadLetterCount,
+  retryDeadLetterOperation,
+  getDeadLetterOperations,
+} from "@/services/offlineSyncService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { colors } from "@/lib/theme";
@@ -18,6 +23,7 @@ import {
   CreditCard,
   Database,
   RefreshCw,
+  ShieldAlert,
   WifiOff,
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -55,14 +61,27 @@ export function NetworkStatusBadge(): React.ReactElement {
   const refreshOfflinePaymentStatus = usePaymentStore((s) => s.refreshOfflinePaymentStatus);
   const retryFailedPayment = usePaymentStore((s) => s.retryFailedPayment);
 
+  // Dead letter queue monitoring
+  const [deadLetterCount, setDeadLetterCount] = useState(0);
+  const [isRetryingDeadLetter, setIsRetryingDeadLetter] = useState(false);
+
   // Refresh payment status when network status changes
   useEffect(() => {
     refreshOfflinePaymentStatus();
   }, [isOnline, pendingSyncCount]);
 
+  // Poll dead letter count periodically
+  useEffect(() => {
+    const checkDeadLetter = () => setDeadLetterCount(getDeadLetterCount());
+    checkDeadLetter();
+    const interval = setInterval(checkDeadLetter, 15_000); // every 15s
+    return () => clearInterval(interval);
+  }, []);
+
   // Check for any pending or failed payments
   const hasPendingPayments = pendingPaymentsCount > 0;
   const hasFailedPayments = failedPayments.length > 0;
+  const hasDeadLetterOps = deadLetterCount > 0;
 
   // Determine badge variant
   const variant: BadgeVariant = !isOnline
@@ -264,6 +283,48 @@ export function NetworkStatusBadge(): React.ReactElement {
             <AlertTriangle size={12} color={colors.danger} />
             <Text className="text-xs font-medium text-red-400">
               {failedPayments.length} payment{failedPayments.length > 1 ? "s" : ""} failed
+            </Text>
+            <RefreshCw size={10} color={colors.danger} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Dead Letter Queue Badge - Critical! */}
+      {hasDeadLetterOps && (
+        <Animated.View
+          entering={SlideInRight.duration(200)}
+          exiting={SlideOutRight.duration(200)}
+        >
+          <TouchableOpacity
+            onPress={async () => {
+              if (isRetryingDeadLetter) return;
+              setIsRetryingDeadLetter(true);
+              try {
+                const ops = getDeadLetterOperations();
+                for (const op of ops) {
+                  await retryDeadLetterOperation(op.id);
+                }
+                setDeadLetterCount(getDeadLetterCount());
+                toastService.show({
+                  title: "Retrying Failed Syncs",
+                  message: `${ops.length} operation(s) moved back to sync queue`,
+                  type: "info",
+                });
+              } finally {
+                setIsRetryingDeadLetter(false);
+              }
+            }}
+            disabled={isRetryingDeadLetter}
+            activeOpacity={0.7}
+            className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-900/30 border border-red-600/50"
+          >
+            {isRetryingDeadLetter ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <ShieldAlert size={12} color={colors.danger} />
+            )}
+            <Text className="text-xs font-medium text-red-400">
+              {deadLetterCount} failed sync{deadLetterCount > 1 ? "s" : ""}
             </Text>
             <RefreshCw size={10} color={colors.danger} />
           </TouchableOpacity>

@@ -1,6 +1,6 @@
 import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import { toastService } from "@/lib/toastService";
-import { CartItem, OrderPaymentTransactionDetails } from "@/lib/types";
+import { CartItem, OrderPaymentTransactionDetails, SplitPaymentPath } from "@/lib/types";
 import {
   getFailedPayments,
   getPendingPaymentsCount,
@@ -33,7 +33,8 @@ export type PaymentView =
   | "split"
   | "split-custom-amount"
   | "split-payment-success"
-  | "pay-for-items"; // NEW: Two-panel split review view
+  | "pay-for-items"
+  | "pre-auth"; // Pre-authorization (open/increase/close tab)
 
 export interface Split {
   id: string;
@@ -66,6 +67,7 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
   split: 2,
   "split-custom-amount": 2,
   "pay-for-items": 2, // NEW: Split review step
+  "pre-auth": 2, // Pre-auth step
   "split-payment-success": 3,
   review: 3,
   success: 4,
@@ -181,6 +183,12 @@ interface PaymentState {
   retryFailedPayment: (operationId: string) => Promise<void>;
   isPaymentQueued: boolean; // True if current payment was queued for offline sync
 
+  // Pre-auth state
+  preAuthMode: 'open' | 'capture' | 'increment' | null;
+  preAuthPaymentId: string | null;
+  setPreAuthMode: (mode: 'open' | 'capture' | 'increment' | null) => void;
+  setPreAuthPaymentId: (id: string | null) => void;
+
   // Transaction processing state (prevents sheet dismissal during active transactions)
   isTransactionProcessing: boolean;
   setTransactionProcessing: (val: boolean) => void;
@@ -212,6 +220,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   pendingPaymentsCount: 0,
   failedPayments: [],
   isPaymentQueued: false,
+  // Pre-auth state
+  preAuthMode: null,
+  preAuthPaymentId: null,
+  setPreAuthMode: (mode) => set({ preAuthMode: mode }),
+  setPreAuthPaymentId: (id) => set({ preAuthPaymentId: id }),
   // Transaction processing state
   isTransactionProcessing: false,
   setTransactionProcessing: (val) => set({ isTransactionProcessing: val }),
@@ -722,6 +735,32 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (!paymentSuccess) {
         close();
         return;
+      }
+
+      // Lock split payment path on first split payment
+      if (splitSourceView) {
+        const currentOrder = useOrderStore.getState().ordersById[activeOrderId];
+        if (currentOrder && !currentOrder.split_payment_path) {
+          useOrderStore.setState((state) => {
+            const o = state.ordersById[activeOrderId];
+            if (o) o.split_payment_path = splitSourceView as SplitPaymentPath;
+          });
+
+          // Persist to backend for multi-station sync
+          const dbOrderId = currentOrder.db_order_id;
+          if (dbOrderId) {
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase) {
+              supabase
+                .from("orders")
+                .update({ split_payment_path: splitSourceView })
+                .eq("id", dbOrderId)
+                .then(({ error }) => {
+                  if (error) console.warn("[PaymentStore] Failed to persist split_payment_path:", error.message);
+                });
+            }
+          }
+        }
       }
 
       // Track cash payment in drawer (fire-and-forget)

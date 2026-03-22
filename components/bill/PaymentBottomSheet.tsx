@@ -22,6 +22,7 @@ import PaymentProgressHeader from "./paymentView/PaymentProgressHeader";
 import SplitByItemView from "./paymentView/SplitByItemView";
 import SplitEvenlyView from "./paymentView/SplitEvenlyView";
 import SplitOptionsView from "./paymentView/SplitOptionsView";
+import PreAuthPaymentView from "./paymentView/PreAuthPaymentView";
 import SplitPaymentSuccessView from "./SplitPaymentSuccessView";
 
 const PaymentBottomSheet: React.FC = () => {
@@ -83,6 +84,8 @@ const PaymentBottomSheet: React.FC = () => {
         return <SplitPaymentSuccessView />;
       case "pay-for-items":
         return <PayForItemsView />;
+      case "pre-auth":
+        return <PreAuthPaymentView />;
       case "success":
         return <PaymentSuccessView />;
       default:

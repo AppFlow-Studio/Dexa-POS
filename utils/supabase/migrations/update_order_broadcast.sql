@@ -80,6 +80,7 @@ BEGIN
         'kitchen_status', oi.kitchen_status,
         'paid_quantity', COALESCE(oi.paid_quantity, 0),
         'course_number', oi.course_number,
+        'seat_number', oi.seat_number,
         'is_voided', COALESCE(oi.is_voided, false),
         'is_open_item', COALESCE(oi.is_open_item, false),
         'open_item_name', oi.open_item_name,
@@ -183,6 +184,7 @@ BEGIN
       'sync_version', NEW.sync_version,
       'is_offline', NEW.is_offline,
       'order_source', NEW.order_source,
+      'split_payment_path', NEW.split_payment_path,
       'order_items', order_items_data
     );
 

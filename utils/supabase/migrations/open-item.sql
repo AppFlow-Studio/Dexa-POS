@@ -6,7 +6,8 @@ CREATE OR REPLACE FUNCTION add_open_item_v2(
     p_unit_price numeric,
     p_quantity integer DEFAULT 1,
     p_special_instructions text DEFAULT NULL,
-    p_is_tax_exempt boolean DEFAULT FALSE  -- Optional: allow tax-exempt open items
+    p_is_tax_exempt boolean DEFAULT FALSE,  -- Optional: allow tax-exempt open items
+    p_seat_number integer DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -104,8 +105,9 @@ BEGIN
         
         -- Kitchen
         special_instructions,
+        seat_number,
         item_status,
-        
+
         -- Payment tracking
         paid_quantity,
         
@@ -139,6 +141,7 @@ BEGIN
         
         -- Kitchen
         p_special_instructions,
+        p_seat_number,
         'pending',
         
         -- Payment
@@ -182,7 +185,8 @@ CREATE OR REPLACE FUNCTION update_order_item_v2(
     p_order_item_id uuid,
     p_quantity integer DEFAULT NULL,
     p_unit_price numeric DEFAULT NULL,  -- For open items only
-    p_special_instructions text DEFAULT NULL
+    p_special_instructions text DEFAULT NULL,
+    p_seat_number integer DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -254,6 +258,7 @@ BEGIN
         cash_tax_amount = v_cash_tax_amount,
         open_item_price = CASE WHEN v_is_open_item THEN v_new_price ELSE open_item_price END,
         special_instructions = COALESCE(p_special_instructions, special_instructions),
+        seat_number = COALESCE(p_seat_number, seat_number),
         updated_at = now()
     WHERE id = p_order_item_id;
     

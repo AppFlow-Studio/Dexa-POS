@@ -68,7 +68,9 @@ export function buildKitchenTicketCommands(
   b.doubleLine(w);
 
   // ── Items ──
-  if (cfg?.groupByStation) {
+  if (cfg?.groupBySeat) {
+    renderItemsGroupedBySeat(b, data.items, w, cfg);
+  } else if (cfg?.groupByStation) {
     renderItemsGroupedByStation(b, data.items, w, cfg);
   } else {
     renderItemsFlat(b, data.items, w, cfg);
@@ -88,6 +90,42 @@ export function buildKitchenTicketCommands(
   b.cut();
 
   return b.build();
+}
+
+function renderItemsGroupedBySeat(
+  b: EscPosBuilder,
+  items: KitchenTicketItemData[],
+  w: number,
+  cfg: KitchenTicketData["templateConfig"],
+): void {
+  const groups = new Map<string, KitchenTicketItemData[]>();
+  for (const item of items) {
+    const seat = item.seatNumber != null ? `SEAT ${item.seatNumber}` : "SHARED";
+    if (!groups.has(seat)) {
+      groups.set(seat, []);
+    }
+    groups.get(seat)!.push(item);
+  }
+
+  let isFirst = true;
+  for (const [seat, seatItems] of groups) {
+    if (!isFirst) {
+      b.emptyLine();
+    }
+    isFirst = false;
+
+    // Seat header
+    b.alignCenter();
+    b.bold(true);
+    b.textLine(`-- ${seat} --`);
+    b.bold(false);
+    b.alignLeft();
+    b.solidLine(w);
+
+    for (const item of seatItems) {
+      renderSingleItem(b, item, w, cfg);
+    }
+  }
 }
 
 function renderItemsGroupedByStation(

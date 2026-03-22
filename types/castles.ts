@@ -125,6 +125,68 @@ export interface CastlesVoidResult {
 }
 
 // ============================================================
+// PRE-AUTH REQUEST / RESULT
+// ============================================================
+
+export interface CastlesPreAuthRequest {
+  txnPosTxnId: string;
+  txnType: 'preAuth';
+  /** Hold amount in dollars ("50.00") */
+  txnAmtBase: string;
+}
+
+export interface CastlesPreAuthResult {
+  success: boolean;
+  raw?: import('@/services/terminals/castles-response-mapper').CastlesRawResponse;
+  terminalResponse?: Record<string, unknown>;
+  error?: string;
+}
+
+// ============================================================
+// AUTH INCREMENTAL REQUEST / RESULT
+// ============================================================
+
+export interface CastlesAuthIncrementalRequest {
+  txnPosTxnId: string;
+  txnType: 'authIncremental';
+  /** New total hold amount in dollars ("75.00") */
+  txnAmtBase: string;
+  /** Original transaction RRN (at least one of rrn/stan required) */
+  txnRrn?: string;
+  /** Original transaction STAN (at least one of rrn/stan required) */
+  txnStan?: string;
+}
+
+export interface CastlesAuthIncrementalResult {
+  success: boolean;
+  raw?: import('@/services/terminals/castles-response-mapper').CastlesRawResponse;
+  terminalResponse?: Record<string, unknown>;
+  error?: string;
+}
+
+// ============================================================
+// AUTH COMPLETE (CAPTURE) REQUEST / RESULT
+// ============================================================
+
+export interface CastlesAuthCompleteRequest {
+  txnPosTxnId: string;
+  txnType: 'authComplete';
+  /** Final capture amount in dollars ("60.00") */
+  txnAmtAuthComplete: string;
+  /** Original transaction RRN (at least one of rrn/stan required) */
+  txnRrn?: string;
+  /** Original transaction STAN (at least one of rrn/stan required) */
+  txnStan?: string;
+}
+
+export interface CastlesAuthCompleteResult {
+  success: boolean;
+  raw?: import('@/services/terminals/castles-response-mapper').CastlesRawResponse;
+  terminalResponse?: Record<string, unknown>;
+  error?: string;
+}
+
+// ============================================================
 // REFUND REQUEST / RESULT
 // ============================================================
 

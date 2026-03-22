@@ -466,8 +466,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               value={orderNotes}
               onChangeText={setOrderNotes}
               placeholder="Add special instructions..."
-              multiline
-              numberOfLines={3}
+              numberOfLines={1}
               style={{
                 padding: 10,
                 backgroundColor: colors.screen,

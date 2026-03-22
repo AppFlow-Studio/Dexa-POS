@@ -66,7 +66,7 @@ const DiningRoomScreen = () => {
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Dining Room</Text>
         <Text className="text-gray-400 mt-2">
-          Manage floor plans, table configurations, and server sections.
+          Manage floor plans and table configurations.
         </Text>
       </View>
 
@@ -265,6 +265,51 @@ const DiningRoomScreen = () => {
             </CardContent>
           </Card>
 
+          {/* Order Management Section */}
+          <Card className="bg-panel border-gray-600">
+            <CardHeader>
+              <View className="flex-row items-center gap-3">
+                <Grid color="#14b8a6" size={24} />
+                <CardTitle className="text-white">Order Management</CardTitle>
+              </View>
+            </CardHeader>
+            <CardContent className="gap-4">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Label className="text-white text-base">
+                    Per-Seat Ordering
+                  </Label>
+                  <Text className="text-gray-400 text-xs">
+                    Assign items to seats for accurate delivery and split billing
+                  </Text>
+                </View>
+                <Switch
+                  checked={settings.enablePerSeatOrdering}
+                  onCheckedChange={(v) =>
+                    settings.updateDiningSettings({ enablePerSeatOrdering: v })
+                  }
+                />
+              </View>
+
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Label className="text-white text-base">
+                    Coursing
+                  </Label>
+                  <Text className="text-gray-400 text-xs">
+                    Group items by course for multi-course service
+                  </Text>
+                </View>
+                <Switch
+                  checked={settings.enableCoursing}
+                  onCheckedChange={(v) =>
+                    settings.updateDiningSettings({ enableCoursing: v })
+                  }
+                />
+              </View>
+            </CardContent>
+          </Card>
+
           {/* Table Status Section */}
           <Card className="bg-panel border-gray-600">
             <CardHeader>
@@ -361,7 +406,7 @@ const DiningRoomScreen = () => {
           </Card>
 
           {/* Server Sections (Mock / Config) */}
-          <Card className="bg-panel border-gray-600">
+          {/* <Card className="bg-panel border-gray-600">
             <CardHeader>
               <View className="flex-row items-center gap-3">
                 <Users color="#8b5cf6" size={24} />
@@ -411,7 +456,7 @@ const DiningRoomScreen = () => {
                 </Text>
               </View>
             </CardContent>
-          </Card>
+          </Card> */}
         </View>
       </ScrollView>
     </View>

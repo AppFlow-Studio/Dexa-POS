@@ -1,6 +1,9 @@
 import { colors } from "@/lib/theme";
+import { SPLIT_PATH_LABELS, SplitPaymentPath } from "@/lib/types";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { ArrowLeft, ListChecks, Receipt, Split, Users } from "lucide-react-native";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import { useHasActivePreAuth } from "@/stores/selectors/orderSelectors";
+import { ArrowLeft, ListChecks, Lock, Receipt, Split, Users } from "lucide-react-native";
 import React from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -31,17 +34,85 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 13, fontWeight: "700", color: colors.heading, marginBottom: 3 },
   cardDesc: { fontSize: 11, color: colors.muted, lineHeight: 15 },
+  lockBanner: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: `${colors.warning}15`, borderWidth: 1, borderColor: `${colors.warning}40`,
+    borderRadius: 10, padding: 12, marginBottom: 4,
+  },
+  lockBannerText: { flex: 1, fontSize: 12, color: colors.heading, lineHeight: 17 },
 });
+
+type OptionDef = {
+  title: string;
+  desc: string;
+  icon: typeof ListChecks;
+  color: string;
+  bg: string;
+  view: SplitPaymentPath;
+};
 
 const SplitOptionsView: React.FC = () => {
   const setView = usePaymentStore((state) => state.setView);
+  const activeOrder = useActiveOrder();
+  const hasPreAuth = useHasActivePreAuth(activeOrder?.id);
+  const lockedPath = activeOrder?.split_payment_path;
 
-  const options = [
-    { title: "Split by Item", desc: "Assign specific items to specific guests.", icon: ListChecks, color: colors.info, bg: `${colors.info}15`, view: "split-by-item" as const },
-    { title: "Split Evenly", desc: "Divide the total equally among guests.", icon: Users, color: colors.success, bg: `${colors.success}15`, view: "split-evenly" as const },
-    { title: "Custom Amount", desc: "Type exactly how much each person pays.", icon: Split, color: colors.warning, bg: `${colors.warning}15`, view: "split-custom-amount" as const },
-    { title: "Pay for Items", desc: "Select items to pay now, leave rest for later.", icon: Receipt, color: "#F97316", bg: "rgba(249,115,22,0.12)", view: "pay-for-items" as const },
+  // Guard: pre-auth active → disable split options
+  if (hasPreAuth) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => setView("payment-method-selection")}>
+            <ArrowLeft size={18} color={colors.label} />
+          </TouchableOpacity>
+          <View>
+            <Text style={styles.headerTitle}>Split Bill</Text>
+            <Text style={styles.headerSub}>Choose how to divide the payment.</Text>
+          </View>
+        </View>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 30 }}>
+          <Lock size={32} color={colors.muted} />
+          <Text style={{ color: colors.heading, fontSize: 15, fontWeight: "700", marginTop: 12, textAlign: "center" }}>
+            Split Payments Unavailable
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 13, marginTop: 6, textAlign: "center", lineHeight: 18 }}>
+            This order has an open tab (pre-authorization). Close or release the tab first to use split payments.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const options: OptionDef[] = [
+    { title: "Split by Item", desc: "Assign specific items to specific guests.", icon: ListChecks, color: colors.info, bg: `${colors.info}15`, view: "split-by-item" },
+    { title: "Split Evenly", desc: "Divide the total equally among guests.", icon: Users, color: colors.success, bg: `${colors.success}15`, view: "split-evenly" },
+    { title: "Custom Amount", desc: "Type exactly how much each person pays.", icon: Split, color: colors.warning, bg: `${colors.warning}15`, view: "split-custom-amount" },
+    { title: "Pay for Items", desc: "Select items to pay now, leave rest for later.", icon: Receipt, color: "#F97316", bg: "rgba(249,115,22,0.12)", view: "pay-for-items" },
   ];
+
+  const renderCard = (opt: OptionDef) => {
+    const isLocked = !!lockedPath && lockedPath !== opt.view;
+    const Icon = isLocked ? Lock : opt.icon;
+    const desc = isLocked ? "Unavailable — different split method in use" : opt.desc;
+
+    return (
+      <TouchableOpacity
+        key={opt.title}
+        style={[styles.card, isLocked && { opacity: 0.35 }]}
+        onPress={() => setView(opt.view)}
+        activeOpacity={0.8}
+        disabled={isLocked}
+      >
+        <View style={[styles.iconBox, { backgroundColor: isLocked ? `${colors.muted}15` : opt.bg }]}>
+          <Icon size={18} color={isLocked ? colors.muted : opt.color} />
+        </View>
+        <View>
+          <Text style={styles.cardTitle}>{opt.title}</Text>
+          <Text style={styles.cardDesc}>{desc}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -56,37 +127,19 @@ const SplitOptionsView: React.FC = () => {
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 10 }} showsVerticalScrollIndicator={false}>
+        {lockedPath && (
+          <View style={styles.lockBanner}>
+            <Lock size={16} color={colors.warning} />
+            <Text style={styles.lockBannerText}>
+              Split method locked to <Text style={{ fontWeight: "700" }}>{SPLIT_PATH_LABELS[lockedPath]}</Text>. Continue with this method or pay the full remaining amount.
+            </Text>
+          </View>
+        )}
         <View style={styles.grid}>
-          {options.slice(0, 2).map((opt) => {
-            const Icon = opt.icon;
-            return (
-              <TouchableOpacity key={opt.title} style={styles.card} onPress={() => setView(opt.view)} activeOpacity={0.8}>
-                <View style={[styles.iconBox, { backgroundColor: opt.bg }]}>
-                  <Icon size={18} color={opt.color} />
-                </View>
-                <View>
-                  <Text style={styles.cardTitle}>{opt.title}</Text>
-                  <Text style={styles.cardDesc}>{opt.desc}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+          {options.slice(0, 2).map(renderCard)}
         </View>
         <View style={styles.grid}>
-          {options.slice(2, 4).map((opt) => {
-            const Icon = opt.icon;
-            return (
-              <TouchableOpacity key={opt.title} style={styles.card} onPress={() => setView(opt.view)} activeOpacity={0.8}>
-                <View style={[styles.iconBox, { backgroundColor: opt.bg }]}>
-                  <Icon size={18} color={opt.color} />
-                </View>
-                <View>
-                  <Text style={styles.cardTitle}>{opt.title}</Text>
-                  <Text style={styles.cardDesc}>{opt.desc}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+          {options.slice(2, 4).map(renderCard)}
         </View>
       </ScrollView>
     </View>

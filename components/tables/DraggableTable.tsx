@@ -192,6 +192,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       : parts[0].slice(0, 2).toUpperCase()
   }, [liveSession?.server_staff_id])
 
+  const activeTabAmount = useMemo(() => {
+    const payments = effectiveOrder?.payments
+    if (!payments) return null
+    const preAuth = payments.find(
+      (p: any) => p.status === 'authorized' && p.isPreAuth && !p.isVoided
+    )
+    return preAuth?.preAuthAmount ?? null
+  }, [effectiveOrder?.payments])
+
   const displayName = useMemo(() => {
     if (
       liveSession &&
@@ -562,6 +571,35 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 }}
               >
                 {serverInitials}
+              </Text>
+            </View>
+          )}
+
+          {/* Tab (pre-auth) badge */}
+          {activeTabAmount != null && (
+            <View
+              style={{
+                position: 'absolute',
+                bottom: 4,
+                left: 4,
+                paddingHorizontal: 4,
+                paddingVertical: 2,
+                borderRadius: 6,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                borderWidth: 1,
+                borderColor: colors.teal + '99',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.teal,
+                  fontSize: 7,
+                  fontWeight: '700'
+                }}
+              >
+                TAB ${activeTabAmount.toFixed(0)}
               </Text>
             </View>
           )}

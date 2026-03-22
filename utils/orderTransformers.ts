@@ -110,6 +110,7 @@ export interface BackendItemInput {
   item_status?: string | null;
   kitchen_status?: string | null;
   course_number?: number | null;
+  seat_number?: number | null;
 
   // Flags
   is_voided?: boolean | null;
@@ -199,6 +200,7 @@ export function mapBackendItemToCartItem(
     kitchen_status:
       (item.kitchen_status as CartItem["kitchen_status"]) || undefined,
     courseNumber: item.course_number || 1,
+    seatNumber: item.seat_number ?? null,
 
     // Item flags
     is_voided: item.is_voided || false,
@@ -357,10 +359,18 @@ function transformBroadcastPaymentToProfile(
         return "refunded";
       case "captured":
         return "captured";
+      case "authorized":
+        return "authorized";
       default:
         return "pending";
     }
   })();
+
+  // Hydrate pre-auth fields when status is 'authorized'
+  const isPreAuth = status === "authorized";
+  const terminalResponse = payment.terminal_response as Record<string, any> | undefined;
+  const castlesTxn = terminalResponse?.castles_transaction as Record<string, any> | undefined;
+  const terminalVendor = terminalResponse?.terminal_vendor as string | undefined;
 
   return {
     id: `payment_${payment.id}`,
@@ -382,7 +392,17 @@ function transformBroadcastPaymentToProfile(
     splitInfo,
     itemsCovered,
     status,
-    timestamp: payment.captured_at ?? payment.created_at,
+    timestamp: payment.captured_at ?? payment.authorized_at ?? payment.created_at,
+    // Pre-auth fields
+    isPreAuth,
+    ...(isPreAuth ? {
+      preAuthAmount: payment.amount,
+      preAuthRrn: castlesTxn?.rrn ?? payment.rrn ?? undefined,
+      preAuthStan: castlesTxn?.stan ?? undefined,
+      preAuthAuthCode: castlesTxn?.approvalCode ?? payment.authorization_code ?? payment.auth_code ?? undefined,
+      preAuthReferenceId: castlesTxn?.referenceId ?? payment.reference_id ?? undefined,
+      preAuthTerminalType: (terminalVendor === 'castles' ? 'castles' : terminalVendor === 'dejavoo' ? 'dejavoo' : undefined) as 'dejavoo' | 'castles' | undefined,
+    } : {}),
     isVoided: payment.is_voided,
     voidReason: payment.void_reason ?? undefined,
     refundedAmount: payment.refunded_amount ?? undefined,
@@ -564,6 +584,9 @@ export function transformBroadcastToOrder(
     // Order source
     order_source: backendOrder.order_source ?? undefined,
 
+    // Split payment path (multi-station sync)
+    split_payment_path: (backendOrder.split_payment_path as import("@/lib/types").SplitPaymentPath) ?? null,
+
     // Sync status - already synced since from DB
     sync_status: "synced",
     sync_version: backendOrder.sync_version ?? 0,
@@ -602,6 +625,7 @@ export interface FetchedOrderData {
   check_status?: string | null;
   session_id?: string | null;
   order_source?: string | null;
+  split_payment_path?: string | null;
   order_type: string;
   status: string;
   table_number?: string | null;
@@ -855,6 +879,8 @@ function normalizeFetchedPayment(
     switch (payment.status) {
       case "captured":
         return "captured";
+      case "authorized":
+        return "authorized";
       case "void":
         return "voided";
       case "refunded":
@@ -895,6 +921,7 @@ function normalizeFetchedPayment(
     void_reason: payment.void_reason,
     refunded_amount: payment.refunded_amount ?? 0,
     refunded_at: payment.refunded_at,
+    authorized_at: (payment as any).authorized_at ?? null,
     captured_at: payment.captured_at,
     created_at: payment.created_at,
     reference_id: payment.reference_number ?? null,
@@ -906,6 +933,7 @@ function normalizeFetchedPayment(
     dejavoo_invoice_number: payment.dejavoo_invoice_number ?? null,
     entry_mode: (payment.processor_response as any)?.dejavoo_transaction?.entryMode ?? null,
     result_code: payment.result_code ?? null,
+    terminal_response: (payment as any).terminal_response ?? null,
     // Return/refund tracking fields
     is_returned: payment.is_returned ?? false,
     returned_at: payment.returned_at,
@@ -1016,6 +1044,9 @@ export function normalizeFetchedOrder(
 
     // Order source
     order_source: fetchedOrder.order_source ?? null,
+
+    // Split payment path
+    split_payment_path: fetchedOrder.split_payment_path ?? null,
 
     // Sync
     sync_version: fetchedOrder.sync_version ?? 1,

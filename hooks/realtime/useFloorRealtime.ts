@@ -39,6 +39,7 @@ export const floorQueryKeys = {
 export function useFloorRealtime({
   locationId,
   enabled = true,
+  maxReconnectAttempts,
   onSessionChange,
   onTableAssignment,
   onSessionEvent,
@@ -177,6 +178,7 @@ export function useFloorRealtime({
     events,
     onMessage: handleMessage,
     enabled: enabled && !!locationId && !!supabase, // Add supabase check
+    ...(maxReconnectAttempts != null && { maxReconnectAttempts }),
   });
 
   return {

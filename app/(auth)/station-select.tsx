@@ -5,6 +5,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { SelectedStation, Station } from "@/types/station";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import { Monitor, MonitorPlay, RefreshCw, User, Wifi, WifiOff } from "lucide-react-native";
 import { useState } from "react";
@@ -414,7 +415,7 @@ const StationSelectScreen = () => {
       <TouchableOpacity
         onPress={() => {
           setIsCFDMode(true);
-          router.replace("/(cfd)/cfd-pairing");
+          replaceRoute('(cfd)', 'cfd-pairing');
         }}
         className="w-full mt-4 p-4 rounded-xl items-center border border-gray-700 bg-panel flex-row justify-center gap-3"
       >

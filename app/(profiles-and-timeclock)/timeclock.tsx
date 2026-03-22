@@ -2,6 +2,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { format } from "date-fns";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { router } from "expo-router";
 import {
   ArrowLeft,
@@ -226,7 +227,7 @@ const DailyShiftReportScreen = () => {
             onPress={() =>
               router.canGoBack()
                 ? router.back()
-                : router.replace("/(auth)/pin-login")
+                : replaceRoute('(auth)', 'pin-login')
             }
             className="mr-3 p-2"
           >

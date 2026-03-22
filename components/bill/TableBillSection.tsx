@@ -2,11 +2,13 @@ import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { X } from "lucide-react-native"; // Added X import
+import { X } from "lucide-react-native";
 import React, { useRef } from "react";
-import { Text, TouchableOpacity, View } from "react-native"; // Added Text, TouchableOpacity
+import { Text, TouchableOpacity, View } from "react-native";
 import BottomActionBar from "./BottomActionBar";
 import CourseAccordion from "./CourseAccordion";
+import SeatAccordion from "./SeatAccordion";
+import SeatCourseAccordion from "./SeatCourseAccordion";
 import DiscountBottomSheet from "./DiscountBottomSheet";
 import OrderDetails from "./OrderDetails";
 import PricingBreakdownSheet from "./PricingBreakdownSheet";
@@ -31,6 +33,13 @@ const TableBillSection = ({
   onPressProceedToPayment,
   setCurrentCourse,
   isFullyPaid,
+  // Seating props
+  itemSeatMap,
+  activeSeat,
+  seatCount,
+  onSelectSeat,
+  enablePerSeatOrdering = false,
+  enableCoursing = true,
 }: {
   showOrderDetails?: boolean;
   itemCourseMap?: Record<string, number>;
@@ -50,7 +59,14 @@ const TableBillSection = ({
   onClosePricingSheet: () => void;
   onPressProceedToPayment: () => void;
   setCurrentCourse: (course: number) => void;
-  isFullyPaid?: boolean; // LOCAL-FIRST: Use local calculation from parent
+  isFullyPaid?: boolean;
+  // Seating props
+  itemSeatMap?: Record<string, number | null>;
+  activeSeat?: number | null;
+  seatCount?: number;
+  onSelectSeat?: (seat: number | null) => void;
+  enablePerSeatOrdering?: boolean;
+  enableCoursing?: boolean;
 }) => {
   const storeActiveOrder = useOrderStore((state) =>
     state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
@@ -72,28 +88,62 @@ const TableBillSection = ({
     }
   };
 
-  // console.log('TableBillSection', totalDisplayAmount);
-  // console.log("activeOrder [TableBillSection]", activeOrder);
-  return (
-    <>
-      <View className="max-w-lg  flex-1 flex-col">
-        {/* {showOrderDetails && <OrderDetails />} */}
-
-        {/* CourseAccordion will be rendered here later */}
-        <CourseAccordion // Rendered CourseAccordion
+  // Determine which accordion to render
+  const renderAccordion = () => {
+    if (enablePerSeatOrdering && enableCoursing) {
+      // Both enabled: seat -> course nesting
+      return (
+        <SeatCourseAccordion
           activeOrder={activeOrder}
+          itemSeatMap={itemSeatMap}
           itemCourseMap={itemCourseMap}
           sentCourses={sentCourses}
           currentCourse={currentCourse}
+          activeSeat={activeSeat}
+          seatCount={seatCount ?? 2}
+          onSelectSeat={onSelectSeat}
           onSelectCourse={onSelectCourse}
           onPressStartNewCourse={onPressStartNewCourse}
           onDoubleTapCourse={onDoubleTapCourse}
         />
+      );
+    }
+
+    if (enablePerSeatOrdering) {
+      // Seat only
+      return (
+        <SeatAccordion
+          activeOrder={activeOrder}
+          itemSeatMap={itemSeatMap}
+          activeSeat={activeSeat}
+          seatCount={seatCount ?? 2}
+          onSelectSeat={onSelectSeat}
+        />
+      );
+    }
+
+    // Course only or neither (existing behavior)
+    return (
+      <CourseAccordion
+        activeOrder={activeOrder}
+        itemCourseMap={itemCourseMap}
+        sentCourses={sentCourses}
+        currentCourse={currentCourse}
+        onSelectCourse={onSelectCourse}
+        onPressStartNewCourse={onPressStartNewCourse}
+        onDoubleTapCourse={onDoubleTapCourse}
+      />
+    );
+  };
+
+  return (
+    <>
+      <View className="max-w-lg  flex-1 flex-col">
+        {renderAccordion()}
 
         {/* --- INLINED ACTIVE DISCOUNT INDICATOR --- */}
         {appliedDiscount && (
           <View className="px-4 pb-2">
-            {/* Using bg-[#303030] to blend with footer area */}
             <View style={{
               flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
               paddingHorizontal: 10, paddingVertical: 6, height: 36,
@@ -109,7 +159,6 @@ const TableBillSection = ({
             </View>
           </View>
         )}
-        {/* --------------------------------------- */}
 
         <BottomActionBar
           activeOrder={activeOrder}

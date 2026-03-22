@@ -34,6 +34,11 @@ export function detectConflict(
     return null;
   }
 
+  // Terminal states (void, cancelled) are always authoritative — accept silently
+  if (serverOrder.order_status === 'void' || serverOrder.order_status === 'cancelled') {
+    return null;
+  }
+
   // Detect what changed
   const localChanges = detectLocalChanges(localOrder);
   const serverChanges = detectServerChanges(localOrder, serverOrder);
@@ -339,6 +344,14 @@ function categorizeConflict(
   itemConflicts: ItemConflict[],
   options: ConflictDetectionOptions
 ): ConflictType {
+  // Void transitions naturally change payment fields — treat as status_change, not payment
+  const isVoidTransition = serverChanges.some(
+    c => c.field === 'order_status' && c.newValue === 'void'
+  );
+  if (isVoidTransition) {
+    return 'status_change';
+  }
+
   // Check for payment-related changes first (highest priority)
   const paymentFields = ['amount_paid', 'paid_status', 'balance_due'];
   if (serverChanges.some(c => paymentFields.includes(c.field))) {

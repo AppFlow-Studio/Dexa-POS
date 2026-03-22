@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { AlertTriangle, Banknote, Bluetooth, Building2, CheckCircle2, ChevronDown, ChevronUp, CreditCard, DollarSign, Edit3, Plus, ShieldCheck, Smartphone, SplitSquareHorizontal, Trash2, Wifi, X, XCircle } from "lucide-react-native";
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -21,11 +22,7 @@ interface PaymentMethods {
   bnpl: boolean;
 }
 
-interface PreAuthSettings {
-  enabled: boolean;
-  amount: string;
-  gateway: string;
-}
+// PreAuthSettings now managed by useStoreSettingsStore (persisted via MMKV)
 
 interface SplitPaymentOptions {
   byAmount: boolean;
@@ -75,7 +72,8 @@ const PaymentProcessingScreen = () => {
   });
 
   const [startingCashAmount, setStartingCashAmount] = useState("200.00");
-  const [preAuthSettings, setPreAuthSettings] = useState<PreAuthSettings>({ enabled: true, amount: "25.00", gateway: "stripe" });
+  const preAuthSettings = useStoreSettingsStore((s) => s.preAuthSettings);
+  const updatePreAuthSettings = useStoreSettingsStore((s) => s.updatePreAuthSettings);
   const [splitPaymentOptions, setSplitPaymentOptions] = useState<SplitPaymentOptions>({ byAmount: true, byItem: true, evenly: true });
   const [expandedSections, setExpandedSections] = useState({ builtin: true, wired: true, bluetooth: true });
 
@@ -369,31 +367,17 @@ const PaymentProcessingScreen = () => {
               <Text className="text-white font-medium">Enable Pre-Authorization</Text>
               <Text className="text-gray-400 text-sm">Hold funds on customer cards for open tabs</Text>
             </View>
-            <Switch checked={preAuthSettings.enabled} onCheckedChange={(checked) => setPreAuthSettings((prev) => ({ ...prev, enabled: checked }))} />
+            <Switch checked={preAuthSettings.preAuthEnabled} onCheckedChange={(checked) => updatePreAuthSettings({ preAuthEnabled: checked })} />
           </View>
-          {preAuthSettings.enabled && (
-            <>
-              <View className="py-4 border-b border-gray-700">
-                <Text className="text-gray-300 font-medium mb-2">Pre-Auth Amount</Text>
-                <View className="flex-row items-center bg-surface rounded-lg border border-gray-600">
-                  <View className="px-4 py-3 border-r border-gray-600"><Text className="text-white font-bold text-lg">$</Text></View>
-                  <TextInput value={preAuthSettings.amount} onChangeText={(text) => setPreAuthSettings((prev) => ({ ...prev, amount: text }))} keyboardType="decimal-pad" className="flex-1 px-4 py-3 text-white text-lg" placeholderTextColor={colors.muted} placeholder="0.00" />
-                </View>
-                <Text className="text-gray-500 text-sm mt-2">Default amount to hold when opening a tab</Text>
+          {preAuthSettings.preAuthEnabled && (
+            <View className="py-4">
+              <Text className="text-gray-300 font-medium mb-2">Default Pre-Auth Amount</Text>
+              <View className="flex-row items-center bg-surface rounded-lg border border-gray-600">
+                <View className="px-4 py-3 border-r border-gray-600"><Text className="text-white font-bold text-lg">$</Text></View>
+                <TextInput value={String(preAuthSettings.defaultPreAuthAmount)} onChangeText={(text) => { const num = parseFloat(text); if (!isNaN(num)) updatePreAuthSettings({ defaultPreAuthAmount: num }); }} keyboardType="decimal-pad" className="flex-1 px-4 py-3 text-white text-lg" placeholderTextColor={colors.muted} placeholder="0.00" />
               </View>
-              <View className="py-4">
-                <Text className="text-gray-300 font-medium mb-2">Gateway Selection</Text>
-                <Select value={{ value: preAuthSettings.gateway, label: preAuthSettings.gateway === "stripe" ? "Stripe" : preAuthSettings.gateway === "square" ? "Square" : "Clover" }} onValueChange={(option) => setPreAuthSettings((prev) => ({ ...prev, gateway: option?.value || "stripe" }))}>
-                  <SelectTrigger className="bg-surface border-gray-600"><SelectValue placeholder="Select gateway" className="text-white" /></SelectTrigger>
-                  <SelectContent className="bg-surface border-gray-600">
-                    <SelectItem value="stripe" label="Stripe">Stripe</SelectItem>
-                    <SelectItem value="square" label="Square">Square</SelectItem>
-                    <SelectItem value="clover" label="Clover">Clover</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Text className="text-gray-500 text-sm mt-2">Select which processor handles pre-authorizations</Text>
-              </View>
-            </>
+              <Text className="text-gray-500 text-sm mt-2">Default amount to hold when opening a tab. Uses the station's configured terminal.</Text>
+            </View>
           )}
         </View>
 

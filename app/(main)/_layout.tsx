@@ -159,6 +159,7 @@ export default function MainLayout() {
     return (
       <LocationRealtimeProvider
         locationId={selectedStore?.id}
+        maxReconnectAttempts={20}
         callbacks={{
           onOrderChange: handleOrderChangeKDS,
           onPaymentChange: handlePaymentChange,

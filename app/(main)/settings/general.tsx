@@ -1,12 +1,14 @@
 import { SessionLogoutButton } from "@/components/auth/SessionLogoutButton";
 import { OperatingHoursTimeSheet } from "@/components/settings/OperatingHoursTimeSheet";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { FailedSyncsPanel } from "@/components/settings/sync-status/FailedSyncsPanel";
 import { Switch } from "@/components/ui/switch";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { CacheStats, clearCache, getCacheStats } from "@/services/cacheService";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { format, parse } from "date-fns";
@@ -240,7 +242,7 @@ const GeneralSettingsScreen = () => {
       // Navigate to station-select for clean re-initialization
       clearSelectedStation();
       setStationSessionId(null);
-      router.replace("/station-select");
+      replaceRoute('(auth)', 'station-select');
     } catch (error) {
       toastService.show({
         title: "Error",
@@ -339,6 +341,11 @@ const GeneralSettingsScreen = () => {
         <View className="h-px w-full bg-gray-700 mb-6" />
 
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Failed Sync Operations (Dead Letter Queue) */}
+          <View className="mb-6">
+            <FailedSyncsPanel />
+          </View>
+
           {/* Business Information */}
           <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(

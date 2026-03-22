@@ -2,6 +2,7 @@ import { mmkvStorage } from '@/lib/storage'
 import { toastService } from '@/lib/toastService'
 import { TaxRate, TaxRatesMap } from '@/types/menu'
 import { SelectedStation } from '@/types/station'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
@@ -22,6 +23,7 @@ export interface SelectedLocation {
   timezone: string
   is_active: boolean
   is_accepting_orders: boolean
+  kds_workflow_mode?: '2-step' | '3-step'
   pricing_strategy?: string | null
   dual_pricing_percentage?: number | null
   business_hours: Record<
@@ -136,6 +138,12 @@ export interface StoreSettings {
 
   // CFD client mode
   isCFDMode: boolean
+
+  // Pre-auth settings
+  preAuthSettings: {
+    preAuthEnabled: boolean
+    defaultPreAuthAmount: number
+  }
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -163,6 +171,7 @@ interface StoreSettingsState extends StoreSettings {
   // Selected store actions
   setSelectedStore: (store: SelectedLocation) => void
   clearSelectedStore: () => void
+  refreshSelectedStore: (supabase: SupabaseClient) => Promise<void>
 
   // Organization branding
   setOrganizationLogoUrl: (url: string | null) => void
@@ -184,6 +193,9 @@ interface StoreSettingsState extends StoreSettings {
   // CFD client mode actions
   setIsCFDMode: (value: boolean) => void
   exitCFDMode: () => void
+
+  // Pre-auth settings actions
+  updatePreAuthSettings: (updates: Partial<StoreSettings['preAuthSettings']>) => void
 }
 
 const initialData: StoreSettings = {
@@ -281,7 +293,13 @@ const initialData: StoreSettings = {
   deviceName: '',
 
   // CFD client mode
-  isCFDMode: false
+  isCFDMode: false,
+
+  // Pre-auth settings
+  preAuthSettings: {
+    preAuthEnabled: false,
+    defaultPreAuthAmount: 25,
+  },
 }
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -470,6 +488,17 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         set({ selectedStore: null, organizationLogoUrl: null })
       },
 
+      refreshSelectedStore: async (supabase: SupabaseClient) => {
+        const current = get().selectedStore;
+        if (!current?.id) return;
+        const { data } = await supabase
+          .from('locations')
+          .select('*')
+          .eq('id', current.id)
+          .single();
+        if (data) set({ selectedStore: data as SelectedLocation });
+      },
+
       setOrganizationLogoUrl: (url: string | null) => {
         set({ organizationLogoUrl: url })
       },
@@ -514,6 +543,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
 
       setIsCFDMode: (value: boolean) => {
         set({ isCFDMode: value })
+      },
+      updatePreAuthSettings: (updates) => {
+        const current = get().preAuthSettings
+        set({ preAuthSettings: { ...current, ...updates } })
       },
 
       exitCFDMode: () => {
@@ -577,7 +610,9 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         stationSessionId: state.stationSessionId,
         deviceName: state.deviceName,
         // CFD client mode
-        isCFDMode: state.isCFDMode
+        isCFDMode: state.isCFDMode,
+        // Pre-auth settings
+        preAuthSettings: state.preAuthSettings
       })
     }
   )

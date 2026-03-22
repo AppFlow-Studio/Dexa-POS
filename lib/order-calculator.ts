@@ -608,7 +608,7 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     // For cash-priced payments, amount is cash price but cashSavings = original_amount - amount
     // So amount + cashSavings = original_amount = card equivalent
     const effectivePaid = payments
-      .filter(p => !p.isVoided)
+      .filter(p => !p.isVoided && !p.isPreAuth)
       .reduce((sum, p) => {
         const refunded = p.refundedAmount ?? 0;
         // Use card-equivalent: for cash-priced payments, add cashSavings to get original_amount

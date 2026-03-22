@@ -17,6 +17,8 @@ export function useCFDWSClient() {
   const lastPongTime = useRef<number>(Date.now());
   const retryCount = useRef<number>(0);
   const isMounted = useRef(true);
+  const isConnecting = useRef(false);
+  const isInitialNetInfo = useRef(true);
 
   const {
     isPaired,
@@ -35,10 +37,13 @@ export function useCFDWSClient() {
 
   const connect = useCallback(() => {
     if (!isPaired || !connection) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
     if (!isMounted.current) return;
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (isConnecting.current) return;
 
-    // Close any existing connection cleanly
+    isConnecting.current = true;
+
+    // Close any stale/dead connection
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
@@ -50,6 +55,7 @@ export function useCFDWSClient() {
     const ws = new WebSocket(`ws://${connection.ip}:${connection.port}`);
 
     ws.onopen = () => {
+      isConnecting.current = false;
       if (!isMounted.current) { ws.close(); return; }
       console.log("[CFD Client] Connected");
       setConnectionStatus("connected");
@@ -95,6 +101,7 @@ export function useCFDWSClient() {
     };
 
     ws.onclose = () => {
+      isConnecting.current = false;
       if (!isMounted.current) return;
       console.log("[CFD Client] Disconnected");
       setConnectionStatus("disconnected");
@@ -116,6 +123,7 @@ export function useCFDWSClient() {
 
   const disconnect = useCallback(() => {
     cleanup();
+    isConnecting.current = false;
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
@@ -169,10 +177,17 @@ export function useCFDWSClient() {
   }, [isPaired, connect]);
 
   // Reconnect on network restored
+  // NetInfo fires immediately on subscribe — skip that initial emission
+  // since the isPaired effect above already calls connect().
   useEffect(() => {
+    isInitialNetInfo.current = true;
+
     const unsubscribe = NetInfo.addEventListener((state) => {
+      if (isInitialNetInfo.current) {
+        isInitialNetInfo.current = false;
+        return;
+      }
       if (state.isConnected && isPaired && isMounted.current) {
-        // Network restored — reset retry count for faster reconnect
         retryCount.current = 0;
         if (wsRef.current?.readyState !== WebSocket.OPEN) {
           clearTimeout(reconnectTimer.current);

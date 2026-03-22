@@ -5,9 +5,14 @@ import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
   selectClose,
+  selectSeatOverride,
+  selectSetSeatOverride,
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
+import { OrderService } from "@/services/orderService";
 
 import { ArrowLeft, Check, CheckCircle2, Minus, Plus, X } from "lucide-react-native";
 import {
@@ -154,6 +159,7 @@ type State = {
   activeCategory: string | null;
   isQuantityModalOpen: boolean;
   quantityInput: string;
+  isSeatPickerOpen: boolean;
 };
 
 type Action =
@@ -165,6 +171,7 @@ type Action =
   | { type: "CLOSE_QUANTITY_MODAL" }
   | { type: "SET_QUANTITY_INPUT"; payload: string }
   | { type: "INITIALIZE"; payload: Partial<State> }
+  | { type: "TOGGLE_SEAT_PICKER" }
   | {
       type: "TOGGLE_MODIFIER";
       payload: {
@@ -218,6 +225,9 @@ const immerReducer = (state: State, action: Action): void => {
       if (action.payload.modifierSelections) {
         state.selectionCounts = computeSelectionCounts(action.payload.modifierSelections);
       }
+      return;
+    case "TOGGLE_SEAT_PICKER":
+      state.isSeatPickerOpen = !state.isSeatPickerOpen;
       return;
     case "TOGGLE_MODIFIER": {
       const { categoryId, optionId, category } = action.payload;
@@ -292,6 +302,20 @@ const ModifierScreen = () => {
   );
 
   const close = useModifierSidebarStore(selectClose);
+  const seatOverride = useModifierSidebarStore(selectSeatOverride);
+  const setSeatOverride = useModifierSidebarStore(selectSetSeatOverride);
+
+  // Per-seat ordering context
+  const enablePerSeatOrdering = useSettingsStore(s => s.enablePerSeatOrdering);
+  const { activeOrderId: seatOrderId } = useOrderStore(
+    useShallow(s => ({ activeOrderId: s.activeOrderId }))
+  );
+  const activeOrderForSeat = seatOrderId ? useOrderStore.getState().ordersById[seatOrderId] : null;
+  const isTableOrder = !!activeOrderForSeat?.service_location_id;
+  const seatCount = isTableOrder && seatOrderId
+    ? useSeatingStore.getState().getSeatCount(seatOrderId)
+    : 0;
+  const showSeatPicker = enablePerSeatOrdering && isTableOrder && seatCount > 0;
 
   const addItemToActiveOrder = useCallback(
     (item: any) => useOrderStore.getState().addItemToActiveOrder(item), [],
@@ -332,6 +356,7 @@ const ModifierScreen = () => {
         activeCategory: precomputedActiveCategory ?? null,
         isQuantityModalOpen: false,
         quantityInput: "",
+        isSeatPickerOpen: false,
       };
     },
   );
@@ -512,12 +537,14 @@ const ModifierScreen = () => {
     state, total, menuItem, cartItem, menuItemForModifiers,
     modifierCategoriesById, optionsById, mode, categoryId, menuId,
     isReadOnly, currentItem, close, show,
+    showSeatPicker, seatOverride,
   });
 
   latestStateRef.current = {
     state, total, menuItem, cartItem, menuItemForModifiers,
     modifierCategoriesById, optionsById, mode, categoryId, menuId,
     isReadOnly, currentItem, close, show,
+    showSeatPicker, seatOverride,
   };
 
   const handleModifierToggle = useCallback((catId: string, optionId: string) => {
@@ -567,6 +594,7 @@ const ModifierScreen = () => {
       modifierCategoriesById: categoriesMap, optionsById: optsMap,
       mode: currentMode, categoryId: catId, menuId: mId,
       currentItem: item, close: closeModal, show: showToast,
+      showSeatPicker: shouldApplySeat, seatOverride: seatVal,
     } = latestStateRef.current;
 
     const baseItem = currentMenuItem || modifiersItem;
@@ -587,6 +615,42 @@ const ModifierScreen = () => {
         isDraft: false,
       };
       updateItemInActiveOrder(updatedOpenItem);
+
+      // Apply seat override for open items
+      if (shouldApplySeat && currentCartItem) {
+        const ordId = useOrderStore.getState().activeOrderId;
+        if (ordId) {
+          useSeatingStore.getState().setItemSeat(
+            ordId, currentCartItem.id, seatVal,
+            currentCartItem.db_order_item_id, true,
+          );
+        }
+      }
+
+      // Sync open item changes to backend
+      if (currentCartItem.db_order_item_id) {
+        const client = getOrderStoreSupabaseClient();
+        if (client) {
+          const params: Record<string, any> = {
+            p_order_item_id: currentCartItem.db_order_item_id,
+          };
+          if (currentState.quantity !== currentCartItem.quantity) {
+            params.p_quantity = currentState.quantity;
+          }
+          if (currentState.notes && currentState.notes !== currentCartItem.customizations?.notes) {
+            params.p_special_instructions = currentState.notes;
+          }
+          if (shouldApplySeat && seatVal !== undefined) {
+            params.p_seat_number = seatVal;
+          }
+          if (Object.keys(params).length > 1) {
+            OrderService.updateOpenItem(client, params as any).catch(err => {
+              console.error("[ModifierScreen] Failed to sync open item update:", err);
+            });
+          }
+        }
+      }
+
       showToast({ title: "Item Updated", message: `${currentCartItem.name} quantity updated to ${currentState.quantity}.`, type: "success" });
       closeModal();
       return;
@@ -643,6 +707,16 @@ const ModifierScreen = () => {
           subtotal: undefined, cashSubtotal: undefined, taxAmount: undefined, cashTaxAmount: undefined,
         };
         updateItemInActiveOrder(updatedItem);
+        // Apply seat override if per-seat ordering is active
+        if (shouldApplySeat) {
+          const ordId = useOrderStore.getState().activeOrderId;
+          if (ordId) {
+            useSeatingStore.getState().setItemSeat(
+              ordId, currentCartItem.id, seatVal,
+              currentCartItem.db_order_item_id, true,
+            );
+          }
+        }
         showToast({ title: "Item Updated", message: `Your changes to ${item?.name} have been saved.`, type: "success" });
       } else {
         const itemCashPrice = resolvedCashPrice;
@@ -669,6 +743,15 @@ const ModifierScreen = () => {
           baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };
         addItemToActiveOrder(newItem);
+        // Apply seat override synchronously so useTableSeating's effect skips this item
+        if (shouldApplySeat) {
+          const ordId = useOrderStore.getState().activeOrderId;
+          if (ordId) {
+            useSeatingStore.getState().setItemSeat(
+              ordId, newItem.id, seatVal, undefined, true,
+            );
+          }
+        }
       }
     });
   }, []);
@@ -757,6 +840,22 @@ const ModifierScreen = () => {
         </TouchableOpacity>
 
         <View className="flex-row items-center gap-2">
+          {showSeatPicker && (
+            <TouchableOpacity
+              onPressIn={() => dispatch({ type: "TOGGLE_SEAT_PICKER" })}
+              style={{
+                paddingHorizontal: 10, paddingVertical: 4,
+                borderRadius: 12,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
+                {seatOverride === null ? "Shared" : `Seat ${seatOverride}`}
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPressIn={handleCancel} className="p-1.5">
             <X color="#8899aa" size={16} />
           </TouchableOpacity>
@@ -791,6 +890,48 @@ const ModifierScreen = () => {
             ${getCurrentItemPrice(currentItem).toFixed(2)}
           </Text>
         </View>
+
+        {/* ── Seat Picker ──────────────────────────────────────────────────── */}
+        {state.isSeatPickerOpen && showSeatPicker && (
+          <View className="px-4 py-3 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+            <Text className="text-sm font-semibold mb-2" style={{ color: "#e8edf3" }}>Assign to Seat</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              <TouchableOpacity
+                onPressIn={() => setSeatOverride(null)}
+                style={{
+                  paddingHorizontal: 14, paddingVertical: 6,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  backgroundColor: seatOverride === null ? colors.teal + "20" : "transparent",
+                  borderColor: seatOverride === null ? colors.teal : "rgba(255,255,255,0.15)",
+                }}
+              >
+                <Text style={{
+                  fontSize: 12, fontWeight: "600",
+                  color: seatOverride === null ? colors.teal : "#8899aa",
+                }}>Shared</Text>
+              </TouchableOpacity>
+              {Array.from({ length: seatCount }, (_, i) => i + 1).map(seat => (
+                <TouchableOpacity
+                  key={seat}
+                  onPressIn={() => setSeatOverride(seat)}
+                  style={{
+                    paddingHorizontal: 14, paddingVertical: 6,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    backgroundColor: seatOverride === seat ? colors.teal + "20" : "transparent",
+                    borderColor: seatOverride === seat ? colors.teal : "rgba(255,255,255,0.15)",
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 12, fontWeight: "600",
+                    color: seatOverride === seat ? colors.teal : "#8899aa",
+                  }}>Seat {seat}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* ── Category Pill Tabs ──────────────────────────────────────────── */}
         {hasModifiers && (
@@ -920,7 +1061,7 @@ const ModifierScreen = () => {
               value={state.notes}
               onChangeText={(text) => dispatch({ type: "SET_NOTES", payload: text })}
               placeholder="No onions, extra sauce..."
-              multiline
+              numberOfLines={1}
               maxLength={80}
               className="px-3 py-2 text-sm min-h-[52px]"
               style={{ color: "#e8edf3" }}

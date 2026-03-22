@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { mmkvStorage } from "@/lib/storage";
 
 export interface DeliveryPartner {
   id: string;
@@ -94,6 +96,8 @@ interface DiningRoomSettings {
   autoUpdateTableStatus: boolean;
   autoRotateSections: boolean;
   balanceSectionLoad: boolean;
+  enablePerSeatOrdering: boolean;
+  enableCoursing: boolean;
 }
 
 export interface OrderLineSettings {
@@ -160,6 +164,8 @@ const initialDiningSettings: DiningRoomSettings = {
   autoUpdateTableStatus: true,
   autoRotateSections: false,
   balanceSectionLoad: true,
+  enablePerSeatOrdering: false,
+  enableCoursing: true,
 };
 
 const initialDeliverySettings: DeliverySettings = {
@@ -236,71 +242,101 @@ const initialPrepCategories: PrepCategory[] = [
   { id: "5", name: "Drinks", minutes: 3 },
 ];
 
-export const useSettingsStore = create<SettingsState>((set) => ({
-  defaultSittingTimeMinutes: 60,
-  ...initialDiningSettings,
-  ...initialDeliverySettings,
+export const useSettingsStore = create<SettingsState>()(
+  persist(
+    (set) => ({
+      defaultSittingTimeMinutes: 60,
+      ...initialDiningSettings,
+      ...initialDeliverySettings,
 
-  // Staff Permissions
-  permissions: initialPermissions,
-  clockInSettings: initialClockInSettings,
+      // Staff Permissions
+      permissions: initialPermissions,
+      clockInSettings: initialClockInSettings,
 
-  // Payment Systems
-  dualPricing: initialDualPricing,
-  surcharging: initialSurcharging,
-  funding: { instant: false, balance: 2450.0 },
-  tokenizationEnabled: true,
-  textToPayEnabled: false,
-  throttling: initialThrottling,
-  kdsEnabled: true,
-  prepCategories: initialPrepCategories,
-  showPrepTimesToCustomers: true,
-  autoAdjustPrepTimes: true,
+      // Payment Systems
+      dualPricing: initialDualPricing,
+      surcharging: initialSurcharging,
+      funding: { instant: false, balance: 2450.0 },
+      tokenizationEnabled: true,
+      textToPayEnabled: false,
+      throttling: initialThrottling,
+      kdsEnabled: true,
+      prepCategories: initialPrepCategories,
+      showPrepTimesToCustomers: true,
+      autoAdjustPrepTimes: true,
 
-  // Order Line
-  orderLineSettings: { daysToShow: 0 },
+      // Order Line
+      orderLineSettings: { daysToShow: 0 },
 
-  // Menu Display
-  showMenuItemPrices: true,
-  setShowMenuItemPrices: (show) => set({ showMenuItemPrices: show }),
-  showMenuImages: true,
-  setShowMenuImages: (show) => set({ showMenuImages: show }),
+      // Menu Display
+      showMenuItemPrices: true,
+      setShowMenuItemPrices: (show) => set({ showMenuItemPrices: show }),
+      showMenuImages: true,
+      setShowMenuImages: (show) => set({ showMenuImages: show }),
 
-  setDefaultSittingTimeMinutes: (minutes) => set({ defaultSittingTimeMinutes: minutes }),
+      setDefaultSittingTimeMinutes: (minutes) => set({ defaultSittingTimeMinutes: minutes }),
 
-  updateDiningSettings: (settings) => set((state) => ({ ...state, ...settings })),
+      updateDiningSettings: (settings) => set((state) => ({ ...state, ...settings })),
 
-  updateDeliverySettings: (settings) => set((state) => ({ ...state, ...settings })),
+      updateDeliverySettings: (settings) => set((state) => ({ ...state, ...settings })),
 
-  toggleDeliveryPartnerStatus: (partnerId) => set((state) => ({
-    partners: state.partners.map((p) => p.id === partnerId ? { ...p, status: p.status === "Active" ? "Paused" : "Active" } : p),
-  })),
+      toggleDeliveryPartnerStatus: (partnerId) => set((state) => ({
+        partners: state.partners.map((p) => p.id === partnerId ? { ...p, status: p.status === "Active" ? "Paused" : "Active" } : p),
+      })),
 
-  // Staff permissions actions
-  setPermissions: (permissions) => set({ permissions }),
+      // Staff permissions actions
+      setPermissions: (permissions) => set({ permissions }),
 
-  togglePermission: (permId, role) => set((state) => ({
-    permissions: state.permissions.map((p) => p.id === permId ? { ...p, [role]: !p[role as keyof Permission] } : p),
-  })),
+      togglePermission: (permId, role) => set((state) => ({
+        permissions: state.permissions.map((p) => p.id === permId ? { ...p, [role]: !p[role as keyof Permission] } : p),
+      })),
 
-  setClockInSettings: (settings) => set((state) => ({ clockInSettings: { ...state.clockInSettings, ...settings } })),
+      setClockInSettings: (settings) => set((state) => ({ clockInSettings: { ...state.clockInSettings, ...settings } })),
 
-  // Payment systems actions
-  setDualPricing: (settings) => set((state) => ({ dualPricing: { ...state.dualPricing, ...settings } })),
+      // Payment systems actions
+      setDualPricing: (settings) => set((state) => ({ dualPricing: { ...state.dualPricing, ...settings } })),
 
-  setSurcharging: (settings) => set((state) => ({ surcharging: { ...state.surcharging, ...settings } })),
+      setSurcharging: (settings) => set((state) => ({ surcharging: { ...state.surcharging, ...settings } })),
 
-  setFunding: (settings) => set((state) => ({ funding: { ...state.funding, ...settings } })),
+      setFunding: (settings) => set((state) => ({ funding: { ...state.funding, ...settings } })),
 
-  setThrottling: (settings) => set((state) => ({ throttling: { ...state.throttling, ...settings } })),
+      setThrottling: (settings) => set((state) => ({ throttling: { ...state.throttling, ...settings } })),
 
-  setPrepCategories: (categories) => set({ prepCategories: categories }),
+      setPrepCategories: (categories) => set({ prepCategories: categories }),
 
-  adjustPrepTime: (id, delta) => set((state) => ({
-    prepCategories: state.prepCategories.map((c) => c.id === id ? { ...c, minutes: Math.max(1, c.minutes + delta) } : c),
-  })),
+      adjustPrepTime: (id, delta) => set((state) => ({
+        prepCategories: state.prepCategories.map((c) => c.id === id ? { ...c, minutes: Math.max(1, c.minutes + delta) } : c),
+      })),
 
-  setOrderLineSettings: (settings) => set((state) => ({
-    orderLineSettings: { ...state.orderLineSettings, ...settings },
-  })),
-}));
+      setOrderLineSettings: (settings) => set((state) => ({
+        orderLineSettings: { ...state.orderLineSettings, ...settings },
+      })),
+    }),
+    {
+      name: "settings-storage",
+      storage: createJSONStorage(() => mmkvStorage),
+      partialize: (state) => ({
+        // Dining
+        tablePrefix: state.tablePrefix,
+        tableStartNumber: state.tableStartNumber,
+        defaultPartySize: state.defaultPartySize,
+        allowTableMerging: state.allowTableMerging,
+        mergeTimeoutMinutes: state.mergeTimeoutMinutes,
+        allowTableSplitting: state.allowTableSplitting,
+        autoUpdateTableStatus: state.autoUpdateTableStatus,
+        autoRotateSections: state.autoRotateSections,
+        balanceSectionLoad: state.balanceSectionLoad,
+        enablePerSeatOrdering: state.enablePerSeatOrdering,
+        enableCoursing: state.enableCoursing,
+        defaultSittingTimeMinutes: state.defaultSittingTimeMinutes,
+        // KDS
+        kdsEnabled: state.kdsEnabled,
+        // Menu Display
+        showMenuItemPrices: state.showMenuItemPrices,
+        showMenuImages: state.showMenuImages,
+        // Order Line
+        orderLineSettings: state.orderLineSettings,
+      }),
+    }
+  )
+);

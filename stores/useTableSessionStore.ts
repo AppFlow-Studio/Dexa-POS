@@ -2,8 +2,8 @@
  * useTableSessionStore - Manages all table session state and operations.
  *
  * Extracted from useFloorPlanStore to separate ephemeral session state
- * from persistent layout/geometry. Sessions are NOT persisted to MMKV —
- * they are re-fetched from the backend on app restart.
+ * from persistent layout/geometry. Sessions ARE persisted to MMKV for
+ * offline durability — replaced with backend data when online via hydrateFromBackend().
  *
  * During the bridge period (Phase 1-2), _syncToFloorPlanStore() writes
  * session data back into useFloorPlanStore so unmigrated consumers still
@@ -27,6 +27,7 @@ import {
 } from "@/lib/tableStateMachine";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
+import { markOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import { handleSeatingEffect } from "@/services/sessionEffects/handleSeatingEffect";
 import {
   FloorPlanObject,
@@ -34,8 +35,9 @@ import {
   TableStatus,
 } from "@/types/db-floor-plan-types";
 import type { TableSessionPayload } from "@/types/real-time";
+import { mmkvStorage } from "@/lib/storage";
 import { create } from "zustand";
-import { subscribeWithSelector } from "zustand/middleware";
+import { createJSONStorage, persist, subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { useEmployeeStore } from "./useEmployeeStore";
 import {
@@ -296,6 +298,7 @@ interface TableSessionStoreState {
 
 export const useTableSessionStore = create<TableSessionStoreState>()(
   subscribeWithSelector(
+    persist(
     immer((set, get) => ({
       sessions: {},
       sessionTableIndex: {},
@@ -455,7 +458,13 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         }
         // If no event (e.g. CLOSE_CHECK), skip transition — just fire effects
 
-        // 2. Fire side effects asynchronously
+        // 2. Mark void intent BEFORE queueMicrotask to close race window
+        // with broadcast handler's conflict detection
+        if (action.type === "VOID_ORDER") {
+          markOrderPendingVoid(action.orderId);
+        }
+
+        // 3. Fire side effects asynchronously
         const ctx: SideEffectContext = {
           action,
           tableId,
@@ -1234,6 +1243,29 @@ export const useTableSessionStore = create<TableSessionStoreState>()(
         return get().sessions[tableId]?.status || "available";
       },
     })),
+    {
+      name: "table-session-storage",
+      storage: createJSONStorage(() => mmkvStorage),
+      partialize: (state) => ({
+        // Only persist sessions (not index — rebuilt on hydration)
+        sessions: state.sessions,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.sessions) {
+          // Rebuild sessionTableIndex from persisted sessions
+          const index: Record<string, string[]> = {};
+          for (const [tableId, session] of Object.entries(state.sessions)) {
+            if (!session) continue;
+            if (!index[session.id]) index[session.id] = [];
+            if (!index[session.id].includes(tableId)) {
+              index[session.id].push(tableId);
+            }
+          }
+          state.sessionTableIndex = index;
+        }
+      },
+    },
+    ),
   ),
 );
 

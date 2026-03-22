@@ -17,6 +17,7 @@ import KDSSoundService, { DEFAULT_SOUND_CONFIG } from "@/services/kds/kdsSoundSe
 import KDSSettingsModal from "@/components/kds/KDSSettingsModal";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import PinInputModal from "@/components/timeclock/PinInputModal";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import {
   AlertTriangle,
@@ -527,6 +528,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         {item.quantity}
                       </Text>
                     </View>
+                    {item.seat_number != null && (
+                      <Text style={{ color: "#14b8a6", fontSize: 11, fontWeight: "700", marginRight: 4 }}>
+                        [S{item.seat_number}]
+                      </Text>
+                    )}
                     <Text
                       style={{
                         color: "#fff",
@@ -893,7 +899,16 @@ const KitchenDisplayScreen = () => {
     [kdsHighlightNotes, kdsItemNameLines, kdsDisplayModifierGroupName, kdsDisplayExclusionsAtTop, kdsAlphabeticalSort, kdsAggregateIdenticalItems],
   );
 
-  const [activeStatus, setActiveStatus] = useState<StatusFilter>("pending");
+  const workflowMode = useStoreSettingsStore((s) => s.selectedStore?.kds_workflow_mode) ?? '3-step';
+
+  const visibleStatusTabs = useMemo(() =>
+    workflowMode === '2-step' ? STATUS_TABS.filter((t) => t.key !== 'pending') : STATUS_TABS,
+    [workflowMode]
+  );
+
+  const [activeStatus, setActiveStatus] = useState<StatusFilter>(
+    workflowMode === '2-step' ? 'cooking' : 'pending'
+  );
   const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -928,8 +943,8 @@ const KitchenDisplayScreen = () => {
     }
     clearStationSession();
     clearStationData();
-    router.replace("/pin-login");
-  }, [stationSessionId, selectedStore?.id, supabase, clearStationSession, router]);
+    replaceRoute('(auth)', 'pin-login');
+  }, [stationSessionId, selectedStore?.id, supabase, clearStationSession]);
 
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore((s) => s.ticketsByStatus.pending);
@@ -1485,7 +1500,7 @@ const KitchenDisplayScreen = () => {
         >
           {/* Status tabs */}
           <View style={{ flexDirection: "row", gap: 6 }}>
-            {STATUS_TABS.map((tab) => {
+            {visibleStatusTabs.map((tab) => {
               const isActive = activeStatus === tab.key;
               return (
                 <TouchableOpacity

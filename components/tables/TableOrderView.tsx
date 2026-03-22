@@ -10,14 +10,16 @@ import TableDetailSkeleton from '@/components/tables/TableDetailSkeleton'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useTableCoursing } from '@/hooks/useTableCoursing'
+import { useTableSeating } from '@/hooks/useTableSeating'
+import SeatSelector from '@/components/tables/SeatSelector'
 import { useTableDuration } from '@/hooks/useTableDuration'
 import { useTablePaymentSync } from '@/hooks/useTablePaymentSync'
 import { useTableSession } from '@/hooks/useTableSession'
-import { isItemReadyOrServed } from '@/lib/kitchenStatusUtils'
+import { isItemReadyOrServed, getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
 import { isActiveSession } from '@/lib/tableStateMachine'
 import { colors } from '@/lib/theme'
 import { PrinterService } from '@/services/printing/PrinterService'
-import { useActiveOrderTotals } from '@/stores/selectors/orderSelectors'
+import { useActiveOrderTotals, useOrderPreAuth, useHasActivePreAuth } from '@/stores/selectors/orderSelectors'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -26,7 +28,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { ChevronLeft } from 'lucide-react-native'
+import { ChevronLeft, CreditCard, TrendingUp } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
@@ -58,6 +60,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   } = useTableSession(currentTableId, undefined, onClose)
 
   const coursingHook = useTableCoursing(activeOrder)
+
   useTablePaymentSync(activeOrder?.id, markPaymentSyncing, markPaymentSyncDone)
 
   const isTableActive = isActiveSession(tableStatus) || tableStatus === 'paid'
@@ -70,6 +73,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const isModifierSidebarOpen = useModifierSidebarStore(s => s.isOpen)
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
+
+  const enablePerSeatOrdering = useSettingsStore(s => s.enablePerSeatOrdering)
+  const enableCoursing = useSettingsStore(s => s.enableCoursing)
+  const partySize = session?.party_size ?? 2
+  const seatingHook = useTableSeating(activeOrder, partySize, enablePerSeatOrdering)
+
   const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
   const dispatchAction = useTableSessionStore(s => s.dispatchAction)
   const openPaymentSheet = usePaymentStore(s => s.open)
@@ -83,7 +92,10 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const syncOrderStatus = useOrderStore(s => s.syncOrderStatus)
 
   const activeOrderId = useOrderStore(s => s.activeOrderId)
+  const setPreAuthMode = usePaymentStore(s => s.setPreAuthMode)
   const totals = useActiveOrderTotals()
+  const preAuth = useOrderPreAuth(activeOrder?.id)
+  const hasPreAuth = useHasActivePreAuth(activeOrder?.id)
   const storeActiveOrderOutstandingTotal = totals?.amountDue ?? 0
   const storeActiveOrderTotal = totals?.total ?? 0
 
@@ -475,7 +487,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     // Optimistically mark items as sent/queued (single batched set() call)
     batchUpdateItemKitchenStatus(
       itemsInCourse.map((i) => i.id),
-      "sent",
+      getKitchenSentStatus(),
     );
 
     // Mark course as sent IMMEDIATELY (drives CourseGroup UI via isSent prop)
@@ -569,6 +581,31 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     return false
   }, [isFullyPaid, activeOrder?.check_status])
 
+  const handleAddSeat = useCallback(() => {
+    const newCount = seatingHook.addSeat()
+    updateActiveOrderDetails({ guest_count: newCount })
+    useTableSessionStore.getState().dispatch(currentTableId, {
+      type: 'PATCH', updates: { party_size: newCount }
+    })
+  }, [seatingHook.addSeat, updateActiveOrderDetails, currentTableId])
+
+  const handleRemoveSeat = useCallback(() => {
+    const { removedSeat, reassignedItemCount } = seatingHook.removeSeat()
+    if (removedSeat === 0) return
+    const newCount = removedSeat - 1
+    updateActiveOrderDetails({ guest_count: newCount })
+    useTableSessionStore.getState().dispatch(currentTableId, {
+      type: 'PATCH', updates: { party_size: newCount }
+    })
+    if (reassignedItemCount > 0) {
+      show({
+        title: 'Seat Removed',
+        message: `${reassignedItemCount} item(s) moved to Shared`,
+        type: 'warning'
+      })
+    }
+  }, [seatingHook.removeSeat, updateActiveOrderDetails, currentTableId, show])
+
   const handleSelectCourse = useCallback(
     (courseId: number | null) => {
       setSelectedCourseIdForTracker(courseId)
@@ -661,6 +698,29 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           <ChevronLeft color={colors.heading} size={26} />
           <Text className='text-heading text-lg font-medium ml-1'>Back</Text>
         </TouchableOpacity>
+
+        {enablePerSeatOrdering && (
+          <View style={{ flex: 1, marginLeft: 4 }}>
+            <SeatSelector
+              seatCount={seatingHook.seatCount}
+              activeSeat={seatingHook.activeSeat}
+              onSelectSeat={seatingHook.setActiveSeat}
+              onAddSeat={handleAddSeat}
+              onRemoveSeat={handleRemoveSeat}
+              canRemoveSeat={seatingHook.seatCount > 1}
+            />
+          </View>
+        )}
+
+        <View style={{ marginLeft: 'auto' }}>
+          <OrderInfoHeader
+            duration={duration}
+            tableId={currentTableId}
+            onOpenServerSheet={() => setServerSheetOpen(true)}
+            hideGuests={enablePerSeatOrdering}
+            inline
+          />
+        </View>
       </View>
 
       {isOvertime && (
@@ -675,9 +735,57 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       {/* Stage 1: OrderInfoHeader + TableBillSection (user sees their bill first) */}
       {renderStage >= 1 ? (
         <>
-          <View className='px-2 mt-2'>
-            <OrderInfoHeader duration={duration} tableId={currentTableId} onOpenServerSheet={() => setServerSheetOpen(true)} />
-          </View>
+          {/* Tab (Pre-Auth) Info Banner */}
+          {hasPreAuth && preAuth && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginHorizontal: 8,
+                marginTop: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                backgroundColor: colors.teal + '15',
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + '40',
+                gap: 8,
+              }}
+            >
+              <CreditCard size={14} color={colors.teal} />
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: colors.teal }}>
+                Tab Open: ${preAuth.preAuthAmount?.toFixed(2)}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setPreAuthMode('capture')
+                  openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+                }}
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  backgroundColor: colors.teal + '30',
+                  borderRadius: 6,
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.teal }}>Close Tab</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setPreAuthMode('increment')
+                  openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+                }}
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  backgroundColor: colors.warning + '30',
+                  borderRadius: 6,
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>Increase</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View className='flex-1 flex-row'>
             <TableBillSection
@@ -702,6 +810,12 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               onPressProceedToPayment={handleProceedToPayment}
               onPressStartNewCourse={finalizeCurrentCourse}
               isFullyPaid={isFullyPaid}
+              itemSeatMap={seatingHook.itemSeatMap}
+              activeSeat={seatingHook.activeSeat}
+              seatCount={seatingHook.seatCount}
+              onSelectSeat={seatingHook.setActiveSeat}
+              enablePerSeatOrdering={enablePerSeatOrdering}
+              enableCoursing={enableCoursing}
             />
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}

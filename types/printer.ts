@@ -286,6 +286,7 @@ export interface KitchenTicketItemData {
   isVoided?: boolean;
   station?: string;
   allergyAlert?: string;
+  seatNumber?: number | null;
 }
 
 // ============================================================================

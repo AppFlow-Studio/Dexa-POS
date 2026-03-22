@@ -11,6 +11,7 @@ import {
   setOfflineSyncSupabaseClient,
 } from "@/services/offlineSyncInit";
 import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
+import { setSeatingSupabaseClient } from "@/stores/useSeatingStore";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   setFloorPlanSupabaseClient,
@@ -78,6 +79,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setOrderStoreSupabaseClient(supabase);
       setFloorPlanSupabaseClient(supabase);
       setCoursingSupabaseClient(supabase);
+      setSeatingSupabaseClient(supabase);
       setOfflineSyncSupabaseClient(supabase);
       setWaitlistSupabaseClient(supabase);
       setPreviousOrdersSupabaseClient(supabase);
@@ -533,6 +535,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
           // Refresh stale floor plan data
           floorPlanStore.loadFloorPlanStatusIfStale();
+
+          // Refresh location settings (KDS workflow mode, etc.) from DB
+          storeSettings.refreshSelectedStore(supabase);
 
           // Refresh orders when app resumes via query invalidation
           if (storeSettings.selectedStore?.id) {

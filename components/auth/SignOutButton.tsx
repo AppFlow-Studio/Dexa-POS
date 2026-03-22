@@ -1,5 +1,6 @@
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useClerk } from "@clerk/clerk-expo";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
@@ -33,7 +34,7 @@ export const SignOutButton = ({
       clearSelectedStore();
       await signOut();
       // Redirect to login page after sign out
-      router.replace("/login");
+      replaceRoute('(auth)', 'login');
     } catch (err) {
       console.error("Error signing out:", JSON.stringify(err, null, 2));
     } finally {

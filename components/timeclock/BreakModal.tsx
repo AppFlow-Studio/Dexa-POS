@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import { Clock, LogOut } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -37,7 +38,7 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
   // This handler is now correct. It calls the store action which handles the logic.
   const handleSwitchAccount = () => {
     startBreak();
-    router.replace("/pin-login");
+    replaceRoute('(auth)', 'pin-login');
   };
 
   useEffect(() => {

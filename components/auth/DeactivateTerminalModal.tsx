@@ -6,6 +6,7 @@ import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { clearLocationData } from "@/services/cacheService";
 import { PosStaffLogoutResponse } from "@/types/station";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -155,7 +156,7 @@ const DeactivateTerminalModal = ({
       });
 
       handleClose();
-      router.replace("/station-select");
+      replaceRoute('(auth)', 'station-select');
     } catch (err: any) {
       triggerShake();
       setError(

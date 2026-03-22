@@ -48,12 +48,20 @@ export type OperationType =
   // Floor plan operations
   | "seat_guests"
   | "update_session_status"
+  | "merge_table"            // Merge additional table into existing session
   | "link_order_to_session"  // Bidirectional order-session linking
   // Check status operations
   | "close_check"           // Close check (lock from edits)
   | "reopen_check"          // Reopen closed check
   // Coursing operations
   | "fire_course"
+  // Seating operations
+  | "set_item_seat"
+  // Pre-auth operations (terminal call must be online; only backend sync queued)
+  | "process_preauth"
+  | "capture_preauth"
+  | "increment_preauth"
+  | "void_preauth"
   // Cash drawer operations
   | "record_cash_drawer_operation";
 
@@ -66,6 +74,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   create_order: 1,
   seat_guests: 1,
   update_session_status: 1,
+  merge_table: 1,            // Seating sub-operation, same priority
   link_order_to_session: 1,  // Relationship operation, high priority
 
   // Item operations after order exists
@@ -78,14 +87,21 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   remove_item: 3,
   void_item: 3,
 
-  // Coursing and kitchen after items
+  // Coursing, seating, and kitchen after items
   fire_course: 4,
+  set_item_seat: 3,
   update_order_status: 4,
   send_to_kitchen: 4,       // Kitchen send after items synced
   
   // Check status operations (after items/payments)
   close_check: 4,           // Close check
   reopen_check: 4,          // Reopen check
+
+  // Pre-auth operations (process before capture)
+  process_preauth: 4,
+  increment_preauth: 4,
+  capture_preauth: 5,
+  void_preauth: 5,
 
   // Payments last (after everything else synced)
   process_payment: 5,       // Unified payment via process_payment_v2
@@ -140,6 +156,10 @@ const PAYMENT_TYPES: OperationType[] = [
   "process_payment",
   "process_cash_payment",
   "process_card_payment",
+  "process_preauth",
+  "capture_preauth",
+  "increment_preauth",
+  "void_preauth",
 ];
 
 // ============================================================================
@@ -211,6 +231,7 @@ let deadLetterQueue: OfflineOperation[] = [];
 let syncInProgress = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeNetInfo: (() => void) | null = null;
+let periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
 
 // Indexes for O(1) lookups instead of linear scans
 const entityKeyIndex = new Map<string, Set<string>>(); // entityKey -> Set<operationId>
@@ -294,6 +315,9 @@ export async function initOfflineSyncService(config: {
   const state = await NetInfo.fetch();
   handleNetworkChange(state);
 
+  // Start periodic sync fallback (every 60s) to guard against missed NetInfo events
+  startPeriodicSync();
+
   console.log(
     "[OfflineSync] Initialized with",
     pendingOperations.length,
@@ -313,12 +337,38 @@ export function destroyOfflineSyncService(): void {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+  if (periodicSyncTimer) {
+    clearInterval(periodicSyncTimer);
+    periodicSyncTimer = null;
+  }
   // Clear all auto-retry timers
   for (const timer of autoRetryTimers.values()) {
     clearTimeout(timer);
   }
   autoRetryTimers.clear();
   isInitialized = false;
+}
+
+/**
+ * Periodic sync fallback — guards against missed NetInfo events.
+ * Checks every 60s if there are pending operations and we're online, then triggers sync.
+ */
+const PERIODIC_SYNC_INTERVAL_MS = 60_000;
+
+function startPeriodicSync(): void {
+  if (periodicSyncTimer) clearInterval(periodicSyncTimer);
+  periodicSyncTimer = setInterval(() => {
+    if (!isInitialized || !isOnline || syncInProgress) return;
+    const activePending = pendingOperations.filter(
+      (op) => op.status === "pending" || op.status === "blocked",
+    );
+    if (activePending.length > 0) {
+      console.log(
+        `[OfflineSync] Periodic sync: ${activePending.length} pending ops, triggering sync`,
+      );
+      processQueue();
+    }
+  }, PERIODIC_SYNC_INTERVAL_MS);
 }
 
 /**
@@ -1127,6 +1177,10 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
     "process_payment",
     "process_cash_payment",
     "process_card_payment",
+    "process_preauth",
+    "capture_preauth",
+    "increment_preauth",
+    "void_preauth",
     "update_order_status",
     "fire_course",
   ];

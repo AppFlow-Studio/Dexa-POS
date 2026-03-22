@@ -79,6 +79,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import { detectConflict } from "@/services/conflictDetectionService";
+import { isOrderPendingVoid, clearOrderPendingVoid } from "@/lib/pendingVoidOrderIds";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
   generateConflictToast,
@@ -1060,6 +1061,12 @@ const addItemToBackend = async (
         p_quantity: item.quantity,
         p_special_instructions: item.customizations?.notes || undefined,
         p_is_tax_exempt: item.is_tax_exempt || undefined,
+        p_seat_number: (() => {
+          try {
+            const { useSeatingStore } = require('@/stores/useSeatingStore') as typeof import('@/stores/useSeatingStore');
+            return useSeatingStore.getState().getActiveSeat(order.id) ?? undefined;
+          } catch { return undefined; }
+        })(),
       };
 
       if (__DEV__) console.log(
@@ -1288,6 +1295,12 @@ const addItemToBackend = async (
       // Kitchen/Coursing
       p_course_number:
         useCoursingStore.getState().getWorkingCourse(order.id) || 1, // Use working course or default to 1
+      p_seat_number: (() => {
+        try {
+          const { useSeatingStore } = require('@/stores/useSeatingStore') as typeof import('@/stores/useSeatingStore');
+          return useSeatingStore.getState().getActiveSeat(order.id) ?? undefined;
+        } catch { return undefined; }
+      })(),
 
       // Menu/Category context
       p_menu_id: item.addedFromMenuId || undefined,
@@ -1562,11 +1575,17 @@ const syncPaymentToBackend = async (
         amount: alloc.amount,
       })) || null;
 
+    // Detect full-remaining payment: no item allocations, no split, no force card pricing
+    const isFullRemainingPayment =
+      !paymentDetails.itemAllocations?.length &&
+      !paymentDetails.splitCount &&
+      !paymentDetails.forceCardPricing;
+
     // Build payment params for process_payment_v2 (will be resolved when order syncs)
     const paymentParams = {
       p_order_id: order.id, // Will be resolved to db_order_id at sync time
       p_payment_method: isCash ? "cash" : "card",
-      p_amount: paymentDetails.amount,
+      p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
       p_amount_tendered: isCash
         ? paymentDetails.transactionDetails?.amountTendered ||
@@ -1623,10 +1642,16 @@ const syncPaymentToBackend = async (
       terminalResponse: terminalResponse,
     });
 
+    // Detect full-remaining payment: no item allocations, no split, no force card pricing
+    const isFullRemainingPayment =
+      !paymentDetails.itemAllocations?.length &&
+      !paymentDetails.splitCount &&
+      !paymentDetails.forceCardPricing;
+
     const { data, error } = await supabase.rpc("process_payment_v7", {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
-      p_amount: paymentDetails.amount,
+      p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
       p_amount_tendered: isCash
         ? paymentDetails.transactionDetails?.amountTendered ||
@@ -2358,31 +2383,54 @@ function mergePayments(
   localPayments: OrderProfilePayment[],
   broadcastPayments: OrderProfilePayment[],
 ): OrderProfilePayment[] {
-  // Build set of broadcast db_payment_ids for O(1) lookup
+  // Payment status precedence (same as syncOrderFromBackendComplete)
+  const PAYMENT_STATUS_ORDER: Record<string, number> = {
+    authorized: 0, pending: 1, captured: 2, refunded: 3, voided: 3,
+  };
+
+  // Build local lookup by db_payment_id
+  const localByDbId = new Map<string, OrderProfilePayment>();
+  for (const lp of localPayments) {
+    if (lp.db_payment_id) localByDbId.set(lp.db_payment_id, lp);
+  }
+
+  // Build broadcast db_payment_id set
   const broadcastDbIds = new Set(
     broadcastPayments.map((bp) => bp.db_payment_id).filter(Boolean),
   );
 
-  // Filter local payments to find truly pending ones not represented in broadcast
+  // For each broadcast payment, pick the version with more advanced status
+  const mergedFromBroadcast = broadcastPayments.map((bp) => {
+    if (!bp.db_payment_id) return bp;
+    const lp = localByDbId.get(bp.db_payment_id);
+    if (
+      lp &&
+      (PAYMENT_STATUS_ORDER[lp.status ?? ""] ?? -1) >
+        (PAYMENT_STATUS_ORDER[bp.status ?? ""] ?? -1)
+    ) {
+      return lp; // Local is more advanced — preserve it
+    }
+    return bp; // Broadcast is same or more advanced
+  });
+
+  // Keep local payments NOT in broadcast
   const pendingLocal = localPayments.filter((lp) => {
-    // Already in broadcast by DB ID? Skip — broadcast version is authoritative.
     if (lp.db_payment_id && broadcastDbIds.has(lp.db_payment_id)) return false;
 
-    // Synced payment (has db_payment_id) NOT in broadcast? Skip — may have been voided server-side.
-    if (lp.sync_status !== "pending" && lp.db_payment_id) return false;
+    if (lp.sync_status !== "pending" && lp.db_payment_id) {
+      const isActivePreAuth = lp.isPreAuth && lp.status === "authorized" && !lp.isVoided;
+      const isLocalCapture = lp.status === "captured";
+      if (isActivePreAuth || isLocalCapture) return true;
+      return false;
+    }
 
-    // Truly pending (no db_payment_id yet) — check heuristic match
-    // Race condition: broadcast can arrive before syncPaymentToBackend tags db_payment_id
     if (!lp.db_payment_id) {
       const hasHeuristicMatch = broadcastPayments.some(
         (bp) =>
           bp.amount === lp.amount &&
           bp.method === lp.method &&
-          lp.timestamp &&
-          bp.timestamp &&
-          Math.abs(
-            new Date(bp.timestamp).getTime() - new Date(lp.timestamp).getTime(),
-          ) < 60000,
+          lp.timestamp && bp.timestamp &&
+          Math.abs(new Date(bp.timestamp).getTime() - new Date(lp.timestamp).getTime()) < 60000,
       );
       if (hasHeuristicMatch) return false;
     }
@@ -2390,9 +2438,7 @@ function mergePayments(
     return true;
   });
 
-  // Use broadcast payments as the base (they have correct itemsCovered from covers_items)
-  // Then append any truly pending local payments (not yet in broadcast)
-  return [...broadcastPayments, ...pendingLocal];
+  return [...mergedFromBroadcast, ...pendingLocal];
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -2757,58 +2803,67 @@ export const useOrderStore = create<OrderState>()(
 
                     // ═══════════════════════════════════════════════════════════
                     // Phase 6: Conflict Detection
+                    // Skip if this order is being voided locally (race window guard)
                     // ═══════════════════════════════════════════════════════════
-                    const serverOrderForConflict = {
-                      ...backendOrder,
-                      sync_version: backendOrder.sync_version ?? 0,
-                      total_amount: backendOrder.card_total,
-                      amount_paid: backendOrder.amount_paid,
-                      order_status: backendOrder.status,
-                      paid_status: mapPaymentStatus(
-                        backendOrder.payment_status,
-                      ),
-                      total_discount: backendOrder.discount_amount,
-                      items: backendOrder.order_items
-                        ? transformBroadcastItems(backendOrder.order_items)
-                        : [],
-                      _sourceStationName: backendOrder.station_name,
-                    };
+                    if (isOrderPendingVoid(localOrderId)) {
+                      if (__DEV__) console.log(
+                        "[OrderBroadcast] Skipping conflict detection — order pending void:",
+                        localOrderId,
+                      );
+                      clearOrderPendingVoid(localOrderId);
+                    } else {
+                      const serverOrderForConflict = {
+                        ...backendOrder,
+                        sync_version: backendOrder.sync_version ?? 0,
+                        total_amount: backendOrder.card_total,
+                        amount_paid: backendOrder.amount_paid,
+                        order_status: backendOrder.status,
+                        paid_status: mapPaymentStatus(
+                          backendOrder.payment_status,
+                        ),
+                        total_discount: backendOrder.discount_amount,
+                        items: backendOrder.order_items
+                          ? transformBroadcastItems(backendOrder.order_items)
+                          : [],
+                        _sourceStationName: backendOrder.station_name,
+                      };
 
-                    const conflict = detectConflict(
-                      localOrder,
-                      serverOrderForConflict as any,
-                    );
+                      const conflict = detectConflict(
+                        localOrder,
+                        serverOrderForConflict as any,
+                      );
 
-                    if (conflict) {
-                      // Add source station info
-                      conflict.sourceStationName =
-                        backendOrder.station_name ?? undefined;
-                      conflict.sourceStationId =
-                        backendOrder.station_id ?? undefined;
+                      if (conflict) {
+                        // Add source station info
+                        conflict.sourceStationName =
+                          backendOrder.station_name ?? undefined;
+                        conflict.sourceStationId =
+                          backendOrder.station_id ?? undefined;
 
-                      if (isConflictCritical(conflict)) {
-                        // Payment conflict - needs modal
-                        useConflictStore
-                          .getState()
-                          .addPaymentConflict(conflict);
-                        if (__DEV__) console.log(
-                          "[OrderBroadcast] Payment conflict detected:",
-                          conflict.conflictType,
-                        );
-                      } else {
-                        // Non-critical - record and show toast
-                        useConflictStore.getState().recordConflict(conflict);
+                        if (isConflictCritical(conflict)) {
+                          // Payment conflict - needs modal
+                          useConflictStore
+                            .getState()
+                            .addPaymentConflict(conflict);
+                          if (__DEV__) console.log(
+                            "[OrderBroadcast] Payment conflict detected:",
+                            conflict.conflictType,
+                          );
+                        } else {
+                          // Non-critical - record and show toast
+                          useConflictStore.getState().recordConflict(conflict);
 
-                        // Show toast notification for significant conflicts
-                        const toastData = generateConflictToast(conflict);
-                        if (conflict.severity !== "info") {
-                          toastService.show({
-                            title: "Order Update Conflict",
-                            type:
-                              toastData.type === "error" ? "error" : "warning",
-                            message: toastData.message,
-                            duration: toastData.duration ?? 5000,
-                          });
+                          // Show toast notification for significant conflicts
+                          const toastData = generateConflictToast(conflict);
+                          if (conflict.severity !== "info") {
+                            toastService.show({
+                              title: "Order Update Conflict",
+                              type:
+                                toastData.type === "error" ? "error" : "warning",
+                              message: toastData.message,
+                              duration: toastData.duration ?? 5000,
+                            });
+                          }
                         }
                       }
                     }
@@ -2837,8 +2892,8 @@ export const useOrderStore = create<OrderState>()(
                       const existingOrder = state.ordersById[localOrderId];
                       if (!existingOrder) return;
 
-                      // Never overwrite a locally-voided order with a stale broadcast
-                      if (existingOrder.order_status === "void") return;
+                      // Never overwrite a locally-voided or pending-void order with a stale broadcast
+                      if (existingOrder.order_status === "void" || isOrderPendingVoid(localOrderId)) return;
 
                       // Phase 2.5: Merge broadcast items with local items
                       // Strategy: Keep pending local items, update synced items from broadcast
@@ -2894,6 +2949,16 @@ export const useOrderStore = create<OrderState>()(
                         ];
                       }
 
+                      // Detect locally-advanced payment state to avoid stale broadcast reverting paid_status
+                      const PAID_STATUS_RANK: Record<string, number> = {
+                        Unpaid: 0, Pending: 0, Partial: 1, Paid: 2,
+                      };
+                      const localPaidRank = PAID_STATUS_RANK[existingOrder.paid_status ?? ""] ?? -1;
+                      const broadcastPaidRank = PAID_STATUS_RANK[
+                        mapPaymentStatus(backendOrder.payment_status)
+                      ] ?? -1;
+                      const isPaymentLocallyAhead = localPaidRank > broadcastPaidRank;
+
                       // Build updated order
                       const updatedOrder: OrderProfile = {
                         ...existingOrder,
@@ -2906,13 +2971,17 @@ export const useOrderStore = create<OrderState>()(
                         // Update total_discount from broadcast
                         total_discount: backendOrder.discount_amount,
 
-                        // Always update payment-related fields (backend is source of truth)
-                        amount_paid: backendOrder.amount_paid,
-                        amount_due: backendOrder.amount_due,
-                        cash_amount_due: backendOrder.cash_amount_due,
-                        paid_status: mapPaymentStatus(
-                          backendOrder.payment_status,
-                        ),
+                        // Only update payment totals when broadcast is not stale
+                        ...(isPaymentLocallyAhead
+                          ? { cash_amount_due: backendOrder.cash_amount_due }
+                          : {
+                              amount_paid: backendOrder.amount_paid,
+                              amount_due: backendOrder.amount_due,
+                              cash_amount_due: backendOrder.cash_amount_due,
+                              paid_status: mapPaymentStatus(
+                                backendOrder.payment_status,
+                              ),
+                            }),
 
                         // Update payments from broadcast if available (preserves itemsCovered/covers_items)
                         ...(backendOrder.order_payments &&
@@ -2940,19 +3009,21 @@ export const useOrderStore = create<OrderState>()(
                           0,
 
                         // Don't let broadcast revert a locally-preparing order back to draft
-                        // This protects optimistic status updates after payment from being overwritten
+                        // or revert locally-advanced payment state
                         ...(() => {
                           const isLocalAhead =
-                            existingOrder.order_status === "preparing" &&
-                            backendOrder.status === "draft";
+                            (existingOrder.order_status === "preparing" &&
+                            backendOrder.status === "draft") ||
+                            isPaymentLocallyAhead;
                           return !hasPendingChanges && !isLocalAhead
                             ? {
                                 // Status
                                 order_status: backendOrder.status,
+                                // Guard check_status: never revert Closed -> Opened from stale broadcast
                                 check_status:
-                                  backendOrder.check_status ||
-                                  existingOrder.check_status ||
-                                  "Opened",
+                                  (existingOrder.check_status === "Closed" && backendOrder.check_status !== "Closed")
+                                    ? existingOrder.check_status
+                                    : (backendOrder.check_status || existingOrder.check_status || "Opened"),
 
                                 // Card totals (default display)
                                 total_amount: backendOrder.card_total,
@@ -2979,8 +3050,10 @@ export const useOrderStore = create<OrderState>()(
                         state.activeOrderSubtotal = backendOrder.card_subtotal;
                         state.activeOrderDiscount =
                           backendOrder.discount_amount;
-                        state.activeOrderOutstandingTotal =
-                          backendOrder.amount_due;
+                        if (!isPaymentLocallyAhead) {
+                          state.activeOrderOutstandingTotal =
+                            backendOrder.amount_due;
+                        }
                         state.activeOrderOutstandingCash =
                           backendOrder.cash_amount_due;
                         state.activeOrderTotalCash = backendOrder.cash_total;
@@ -2996,10 +3069,11 @@ export const useOrderStore = create<OrderState>()(
                         updates: {
                           // Order status and totals (skipped above when hasPendingChanges)
                           order_status: backendOrder.status,
+                          // Guard check_status: never revert Closed -> Opened from stale broadcast
                           check_status:
-                            backendOrder.check_status ||
-                            localOrder.check_status ||
-                            "Opened",
+                            (localOrder.check_status === "Closed" && backendOrder.check_status !== "Closed")
+                              ? localOrder.check_status
+                              : (backendOrder.check_status || localOrder.check_status || "Opened"),
                           total_amount: backendOrder.card_total,
                           total_tax: backendOrder.card_tax_amount,
                           sent_to_kitchen_at:
@@ -3528,6 +3602,31 @@ export const useOrderStore = create<OrderState>()(
                   const normalized = normalizeFetchedOrder(
                     serverOrder as FetchedOrderData,
                   );
+
+                  // Hydrate missing payments from server (MMKV may have stale data,
+                  // or onRehydrate sync may have failed due to no supabase client)
+                  const localOrder = get().ordersById[serverOrder.id];
+                  if (
+                    localOrder &&
+                    (!localOrder.payments || localOrder.payments.length === 0) &&
+                    normalized.order_payments &&
+                    normalized.order_payments.length > 0
+                  ) {
+                    const serverPayments =
+                      transformBroadcastPaymentsToProfile(
+                        normalized.order_payments,
+                        normalized.order_items,
+                      );
+                    if (serverPayments.length > 0) {
+                      console.log(
+                        `[FetchOwn] Hydrating ${serverPayments.length} missing payments for order ${serverOrder.id}`,
+                      );
+                      get().patchOrder(serverOrder.id, {
+                        payments: serverPayments,
+                      });
+                    }
+                  }
+
                   get().upsertOrder(normalized);
                 }
               }
@@ -3550,9 +3649,13 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
-            // Normalize and transform items
+            // Normalize and transform items + payments
             const normalized = normalizeFetchedOrder(serverOrder);
             const items = transformBroadcastItems(normalized.order_items);
+            const payments = transformBroadcastPaymentsToProfile(
+              normalized.order_payments,
+              normalized.order_items,
+            );
 
             // Map to local OrderProfile format (use DB UUID as id)
             const localOrder: OrderProfile = {
@@ -3587,8 +3690,9 @@ export const useOrderStore = create<OrderState>()(
               amount_due: serverOrder.amount_due ?? 0,
               cash_amount_due: serverOrder.cash_amount_due ?? 0,
 
-              // Items
+              // Items + payments
               items,
+              payments,
 
               // Timestamps
               opened_at: serverOrder.created_at,
@@ -8354,6 +8458,25 @@ export const useOrderStore = create<OrderState>()(
                 ? ("Closed" as const)
                 : ("Opened" as const);
 
+              // Clear split path lock if no payments remain
+              if (updatedPayments.length === 0) {
+                o.split_payment_path = null;
+
+                // Clear on backend too
+                if (order.db_order_id) {
+                  const supabase = getOrderStoreSupabaseClient();
+                  if (supabase) {
+                    supabase
+                      .from("orders")
+                      .update({ split_payment_path: null })
+                      .eq("id", order.db_order_id)
+                      .then(({ error }) => {
+                        if (error) console.warn("[OrderStore] Failed to clear split_payment_path:", error.message);
+                      });
+                  }
+                }
+              }
+
               // Update active order totals if this is the active order
               if (orderId === activeOrderId) {
                 state.activeOrderOutstandingTotal = totals.outstanding_total;
@@ -8435,6 +8558,27 @@ export const useOrderStore = create<OrderState>()(
               const success = await get().voidPayment(orderId, i);
               if (!success) {
                 return false; // Stop if any void fails
+              }
+            }
+
+            // Safety-net: ensure split payment path lock is cleared
+            set((state) => {
+              const o = state.ordersById[orderId];
+              if (o) o.split_payment_path = null;
+            });
+
+            // Clear on backend too
+            const orderForClear = get().ordersById[orderId];
+            if (orderForClear?.db_order_id) {
+              const supabase = getOrderStoreSupabaseClient();
+              if (supabase) {
+                supabase
+                  .from("orders")
+                  .update({ split_payment_path: null })
+                  .eq("id", orderForClear.db_order_id)
+                  .then(({ error }) => {
+                    if (error) console.warn("[OrderStore] Failed to clear split_payment_path on voidAll:", error.message);
+                  });
               }
             }
 
@@ -8884,8 +9028,7 @@ export const useOrderStore = create<OrderState>()(
                   supabase
                     .from("order_payments")
                     .select("*")
-                    .eq("order_id", dbOrderId)
-                    .eq("status", "captured"),
+                    .eq("order_id", dbOrderId),
                   supabase
                     .from("order_item_payments")
                     .select("*")
@@ -9074,37 +9217,54 @@ export const useOrderStore = create<OrderState>()(
 
                 // Map payments from database
                 const syncedPayments: OrderProfilePayment[] =
-                  dbPayments?.map((p) => ({
-                    id: p.id,
-                    db_payment_id: p.id, // Ensure db_payment_id is set
-                    amount: p.amount,
-                    method: (p.payment_method === "card"
-                      ? "Card"
-                      : "Cash") as PaymentType,
-                    cardBrand: p.card_brand,
-                    last4: p.card_last4,
-                    tip_amount: p.tip_amount || 0,
-                    total_collected: p.amount + (p.tip_amount || 0),
-                    // Convert backend item_ids to new format with quantities
-                    // Backend doesn't store quantities per payment, so default to 1
-                    itemsCovered: (p.item_ids || []).map((itemId: string) => ({
-                      itemId,
-                      itemName: "Item", // Placeholder
-                      quantity: 1,
-                      unitPrice: 0, // Placeholder
-                      subtotal: 0, // Placeholder
-                    })),
-                    timestamp: p.created_at,
-                    status:
-                      p.status === "voided"
-                        ? "voided"
-                        : p.status === "refunded"
-                          ? "refunded"
-                          : "captured",
-                    isVoided: p.status === "voided",
-                    sync_status: "synced",
-                    sync_attempt_count: 0,
-                  })) ||
+                  dbPayments?.map((p) => {
+                    // Proper status mapping — preserve authorized for pre-auth
+                    const status: OrderProfilePayment["status"] =
+                      p.status === "voided" ? "voided" :
+                      p.status === "refunded" ? "refunded" :
+                      p.status === "authorized" ? "authorized" :
+                      p.status === "captured" ? "captured" :
+                      "pending";
+
+                    const isPreAuth = p.status === "authorized";
+                    const terminalResponse = (p as any).terminal_response as Record<string, any> | undefined;
+                    const castlesTxn = terminalResponse?.castles_transaction as Record<string, any> | undefined;
+
+                    return {
+                      id: p.id,
+                      db_payment_id: p.id,
+                      amount: p.amount,
+                      method: (p.payment_method === "card"
+                        ? "Card"
+                        : "Cash") as PaymentType,
+                      cardBrand: p.card_brand,
+                      last4: p.card_last4,
+                      tip_amount: p.tip_amount || 0,
+                      total_collected: p.amount + (p.tip_amount || 0),
+                      itemsCovered: (p.item_ids || []).map((itemId: string) => ({
+                        itemId,
+                        itemName: "Item",
+                        quantity: 1,
+                        unitPrice: 0,
+                        subtotal: 0,
+                      })),
+                      timestamp: p.created_at,
+                      status,
+                      isVoided: p.status === "voided",
+                      sync_status: "synced" as const,
+                      sync_attempt_count: 0,
+                      // Pre-auth fields
+                      isPreAuth,
+                      ...(isPreAuth ? {
+                        preAuthAmount: p.amount,
+                        preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                        preAuthStan: castlesTxn?.stan,
+                        preAuthAuthCode: (p as any).authorization_code || castlesTxn?.approvalCode,
+                        preAuthReferenceId: (p as any).reference_number || castlesTxn?.referenceId,
+                        preAuthTerminalType: (terminalResponse?.terminal_vendor === 'castles' ? 'castles' : 'dejavoo') as 'dejavoo' | 'castles' | undefined,
+                      } : {}),
+                    };
+                  }) ||
                   localOrder?.payments ||
                   [];
 
@@ -9240,8 +9400,7 @@ export const useOrderStore = create<OrderState>()(
               const { data: dbPayments, error: paymentsError } = await supabase
                 .from("order_payments")
                 .select("*")
-                .eq("order_id", order.db_order_id)
-                .eq("status", "captured");
+                .eq("order_id", order.db_order_id);
 
               if (paymentsError) {
                 console.warn(
@@ -9291,6 +9450,10 @@ export const useOrderStore = create<OrderState>()(
                       ? p.original_amount - p.amount
                       : undefined;
 
+                  const isPreAuth = p.status === "authorized";
+                  const terminalResponse = (p as any).terminal_response as Record<string, any> | undefined;
+                  const castlesTxn = terminalResponse?.castles_transaction as Record<string, any> | undefined;
+
                   return {
                     id: `payment_${p.id}`,
                     db_payment_id: p.id,
@@ -9313,13 +9476,25 @@ export const useOrderStore = create<OrderState>()(
                       ? "voided"
                       : p.status === "refunded"
                         ? "refunded"
-                        : p.status === "captured"
-                          ? "captured"
-                          : "pending",
+                        : p.status === "authorized"
+                          ? "authorized"
+                          : p.status === "captured"
+                            ? "captured"
+                            : "pending",
                     timestamp: p.captured_at ?? p.created_at,
                     isVoided: p.is_voided ?? false,
                     voidReason: p.void_reason ?? undefined,
                     sync_status: "synced",
+                    // Pre-auth fields
+                    isPreAuth,
+                    ...(isPreAuth ? {
+                      preAuthAmount: p.amount,
+                      preAuthRrn: (p as any).rrn || castlesTxn?.rrn,
+                      preAuthStan: castlesTxn?.stan,
+                      preAuthAuthCode: (p as any).authorization_code || castlesTxn?.approvalCode,
+                      preAuthReferenceId: (p as any).reference_number || castlesTxn?.referenceId,
+                      preAuthTerminalType: (terminalResponse?.terminal_vendor === 'castles' ? 'castles' : 'dejavoo') as 'dejavoo' | 'castles' | undefined,
+                    } : {}),
                   };
                 }) || [];
 
@@ -9628,6 +9803,34 @@ export const useOrderStore = create<OrderState>()(
                 const exists = !!get().ordersById[serverOrder.id];
                 // Skip if already in store, UNLESS forceRefresh is true
                 if (exists && !forceRefresh) {
+                  // Hydrate missing payments from server data already fetched
+                  const localOrder = get().ordersById[serverOrder.id];
+                  const fetchedPayments = (serverOrder as any).order_payments;
+                  if (
+                    localOrder &&
+                    (!localOrder.payments ||
+                      localOrder.payments.length === 0) &&
+                    fetchedPayments?.length > 0
+                  ) {
+                    const normalized = normalizeFetchedOrder(
+                      serverOrder as FetchedOrderData,
+                    );
+                    const payments = transformBroadcastPaymentsToProfile(
+                      normalized.order_payments,
+                      normalized.order_items,
+                    );
+                    if (payments.length > 0) {
+                      console.log(
+                        `[initializeOrders] Hydrating ${payments.length} missing payments for order ${serverOrder.id}`,
+                      );
+                      set((state) => {
+                        const order = state.ordersById[serverOrder.id];
+                        if (order) {
+                          order.payments = payments;
+                        }
+                      });
+                    }
+                  }
                   continue;
                 }
 
@@ -9772,15 +9975,23 @@ export const useOrderStore = create<OrderState>()(
             // Auto-manage paid_status from payments
             const hasItems = (order.items?.length || 0) > 0;
             if (hasItems) {
-              const correctPaidStatus = calculatePaidStatusFromPayments(
-                order.payments,
-                totals.total_amount,
+              // Skip paid_status recalculation for orders with pre-auth payments —
+              // calculatePaidStatus doesn't understand pre-auth semantics,
+              // trust the backend-synced paid_status instead
+              const hasPreAuthPayments = order.payments?.some(
+                (p) => !p.isVoided && (p.isPreAuth || p.status === "authorized"),
               );
-              if (correctPaidStatus !== order.paid_status) {
-                set((state) => {
-                  const o = state.ordersById[orderId];
-                  if (o) o.paid_status = correctPaidStatus;
-                });
+              if (!hasPreAuthPayments) {
+                const correctPaidStatus = calculatePaidStatusFromPayments(
+                  order.payments,
+                  totals.total_amount,
+                );
+                if (correctPaidStatus !== order.paid_status) {
+                  set((state) => {
+                    const o = state.ordersById[orderId];
+                    if (o) o.paid_status = correctPaidStatus;
+                  });
+                }
               }
             }
 
@@ -10055,7 +10266,13 @@ export const useOrderStore = create<OrderState>()(
 
               // Transform payments to OrderProfile format with comprehensive fields
               const transformedPayments: OrderProfilePayment[] =
-                paymentsData.map((payment: any) => ({
+                paymentsData.map((payment: any) => {
+                  // Extract terminal response data for fallback card details + pre-auth fields
+                  const terminalResp = payment.terminal_response as Record<string, any> | undefined;
+                  const castlesTxn = terminalResp?.castles_transaction as Record<string, any> | undefined;
+                  const dejavooTxn = terminalResp?.dejavoo_transaction as Record<string, any> | undefined;
+
+                  return {
                   // Core identifiers
                   id: payment.id,
                   db_payment_id: payment.id,
@@ -10069,9 +10286,9 @@ export const useOrderStore = create<OrderState>()(
                   total_collected:
                     (payment.amount || 0) + (payment.tip_amount || 0),
 
-                  // Card details
-                  cardBrand: payment.card_type,
-                  last4: payment.card_last_four,
+                  // Card details (with terminal response fallback)
+                  cardBrand: payment.card_type ?? castlesTxn?.cardType ?? dejavooTxn?.CardType,
+                  last4: payment.card_last_four ?? castlesTxn?.cardLast4 ?? dejavooTxn?.Last4,
 
                   // Cash details
                   amountTendered: payment.amount_tendered,
@@ -10146,8 +10363,8 @@ export const useOrderStore = create<OrderState>()(
                     terminalType: payment.terminal_type,
                     authorizationCode:
                       payment.authorization_code || payment.auth_code,
-                    cardType: payment.card_type,
-                    last4: payment.card_last_four,
+                    cardType: payment.card_type ?? castlesTxn?.cardType ?? dejavooTxn?.CardType,
+                    last4: payment.card_last_four ?? castlesTxn?.cardLast4 ?? dejavooTxn?.Last4,
                     transactionId: payment.transaction_id,
                     amountTendered: payment.amount_tendered,
                     changeGiven: payment.change_given,
@@ -10163,13 +10380,25 @@ export const useOrderStore = create<OrderState>()(
                     invoiceNumber: payment.dejavoo_invoice_number,
                     entryMode:
                       payment.processor_response?.dejavoo_transaction
-                        ?.entryMode,
+                        ?.entryMode ?? castlesTxn?.entryMode,
                     referenceId: payment.reference_number,
+                    castlesTransaction: castlesTxn,
                   },
+
+                  // Pre-auth fields (hydrate from backend so pre-auth state survives refresh)
+                  isPreAuth: payment.status === 'authorized',
+                  ...(payment.status === 'authorized' ? {
+                    preAuthAmount: payment.amount,
+                    preAuthRrn: payment.rrn || castlesTxn?.rrn,
+                    preAuthStan: castlesTxn?.stan,
+                    preAuthAuthCode: payment.authorization_code || castlesTxn?.approvalCode,
+                    preAuthReferenceId: payment.reference_number || castlesTxn?.referenceId,
+                    preAuthTerminalType: (payment.terminal_type === 'castles' ? 'castles' : 'dejavoo') as 'castles' | 'dejavoo',
+                  } : {}),
 
                   // Sync status
                   sync_status: "synced" as const,
-                }));
+                };});
 
               // Calculate paid status from backend payment_status
               const paidStatus =
@@ -10197,14 +10426,16 @@ export const useOrderStore = create<OrderState>()(
 
               // Update local store with complete order data
               set((state) => {
-                const currentOrder = state.ordersById[storeKey];
-                if (!currentOrder) {
+                if (!state.ordersById[storeKey]) {
                   console.error(
                     "[syncOrderFromBackendComplete] ❌ Order not found in store during update!",
                     { orderId: storeKey },
                   );
                   return;
                 }
+                // Snapshot the draft to a plain object so downstream spreads
+                // and freeze() don't hit revoked Immer proxies.
+                const currentOrder = current(state.ordersById[storeKey]!);
                 console.log("PASSED LOCAL ID", storeKey);
                 console.log("ACTIVE ORDER", state.activeOrderId);
                 console.log("[syncOrderFromBackendComplete] Updating store:", {
@@ -10222,6 +10453,38 @@ export const useOrderStore = create<OrderState>()(
                   (item) => !item.db_order_item_id && !item.isDraft,
                 );
 
+                // Preserve local payments that haven't synced to backend yet
+                // (e.g. pre-auth payments added optimistically before syncPreAuthToBackend completes)
+                const localPendingPayments = currentOrder.payments?.filter(
+                  (p) => !p.db_payment_id && p.sync_status === "pending",
+                ) ?? [];
+
+                // Preserve locally-advanced payments (e.g. local="captured" vs server="authorized")
+                // This prevents realtime sync from regressing payment status when capture_preauth_v1
+                // hasn't completed on the server yet but closeCheck already incremented sync_version.
+                const PAYMENT_STATUS_ORDER: Record<string, number> = {
+                  authorized: 0, pending: 1, captured: 2, refunded: 3, voided: 3,
+                };
+                const localPaymentsByDbId = new Map<string, OrderProfilePayment>();
+                for (const p of currentOrder.payments ?? []) {
+                  if (p.db_payment_id) localPaymentsByDbId.set(p.db_payment_id, p);
+                }
+
+                let hasLocalAdvancedPayments = false;
+                const mergedPayments = transformedPayments.map((serverPmt) => {
+                  if (!serverPmt.db_payment_id) return serverPmt;
+                  const localPmt = localPaymentsByDbId.get(serverPmt.db_payment_id);
+                  if (
+                    localPmt &&
+                    (PAYMENT_STATUS_ORDER[localPmt.status ?? ""] ?? -1) >
+                      (PAYMENT_STATUS_ORDER[serverPmt.status ?? ""] ?? -1)
+                  ) {
+                    hasLocalAdvancedPayments = true;
+                    return localPmt;
+                  }
+                  return serverPmt;
+                });
+
                 // Conflict guard: preserve local status if we have pending changes
                 const hasLocalPending = currentOrder.items.some(
                   (item) => item.sync_status === "pending" || (!item.db_order_item_id && !item.isDraft),
@@ -10231,7 +10494,7 @@ export const useOrderStore = create<OrderState>()(
                 const updatedOrder: OrderProfile = {
                   ...currentOrder,
                   items: [...transformedItems, ...localPendingItems],
-                  payments: transformedPayments,
+                  payments: [...mergedPayments, ...localPendingPayments],
                   // Reversals and refund items from backend
                   reversals: reversalsData,
                   order_refund_items: orderRefundItemsData,
@@ -10244,11 +10507,12 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: orderData.card_total ?? orderData.total_amount,
                   total_tax: orderData.tax_amount,
                   total_discount: orderData.discount_amount,
-                  amount_paid: orderData.amount_paid,
-                  amount_due: orderData.amount_due,
+                  amount_paid: hasLocalAdvancedPayments ? currentOrder.amount_paid : orderData.amount_paid,
+                  amount_due: hasLocalAdvancedPayments ? currentOrder.amount_due : orderData.amount_due,
                   cash_amount_due: orderData.cash_amount_due,
-                  // Status fields — preserve local status when items are pending sync
-                  paid_status: hasLocalPending ? currentOrder.paid_status : paidStatus,
+                  // Status fields — preserve local status when items are pending sync or payments are ahead
+                  paid_status: hasLocalAdvancedPayments ? currentOrder.paid_status
+                    : (hasLocalPending ? currentOrder.paid_status : paidStatus),
                   order_status: hasLocalPending ? currentOrder.order_status : orderData.status,
                   sync_version: orderData.sync_version,
                   check_status:
@@ -10264,6 +10528,9 @@ export const useOrderStore = create<OrderState>()(
                     orderData.customer_id ?? currentOrder.customer_id,
                   delivery_address:
                     orderData.delivery_address ?? currentOrder.delivery_address,
+                  // Split payment path (multi-station sync)
+                  split_payment_path:
+                    (orderData as any).split_payment_path ?? currentOrder.split_payment_path ?? null,
                 };
 
                 state.ordersById[storeKey] = freeze(updatedOrder);
@@ -10273,7 +10540,9 @@ export const useOrderStore = create<OrderState>()(
                     orderData.card_total ?? orderData.total_amount;
                   state.activeOrderTax = orderData.tax_amount;
                   state.activeOrderDiscount = orderData.discount_amount;
-                  state.activeOrderOutstandingTotal = orderData.amount_due;
+                  state.activeOrderOutstandingTotal = hasLocalAdvancedPayments
+                    ? (currentOrder.amount_due ?? orderData.amount_due)
+                    : orderData.amount_due;
                   state.activeOrderOutstandingCash = orderData.cash_amount_due;
                 }
               });

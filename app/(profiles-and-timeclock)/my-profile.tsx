@@ -8,6 +8,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { Link, router, useLocalSearchParams } from "expo-router";
 import { colors, spinnerColor } from "@/lib/theme";
 import { ArrowLeft, Calendar, Menu } from "lucide-react-native";
@@ -94,7 +95,7 @@ const MyProfileScreen = () => {
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-3">
             <TouchableOpacity
-              onPress={() => router.replace("/home")}
+              onPress={() => replaceRoute('(main)', 'home')}
               className="p-1.5 rounded-lg bg-teal-500/10"
             >
               <ArrowLeft color={colors.teal} size={18} />

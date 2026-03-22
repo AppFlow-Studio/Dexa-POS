@@ -321,6 +321,7 @@ export interface UseRealtimeChannelReturn {
 export interface UseFloorRealtimeOptions {
   locationId: string;
   enabled?: boolean;
+  maxReconnectAttempts?: number;
   onSessionChange?: (payload: TableSessionPayload) => void;
   onTableAssignment?: (payload: TableAssignmentPayload) => void;
   onSessionEvent?: (payload: SessionEventPayload) => void;
@@ -336,6 +337,7 @@ export interface UseWaitlistRealtimeOptions {
 export interface UseOrdersRealtimeOptions {
   locationId: string;
   enabled?: boolean;
+  maxReconnectAttempts?: number;
   onOrderChange?: (payload: OrderPayload) => void;
   onPaymentChange?: (payload: PaymentPayload) => void;
 }

@@ -6,6 +6,7 @@ import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import { colors } from "@/lib/theme";
 import {
@@ -173,7 +174,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         type: "success",
       });
       signOut();
-      router.replace("/pin-login");
+      replaceRoute('(auth)', 'pin-login');
     } else {
       show({
         title: "Break Started",
@@ -185,7 +186,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
   const handleLogout = () => {
     useTimeclockStore.getState().clockOut(employee.id);
-    router.replace("/pin-login");
+    replaceRoute('(auth)', 'pin-login');
   };
 
   const initials = employee.fullName

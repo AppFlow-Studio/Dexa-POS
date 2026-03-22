@@ -5,6 +5,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
 import { RefundService } from "@/services/refundService";
+import { getIsOnline } from "@/services/offlineSyncService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { orderHistoryKeys } from "./useOrderHistory";
@@ -200,6 +201,13 @@ export function useRefundMutation() {
 
   return useMutation({
     mutationFn: async (input: RefundMutationInput) => {
+      // Block refunds when offline — refunds require live terminal + backend RPC
+      if (!getIsOnline()) {
+        throw new Error(
+          "Refunds require an internet connection. Please reconnect and try again.",
+        );
+      }
+
       const { loggedInEmployee } = useEmployeeStore.getState();
 
       if (!loggedInEmployee?.profileId) {

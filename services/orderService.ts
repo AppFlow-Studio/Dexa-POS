@@ -27,6 +27,7 @@ export type AddOpenItemParams = {
   p_quantity?: number;
   p_special_instructions?: string | null;
   p_is_tax_exempt?: boolean | null;
+  p_seat_number?: number | null;
 };
 
 export type AddOpenItemResult = {
@@ -48,6 +49,7 @@ export type UpdateOpenItemParams = {
   p_quantity?: number | null;
   p_unit_price?: number | null;
   p_special_instructions?: string | null;
+  p_seat_number?: number | null;
 };
 
 export type UpdateOpenItemResult = {
@@ -614,7 +616,8 @@ export class OrderService {
         order_items (
           *,
           order_item_modifiers (*)
-        )
+        ),
+        order_payments (*)
       `,
       )
       .eq("id", orderId)
@@ -817,12 +820,14 @@ export class OrderService {
   static async recallOrderItems(
     client: SupabaseClient,
     orderItemIds: string[],
+    targetStatus: string = "sent",
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
     }
     const { data, error } = await client.rpc("recall_kds_items", {
       p_order_item_ids: orderItemIds,
+      p_target_status: targetStatus,
     });
     return { data, error };
   }

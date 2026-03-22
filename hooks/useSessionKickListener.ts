@@ -2,6 +2,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
@@ -128,7 +129,7 @@ export function useSessionKickListener(): UseSessionKickListenerResult {
     clearSelectedStation();
 
     // Navigate to station select
-    router.replace("/station-select");
+    replaceRoute('(auth)', 'station-select');
 
     // Reset kick state
     isKickedRef.current = false;

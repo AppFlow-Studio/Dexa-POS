@@ -41,6 +41,7 @@ export interface BroadcastOrderItemData {
   refunded_quantity?: number;
   refunded_amount?: number;
   course_number: number | null;
+  seat_number?: number | null;
   is_voided: boolean;
   is_open_item: boolean;
   open_item_name: string | null;
@@ -69,7 +70,7 @@ export interface BroadcastOrderPaymentData {
   amount: number;
   tip_amount: number;
   total_amount: number;
-  status: "pending" | "captured" | "failed" | "voided" | "refunded";
+  status: "pending" | "authorized" | "captured" | "failed" | "voided" | "refunded";
 
   // Portions
   subtotal_portion: number;
@@ -127,8 +128,12 @@ export interface BroadcastOrderPaymentData {
   return_reason?: string | null;
 
   // Timestamps
+  authorized_at?: string | null;
   captured_at: string | null;
   created_at: string;
+
+  // Terminal response JSONB (for pre-auth field extraction)
+  terminal_response?: Record<string, unknown> | null;
 }
 
 export interface BroadcastOrderData {
@@ -157,6 +162,7 @@ export interface BroadcastOrderData {
   station_name: string | null;
   // Order info
   order_source?: string | null;
+  split_payment_path?: string | null;
   order_type: "dine_in" | "takeout" | "delivery";
   status:
     | "draft"
@@ -265,6 +271,7 @@ export const ordersQueryKeys = {
 export function useOrdersRealtime({
   locationId,
   enabled = true,
+  maxReconnectAttempts,
   onOrderChange,
   onPaymentChange,
 }: UseOrdersRealtimeOptions) {
@@ -418,6 +425,7 @@ export function useOrdersRealtime({
     events,
     onMessage: handleMessage,
     enabled: enabled && !!locationId && !!supabase, // Add supabase check
+    ...(maxReconnectAttempts != null && { maxReconnectAttempts }),
   });
 
   return {

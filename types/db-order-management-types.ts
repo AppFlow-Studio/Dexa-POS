@@ -218,6 +218,7 @@ export interface AddOrderItemParams {
 
   // Kitchen/Coursing
   p_course_number?: number;
+  p_seat_number?: number | null;
 
   // Menu/Category context
   p_menu_id?: string;
@@ -241,9 +242,9 @@ export interface AddOrderItemResult {
 export interface ProcessPaymentParams {
   p_order_id: string;
   p_payment_method: PaymentMethod;
-  p_amount: number;
+  p_amount: number | null;
   p_tip_amount?: number;
-  p_amount_tendered?: number; // For cash: what customer gave
+  p_amount_tendered?: number | null; // For cash: what customer gave
   p_terminal_type?: TerminalType;
   p_terminal_id?: string;
   p_device_id?: string;
@@ -581,8 +582,8 @@ export interface ProcessPaymentV2Params {
   /** Payment method: 'card' or 'cash' */
   p_payment_method: PaymentMethod;
 
-  /** Payment amount (required, but may be ignored for split payments) */
-  p_amount: number;
+  /** Payment amount. null = pay full remaining (avoids frontend/backend rounding mismatch) */
+  p_amount: number | null;
 
   /** Tip amount (optional, default 0) */
   p_tip_amount?: number;
@@ -724,4 +725,67 @@ export async function processPaymentV2(
   }
 
   return { data: data as ProcessPaymentV2Response, error: null };
+}
+
+// ============================================================
+// PRE-AUTH RPC TYPES
+// ============================================================
+
+export interface ProcessPreAuthParams {
+  p_order_id: string;
+  p_amount: number;
+  p_terminal_response?: Record<string, unknown> | null;
+  p_staff_id?: string | null;
+}
+
+export interface ProcessPreAuthResponse {
+  success: boolean;
+  payment_id?: string;
+  authorized_amount?: number;
+  rrn?: string;
+  auth_code?: string;
+  error?: string;
+}
+
+export interface CapturePreAuthParams {
+  p_payment_id: string;
+  p_capture_amount: number;
+  p_tip_amount?: number;
+  p_terminal_response?: Record<string, unknown> | null;
+  p_staff_id?: string | null;
+}
+
+export interface CapturePreAuthResponse {
+  success: boolean;
+  payment_id?: string;
+  captured_amount?: number;
+  tip_amount?: number;
+  order_fully_paid?: boolean;
+  order_amount_due?: number;
+  error?: string;
+}
+
+export interface UpdatePreAuthAmountParams {
+  p_payment_id: string;
+  p_new_amount: number;
+  p_terminal_response?: Record<string, unknown> | null;
+}
+
+export interface UpdatePreAuthAmountResponse {
+  success: boolean;
+  payment_id?: string;
+  new_authorized_amount?: number;
+  error?: string;
+}
+
+export interface VoidPreAuthParams {
+  p_payment_id: string;
+  p_staff_id?: string | null;
+  p_reason?: string | null;
+}
+
+export interface VoidPreAuthResponse {
+  success: boolean;
+  payment_id?: string;
+  error?: string;
 }

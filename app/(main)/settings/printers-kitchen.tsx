@@ -1607,39 +1607,94 @@ const PrintersKitchenScreen = () => {
         {/* ============================================================== */}
         {activeTab === "kds" && (
           <View>
-            <SectionHeader title="KDS Auto-Fire" />
-            <ToggleRow
-              label="Auto-Fire Pending Courses"
-              value={kdsAutoFireEnabled}
-              onToggle={(v) => updateField("kdsAutoFireEnabled", v)}
-            />
-            {kdsAutoFireEnabled && (
-              <View className="bg-surface rounded-lg px-3 py-3 mb-2">
-                <View className="flex-row justify-between items-center">
-                  <Text className="text-gray-300 text-sm">Delay before auto-fire</Text>
-                  <View className="flex-row items-center gap-2">
+            <SectionHeader title="KDS Workflow Mode" />
+            <View className="bg-surface rounded-lg px-3 py-3 mb-2">
+              <Text className="text-gray-400 text-xs mb-2">
+                Controls how items flow through the KDS. 3-Step requires cooks to acknowledge orders before cooking. 2-Step skips the Pending stage.
+              </Text>
+              <View className="flex-row gap-2">
+                {([
+                  { value: '3-step' as const, label: '3-Step', desc: 'Pending → Cooking → Served' },
+                  { value: '2-step' as const, label: '2-Step', desc: 'Cooking → Served' },
+                ] as const).map((opt) => {
+                  const isSelected = (selectedStore?.kds_workflow_mode ?? '3-step') === opt.value;
+                  return (
                     <TouchableOpacity
-                      onPress={() =>
-                        updateField("kdsAutoFireDelayMinutes", Math.max(1, kdsAutoFireDelayMinutes - 1))
-                      }
-                      className="bg-card px-3 py-1.5 rounded-lg"
+                      key={opt.value}
+                      onPress={async () => {
+                        if (!selectedStore?.id) return;
+                        // Optimistic local update
+                        useStoreSettingsStore.getState().setSelectedStore({
+                          ...selectedStore,
+                          kds_workflow_mode: opt.value,
+                        });
+                        // Persist to DB
+                        await supabase
+                          .from('locations')
+                          .update({ kds_workflow_mode: opt.value })
+                          .eq('id', selectedStore.id);
+                        // If switching to 2-step, migrate existing pending items
+                        if (opt.value === '2-step') {
+                          await supabase.rpc('migrate_pending_to_preparing', {
+                            p_location_id: selectedStore.id,
+                          });
+                        }
+                      }}
+                      className={`flex-1 px-3 py-2.5 rounded-lg border ${
+                        isSelected
+                          ? 'bg-blue-600 border-blue-500'
+                          : 'bg-card border-gray-600'
+                      }`}
                     >
-                      <Minus size={16} color="white" />
+                      <Text className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                        {opt.label}
+                      </Text>
+                      <Text className={`text-xs mt-0.5 ${isSelected ? 'text-blue-200' : 'text-gray-500'}`}>
+                        {opt.desc}
+                      </Text>
                     </TouchableOpacity>
-                    <Text className="text-blue-400 font-bold text-base w-16 text-center">
-                      {kdsAutoFireDelayMinutes} min
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() =>
-                        updateField("kdsAutoFireDelayMinutes", Math.min(30, kdsAutoFireDelayMinutes + 1))
-                      }
-                      className="bg-card px-3 py-1.5 rounded-lg"
-                    >
-                      <Plus size={16} color="white" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                  );
+                })}
               </View>
+            </View>
+
+            {(selectedStore?.kds_workflow_mode ?? '3-step') !== '2-step' && (
+              <>
+                <SectionHeader title="KDS Auto-Fire" />
+                <ToggleRow
+                  label="Auto-Fire Pending Courses"
+                  value={kdsAutoFireEnabled}
+                  onToggle={(v) => updateField("kdsAutoFireEnabled", v)}
+                />
+                {kdsAutoFireEnabled && (
+                  <View className="bg-surface rounded-lg px-3 py-3 mb-2">
+                    <View className="flex-row justify-between items-center">
+                      <Text className="text-gray-300 text-sm">Delay before auto-fire</Text>
+                      <View className="flex-row items-center gap-2">
+                        <TouchableOpacity
+                          onPress={() =>
+                            updateField("kdsAutoFireDelayMinutes", Math.max(1, kdsAutoFireDelayMinutes - 1))
+                          }
+                          className="bg-card px-3 py-1.5 rounded-lg"
+                        >
+                          <Minus size={16} color="white" />
+                        </TouchableOpacity>
+                        <Text className="text-blue-400 font-bold text-base w-16 text-center">
+                          {kdsAutoFireDelayMinutes} min
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() =>
+                            updateField("kdsAutoFireDelayMinutes", Math.min(30, kdsAutoFireDelayMinutes + 1))
+                          }
+                          className="bg-card px-3 py-1.5 rounded-lg"
+                        >
+                          <Plus size={16} color="white" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </>
             )}
 
             <SectionHeader title="Sound Notifications" />

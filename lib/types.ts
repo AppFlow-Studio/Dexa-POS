@@ -441,6 +441,9 @@ export interface CartItem {
 
   // Course management (for multi-course dining)
   courseNumber?: number; // Which course this item belongs to (1, 2, 3, etc.)
+
+  // Seat management (for per-seat ordering)
+  seatNumber?: number | null; // Which seat (1..N), null = shared/unassigned
 }
 
 export interface OnlineOrder {
@@ -755,6 +758,15 @@ export interface OrderPaymentTransactionDetails {
   [key: string]: unknown;
 }
 
+export type SplitPaymentPath = "split-by-item" | "split-evenly" | "split-custom-amount" | "pay-for-items";
+
+export const SPLIT_PATH_LABELS: Record<SplitPaymentPath, string> = {
+  "split-by-item": "Split by Item",
+  "split-evenly": "Split Evenly",
+  "split-custom-amount": "Custom Amount",
+  "pay-for-items": "Pay for Items",
+};
+
 /**
  * Payment record for UI consumption with enhanced item coverage tracking.
  * Used in OrderProfile.payments array.
@@ -797,8 +809,17 @@ export interface OrderProfilePayment {
   itemsCovered: OrderPaymentItemCoverage[];
 
   // Status and timestamps
-  status: "pending" | "captured" | "voided" | "refunded";
+  status: "pending" | "authorized" | "captured" | "voided" | "refunded";
   timestamp: string;
+
+  // Pre-auth fields (populated when status === 'authorized')
+  isPreAuth?: boolean;
+  preAuthAmount?: number;
+  preAuthRrn?: string;
+  preAuthStan?: string; // Castles only
+  preAuthAuthCode?: string;
+  preAuthReferenceId?: string;
+  preAuthTerminalType?: 'dejavoo' | 'castles';
 
   // Void tracking
   isVoided: boolean;
@@ -911,6 +932,7 @@ export interface OrderProfile {
   applied_discounts?: OrderAppliedDiscount[];
   paymentMethod?: PaymentType; // Example usage
   payments?: OrderProfilePayment[]; // Payment records with full details
+  split_payment_path?: SplitPaymentPath | null; // Locks split method after first partial split payment
   notes?: string; // Order-level notes (customer requests, special instructions)
   reversals?: ReversalRecord[];
   order_refund_items?: OrderRefundItemRecord[];

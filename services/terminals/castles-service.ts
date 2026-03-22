@@ -24,6 +24,12 @@ import type {
   CastlesTipAdjustResult,
   CastlesVoidRequest,
   CastlesVoidResult,
+  CastlesPreAuthRequest,
+  CastlesPreAuthResult,
+  CastlesAuthIncrementalRequest,
+  CastlesAuthIncrementalResult,
+  CastlesAuthCompleteRequest,
+  CastlesAuthCompleteResult,
 } from "@/types/castles";
 import {
   CASTLES_CONNECT_MAX_RETRIES,
@@ -602,6 +608,175 @@ export class CastlesService {
           console.error("[CastlesService] processRefund error:", message);
           await this._forceReturn2Idle();
           return { success: false, error: message };
+        }
+      });
+    });
+  }
+
+  // ============================================================
+  // PRE-AUTH
+  // ============================================================
+
+  async processPreAuth(params: {
+    amount: number;
+    referenceId: string;
+  }): Promise<CastlesPreAuthResult> {
+    return this._withRetry(async () => {
+      return this._mutex.runExclusive(async () => {
+        await this._ensureConnected();
+
+        try {
+          const request: CastlesPreAuthRequest = {
+            txnPosTxnId: params.referenceId,
+            txnType: "preAuth",
+            txnAmtBase: params.amount.toFixed(2),
+          };
+
+          const timeout = this.config?.timeout ?? CASTLES_SOCKET_TIMEOUT_MS;
+          const raw = await this._sendAndReceive<CastlesRawResponse>(
+            request as unknown as Record<string, unknown>,
+            timeout,
+          );
+
+          const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
+          const errorMsg = isApproved
+            ? undefined
+            : raw.txnStatusMessage ||
+              parseCastlesReturnCode(raw.txnReturnCode).message;
+
+          await this._tryReturn2Idle();
+          return {
+            success: isApproved,
+            raw,
+            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            error: errorMsg,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[CastlesService] processPreAuth error:", message);
+          await this._forceReturn2Idle();
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      });
+    });
+  }
+
+  // ============================================================
+  // AUTH INCREMENTAL
+  // ============================================================
+
+  async processAuthIncremental(params: {
+    amount: number;
+    referenceId: string;
+    rrn?: string;
+    stan?: string;
+  }): Promise<CastlesAuthIncrementalResult> {
+    if (!params.rrn && !params.stan) {
+      return { success: false, error: "At least one of rrn or stan is required for incremental auth" };
+    }
+
+    return this._withRetry(async () => {
+      return this._mutex.runExclusive(async () => {
+        await this._ensureConnected();
+
+        try {
+          const request: CastlesAuthIncrementalRequest = {
+            txnPosTxnId: params.referenceId,
+            txnType: "authIncremental",
+            txnAmtBase: params.amount.toFixed(2),
+            ...(params.rrn ? { txnRrn: params.rrn } : {}),
+            ...(params.stan ? { txnStan: params.stan } : {}),
+          };
+
+          const timeout = this.config?.timeout ?? CASTLES_SOCKET_TIMEOUT_MS;
+          const raw = await this._sendAndReceive<CastlesRawResponse>(
+            request as unknown as Record<string, unknown>,
+            timeout,
+          );
+
+          const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
+          const errorMsg = isApproved
+            ? undefined
+            : raw.txnStatusMessage ||
+              parseCastlesReturnCode(raw.txnReturnCode).message;
+
+          await this._tryReturn2Idle();
+          return {
+            success: isApproved,
+            raw,
+            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            error: errorMsg,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[CastlesService] processAuthIncremental error:", message);
+          await this._forceReturn2Idle();
+          return {
+            success: false,
+            error: message,
+          };
+        }
+      });
+    });
+  }
+
+  // ============================================================
+  // AUTH COMPLETE (CAPTURE)
+  // ============================================================
+
+  async processAuthComplete(params: {
+    captureAmount: number;
+    referenceId: string;
+    rrn?: string;
+    stan?: string;
+  }): Promise<CastlesAuthCompleteResult> {
+    if (!params.rrn && !params.stan) {
+      return { success: false, error: "At least one of rrn or stan is required for auth complete" };
+    }
+
+    return this._withRetry(async () => {
+      return this._mutex.runExclusive(async () => {
+        await this._ensureConnected();
+
+        try {
+          const request: CastlesAuthCompleteRequest = {
+            txnPosTxnId: params.referenceId,
+            txnType: "authComplete",
+            txnAmtAuthComplete: params.captureAmount.toFixed(2),
+            ...(params.rrn ? { txnRrn: params.rrn } : {}),
+            ...(params.stan ? { txnStan: params.stan } : {}),
+          };
+
+          const timeout = this.config?.timeout ?? CASTLES_SOCKET_TIMEOUT_MS;
+          const raw = await this._sendAndReceive<CastlesRawResponse>(
+            request as unknown as Record<string, unknown>,
+            timeout,
+          );
+
+          const isApproved = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
+          const errorMsg = isApproved
+            ? undefined
+            : raw.txnStatusMessage ||
+              parseCastlesReturnCode(raw.txnReturnCode).message;
+
+          await this._tryReturn2Idle();
+          return {
+            success: isApproved,
+            raw,
+            terminalResponse: buildCastlesTerminalResponse(raw, this.config?.terminalId),
+            error: errorMsg,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[CastlesService] processAuthComplete error:", message);
+          await this._forceReturn2Idle();
+          return {
+            success: false,
+            error: message,
+          };
         }
       });
     });
