@@ -24,11 +24,11 @@ import React, {
     useState,
 } from "react";
 import {
-    FlatList,
     KeyboardAvoidingView,
     Modal,
     Platform,
     ScrollView,
+    SectionList,
     Text,
     TextInput,
     TouchableOpacity,
@@ -106,16 +106,33 @@ const CustomerSheet: React.FC = () => {
 
   const filteredCustomers = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (!query) return customers;
-
-    return customers.filter((c: CustomerWithMeta) => {
-      const nameMatch = (c.name || "").toLowerCase().includes(query);
-      const phoneRaw = (c.phone ?? c.phoneNumber ?? "").toLowerCase();
-      const phoneMatch = phoneRaw.includes(query);
-      const addressMatch = (c.address || "").toLowerCase().includes(query);
-      return nameMatch || phoneMatch || addressMatch;
-    });
+    const list = !query
+      ? customers
+      : customers.filter((c: CustomerWithMeta) => {
+          const nameMatch = (c.name || "").toLowerCase().includes(query);
+          const phoneRaw = (c.phone ?? c.phoneNumber ?? "").toLowerCase();
+          const phoneMatch = phoneRaw.includes(query);
+          const addressMatch = (c.address || "").toLowerCase().includes(query);
+          return nameMatch || phoneMatch || addressMatch;
+        });
+    return list;
   }, [searchQuery, customers]);
+
+  const groupedCustomers = useMemo(() => {
+    const map: Record<string, CustomerWithMeta[]> = {};
+    for (const c of filteredCustomers) {
+      const first = (c.name || "?")[0].toUpperCase();
+      const key = /[A-Z]/.test(first) ? first : "#";
+      if (!map[key]) map[key] = [];
+      map[key].push(c);
+    }
+    const letters = Object.keys(map).sort((a, b) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+    return letters.map((letter) => ({ title: letter, data: map[letter] }));
+  }, [filteredCustomers]);
 
   const handleSelectCustomer = async (customer: CustomerWithMeta) => {
     if (!activeOrderId) return;
@@ -324,10 +341,15 @@ const CustomerSheet: React.FC = () => {
                     </View>
                   </View>
 
-                  <FlatList
-                    data={filteredCustomers}
+                  <SectionList
+                    sections={groupedCustomers}
                     keyExtractor={(item) => item.id}
                     contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
+                    renderSectionHeader={({ section }) => (
+                      <View style={{ paddingVertical: 4, paddingHorizontal: 4, marginBottom: 4, marginTop: 8, borderBottomWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+                      </View>
+                    )}
                     renderItem={({ item }: { item: CustomerWithMeta }) => (
                       <TouchableOpacity
                         disabled={isAssignDisabled}

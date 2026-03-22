@@ -2,7 +2,7 @@ import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
+  BottomSheetSectionList,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { Building2, Search } from "lucide-react-native";
@@ -156,6 +156,22 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
       );
     }, [vendors, query]);
 
+    const groupedVendors = useMemo(() => {
+      const map: Record<string, typeof filteredVendors> = {};
+      for (const v of filteredVendors) {
+        const first = (v.name || "?")[0].toUpperCase();
+        const key = /[A-Z]/.test(first) ? first : "#";
+        if (!map[key]) map[key] = [];
+        map[key].push(v);
+      }
+      const letters = Object.keys(map).sort((a, b) => {
+        if (a === "#") return 1;
+        if (b === "#") return -1;
+        return a.localeCompare(b);
+      });
+      return letters.map((letter) => ({ title: letter, data: map[letter] }));
+    }, [filteredVendors]);
+
     return (
       <BottomSheet
         ref={ref}
@@ -182,10 +198,15 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
           </View>
         </View>
 
-        <BottomSheetFlatList
-          data={filteredVendors}
+        <BottomSheetSectionList
+          sections={groupedVendors}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 30 }}
+          renderSectionHeader={({ section }) => (
+            <View style={{ paddingVertical: 4, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4, marginTop: 8 }}>
+              <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+            </View>
+          )}
           renderItem={({ item }) => (
             <VendorRow
               vendorId={item.id}

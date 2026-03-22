@@ -11,7 +11,7 @@ import { Vendor } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
+  BottomSheetSectionList,
 } from "@gorhom/bottom-sheet";
 import { Link, useRouter } from "expo-router";
 import {
@@ -153,6 +153,22 @@ const VendorScreen = () => {
         .some((f) => String(f).toLowerCase().includes(q))
     );
   }, [searchQuery, vendors]);
+
+  const groupedVendors = useMemo(() => {
+    const map: Record<string, Vendor[]> = {};
+    for (const v of filteredVendors) {
+      const first = (v.name || "?")[0].toUpperCase();
+      const key = /[A-Z]/.test(first) ? first : "#";
+      if (!map[key]) map[key] = [];
+      map[key].push(v);
+    }
+    const letters = Object.keys(map).sort((a, b) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+    return letters.map((letter) => ({ title: letter, data: map[letter] }));
+  }, [filteredVendors]);
 
   const handleOpenAddModal = () => {
     setSelectedVendor(null);
@@ -394,9 +410,14 @@ const VendorScreen = () => {
             </View>
           </View>
         </KeyboardAvoidingView>
-        <BottomSheetFlatList
-          data={filteredVendors}
+        <BottomSheetSectionList
+          sections={groupedVendors}
           keyExtractor={(item) => item.id}
+          renderSectionHeader={({ section }) => (
+            <View style={{ paddingVertical: 4, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4 }}>
+              <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+            </View>
+          )}
           renderItem={({ item }) => (
             <TouchableOpacity
               onPress={() => {
@@ -438,6 +459,11 @@ const VendorScreen = () => {
             </TouchableOpacity>
           )}
           contentContainerStyle={{ paddingBottom: 20 }}
+          ListEmptyComponent={
+            <View style={{ alignItems: "center", paddingVertical: 40 }}>
+              <Text style={{ fontSize: 13, color: colors.muted }}>No vendors found</Text>
+            </View>
+          }
         />
       </BottomSheet>
     </View>

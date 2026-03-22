@@ -1,83 +1,159 @@
 import { ShiftHistoryEntry } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { Clock } from "lucide-react-native";
-import { FlatList, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
-const TABLE_HEADERS = [
-  "Clock In",
-  "Break",
-  "Clock Out",
-  "Duration",
-];
+const TABLE_HEADERS = ["Date", "Clock In", "Break", "Clock Out", "Duration"];
 
 const HistoryTableHeader = () => (
-  <View className="flex-row px-4 py-2 border-b border-border">
-    {TABLE_HEADERS.map((header) => (
-      <Text key={header} className="flex-1 text-xs font-semibold uppercase tracking-wider text-label">
-        {header}
+  <View
+    style={{
+      flexDirection: "row",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.screen,
+    }}
+  >
+    {TABLE_HEADERS.map((h) => (
+      <Text
+        key={h}
+        style={{
+          flex: 1,
+          fontSize: 10,
+          fontWeight: "700",
+          color: colors.muted,
+          textTransform: "uppercase",
+          letterSpacing: 0.8,
+        }}
+      >
+        {h}
       </Text>
     ))}
   </View>
 );
 
-const HistoryTableRow = ({ item, index }: { item: ShiftHistoryEntry; index: number }) => (
+const HistoryTableRow = ({
+  item,
+  index,
+}: {
+  item: ShiftHistoryEntry;
+  index: number;
+}) => (
   <View
-    className="flex-row px-4 py-3 border-b border-border"
-    style={index % 2 === 0 ? { backgroundColor: colors.panel } : { backgroundColor: colors.screen }}
+    style={{
+      flexDirection: "row",
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: index % 2 === 0 ? colors.card : "transparent",
+      alignItems: "center",
+    }}
   >
+    {/* Date */}
+    <Text style={{ flex: 1, fontSize: 12, color: colors.label }}>{item.date}</Text>
+
     {/* Clock In */}
-    <View className="flex-1">
-      <Text style={{ fontSize: 11, color: colors.muted }}>{item.date}</Text>
-      <Text className="text-sm font-semibold text-heading">{item.clockIn}</Text>
-    </View>
+    <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>
+      {item.clockIn}
+    </Text>
 
     {/* Break */}
-    <View className="flex-1">
+    <View style={{ flex: 1 }}>
       {item.breakInitiated !== "N/A" ? (
         <>
           <Text style={{ fontSize: 11, color: colors.teal }}>{item.breakInitiated}</Text>
           <Text style={{ fontSize: 11, color: colors.muted }}>– {item.breakEnded}</Text>
         </>
       ) : (
-        <Text style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic' }}>No break</Text>
+        <Text style={{ fontSize: 11, color: colors.muted, fontStyle: "italic" }}>No break</Text>
       )}
     </View>
 
     {/* Clock Out */}
-    <View className="flex-1">
-      <Text style={{ fontSize: 11, color: colors.muted }}>{item.date}</Text>
-      <Text className="text-sm font-semibold text-heading">{item.clockOut}</Text>
-    </View>
+    <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>
+      {item.clockOut}
+    </Text>
 
     {/* Duration */}
-    <View className="flex-1">
-      <Text className="text-sm font-semibold text-heading">{item.duration}</Text>
+    <View
+      style={{
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      <View
+        style={{
+          paddingHorizontal: 8,
+          paddingVertical: 3,
+          borderRadius: 6,
+          backgroundColor: colors.teal + "15",
+          borderWidth: 1,
+          borderColor: colors.teal + "30",
+        }}
+      >
+        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+          {item.duration}h
+        </Text>
+      </View>
     </View>
   </View>
 );
 
 const HistoryTab = () => {
   const { shiftHistory } = useTimeclockStore();
+  const { activeEmployeeId } = useEmployeeStore();
+
+  const myHistory = shiftHistory.filter(
+    (e) => !activeEmployeeId || e.employeeId === activeEmployeeId
+  );
 
   return (
-    <View className="flex-1">
-      <View className="bg-panel rounded-xl border border-border overflow-hidden">
-        <FlatList
-          data={shiftHistory}
-          keyExtractor={(item) => item.id}
-          ListHeaderComponent={<HistoryTableHeader />}
-          renderItem={({ item, index }) => <HistoryTableRow item={item} index={index} />}
-          ListEmptyComponent={
-            <View className="items-center py-10">
-              <Clock size={32} color={colors.muted} />
-              <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>No shift history yet.</Text>
-            </View>
-          }
-          scrollEnabled={false}
-        />
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 24 }}
+    >
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: "700",
+          color: colors.muted,
+          textTransform: "uppercase",
+          letterSpacing: 1,
+          marginBottom: 10,
+        }}
+      >
+        Shift History
+      </Text>
+
+      <View
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: "hidden",
+        }}
+      >
+        <HistoryTableHeader />
+        {myHistory.length === 0 ? (
+          <View style={{ alignItems: "center", paddingVertical: 40, gap: 8 }}>
+            <Clock size={28} color={colors.muted} />
+            <Text style={{ color: colors.muted, fontSize: 13 }}>No shift history yet.</Text>
+          </View>
+        ) : (
+          myHistory.map((item, index) => (
+            <HistoryTableRow key={item.id} item={item} index={index} />
+          ))
+        )}
       </View>
-    </View>
+    </ScrollView>
   );
 };
 

@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
+  BottomSheetSectionList,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
@@ -35,6 +35,22 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
     const q = search.toLowerCase();
     return filtered.filter((e) => e.fullName.toLowerCase().includes(q));
   }, [employees, search]);
+
+  const groupedEmployees = useMemo(() => {
+    const map: Record<string, typeof clockedInEmployees> = {};
+    for (const e of clockedInEmployees) {
+      const first = (e.fullName || "?")[0].toUpperCase();
+      const key = /[A-Z]/.test(first) ? first : "#";
+      if (!map[key]) map[key] = [];
+      map[key].push(e);
+    }
+    const letters = Object.keys(map).sort((a, b) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+    return letters.map((letter) => ({ title: letter, data: map[letter] }));
+  }, [clockedInEmployees]);
 
   const handleSelect = useCallback(
     (fullName: string) => {
@@ -146,10 +162,15 @@ const ServerSelectSheet: React.FC<ServerSelectSheetProps> = ({
         </View>
 
         {/* Employee list */}
-        <BottomSheetFlatList
-          data={clockedInEmployees}
+        <BottomSheetSectionList
+          sections={groupedEmployees}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
+          renderSectionHeader={({ section }) => (
+            <View style={{ paddingVertical: 4, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4 }}>
+              <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+            </View>
+          )}
           ListEmptyComponent={
             <View className="items-center py-8">
               <Text className="text-gray-500 text-sm">

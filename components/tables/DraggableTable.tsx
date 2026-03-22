@@ -172,8 +172,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     const startTime = new Date(openedAt).getTime()
     const diffMins = Math.floor((Date.now() - startTime) / 60000)
 
+    const hours = Math.floor(diffMins / 60)
+    const mins = diffMins % 60
+    const durationStr = hours > 0 ? `${hours}hr ${mins}m` : `${mins}m`
+
     return {
-      duration: `${diffMins} min`,
+      duration: durationStr,
       isOvertime:
         defaultSittingTimeMinutes > 0 && diffMins > defaultSittingTimeMinutes
     }
@@ -512,28 +516,31 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 tableStatus === 'paid') && (
                 <>
                   {!effectiveOrder && liveSession ? (
-                    <Text style={{ color: tableColor + '99', fontSize: 9, fontWeight: '600' }}>
-                      Loading...
+                    <Text style={{ color: tableColor + '99', fontSize: 8, fontWeight: '600' }}>
+                      ...
                     </Text>
                   ) : (
                     <>
                       <Text style={{
                         color: '#FFFFFF',
-                        fontSize: 10,
+                        fontSize: 9,
                         fontWeight: '700',
-                        textShadowColor: tableColor,
-                        textShadowOffset: { width: 0, height: 0 },
-                        textShadowRadius: 4
+                        marginTop: 2,
+                        textShadowColor: 'rgba(0,0,0,0.8)',
+                        textShadowOffset: { width: 0, height: 1 },
+                        textShadowRadius: 3
                       }}>
                         ${orderTotal.toFixed(2)}
                       </Text>
-                      {liveSession?.party_size ? (
-                        <Text style={{ color: tableColor + 'BB', fontSize: 7, fontWeight: '600' }}>
-                          {liveSession.party_size} guests
-                        </Text>
-                      ) : null}
-                      <Text style={{ color: tableColor + 'CC', fontSize: 8, fontWeight: '600' }}>
-                        {duration}
+                      <Text style={{
+                        color: tableColor + 'CC',
+                        fontSize: 7,
+                        fontWeight: '600',
+                        textShadowColor: 'rgba(0,0,0,0.8)',
+                        textShadowOffset: { width: 0, height: 1 },
+                        textShadowRadius: 3
+                      }}>
+                        {duration}{liveSession?.party_size ? ` · ${liveSession.party_size}p` : ''}
                       </Text>
                     </>
                   )}

@@ -2,17 +2,15 @@ import { useLocationRealtime } from '@/contexts/LocationRealtimeProvider'
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Clock,
   Lock,
   Users,
   Utensils
 } from 'lucide-react-native'
 import React, { useEffect, useState } from 'react'
-import { LayoutAnimation, Text, TouchableOpacity, View } from 'react-native'
+import { Text, TouchableOpacity, View } from 'react-native'
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -44,7 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(true)
   const [activeTab, setActiveTab] = useState<TabMode>('tables')
-  const [tabsCollapsed, setTabsCollapsed] = useState(true)
+  const [tabsCollapsed, setTabsCollapsed] = useState(false)
 
   const [pinDialogOpen, setPinDialogOpen] = useState(false)
   const [currentPin, setCurrentPin] = useState('')
@@ -191,7 +189,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           style={{
             position: 'absolute',
             right: -14,
-            top: '20%',
+            top: '50%',
+            marginTop: -16,
             zIndex: 50,
             width: 32,
             height: 32,
@@ -215,17 +214,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Tabs */}
         <View
           style={{
-            gap: 4,
-            padding: 10,
+            padding: 8,
             flexShrink: 0,
             borderBottomWidth: 1,
-            borderBottomColor: colors.border
+            borderBottomColor: colors.border,
+            flexDirection: 'row',
+            gap: 4
           }}
         >
           {navItems.map(item => {
             const isActive = activeTab === item.id
-
-            if (isExpanded && tabsCollapsed && !isActive) return null
 
             return (
               <TouchableOpacity
@@ -237,101 +235,41 @@ const Sidebar: React.FC<SidebarProps> = ({
                     else handleLockedAccess(item.id)
                     return
                   }
-                  if (tabsCollapsed && isActive) {
-                    LayoutAnimation.configureNext(
-                      LayoutAnimation.Presets.easeInEaseOut
-                    )
-                    setTabsCollapsed(false)
-                    return
-                  }
-                  if (isActive) {
-                    LayoutAnimation.configureNext(
-                      LayoutAnimation.Presets.easeInEaseOut
-                    )
-                    setTabsCollapsed(true)
-                    return
-                  }
                   if (item.isLocked) {
                     handleLockedAccess(item.id)
-                    LayoutAnimation.configureNext(
-                      LayoutAnimation.Presets.easeInEaseOut
-                    )
-                    setTabsCollapsed(true)
                   } else {
                     setActiveTab(item.id)
-                    LayoutAnimation.configureNext(
-                      LayoutAnimation.Presets.easeInEaseOut
-                    )
-                    setTabsCollapsed(true)
                   }
                 }}
                 style={{
+                  flex: 1,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  height: 40,
-                  paddingHorizontal: 10,
+                  justifyContent: 'center',
+                  height: 34,
+                  gap: 5,
                   borderRadius: 8,
                   borderWidth: 1,
-                  backgroundColor: isActive
-                    ? colors.teal + '20'
-                    : 'transparent',
+                  backgroundColor: isActive ? colors.teal + '20' : 'transparent',
                   borderColor: isActive ? colors.teal + '40' : 'transparent'
                 }}
               >
-                <View
-                  style={{
-                    width: 22,
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <item.icon
-                    size={16}
-                    color={isActive ? colors.teal : colors.label}
-                  />
-                </View>
-
-                <Animated.View style={[textStyle, { marginLeft: 10, flex: 1 }]}>
-                  <Text
-                    style={{
-                      fontSize: 13,
+                <item.icon size={14} color={isActive ? colors.teal : colors.label} />
+                <Animated.Text
+                  style={[
+                    textStyle,
+                    {
+                      fontSize: 12,
                       fontWeight: '600',
                       color: isActive ? colors.teal : colors.label
-                    }}
-                    numberOfLines={1}
-                  >
-                    {item.label}
-                  </Text>
-                </Animated.View>
-
-                {isActive && isExpanded && (
-                  <View style={{ marginLeft: 4 }}>
-                    {tabsCollapsed ? (
-                      <ChevronDown size={14} color={colors.teal} />
-                    ) : (
-                      <ChevronUp size={14} color={colors.teal} />
-                    )}
-                  </View>
-                )}
-
-                {item.isLocked && isExpanded && !isActive && (
-                  <View style={{ marginLeft: 4 }}>
-                    <Lock size={14} color={colors.muted} />
-                  </View>
-                )}
-
-                {!isExpanded && isActive && (
-                  <View
-                    style={{
-                      position: 'absolute',
-                      right: 6,
-                      top: 6,
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: colors.teal
-                    }}
-                  />
+                    }
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.label}
+                </Animated.Text>
+                {item.isLocked && !isActive && (
+                  <Lock size={11} color={colors.muted} />
                 )}
               </TouchableOpacity>
             )

@@ -3,7 +3,7 @@ import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchSt
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
+  BottomSheetSectionList,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
@@ -96,6 +96,22 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
           return [];
       }
     }, [searchQuery, activeTab, menuItems, storeCategories, storeMenus, modifierGroups]);
+
+    const groupedResults = useMemo(() => {
+      const map: Record<string, any[]> = {};
+      for (const item of searchResults) {
+        const first = ((item as any).name || "?")[0].toUpperCase();
+        const key = /[A-Z]/.test(first) ? first : "#";
+        if (!map[key]) map[key] = [];
+        map[key].push(item);
+      }
+      const letters = Object.keys(map).sort((a, b) => {
+        if (a === "#") return 1;
+        if (b === "#") return -1;
+        return a.localeCompare(b);
+      });
+      return letters.map((letter) => ({ title: letter, data: map[letter] }));
+    }, [searchResults]);
 
     const handleDeleteItem = (id: string) =>
       Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
@@ -445,10 +461,15 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
           </View>
 
           {/* Results */}
-          <BottomSheetFlatList
+          <BottomSheetSectionList
             key={activeTab}
-            data={searchResults}
+            sections={groupedResults}
             keyExtractor={(item) => item.id}
+            renderSectionHeader={({ section }) => (
+              <View style={{ paddingVertical: 4, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4, marginTop: 8 }}>
+                <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+              </View>
+            )}
             renderItem={renderItem}
             contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 40 }}
             ListEmptyComponent={
