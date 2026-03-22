@@ -3,7 +3,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { useTableDuration } from '@/hooks/useTableDuration'
 import { colors } from '@/lib/theme'
 import { OrderProfile } from '@/lib/types'
-import { useOrderTotals } from '@/stores/selectors/orderSelectors'
+import { useOrderByAnyId, useOrderTotals } from '@/stores/selectors/orderSelectors'
 import { useCoursingStore } from '@/stores/useCoursingStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -184,16 +184,12 @@ const QuickActionButton: React.FC<{
 }
 
 const useTableData = (table: FloorPlanObject) => {
-  const getOrder = useOrderStore(s => s.getOrder)
   const tablesById = useFloorPlanStore(s => s.tablesById)
 
-  // Get session order ID for payment calculations — O(1) via getOrder (uses dbOrderIdIndex)
+  // Get session order ID for payment calculations — reactive via useOrderByAnyId
   const sessionOrderId = table.session?.order_id || null
-  const orderIdForPayments = useMemo(() => {
-    if (!sessionOrderId) return null
-    const order = getOrder(sessionOrderId)
-    return order?.id || null
-  }, [sessionOrderId, getOrder])
+  const resolvedOrder = useOrderByAnyId(sessionOrderId)
+  const orderIdForPayments = resolvedOrder?.id || null
 
   // Get payment-aware totals for this order
   const orderTotals = useOrderTotals(orderIdForPayments)
@@ -260,8 +256,8 @@ const useTableData = (table: FloorPlanObject) => {
       }
     }
 
-    // O(1) lookup via getOrder (checks ordersById + dbOrderIdIndex)
-    let order: OrderProfile | undefined = getOrder(sessionOrderId) ?? undefined
+    // Reactive lookup via useOrderByAnyId (checks ordersById + dbOrderIdIndex)
+    let order: OrderProfile | undefined = resolvedOrder ?? undefined
 
     // Get merged table names for display — O(1) per lookup via tablesById
     const uniqueGroupIds = Array.from(new Set([table.id, ...mergedIds]))
@@ -350,7 +346,7 @@ const useTableData = (table: FloorPlanObject) => {
       server: serverDisplay,
       orders: groupOrders
     }
-  }, [table, getOrder, tablesById, orderTotals])
+  }, [table, resolvedOrder, tablesById, orderTotals])
 }
 
 const ExpandedView: React.FC<{

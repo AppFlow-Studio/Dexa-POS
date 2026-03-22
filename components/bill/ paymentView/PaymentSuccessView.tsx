@@ -83,7 +83,7 @@ const PaymentSuccessView = () => {
 
     // For dine-in orders on a table, we just want to close the sheet
     // The payment is already processed and status is set optimistically
-    if ((activeOrder?.order_type === "Dine In" || activeOrder?.order_type == 'dine_in') && activeTableId) {
+    if (activeOrder?.order_type === "dine_in" && activeTableId) {
       close();
       return;
     }

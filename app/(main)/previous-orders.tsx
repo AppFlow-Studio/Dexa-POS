@@ -385,13 +385,13 @@ const PreviousOrdersScreen = () => {
 
     // Order type filters
     if (activeFilters.has("dine-in")) {
-      filtered = filtered.filter((o) => o.order_type === "Dine In");
+      filtered = filtered.filter((o) => o.order_type === "dine_in");
     }
     if (activeFilters.has("takeaway")) {
-      filtered = filtered.filter((o) => o.order_type === "Takeaway");
+      filtered = filtered.filter((o) => o.order_type === "takeout");
     }
     if (activeFilters.has("delivery")) {
-      filtered = filtered.filter((o) => o.order_type === "Delivery");
+      filtered = filtered.filter((o) => o.order_type === "delivery");
     }
 
     // Sorting

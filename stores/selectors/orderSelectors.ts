@@ -401,8 +401,8 @@ export function useOrderTypeCounts(): Record<string, number> {
       if (o.check_status === "Closed") continue;
       if (o.order_status === "completed" && o.paid_status === "Paid") continue;
       all++;
-      if (o.order_type === "takeout" || o.order_type === "Takeaway") takeaway++;
-      else if (o.order_type === "delivery" || o.order_type === "Delivery") delivery++;
+      if (o.order_type === "takeout") takeaway++;
+      else if (o.order_type === "delivery") delivery++;
     }
     return { All: all, Takeaway: takeaway, Delivery: delivery };
   }, [stationOrders]);
@@ -601,6 +601,21 @@ export function useOrder(orderId: string | null | undefined): OrderProfile | nul
   return useOrderStore((s) =>
     orderId ? s.ordersById[orderId] ?? null : null
   );
+}
+
+/**
+ * Subscribe to a specific order by local ID or database UUID.
+ * Resolves through dbOrderIdIndex for cross-station scenarios
+ * (table sessions store DB UUIDs as order_id).
+ */
+export function useOrderByAnyId(
+  idOrDbId: string | null | undefined,
+): OrderProfile | null {
+  return useOrderStore((s) => {
+    if (!idOrDbId) return null;
+    const localKey = s.dbOrderIdIndex[idOrDbId] ?? idOrDbId;
+    return s.ordersById[localKey] ?? null;
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -8,7 +8,7 @@ import { isLocalOnlyStatus } from '@/lib/tableStateMachine'
 import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useOrderStore } from '@/stores/useOrderStore'
+import { useOrderByAnyId } from '@/stores/selectors/orderSelectors'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
@@ -141,12 +141,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const effectiveWidth = table.width ?? shapeDef?.width ?? 100
   const effectiveHeight = table.height ?? shapeDef?.height ?? 100
 
-  const getOrder = useOrderStore(s => s.getOrder)
-
-  const effectiveOrder = useMemo(() => {
-    if (!liveSession?.order_id) return undefined
-    return getOrder(liveSession.order_id) ?? undefined
-  }, [liveSession?.order_id, getOrder])
+  const effectiveOrder = useOrderByAnyId(liveSession?.order_id) ?? undefined
 
   const openedAt = effectiveOrder?.opened_at ?? null
   const liveSessionStatus = liveSession?.status ?? null

@@ -95,6 +95,7 @@ export function useTableSession (
 
   const setActiveOrder = useOrderStore(s => s.setActiveOrder)
   const syncOrderFromDatabase = useOrderStore(s => s.syncOrderFromDatabase)
+  const syncOrderFromBackendComplete = useOrderStore(s => s.syncOrderFromBackendComplete)
   const activeOrderId = useOrderStore(s => s.activeOrderId)
 
   const setActiveTableId = usePaymentStore(s => s.setActiveTableId)
@@ -338,6 +339,13 @@ export function useTableSession (
               if (localOrderId) {
                 setActiveOrder(localOrderId)
                 updatePhase('ready')
+                // Background: full hydration for complete data fidelity (payments, coverage, etc.)
+                // Skip if this order is being created right now (same-station seating race)
+                if (!hasPendingOrderCreation(localOrderId)) {
+                  syncOrderFromBackendComplete(localOrderId).catch(err =>
+                    console.warn('[useTableSession] Background full sync failed:', err)
+                  )
+                }
               }
             } catch (error) {
               console.error('[useTableSession] Failed to sync order:', error)
@@ -468,6 +476,13 @@ export function useTableSession (
           const localId = await syncOrderFromDatabase(sessionOrderId)
           if (localId && getPhase(phaseRef) !== 'navigating_away') {
             setActiveOrder(localId)
+            // Background: full hydration for complete data fidelity
+            // Skip if this order is being created right now (same-station seating race)
+            if (!hasPendingOrderCreation(localId)) {
+              syncOrderFromBackendComplete(localId).catch(err =>
+                console.warn('[useTableSession] Recovery full sync failed:', err)
+              )
+            }
           }
           updatePhase('ready')
         } catch (e) {

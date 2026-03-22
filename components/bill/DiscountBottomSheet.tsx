@@ -63,9 +63,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     }));
     const ctx: EligibilityContext = {
       orderType:
-        activeOrder.order_type === "Dine In"
+        activeOrder.order_type === "dine_in"
           ? "dine_in"
-          : activeOrder.order_type === "Delivery"
+          : activeOrder.order_type === "delivery"
             ? "delivery"
             : "takeout",
       currentDate: new Date(),

@@ -320,7 +320,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const tableId = activeOrder?.service_location_id;
 
     // For dine-in orders on a table, just close (table keeps the paid order)
-    if (activeOrder?.order_type === "Dine In" && tableId) {
+    if (activeOrder?.order_type === "dine_in" && tableId) {
       get().close();
       return;
     }

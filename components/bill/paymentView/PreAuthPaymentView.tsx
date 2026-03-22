@@ -58,8 +58,8 @@ const PreAuthPaymentView: React.FC = () => {
   const [amount, setAmount] = useState(() => {
     if (mode === "open") return String(defaultAmount);
     if (mode === "increment") return String(preAuth?.preAuthAmount ?? defaultAmount);
-    // Capture mode: default to order total
-    return String(totals?.total ?? 0);
+    // Capture mode: default to remaining balance
+    return String(totals?.amountDue ?? totals?.total ?? 0);
   });
   const [tipAmount, setTipAmount] = useState("0");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -68,8 +68,9 @@ const PreAuthPaymentView: React.FC = () => {
   const parsedTip = parseFloat(tipAmount) || 0;
 
   // Tab exceeds hold warning
+  const outstandingAmount = totals?.amountDue ?? totals?.total ?? 0;
   const exceedsHold = hasPreAuth && totals && preAuth
-    ? totals.total > (preAuth.preAuthAmount ?? 0)
+    ? outstandingAmount > (preAuth.preAuthAmount ?? 0)
     : false;
 
   const handleBack = () => {
@@ -312,11 +313,11 @@ const PreAuthPaymentView: React.FC = () => {
         <View style={styles.warningBanner}>
           <AlertTriangle size={16} color={colors.warning} />
           <Text style={styles.warningText}>
-            Tab (${totals?.total?.toFixed(2)}) exceeds hold (${preAuth.preAuthAmount?.toFixed(2)})
+            Tab (${outstandingAmount.toFixed(2)}) exceeds hold (${preAuth.preAuthAmount?.toFixed(2)})
           </Text>
           {preAuth.preAuthTerminalType === "castles" && (
             <TouchableOpacity
-              onPress={() => { setPreAuthMode("increment"); setAmount(String(totals?.total ?? 0)); }}
+              onPress={() => { setPreAuthMode("increment"); setAmount(String(totals?.amountDue ?? totals?.total ?? 0)); }}
               style={styles.warningAction}
             >
               <Text style={styles.warningActionText}>Increase Hold</Text>
@@ -444,7 +445,7 @@ const PreAuthPaymentView: React.FC = () => {
             <View style={styles.secondaryActions}>
               <TouchableOpacity
                 style={styles.secondaryBtn}
-                onPress={() => { setPreAuthMode("increment"); setAmount(String(totals?.total ?? 0)); }}
+                onPress={() => { setPreAuthMode("increment"); setAmount(String(totals?.amountDue ?? totals?.total ?? 0)); }}
                 disabled={isProcessing}
               >
                 <TrendingUp size={14} color={colors.warning} />

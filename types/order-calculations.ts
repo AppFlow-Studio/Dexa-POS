@@ -298,6 +298,8 @@ export interface PreviewPaymentOptions {
 export interface PaymentForCalculation {
   amount: number;
   isVoided?: boolean;
+  isCashPriced?: boolean;
+  cashSavings?: number;
 }
 
 /**
