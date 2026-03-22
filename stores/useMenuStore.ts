@@ -759,7 +759,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     toggleItemAvailability: (id) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) =>
-          item.id === id ? { ...item, availability: !item.availability } : item
+          item.id === id ? { ...item, availability: item.availability === false ? true : false } : item
         ),
       }));
 
@@ -1460,6 +1460,18 @@ export const useMenuStore = create<MenuState>((set, get) => {
           }
         }
 
+        // Always sync availability to menuItems/menuItemsById regardless of context level
+        if (context.availability !== undefined) {
+          const item = updatedMenuItemsById[itemId] ?? state.menuItemsById[itemId];
+          if (item) {
+            const updatedItem = { ...item, availability: context.availability };
+            updatedMenuItems = (updatedMenuItems === state.menuItems ? state.menuItems : updatedMenuItems).map((i) =>
+              i.id === itemId ? updatedItem : i
+            );
+            updatedMenuItemsById[itemId] = updatedItem;
+          }
+        }
+
         // 2. Update Tree Instances (Menu -> Category -> Item)
         const updatedMenus = state.menus.map((menu) => {
           if (context.menuId && menu.id !== context.menuId) return menu;
@@ -1692,6 +1704,11 @@ export const useMenuStore = create<MenuState>((set, get) => {
                 // Add category name if not already present
                 if (!existingCategories.includes(cat.name)) {
                   existingItem.category = [...existingCategories, cat.name];
+                }
+
+                // Patch location_id if missing
+                if (!existingItem.location_id && (menuItem as any).location_id) {
+                  existingItem.location_id = (menuItem as any).location_id;
                 }
               } else {
                 // New item - create with this category name

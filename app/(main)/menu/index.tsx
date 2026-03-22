@@ -22,7 +22,7 @@ import {
   EyeOff,
   GripVertical,
   MapPin,
-  Settings,
+  Pencil,
   Trash2,
   Utensils,
 } from "lucide-react-native";
@@ -301,7 +301,7 @@ const DraggableMenu = React.memo(({
               opacity: isEditable ? 1 : 0.4,
             }}
           >
-            <Settings size={14} color={isEditable ? colors.label : colors.muted} />
+            <Pencil size={14} color={isEditable ? colors.label : colors.muted} />
           </TouchableOpacity>
         </View>
       </View>
@@ -566,10 +566,12 @@ const MenuPage: React.FC = () => {
   // so no need for a periodic forceUpdate here.
   const menus = useMemo(
     () =>
-      storeMenus.map((storeMenu) => ({
-        ...storeMenu,
-        isAvailableNow: isMenuAvailableNow(storeMenu.id),
-      })),
+      storeMenus
+        .map((storeMenu) => ({
+          ...storeMenu,
+          isAvailableNow: isMenuAvailableNow(storeMenu.id),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [storeMenus, isMenuAvailableNow]
   );
 
@@ -596,13 +598,17 @@ const MenuPage: React.FC = () => {
 
   // Filter menu items based on search — memoized to avoid O(N) on every render
   const filteredItems = useMemo(() => {
-    if (!searchQuery) return menuItems;
-    const query = searchQuery.toLowerCase();
-    return menuItems.filter(
-      (item) =>
-        item.name.toLowerCase().includes(query) ||
-        item.description?.toLowerCase().includes(query)
-    );
+    const items = !searchQuery
+      ? menuItems
+      : (() => {
+          const query = searchQuery.toLowerCase();
+          return menuItems.filter(
+            (item) =>
+              item.name.toLowerCase().includes(query) ||
+              item.description?.toLowerCase().includes(query)
+          );
+        })();
+    return [...items].sort((a, b) => a.name.localeCompare(b.name));
   }, [menuItems, searchQuery]);
 
   const handleAddMenu = useCallback(() => {
@@ -915,7 +921,7 @@ const MenuPage: React.FC = () => {
 
       <FlatList
         key="categories-list"
-        data={storeCategories}
+        data={[...storeCategories].sort((a, b) => a.name.localeCompare(b.name))}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ gap: 8 }}
         removeClippedSubviews={true}
@@ -1012,7 +1018,7 @@ const MenuPage: React.FC = () => {
                         opacity: editable ? 1 : 0.4,
                       }}
                     >
-                      <Settings size={14} color={editable ? colors.label : colors.muted} />
+                      <Pencil size={14} color={editable ? colors.label : colors.muted} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1105,15 +1111,30 @@ const MenuPage: React.FC = () => {
             <Text style={{ fontSize: 13, color: colors.muted }}>No menu items found.</Text>
           </View>
         ) : (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-            {filteredItems.map((item) => {
+          <View style={{ gap: 16 }}>
+            {Object.entries(
+              filteredItems.reduce((groups, item) => {
+                const letter = item.name[0].toUpperCase();
+                if (!groups[letter]) groups[letter] = [];
+                groups[letter].push(item);
+                return groups;
+              }, {} as Record<string, typeof filteredItems>)
+            ).sort(([a], [b]) => a.localeCompare(b)).map(([letter, items]) => (
+              <View key={letter}>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, paddingHorizontal: 4 }}>
+                  {letter}
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {items.map((item) => {
               const editable = isEntityEditable(item.location_id, item.name);
               const isAvailable = item.availability !== false;
               return (
                 <TouchableOpacity
                   key={item.id}
                   activeOpacity={0.75}
+                  disabled={!editable}
                   onPress={() => {
+                    if (!editable) return;
                     priceEditRef.current?.open(
                       {
                         id: item.id,
@@ -1127,6 +1148,7 @@ const MenuPage: React.FC = () => {
                   }}
                   style={{
                     width: 225,
+                    height: 80,
                     backgroundColor: colors.card,
                     borderRadius: 12,
                     borderWidth: 1,
@@ -1168,21 +1190,23 @@ const MenuPage: React.FC = () => {
                     <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>
                       ${item.price.toFixed(2)}
                     </Text>
-                    <View
-                      style={{
-                        alignSelf: "flex-start",
-                        paddingHorizontal: 6,
-                        paddingVertical: 2,
-                        borderRadius: 20,
-                        backgroundColor: isAvailable ? colors.success + "20" : colors.danger + "15",
-                        borderWidth: 1,
-                        borderColor: isAvailable ? colors.success + "50" : colors.danger + "40",
-                      }}
-                    >
-                      <Text style={{ fontSize: 9, fontWeight: "700", color: isAvailable ? colors.success : colors.danger }}>
-                        {isAvailable ? "Available" : "Off"}
-                      </Text>
-                    </View>
+                    {!isAvailable && (
+                      <View
+                        style={{
+                          alignSelf: "flex-start",
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          borderRadius: 20,
+                          backgroundColor: colors.danger + "15",
+                          borderWidth: 1,
+                          borderColor: colors.danger + "40",
+                        }}
+                      >
+                        <Text style={{ fontSize: 9, fontWeight: "700", color: colors.danger }}>
+                          Unavailable
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   {/* Right: vertical action strip */}
@@ -1202,8 +1226,8 @@ const MenuPage: React.FC = () => {
                       style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
                     >
                       {isAvailable
-                        ? <EyeOff size={14} color={colors.label} />
-                        : <Eye size={14} color={colors.success} />}
+                        ? <Eye size={14} color={colors.success} />
+                        : <EyeOff size={14} color={colors.danger} />}
                     </TouchableOpacity>
                     <View style={{ height: 1, width: 20, backgroundColor: colors.border }} />
                     <TouchableOpacity
@@ -1211,21 +1235,15 @@ const MenuPage: React.FC = () => {
                       disabled={!editable}
                       style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
                     >
-                      <Edit size={13} color={colors.teal} />
-                    </TouchableOpacity>
-
-                    <View style={{ height: 1, width: 20, backgroundColor: colors.border }} />
-                    <TouchableOpacity
-                      onPress={() => handleDeleteItem(item)}
-                      disabled={!editable}
-                      style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
-                    >
-                      <Trash2 size={14} color={colors.danger} />
+                      <Pencil size={13} color={colors.teal} />
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
               );
-            })}
+                  })}
+                </View>
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>
@@ -1244,7 +1262,7 @@ const MenuPage: React.FC = () => {
 
       <FlatList
         key="modifiers-list"
-        data={uniqueModifierGroups}
+        data={[...uniqueModifierGroups].sort((a, b) => a.name.localeCompare(b.name))}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ gap: 8 }}
         removeClippedSubviews={true}
@@ -1317,7 +1335,7 @@ const MenuPage: React.FC = () => {
                     opacity: editable ? 1 : 0.4,
                   }}
                 >
-                  <Settings size={14} color={editable ? colors.label : colors.muted} />
+                  <Pencil size={14} color={editable ? colors.label : colors.muted} />
                 </TouchableOpacity>
               </View>
 
@@ -1611,6 +1629,10 @@ const MenuPage: React.FC = () => {
         }}
         onReset={(itemId) => {
           console.log(`Price reset for item ${itemId}`);
+        }}
+        onDelete={(itemId, itemName) => {
+          setItemToDelete({ id: itemId, name: itemName });
+          setShowDeleteModal(true);
         }}
       />
 

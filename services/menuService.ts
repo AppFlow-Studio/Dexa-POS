@@ -102,15 +102,10 @@ export class MenuService {
       p_menu_id: menuId || null,
       p_location_id: locationId,
       p_custom_price: price,
+      p_custom_cash_price: cashPrice !== undefined ? cashPrice : null,
+      p_is_available: availability !== undefined ? availability : null,
+      p_custom_delivery_price: null,
     };
-
-    if (cashPrice !== undefined) {
-      rpcParams.p_custom_cash_price = cashPrice;
-    }
-
-    if (availability !== undefined) {
-      rpcParams.p_is_available = availability;
-    }
 
     const { data, error } = await client.rpc("upsert_category_item_override", rpcParams);
 

@@ -163,7 +163,7 @@ const MenuSidebar = React.memo(
               color: colors.heading,
             }}
           >
-            Menu Mgmt
+            Menu Management
           </Text>
           {showAdd && (
             <TouchableOpacity

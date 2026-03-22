@@ -5,6 +5,7 @@ import {
   LEVEL_CONFIGS,
   MenuService,
 } from "@/services/menuService";
+import { bottomSheetTheme, colors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
@@ -13,7 +14,7 @@ import BottomSheet, {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { RotateCcw, X } from "lucide-react-native";
+import { RotateCcw, Trash2, X } from "lucide-react-native";
 import React, {
   forwardRef,
   useCallback,
@@ -29,7 +30,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { bottomSheetTheme, colors } from "@/lib/theme";
 
 export interface PriceEditItem {
   id: string;
@@ -52,6 +52,7 @@ export interface PriceEditBottomSheetRef {
 interface PriceEditBottomSheetProps {
   onSave: (itemId: string, newPrice: number) => void;
   onReset?: (itemId: string) => void;
+  onDelete?: (itemId: string, itemName: string) => void;
 }
 
 const filterPriceInput = (text: string): string => {
@@ -66,9 +67,9 @@ const filterPriceInput = (text: string): string => {
 const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   PriceEditBottomSheetRef,
   PriceEditBottomSheetProps
-> = ({ onSave, onReset }, ref) => {
+> = ({ onSave, onReset, onDelete }, ref) => {
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
-  const snapPoints = useMemo(() => ["80%"], []);
+  const snapPoints = useMemo(() => ["65%"], []);
 
   const [item, setItem] = useState<PriceEditItem | null>(null);
   const [context, setContext] = useState<PriceEditContext>({
@@ -78,9 +79,7 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   const [priceValue, setPriceValue] = useState("");
   const [cashPriceValue, setCashPriceValue] = useState("");
   const [isAvailable, setIsAvailable] = useState(true);
-  const [lastEditedField, setLastEditedField] = useState<
-    "card" | "cash" | null
-  >(null);
+  const [lastEditedField, setLastEditedField] = useState<"card" | "cash" | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,7 +95,6 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
     typeof dualPricingPercentage === "number" &&
     dualPricingPercentage > 0;
 
-  // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     open: (newItem: PriceEditItem, newContext: PriceEditContext) => {
       setItem(newItem);
@@ -117,7 +115,6 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
     },
   }));
 
-  // Determine editing level
   const editingLevel: EditingLevel = MenuService.getEditingLevel({
     categoryId: context.categoryId,
     menuId: context.menuId,
@@ -126,18 +123,15 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
   const resetDescription = MenuService.getResetDescription(editingLevel);
   const canReset = editingLevel > 2;
 
-  // Dual pricing auto-calculation
   const handleCardPriceChange = useCallback(
     (text: string) => {
       const filtered = filterPriceInput(text);
       setPriceValue(filtered);
       setLastEditedField("card");
-
       if (isDualPricing && filtered) {
         const cardPrice = parseFloat(filtered);
         if (!isNaN(cardPrice)) {
-          const calculatedCash =
-            cardPrice * (1 - dualPricingPercentage! / 100);
+          const calculatedCash = cardPrice * (1 - dualPricingPercentage! / 100);
           setCashPriceValue(calculatedCash.toFixed(2));
         }
       }
@@ -150,12 +144,10 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       const filtered = filterPriceInput(text);
       setCashPriceValue(filtered);
       setLastEditedField("cash");
-
       if (isDualPricing && filtered) {
         const cashPrice = parseFloat(filtered);
         if (!isNaN(cashPrice)) {
-          const calculatedCard =
-            cashPrice / (1 - dualPricingPercentage! / 100);
+          const calculatedCard = cashPrice / (1 - dualPricingPercentage! / 100);
           setPriceValue(calculatedCard.toFixed(2));
         }
       }
@@ -210,7 +202,6 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
         return;
       }
 
-      // Optimistic update to local store
       useMenuStore.getState().updateItemPriceOptimistic(item.id, price, {
         categoryId: context.categoryId ?? null,
         menuId: context.menuId ?? null,
@@ -230,7 +221,6 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
 
   const handleReset = async () => {
     if (!item || !locationId) return;
-
     const targetLevel = MenuService.getResetTargetLevel(editingLevel);
     if (!targetLevel) return;
 
@@ -261,16 +251,21 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
     }
   };
 
+  const handleDelete = () => {
+    if (!item) return;
+    handleClose();
+    onDelete?.(item.id, item.name);
+  };
+
   const renderBackdrop = useMemo(
-    () => (props: any) =>
-      (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+    () => (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
 
@@ -283,159 +278,265 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
       {...bottomSheetTheme}
       backdropComponent={renderBackdrop}
     >
-      <BottomSheetView className="flex-1 p-6">
+      <BottomSheetView style={{ flex: 1, padding: 16 }}>
+
         {/* Header */}
-        <View className="flex-row items-center justify-between mb-4">
-          <Text className="text-2xl font-bold text-white">Edit Price</Text>
-          <TouchableOpacity
-            onPress={handleClose}
-            className="p-2 bg-panel rounded-full"
-          >
-            <X size={24} color={colors.label} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Level Indicator */}
-        <View
-          className="p-4 rounded-lg mb-4"
-          style={{ backgroundColor: levelConfig.color + "20" }}
-        >
-          <View className="flex-row items-center gap-2">
-            <Text className="text-xl">{levelConfig.icon}</Text>
-            <Text
-              className="text-lg font-bold"
-              style={{ color: levelConfig.color }}
-            >
-              {levelConfig.label}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <View>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+              Edit Item
             </Text>
+            {item && (
+              <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+                {item.name}
+              </Text>
+            )}
           </View>
-          <Text className="text-base text-gray-400 mt-1">
-            {levelConfig.description}
-          </Text>
-        </View>
-
-        {/* Item Name */}
-        {item && (
-          <Text className="text-xl text-white font-semibold mb-4">
-            {item.name}
-          </Text>
-        )}
-
-        {/* Dual Pricing Indicator */}
-        {isDualPricing && (
-          <View className="bg-purple-900/30 border border-purple-500 rounded-lg px-3 py-2 mb-4">
-            <Text className="text-purple-300 text-base font-medium">
-              Dual Pricing Active ({dualPricingPercentage}% cash discount)
-            </Text>
-          </View>
-        )}
-
-        {/* Card Price Input */}
-        <View className="mb-3">
-          <Text className="text-base text-gray-400 mb-2">
-            Card Price
-          </Text>
-          <View className="flex-row items-center bg-panel rounded-lg border border-gray-600 px-4 py-3">
-            <Text className="text-2xl text-white mr-2">$</Text>
-            <BottomSheetTextInput
-              value={priceValue}
-              onChangeText={handleCardPriceChange}
-              editable={!isDualPricing}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              placeholderTextColor={colors.muted}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {onDelete && (
+              <TouchableOpacity
+                onPress={handleDelete}
+                disabled={isLoading}
+                style={{
+                  padding: 7,
+                  backgroundColor: colors.danger + "15",
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.danger + "30",
+                }}
+              >
+                <Trash2 size={15} color={colors.danger} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={handleClose}
               style={{
-                flex: 1,
-                fontSize: 24,
-                color: "white",
+                padding: 7,
+                backgroundColor: colors.teal + "10",
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + "30",
+              }}
+            >
+              <X size={15} color={colors.teal} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Level Badge */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 7,
+            borderRadius: 8,
+            backgroundColor: levelConfig.color + "15",
+            borderWidth: 1,
+            borderColor: levelConfig.color + "30",
+            marginBottom: 14,
+            alignSelf: "flex-start",
+          }}
+        >
+          <Text style={{ fontSize: 13 }}>{levelConfig.icon}</Text>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: levelConfig.color }}>
+            {levelConfig.label}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>
+            — {levelConfig.description}
+          </Text>
+        </View>
+
+        {/* Dual Pricing Badge */}
+        {isDualPricing && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              backgroundColor: colors.info + "15",
+              borderWidth: 1,
+              borderColor: colors.info + "30",
+              marginBottom: 14,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: colors.info, fontWeight: "600" }}>
+              Dual Pricing Active — {dualPricingPercentage}% cash discount
+            </Text>
+          </View>
+        )}
+
+        {/* Price Row */}
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+          {/* Card Price */}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+              Card Price
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.screen,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
                 opacity: isDualPricing ? 0.5 : 1,
               }}
-            />
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.teal, marginRight: 4 }}>$</Text>
+              <BottomSheetTextInput
+                value={priceValue}
+                onChangeText={handleCardPriceChange}
+                editable={!isDualPricing}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={colors.muted}
+                style={{ flex: 1, fontSize: 14, fontWeight: "600", color: colors.heading }}
+              />
+            </View>
           </View>
-        </View>
 
-        {/* Cash Price Input */}
-        <View className="mb-3">
-          <Text className="text-base text-gray-400 mb-2">
-            Cash Price
-            {isDualPricing && lastEditedField === "card" && (
-              <Text className="text-purple-400"> (auto-calculated)</Text>
-            )}
-          </Text>
-          <View className="flex-row items-center bg-panel rounded-lg border border-gray-600 px-4 py-3">
-            <Text className="text-2xl text-white mr-2">$</Text>
-            <BottomSheetTextInput
-              value={cashPriceValue}
-              onChangeText={handleCashPriceChange}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              placeholderTextColor={colors.muted}
+          {/* Cash Price */}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+              Cash Price{isDualPricing && lastEditedField === "card" ? "  (auto)" : ""}
+            </Text>
+            <View
               style={{
-                flex: 1,
-                fontSize: 24,
-                color: "white",
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.screen,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
               }}
-            />
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.label, marginRight: 4 }}>$</Text>
+              <BottomSheetTextInput
+                value={cashPriceValue}
+                onChangeText={handleCashPriceChange}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor={colors.muted}
+                style={{ flex: 1, fontSize: 14, fontWeight: "600", color: colors.heading }}
+              />
+            </View>
           </View>
         </View>
 
-        {/* Availability Toggle */}
-        <View className="flex-row items-center justify-between bg-panel rounded-lg border border-gray-600 px-4 py-3 mb-4">
-          <Text className="text-lg text-white">Available</Text>
+        {/* Availability Row */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            backgroundColor: colors.screen,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            marginBottom: 14,
+          }}
+        >
+          <View>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Available</Text>
+            <Text style={{ fontSize: 11, color: colors.muted }}>
+              {isAvailable ? "Visible on menu" : "Hidden from menu"}
+            </Text>
+          </View>
           <Switch
             value={isAvailable}
             onValueChange={setIsAvailable}
-            trackColor={{ false: "#4B5563", true: "#10B981" }}
-            thumbColor="white"
+            trackColor={{ false: colors.border, true: colors.teal + "80" }}
+            thumbColor={isAvailable ? colors.teal : colors.label}
           />
         </View>
 
-        {/* Error Message */}
+        {/* Error */}
         {error && (
-          <View className="bg-red-900/30 border border-red-500 rounded-lg p-3 mb-4">
-            <Text className="text-red-400">{error}</Text>
+          <View
+            style={{
+              backgroundColor: colors.danger + "15",
+              borderWidth: 1,
+              borderColor: colors.danger + "30",
+              borderRadius: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: colors.danger }}>{error}</Text>
           </View>
         )}
 
-        {/* Reset Button (only for Level 4 & 5) */}
+        {/* Reset */}
         {canReset && resetDescription && (
           <TouchableOpacity
             onPress={handleReset}
             disabled={isLoading}
-            className="flex-row items-center justify-center bg-panel border border-gray-600 rounded-lg py-3 mb-4"
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              paddingVertical: 8,
+              marginBottom: 10,
+            }}
           >
-            <RotateCcw size={20} color={colors.label} />
-            <Text className="text-gray-300 text-lg ml-2">
-              {resetDescription}
-            </Text>
+            <RotateCcw size={13} color={colors.label} />
+            <Text style={{ fontSize: 12, color: colors.label }}>{resetDescription}</Text>
           </TouchableOpacity>
         )}
 
         {/* Action Buttons */}
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity
             onPress={handleClose}
             disabled={isLoading}
-            className="flex-1 bg-panel border border-gray-600 rounded-lg py-4"
+            style={{
+              flex: 1,
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              paddingVertical: 10,
+              alignItems: "center",
+            }}
           >
-            <Text className="text-center text-white text-lg font-semibold">
-              Cancel
-            </Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
             disabled={isLoading}
-            className="flex-1 bg-blue-600 rounded-lg py-4"
+            style={{
+              flex: 2,
+              backgroundColor: colors.teal,
+              borderRadius: 8,
+              paddingVertical: 10,
+              alignItems: "center",
+            }}
           >
             {isLoading ? (
-              <ActivityIndicator color="white" />
+              <ActivityIndicator color={colors.onSolid} size="small" />
             ) : (
-              <Text className="text-center text-white text-lg font-semibold">
-                Save
-              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>Save Changes</Text>
             )}
           </TouchableOpacity>
         </View>
+
       </BottomSheetView>
     </BottomSheet>
   );

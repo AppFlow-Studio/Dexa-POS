@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { Menu } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { Eye, EyeOff, GripVertical, Settings } from "lucide-react-native";
+import { Eye, EyeOff, GripVertical, Pencil } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -63,7 +63,7 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
             onPress={onEdit}
             className="p-2 bg-panel rounded border border-gray-600"
           >
-            <Settings size={20} color={colors.label} />
+            <Pencil size={16} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>

@@ -73,11 +73,12 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
             <View className="flex-row items-center bg-panel rounded-lg px-3 py-2">
               <Search size={16} color={colors.label} />
               <TextInput
-                className="flex-1 ml-2 text-white h-20"
+                className="flex-1 ml-2 text-white"
                 placeholder="Search items..."
                 placeholderTextColor={colors.label}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
+                autoFocus={false}
               />
             </View>
           </View>
