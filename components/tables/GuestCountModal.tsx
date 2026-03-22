@@ -18,24 +18,23 @@ const ROWS = [
 
 
 export const GuestCountModal: React.FC<GuestCountModalProps> = ({ isOpen, onClose, onSubmit }) => {
-  const [count, setCount] = useState('2')
+  const [count, setCount] = useState('')
 
   useEffect(() => {
-    if (!isOpen) {
-      const t = setTimeout(() => setCount('2'), 300)
-      return () => clearTimeout(t)
+    if (isOpen) {
+      setCount('')
     }
   }, [isOpen])
 
   const handleKey = (value: string) => {
-    if (value === 'clear') { setCount('2'); return }
+    if (value === 'clear') { setCount(''); return }
     if (value === 'backspace') {
-      setCount(prev => (prev.length <= 1 ? '1' : prev.slice(0, -1)))
+      setCount(prev => prev.slice(0, -1))
       return
     }
     if (/^[0-9]$/.test(value)) {
       setCount(prev => {
-        const next = prev === '0' || prev === '1' ? value : prev + value
+        const next = prev === '0' ? value : prev + value
         return next.length > 3 ? prev : next
       })
     }
@@ -46,7 +45,7 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({ isOpen, onClos
     if (!isNaN(n) && n > 0) onSubmit(n)
   }
 
-  const displayCount = parseInt(count, 10) || 0
+  const displayCount = count === '' ? 0 : parseInt(count, 10) || 0
 
   return (
     <Modal visible={isOpen} transparent animationType='fade' onRequestClose={onClose} statusBarTranslucent>
@@ -66,8 +65,8 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({ isOpen, onClos
           {/* Display */}
           <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 }}>
             <View style={{ backgroundColor: colors.screen, borderRadius: 14, borderWidth: 1, borderColor: displayCount > 0 ? colors.teal + '50' : colors.border, paddingVertical: 18, alignItems: 'center' }}>
-              <Text style={{ fontSize: 56, fontWeight: '800', color: colors.heading, letterSpacing: -2, lineHeight: 60 }}>
-                {count}
+              <Text style={{ fontSize: 56, fontWeight: '800', color: count === '' ? colors.muted : colors.heading, letterSpacing: -2, lineHeight: 60 }}>
+                {count === '' ? '–' : count}
               </Text>
             </View>
           </View>
@@ -116,12 +115,12 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({ isOpen, onClos
               <Text style={{ fontSize: 14, fontWeight: '600', color: colors.label }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleSubmit}
-              activeOpacity={0.7}
-              style={{ flex: 2, paddingVertical: 16, alignItems: 'center', backgroundColor: colors.teal + '18' }}
+              onPress={displayCount > 0 ? handleSubmit : undefined}
+              activeOpacity={displayCount > 0 ? 0.7 : 1}
+              style={{ flex: 2, paddingVertical: 16, alignItems: 'center', backgroundColor: displayCount > 0 ? colors.teal + '18' : colors.screen }}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.teal }}>
-                Seat {displayCount} {displayCount === 1 ? 'Guest' : 'Guests'}
+              <Text style={{ fontSize: 14, fontWeight: '700', color: displayCount > 0 ? colors.teal : colors.muted }}>
+                {displayCount > 0 ? `Seat ${displayCount} ${displayCount === 1 ? 'Guest' : 'Guests'}` : 'Enter Guest Count'}
               </Text>
             </TouchableOpacity>
           </View>

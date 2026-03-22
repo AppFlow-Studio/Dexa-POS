@@ -442,7 +442,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
         <View style={{ width: effectiveWidth, height: effectiveHeight }}>
-          {/* Neon glow layer */}
+          {/* Subtle elevation shadow */}
           {isTableType && (
             <View
               pointerEvents='none'
@@ -453,11 +453,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 width: effectiveWidth,
                 height: effectiveHeight,
                 borderRadius: 16,
-                shadowColor: tableColor,
-                shadowOffset: { width: 0, height: 0 },
-                shadowOpacity: 0.85,
-                shadowRadius: 12,
-                elevation: 0
+                shadowColor: '#000000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.35,
+                shadowRadius: 6,
+                elevation: 4
               }}
             />
           )}
@@ -486,9 +486,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 fontWeight: '700',
                 textAlign: 'center',
                 color: isTableType ? tableColor : colors.label,
-                textShadowColor: isTableType ? tableColor : 'transparent',
-                textShadowOffset: { width: 0, height: 0 },
-                textShadowRadius: 6
               }}
               numberOfLines={1}
             >
@@ -515,7 +512,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 tableStatus === 'paying' ||
                 tableStatus === 'paid') && (
                 <>
-                  {!effectiveOrder && liveSession ? (
+                  {!effectiveOrder && liveSession?.order_id ? (
                     <Text style={{ color: tableColor + '99', fontSize: 8, fontWeight: '600' }}>
                       ...
                     </Text>
@@ -526,9 +523,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                         fontSize: 9,
                         fontWeight: '700',
                         marginTop: 2,
-                        textShadowColor: 'rgba(0,0,0,0.8)',
-                        textShadowOffset: { width: 0, height: 1 },
-                        textShadowRadius: 3
                       }}>
                         ${orderTotal.toFixed(2)}
                       </Text>
@@ -536,11 +530,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                         color: tableColor + 'CC',
                         fontSize: 7,
                         fontWeight: '600',
-                        textShadowColor: 'rgba(0,0,0,0.8)',
-                        textShadowOffset: { width: 0, height: 1 },
-                        textShadowRadius: 3
                       }}>
-                        {duration}{liveSession?.party_size ? ` · ${liveSession.party_size}p` : ''}
+                        {duration}{liveSession?.party_size ? ` · ${liveSession.party_size} ${liveSession.party_size === 1 ? 'guest' : 'guests'}` : ''}
                       </Text>
                     </>
                   )}

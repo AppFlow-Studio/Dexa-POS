@@ -293,8 +293,8 @@ const AnalyticsDashboardScreen = () => {
               {/* Total Revenue */}
               <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <DollarSign size={14} color={colors.success} />
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <DollarSign size={14} color={colors.teal} />
                   </View>
                   <KpiTooltip definition='Total sales revenue for the selected period' />
                 </View>
@@ -305,8 +305,8 @@ const AnalyticsDashboardScreen = () => {
               {/* Avg Order Value */}
               <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <ShoppingBag size={14} color={colors.info} />
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <ShoppingBag size={14} color={colors.teal} />
                   </View>
                   <KpiTooltip definition='Average value per order' />
                 </View>
@@ -317,8 +317,8 @@ const AnalyticsDashboardScreen = () => {
               {/* Total Orders */}
               <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.warning + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <Hash size={14} color={colors.warning} />
+                  <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <Hash size={14} color={colors.teal} />
                   </View>
                   <KpiTooltip definition='Total number of orders placed' />
                 </View>

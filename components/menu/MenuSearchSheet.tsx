@@ -19,7 +19,7 @@ import {
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { forwardRef, useEffect, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 import { ScheduleCard } from "./ScheduleCard";
 
@@ -40,6 +40,7 @@ interface MenuSearchSheetProps {
 const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
   ({ activeTab }, ref) => {
     const { closeSearch } = useMenuManagementSearchStore();
+    const inputRef = useRef<any>(null);
     const menuItems = useMenuStore((s) => s.menuItems);
     const storeCategories = useMenuStore((s) => s.categories);
     const storeMenus = useMenuStore((s) => s.menus);
@@ -364,6 +365,9 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
         snapPoints={["55%"]}
         enablePanDownToClose
         onClose={closeSearch}
+        onChange={(index) => {
+          if (index >= 0) setTimeout(() => inputRef.current?.focus(), 100);
+        }}
         backdropComponent={(props) => (
           <BottomSheetBackdrop
             {...props}
@@ -440,6 +444,7 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
             >
               <Search size={14} color={colors.muted} />
               <BottomSheetTextInput
+                ref={inputRef}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder={`Search ${activeTab}…`}
@@ -450,7 +455,6 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
                   fontSize: 13,
                   color: colors.heading,
                 }}
-                autoFocus
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery("")}>
