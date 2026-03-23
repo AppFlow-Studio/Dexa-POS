@@ -26,6 +26,7 @@ export interface SelectedLocation {
   kds_workflow_mode?: '2-step' | '3-step'
   pricing_strategy?: string | null
   dual_pricing_percentage?: number | null
+  public_metadata?: Record<string, any> | null
   business_hours: Record<
     string,
     { open: string; close: string; is_closed: boolean }

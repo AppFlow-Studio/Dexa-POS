@@ -24,6 +24,7 @@ import {
   Utensils,
 } from "lucide-react-native";
 
+import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
@@ -222,6 +223,9 @@ const SortSegmentGroup = ({
 
 // ─── Main Screen ────────────────────────────────────────────
 const PreviousOrdersScreen = () => {
+  const router = useRouter();
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+
   // Modal state
   const [activeModal, setActiveModal] = useState<"notes" | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(null);
@@ -521,24 +525,45 @@ const PreviousOrdersScreen = () => {
     [voidOrderMutation],
   );
 
+  const handleContinue = useCallback(
+    (order: OrderProfile) => {
+      const existing = useOrderStore.getState().ordersById[order.id];
+      if (!existing) {
+        useOrderStore.setState((state) => ({
+          ordersById: { ...state.ordersById, [order.id]: order },
+        }));
+      }
+      setActiveOrder(order.id);
+      router.push("/order-processing");
+    },
+    [setActiveOrder, router],
+  );
+
   // ─── FlatList render ────────────────────────────────────
   const renderItem = useCallback(
-    ({ item }: { item: OrderProfile }) => (
-      <PreviousOrderRow
-        order={item}
-        isExpanded={item.id === expandedOrderId}
-        onPress={handlePress}
-        onDoublePress={handleDoublePress}
-        onPrint={handleOpenPrint}
-        onViewTimeline={handleViewTimeline}
-        onTipAdjust={handleTipAdjust}
-        onViewNotes={handleOpenNotes}
-        onCloseCheck={handleCloseCheck}
-        onReopenCheck={handleReopenCheck}
-        onRefund={handleRefund}
-        onVoid={handleVoidOrder}
-      />
-    ),
+    ({ item }: { item: OrderProfile }) => {
+      const canContinue =
+        item.paid_status !== "Paid" &&
+        item.order_status !== "refunded" &&
+        item.order_status !== "void";
+      return (
+        <PreviousOrderRow
+          order={item}
+          isExpanded={item.id === expandedOrderId}
+          onPress={handlePress}
+          onDoublePress={handleDoublePress}
+          onPrint={handleOpenPrint}
+          onViewTimeline={handleViewTimeline}
+          onTipAdjust={handleTipAdjust}
+          onViewNotes={handleOpenNotes}
+          onCloseCheck={handleCloseCheck}
+          onReopenCheck={handleReopenCheck}
+          onRefund={handleRefund}
+          onVoid={handleVoidOrder}
+          onContinue={canContinue ? handleContinue : undefined}
+        />
+      );
+    },
     [
       expandedOrderId,
       handlePress,
@@ -551,6 +576,7 @@ const PreviousOrdersScreen = () => {
       handleReopenCheck,
       handleRefund,
       handleVoidOrder,
+      handleContinue,
     ],
   );
 

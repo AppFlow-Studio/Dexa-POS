@@ -211,6 +211,7 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
         private val output: OutputStream = socket.getOutputStream()
         private val input: java.io.InputStream = socket.getInputStream()
 
+        @Synchronized
         fun send(data: String) {
             try {
                 // Determine if data is raw bytes or string? 

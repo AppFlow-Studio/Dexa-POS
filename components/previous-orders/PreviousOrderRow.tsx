@@ -34,6 +34,7 @@ interface PreviousOrderRowProps {
   onReopenCheck?: (order: OrderProfile) => void;
   onRefund?: (order: OrderProfile) => void;
   onVoid?: (order: OrderProfile) => void;
+  onContinue?: (order: OrderProfile) => void;
 }
 
 // Status → semantic color mapping
@@ -76,6 +77,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   onReopenCheck,
   onRefund,
   onVoid,
+  onContinue,
 }) => {
   const lastPressRef = useRef<number>(0);
   const DOUBLE_PRESS_DELAY = 400;
@@ -263,6 +265,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
           onViewTimeline={onViewTimeline}
           onTipAdjust={onTipAdjust}
           onRefund={onRefund}
+          onContinue={onContinue}
         />
       )}
 
@@ -409,7 +412,8 @@ const PreviousOrderRow = React.memo(
       prev.order.notes === next.order.notes &&
       prev.order.check_status === next.order.check_status &&
       prev.order.payments === next.order.payments &&
-      prev.isExpanded === next.isExpanded
+      prev.isExpanded === next.isExpanded &&
+      prev.onContinue === next.onContinue
     );
   },
 );

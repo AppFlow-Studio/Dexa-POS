@@ -24,6 +24,7 @@ import {
   useOrderStore,
 } from "@/stores/useOrderStore";
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
+import { useSettingsStore, SyncableDiningSettings } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { setKDSSupabaseClient, useKDSStore } from "@/stores/useKDSStore";
@@ -559,6 +560,15 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isKDS]);
 
+  // Hydrate dining settings from location public_metadata on startup / location change
+  useEffect(() => {
+    if (selectedStore?.public_metadata?.dining_settings) {
+      useSettingsStore.getState().updateDiningSettings(
+        selectedStore.public_metadata.dining_settings as Partial<SyncableDiningSettings>
+      );
+    }
+  }, [selectedStore?.id]);
+
   // Real-time settings sync (KDS workflow mode, etc.)
   useEffect(() => {
     const locationId = selectedStore?.id;
@@ -587,6 +597,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         if (kds._lastLocationId) {
           kds._backgroundFetchTickets(kds._lastLocationId);
         }
+      }
+
+      if (payload.setting === 'dining_settings') {
+        useSettingsStore.getState().updateDiningSettings(payload.value as Partial<SyncableDiningSettings>);
       }
     });
 

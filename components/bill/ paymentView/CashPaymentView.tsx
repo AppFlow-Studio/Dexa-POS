@@ -48,12 +48,8 @@ const CashPaymentView = () => {
   }, [isProcessing, setTransactionProcessing]);
 
   const {
-    showTipSelection,
-    updateTip,
     setScreenState,
     setBaseAmount,
-    tipResponse,
-    clearTipResponse,
     showProcessing,
     showApproved,
     showDeclined,
@@ -125,7 +121,6 @@ const CashPaymentView = () => {
     const calculatedTip = (percentage / 100) * total;
     setTipInput(calculatedTip.toFixed(2));
     setSelectedTipPreset(percentage);
-    updateTip(calculatedTip, percentage);
   };
 
   const handleTipInputChange = (value: string) => {
@@ -133,15 +128,12 @@ const CashPaymentView = () => {
     if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
       setTipInput(value);
       setSelectedTipPreset(null); // Clear preset when manually typing
-      updateTip(parseFloat(value) || 0, null);
     }
   };
 
-  // Sync CFD on mount
+  // Let CFD stay on ordering screen showing order totals (no tip selection for cash)
   useEffect(() => {
-    // Show tip selection on CFD when Cash View opens with the local cash-priced total
-    showTipSelection(total, TIP_PRESETS);
-    clearTipResponse();
+    setScreenState(null);
 
     // Cleanup: Reset CFD state when leaving the cash payment view
     return () => {
@@ -149,20 +141,6 @@ const CashPaymentView = () => {
       setBaseAmount(null);
     };
   }, []); // Only run once on mount
-
-  // Handle CFD Tip Response
-  useEffect(() => {
-    if (tipResponse) {
-      const tipDollars = (tipResponse.tipAmount / 100).toFixed(2);
-      setTipInput(tipDollars);
-
-      if (tipResponse.tipPercentage) {
-        setSelectedTipPreset(tipResponse.tipPercentage);
-      } else {
-        setSelectedTipPreset(null);
-      }
-    }
-  }, [tipResponse]);
 
   const handleProcessCashPayment = async () => {
     setIsProcessing(true);

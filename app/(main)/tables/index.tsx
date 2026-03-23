@@ -19,12 +19,13 @@ import {
   registerPendingOrderCreation,
   useOrderStore
 } from '@/stores/useOrderStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { useTimeclockStore } from '@/stores/useTimeclockStore'
 import { setWaitlistSupabaseClient } from '@/stores/useWaitlistStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
-import { Href, useRouter } from 'expo-router'
+import { Href, useRouter, useFocusEffect } from 'expo-router'
 import {
   GitMerge,
   HelpCircle,
@@ -97,6 +98,20 @@ const TablesScreen = () => {
       setWaitlistSupabaseClient(supabaseClient)
     }
   }, [supabaseClient])
+
+  // Consume pending table overlay from waitlist seating flow
+  useFocusEffect(
+    useCallback(() => {
+      const pendingId = usePendingTableOverlay.getState().consume()
+      if (pendingId) {
+        // Wait for navigation animation to complete before opening modal
+        const handle = InteractionManager.runAfterInteractions(() => {
+          setOverlayTableId(pendingId)
+        })
+        return () => handle.cancel()
+      }
+    }, [])
+  )
 
   // Debounce search input
   useEffect(() => {

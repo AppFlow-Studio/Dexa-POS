@@ -26,7 +26,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { getTerminalMatchInfo } from '@/utils/terminalMatchGuard'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { formatDistanceToNow } from 'date-fns'
-import { useRouter } from 'expo-router'
+import { usePathname, useRouter } from 'expo-router'
 import {
   ArrowLeft,
   Banknote,
@@ -3799,6 +3799,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   {}
 > = (props, ref) => {
   const { show } = useToast()
+  const router = useRouter()
+  const pathname = usePathname()
   const supabase = useSupabaseClient()
   const [tipProcessing, setTipProcessing] = useState(false)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
@@ -4251,7 +4253,12 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 
     useOrderStore.getState().setActiveOrder(activeId)
     close()
-  }, [orderId, close, show])
+
+    // Navigate to order-processing if not already there
+    if (!pathname.includes('order-processing')) {
+      router.push('/order-processing')
+    }
+  }, [orderId, close, show, pathname, router])
 
   const handleIssueReceipt = useCallback(async () => {
     if (!order || !selectedStore) {
