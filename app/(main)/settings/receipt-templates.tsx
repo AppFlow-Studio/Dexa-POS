@@ -9,10 +9,12 @@ import {
 import {
   Barcode,
   Clock,
+  Printer,
   QrCode,
   TriangleAlert,
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
+import { TestPrintModal } from "@/components/settings/TestPrintModal";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -382,6 +384,7 @@ const ReceiptTemplatesScreen = () => {
   const cacheLogoBase64 = useReceiptTemplateStore((s) => s.cacheLogoBase64);
 
   const [activeTab, setActiveTab] = useState<TabType>("receipt");
+  const [showTestPrint, setShowTestPrint] = useState(false);
 
   // Get the stored template for the active tab
   const storedTemplate = useMemo(() => {
@@ -513,12 +516,19 @@ const ReceiptTemplatesScreen = () => {
             )}
           </ScrollView>
 
-          {/* Save Button */}
-          <View className="pt-3 border-t border-gray-700">
+          {/* Save + Test Print Buttons */}
+          <View className="pt-3 border-t border-gray-700 flex-row gap-2">
+            <TouchableOpacity
+              onPress={() => setShowTestPrint(true)}
+              className="flex-row items-center justify-center px-4 py-3 rounded-lg bg-surface border border-gray-600"
+            >
+              <Printer size={16} color={colors.info} />
+              <Text className="text-blue-400 font-semibold text-sm ml-1.5">Test Print</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSave}
               disabled={!hasChanges || isSaving}
-              className={`py-3 rounded-lg items-center ${
+              className={`flex-1 py-3 rounded-lg items-center ${
                 hasChanges && !isSaving ? "bg-blue-600" : "bg-gray-600"
               }`}
             >
@@ -533,6 +543,12 @@ const ReceiptTemplatesScreen = () => {
           </View>
         </View>
       </View>
+
+      <TestPrintModal
+        visible={showTestPrint}
+        onClose={() => setShowTestPrint(false)}
+        initialPrintType={activeTab === "kitchen" ? "kitchen" : "receipt"}
+      />
     </View>
   );
 };
