@@ -22,6 +22,7 @@ const TableBillSection = ({
   onPressStartNewCourse,
   onDoubleTapCourse,
   activeOrder: passedActiveOrder,
+  onOpenServerSheet,
   onPressMore,
   onPressTotal,
   onPressReopenCheck,
@@ -49,6 +50,7 @@ const TableBillSection = ({
   onPressStartNewCourse: () => void;
   onDoubleTapCourse: (courseId: number) => void;
   activeOrder?: OrderProfile;
+  onOpenServerSheet?: () => void;
   onPressMore: () => void;
   onPressTotal: () => void;
   onPressReopenCheck: () => void;
@@ -132,6 +134,7 @@ const TableBillSection = ({
         onSelectCourse={onSelectCourse}
         onPressStartNewCourse={onPressStartNewCourse}
         onDoubleTapCourse={onDoubleTapCourse}
+        onOpenServerSheet={onOpenServerSheet}
       />
     );
   };

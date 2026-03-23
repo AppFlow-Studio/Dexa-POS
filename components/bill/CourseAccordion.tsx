@@ -1,4 +1,7 @@
 import { CartItem, OrderProfile } from "@/lib/types";
+import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -25,6 +28,7 @@ interface CourseAccordionProps {
   onSelectCourse?: (course: number | null) => void;
   onPressStartNewCourse: () => void;
   onDoubleTapCourse: (courseId: number) => void;
+  onOpenServerSheet?: () => void;
 }
 
 interface CourseGroupProps {
@@ -196,9 +200,18 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onSelectCourse,
   onPressStartNewCourse,
   onDoubleTapCourse,
+  onOpenServerSheet,
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
   const prevItemCount = useRef<number>(0);
+  const liveOrder = useActiveOrder();
+  const openCustomerSheet = useCustomerSheetStore((s) => s.openSheet);
+  const tablesById = useFloorPlanStore((s) => s.tablesById);
+  const tableName = useMemo(() => {
+    const locId = liveOrder?.service_location_id;
+    if (!locId) return null;
+    return tablesById[locId]?.name ?? locId;
+  }, [tablesById, liveOrder?.service_location_id]);
 
   // Group items by course
   const groupedItems = useMemo(() => {
@@ -273,8 +286,32 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     );
   }
 
+  const Dot = () => <Text style={{ fontSize: 10, color: colors.muted, marginHorizontal: 3 }}>·</Text>;
+  const guestCount = liveOrder?.guest_count ?? 0;
+
   return (
     <View className="flex-1 bg-panel p-4">
+      {/* Meta info row */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+        {tableName && (
+          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.label }}>{tableName}</Text>
+        )}
+        <Dot />
+        <Text style={{ fontSize: 10, color: colors.muted }}>{guestCount || 1} guest{(guestCount || 1) !== 1 ? 's' : ''}</Text>
+        <Dot />
+        <TouchableOpacity onPress={onOpenServerSheet} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+          <Text style={{ fontSize: 10, color: liveOrder?.server_name ? colors.muted : colors.teal }}>
+            {liveOrder?.server_name || 'Assign server'}
+          </Text>
+        </TouchableOpacity>
+        <Dot />
+        <TouchableOpacity onPress={openCustomerSheet} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
+          <Text style={{ fontSize: 10, color: liveOrder?.customer_name ? colors.muted : colors.teal }}>
+            {liveOrder?.customer_name || 'Add customer'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Main Header */}
       <View className="flex-row items-center justify-between pb-3 mb-2">
         <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>

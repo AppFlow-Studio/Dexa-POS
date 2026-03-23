@@ -3,7 +3,6 @@ import ItemProgressTracker from '@/components/bill/ItemProgressTracker'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import TableBillSection from '@/components/bill/TableBillSection'
 import MenuSection from '@/components/menu/MenuSection'
-import OrderInfoHeader from '@/components/tables/OrderInfoHeader'
 import ServerSelectSheet from '@/components/tables/ServerSelectSheet'
 import TableAlertDialogs from '@/components/tables/TableAlertDialogs'
 import TableDetailSkeleton from '@/components/tables/TableDetailSkeleton'
@@ -28,7 +27,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { ChevronLeft, CreditCard, TrendingUp } from 'lucide-react-native'
+import { ArrowLeft, CreditCard, TrendingUp } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
@@ -693,10 +692,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       >
         <TouchableOpacity
           onPress={onClose}
-          className='flex-row items-center -ml-2 p-2'
+          className='p-1.5 rounded-lg bg-teal-500/10'
         >
-          <ChevronLeft color={colors.heading} size={26} />
-          <Text className='text-heading text-lg font-medium ml-1'>Back</Text>
+          <ArrowLeft color={colors.teal} size={18} />
         </TouchableOpacity>
 
         {enablePerSeatOrdering && (
@@ -712,15 +710,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           </View>
         )}
 
-        <View style={{ marginLeft: 'auto' }}>
-          <OrderInfoHeader
-            duration={duration}
-            tableId={currentTableId}
-            onOpenServerSheet={() => setServerSheetOpen(true)}
-            hideGuests={enablePerSeatOrdering}
-            inline
-          />
-        </View>
       </View>
 
       {isOvertime && (
@@ -797,6 +786,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               setCurrentCourse={handleSetCurrentCourse}
               onDoubleTapCourse={handleDoubleTapCourse}
               activeOrder={activeOrder}
+              onOpenServerSheet={() => setServerSheetOpen(true)}
               onPressMore={handlePressMore}
               onPressTotal={handlePressTotal}
               onPressReopenCheck={handleReopenCheck}
