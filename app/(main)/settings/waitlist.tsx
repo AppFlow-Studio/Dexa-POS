@@ -1,6 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -67,330 +65,563 @@ const WaitlistScreen = () => {
       : 0
 
   return (
-    <View className='flex-1 bg-screen p-6'>
-      <View className='mb-6'>
-        <Text className='text-3xl font-bold text-white'>
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      {/* Page Header */}
+      <View style={{ marginBottom: 4 }}>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
           Waitlist & Reservations
         </Text>
-        <Text className='text-gray-400 mt-2'>
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
           Manage digital waitlist and reservation settings.
         </Text>
       </View>
 
-      <View className='h-[1px] w-full bg-gray-700 mb-6' />
+      <View
+        style={{ height: 1, backgroundColor: colors.border, marginVertical: 14 }}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20, gap: 14 }}
       >
-        <View className='gap-6'>
-          {/* Digital Waitlist Section */}
-          <Card className='bg-panel border-gray-600'>
-            <CardHeader>
-              <View className='flex-row items-center gap-3'>
-                <Users color={colors.info} size={24} />
-                <CardTitle className='text-white'>Digital Waitlist</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className='gap-6'>
-              {/* Enable Waitlist */}
-              <View className='flex-row items-center justify-between'>
-                <Label className='text-white text-base'>
-                  Enable Digital Waitlist
-                </Label>
-                <Switch
-                  checked={enableWaitlist}
-                  onCheckedChange={setEnableWaitlist}
-                />
-              </View>
+        {/* Digital Waitlist Section */}
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Section Header */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                backgroundColor: colors.teal + '15',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 10,
+              }}
+            >
+              <Users size={16} color={colors.teal} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+              Digital Waitlist
+            </Text>
+          </View>
 
-              {enableWaitlist && (
-                <>
-                  <View className='h-[1px] bg-gray-700' />
+          <View style={{ padding: 12, gap: 14 }}>
+            {/* Enable Toggle */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                Enable Digital Waitlist
+              </Text>
+              <Switch
+                checked={enableWaitlist}
+                onCheckedChange={setEnableWaitlist}
+              />
+            </View>
 
-                  {/* Operational Dashboard (Live Sync) */}
-                  <View className='gap-4'>
-                    <Text className='text-gray-300 font-semibold text-sm uppercase tracking-wider'>
-                      Live Dashboard
-                    </Text>
-                    <View className='flex-row gap-4'>
-                      <View className='flex-1 bg-screen p-4 rounded-lg border border-gray-700'>
-                        <Text className='text-gray-400 text-xs'>Waiting</Text>
-                        <Text className='text-2xl font-bold text-white'>
-                          {waitlist.length}
-                        </Text>
-                      </View>
-                      <View className='flex-1 bg-screen p-4 rounded-lg border border-gray-700'>
-                        <Text className='text-gray-400 text-xs'>Avg Wait</Text>
-                        <Text className='text-2xl font-bold text-blue-400'>
-                          {avgWaitTime}m
-                        </Text>
-                      </View>
+            {enableWaitlist && (
+              <>
+                <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                {/* Live Dashboard */}
+                <View style={{ gap: 10 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color: colors.muted,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.8,
+                    }}
+                  >
+                    Live Dashboard
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View
+                      style={{
+                        flex: 1,
+                        backgroundColor: colors.card,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        padding: 12,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, color: colors.label }}>Waiting</Text>
+                      <Text
+                        style={{ fontSize: 22, fontWeight: '700', color: colors.heading, marginTop: 2 }}
+                      >
+                        {waitlist.length}
+                      </Text>
                     </View>
-
-                    {/* Active Waitlist Items */}
-                    <View className='bg-screen rounded-lg border border-gray-700 overflow-hidden'>
-                      <View className='p-3 border-b border-gray-700 bg-gray-800/50'>
-                        <Text className='text-gray-300 font-medium'>
-                          Active Parties
-                        </Text>
-                      </View>
-                      {waitlist.length === 0 ? (
-                        <View className='p-6 items-center'>
-                          <Text className='text-gray-500'>
-                            Waitlist is empty
-                          </Text>
-                        </View>
-                      ) : (
-                        waitlist.slice(0, 3).map(entry => (
-                          <View
-                            key={entry.id}
-                            className='p-3 border-b border-gray-700 flex-row items-center justify-between last:border-0'
-                          >
-                            <View>
-                              <Text className='text-white font-medium'>
-                                {entry.name}
-                              </Text>
-                              <Text className='text-gray-400 text-xs'>
-                                Party of {entry.partySize} • {entry.quotedTime}m
-                                quote
-                              </Text>
-                            </View>
-                            <View className='flex-row gap-2'>
-                              <TouchableOpacity className='p-2 bg-blue-600/20 rounded-md border border-blue-600/50'>
-                                <MessageSquare size={14} color={colors.info} />
-                              </TouchableOpacity>
-                              <TouchableOpacity className='p-2 bg-green-600/20 rounded-md border border-green-600/50'>
-                                <Check size={14} color={colors.success} />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() => removeWaitlistEntry(entry.id)}
-                                className='p-2 bg-red-600/20 rounded-md border border-red-600/50'
-                              >
-                                <X size={14} color={colors.danger} />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))
-                      )}
-                      {waitlist.length > 3 && (
-                        <View className='p-2 items-center border-t border-gray-700'>
-                          <Text className='text-gray-500 text-xs'>
-                            +{waitlist.length - 3} more
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-
-                  <View className='h-[1px] bg-gray-700' />
-
-                  {/* SMS Configuration */}
-                  <View className='gap-4'>
-                    <View className='flex-row items-center justify-between'>
-                      <Label className='text-white'>Auto-SMS When Ready</Label>
-                      <Switch
-                        checked={autoSmsEnabled}
-                        onCheckedChange={setAutoSmsEnabled}
-                      />
-                    </View>
-                    {autoSmsEnabled && (
-                      <View>
-                        <Label className='text-gray-400 text-sm mb-2'>
-                          SMS Template
-                        </Label>
-                        <TextInput
-                          multiline
-                          numberOfLines={3}
-                          className='bg-screen border border-gray-600 rounded-md p-3 text-white text-sm h-24'
-                          value={smsTemplate}
-                          onChangeText={setSmsTemplate}
-                          textAlignVertical='top'
-                        />
-                        <Text className='text-gray-500 text-xs mt-1'>
-                          Available variables: {'{name}'}, {'{party_size}'}
-                        </Text>
-                      </View>
-                    )}
-
-                    <View>
-                      <Label className='text-gray-400 text-sm mb-2'>
-                        No-show grace period after notification (minutes)
-                      </Label>
-                      <Input
-                        className='bg-screen border-gray-600 text-white h-10'
-                        value={String(
-                          waitlistNotificationGracePeriodMinutes ?? 10
-                        )}
-                        onChangeText={value => {
-                          const parsed = parseInt(value || '10', 10)
-                          updateStoreSetting(
-                            'waitlistNotificationGracePeriodMinutes',
-                            Number.isFinite(parsed) && parsed > 0 ? parsed : 10
-                          )
-                        }}
-                        keyboardType='numeric'
-                      />
-                      <Text className='text-gray-500 text-xs mt-1'>
-                        Default is 10 minutes.
+                    <View
+                      style={{
+                        flex: 1,
+                        backgroundColor: colors.card,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        padding: 12,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, color: colors.label }}>Avg Wait</Text>
+                      <Text
+                        style={{ fontSize: 22, fontWeight: '700', color: colors.teal, marginTop: 2 }}
+                      >
+                        {avgWaitTime}m
                       </Text>
                     </View>
                   </View>
-                </>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* Reservation System Section */}
-          <Card className='bg-panel border-gray-600'>
-            <CardHeader>
-              <View className='flex-row items-center gap-3'>
-                <CalendarDays color={colors.warning} size={24} />
-                <CardTitle className='text-white'>Reservation System</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className='gap-6'>
-              {/* Enable Reservations */}
-              <View className='flex-row items-center justify-between'>
-                <Label className='text-white text-base'>
-                  Enable Reservations
-                </Label>
-                <Switch
-                  checked={enableReservations}
-                  onCheckedChange={setEnableReservations}
-                />
-              </View>
-
-              {enableReservations && (
-                <>
-                  <View className='h-[1px] bg-gray-700' />
-
-                  {/* Booking Settings */}
-                  <View className='gap-4'>
-                    <Text className='text-gray-300 font-semibold text-sm uppercase tracking-wider'>
-                      Booking Rules
-                    </Text>
-                    <View className='flex-row gap-4'>
-                      <View className='flex-1 gap-1.5'>
-                        <Label className='text-gray-400 text-xs'>
-                          Days Ahead
-                        </Label>
-                        <Input
-                          className='bg-screen border-gray-600 text-white h-10'
-                          value={daysAhead}
-                          onChangeText={setDaysAhead}
-                          keyboardType='numeric'
-                        />
-                      </View>
-                      <View className='flex-1 gap-1.5'>
-                        <Label className='text-gray-400 text-xs'>
-                          Max Guests
-                        </Label>
-                        <Input
-                          className='bg-screen border-gray-600 text-white h-10'
-                          value={maxGuestsPerSlot}
-                          onChangeText={setMaxGuestsPerSlot}
-                          keyboardType='numeric'
-                        />
-                      </View>
-                      <View className='flex-1 gap-1.5'>
-                        <Label className='text-gray-400 text-xs'>
-                          Slot (min)
-                        </Label>
-                        <Input
-                          className='bg-screen border-gray-600 text-white h-10'
-                          value={slotDuration}
-                          onChangeText={setSlotDuration}
-                          keyboardType='numeric'
-                        />
-                      </View>
+                  {/* Active Waitlist Items */}
+                  <View
+                    style={{
+                      backgroundColor: colors.card,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <View
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.border,
+                        backgroundColor: colors.panel,
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+                        Active Parties
+                      </Text>
                     </View>
-                  </View>
-
-                  {/* Deposits */}
-                  <View className='gap-4'>
-                    <View className='flex-row items-center justify-between'>
-                      <Label className='text-white'>Require Deposit</Label>
-                      <Switch
-                        checked={requireDeposit}
-                        onCheckedChange={setRequireDeposit}
-                      />
-                    </View>
-                    {requireDeposit && (
-                      <View className='gap-4'>
-                        <View>
-                          <Label className='text-gray-400 text-sm mb-1.5'>
-                            Amount per Person ($)
-                          </Label>
-                          <Input
-                            className='bg-screen border-gray-600 text-white h-10'
-                            value={depositAmount}
-                            onChangeText={setDepositAmount}
-                            keyboardType='numeric'
-                          />
+                    {waitlist.length === 0 ? (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: colors.muted }}>
+                          Waitlist is empty
+                        </Text>
+                      </View>
+                    ) : (
+                      waitlist.slice(0, 3).map(entry => (
+                        <View
+                          key={entry.id}
+                          style={{
+                            padding: 12,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <View>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                              {entry.name}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+                              Party of {entry.partySize} · {entry.quotedTime}m quote
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity
+                              style={{
+                                padding: 7,
+                                backgroundColor: colors.info + '20',
+                                borderRadius: 7,
+                                borderWidth: 1,
+                                borderColor: colors.info + '50',
+                              }}
+                            >
+                              <MessageSquare size={14} color={colors.info} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={{
+                                padding: 7,
+                                backgroundColor: colors.success + '20',
+                                borderRadius: 7,
+                                borderWidth: 1,
+                                borderColor: colors.success + '50',
+                              }}
+                            >
+                              <Check size={14} color={colors.success} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => removeWaitlistEntry(entry.id)}
+                              style={{
+                                padding: 7,
+                                backgroundColor: colors.danger + '15',
+                                borderRadius: 7,
+                                borderWidth: 1,
+                                borderColor: colors.danger + '30',
+                              }}
+                            >
+                              <X size={14} color={colors.danger} />
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <View>
-                          <Label className='text-gray-400 text-sm mb-1.5'>
-                            Cancellation Policy
-                          </Label>
-                          <TextInput
-                            multiline
-                            className='bg-screen border border-gray-600 rounded-md p-3 text-white text-sm h-20'
-                            value={cancellationPolicy}
-                            onChangeText={setCancellationPolicy}
-                            textAlignVertical='top'
-                          />
-                        </View>
+                      ))
+                    )}
+                    {waitlist.length > 3 && (
+                      <View
+                        style={{
+                          padding: 8,
+                          alignItems: 'center',
+                          borderTopWidth: 1,
+                          borderTopColor: colors.border,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                          +{waitlist.length - 3} more
+                        </Text>
                       </View>
                     )}
                   </View>
+                </View>
 
-                  <View className='h-[1px] bg-gray-700' />
+                <View style={{ height: 1, backgroundColor: colors.border }} />
 
-                  {/* External Integration */}
-                  <TouchableOpacity className='flex-row items-center justify-center bg-blue-600 p-4 rounded-lg'>
-                    <Text className='text-white font-bold text-base mr-2'>
-                      Connect Google Reserve
+                {/* SMS Configuration */}
+                <View style={{ gap: 12 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                      Auto-SMS When Ready
                     </Text>
-                    <ChevronRight color='white' size={18} />
-                  </TouchableOpacity>
+                    <Switch
+                      checked={autoSmsEnabled}
+                      onCheckedChange={setAutoSmsEnabled}
+                    />
+                  </View>
+                  {autoSmsEnabled && (
+                    <View>
+                      <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
+                        SMS Template
+                      </Text>
+                      <TextInput
+                        multiline
+                        numberOfLines={3}
+                        style={{
+                          backgroundColor: colors.card,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 8,
+                          padding: 10,
+                          color: colors.heading,
+                          fontSize: 12,
+                          height: 80,
+                          textAlignVertical: 'top',
+                        }}
+                        value={smsTemplate}
+                        onChangeText={setSmsTemplate}
+                        textAlignVertical="top"
+                        placeholderTextColor={colors.muted}
+                      />
+                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                        Available variables: {'{name}'}, {'{party_size}'}
+                      </Text>
+                    </View>
+                  )}
 
-                  {/* Today's Timeline Preview */}
-                  <View className='mt-2 text-white'>
-                    <Label className='text-gray-300 font-semibold mb-3'>
-                      Today's Upcoming
-                    </Label>
-                    <View className='gap-2'>
-                      {mockReservations.map((res, index) => (
-                        <View
-                          key={index}
-                          className='flex-row items-center bg-screen p-3 rounded-md border border-gray-700'
-                        >
-                          <Clock
-                            size={16}
-                            color={colors.label}
-                            className='mr-3'
-                          />
-                          <Text className='text-blue-400 font-bold w-20'>
-                            {res.time}
-                          </Text>
-                          <Text className='text-white font-medium flex-1'>
-                            {res.name}
-                          </Text>
-                          <View className='flex-row items-center gap-1'>
-                            <Users size={14} color={colors.label} />
-                            <Text className='text-gray-400 text-sm'>
-                              {res.party}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
+                  <View>
+                    <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
+                      No-show grace period after notification (minutes)
+                    </Text>
+                    <Input
+                      className="bg-screen border-gray-600 text-white h-10"
+                      value={String(waitlistNotificationGracePeriodMinutes ?? 10)}
+                      onChangeText={value => {
+                        const parsed = parseInt(value || '10', 10)
+                        updateStoreSetting(
+                          'waitlistNotificationGracePeriodMinutes',
+                          Number.isFinite(parsed) && parsed > 0 ? parsed : 10
+                        )
+                      }}
+                      keyboardType="numeric"
+                    />
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                      Default is 10 minutes.
+                    </Text>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* Reservation System Section */}
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Section Header */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                backgroundColor: colors.warning + '15',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: 10,
+              }}
+            >
+              <CalendarDays size={16} color={colors.warning} />
+            </View>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
+              Reservation System
+            </Text>
+          </View>
+
+          <View style={{ padding: 12, gap: 14 }}>
+            {/* Enable Toggle */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                Enable Reservations
+              </Text>
+              <Switch
+                checked={enableReservations}
+                onCheckedChange={setEnableReservations}
+              />
+            </View>
+
+            {enableReservations && (
+              <>
+                <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                {/* Booking Settings */}
+                <View style={{ gap: 10 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color: colors.muted,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.8,
+                    }}
+                  >
+                    Booking Rules
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1, gap: 5 }}>
+                      <Text style={{ fontSize: 11, color: colors.label }}>Days Ahead</Text>
+                      <Input
+                        className="bg-screen border-gray-600 text-white h-10"
+                        value={daysAhead}
+                        onChangeText={setDaysAhead}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View style={{ flex: 1, gap: 5 }}>
+                      <Text style={{ fontSize: 11, color: colors.label }}>Max Guests</Text>
+                      <Input
+                        className="bg-screen border-gray-600 text-white h-10"
+                        value={maxGuestsPerSlot}
+                        onChangeText={setMaxGuestsPerSlot}
+                        keyboardType="numeric"
+                      />
+                    </View>
+                    <View style={{ flex: 1, gap: 5 }}>
+                      <Text style={{ fontSize: 11, color: colors.label }}>Slot (min)</Text>
+                      <Input
+                        className="bg-screen border-gray-600 text-white h-10"
+                        value={slotDuration}
+                        onChangeText={setSlotDuration}
+                        keyboardType="numeric"
+                      />
                     </View>
                   </View>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                </View>
+
+                {/* Deposits */}
+                <View style={{ gap: 10 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                      Require Deposit
+                    </Text>
+                    <Switch
+                      checked={requireDeposit}
+                      onCheckedChange={setRequireDeposit}
+                    />
+                  </View>
+                  {requireDeposit && (
+                    <View style={{ gap: 10 }}>
+                      <View>
+                        <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
+                          Amount per Person ($)
+                        </Text>
+                        <Input
+                          className="bg-screen border-gray-600 text-white h-10"
+                          value={depositAmount}
+                          onChangeText={setDepositAmount}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <View>
+                        <Text style={{ fontSize: 12, color: colors.label, marginBottom: 6 }}>
+                          Cancellation Policy
+                        </Text>
+                        <TextInput
+                          multiline
+                          style={{
+                            backgroundColor: colors.card,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 8,
+                            padding: 10,
+                            color: colors.heading,
+                            fontSize: 12,
+                            height: 72,
+                            textAlignVertical: 'top',
+                          }}
+                          value={cancellationPolicy}
+                          onChangeText={setCancellationPolicy}
+                          textAlignVertical="top"
+                          placeholderTextColor={colors.muted}
+                        />
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                {/* External Integration */}
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: colors.teal + '20',
+                    borderWidth: 1,
+                    borderColor: colors.teal + '50',
+                    paddingVertical: 12,
+                    borderRadius: 10,
+                    gap: 6,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.teal }}>
+                    Connect Google Reserve
+                  </Text>
+                  <ChevronRight color={colors.teal} size={16} />
+                </TouchableOpacity>
+
+                {/* Today's Timeline Preview */}
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: colors.heading,
+                      marginBottom: 8,
+                    }}
+                  >
+                    Today's Upcoming
+                  </Text>
+                  <View style={{ gap: 6 }}>
+                    {mockReservations.map((res, index) => (
+                      <View
+                        key={index}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: colors.card,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          paddingHorizontal: 12,
+                          paddingVertical: 9,
+                          gap: 10,
+                        }}
+                      >
+                        <Clock size={14} color={colors.label} />
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color: colors.teal,
+                            width: 72,
+                          }}
+                        >
+                          {res.time}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '600',
+                            color: colors.heading,
+                            flex: 1,
+                          }}
+                        >
+                          {res.name}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Users size={12} color={colors.label} />
+                          <Text style={{ fontSize: 12, color: colors.label }}>
+                            {res.party}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
         </View>
       </ScrollView>
     </View>

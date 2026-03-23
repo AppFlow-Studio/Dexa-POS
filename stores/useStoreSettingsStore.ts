@@ -77,7 +77,6 @@ export interface StoreSettings {
   prepTimeAdjustments: {
     kitchenLoad: boolean // +10m if >25 orders
     peakHours: boolean // +5m 5-8PM
-    weather: boolean // +15m if bad weather (simulated)
   }
 
   // Pre-Ordering
@@ -145,6 +144,9 @@ export interface StoreSettings {
     preAuthEnabled: boolean
     defaultPreAuthAmount: number
   }
+
+  // Tips settings
+  openDrawerOnTip: boolean
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -197,6 +199,9 @@ interface StoreSettingsState extends StoreSettings {
 
   // Pre-auth settings actions
   updatePreAuthSettings: (updates: Partial<StoreSettings['preAuthSettings']>) => void
+
+  // Tips settings actions
+  setOpenDrawerOnTip: (value: boolean) => void
 }
 
 const initialData: StoreSettings = {
@@ -235,7 +240,6 @@ const initialData: StoreSettings = {
   prepTimeAdjustments: {
     kitchenLoad: true,
     peakHours: true,
-    weather: false
   },
   preOrderingEnabled: true,
   preOrderMaxDays: 30,
@@ -301,6 +305,9 @@ const initialData: StoreSettings = {
     preAuthEnabled: false,
     defaultPreAuthAmount: 25,
   },
+
+  // Tips settings
+  openDrawerOnTip: false,
 }
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -552,7 +559,11 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
 
       exitCFDMode: () => {
         set({ isCFDMode: false, selectedStation: null, stationSessionId: null })
-      }
+      },
+
+      setOpenDrawerOnTip: (value: boolean) => {
+        set({ openDrawerOnTip: value })
+      },
     }),
     {
       name: 'store-settings-storage',
@@ -613,7 +624,9 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         // CFD client mode
         isCFDMode: state.isCFDMode,
         // Pre-auth settings
-        preAuthSettings: state.preAuthSettings
+        preAuthSettings: state.preAuthSettings,
+        // Tips settings
+        openDrawerOnTip: state.openDrawerOnTip,
       })
     }
   )

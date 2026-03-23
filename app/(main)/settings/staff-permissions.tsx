@@ -136,73 +136,161 @@ const StaffPermissionsScreen = () => {
   const renderSectionHeader = (title: string, icon: React.ReactNode, section: keyof typeof expandedSections) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: 14,
+        backgroundColor: colors.panel,
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+        borderBottomWidth: expandedSections[section] ? 1 : 0,
+        borderBottomColor: colors.border,
+      }}
     >
-      <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          backgroundColor: colors.teal + "15",
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 10,
+        }}>
           {icon}
         </View>
-        <Text className="text-white font-bold text-lg">{title}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{title}</Text>
       </View>
-      {expandedSections[section] ? <ChevronUp size={20} color={colors.label} /> : <ChevronDown size={20} color={colors.label} />}
+      {expandedSections[section]
+        ? <ChevronUp size={16} color={colors.label} />
+        : <ChevronDown size={16} color={colors.label} />}
     </TouchableOpacity>
   );
 
-  const renderToggleRow = (label: string, description: string, value: boolean, onToggle: (val: boolean) => void) => (
-    <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
-      <View className="flex-1 pr-4">
-        <Text className="text-white font-medium">{label}</Text>
-        <Text className="text-gray-400 text-sm">{description}</Text>
+  const renderToggleRow = (label: string, description: string, value: boolean, onToggle: (val: boolean) => void, isLast = false) => (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: 10,
+      borderBottomWidth: isLast ? 0 : 1,
+      borderBottomColor: colors.border,
+    }}>
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "600" }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>{description}</Text>
       </View>
       <Switch checked={value} onCheckedChange={onToggle} />
     </View>
   );
 
-
   const renderAddRoleModal = () => (
     <Modal visible={addRoleModal} transparent animationType="fade" onRequestClose={closeAddRoleModal} statusBarTranslucent>
-      <View className="flex-1 justify-center items-center bg-black/70 px-4">
-        <View className="w-full max-w-[400px] bg-panel rounded-2xl border border-gray-700 overflow-hidden">
-          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between bg-surface">
-            <Text className="text-xl font-bold text-white">Add New Role</Text>
-            <TouchableOpacity onPress={closeAddRoleModal} className="p-2"><X size={24} color={colors.label} /></TouchableOpacity>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16 }}>
+        <View style={{
+          width: "100%",
+          maxWidth: 400,
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: "hidden",
+        }}>
+          <View style={{
+            padding: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            backgroundColor: colors.card,
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Add New Role</Text>
+            <TouchableOpacity onPress={closeAddRoleModal} style={{ padding: 4 }}>
+              <X size={18} color={colors.label} />
+            </TouchableOpacity>
           </View>
 
-          <View className="p-4">
-            <View className="mb-4">
-              <Text className="text-gray-300 font-medium mb-2">Role Name</Text>
+          <View style={{ padding: 14 }}>
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600", marginBottom: 6 }}>Role Name</Text>
               <TextInput
                 value={newRoleName}
                 onChangeText={setNewRoleName}
                 placeholder="Enter role name"
                 placeholderTextColor={colors.muted}
-                className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                style={{
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  padding: 10,
+                  fontSize: 13,
+                  color: colors.heading,
+                }}
               />
             </View>
 
             <View>
-              <Text className="text-gray-300 font-medium mb-2">Color</Text>
-              <View className="flex-row flex-wrap gap-2">
+              <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600", marginBottom: 8 }}>Color</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {ROLE_COLORS.map(color => (
                   <TouchableOpacity
                     key={color}
                     onPress={() => setSelectedColor(color)}
-                    className={`w-10 h-10 rounded-lg items-center justify-center border-2 ${selectedColor === color ? 'border-white' : 'border-transparent'}`}
-                    style={{ backgroundColor: color }}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 2,
+                      borderColor: selectedColor === color ? colors.heading : "transparent",
+                      backgroundColor: color,
+                    }}
                   >
-                    {selectedColor === color && <Check size={18} color="white" />}
+                    {selectedColor === color && <Check size={16} color="white" />}
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
           </View>
 
-          <View className="p-4 border-t border-gray-700 flex-row gap-3">
-            <TouchableOpacity onPress={closeAddRoleModal} className="flex-1 py-3 bg-surface rounded-lg">
-              <Text className="text-white font-medium text-center">Cancel</Text>
+          <View style={{
+            padding: 14,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            flexDirection: "row",
+            gap: 10,
+          }}>
+            <TouchableOpacity
+              onPress={closeAddRoleModal}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600" }}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleAddRole} disabled={!newRoleName.trim()} className={`flex-1 py-3 rounded-lg ${newRoleName.trim() ? 'bg-blue-600' : 'bg-blue-600/50'}`}>
-              <Text className="text-white font-medium text-center">Add Role</Text>
+            <TouchableOpacity
+              onPress={handleAddRole}
+              disabled={!newRoleName.trim()}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 8,
+                backgroundColor: newRoleName.trim() ? colors.teal + "20" : colors.teal + "0A",
+                borderWidth: 1,
+                borderColor: newRoleName.trim() ? colors.teal + "50" : colors.border,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: "700", color: newRoleName.trim() ? colors.teal : colors.muted }}>Add Role</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -212,58 +300,135 @@ const StaffPermissionsScreen = () => {
 
   const renderEditRoleModal = () => (
     <Modal visible={editRoleModal} transparent animationType="fade" onRequestClose={closeEditRoleModal} statusBarTranslucent>
-      <View className="flex-1 justify-center items-center bg-black/70 px-4">
-        <View className="w-full max-w-[400px] bg-panel rounded-2xl border border-gray-700 overflow-hidden">
-          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between bg-surface">
-            <Text className="text-xl font-bold text-white">Edit Role</Text>
-            <TouchableOpacity onPress={closeEditRoleModal} className="p-2"><X size={24} color={colors.label} /></TouchableOpacity>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16 }}>
+        <View style={{
+          width: "100%",
+          maxWidth: 400,
+          backgroundColor: colors.panel,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: "hidden",
+        }}>
+          <View style={{
+            padding: 14,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            backgroundColor: colors.card,
+          }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Edit Role</Text>
+            <TouchableOpacity onPress={closeEditRoleModal} style={{ padding: 4 }}>
+              <X size={18} color={colors.label} />
+            </TouchableOpacity>
           </View>
 
-          <View className="p-4">
-            <View className="mb-4">
-              <Text className="text-gray-300 font-medium mb-2">Role Name</Text>
+          <View style={{ padding: 14 }}>
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600", marginBottom: 6 }}>Role Name</Text>
               <TextInput
                 value={newRoleName}
                 onChangeText={setNewRoleName}
                 placeholder="Enter role name"
                 placeholderTextColor={colors.muted}
-                className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                style={{
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  padding: 10,
+                  fontSize: 13,
+                  color: colors.heading,
+                }}
               />
             </View>
 
-            <View className="mb-4">
-              <Text className="text-gray-300 font-medium mb-2">Color</Text>
-              <View className="flex-row flex-wrap gap-2">
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600", marginBottom: 8 }}>Color</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {ROLE_COLORS.map(color => (
                   <TouchableOpacity
                     key={color}
                     onPress={() => setSelectedColor(color)}
-                    className={`w-10 h-10 rounded-lg items-center justify-center border-2 ${selectedColor === color ? 'border-white' : 'border-transparent'}`}
-                    style={{ backgroundColor: color }}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 2,
+                      borderColor: selectedColor === color ? colors.heading : "transparent",
+                      backgroundColor: color,
+                    }}
                   >
-                    {selectedColor === color && <Check size={18} color="white" />}
+                    {selectedColor === color && <Check size={16} color="white" />}
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
 
-            <View className="bg-red-500/10 border border-red-500/30 p-3 rounded-lg">
-              <Text className="text-red-400 text-sm text-center">This role has {selectedRole?.count || 0} staff members assigned.</Text>
+            <View style={{
+              backgroundColor: colors.danger + "10",
+              borderWidth: 1,
+              borderColor: colors.danger + "30",
+              borderRadius: 8,
+              padding: 10,
+            }}>
+              <Text style={{ fontSize: 12, color: colors.danger, textAlign: "center" }}>
+                This role has {selectedRole?.count || 0} staff members assigned.
+              </Text>
             </View>
           </View>
 
-          <View className="p-4 border-t border-gray-700">
-            <View className="flex-row gap-3 mb-3">
-              <TouchableOpacity onPress={closeEditRoleModal} className="flex-1 py-3 bg-surface rounded-lg">
-                <Text className="text-white font-medium text-center">Cancel</Text>
+          <View style={{ padding: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+              <TouchableOpacity
+                onPress={closeEditRoleModal}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600" }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleEditRole} disabled={!newRoleName.trim()} className={`flex-1 py-3 rounded-lg ${newRoleName.trim() ? 'bg-blue-600' : 'bg-blue-600/50'}`}>
-                <Text className="text-white font-medium text-center">Save Changes</Text>
+              <TouchableOpacity
+                onPress={handleEditRole}
+                disabled={!newRoleName.trim()}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  backgroundColor: newRoleName.trim() ? colors.teal + "20" : colors.teal + "0A",
+                  borderWidth: 1,
+                  borderColor: newRoleName.trim() ? colors.teal + "50" : colors.border,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: newRoleName.trim() ? colors.teal : colors.muted }}>Save Changes</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={handleDeleteRole} className="py-3 bg-red-600/20 border border-red-600 rounded-lg flex-row items-center justify-center">
-              <Trash2 size={18} color={colors.danger} />
-              <Text className="text-red-400 font-medium ml-2">Delete Role</Text>
+            <TouchableOpacity
+              onPress={handleDeleteRole}
+              style={{
+                paddingVertical: 10,
+                backgroundColor: colors.danger + "15",
+                borderWidth: 1,
+                borderColor: colors.danger + "30",
+                borderRadius: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              <Trash2 size={14} color={colors.danger} />
+              <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>Delete Role</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -273,42 +438,74 @@ const StaffPermissionsScreen = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View className="flex-1 bg-screen p-6">
+      <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
         {renderAddRoleModal()}
         {renderEditRoleModal()}
 
-        <View className="mb-6">
-          <Text className="text-3xl font-bold text-white">Staff & Permissions</Text>
-          <Text className="text-gray-400 mt-2">Manage roles, permissions, and employee access.</Text>
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Staff & Permissions</Text>
+          <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>Manage roles, permissions, and employee access.</Text>
         </View>
 
-        <View className="h-px w-full bg-gray-700 mb-6" />
+        <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
         <ScrollView showsVerticalScrollIndicator={false}>
 
           {/* Roles Management */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Role Management", <UserCog size={20} color={colors.info} />, "roles")}
+          <View style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+          }}>
+            {renderSectionHeader("Role Management", <UserCog size={16} color={colors.teal} />, "roles")}
             {expandedSections.roles && (
-              <View className="p-5">
-                <Text className="text-gray-400 text-sm mb-4">Tap a role to edit. Define roles to categorize your staff members.</Text>
-                <View className="flex-row flex-wrap gap-3 mb-4">
+              <View style={{ padding: 14 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 10 }}>Tap a role to edit. Define roles to categorize your staff members.</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
                   {roles.map(role => (
                     <TouchableOpacity
                       key={role.id}
                       onPress={() => openEditRoleModal(role)}
-                      className="bg-surface border border-gray-600 px-4 py-3 rounded-xl flex-row items-center"
+                      style={{
+                        backgroundColor: colors.card,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        flexDirection: "row",
+                        alignItems: "center",
+                      }}
                     >
-                      <View className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: role.color }} />
-                      <Text className="text-white font-bold mr-2">{role.name}</Text>
-                      <View className="bg-card px-2 py-0.5 rounded-full">
-                        <Text className="text-xs text-gray-300">{role.count}</Text>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, marginRight: 7, backgroundColor: role.color }} />
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading, marginRight: 6 }}>{role.name}</Text>
+                      <View style={{
+                        backgroundColor: colors.screen,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 10,
+                      }}>
+                        <Text style={{ fontSize: 11, color: colors.label }}>{role.count}</Text>
                       </View>
                     </TouchableOpacity>
                   ))}
-                  <TouchableOpacity onPress={openAddRoleModal} className="bg-blue-600/20 border border-blue-600 px-4 py-3 rounded-xl flex-row items-center">
-                    <Plus size={16} color={colors.info} />
-                    <Text className="text-blue-400 font-bold ml-1">Add Role</Text>
+                  <TouchableOpacity
+                    onPress={openAddRoleModal}
+                    style={{
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 10,
+                      flexDirection: "row",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Plus size={13} color={colors.teal} />
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal, marginLeft: 4 }}>Add Role</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -316,62 +513,108 @@ const StaffPermissionsScreen = () => {
           </View>
 
           {/* Permission Matrix */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Permission Matrix", <Shield size={20} color={colors.warning} />, "matrix")}
+          <View style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+          }}>
+            {renderSectionHeader("Permission Matrix", <Shield size={16} color={colors.warning} />, "matrix")}
             {expandedSections.matrix && (
-              <View className="p-5">
-                <View className="flex-row mb-3 pb-2 border-b border-gray-600">
-                  <View className="flex-[2]"><Text className="text-gray-400 text-xs uppercase tracking-wider">Permission</Text></View>
+              <View style={{ padding: 14 }}>
+                <View style={{ flexDirection: "row", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <View style={{ flex: 2 }}>
+                    <Text style={{ fontSize: 10, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Permission</Text>
+                  </View>
                   {ROLE_KEYS.map(role => (
-                    <View key={role} className="flex-1 items-center">
-                      <Text className="text-gray-400 text-xs uppercase tracking-wider">{ROLE_LABELS[role].substring(0, 4)}</Text>
+                    <View key={role} style={{ flex: 1, alignItems: "center" }}>
+                      <Text style={{ fontSize: 10, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                        {ROLE_LABELS[role].substring(0, 4)}
+                      </Text>
                     </View>
                   ))}
                 </View>
 
                 {permissions.map((perm) => (
-                  <View key={perm.id} className="flex-row py-2 border-b border-gray-700 items-center">
-                    <View className="flex-[2]"><Text className="text-white text-sm">{perm.name}</Text></View>
+                  <View key={perm.id} style={{
+                    flexDirection: "row",
+                    paddingVertical: 8,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                    alignItems: "center",
+                  }}>
+                    <View style={{ flex: 2 }}>
+                      <Text style={{ fontSize: 12, color: colors.heading }}>{perm.name}</Text>
+                    </View>
                     {ROLE_KEYS.map(role => (
-                      <View key={role} className="flex-1 items-center">
-                        {perm[role] ? <Check size={16} color={colors.success} /> : <X size={16} color={colors.danger} />}
+                      <View key={role} style={{ flex: 1, alignItems: "center" }}>
+                        {perm[role]
+                          ? <Check size={14} color={colors.success} />
+                          : <X size={14} color={colors.danger} />}
                       </View>
                     ))}
                   </View>
                 ))}
 
-                <TouchableOpacity onPress={openEditMatrix} className="mt-4 flex-row items-center justify-center bg-surface py-3 rounded-lg border border-gray-600">
-                  <Edit3 size={16} color={colors.info} />
-                  <Text className="text-blue-400 font-medium ml-2">Edit Permission Matrix</Text>
+                <TouchableOpacity
+                  onPress={openEditMatrix}
+                  style={{
+                    marginTop: 12,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.teal + "20",
+                    borderWidth: 1,
+                    borderColor: colors.teal + "50",
+                    borderRadius: 8,
+                    paddingVertical: 10,
+                    gap: 6,
+                  }}
+                >
+                  <Edit3 size={14} color={colors.teal} />
+                  <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>Edit Permission Matrix</Text>
                 </TouchableOpacity>
               </View>
             )}
           </View>
 
-
           {/* Break & Login */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Break & Login", <Coffee size={20} color="#f472b6" />, "breakLogin")}
+          <View style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+          }}>
+            {renderSectionHeader("Break & Login", <Coffee size={16} color="#f472b6" />, "breakLogin")}
             {expandedSections.breakLogin && (
-              <View className="p-5">
+              <View style={{ padding: 14 }}>
                 {renderToggleRow(
                   "Enable Break & Switch Account",
                   "Allow another employee to log in while someone is on break.",
                   isBreakAndSwitchEnabled,
-                  (v) => setIsBreakAndSwitchEnabled(v)
+                  (v) => setIsBreakAndSwitchEnabled(v),
+                  true
                 )}
               </View>
             )}
           </View>
 
           {/* Paid Time Off (PTO) */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Paid Time Off (PTO)", <Calendar size={20} color={colors.success} />, "pto")}
+          <View style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+          }}>
+            {renderSectionHeader("Paid Time Off (PTO)", <Calendar size={16} color={colors.success} />, "pto")}
             {expandedSections.pto && (
-              <View className="p-5">
-                <View className="mb-4">
-                  <Text className="text-white font-medium mb-1">PTO Accrual Rate</Text>
-                  <Text className="text-gray-400 text-sm mb-3">Rate at which employees accrue PTO per hour worked.</Text>
+              <View style={{ padding: 14 }}>
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, marginBottom: 2 }}>PTO Accrual Rate</Text>
+                  <Text style={{ fontSize: 11, color: colors.label, marginBottom: 8 }}>Rate at which employees accrue PTO per hour worked.</Text>
                   <TextInput
                     value={ptoAccrualRate.toString()}
                     onChangeText={(text) => {
@@ -380,13 +623,21 @@ const StaffPermissionsScreen = () => {
                       else if (text === "") setPtoAccrualRate(0);
                     }}
                     keyboardType="numeric"
-                    className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                    style={{
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 13,
+                      color: colors.heading,
+                    }}
                   />
                 </View>
 
                 <View>
-                  <Text className="text-white font-medium mb-1">Minimum PTO Request Notice (Days)</Text>
-                  <Text className="text-gray-400 text-sm mb-3">Minimum number of days in advance an employee can request PTO.</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, marginBottom: 2 }}>Minimum PTO Request Notice (Days)</Text>
+                  <Text style={{ fontSize: 11, color: colors.label, marginBottom: 8 }}>Minimum number of days in advance an employee can request PTO.</Text>
                   <TextInput
                     value={minimumPtoNoticeDays.toString()}
                     onChangeText={(text) => {
@@ -395,7 +646,15 @@ const StaffPermissionsScreen = () => {
                       else if (text === "") updateField("minimumPtoNoticeDays", 0);
                     }}
                     keyboardType="numeric"
-                    className="bg-surface border border-gray-600 rounded-lg p-3 text-white"
+                    style={{
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 13,
+                      color: colors.heading,
+                    }}
                   />
                 </View>
               </View>
@@ -403,10 +662,16 @@ const StaffPermissionsScreen = () => {
           </View>
 
           {/* Clock-In Settings */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader("Clock-In Security", <Lock size={20} color="#a78bfa" />, "clockin")}
+          <View style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+          }}>
+            {renderSectionHeader("Clock-In Security", <Lock size={16} color={colors.teal} />, "clockin")}
             {expandedSections.clockin && (
-              <View className="p-5">
+              <View style={{ padding: 14 }}>
                 {renderToggleRow(
                   "Require PIN for Clock-In",
                   "Staff must enter their unique PIN to clock in/out",
@@ -429,7 +694,8 @@ const StaffPermissionsScreen = () => {
                   "Open Checks Restriction",
                   "Prevent clock-out if staff has open orders",
                   clockInSettings.preventOpenOrdersClockOut,
-                  (v) => setClockInSettings({ preventOpenOrdersClockOut: v })
+                  (v) => setClockInSettings({ preventOpenOrdersClockOut: v }),
+                  true
                 )}
               </View>
             )}
@@ -449,4 +715,3 @@ const StaffPermissionsScreen = () => {
 };
 
 export default StaffPermissionsScreen;
-

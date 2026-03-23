@@ -1,7 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import CustomSlider from "@/components/ui/custom-slider";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -11,12 +9,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { colors as themeColors } from "@/lib/theme";
+import { colors } from "@/lib/theme";
+import { useKDSStore } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
-  CalendarClock,
-  CalendarDays,
   CheckCircle2,
   Clock,
   PauseCircle,
@@ -27,71 +24,82 @@ import React, { useMemo } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Helper to get local minutes from ISO time
-const getMinutesFromTime = (isoTime: string) => {
-  const d = new Date(isoTime);
-  // We use local hours to match visual timeline which typically represents "the day"
-  return d.getHours() * 60 + d.getMinutes();
+// Helper to get local minutes from ISO or HH:MM:SS time string
+const getMinutesFromTime = (time: string) => {
+  if (time.includes("T")) {
+    const d = new Date(time);
+    return d.getHours() * 60 + d.getMinutes();
+  }
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + (m || 0);
 };
 
-// Timeline Component
+const formatScheduleTime = (time: string) => {
+  const mins = getMinutesFromTime(time);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const period = h >= 12 ? "PM" : "AM";
+  const displayH = h % 12 === 0 ? 12 : h % 12;
+  return `${displayH}:${m.toString().padStart(2, "0")} ${period}`;
+};
+
+const DAY_ABBR: Record<string, string> = {
+  Monday: "Mon",
+  Tuesday: "Tue",
+  Wednesday: "Wed",
+  Thursday: "Thu",
+  Friday: "Fri",
+  Saturday: "Sat",
+  Sunday: "Sun",
+};
+
+const TIMELINE_COLORS_HEX = [
+  colors.warning,
+  colors.success,
+  colors.info,
+  "#a78bfa",
+  colors.danger,
+];
+
+// Timeline bar across 24h
 const MenuTimeline = ({ menus }: { menus: any[] }) => {
-  const TOTAL_MINUTES = 24 * 60; // 1440 minutes in a day
-
-  // Predefined colors for visualization
-  const colors = [
-    "bg-yellow-500",
-    "bg-green-500",
-    "bg-blue-500",
-    "bg-purple-500",
-    "bg-red-500",
-  ];
-
+  const TOTAL_MINUTES = 24 * 60;
   return (
-    <View className="mt-4 mb-6">
-      <View className="flex-row justify-between mb-1 px-1">
-        <Text className="text-gray-500 text-xs">6 AM</Text>
-        <Text className="text-gray-500 text-xs">12 PM</Text>
-        <Text className="text-gray-500 text-xs">6 PM</Text>
-        <Text className="text-gray-500 text-xs">12 AM</Text>
+    <View style={{ marginBottom: 8 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4, paddingHorizontal: 2 }}>
+        <Text style={{ fontSize: 11, color: colors.muted }}>6 AM</Text>
+        <Text style={{ fontSize: 11, color: colors.muted }}>12 PM</Text>
+        <Text style={{ fontSize: 11, color: colors.muted }}>6 PM</Text>
+        <Text style={{ fontSize: 11, color: colors.muted }}>12 AM</Text>
       </View>
-      <View className="h-8 w-full bg-gray-700 rounded-lg flex-row overflow-hidden relative">
+      <View style={{ height: 28, width: "100%", backgroundColor: colors.border, borderRadius: 8, overflow: "hidden", position: "relative" }}>
         {menus.map((menu, index) => {
-          // Find the first active schedule for visualization
           const schedule = menu.schedules?.find((s: any) => s.isActive);
           if (!schedule) return null;
-
           const startMinutes = getMinutesFromTime(schedule.startTime);
           let endMinutes = getMinutesFromTime(schedule.endTime);
-
-          // Handle late night crossing midnight (e.g., 22:00 - 02:00)
-          // For timeline viz, we'll just clip it to 24h or show distinct segments if sophisticated
-          // Simple visual hack: if end < start, assume it goes to end of day for this bar
           if (endMinutes < startMinutes) endMinutes = TOTAL_MINUTES;
-
-          const widthPercent =
-            ((endMinutes - startMinutes) / TOTAL_MINUTES) * 100;
+          const widthPercent = ((endMinutes - startMinutes) / TOTAL_MINUTES) * 100;
           const leftPercent = (startMinutes / TOTAL_MINUTES) * 100;
-
+          const c = TIMELINE_COLORS_HEX[index % TIMELINE_COLORS_HEX.length];
           return (
             <View
               key={menu.id}
-              className={`absolute h-full ${
-                colors[index % colors.length]
-              }/80 border-r border-black/20`}
               style={{
-                left: `${leftPercent}%`,
-                width: `${widthPercent}%`,
+                position: "absolute",
+                height: "100%",
+                left: `${leftPercent}%` as any,
+                width: `${widthPercent}%` as any,
+                backgroundColor: c + "CC",
+                borderRightWidth: 1,
+                borderRightColor: "rgba(0,0,0,0.2)",
+                justifyContent: "center",
+                paddingHorizontal: 4,
               }}
             >
-              <View className="h-full justify-center px-1">
-                <Text
-                  numberOfLines={1}
-                  className="text-[10px] font-bold text-black/60"
-                >
-                  {menu.name}
-                </Text>
-              </View>
+              <Text numberOfLines={1} style={{ fontSize: 9, fontWeight: "700", color: "rgba(0,0,0,0.6)" }}>
+                {menu.name}
+              </Text>
             </View>
           );
         })}
@@ -110,402 +118,347 @@ const OnlineOrderingScreen = () => {
   const onlineOrderingEnabled = useStoreSettingsStore((s) => s.onlineOrderingEnabled);
   const updateField = useStoreSettingsStore((s) => s.updateField);
   const onlinePauseReason = useStoreSettingsStore((s) => s.onlinePauseReason);
-  const autoAcceptOrders = useStoreSettingsStore((s) => s.autoAcceptOrders);
-  const largeOrderApprovalThreshold = useStoreSettingsStore((s) => s.largeOrderApprovalThreshold);
-  const rejectWhenBusyThreshold = useStoreSettingsStore((s) => s.rejectWhenBusyThreshold);
   const dynamicPrepTimeEnabled = useStoreSettingsStore((s) => s.dynamicPrepTimeEnabled);
   const basePrepTime = useStoreSettingsStore((s) => s.basePrepTime);
   const prepTimeAdjustments = useStoreSettingsStore((s) => s.prepTimeAdjustments);
   const updatePrepAdjustment = useStoreSettingsStore((s) => s.updatePrepAdjustment);
-  const preOrderingEnabled = useStoreSettingsStore((s) => s.preOrderingEnabled);
-  const preOrderMaxDays = useStoreSettingsStore((s) => s.preOrderMaxDays);
-  const preOrderMinAdvanceMinutes = useStoreSettingsStore((s) => s.preOrderMinAdvanceMinutes);
-  const preOrderMaxDaily = useStoreSettingsStore((s) => s.preOrderMaxDaily);
 
-  const { isMenuSchedulingEnabled, setMenuSchedulingEnabled, menus } =
-    useMenuStore();
+  const { menus } = useMenuStore();
+
+  // KDS live data
+  const kdsTicketsByStatus = useKDSStore((s) => s.ticketsByStatus);
+  const liveKitchenOrderCount =
+    (kdsTicketsByStatus.pending?.length ?? 0) +
+    (kdsTicketsByStatus.cooking?.length ?? 0);
 
   // Calculated Prep Time Logic
   const currentPrepTime = useMemo(() => {
     let time = basePrepTime;
     if (dynamicPrepTimeEnabled) {
-      // Mock logic for "Current Factors"
-      if (prepTimeAdjustments.kitchenLoad) time += 10; // Assume busy for demo
-      if (prepTimeAdjustments.peakHours) time += 5; // Assume peak for demo
-      if (prepTimeAdjustments.weather) time += 15;
+      if (prepTimeAdjustments.kitchenLoad && liveKitchenOrderCount >= 25) time += 10;
+      if (prepTimeAdjustments.peakHours) {
+        const hour = new Date().getHours();
+        if (hour >= 17 && hour < 20) time += 5;
+      }
     }
     return time;
-  }, [basePrepTime, dynamicPrepTimeEnabled, prepTimeAdjustments]);
+  }, [basePrepTime, dynamicPrepTimeEnabled, prepTimeAdjustments, liveKitchenOrderCount]);
 
-  // Derived Status
   const isOrdersPaused = !onlineOrderingEnabled;
-  const buttonColor = isOrdersPaused ? "bg-red-600" : "bg-green-600";
+  const buttonColor = isOrdersPaused ? colors.danger : colors.success;
   const buttonIcon = isOrdersPaused ? PauseCircle : PlayCircle;
   const buttonText = isOrdersPaused ? "ORDERS PAUSED" : "ACCEPTING ORDERS";
 
+  const menusWithSchedules = menus.filter((m) => m.schedules && m.schedules.length > 0);
+
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">Online Ordering</Text>
-        <Text className="text-gray-400 mt-2">
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Online Ordering</Text>
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
           Manage orders, workflows, and scheduling.
         </Text>
       </View>
 
-      <View className="h-[1px] w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
       >
-        <View className="gap-6">
+        <View style={{ gap: 10 }}>
           {/* 1. Order Status Control */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <CardTitle className="text-white">Order Status Control</CardTitle>
-            </CardHeader>
-            <CardContent className="gap-4">
-              {/* Giant Toggle Button */}
-              <TouchableOpacity
-                onPress={() =>
-                  updateField("onlineOrderingEnabled", !onlineOrderingEnabled)
-                }
-                className={`w-full h-16 ${buttonColor} rounded-xl flex-row items-center justify-center gap-3 active:opacity-90 shadow-lg`}
-              >
-                {React.createElement(buttonIcon, { size: 32, color: "white" })}
-                <Text className="text-white font-black text-xl tracking-wider">
-                  {buttonText}
-                </Text>
-              </TouchableOpacity>
+          <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginBottom: 12 }}>Order Status Control</Text>
 
-              {/* Status Panel */}
-              <View className="bg-black/20 p-4 rounded-lg flex-row justify-between items-center border border-gray-700">
-                <View>
-                  <Text className="text-gray-400 text-xs uppercase mb-1">
-                    Orders Today
+            <TouchableOpacity
+              onPress={() => updateField("onlineOrderingEnabled", !onlineOrderingEnabled)}
+              style={{
+                width: "100%",
+                height: 56,
+                backgroundColor: buttonColor + "20",
+                borderRadius: 10,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                borderWidth: 1,
+                borderColor: buttonColor + "50",
+              }}
+            >
+              {React.createElement(buttonIcon, { size: 26, color: buttonColor })}
+              <Text style={{ fontSize: 16, fontWeight: "900", color: buttonColor, letterSpacing: 1.5 }}>
+                {buttonText}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Pause Reason (when disabled) */}
+            {isOrdersPaused && (
+              <View style={{ gap: 8, marginTop: 12 }}>
+                <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>Pause Reason</Text>
+                <Select
+                  value={{
+                    value: onlinePauseReason || "",
+                    label: onlinePauseReason || "Select Reason",
+                  }}
+                  onValueChange={(opt) =>
+                    updateField("onlinePauseReason", opt?.value || null)
+                  }
+                >
+                  <SelectTrigger style={{ backgroundColor: colors.screen, borderColor: colors.border }}>
+                    <SelectValue placeholder="Select a reason..." className="text-white" />
+                  </SelectTrigger>
+                  <SelectContent style={{ backgroundColor: colors.screen, borderColor: colors.border }}>
+                    <SelectGroup>
+                      <SelectItem label="Kitchen at Capacity" value="Kitchen at Capacity" />
+                      <SelectItem label="Staff Shortage" value="Staff Shortage" />
+                      <SelectItem label="Emergency Maintenance" value="Emergency Maintenance" />
+                      <SelectItem label="Closing Early" value="Closing Early" />
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+
+                {/* Base prep time when disabled */}
+                <View style={{ marginTop: 8, gap: 10 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontSize: 12, color: colors.label }}>Base Prep Time Quote</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: colors.info }}>{basePrepTime} min</Text>
+                  </View>
+                  <CustomSlider
+                    value={basePrepTime}
+                    onValueChange={(val) => updateField("basePrepTime", val)}
+                    min={5}
+                    max={60}
+                    step={5}
+                  />
+                  <Text style={{ fontSize: 11, color: colors.muted }}>
+                    Customers will see this as the estimated wait time while orders are paused.
                   </Text>
-                  <Text className="text-white font-bold text-xl">142</Text>
                 </View>
-                <View className="h-8 w-[1px] bg-gray-600" />
-                <View>
-                  <Text className="text-gray-400 text-xs uppercase mb-1">
-                    Avg Prep Time
-                  </Text>
-                  <Text className="text-white font-bold text-xl">28m</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Only show the rest when online ordering is enabled */}
+          {onlineOrderingEnabled && (
+            <>
+              {/* Stats row */}
+              <View style={{ backgroundColor: colors.panel, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <View style={{ alignItems: "center", flex: 1 }}>
+                  <Text style={{ fontSize: 10, color: colors.label, textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.6 }}>Orders Today</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>142</Text>
                 </View>
-                <View className="h-8 w-[1px] bg-gray-600" />
-                <View>
-                  <Text className="text-gray-400 text-xs uppercase mb-1">
-                    Active
-                  </Text>
-                  <Text className="text-green-400 font-bold text-xl">14</Text>
+                <View style={{ width: 1, height: 32, backgroundColor: colors.border }} />
+                <View style={{ alignItems: "center", flex: 1 }}>
+                  <Text style={{ fontSize: 10, color: colors.label, textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.6 }}>Avg Prep Time</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.heading }}>28m</Text>
+                </View>
+                <View style={{ width: 1, height: 32, backgroundColor: colors.border }} />
+                <View style={{ alignItems: "center", flex: 1 }}>
+                  <Text style={{ fontSize: 10, color: colors.label, textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.6 }}>KDS Active</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.success }}>{liveKitchenOrderCount}</Text>
                 </View>
               </View>
 
-              {/* Pause Reason (Conditional) */}
-              {isOrdersPaused && (
-                <View className="gap-2 mt-2">
-                  <Label className="text-white">Pause Reason</Label>
-                  <Select
-                    value={{
-                      value: onlinePauseReason || "",
-                      label: onlinePauseReason || "Select Reason",
-                    }}
-                    onValueChange={(opt) =>
-                      updateField("onlinePauseReason", opt?.value || null)
-                    }
-                  >
-                    <SelectTrigger className="bg-screen border-gray-600">
-                      <SelectValue
-                        placeholder="Select a reason..."
-                        className="text-white"
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="bg-screen border-gray-600">
-                      <SelectGroup>
-                        <SelectItem
-                          label="Kitchen at Capacity"
-                          value="Kitchen at Capacity"
-                        />
-                        <SelectItem
-                          label="Staff Shortage"
-                          value="Staff Shortage"
-                        />
-                        <SelectItem
-                          label="Emergency Maintenance"
-                          value="Emergency Maintenance"
-                        />
-                        <SelectItem
-                          label="Closing Early"
-                          value="Closing Early"
-                        />
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </View>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 3. Dynamic Prep Times */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Clock color={themeColors.warning} size={24} />
-                <View className="flex-row items-center gap-2">
-                  <CardTitle className="text-white">
-                    Dynamic Prep Times
-                  </CardTitle>
-                  <View className="bg-[#eab308]/20 px-2 py-0.5 rounded">
-                    <Text className="text-[#eab308] text-[10px] font-bold">
-                      REAL-TIME
-                    </Text>
+              {/* Dynamic Prep Times */}
+              <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <View style={{ width: 32, height: 32, backgroundColor: colors.warning + "15", borderRadius: 8, alignItems: "center", justifyContent: "center" }}>
+                    <Clock color={colors.warning} size={16} />
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Dynamic Prep Times</Text>
+                    <View style={{ backgroundColor: colors.warning + "20", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: colors.warning + "50" }}>
+                      <Text style={{ fontSize: 9, color: colors.warning, fontWeight: "700" }}>REAL-TIME</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-6">
-              <View className="flex-row items-center justify-between">
-                <Label className="text-white text-base">
-                  Show Dynamic Prep Times
-                </Label>
-                <Switch
-                  checked={dynamicPrepTimeEnabled}
-                  onCheckedChange={(val) =>
-                    updateField("dynamicPrepTimeEnabled", val)
-                  }
-                />
-              </View>
 
-              {dynamicPrepTimeEnabled && (
-                <>
-                  <View className="gap-4">
-                    <View className="flex-row justify-between">
-                      <Label className="text-gray-300">Base Prep Time</Label>
-                      <Text className="text-info font-bold text-lg">
-                        {basePrepTime} min
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading }}>Show Dynamic Prep Times</Text>
+                  <Switch
+                    checked={dynamicPrepTimeEnabled}
+                    onCheckedChange={(val) => updateField("dynamicPrepTimeEnabled", val)}
+                  />
+                </View>
+
+                <View style={{ gap: 10, marginBottom: dynamicPrepTimeEnabled ? 14 : 0 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontSize: 12, color: colors.label }}>Base Prep Time</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: colors.info }}>{basePrepTime} min</Text>
+                  </View>
+                  <CustomSlider
+                    value={basePrepTime}
+                    onValueChange={(val) => updateField("basePrepTime", val)}
+                    min={5}
+                    max={60}
+                    step={5}
+                  />
+                </View>
+
+                {dynamicPrepTimeEnabled && (
+                  <>
+                    <View style={{ backgroundColor: colors.screen, padding: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                      <Text style={{ fontSize: 11, color: colors.muted, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>
+                        Current Quoted Time
+                      </Text>
+                      <Text style={{ fontSize: 44, fontWeight: "900", color: colors.info }}>{currentPrepTime} min</Text>
+                      <Text style={{ fontSize: 11, color: colors.label, marginTop: 4 }}>Updated just now</Text>
+                    </View>
+
+                    <View style={{ gap: 10, marginBottom: 14 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>Auto-Adjustments:</Text>
+                      {[
+                        {
+                          key: "kitchenLoad",
+                          label: `Add 10 min when kitchen has 25+ orders (now: ${liveKitchenOrderCount})`,
+                          checked: prepTimeAdjustments.kitchenLoad,
+                        },
+                        {
+                          key: "peakHours",
+                          label: "Add 5 min during peak hours (5–8 PM)",
+                          checked: prepTimeAdjustments.peakHours,
+                        },
+                      ].map((item) => (
+                        <View key={item.key} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                          <Checkbox
+                            checked={item.checked}
+                            onCheckedChange={(v) => updatePrepAdjustment(item.key as any, v)}
+                            className="border-gray-500 data-[state=checked]:bg-teal-600 data-[state=checked]:border-teal-600"
+                          />
+                          <Text style={{ fontSize: 12, color: colors.label }}>{item.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* KDS Factors block */}
+                    <View style={{ backgroundColor: colors.teal + "10", padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.teal + "30" }}>
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal, marginBottom: 8 }}>Current Factors (KDS Live):</Text>
+                      <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>
+                        • Kitchen Load: {liveKitchenOrderCount} orders
+                        {prepTimeAdjustments.kitchenLoad && liveKitchenOrderCount >= 25
+                          ? " (+10 min)"
+                          : " (no adjustment)"}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.label, marginBottom: 8 }}>
+                        • Peak Hours (5–8 PM):
+                        {prepTimeAdjustments.peakHours && new Date().getHours() >= 17 && new Date().getHours() < 20
+                          ? " Active (+5 min)"
+                          : " Not active"}
+                      </Text>
+                      <View style={{ height: 1, backgroundColor: colors.teal + "30", marginBottom: 8 }} />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+                        Total: {basePrepTime} + {currentPrepTime - basePrepTime} = {currentPrepTime} min
                       </Text>
                     </View>
-                    <CustomSlider
-                      value={basePrepTime}
-                      onValueChange={(val) => updateField("basePrepTime", val)}
-                      min={5}
-                      max={60}
-                      step={5}
-                    />
-                  </View>
-
-                  <View className="bg-surface p-6 rounded-xl items-center justify-center shadow-lg">
-                    <Text className="text-gray-500 text-sm uppercase tracking-widest mb-1">
-                      Current Quoted Time
-                    </Text>
-                    <Text className="text-info font-black text-5xl">
-                      {currentPrepTime} min
-                    </Text>
-                    <Text className="text-gray-400 text-xs mt-2">
-                      Updated just now
-                    </Text>
-                  </View>
-
-                  <View className="gap-3">
-                    <Label className="text-white mb-1">Auto-Adjustments:</Label>
-                    {[
-                      {
-                        key: "kitchenLoad",
-                        label: "Add 10 min when kitchen has 25+ orders",
-                        checked: prepTimeAdjustments.kitchenLoad,
-                      },
-                      {
-                        key: "peakHours",
-                        label: "Add 5 min during peak hours (5-8 PM)",
-                        checked: prepTimeAdjustments.peakHours,
-                      },
-                      {
-                        key: "weather",
-                        label: "Add 15 min during bad weather",
-                        checked: prepTimeAdjustments.weather,
-                      },
-                    ].map((item) => (
-                      <View
-                        key={item.key}
-                        className="flex-row items-center gap-3"
-                      >
-                        <Checkbox
-                          checked={item.checked}
-                          onCheckedChange={(v) =>
-                            updatePrepAdjustment(item.key as any, v)
-                          }
-                          className="border-gray-500 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                        />
-                        <Text className="text-gray-300 text-sm">
-                          {item.label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <View className="bg-blue-500/10 p-4 rounded-lg border border-blue-500/30">
-                    <Text className="text-blue-400 font-bold mb-2">
-                      Current Factors:
-                    </Text>
-                    <Text className="text-gray-400 text-xs">
-                      • Kitchen Load: 14 orders (no adjustment)
-                    </Text>
-                    <Text className="text-gray-400 text-xs">
-                      • Time: Peak Hours (+5 min)
-                    </Text>
-                    <Text className="text-gray-400 text-xs">
-                      • Weather: Clear (no adjustment)
-                    </Text>
-                    <View className="h-[1px] bg-blue-500/30 my-2" />
-                    <Text className="text-white font-bold text-sm">
-                      Total: {basePrepTime} + 5 = {currentPrepTime} min
-                    </Text>
-                  </View>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 5. Time-Based Menus */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Utensils color={themeColors.success} size={24} />
-                <View className="flex-row items-center gap-2">
-                  <CardTitle className="text-white">Time-Based Menus</CardTitle>
-                  <View className="bg-[#10b981]/20 px-2 py-0.5 rounded">
-                    <Text className="text-[#10b981] text-[10px] font-bold">
-                      SMART MENUS
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-6">
-              <View className="flex-row items-center justify-between">
-                <Label className="text-white text-base">
-                  Enable Menu Scheduling
-                </Label>
-                <Switch
-                  checked={isMenuSchedulingEnabled}
-                  onCheckedChange={setMenuSchedulingEnabled}
-                />
+                  </>
+                )}
               </View>
 
-              {isMenuSchedulingEnabled && (
-                <>
-                  <MenuTimeline menus={menus} />
-
-                  <View className="gap-2">
-                    <Label className="text-gray-300 mb-2">Menu Schedule:</Label>
-                    <View className="bg-screen rounded-lg border border-gray-700 overflow-hidden divide-y divide-gray-700">
-                      {menus.map((menu, i) => {
-                        const schedule = menu.schedules?.find(
-                          (s: any) => s.isActive
-                        );
-
-                        // Match colors logic from MenuTimeline
-                        const colors = [
-                          "bg-yellow-500",
-                          "bg-green-500",
-                          "bg-blue-500",
-                          "bg-purple-500",
-                          "bg-red-500",
-                        ];
-                        const dotColor = colors[i % colors.length];
-
-                        // Format ISO string to time (e.g. 5:00 PM)
-                        const formatTime = (iso: string) =>
-                          new Date(iso).toLocaleTimeString([], {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          });
-
-                        let timeString = "No Active Schedule";
-                        if (schedule) {
-                          const start = formatTime(schedule.startTime);
-                          const end = formatTime(schedule.endTime);
-                          timeString = `${start} - ${end}`;
-                        }
-
-                        const isActiveNow = useMenuStore
-                          .getState()
-                          .isMenuAvailableNow(menu.id);
-
-                        return (
-                          <View
-                            key={menu.id}
-                            className="flex-row justify-between p-3"
-                          >
-                            <View className="flex-row items-center gap-2">
-                              {/* Colored Dot matching timeline */}
-                              <View
-                                className={`w-3 h-3 rounded-full ${dotColor}`}
-                              />
-                              <Clock
-                                size={14}
-                                color={isActiveNow ? themeColors.success : themeColors.muted}
-                              />
-                              <Text
-                                className={
-                                  !isActiveNow
-                                    ? "text-gray-500"
-                                    : "text-white font-medium"
-                                }
-                              >
-                                {menu.name}
-                              </Text>
-                            </View>
-                            <Text className="text-gray-400 text-xs">
-                              {timeString}
-                            </Text>
-                          </View>
-                        );
-                      })}
+              {/* Time-Based Menus */}
+              <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <View style={{ width: 32, height: 32, backgroundColor: colors.success + "15", borderRadius: 8, alignItems: "center", justifyContent: "center" }}>
+                    <Utensils color={colors.success} size={16} />
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Time-Based Menus</Text>
+                    <View style={{ backgroundColor: colors.success + "20", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: colors.success + "50" }}>
+                      <Text style={{ fontSize: 9, color: colors.success, fontWeight: "700" }}>SMART MENUS</Text>
                     </View>
                   </View>
+                </View>
 
-                  {/* Active Menu Indicator */}
-                  {(() => {
-                    const activeMenu = menus.find((m) =>
-                      useMenuStore.getState().isMenuAvailableNow(m.id)
-                    );
+                {menusWithSchedules.length > 0 && <MenuTimeline menus={menusWithSchedules} />}
+
+                {/* Active menu indicator */}
+                {(() => {
+                  const activeMenu = menus.find((m) =>
+                    useMenuStore.getState().isMenuAvailableNow(m.id)
+                  );
+                  return (
+                    <View style={{ backgroundColor: colors.success + "10", padding: 10, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: colors.success + "20", marginBottom: 14 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: activeMenu ? colors.success : colors.muted }} />
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: activeMenu ? colors.success : colors.muted }}>
+                        Active Now: {activeMenu ? `"${activeMenu.name}"` : "None"}
+                      </Text>
+                    </View>
+                  );
+                })()}
+
+                {/* Per-menu schedule cards */}
+                <View style={{ gap: 8 }}>
+                  {menus.map((menu, i) => {
+                    const isActiveNow = useMenuStore.getState().isMenuAvailableNow(menu.id);
+                    const activeSchedules = (menu.schedules || []).filter((s: any) => s.isActive);
+                    const dotColor = TIMELINE_COLORS_HEX[i % TIMELINE_COLORS_HEX.length];
 
                     return (
-                      <View className="bg-green-500/10 p-3 rounded-lg flex-row items-center gap-2 border border-green-500/20">
-                        <View
-                          className={`h-2 w-2 rounded-full ${activeMenu ? "bg-green-500" : "bg-gray-500"}`}
-                        />
-                        <Text
-                          className={`${activeMenu ? "text-green-500" : "text-gray-500"} font-bold`}
-                        >
-                          Current Active Menu:{" "}
-                          {activeMenu ? `"${activeMenu.name}"` : "None"}
-                        </Text>
+                      <View
+                        key={menu.id}
+                        style={{ backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}
+                      >
+                        {/* Menu header */}
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor }} />
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{menu.name}</Text>
+                          </View>
+                          {isActiveNow ? (
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colors.success + "20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1, borderColor: colors.success + "50" }}>
+                              <CheckCircle2 size={11} color={colors.success} />
+                              <Text style={{ fontSize: 11, color: colors.success, fontWeight: "500" }}>Active Now</Text>
+                            </View>
+                          ) : (
+                            <Text style={{ fontSize: 11, color: colors.muted }}>Inactive</Text>
+                          )}
+                        </View>
+
+                        {/* Schedules */}
+                        {activeSchedules.length === 0 ? (
+                          <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+                            <Text style={{ fontSize: 12, color: colors.muted, fontStyle: "italic" }}>No schedule — always available</Text>
+                          </View>
+                        ) : (
+                          activeSchedules.map((s: any) => (
+                            <View key={s.id} style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border + "80", flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, flex: 1, marginRight: 12 }}>
+                                {(s.days || []).map((day: string) => (
+                                  <View key={day} style={{ backgroundColor: colors.card, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                    <Text style={{ fontSize: 11, color: colors.label }}>{DAY_ABBR[day] ?? day}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                <Clock size={11} color={colors.muted} />
+                                <Text style={{ fontSize: 12, color: colors.label }}>
+                                  {formatScheduleTime(s.startTime)} – {formatScheduleTime(s.endTime)}
+                                </Text>
+                              </View>
+                            </View>
+                          ))
+                        )}
                       </View>
                     );
-                  })()}
+                  })}
+                </View>
 
-                  <TouchableOpacity
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(main)/menu",
-                        params: { returnTo: "/settings/online-ordering" },
-                      })
-                    }
-                    className="bg-screen py-3 rounded-lg border border-gray-600 items-center"
-                  >
-                    <Text className="text-gray-300 font-bold">
-                      Edit Menu Schedule
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(main)/menu",
+                      params: { returnTo: "/settings/online-ordering" },
+                    })
+                  }
+                  style={{ backgroundColor: "transparent", paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center", marginTop: 12 }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.label }}>Edit Menu Schedules</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
 
-          <View className="h-10" />
+          <View style={{ height: 10 }} />
         </View>
       </ScrollView>
     </View>

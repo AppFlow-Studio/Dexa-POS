@@ -72,126 +72,228 @@ const TerminalManagementScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderBottomWidth: expandedSections[section] ? 1 : 0,
+        borderBottomColor: colors.border,
+      }}
     >
-      <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: colors.teal + "15",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 10,
+          }}
+        >
           {icon}
         </View>
-        <Text className="text-white font-bold text-lg">{title}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+          {title}
+        </Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color={colors.label} />
+        <ChevronUp size={16} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color={colors.label} />
+        <ChevronDown size={16} color={colors.label} />
       )}
     </TouchableOpacity>
   );
 
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      {/* Page Header */}
+      <View style={{ marginBottom: 4 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
           Terminal Management
         </Text>
-        <Text className="text-gray-400 mt-2">
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
           Manage connected terminals and device updates.
         </Text>
       </View>
 
-      <View className="h-[1px] w-full bg-gray-700 mb-6" />
+      <View
+        style={{ height: 1, backgroundColor: colors.border, marginVertical: 14 }}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Connected Devices */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Connected Devices",
-            <Tablet size={20} color={colors.info} />,
+            <Tablet size={16} color={colors.teal} />,
             "list"
           )}
           {expandedSections.list && (
-            <View className="p-5">
-              {terminals.map((terminal) => (
-                <View
-                  key={terminal.id}
-                  className="bg-surface p-4 rounded-xl mb-3 flex-row items-center justify-between border border-gray-600"
-                >
-                  <View className="flex-row items-center flex-1">
-                    <View
-                      className={`w-3 h-3 rounded-full mr-3 ${terminal.status === "online" ? "bg-green-500" : "bg-gray-500"}`}
-                    />
-                    <View>
-                      <Text className="text-white font-bold text-base">
-                        {terminal.name}
-                      </Text>
-                      <Text className="text-gray-400 text-xs">
-                        {terminal.model} • v{terminal.version}
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="flex-row items-center gap-3">
-                    <View className="flex-row items-center">
-                      <Battery
-                        size={16}
-                        color={terminal.battery < 20 ? colors.danger : colors.label}
+            <View style={{ padding: 12, gap: 8 }}>
+              {terminals.map((terminal) => {
+                const isOnline = terminal.status === "online";
+                const batteryLow = terminal.battery < 20;
+                return (
+                  <View
+                    key={terminal.id}
+                    style={{
+                      backgroundColor: colors.card,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      padding: 12,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                      <View
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: isOnline ? colors.success : colors.muted,
+                          marginRight: 10,
+                        }}
                       />
-                      <Text
-                        className={`ml-1 text-sm ${terminal.battery < 20 ? "text-red-400" : "text-gray-400"}`}
-                      >
-                        {terminal.battery}%
-                      </Text>
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                          {terminal.name}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>
+                          {terminal.model} · v{terminal.version}
+                        </Text>
+                      </View>
                     </View>
-                    <View className="flex-row items-center">
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Battery
+                          size={14}
+                          color={batteryLow ? colors.danger : colors.label}
+                        />
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: batteryLow ? colors.danger : colors.label,
+                          }}
+                        >
+                          {terminal.battery}%
+                        </Text>
+                      </View>
                       <Wifi
-                        size={16}
-                        color={
-                          terminal.status === "online" ? colors.success : colors.label
-                        }
+                        size={14}
+                        color={isOnline ? colors.success : colors.muted}
                       />
+                      <View
+                        style={{
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 20,
+                          backgroundColor: (isOnline ? colors.success : colors.muted) + "20",
+                          borderWidth: 1,
+                          borderColor: (isOnline ? colors.success : colors.muted) + "50",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: isOnline ? colors.success : colors.muted,
+                          }}
+                        >
+                          {isOnline ? "Online" : "Offline"}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
 
         {/* Software Updates */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Software Updates",
-            <RefreshCw size={20} color={colors.warning} />,
+            <RefreshCw size={16} color={colors.teal} />,
             "updates"
           )}
           {expandedSections.updates && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between mb-4">
+            <View style={{ padding: 12, gap: 12 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <View>
-                  <Text className="text-white font-medium">
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                     Current Version: 2.4.1
                   </Text>
-                  <Text className="text-green-400 text-sm">
+                  <Text style={{ fontSize: 12, color: colors.success, marginTop: 2 }}>
                     You are on the latest stable version.
                   </Text>
                 </View>
-                <TouchableOpacity className="bg-surface border border-gray-600 px-4 py-2 rounded-lg">
-                  <Text className="text-white font-medium">
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: colors.teal + "20",
+                    borderWidth: 1,
+                    borderColor: colors.teal + "50",
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>
                     Check for Updates
                   </Text>
                 </TouchableOpacity>
               </View>
-              <View className="p-4 bg-blue-900/20 border border-blue-900/50 rounded-lg">
-                <View className="flex-row items-start">
-                  <CheckCircle2 size={18} color={colors.info} className="mt-0.5" />
-                  <View className="ml-2 flex-1">
-                    <Text className="text-blue-200 font-bold mb-1">
-                      Auto-Update Enabled
-                    </Text>
-                    <Text className="text-blue-300/70 text-sm">
-                      Terminals will automatically update when the restaurant is
-                      closed (between 3AM - 5AM).
-                    </Text>
-                  </View>
+              <View
+                style={{
+                  padding: 12,
+                  backgroundColor: colors.teal + "10",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "30",
+                  borderRadius: 8,
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: 10,
+                }}
+              >
+                <CheckCircle2 size={16} color={colors.teal} style={{ marginTop: 1 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal, marginBottom: 3 }}>
+                    Auto-Update Enabled
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.label }}>
+                    Terminals will automatically update when the restaurant is
+                    closed (between 3AM - 5AM).
+                  </Text>
                 </View>
               </View>
             </View>
@@ -199,20 +301,38 @@ const TerminalManagementScreen = () => {
         </View>
 
         {/* Device Security */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Device Security",
-            <ShieldCheck size={20} color="#a78bfa" />,
+            <ShieldCheck size={16} color={colors.teal} />,
             "security"
           )}
           {expandedSections.security && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
+            <View style={{ padding: 12 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
                 <View>
-                  <Text className="text-white font-medium">
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                     Require Manager Passcode
                   </Text>
-                  <Text className="text-gray-400 text-sm">
+                  <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
                     For sensitive actions (refunds, voids)
                   </Text>
                 </View>
@@ -223,12 +343,19 @@ const TerminalManagementScreen = () => {
                   }
                 />
               </View>
-              <View className="flex-row items-center justify-between py-3">
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                }}
+              >
                 <View>
-                  <Text className="text-white font-medium">
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                     Auto-Lock Screens
                   </Text>
-                  <Text className="text-gray-400 text-sm">
+                  <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
                     Lock terminals after inactivity
                   </Text>
                 </View>

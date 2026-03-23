@@ -45,19 +45,19 @@ import {
 } from "react-native";
 
 const STATUS_ICONS: Record<ChecklistStatus, React.ReactNode> = {
-  pending: <Clock size={20} color={colors.muted} />,
-  in_progress: <Loader2 size={20} color={colors.info} />,
-  passed: <CheckCircle size={20} color={colors.success} />,
-  failed: <AlertCircle size={20} color={colors.danger} />,
-  skipped: <Check size={20} color={colors.muted} />,
+  pending: <Clock size={16} color={colors.muted} />,
+  in_progress: <Loader2 size={16} color={colors.info} />,
+  passed: <CheckCircle size={16} color={colors.success} />,
+  failed: <AlertCircle size={16} color={colors.danger} />,
+  skipped: <Check size={16} color={colors.muted} />,
 };
 
-const STATUS_COLORS: Record<ChecklistStatus, string> = {
-  pending: "border-border",
-  in_progress: "border-blue-500",
-  passed: "border-green-500",
-  failed: "border-red-500",
-  skipped: "border-gray-500",
+const STATUS_BORDER: Record<ChecklistStatus, string> = {
+  pending: colors.border,
+  in_progress: colors.info,
+  passed: colors.success,
+  failed: colors.danger,
+  skipped: colors.muted,
 };
 
 export default function EndOfDayScreen() {
@@ -135,19 +135,44 @@ export default function EndOfDayScreen() {
   // Not started state
   if (!isRunning) {
     return (
-      <View className="flex-1 bg-screen items-center justify-center p-8">
-        <Text className="text-3xl font-bold text-white mb-3">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.screen,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 32,
+        }}
+      >
+        <Text
+          style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginBottom: 8 }}
+        >
           End of Day Closing
         </Text>
-        <Text className="text-base text-label text-center mb-8 max-w-md">
+        <Text
+          style={{
+            fontSize: 13,
+            color: colors.label,
+            textAlign: "center",
+            marginBottom: 28,
+            maxWidth: 380,
+          }}
+        >
           Run through the closing checklist to ensure everything is reconciled
           before ending the business day.
         </Text>
         <TouchableOpacity
           onPress={handleStart}
-          className="py-4 px-8 rounded-xl bg-teal"
+          style={{
+            paddingVertical: 13,
+            paddingHorizontal: 32,
+            borderRadius: 10,
+            backgroundColor: colors.teal,
+          }}
         >
-          <Text className="text-xl font-bold text-black">Begin Closing</Text>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: "#000000" }}>
+            Begin Closing
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -157,14 +182,24 @@ export default function EndOfDayScreen() {
   const passed = passedCount();
 
   return (
-    <ScrollView className="flex-1 bg-screen" contentContainerStyle={{ padding: 16 }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.screen }}
+      contentContainerStyle={{ padding: 16 }}
+    >
       {/* Header */}
-      <View className="flex-row items-center justify-between mb-6">
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 14,
+        }}
+      >
         <View>
-          <Text className="text-2xl font-bold text-white">
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
             End of Day Closing
           </Text>
-          <Text className="text-sm text-label">
+          <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
             {new Date().toLocaleDateString("en-US", {
               weekday: "long",
               year: "numeric",
@@ -174,20 +209,35 @@ export default function EndOfDayScreen() {
           </Text>
         </View>
 
-        <View className="flex-row items-center gap-3">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <TouchableOpacity
             onPress={handleRefresh}
             disabled={isRefreshing}
-            className="p-2 rounded-lg bg-panel border border-border"
+            style={{
+              padding: 8,
+              borderRadius: 8,
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
           >
             <RefreshCw
-              size={20}
-              color={isRefreshing ? colors.muted : "white"}
+              size={16}
+              color={isRefreshing ? colors.muted : colors.heading}
             />
           </TouchableOpacity>
 
-          <View className="px-3 py-1.5 rounded-full bg-surface">
-            <Text className="text-sm font-semibold text-white">
+          <View
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 20,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
               {passed}/{checklist.length} Complete
             </Text>
           </View>
@@ -195,48 +245,83 @@ export default function EndOfDayScreen() {
       </View>
 
       {/* Progress Bar */}
-      <View className="h-2 bg-gray-700 rounded-full mb-6 overflow-hidden">
+      <View
+        style={{
+          height: 6,
+          backgroundColor: colors.border,
+          borderRadius: 3,
+          marginBottom: 14,
+          overflow: "hidden",
+        }}
+      >
         <View
-          className="h-full bg-teal rounded-full"
-          style={{ width: `${(passed / checklist.length) * 100}%` }}
+          style={{
+            height: "100%",
+            backgroundColor: colors.teal,
+            borderRadius: 3,
+            width: `${(passed / Math.max(checklist.length, 1)) * 100}%`,
+          }}
         />
       </View>
 
       {/* Checklist */}
-      {checklist.map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          onPress={() => handleItemAction(item.id)}
-          className={`flex-row items-center p-4 mb-3 rounded-xl bg-panel border-l-4 ${STATUS_COLORS[item.status]}`}
-        >
-          <View className="mr-3">{STATUS_ICONS[item.status]}</View>
-          <View className="flex-1">
-            <Text className="text-base font-semibold text-white">
-              {item.label}
-            </Text>
-            <Text className="text-sm text-label">{item.description}</Text>
-            {item.detail && (
-              <Text
-                className={`text-xs mt-1 ${
-                  item.status === "failed" ? "text-red-400" : "text-label"
-                }`}
-              >
-                {item.detail}
+      <View style={{ gap: 8, marginBottom: 14 }}>
+        {checklist.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            onPress={() => handleItemAction(item.id)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              padding: 12,
+              borderRadius: 10,
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderLeftWidth: 3,
+              borderLeftColor: STATUS_BORDER[item.status],
+            }}
+          >
+            <View style={{ marginRight: 10 }}>{STATUS_ICONS[item.status]}</View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                {item.label}
               </Text>
-            )}
-          </View>
-          <ChevronRight size={18} color={colors.muted} />
-        </TouchableOpacity>
-      ))}
+              <Text style={{ fontSize: 12, color: colors.label, marginTop: 1 }}>
+                {item.description}
+              </Text>
+              {item.detail && (
+                <Text
+                  style={{
+                    fontSize: 11,
+                    marginTop: 2,
+                    color: item.status === "failed" ? colors.danger : colors.label,
+                  }}
+                >
+                  {item.detail}
+                </Text>
+              )}
+            </View>
+            <ChevronRight size={16} color={colors.muted} />
+          </TouchableOpacity>
+        ))}
+      </View>
 
       {/* Daily Summary (when available) */}
       {dailySummary && (
-        <View className="mt-4">
-          <Text className="text-xl font-bold text-white mb-4">
+        <View style={{ marginTop: 4 }}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "700",
+              color: colors.heading,
+              marginBottom: 10,
+            }}
+          >
             Daily Summary
           </Text>
 
-          <View className="flex-row gap-3 flex-wrap">
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             <SummaryCard label="Total Sales" value={formatCurrency(dailySummary.totalSales)} />
             <SummaryCard label="Orders" value={String(dailySummary.totalOrders)} />
             <SummaryCard label="Avg Order" value={formatCurrency(dailySummary.averageOrderValue)} />
@@ -251,82 +336,122 @@ export default function EndOfDayScreen() {
 
           {/* Cash Drawer Breakdown */}
           {dailySummary.drawerBreakdown && dailySummary.drawerBreakdown.length > 0 && (
-            <View className="mt-6">
-              <Text className="text-lg font-bold text-white mb-3">
+            <View style={{ marginTop: 16 }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.heading,
+                  marginBottom: 8,
+                }}
+              >
                 Cash Drawer Summary
               </Text>
-              {dailySummary.drawerBreakdown.map((drawer, idx) => {
-                const absVariance = Math.abs(drawer.variance);
-                const varianceColor =
-                  absVariance === 0
-                    ? "text-green-400"
-                    : absVariance >= 20
-                    ? "text-red-400"
-                    : absVariance >= 5
-                    ? "text-yellow-400"
-                    : "text-blue-400";
+              <View style={{ gap: 8 }}>
+                {dailySummary.drawerBreakdown.map((drawer, idx) => {
+                  const absVariance = Math.abs(drawer.variance);
+                  const varianceColor =
+                    absVariance === 0
+                      ? colors.success
+                      : absVariance >= 20
+                      ? colors.danger
+                      : absVariance >= 5
+                      ? colors.warning
+                      : colors.info;
 
-                return (
-                  <View
-                    key={idx}
-                    className="bg-panel border border-gray-700 rounded-xl p-4 mb-3"
-                  >
-                    <Text className="text-base font-bold text-white mb-2">
-                      {drawer.drawerName}
-                    </Text>
-                    <View className="flex-row justify-between mb-1">
-                      <Text className="text-sm text-label">Opening</Text>
-                      <Text className="text-sm text-white">{formatCurrency(drawer.opening)}</Text>
-                    </View>
-                    <View className="flex-row justify-between mb-1">
-                      <Text className="text-sm text-label">Expected</Text>
-                      <Text className="text-sm text-white">{formatCurrency(drawer.expected)}</Text>
-                    </View>
-                    <View className="flex-row justify-between mb-1">
-                      <Text className="text-sm text-label">Closing</Text>
-                      <Text className="text-sm text-white">{formatCurrency(drawer.closing)}</Text>
-                    </View>
-                    <View className="flex-row justify-between mb-2">
-                      <Text className="text-sm font-semibold text-white">Variance</Text>
-                      <Text className={`text-sm font-bold ${varianceColor}`}>
-                        {drawer.variance >= 0 ? "+" : ""}
-                        {formatCurrency(drawer.variance)}
+                  return (
+                    <View
+                      key={idx}
+                      style={{
+                        backgroundColor: colors.panel,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 10,
+                        padding: 12,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: colors.heading,
+                          marginBottom: 8,
+                        }}
+                      >
+                        {drawer.drawerName}
                       </Text>
-                    </View>
-                    <View className="border-t border-gray-700 pt-2 mt-1">
-                      <View className="flex-row flex-wrap gap-x-4 gap-y-1">
-                        <Text className="text-xs text-label">
+                      <View style={{ gap: 4 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ fontSize: 12, color: colors.label }}>Opening</Text>
+                          <Text style={{ fontSize: 12, color: colors.heading }}>
+                            {formatCurrency(drawer.opening)}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ fontSize: 12, color: colors.label }}>Expected</Text>
+                          <Text style={{ fontSize: 12, color: colors.heading }}>
+                            {formatCurrency(drawer.expected)}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ fontSize: 12, color: colors.label }}>Closing</Text>
+                          <Text style={{ fontSize: 12, color: colors.heading }}>
+                            {formatCurrency(drawer.closing)}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
+                            Variance
+                          </Text>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: varianceColor }}>
+                            {drawer.variance >= 0 ? "+" : ""}
+                            {formatCurrency(drawer.variance)}
+                          </Text>
+                        </View>
+                      </View>
+                      <View
+                        style={{
+                          borderTopWidth: 1,
+                          borderTopColor: colors.border,
+                          paddingTop: 8,
+                          marginTop: 8,
+                          flexDirection: "row",
+                          flexWrap: "wrap",
+                          gap: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, color: colors.label }}>
                           Sales: {formatCurrency(drawer.cashSales)}
                         </Text>
-                        <Text className="text-xs text-label">
+                        <Text style={{ fontSize: 11, color: colors.label }}>
                           Refunds: {formatCurrency(drawer.refunds)}
                         </Text>
-                        <Text className="text-xs text-label">
+                        <Text style={{ fontSize: 11, color: colors.label }}>
                           Pay In: {formatCurrency(drawer.payIns)}
                         </Text>
-                        <Text className="text-xs text-label">
+                        <Text style={{ fontSize: 11, color: colors.label }}>
                           Pay Out: {formatCurrency(drawer.payOuts)}
                         </Text>
-                        <Text className="text-xs text-label">
+                        <Text style={{ fontSize: 11, color: colors.label }}>
                           Drops: {formatCurrency(drawer.cashDrops)}
                         </Text>
-                        <Text className="text-xs text-label">
+                        <Text style={{ fontSize: 11, color: colors.label }}>
                           No Sales: {drawer.noSaleCount}
                         </Text>
                       </View>
                     </View>
-                  </View>
-                );
-              })}
+                  );
+                })}
+              </View>
             </View>
           )}
         </View>
       )}
 
       {summaryLoading && (
-        <View className="items-center py-8">
+        <View style={{ alignItems: "center", paddingVertical: 24 }}>
           <ActivityIndicator size="large" color={colors.teal} />
-          <Text className="text-sm text-label mt-2">
+          <Text style={{ fontSize: 12, color: colors.label, marginTop: 8 }}>
             Generating daily report...
           </Text>
         </View>
@@ -334,17 +459,52 @@ export default function EndOfDayScreen() {
 
       {/* Completion state */}
       {completed && (
-        <View className="mt-6 p-6 bg-green-900/20 border border-green-800 rounded-xl items-center">
-          <CheckCircle size={48} color={colors.success} />
-          <Text className="text-xl font-bold text-white mt-3">
+        <View
+          style={{
+            marginTop: 16,
+            padding: 20,
+            backgroundColor: colors.success + "15",
+            borderWidth: 1,
+            borderColor: colors.success + "40",
+            borderRadius: 12,
+            alignItems: "center",
+          }}
+        >
+          <CheckCircle size={40} color={colors.success} />
+          <Text
+            style={{
+              fontSize: 15,
+              fontWeight: "700",
+              color: colors.heading,
+              marginTop: 10,
+            }}
+          >
             All Clear!
           </Text>
-          <Text className="text-sm text-label text-center mt-1">
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.label,
+              textAlign: "center",
+              marginTop: 4,
+            }}
+          >
             All closing tasks are complete. You can now end the business day.
           </Text>
-          <TouchableOpacity className="mt-4 py-3 px-6 rounded-xl bg-teal flex-row items-center gap-2">
-            <Printer size={18} color="black" />
-            <Text className="text-base font-bold text-black">
+          <TouchableOpacity
+            style={{
+              marginTop: 14,
+              paddingVertical: 10,
+              paddingHorizontal: 20,
+              borderRadius: 10,
+              backgroundColor: colors.teal,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Printer size={16} color="#000000" />
+            <Text style={{ fontSize: 13, fontWeight: "700", color: "#000000" }}>
               Print EOD Report
             </Text>
           </TouchableOpacity>
@@ -372,9 +532,22 @@ export default function EndOfDayScreen() {
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <View className="bg-surface border border-border rounded-lg p-3 min-w-[120px]">
-      <Text className="text-xs text-label">{label}</Text>
-      <Text className="text-lg font-bold text-white mt-0.5">{value}</Text>
+    <View
+      style={{
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 10,
+        padding: 10,
+        minWidth: 110,
+      }}
+    >
+      <Text style={{ fontSize: 11, color: colors.label }}>{label}</Text>
+      <Text
+        style={{ fontSize: 15, fontWeight: "700", color: colors.heading, marginTop: 2 }}
+      >
+        {value}
+      </Text>
     </View>
   );
 }

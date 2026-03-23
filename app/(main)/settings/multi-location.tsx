@@ -28,76 +28,144 @@ const MultiLocationScreen = () => {
         setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
     };
 
+    const getStatusColor = (status: string) => {
+        if (status === "online") return colors.success;
+        if (status === "setup") return colors.info;
+        return colors.danger;
+    };
+
+    const getStatusLabel = (status: string) => {
+        if (status === "setup") return "OPENING SOON";
+        return status.toUpperCase();
+    };
+
     const renderSectionHeader = (title: string, icon: React.ReactNode, section: keyof typeof expandedSections) => (
         <TouchableOpacity
             onPress={() => toggleSection(section)}
-            className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
+            style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: 14,
+                backgroundColor: colors.panel,
+                borderTopLeftRadius: 12,
+                borderTopRightRadius: 12,
+                borderBottomWidth: expandedSections[section] ? 1 : 0,
+                borderBottomColor: colors.border,
+            }}
         >
-            <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <View style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: colors.teal + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginRight: 10,
+                }}>
                     {icon}
                 </View>
-                <Text className="text-white font-bold text-lg">{title}</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{title}</Text>
             </View>
-            {expandedSections[section] ? <ChevronUp size={20} color={colors.label} /> : <ChevronDown size={20} color={colors.label} />}
+            {expandedSections[section]
+                ? <ChevronUp size={16} color={colors.label} />
+                : <ChevronDown size={16} color={colors.label} />}
         </TouchableOpacity>
     );
 
     return (
-        <View className="flex-1 bg-screen p-6">
-            <View className="mb-6">
-                <Text className="text-3xl font-bold text-white">Multi-Location Management</Text>
-                <Text className="text-gray-400 mt-2">Manage multiple store locations, menu inheritance, and global updates.</Text>
+        <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+            <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Multi-Location Management</Text>
+                <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>Manage multiple store locations, menu inheritance, and global updates.</Text>
             </View>
 
-            <View className="h-[1px] w-full bg-gray-700 mb-6" />
+            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
             <ScrollView showsVerticalScrollIndicator={false}>
 
                 {/* Locations Overview */}
-                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-                    {renderSectionHeader("Locations Overview", <Map size={20} color={colors.info} />, "locations")}
+                <View style={{
+                    backgroundColor: colors.panel,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    marginBottom: 14,
+                }}>
+                    {renderSectionHeader("Locations Overview", <Map size={16} color={colors.teal} />, "locations")}
                     {expandedSections.locations && (
-                        <View className="p-5">
-                            <View className="flex-row flex-wrap gap-4">
-                                {locations.map(loc => (
-                                    <View key={loc.id} className="w-full md:w-[48%] bg-surface p-4 rounded-xl border border-gray-600">
-                                        <View className="flex-row justify-between items-start mb-2">
-                                            <View>
-                                                <Text className="text-white font-bold text-lg">{loc.name}</Text>
-                                                <Text className="text-gray-400 text-xs">{loc.address}</Text>
+                        <View style={{ padding: 14 }}>
+                            <View style={{ gap: 10 }}>
+                                {locations.map(loc => {
+                                    const statusColor = getStatusColor(loc.status);
+                                    return (
+                                        <View key={loc.id} style={{
+                                            backgroundColor: colors.card,
+                                            borderRadius: 10,
+                                            borderWidth: 1,
+                                            borderColor: colors.border,
+                                            padding: 12,
+                                        }}>
+                                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{loc.name}</Text>
+                                                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{loc.address}</Text>
+                                                </View>
+                                                <View style={{
+                                                    backgroundColor: statusColor + "20",
+                                                    borderWidth: 1,
+                                                    borderColor: statusColor + "50",
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                    borderRadius: 20,
+                                                }}>
+                                                    <Text style={{ fontSize: 11, fontWeight: "700", color: statusColor }}>{getStatusLabel(loc.status)}</Text>
+                                                </View>
                                             </View>
-                                            <View className={`px-2 py-1 rounded-full ${loc.status === 'online' ? 'bg-green-500/20' : loc.status === 'setup' ? 'bg-blue-500/20' : 'bg-red-500/20'}`}>
-                                                <Text className={`text-xs font-bold ${loc.status === 'online' ? 'text-green-400' : loc.status === 'setup' ? 'text-blue-400' : 'text-red-400'}`}>
-                                                    {loc.status === 'setup' ? 'OPENING SOON' : loc.status.toUpperCase()}
-                                                </Text>
+                                            <View style={{ flexDirection: "row", gap: 16, marginBottom: 10 }}>
+                                                <View>
+                                                    <Text style={{ fontSize: 11, color: colors.muted }}>TYPE</Text>
+                                                    <Text style={{ fontSize: 12, color: colors.label, marginTop: 1 }}>{loc.type}</Text>
+                                                </View>
+                                                {loc.status !== "setup" && (
+                                                    <>
+                                                        <View>
+                                                            <Text style={{ fontSize: 11, color: colors.muted }}>SALES (TODAY)</Text>
+                                                            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading, marginTop: 1 }}>{loc.sales}</Text>
+                                                        </View>
+                                                        <View>
+                                                            <Text style={{ fontSize: 11, color: colors.muted }}>ORDERS</Text>
+                                                            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading, marginTop: 1 }}>{loc.orders}</Text>
+                                                        </View>
+                                                    </>
+                                                )}
                                             </View>
+                                            <TouchableOpacity style={{
+                                                backgroundColor: colors.teal + "20",
+                                                borderWidth: 1,
+                                                borderColor: colors.teal + "50",
+                                                borderRadius: 8,
+                                                paddingVertical: 7,
+                                                alignItems: "center",
+                                            }}>
+                                                <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>Manage Location</Text>
+                                            </TouchableOpacity>
                                         </View>
-                                        <View className="flex-row gap-4 mt-2">
-                                            <View>
-                                                <Text className="text-gray-500 text-xs">TYPE</Text>
-                                                <Text className="text-gray-300 text-sm">{loc.type}</Text>
-                                            </View>
-                                            {loc.status !== 'setup' && (
-                                                <>
-                                                    <View>
-                                                        <Text className="text-gray-500 text-xs">SALES (TODAY)</Text>
-                                                        <Text className="text-white text-sm font-bold">{loc.sales}</Text>
-                                                    </View>
-                                                    <View>
-                                                        <Text className="text-gray-500 text-xs">ORDERS</Text>
-                                                        <Text className="text-white text-sm font-bold">{loc.orders}</Text>
-                                                    </View>
-                                                </>
-                                            )}
-                                        </View>
-                                        <TouchableOpacity className="mt-4 bg-card py-2 rounded-lg items-center">
-                                            <Text className="text-white font-medium text-sm">Manage Location</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                ))}
-                                <TouchableOpacity className="w-full bg-blue-600/20 border border-blue-600/50 border-dashed p-4 rounded-xl items-center justify-center h-40">
-                                    <Text className="text-blue-400 font-bold text-lg">+ Add New Location</Text>
+                                    );
+                                })}
+                                <TouchableOpacity style={{
+                                    backgroundColor: colors.teal + "10",
+                                    borderWidth: 1,
+                                    borderColor: colors.teal + "40",
+                                    borderStyle: "dashed",
+                                    borderRadius: 10,
+                                    padding: 20,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    height: 64,
+                                }}>
+                                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>+ Add New Location</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -105,38 +173,80 @@ const MultiLocationScreen = () => {
                 </View>
 
                 {/* Menu Inheritance */}
-                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-                    {renderSectionHeader("Menu Inheritance System", <GitBranch size={20} color="#a78bfa" />, "menu")}
+                <View style={{
+                    backgroundColor: colors.panel,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    marginBottom: 14,
+                }}>
+                    {renderSectionHeader("Menu Inheritance System", <GitBranch size={16} color={colors.teal} />, "menu")}
                     {expandedSections.menu && (
-                        <View className="p-5">
-                            <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                                <View className="flex-1 pr-4">
-                                    <Text className="text-white font-medium">Enable Global Menu Sync</Text>
-                                    <Text className="text-gray-400 text-sm">Automatically push menu changes from HQ to other locations.</Text>
+                        <View style={{ padding: 14 }}>
+                            <View style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                paddingVertical: 10,
+                                borderBottomWidth: 1,
+                                borderBottomColor: colors.border,
+                                marginBottom: 12,
+                            }}>
+                                <View style={{ flex: 1, paddingRight: 12 }}>
+                                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Enable Global Menu Sync</Text>
+                                    <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>Automatically push menu changes from HQ to other locations.</Text>
                                 </View>
                                 <Switch checked={inheritance.enabled} onCheckedChange={(v) => setInheritance({ ...inheritance, enabled: v })} />
                             </View>
 
                             {inheritance.enabled && (
-                                <View className="bg-surface p-4 rounded-xl border border-gray-600">
-                                    <Text className="text-gray-300 font-medium mb-3">Inheritance Mode</Text>
-                                    <View className="flex-row gap-2 mb-4">
-                                        {['Full', 'Selective', 'Independent'].map((mode) => (
-                                            <TouchableOpacity
-                                                key={mode}
-                                                onPress={() => setInheritance({ ...inheritance, mode: mode.toLowerCase() })}
-                                                className={`flex-1 py-2 px-3 rounded-lg border ${inheritance.mode === mode.toLowerCase() ? 'bg-purple-600 border-purple-500' : 'bg-card border-gray-600'}`}
-                                            >
-                                                <Text className={`text-center font-bold ${inheritance.mode === mode.toLowerCase() ? 'text-white' : 'text-gray-400'}`}>{mode}</Text>
-                                            </TouchableOpacity>
-                                        ))}
+                                <View style={{
+                                    backgroundColor: colors.card,
+                                    borderRadius: 10,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                    padding: 12,
+                                }}>
+                                    <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600", marginBottom: 10 }}>Inheritance Mode</Text>
+                                    <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                                        {["Full", "Selective", "Independent"].map((mode) => {
+                                            const isActive = inheritance.mode === mode.toLowerCase();
+                                            return (
+                                                <TouchableOpacity
+                                                    key={mode}
+                                                    onPress={() => setInheritance({ ...inheritance, mode: mode.toLowerCase() })}
+                                                    style={{
+                                                        flex: 1,
+                                                        paddingVertical: 8,
+                                                        paddingHorizontal: 6,
+                                                        borderRadius: 8,
+                                                        borderWidth: 1,
+                                                        backgroundColor: isActive ? colors.teal + "20" : "transparent",
+                                                        borderColor: isActive ? colors.teal + "60" : colors.border,
+                                                        alignItems: "center",
+                                                    }}
+                                                >
+                                                    <Text style={{
+                                                        fontSize: 12,
+                                                        fontWeight: "700",
+                                                        color: isActive ? colors.teal : colors.label,
+                                                    }}>{mode}</Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
                                     </View>
-                                    <View className="bg-card p-3 rounded-lg flex-row items-center">
-                                        <AlertCircle size={16} color="#a78bfa" />
-                                        <Text className="text-gray-300 text-xs ml-2 flex-1">
-                                            {inheritance.mode === 'full' && "All locations perfectly mirror the HQ menu. No local overrides allowed."}
-                                            {inheritance.mode === 'selective' && "Locations inherit core items but can add local specials and pricing."}
-                                            {inheritance.mode === 'independent' && "Locations manage their own menus. Sync is disabled."}
+                                    <View style={{
+                                        backgroundColor: colors.screen,
+                                        borderRadius: 8,
+                                        padding: 10,
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                    }}>
+                                        <AlertCircle size={14} color={colors.teal} />
+                                        <Text style={{ fontSize: 11, color: colors.label, marginLeft: 8, flex: 1 }}>
+                                            {inheritance.mode === "full" && "All locations perfectly mirror the HQ menu. No local overrides allowed."}
+                                            {inheritance.mode === "selective" && "Locations inherit core items but can add local specials and pricing."}
+                                            {inheritance.mode === "independent" && "Locations manage their own menus. Sync is disabled."}
                                         </Text>
                                     </View>
                                 </View>
@@ -146,25 +256,58 @@ const MultiLocationScreen = () => {
                 </View>
 
                 {/* Push Menu Updates */}
-                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-                    {renderSectionHeader("Push Menu Updates", <UploadCloud size={20} color={colors.warning} />, "updates")}
+                <View style={{
+                    backgroundColor: colors.panel,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    marginBottom: 14,
+                }}>
+                    {renderSectionHeader("Push Menu Updates", <UploadCloud size={16} color={colors.warning} />, "updates")}
                     {expandedSections.updates && (
-                        <View className="p-5">
-                            <View className="bg-yellow-500/10 border border-yellow-500/30 p-5 rounded-lg flex-row items-start mb-6">
-                                <AlertTriangle size={20} color={colors.warning} className="mt-0.5" />
-                                <View className="ml-4 flex-1">
-                                    <Text className="text-yellow-500 font-bold mb-1">Pending Changes Detected</Text>
-                                    <Text className="text-yellow-200/70 text-sm">You have 12 menu changes saved in draft (3 new items, 9 price updates). These have not been pushed to live locations.</Text>
+                        <View style={{ padding: 14 }}>
+                            <View style={{
+                                backgroundColor: colors.warning + "10",
+                                borderWidth: 1,
+                                borderColor: colors.warning + "30",
+                                borderRadius: 10,
+                                padding: 12,
+                                flexDirection: "row",
+                                alignItems: "flex-start",
+                                marginBottom: 12,
+                            }}>
+                                <AlertTriangle size={16} color={colors.warning} />
+                                <View style={{ marginLeft: 10, flex: 1 }}>
+                                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.warning, marginBottom: 3 }}>Pending Changes Detected</Text>
+                                    <Text style={{ fontSize: 11, color: colors.label }}>You have 12 menu changes saved in draft (3 new items, 9 price updates). These have not been pushed to live locations.</Text>
                                 </View>
                             </View>
 
-                            <View className="flex-row gap-4">
-                                <TouchableOpacity className="flex-1 bg-surface py-3 rounded-lg border border-gray-600 items-center">
-                                    <Text className="text-white font-medium">Preview Changes</Text>
+                            <View style={{ flexDirection: "row", gap: 10 }}>
+                                <TouchableOpacity style={{
+                                    flex: 1,
+                                    paddingVertical: 10,
+                                    borderRadius: 8,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                    alignItems: "center",
+                                }}>
+                                    <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600" }}>Preview Changes</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity className="flex-1 bg-blue-600 py-3 rounded-lg items-center flex-row justify-center gap-3">
-                                    <RefreshCw size={18} color="white" />
-                                    <Text className="text-white font-bold">Push Updated Menu</Text>
+                                <TouchableOpacity style={{
+                                    flex: 1,
+                                    paddingVertical: 10,
+                                    borderRadius: 8,
+                                    backgroundColor: colors.teal + "20",
+                                    borderWidth: 1,
+                                    borderColor: colors.teal + "50",
+                                    alignItems: "center",
+                                    flexDirection: "row",
+                                    justifyContent: "center",
+                                    gap: 6,
+                                }}>
+                                    <RefreshCw size={14} color={colors.teal} />
+                                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>Push Updated Menu</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -172,25 +315,38 @@ const MultiLocationScreen = () => {
                 </View>
 
                 {/* Performance Comparison */}
-                <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-                    {renderSectionHeader("Performance Benchmarking", <BarChart3 size={20} color={colors.success} />, "analytics")}
+                <View style={{
+                    backgroundColor: colors.panel,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    marginBottom: 14,
+                }}>
+                    {renderSectionHeader("Performance Benchmarking", <BarChart3 size={16} color={colors.success} />, "analytics")}
                     {expandedSections.analytics && (
-                        <View className="p-5">
-                            <View className="flex-row justify-between items-center mb-4">
-                                <Text className="text-white font-bold">Sales per Labor Hour</Text>
-                                <Text className="text-blue-400 text-xs">View Full Report</Text>
+                        <View style={{ padding: 14 }}>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Sales per Labor Hour</Text>
+                                <Text style={{ fontSize: 11, color: colors.teal }}>View Full Report</Text>
                             </View>
-                            {locations.filter(l => l.status !== 'setup').map((loc, index) => (
-                                <View key={loc.id} className="mb-3">
-                                    <View className="flex-row justify-between mb-1">
-                                        <View className="flex-row items-center">
-                                            {index === 0 && <Text className="mr-2">🥇</Text>}
-                                            <Text className="text-gray-300 text-sm">{loc.name}</Text>
+                            {locations.filter(l => l.status !== "setup").map((loc, index) => (
+                                <View key={loc.id} style={{ marginBottom: 10 }}>
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                            {index === 0 && <Text style={{ marginRight: 6 }}>🥇</Text>}
+                                            <Text style={{ fontSize: 12, color: colors.label }}>{loc.name}</Text>
                                         </View>
-                                        <Text className="text-white font-bold">{index === 0 ? "$124/hr" : index === 1 ? "$98/hr" : "$0/hr"}</Text>
+                                        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>
+                                            {index === 0 ? "$124/hr" : index === 1 ? "$98/hr" : "$0/hr"}
+                                        </Text>
                                     </View>
-                                    <View className="h-2 bg-card rounded-full overflow-hidden">
-                                        <View className="h-full bg-blue-600 rounded-full" style={{ width: index === 0 ? '100%' : index === 1 ? '75%' : '0%' }} />
+                                    <View style={{ height: 6, backgroundColor: colors.card, borderRadius: 4, overflow: "hidden" }}>
+                                        <View style={{
+                                            height: "100%",
+                                            backgroundColor: colors.teal,
+                                            borderRadius: 4,
+                                            width: index === 0 ? "100%" : index === 1 ? "75%" : "0%",
+                                        }} />
                                     </View>
                                 </View>
                             ))}

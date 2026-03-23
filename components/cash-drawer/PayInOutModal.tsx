@@ -7,12 +7,6 @@
 
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad from "@/components/auth/PinNumpad";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
 import type { MerchantRole } from "@/lib/types";
 import { colors } from "@/lib/theme";
@@ -23,7 +17,7 @@ import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import React, { useCallback, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -167,145 +161,157 @@ const PayInOutModal: React.FC<PayInOutModalProps> = ({
   const chips = REASON_CHIPS[mode] || [];
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="w-96 bg-panel border-gray-600 p-6">
-        <DialogHeader>
-          <DialogTitle className="text-center text-2xl font-semibold text-white">
-            {MODE_TITLES[mode]}
-          </DialogTitle>
-        </DialogHeader>
-
-        <View className="mt-4">
-          {/* Current Balance */}
-          <View className="flex-row items-center justify-between mb-4 p-3 bg-surface border border-border rounded-lg">
-            <Text className="text-sm text-label">Current Balance</Text>
-            <Text className="text-lg font-bold text-teal">
-              {formatCurrency(balance)}
+    <Modal
+      visible={isOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={handleClose}
+      statusBarTranslucent
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={handleClose}
+        className="flex-1 bg-black/60 items-center justify-center px-6"
+      >
+        <TouchableOpacity activeOpacity={1} className="w-full max-w-sm">
+          <View className="bg-panel border border-gray-600 rounded-2xl p-6">
+            <Text className="text-center text-2xl font-semibold text-white mb-4">
+              {MODE_TITLES[mode]}
             </Text>
-          </View>
 
-          {/* Amount Input */}
-          <Text className="text-sm font-medium text-label mb-1">Amount</Text>
-          <TextInput
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="0.00"
-            placeholderTextColor={colors.muted}
-            keyboardType="decimal-pad"
-            className="h-12 px-3 bg-surface border border-border rounded-lg text-white text-lg mb-3"
-          />
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Current Balance */}
+              <View className="flex-row items-center justify-between mb-4 p-3 bg-surface border border-border rounded-lg">
+                <Text className="text-sm text-label">Current Balance</Text>
+                <Text className="text-lg font-bold text-teal">
+                  {formatCurrency(balance)}
+                </Text>
+              </View>
 
-          {/* Balance Warning */}
-          {showBalanceWarning && (
-            <View className="mb-3 p-2 bg-yellow-900/30 border border-yellow-700 rounded-lg">
-              <Text className="text-xs text-yellow-400">
-                Amount exceeds current drawer balance
-              </Text>
-            </View>
-          )}
+              {/* Amount Input */}
+              <Text className="text-sm font-medium text-label mb-1">Amount</Text>
+              <TextInput
+                value={amount}
+                onChangeText={setAmount}
+                placeholder="0.00"
+                placeholderTextColor={colors.muted}
+                keyboardType="decimal-pad"
+                className="h-12 px-3 bg-surface border border-border rounded-lg text-white text-lg mb-3"
+              />
 
-          {/* Reason Chips */}
-          {mode !== "cash_drop" && (
-            <>
-              <Text className="text-sm font-medium text-label mb-2">Reason</Text>
-              <View className="flex-row flex-wrap gap-2 mb-3">
-                {chips.map((chip) => (
+              {/* Balance Warning */}
+              {showBalanceWarning && (
+                <View className="mb-3 p-2 bg-yellow-900/30 border border-yellow-700 rounded-lg">
+                  <Text className="text-xs text-yellow-400">
+                    Amount exceeds current drawer balance
+                  </Text>
+                </View>
+              )}
+
+              {/* Reason Chips */}
+              {mode !== "cash_drop" && (
+                <>
+                  <Text className="text-sm font-medium text-label mb-2">Reason</Text>
+                  <View className="flex-row flex-wrap gap-2 mb-3">
+                    {chips.map((chip) => (
+                      <TouchableOpacity
+                        key={chip}
+                        onPress={() => setSelectedReason(chip)}
+                        className={`px-3 py-1.5 rounded-lg border ${
+                          selectedReason === chip
+                            ? "bg-blue-600 border-blue-500"
+                            : "bg-surface border-border"
+                        }`}
+                      >
+                        <Text
+                          className={`text-sm ${
+                            selectedReason === chip ? "text-white" : "text-label"
+                          }`}
+                        >
+                          {chip}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {selectedReason === "Other" && (
+                <TextInput
+                  value={customReason}
+                  onChangeText={setCustomReason}
+                  placeholder="Enter reason..."
+                  placeholderTextColor={colors.muted}
+                  className="h-10 px-3 bg-surface border border-border rounded-lg text-white text-sm mb-3"
+                />
+              )}
+
+              {/* Manager PIN */}
+              {!approvedBy && (
+                <Animated.View style={shakeStyle} className="mt-2">
+                  <Text className="text-sm font-medium text-label mb-2">
+                    Manager PIN Required
+                  </Text>
+                  <PinDisplay pinLength={pin.length} maxLength={4} />
+                  <PinNumpad
+                    onKeyPress={(input) => {
+                      if (typeof input === "number") {
+                        if (pin.length < 4) setPin(pin + input.toString());
+                      } else if (input === "clear") {
+                        setPin("");
+                      } else if (input === "backspace") {
+                        setPin(pin.slice(0, -1));
+                      }
+                    }}
+                  />
                   <TouchableOpacity
-                    key={chip}
-                    onPress={() => setSelectedReason(chip)}
-                    className={`px-3 py-1.5 rounded-lg border ${
-                      selectedReason === chip
-                        ? "bg-blue-600 border-blue-500"
-                        : "bg-surface border-border"
-                    }`}
+                    onPress={handlePinSubmit}
+                    className="py-2 bg-blue-600 rounded-lg mt-2"
                   >
-                    <Text
-                      className={`text-sm ${
-                        selectedReason === chip ? "text-white" : "text-label"
-                      }`}
-                    >
-                      {chip}
+                    <Text className="text-center text-sm font-bold text-white">
+                      Verify
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          )}
+                </Animated.View>
+              )}
 
-          {selectedReason === "Other" && (
-            <TextInput
-              value={customReason}
-              onChangeText={setCustomReason}
-              placeholder="Enter reason..."
-              placeholderTextColor={colors.muted}
-              className="h-10 px-3 bg-surface border border-border rounded-lg text-white text-sm mb-3"
-            />
-          )}
+              {approvedBy && (
+                <View className="mt-2 p-2 bg-green-900/30 border border-green-700 rounded-lg">
+                  <Text className="text-sm text-green-400 text-center">
+                    Approved by: {approvedBy}
+                  </Text>
+                </View>
+              )}
 
-          {/* Manager PIN */}
-          {!approvedBy && (
-            <Animated.View style={shakeStyle} className="mt-2">
-              <Text className="text-sm font-medium text-label mb-2">
-                Manager PIN Required
-              </Text>
-              <PinDisplay pinLength={pin.length} maxLength={4} />
-              <PinNumpad
-                onKeyPress={(input) => {
-                  if (typeof input === "number") {
-                    if (pin.length < 4) setPin(pin + input.toString());
-                  } else if (input === "clear") {
-                    setPin("");
-                  } else if (input === "backspace") {
-                    setPin(pin.slice(0, -1));
-                  }
-                }}
-              />
+              {/* Confirm */}
               <TouchableOpacity
-                onPress={handlePinSubmit}
-                className="py-2 bg-blue-600 rounded-lg mt-2"
+                onPress={handleConfirm}
+                disabled={!canSubmit || isSubmitting}
+                className={`mt-4 py-3 rounded-lg ${
+                  canSubmit && !isSubmitting
+                    ? mode === "pay_in"
+                      ? "bg-green-600"
+                      : mode === "pay_out"
+                      ? "bg-red-600"
+                      : "bg-blue-600"
+                    : "bg-gray-600"
+                }`}
               >
-                <Text className="text-center text-sm font-bold text-white">
-                  Verify
+                <Text
+                  className={`text-center text-lg font-bold ${
+                    canSubmit && !isSubmitting ? "text-white" : "text-gray-400"
+                  }`}
+                >
+                  {isSubmitting
+                    ? "Processing..."
+                    : `Confirm ${MODE_TITLES[mode]}${isValidAmount ? ` (${formatCurrency(parsedAmount)})` : ""}`}
                 </Text>
               </TouchableOpacity>
-            </Animated.View>
-          )}
-
-          {approvedBy && (
-            <View className="mt-2 p-2 bg-green-900/30 border border-green-700 rounded-lg">
-              <Text className="text-sm text-green-400 text-center">
-                Approved by: {approvedBy}
-              </Text>
-            </View>
-          )}
-
-          {/* Confirm */}
-          <TouchableOpacity
-            onPress={handleConfirm}
-            disabled={!canSubmit || isSubmitting}
-            className={`mt-4 py-3 rounded-lg ${
-              canSubmit && !isSubmitting
-                ? mode === "pay_in"
-                  ? "bg-green-600"
-                  : mode === "pay_out"
-                  ? "bg-red-600"
-                  : "bg-blue-600"
-                : "bg-gray-600"
-            }`}
-          >
-            <Text
-              className={`text-center text-lg font-bold ${
-                canSubmit && !isSubmitting ? "text-white" : "text-gray-400"
-              }`}
-            >
-              {isSubmitting
-                ? "Processing..."
-                : `Confirm ${MODE_TITLES[mode]}${isValidAmount ? ` (${formatCurrency(parsedAmount)})` : ""}`}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </DialogContent>
-    </Dialog>
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   );
 };
 
