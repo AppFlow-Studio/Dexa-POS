@@ -1,3 +1,4 @@
+import { CFDClientProvider } from "@/contexts/CFDClientContext";
 import { useCFDWSClient } from "@/hooks/useCFDWSClient";
 import { Stack } from "expo-router";
 import { activateKeepAwakeAsync } from "expo-keep-awake";
@@ -6,7 +7,7 @@ import { StatusBar } from "expo-status-bar";
 
 export default function CFDLayout() {
   // Initialize WS client (connects on mount if paired)
-  useCFDWSClient();
+  const cfdClient = useCFDWSClient();
 
   // Keep screen awake in CFD mode
   useEffect(() => {
@@ -16,7 +17,7 @@ export default function CFDLayout() {
   }, []);
 
   return (
-    <>
+    <CFDClientProvider value={cfdClient}>
       <StatusBar hidden />
       <Stack
         screenOptions={{
@@ -24,6 +25,6 @@ export default function CFDLayout() {
           animation: "none",
         }}
       />
-    </>
+    </CFDClientProvider>
   );
 }

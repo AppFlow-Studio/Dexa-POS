@@ -8,6 +8,7 @@ import { AppState } from "react-native";
 
 const PING_INTERVAL = 5000;
 const PONG_TIMEOUT = 15000; // Force-close if 3 pings missed
+const CONNECT_TIMEOUT = 10_000;
 
 export function useCFDWSClient() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -36,6 +37,10 @@ export function useCFDWSClient() {
   }, []);
 
   const connect = useCallback(() => {
+    // Cancel any pending reconnect timer first
+    clearTimeout(reconnectTimer.current);
+    reconnectTimer.current = undefined;
+
     if (!isPaired || !connection) return;
     if (!isMounted.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -54,7 +59,16 @@ export function useCFDWSClient() {
 
     const ws = new WebSocket(`ws://${connection.ip}:${connection.port}`);
 
+    // Timeout stuck CONNECTING sockets
+    const connectTimeout = setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        if (__DEV__) console.error("[CFD Client] Connection timeout, force-closing");
+        ws.close();
+      }
+    }, CONNECT_TIMEOUT);
+
     ws.onopen = () => {
+      clearTimeout(connectTimeout);
       isConnecting.current = false;
       if (!isMounted.current) { ws.close(); return; }
       console.log("[CFD Client] Connected");
@@ -98,9 +112,11 @@ export function useCFDWSClient() {
     ws.onerror = (error) => {
       const msg = (error as any).message || "Unknown error";
       if (__DEV__) console.error(`[CFD Client] WebSocket Error: ${msg}`);
+      try { ws.close(); } catch (_) {}
     };
 
     ws.onclose = () => {
+      clearTimeout(connectTimeout);
       isConnecting.current = false;
       if (!isMounted.current) return;
       console.log("[CFD Client] Disconnected");

@@ -10,6 +10,7 @@ export type RealtimeChannelTopic =
   | `location:${string}:waitlist`
   | `location:${string}:orders`
   | `location:${string}:kitchen`
+  | `location:${string}:settings`
   | `session:${string}:events`;
 
 export type RealtimeEventType =
@@ -36,7 +37,8 @@ export type RealtimeEventType =
   | 'ORDER_UPDATE'
   | 'ORDER_DELETE'
   | 'PAYMENT_INSERT'
-  | 'PAYMENT_UPDATE';
+  | 'PAYMENT_UPDATE'
+  | 'SETTINGS_UPDATE';
 
 // ============================================================================
 // PAYLOAD TYPES
@@ -355,6 +357,14 @@ export type AnyRealtimePayload =
   | OrderPayload
   | PaymentPayload;
 
+/** Settings update payload (broadcast between devices) */
+export interface SettingsUpdatePayload {
+  setting: 'kds_workflow_mode';
+  value: string;
+  timestamp: number;
+  sender_station_id: string | null;
+}
+
 /** Channel topic builder helpers */
 export const buildChannelTopic = {
   tables: (locationId: string): RealtimeChannelTopic =>
@@ -365,6 +375,8 @@ export const buildChannelTopic = {
     `location:${locationId}:orders`,
   kitchen: (locationId: string): RealtimeChannelTopic =>
     `location:${locationId}:kitchen`,
+  settings: (locationId: string): RealtimeChannelTopic =>
+    `location:${locationId}:settings`,
   sessionEvents: (sessionId: string): RealtimeChannelTopic =>
     `session:${sessionId}:events`,
 } as const;

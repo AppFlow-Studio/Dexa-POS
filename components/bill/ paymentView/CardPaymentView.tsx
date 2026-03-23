@@ -17,12 +17,14 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
 import { getOrCreateCounter } from "@/services/terminals/castles-txn-counter";
 import { extractLast4, parseCastlesReturnCode } from "@/services/terminals/castles-response-mapper";
 import { CASTLES_DEFAULT_PORT } from "@/types/castles";
-import { CheckCircle2, Wifi } from "lucide-react-native";
+import { adjustTips, type TipAdjustment } from "@/services/tipAdjustService";
+import { CheckCircle2, Clock, Wifi } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -57,7 +59,7 @@ const CardPaymentView = () => {
     expandSheetToFull();
   }, [expandSheetToFull]);
   const [status, setStatus] = useState<
-    "ready" | "processing" | "rejected" | "success"
+    "ready" | "processing" | "rejected" | "success" | "tip_adjusting"
   >("ready");
   const [tipInput, setTipInput] = useState("");
   const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
@@ -72,9 +74,21 @@ const CardPaymentView = () => {
   const currentRefIdRef = useRef<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  // Post-capture tip adjust: store payment details after successful charge
+  const capturedPaymentRef = useRef<{
+    referenceId: string;
+    rrn?: string;
+    dbPaymentId?: string;
+    last4?: string;
+    amount: number;
+    tipAmount: number;
+    terminalType: "castles" | "dejavoo";
+  } | null>(null);
+  const tipAdjustTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Sync isTransactionProcessing with status and error modal
   useEffect(() => {
-    setTransactionProcessing(status === "processing" || errorModal.visible);
+    setTransactionProcessing(status === "processing" || status === "tip_adjusting" || errorModal.visible);
     return () => { setTransactionProcessing(false); };
   }, [status, errorModal.visible, setTransactionProcessing]);
 
@@ -87,7 +101,6 @@ const CardPaymentView = () => {
 
   const {
     showTipSelection,
-    updateTip,
     setScreenState,
     setBaseAmount,
     tipResponse,
@@ -123,7 +136,6 @@ const CardPaymentView = () => {
     const calculatedTip = (percentage / 100) * totalToPay;
     setTipInput(calculatedTip.toFixed(2));
     setSelectedTipPreset(percentage);
-    updateTip(calculatedTip, percentage);
   };
 
   const handleTipInputChange = (value: string) => {
@@ -131,7 +143,6 @@ const CardPaymentView = () => {
     if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
       setTipInput(value);
       setSelectedTipPreset(null); // Clear preset when manually typing
-      updateTip(parseFloat(value) || 0, null);
     }
   };
 
@@ -153,17 +164,10 @@ const CardPaymentView = () => {
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;
 
-  // Sync with CFD Tip Selection
+  // Let CFD stay on ordering screen while cashier enters tip on POS (no pre-charge tip selection on CFD)
   useEffect(() => {
     if (status === "ready") {
-      showTipSelection(totalToPay, TIP_PRESETS);
-
-      // Resync existing tip selection if state persisted
-      const currentTipAmount = parseFloat(tipInput) || 0;
-      if (currentTipAmount > 0 || selectedTipPreset !== null) {
-        updateTip(currentTipAmount, selectedTipPreset);
-      }
-
+      setScreenState(null); // CFD shows order totals
       clearTipResponse();
     }
 
@@ -171,22 +175,105 @@ const CardPaymentView = () => {
     return () => {
       setScreenState(null);
       setBaseAmount(null);
-    };
-  }, [status]); // Only trigger when entering ready state
-
-  // Handle CFD Tip Response
-  useEffect(() => {
-    if (tipResponse) {
-      const tipDollars = (tipResponse.tipAmount / 100).toFixed(2);
-      setTipInput(tipDollars);
-
-      if (tipResponse.tipPercentage) {
-        setSelectedTipPreset(tipResponse.tipPercentage);
-      } else {
-        setSelectedTipPreset(null);
+      if (tipAdjustTimeoutRef.current) {
+        clearTimeout(tipAdjustTimeoutRef.current);
+        tipAdjustTimeoutRef.current = null;
       }
+    };
+  }, [status === "ready"]); // Only trigger when entering ready state
+
+  // Post-capture: Handle CFD tip response for tip adjust
+  useEffect(() => {
+    if (status !== "tip_adjusting" || !tipResponse || !capturedPaymentRef.current) return;
+
+    const captured = capturedPaymentRef.current;
+    const customerTipCents = tipResponse.tipAmount; // cents from CFD
+    const customerTip = customerTipCents / 100; // dollars
+    const posTip = captured.tipAmount; // dollars (what was charged)
+
+    // Clear the auto-timeout
+    if (tipAdjustTimeoutRef.current) {
+      clearTimeout(tipAdjustTimeoutRef.current);
+      tipAdjustTimeoutRef.current = null;
     }
-  }, [tipResponse]);
+
+    const performTipAdjust = async () => {
+      // If customer selected same tip or "No Tip" with $0 already charged, skip adjust
+      if (Math.abs(customerTip - posTip) < 0.01) {
+        showApproved();
+        setTimeout(() => showIdle(), 3000);
+        setStatus("success");
+        return;
+      }
+
+      try {
+        const terminal = selectedStation?.payment_terminal;
+        if (!terminal) throw new Error("No terminal configured");
+
+        // Terminal tip adjust
+        if (captured.terminalType === "castles") {
+          const service = getSharedCastlesService();
+          const host = terminal.ip_address;
+          if (!host) throw new Error("Castles terminal has no IP");
+          const port = terminal.port ?? CASTLES_DEFAULT_PORT;
+          await service.connect({ host, port, timeout: 120_000, terminalId: terminal.id });
+          await service.resetTerminalState();
+
+          const counter = getOrCreateCounter({ terminalId: terminal.id, supabaseClient: supabase });
+          if (!counter.isInitialized) await counter.initialize();
+          const adjustRefId = counter.next();
+
+          if (!captured.rrn) {
+            console.warn("[CardPayment] Cannot tip adjust — missing RRN");
+          } else {
+            const result = await service.tipAdjust({
+              tipAmount: customerTip,
+              rrn: captured.rrn,
+              referenceId: adjustRefId,
+            });
+            if (!result.success) {
+              console.error("[CardPayment] Castles tip adjust failed:", result.error);
+            }
+          }
+        } else {
+          // Dejavoo
+          const api = new DejavooSpinAPI(supabase);
+          await api.loadTerminal(terminal.id || "", terminal);
+          const result = await api
+            .tipAdjust()
+            .amount(captured.amount)
+            .tipAmount(customerTip)
+            .referenceId(captured.referenceId)
+            .execute();
+          if (!result.success) {
+            console.error("[CardPayment] Dejavoo tip adjust failed:", result.error);
+          }
+        }
+
+        // DB persistence
+        const activeOrd = useOrderStore.getState().ordersById[activeOrderId ?? ""];
+        const dbOrderId = activeOrd?.db_order_id;
+        if (dbOrderId && captured.dbPaymentId) {
+          const { loggedInEmployee } = useEmployeeStore.getState();
+          const dbAdjustments: TipAdjustment[] = [{
+            payment_id: captured.dbPaymentId,
+            new_tip_amount: customerTip,
+          }];
+          await adjustTips(supabase, dbOrderId, dbAdjustments, loggedInEmployee?.profileId);
+        }
+
+        console.log(`[CardPayment] Tip adjusted: $${posTip} → $${customerTip}`);
+      } catch (err) {
+        console.error("[CardPayment] Post-capture tip adjust error:", err);
+      }
+
+      showApproved();
+      setTimeout(() => showIdle(), 3000);
+      setStatus("success");
+    };
+
+    performTipAdjust();
+  }, [tipResponse, status]);
 
   // Logic: Process terminal payment (Castles or Dejavoo)
   useEffect(() => {
@@ -250,11 +337,10 @@ const CardPaymentView = () => {
               return;
             }
 
-            // 5. Handle success
-            showApproved();
-            setStatus("success");
+            // 5. Handle success — complete payment, then transition to CFD tip adjust
             const castlesTx = result.terminalResponse?.castles_transaction as Record<string, string> | undefined;
-            handlePaymentCompletion({
+            const castlesLast4 = castlesTx?.cardLast4 ?? (result.raw ? extractLast4(result.raw.txnMaskedCardNum ?? result.raw.txnCardMaskedPan ?? '') : undefined);
+            const completionResult = await handlePaymentCompletion({
               method: "Card",
               tipAmount,
               transactionDetails: {
@@ -262,12 +348,36 @@ const CardPaymentView = () => {
                 isCashPriced: false,
                 authorizationCode: castlesTx?.approvalCode,
                 cardType: castlesTx?.cardType,
-                last4: castlesTx?.cardLast4 ?? (result.raw ? extractLast4(result.raw.txnMaskedCardNum ?? result.raw.txnCardMaskedPan ?? '') : undefined),
+                last4: castlesLast4,
                 transactionId: referenceId,
                 castlesTransaction: result.terminalResponse,
               },
               amountOverride: totalToPay,
             });
+
+            // Store captured payment details for potential tip adjust
+            capturedPaymentRef.current = {
+              referenceId,
+              rrn: result.raw?.txnRrn ?? result.raw?.txnRRN,
+              dbPaymentId: (completionResult as any)?.dbPaymentId,
+              last4: castlesLast4,
+              amount: totalToPay,
+              tipAmount,
+              terminalType: "castles",
+            };
+
+            // Transition to post-capture CFD tip adjust
+            showTipSelection(totalToPay, TIP_PRESETS);
+            setStatus("tip_adjusting");
+
+            // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
+            tipAdjustTimeoutRef.current = setTimeout(() => {
+              console.log("[CardPayment] CFD tip adjust timed out — skipping");
+              showApproved();
+              setTimeout(() => showIdle(), 3000);
+              setStatus("success");
+              tipAdjustTimeoutRef.current = null;
+            }, 30_000);
             return;
           }
 
@@ -378,8 +488,6 @@ const CardPaymentView = () => {
 
           // Success
           if (result.success) {
-            showApproved();
-            setStatus("success");
             const rawResponse = result.rawResponse as Record<string, any> | undefined;
             const generalResponse = rawResponse?.GeneralResponse;
             const cardData = rawResponse?.CardData;
@@ -441,7 +549,7 @@ const CardPaymentView = () => {
               amounts,
               emvData,
             };
-            handlePaymentCompletion({
+            const completionResult = await handlePaymentCompletion({
               method: "Card",
               tipAmount: tipAmount,
               transactionDetails: {
@@ -455,6 +563,30 @@ const CardPaymentView = () => {
               },
               amountOverride: totalToPay,
             });
+
+            // Store captured payment details for potential tip adjust
+            capturedPaymentRef.current = {
+              referenceId: dejavooTransaction.referenceId ?? refId,
+              rrn: dejavooTransaction.rrn,
+              dbPaymentId: (completionResult as any)?.dbPaymentId,
+              last4: dejavooTransaction.cardLast4,
+              amount: totalToPay,
+              tipAmount,
+              terminalType: "dejavoo",
+            };
+
+            // Transition to post-capture CFD tip adjust
+            showTipSelection(totalToPay, TIP_PRESETS);
+            setStatus("tip_adjusting");
+
+            // Auto-timeout: 30s — if customer doesn't respond, skip tip adjust
+            tipAdjustTimeoutRef.current = setTimeout(() => {
+              console.log("[CardPayment] CFD tip adjust timed out — skipping");
+              showApproved();
+              setTimeout(() => showIdle(), 3000);
+              setStatus("success");
+              tipAdjustTimeoutRef.current = null;
+            }, 30_000);
           }
         } catch (error) {
           console.error("[CardPayment] Error processing payment:", error);
@@ -569,8 +701,8 @@ const CardPaymentView = () => {
             </View>
           )}
 
-          {/* PROCESSING / SUCCESS STATES */}
-          {(status === "processing" || status === "success") && (
+          {/* PROCESSING / TIP ADJUSTING / SUCCESS STATES */}
+          {(status === "processing" || status === "success" || status === "tip_adjusting") && (
             <View style={{ marginBottom: 24, alignItems: "center" }}>
               {status === "processing" && (
                 <Animated.View entering={FadeIn} style={{ alignItems: "center" }}>
@@ -581,6 +713,15 @@ const CardPaymentView = () => {
                     <Wifi size={13} color={colors.success} />
                     <Text style={{ color: colors.muted, fontWeight: "600", fontSize: 12 }}>Terminal Connected</Text>
                   </View>
+                </Animated.View>
+              )}
+
+              {status === "tip_adjusting" && (
+                <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center" }}>
+                  <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: `${colors.teal}15`, alignItems: "center", justifyContent: "center", marginBottom: 12, borderWidth: 1, borderColor: `${colors.teal}30` }}>
+                    <Clock size={36} color={colors.teal} />
+                  </View>
+                  <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 13 }}>Payment Approved</Text>
                 </Animated.View>
               )}
 
@@ -595,10 +736,10 @@ const CardPaymentView = () => {
 
               <View style={{ marginTop: 16, alignItems: "center" }}>
                 <Text style={{ fontSize: 20, fontWeight: "700", color: colors.heading, marginBottom: 4, textAlign: "center" }}>
-                  {status === "processing" ? "Present Card" : "Payment Successful"}
+                  {status === "processing" ? "Present Card" : status === "tip_adjusting" ? "Customer Selecting Tip..." : "Payment Successful"}
                 </Text>
                 <Text style={{ color: colors.muted, fontSize: 13, textAlign: "center" }}>
-                  {status === "processing" ? `Charging $${grandTotal.toFixed(2)}` : "Transaction completed"}
+                  {status === "processing" ? `Charging $${grandTotal.toFixed(2)}` : status === "tip_adjusting" ? "Tip selection shown on customer display" : "Transaction completed"}
                 </Text>
               </View>
             </View>
@@ -666,6 +807,25 @@ const CardPaymentView = () => {
             >
               <Text style={{ color: terminalReady ? "#000" : colors.muted, fontWeight: "700", fontSize: 14 }}>
                 Charge Card ${grandTotal.toFixed(2)}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {status === "tip_adjusting" && (
+            <TouchableOpacity
+              onPress={() => {
+                if (tipAdjustTimeoutRef.current) {
+                  clearTimeout(tipAdjustTimeoutRef.current);
+                  tipAdjustTimeoutRef.current = null;
+                }
+                showApproved();
+                setTimeout(() => showIdle(), 3000);
+                setStatus("success");
+              }}
+              style={{ width: "100%", paddingVertical: 11, borderRadius: 8, marginBottom: 8, alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+            >
+              <Text style={{ color: colors.muted, fontWeight: "700", fontSize: 14 }}>
+                Skip Tip Adjust
               </Text>
             </TouchableOpacity>
           )}

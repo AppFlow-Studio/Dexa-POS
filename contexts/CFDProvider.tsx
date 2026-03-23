@@ -123,6 +123,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   );
   const tipConfigRef = useRef<CFDPayload["tipConfig"] | null>(null);
   const lastPayloadHashRef = useRef("");
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedUpdateRef = useRef(
     debounce((ctrl: CFDController, params: any) => {
       const hash = JSON.stringify(params);
@@ -287,6 +289,14 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       setPairingData(null);
       setIsConnected(false);
       setClientCount(0);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      if (builtinIdleTimerRef.current) {
+        clearTimeout(builtinIdleTimerRef.current);
+        builtinIdleTimerRef.current = null;
+      }
     };
   }, [
     selectedStation?.id,
@@ -360,8 +370,26 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!shouldShowOrderData) {
-      controller.showIdle();
-      return;
+      // Debounce idle transition to prevent flicker during screen navigation
+      if (!idleTimerRef.current) {
+        idleTimerRef.current = setTimeout(() => {
+          controller.showIdle();
+          idleTimerRef.current = null;
+        }, 500);
+      }
+      return () => {
+        if (idleTimerRef.current) {
+          clearTimeout(idleTimerRef.current);
+          idleTimerRef.current = null;
+        }
+        debouncedUpdateRef.current.cancel();
+      };
+    }
+
+    // Cancel any pending idle transition since we have data to show
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
     }
 
     // items should always be synced if we're showing order data
@@ -483,16 +511,33 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       !!activeScreenState || (isSalesScreen && !!activeOrder);
 
     if (!shouldShowOrderData) {
-      useCFDBuiltinStore.getState().update({
-        screenState: "idle",
-        branding: {
-          restaurantName: selectedStore?.name ?? "",
-          locationCode: selectedStore?.code ?? null,
-          logoUrl: organizationLogoUrl,
-          primaryColor: "#10b981",
-        },
-      });
-      return;
+      // Debounce idle transition to prevent flicker during screen navigation
+      if (!builtinIdleTimerRef.current) {
+        builtinIdleTimerRef.current = setTimeout(() => {
+          useCFDBuiltinStore.getState().update({
+            screenState: "idle",
+            branding: {
+              restaurantName: selectedStore?.name ?? "",
+              locationCode: selectedStore?.code ?? null,
+              logoUrl: organizationLogoUrl,
+              primaryColor: "#10b981",
+            },
+          });
+          builtinIdleTimerRef.current = null;
+        }, 500);
+      }
+      return () => {
+        if (builtinIdleTimerRef.current) {
+          clearTimeout(builtinIdleTimerRef.current);
+          builtinIdleTimerRef.current = null;
+        }
+      };
+    }
+
+    // Cancel any pending idle transition since we have data to show
+    if (builtinIdleTimerRef.current) {
+      clearTimeout(builtinIdleTimerRef.current);
+      builtinIdleTimerRef.current = null;
     }
 
     const screenState = activeScreenState || "ordering";

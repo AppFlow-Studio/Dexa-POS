@@ -1732,6 +1732,23 @@ const PrintersKitchenScreen = () => {
                             p_location_id: selectedStore.id,
                           });
                         }
+                        // Broadcast to all devices in this location
+                        const channel = supabase.channel(`location:${selectedStore.id}:settings`);
+                        channel.subscribe((status: string) => {
+                          if (status === 'SUBSCRIBED') {
+                            channel.send({
+                              type: 'broadcast',
+                              event: 'SETTINGS_UPDATE',
+                              payload: {
+                                setting: 'kds_workflow_mode',
+                                value: opt.value,
+                                timestamp: Date.now(),
+                                sender_station_id: useStoreSettingsStore.getState().selectedStation?.id ?? null,
+                              },
+                            });
+                            setTimeout(() => supabase.removeChannel(channel), 1000);
+                          }
+                        });
                       }}
                       style={{
                         flex: 1,

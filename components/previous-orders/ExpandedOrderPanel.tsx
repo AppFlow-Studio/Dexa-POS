@@ -4,6 +4,7 @@ import {
   Clock,
   CreditCard,
   DollarSign,
+  Play,
   Printer,
   RotateCcw,
 } from "lucide-react-native";
@@ -16,6 +17,7 @@ interface ExpandedOrderPanelProps {
   onViewTimeline: (order: OrderProfile) => void;
   onTipAdjust: (order: OrderProfile) => void;
   onRefund?: (order: OrderProfile) => void;
+  onContinue?: (order: OrderProfile) => void;
 }
 
 const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
@@ -24,6 +26,7 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
   onViewTimeline,
   onTipAdjust,
   onRefund,
+  onContinue,
 }) => {
   const paymentSummary = useMemo(() => {
     const subtotal = order.items.reduce((sum, item) => {
@@ -182,6 +185,13 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             Actions
           </Text>
           <View className="gap-2">
+            {onContinue && (
+              <QuickActionButton
+                icon={<Play color={colors.teal} size={14} />}
+                label="Continue Order"
+                onPress={() => onContinue(order)}
+              />
+            )}
             <QuickActionButton
               icon={<Printer color={colors.teal} size={14} />}
               label="Print Receipt"

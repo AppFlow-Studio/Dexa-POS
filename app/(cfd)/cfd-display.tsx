@@ -1,6 +1,6 @@
 import { CFDScreenRouter } from "@/components/cfd-client/CFDScreenRouter";
 import { CFDExternalDisplayProvider } from "@/contexts/CFDDisplayDataContext";
-import { useCFDWSClient } from "@/hooks/useCFDWSClient";
+import { useCFDClient } from "@/contexts/CFDClientContext";
 import { replaceRoute } from "@/lib/rootNavigation";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -12,7 +12,7 @@ const ADMIN_TAP_COUNT = 5;
 const ADMIN_TAP_WINDOW_MS = 2000;
 
 export default function CFDDisplayScreen() {
-  const { sendTipSelection, reconnect } = useCFDWSClient();
+  const { sendTipSelection, reconnect } = useCFDClient();
   const { isPaired, connectionStatus } = useCFDClientStore();
 
   const tapCountRef = useRef(0);
@@ -74,7 +74,10 @@ export default function CFDDisplayScreen() {
           <Text style={styles.retryButtonText}>Retry Connection</Text>
         </Pressable>
         <Pressable
-          onPress={() => router.replace("/(cfd)/cfd-pairing")}
+          onPress={() => {
+            useCFDClientStore.getState().clearPairing();
+            router.replace("/(cfd)/cfd-pairing");
+          }}
           style={styles.resetButton}
         >
           <Text style={styles.resetButtonText}>Back to Pairing</Text>
