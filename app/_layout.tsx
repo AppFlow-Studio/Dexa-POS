@@ -41,6 +41,8 @@ import {
 import { Stack, useNavigationContainerRef } from "expo-router";
 import { setRootNavigationRef } from "@/lib/rootNavigation";
 import * as SecureStore from "expo-secure-store";
+import * as NavigationBar from "expo-navigation-bar";
+import { SystemBars } from "react-native-edge-to-edge";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import * as React from "react";
@@ -114,6 +116,13 @@ export default function RootLayout() {
   React.useEffect(() => {
     setRootNavigationRef(navigationRef);
   }, [navigationRef]);
+
+  // Hide system UI for full-screen immersive POS experience
+  React.useEffect(() => {
+    if (Platform.OS === "android") {
+      NavigationBar.setVisibilityAsync("hidden").catch(() => {});
+    }
+  }, []);
 
   useIsomorphicLayoutEffect(() => {
     if (hasMounted.current) {
@@ -199,7 +208,8 @@ export default function RootLayout() {
                         <SessionKickListenerProvider>
                           <RemoteActionsProvider>
                           <CFDProvider>
-                            <StatusBar style={"dark"} translucent />
+                            <StatusBar style={"dark"} translucent hidden={Platform.OS === "android"} />
+                            {Platform.OS === "android" && <SystemBars hidden={{ navigationBar: true, statusBar: true }} />}
                             <Stack screenOptions={{ headerShown: false }}>
                               <Stack.Screen name="index" />
                               <Stack.Screen name="(auth)" />
