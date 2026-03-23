@@ -26,7 +26,7 @@ import {
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { setKDSSupabaseClient } from "@/stores/useKDSStore";
+import { setKDSSupabaseClient, useKDSStore } from "@/stores/useKDSStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import {
   detectAndStoreCapabilities,
@@ -524,9 +524,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       if (nextState === "active") {
         console.log("[PosSyncProvider] App became active - refreshing data");
 
+        // Refresh location settings for ALL devices (fallback for missed broadcasts)
+        const storeSettings = useStoreSettingsStore.getState();
+        storeSettings.refreshSelectedStore(supabase);
+
         if (!isKDS) {
           const floorPlanStore = useFloorPlanStore.getState();
-          const storeSettings = useStoreSettingsStore.getState();
 
           // Reconnect realtime if disconnected or reconnecting
           if (floorPlanStore.realtimeStatus !== "connected") {
@@ -535,9 +538,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
           // Refresh stale floor plan data
           floorPlanStore.loadFloorPlanStatusIfStale();
-
-          // Refresh location settings (KDS workflow mode, etc.) from DB
-          storeSettings.refreshSelectedStore(supabase);
 
           // Refresh orders when app resumes via query invalidation
           if (storeSettings.selectedStore?.id) {
@@ -558,6 +558,42 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       subscription.remove();
     };
   }, [isKDS]);
+
+  // Real-time settings sync (KDS workflow mode, etc.)
+  useEffect(() => {
+    const locationId = selectedStore?.id;
+    if (!locationId) return;
+
+    const myStationId = useStoreSettingsStore.getState().selectedStation?.id;
+    const channel = supabase.channel(`location:${locationId}:settings`);
+
+    channel.on('broadcast', { event: 'SETTINGS_UPDATE' }, (msg: any) => {
+      const payload = msg.payload;
+
+      // Skip if we sent this (already applied optimistic update)
+      if (payload.sender_station_id && payload.sender_station_id === myStationId) return;
+
+      if (payload.setting === 'kds_workflow_mode') {
+        // Update store setting
+        const current = useStoreSettingsStore.getState().selectedStore;
+        if (current) {
+          useStoreSettingsStore.getState().setSelectedStore({
+            ...current,
+            kds_workflow_mode: payload.value,
+          });
+        }
+        // Re-categorize KDS tickets
+        const kds = useKDSStore.getState();
+        if (kds._lastLocationId) {
+          kds._backgroundFetchTickets(kds._lastLocationId);
+        }
+      }
+    });
+
+    channel.subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedStore?.id, supabase]);
 
   return <>{children}</>;
 }
