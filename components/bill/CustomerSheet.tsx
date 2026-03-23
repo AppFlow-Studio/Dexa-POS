@@ -118,6 +118,13 @@ const CustomerSheet: React.FC = () => {
     return list;
   }, [searchQuery, customers]);
 
+  const topCustomers = useMemo(() => {
+    return [...customers]
+      .filter((c) => (c.total_orders ?? 0) > 0)
+      .sort((a, b) => (b.total_orders ?? 0) - (a.total_orders ?? 0))
+      .slice(0, 3);
+  }, [customers]);
+
   const groupedCustomers = useMemo(() => {
     const map: Record<string, CustomerWithMeta[]> = {};
     for (const c of filteredCustomers) {
@@ -340,6 +347,43 @@ const CustomerSheet: React.FC = () => {
                       )}
                     </View>
                   </View>
+
+                  {/* Top customers quick-pick */}
+                  {topCustomers.length > 0 && !searchQuery && (
+                    <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+                      <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 6 }}>Frequent</Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {topCustomers.map((c) => (
+                          <TouchableOpacity
+                            key={c.id}
+                            disabled={isAssignDisabled}
+                            onPress={() => handleSelectCustomer(c)}
+                            style={{
+                              flex: 1,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 6,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              borderRadius: 8,
+                              backgroundColor: colors.teal + '10',
+                              borderWidth: 1,
+                              borderColor: colors.teal + '30',
+                              opacity: isAssignDisabled ? 0.6 : 1,
+                            }}
+                          >
+                            <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.teal + '20' }}>
+                              <Text style={{ color: colors.teal, fontSize: 10, fontWeight: '700' }}>{(c.name || '?')[0].toUpperCase()}</Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: colors.heading, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>{c.name}</Text>
+                              <Text style={{ color: colors.muted, fontSize: 9 }}>{c.total_orders} orders</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
 
                   <SectionList
                     sections={groupedCustomers}
