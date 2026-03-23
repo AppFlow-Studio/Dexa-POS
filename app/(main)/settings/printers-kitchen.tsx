@@ -352,6 +352,12 @@ const PrintersKitchenScreen = () => {
   const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
   const [isSavingPrinter, setIsSavingPrinter] = useState(false);
   const [deletingPrinterId, setDeletingPrinterId] = useState<string | null>(null);
+  const [draftPrinterEdits, setDraftPrinterEdits] = useState<{
+    printerRole?: PrinterRole;
+    isDefaultReceipt?: boolean;
+    isDefaultKitchen?: boolean;
+    isActive?: boolean;
+  }>({});
 
   // Printer scope toggle
   const [printerScope, setPrinterScope] = useState<"station" | "location">("station");
@@ -738,27 +744,30 @@ const PrintersKitchenScreen = () => {
     }
   };
 
-  const handleUpdatePrinter = async (
-    printerId: string,
-    updates: {
-      printerRole?: PrinterRole;
-      isDefaultReceipt?: boolean;
-      isDefaultKitchen?: boolean;
-      isActive?: boolean;
-    },
-  ) => {
+  const handleSavePrinterEdits = async (printerId: string) => {
+    if (Object.keys(draftPrinterEdits).length === 0) {
+      setEditingPrinterId(null);
+      setDraftPrinterEdits({});
+      return;
+    }
     setIsSavingPrinter(true);
     try {
-      await updatePrinterConfig(printerId, updates);
+      await updatePrinterConfig(printerId, draftPrinterEdits);
       if (selectedStore?.id) {
         await fetchPrinters(selectedStore.id);
       }
       setEditingPrinterId(null);
+      setDraftPrinterEdits({});
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to update printer");
     } finally {
       setIsSavingPrinter(false);
     }
+  };
+
+  const handleCancelPrinterEdits = () => {
+    setEditingPrinterId(null);
+    setDraftPrinterEdits({});
   };
 
   const handleStartAdding = (role: "receipt" | "kitchen") => {
@@ -1089,7 +1098,14 @@ const PrintersKitchenScreen = () => {
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              onPress={() => setEditingPrinterId(isEditing ? null : printer.id)}
+              onPress={() => {
+                if (isEditing) {
+                  handleCancelPrinterEdits();
+                } else {
+                  setDraftPrinterEdits({});
+                  setEditingPrinterId(printer.id);
+                }
+              }}
               className="ml-2 p-2.5 bg-card rounded-lg"
             >
               <Settings2 size={18} color={isEditing ? colors.info : colors.label} />
@@ -1109,18 +1125,25 @@ const PrintersKitchenScreen = () => {
         </View>
 
         {/* Expandable Edit Panel */}
-        {isEditing && (
+        {isEditing && (() => {
+          const draftRole = draftPrinterEdits.printerRole ?? printer.printerRole;
+          const draftDefaultReceipt = draftPrinterEdits.isDefaultReceipt ?? printer.isDefaultReceipt;
+          const draftDefaultKitchen = draftPrinterEdits.isDefaultKitchen ?? printer.isDefaultKitchen;
+          const draftActive = draftPrinterEdits.isActive ?? printer.isActive;
+          const hasPendingChanges = Object.keys(draftPrinterEdits).length > 0;
+
+          return (
           <View className="mt-4 pt-4 border-t border-gray-600">
             {/* Role Selector */}
             <Text className="text-gray-400 text-xs mb-2">Printer Role</Text>
             <View className="flex-row bg-card rounded-lg border border-gray-600 overflow-hidden mb-4">
               {(["receipt", "kitchen", "bar"] as const).map((r) => {
                 const badge = getRoleBadge(r);
-                const isSelected = printer.printerRole === r;
+                const isSelected = draftRole === r;
                 return (
                   <TouchableOpacity
                     key={r}
-                    onPress={() => handleUpdatePrinter(printer.id, { printerRole: r })}
+                    onPress={() => setDraftPrinterEdits((prev) => ({ ...prev, printerRole: r }))}
                     disabled={isSavingPrinter}
                     className={`flex-1 py-2.5 items-center ${isSelected ? "bg-blue-600" : ""}`}
                   >
@@ -1135,23 +1158,23 @@ const PrintersKitchenScreen = () => {
             </View>
 
             {/* Default Receipt toggle (only for receipt role) */}
-            {printer.printerRole === "receipt" && (
+            {draftRole === "receipt" && (
               <View className="flex-row items-center justify-between py-2 mb-2">
                 <View className="flex-1 pr-4">
                   <Text className="text-white text-sm font-medium">Default Receipt Printer</Text>
                   <Text className="text-gray-500 text-xs">Use for all receipt printing</Text>
                 </View>
                 <Switch
-                  checked={printer.isDefaultReceipt}
+                  checked={draftDefaultReceipt}
                   onCheckedChange={(v) =>
-                    handleUpdatePrinter(printer.id, { isDefaultReceipt: v })
+                    setDraftPrinterEdits((prev) => ({ ...prev, isDefaultReceipt: v }))
                   }
                 />
               </View>
             )}
 
             {/* Default Kitchen toggle (only for kitchen/bar role) */}
-            {(printer.printerRole === "kitchen" || printer.printerRole === "bar") && (
+            {(draftRole === "kitchen" || draftRole === "bar") && (
               <>
                 <View className="flex-row items-center justify-between py-2 mb-2">
                   <View className="flex-1 pr-4">
@@ -1159,9 +1182,9 @@ const PrintersKitchenScreen = () => {
                     <Text className="text-gray-500 text-xs">Use for all kitchen ticket printing</Text>
                   </View>
                   <Switch
-                    checked={printer.isDefaultKitchen}
+                    checked={draftDefaultKitchen}
                     onCheckedChange={(v) =>
-                      handleUpdatePrinter(printer.id, { isDefaultKitchen: v })
+                      setDraftPrinterEdits((prev) => ({ ...prev, isDefaultKitchen: v }))
                     }
                   />
                 </View>
@@ -1192,18 +1215,44 @@ const PrintersKitchenScreen = () => {
                 <Text className="text-gray-500 text-xs">Enable or disable this printer</Text>
               </View>
               <Switch
-                checked={printer.isActive}
+                checked={draftActive}
                 onCheckedChange={(v) =>
-                  handleUpdatePrinter(printer.id, { isActive: v })
+                  setDraftPrinterEdits((prev) => ({ ...prev, isActive: v }))
                 }
               />
+            </View>
+
+            {/* Save / Cancel Buttons */}
+            <View className="flex-row mt-4 gap-3">
+              <TouchableOpacity
+                onPress={handleCancelPrinterEdits}
+                disabled={isSavingPrinter}
+                className="flex-1 py-3 rounded-lg bg-gray-700 border border-gray-600 items-center"
+              >
+                <Text className="text-gray-300 font-medium text-sm">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleSavePrinterEdits(printer.id)}
+                disabled={isSavingPrinter || !hasPendingChanges}
+                className={`flex-1 py-3 rounded-lg items-center flex-row justify-center ${
+                  hasPendingChanges ? "bg-blue-600" : "bg-blue-600/30"
+                }`}
+              >
+                {isSavingPrinter ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text className={`font-medium text-sm ${hasPendingChanges ? "text-white" : "text-blue-300/50"}`}>
+                    Save Changes
+                  </Text>
+                )}
+              </TouchableOpacity>
             </View>
 
             {/* Delete Printer */}
             <TouchableOpacity
               onPress={() => handleDeletePrinter(printer)}
               disabled={deletingPrinterId === printer.id}
-              className="mt-4 py-3 rounded-lg bg-red-600/10 border border-red-600/30 flex-row items-center justify-center"
+              className="mt-3 py-3 rounded-lg bg-red-600/10 border border-red-600/30 flex-row items-center justify-center"
             >
               {deletingPrinterId === printer.id ? (
                 <ActivityIndicator size="small" color="#ef4444" />
@@ -1214,14 +1263,9 @@ const PrintersKitchenScreen = () => {
                 </>
               )}
             </TouchableOpacity>
-
-            {isSavingPrinter && (
-              <View className="items-center py-2 mt-2">
-                <ActivityIndicator size="small" color={colors.info} />
-              </View>
-            )}
           </View>
-        )}
+          );
+        })()}
       </View>
     );
   };
