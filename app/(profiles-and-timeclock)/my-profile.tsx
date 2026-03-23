@@ -119,7 +119,7 @@ const MyProfileScreen = () => {
           </View>
         </View>
 
-        <View className="flex-row gap-4" style={{ alignItems: 'flex-start' }}>
+        <View style={{ flex: 1, flexDirection: 'row', gap: 16, alignItems: 'stretch' }}>
           {/* Left: Profile Card */}
           {currentEmployee?.id && (
             <View style={{ width: 240, flexShrink: 0 }}>
@@ -152,7 +152,7 @@ const MyProfileScreen = () => {
             </View>
 
             {/* Content */}
-            <View className="flex-1 p-4">
+            <View style={{ flex: 1 }}>
               {renderContent()}
             </View>
           </View>

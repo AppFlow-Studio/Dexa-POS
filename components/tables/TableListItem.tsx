@@ -38,7 +38,7 @@ const formatDuration = (milliseconds: number): string => {
   const minutes = totalMinutes % 60
 
   if (hours > 0) {
-    return `${hours}h ${minutes}m`
+    return `${hours}hr ${minutes}m`
   }
   return `${minutes}m`
 }

@@ -1,9 +1,8 @@
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
-import debounce from 'lodash.debounce'
 import { RotateCcw, RotateCw, Trash2, X } from 'lucide-react-native'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Modal, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native'
 
 interface PropertiesPanelProps {
@@ -38,38 +37,42 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
   const [height, setHeight] = useState(String(table.height || 100))
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const debouncedUpdateName = useCallback(
-    debounce((newName: string) => {
-      if (table.id && newName) updateTableName(table.id, newName)
-    }, 300),
-    [table.id, updateTableName]
-  )
-
-  const debouncedUpdateSize = useCallback(
-    debounce((w: number, h: number) => {
-      if (table.id && w > 0 && h > 0) updateTableSize(table.id, w, h)
-    }, 300),
-    [table.id, updateTableSize]
-  )
+  // Track whether the user is actively editing size fields
+  const editingSize = useRef(false)
 
   useEffect(() => { setName(table.name) }, [table.name])
   useEffect(() => {
-    setWidth(String(table.width || 100))
-    setHeight(String(table.height || 100))
+    if (!editingSize.current) {
+      setWidth(String(table.width || 100))
+      setHeight(String(table.height || 100))
+    }
   }, [table.width, table.height])
 
-  const handleNameChange = (v: string) => { setName(v); debouncedUpdateName(v) }
-
-  const handleWidthChange = (v: string) => {
-    setWidth(v)
-    const n = parseInt(v, 10)
-    if (!isNaN(n)) debouncedUpdateSize(n, parseInt(height, 10) || 100)
+  const handleNameChange = (v: string) => { setName(v) }
+  const handleNameBlur = () => {
+    if (table.id && name.trim()) updateTableName(table.id, name.trim())
   }
 
-  const handleHeightChange = (v: string) => {
-    setHeight(v)
-    const n = parseInt(v, 10)
-    if (!isNaN(n)) debouncedUpdateSize(parseInt(width, 10) || 100, n)
+  const handleWidthBlur = () => {
+    editingSize.current = false
+    const w = parseInt(width, 10)
+    const h = parseInt(height, 10)
+    if (!isNaN(w) && w > 0 && !isNaN(h) && h > 0) {
+      updateTableSize(table.id, w, h)
+    } else {
+      setWidth(String(table.width || 100))
+    }
+  }
+
+  const handleHeightBlur = () => {
+    editingSize.current = false
+    const w = parseInt(width, 10)
+    const h = parseInt(height, 10)
+    if (!isNaN(w) && w > 0 && !isNaN(h) && h > 0) {
+      updateTableSize(table.id, w, h)
+    } else {
+      setHeight(String(table.height || 100))
+    }
   }
 
   const handleRotate = (dir: 'left' | 'right') => {
@@ -107,6 +110,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
           <TextInput
             value={name}
             onChangeText={handleNameChange}
+            onBlur={handleNameBlur}
             placeholder='Object name'
             placeholderTextColor={colors.muted}
             style={inputStyle}
@@ -119,11 +123,25 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table }) => {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ ...labelStyle, marginBottom: 4 }}>W</Text>
-              <TextInput value={width} onChangeText={handleWidthChange} keyboardType='numeric' placeholderTextColor={colors.muted} style={inputStyle} />
+              <TextInput
+                value={width}
+                onChangeText={v => { editingSize.current = true; setWidth(v) }}
+                onBlur={handleWidthBlur}
+                keyboardType='numeric'
+                placeholderTextColor={colors.muted}
+                style={inputStyle}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ ...labelStyle, marginBottom: 4 }}>H</Text>
-              <TextInput value={height} onChangeText={handleHeightChange} keyboardType='numeric' placeholderTextColor={colors.muted} style={inputStyle} />
+              <TextInput
+                value={height}
+                onChangeText={v => { editingSize.current = true; setHeight(v) }}
+                onBlur={handleHeightBlur}
+                keyboardType='numeric'
+                placeholderTextColor={colors.muted}
+                style={inputStyle}
+              />
             </View>
           </View>
         </View>

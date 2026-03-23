@@ -117,9 +117,9 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
           style={{ padding: 6, opacity: editDisabled ? 0.4 : 1 }}
         >
           {isAvailable ? (
-            <EyeOff size={14} color={colors.label} />
+            <Eye size={14} color={colors.success} />
           ) : (
-            <Eye size={14} color={colors.label} />
+            <EyeOff size={14} color={colors.danger} />
           )}
         </TouchableOpacity>
         <TouchableOpacity

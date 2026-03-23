@@ -3,7 +3,7 @@ import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchSt
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
+  BottomSheetSectionList,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
@@ -19,7 +19,7 @@ import {
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { forwardRef, useEffect, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 import { ScheduleCard } from "./ScheduleCard";
 
@@ -40,6 +40,7 @@ interface MenuSearchSheetProps {
 const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
   ({ activeTab }, ref) => {
     const { closeSearch } = useMenuManagementSearchStore();
+    const inputRef = useRef<any>(null);
     const menuItems = useMenuStore((s) => s.menuItems);
     const storeCategories = useMenuStore((s) => s.categories);
     const storeMenus = useMenuStore((s) => s.menus);
@@ -96,6 +97,22 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
           return [];
       }
     }, [searchQuery, activeTab, menuItems, storeCategories, storeMenus, modifierGroups]);
+
+    const groupedResults = useMemo(() => {
+      const map: Record<string, any[]> = {};
+      for (const item of searchResults) {
+        const first = ((item as any).name || "?")[0].toUpperCase();
+        const key = /[A-Z]/.test(first) ? first : "#";
+        if (!map[key]) map[key] = [];
+        map[key].push(item);
+      }
+      const letters = Object.keys(map).sort((a, b) => {
+        if (a === "#") return 1;
+        if (b === "#") return -1;
+        return a.localeCompare(b);
+      });
+      return letters.map((letter) => ({ title: letter, data: map[letter] }));
+    }, [searchResults]);
 
     const handleDeleteItem = (id: string) =>
       Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
@@ -348,6 +365,9 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
         snapPoints={["55%"]}
         enablePanDownToClose
         onClose={closeSearch}
+        onChange={(index) => {
+          if (index >= 0) setTimeout(() => inputRef.current?.focus(), 100);
+        }}
         backdropComponent={(props) => (
           <BottomSheetBackdrop
             {...props}
@@ -424,6 +444,7 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
             >
               <Search size={14} color={colors.muted} />
               <BottomSheetTextInput
+                ref={inputRef}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder={`Search ${activeTab}…`}
@@ -434,7 +455,6 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
                   fontSize: 13,
                   color: colors.heading,
                 }}
-                autoFocus
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery("")}>
@@ -445,10 +465,15 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
           </View>
 
           {/* Results */}
-          <BottomSheetFlatList
+          <BottomSheetSectionList
             key={activeTab}
-            data={searchResults}
+            sections={groupedResults}
             keyExtractor={(item) => item.id}
+            renderSectionHeader={({ section }) => (
+              <View style={{ paddingVertical: 4, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4, marginTop: 8 }}>
+                <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+              </View>
+            )}
             renderItem={renderItem}
             contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 40 }}
             ListEmptyComponent={

@@ -492,14 +492,14 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
       onPress: () => scheduledHoursSheetRef.current?.expand(),
     },
     {
-      icon: <CheckCircle2 size={18} color={colors.success} />,
+      icon: <CheckCircle2 size={18} color={colors.teal} />,
       title: "On-Time Rate",
       value: onTimeRate,
       period: "Last 30 days",
       onPress: () => onTimeSheetRef.current?.expand(),
     },
     {
-      icon: <Coffee size={18} color={colors.info} />,
+      icon: <Coffee size={18} color={colors.teal} />,
       title: "Break Compliance",
       value: breakCompliance.text,
       trend: breakCompliance.trend,
@@ -508,7 +508,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
       onPress: () => breakComplianceSheetRef.current?.expand(),
     },
     {
-      icon: <AlertTriangle size={18} color={colors.warning} />,
+      icon: <AlertTriangle size={18} color={colors.teal} />,
       title: "OT Risk",
       value: otRisk.text,
       period: "By Sat",

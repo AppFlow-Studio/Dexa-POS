@@ -32,7 +32,6 @@ interface MenuCardProps {
 const MenuCard: React.FC<MenuCardProps> = ({
   icon,
   title,
-  subtitle,
   onPress,
   isLocked = false,
   onLockPress,
@@ -44,13 +43,13 @@ const MenuCard: React.FC<MenuCardProps> = ({
       style={{
         width: '100%',
         height: '100%',
-        borderRadius: 14,
+        borderRadius: 12,
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.panel,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 12,
+        padding: 10,
       }}
     >
       {isLocked && (
@@ -59,26 +58,26 @@ const MenuCard: React.FC<MenuCardProps> = ({
           hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           style={{
             position: 'absolute',
-            top: 10,
-            right: 10,
+            top: 8,
+            right: 8,
           }}
         >
-          <Lock color={colors.muted} size={13} />
+          <Lock color={colors.muted} size={11} />
         </TouchableOpacity>
       )}
 
       {/* Icon */}
       <View
         style={{
-          width: 42,
-          height: 42,
-          borderRadius: 11,
+          width: 40,
+          height: 40,
+          borderRadius: 10,
           backgroundColor: colors.teal + '18',
           borderWidth: 1,
           borderColor: colors.teal + '30',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 10,
+          marginBottom: 8,
         }}
       >
         {icon}
@@ -86,25 +85,14 @@ const MenuCard: React.FC<MenuCardProps> = ({
 
       <Text
         style={{
-          fontSize: 12,
-          fontWeight: '700',
+          fontSize: 11,
+          fontWeight: '600',
           color: colors.heading,
           textAlign: 'center',
-          marginBottom: 3,
         }}
         numberOfLines={1}
       >
         {title}
-      </Text>
-      <Text
-        style={{
-          fontSize: 11,
-          color: colors.muted,
-          textAlign: 'center',
-        }}
-        numberOfLines={1}
-      >
-        {subtitle}
       </Text>
     </TouchableOpacity>
   )
@@ -134,42 +122,42 @@ const MainMenu: React.FC = () => {
   const menuItems = [
     {
       id: 'home',
-      icon: <Home color={colors.teal} size={22} />,
+      icon: <Home color={colors.teal} size={18} />,
       title: 'Sales',
       subtitle: 'Process Orders',
       route: '/order-processing',
     },
     {
       id: 'tables',
-      icon: <Table color={colors.teal} size={22} />,
+      icon: <Table color={colors.teal} size={18} />,
       title: 'Tables',
       subtitle: 'Manage Seating',
       route: '/tables',
     },
     {
       id: 'previous-orders',
-      icon: <History color={colors.teal} size={22} />,
+      icon: <History color={colors.teal} size={18} />,
       title: 'Previous Orders',
       subtitle: 'Order History',
       route: '/previous-orders',
     },
     {
       id: 'online-orders',
-      icon: <ShoppingBag color={colors.teal} size={22} />,
+      icon: <ShoppingBag color={colors.teal} size={18} />,
       title: 'Online Orders',
       subtitle: 'Web & App Orders',
       route: '/online-orders',
     },
     {
       id: 'kds',
-      icon: <ChefHat color={colors.teal} size={22} />,
+      icon: <ChefHat color={colors.teal} size={18} />,
       title: 'Kitchen Display',
       subtitle: 'Manage Orders',
       route: '/kds',
     },
     {
       id: 'scheduling',
-      icon: <CalendarClock color={colors.teal} size={22} />,
+      icon: <CalendarClock color={colors.teal} size={18} />,
       title: 'Scheduling',
       subtitle: 'Time Management',
       route: '/scheduling',
@@ -177,7 +165,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'menu-management',
-      icon: <UtensilsCrossed color={colors.teal} size={22} />,
+      icon: <UtensilsCrossed color={colors.teal} size={18} />,
       title: 'Menu Management',
       subtitle: 'Edit Menu Items',
       route: '/menu',
@@ -185,7 +173,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'inventory',
-      icon: <Package color={colors.teal} size={22} />,
+      icon: <Package color={colors.teal} size={18} />,
       title: 'Inventory',
       subtitle: 'Stock Management',
       route: '/inventory',
@@ -193,7 +181,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'analytics',
-      icon: <BarChart3 color={colors.teal} size={22} />,
+      icon: <BarChart3 color={colors.teal} size={18} />,
       title: 'Analytics',
       subtitle: 'Sales Reports',
       route: '/analytics',
@@ -201,7 +189,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'settings',
-      icon: <Settings color={colors.teal} size={22} />,
+      icon: <Settings color={colors.teal} size={18} />,
       title: 'Settings',
       subtitle: 'System Config',
       route: '/settings',
@@ -209,12 +197,38 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'castlestest',
-      icon: <Shield color={colors.teal} size={22} />,
+      icon: <Shield color={colors.teal} size={18} />,
       title: 'Castles Test',
       subtitle: 'Castles device test',
       route: '/castlestest',
     },
   ]
+
+  const regularItems = menuItems.filter((item) => !item.isLocked)
+  const managementItems = menuItems.filter((item) => item.isLocked)
+
+  const renderRow = (items: typeof menuItems) => (
+    <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'center' }}>
+      {items.map((item) => (
+        <View key={item.id} style={{ width: 110, height: 110 }}>
+          <MenuCard
+            icon={item.icon}
+            title={item.title}
+            subtitle={item.subtitle}
+            onPress={() => {
+              if (item.isLocked) {
+                handleLockedAccess(item.route)
+              } else {
+                router.push(item.route as any)
+              }
+            }}
+            isLocked={item.isLocked}
+            onLockPress={() => handleLockedAccess(item.route)}
+          />
+        </View>
+      ))}
+    </View>
+  )
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
@@ -225,36 +239,29 @@ const MainMenu: React.FC = () => {
           justifyContent: 'center',
           alignItems: 'center',
           padding: 20,
+          gap: 10,
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 12,
-            width: '100%',
-            justifyContent: 'center',
-          }}
-        >
-          {menuItems.map((item) => (
-            <View key={item.id} style={{ width: '14%', aspectRatio: 0.85 }}>
-              <MenuCard
-                icon={item.icon}
-                title={item.title}
-                subtitle={item.subtitle}
-                onPress={() => {
-                  if (item.isLocked) {
-                    handleLockedAccess(item.route)
-                  } else {
-                    router.push(item.route as any)
-                  }
-                }}
-                isLocked={item.isLocked}
-                onLockPress={() => handleLockedAccess(item.route)}
-              />
-            </View>
-          ))}
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '80%' }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' }}>
+              Operations
+            </Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+          </View>
+          {renderRow(regularItems)}
+        </View>
+        <View style={{ alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '80%' }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' }}>
+              Management
+            </Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+          </View>
+          {renderRow(managementItems)}
         </View>
       </ScrollView>
 

@@ -27,6 +27,7 @@ import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { Href, useRouter } from 'expo-router'
 import {
   GitMerge,
+  HelpCircle,
   Pencil,
   Search,
   Users,
@@ -80,6 +81,7 @@ const TablesScreen = () => {
   const supabaseClient = useSupabaseClient()
   const location_id = useStoreSettingsStore(s => s.selectedStore?.id || '')
 
+  const [legendVisible, setLegendVisible] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
   const [isGuestModalOpen, setGuestModalOpen] = useState(false)
@@ -627,9 +629,9 @@ const TablesScreen = () => {
               />
             )}
 
-            {/* Status Legend */}
-            <View style={{ position: 'absolute', bottom: 10, left: 0, right: 0, alignItems: 'center' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: colors.panel + 'F0', borderWidth: 1, borderColor: colors.border }}>
+            {/* Legend toggle + panel */}
+            {legendVisible && (
+              <View style={{ position: 'absolute', top: 48, right: 10, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: colors.panel + 'F8', borderWidth: 1, borderColor: colors.border }}>
                 {([
                   ['available', 'Available'],
                   ['seated', 'Seated'],
@@ -640,13 +642,19 @@ const TablesScreen = () => {
                   ['cleaning', 'Cleaning'],
                   ['not_in_service', 'Blocked'],
                 ] as const).map(([status, label]) => (
-                  <View key={status} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View key={status} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: TABLE_STATUS_COLORS[status] }} />
                     <Text style={{ fontSize: 11, fontWeight: '500', color: colors.label }}>{label}</Text>
                   </View>
                 ))}
               </View>
-            </View>
+            )}
+            <TouchableOpacity
+              onPress={() => setLegendVisible(v => !v)}
+              style={{ position: 'absolute', top: 10, right: 10, width: 32, height: 32, borderRadius: 16, backgroundColor: legendVisible ? colors.teal + '20' : colors.card, borderWidth: 1, borderColor: legendVisible ? colors.teal + '60' : colors.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <HelpCircle size={16} color={legendVisible ? colors.teal : colors.muted} />
+            </TouchableOpacity>
           </View>
         </View>
       </View>

@@ -6,7 +6,6 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search, X } from "lucide-react-native";
@@ -174,75 +173,65 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       handleIndicatorStyle={{ backgroundColor: colors.border }}
       {...bottomSheetTheme}
     >
-      <BottomSheetView style={{ flex: 1, backgroundColor: colors.screen }}>
-        {/* Search header */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", flex: 1, borderRadius: 12, paddingHorizontal: 12, height: 44, borderWidth: 1, backgroundColor: colors.panel, borderColor: colors.border }}>
-              <Search color={colors.label} size={16} />
-              <BottomSheetTextInput
-                value={searchText}
-                onChangeText={setSearchText}
-                placeholder="Search items..."
-                placeholderTextColor={colors.muted}
-                style={{ flex: 1, marginLeft: 10, color: colors.heading, fontSize: 14 }}
-              />
-              {searchText.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchText("")}>
-                  <X color={colors.muted} size={16} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <TouchableOpacity onPress={closeSearch}>
-              <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "500" }}>Cancel</Text>
-            </TouchableOpacity>
+      {/* Search header */}
+      <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.screen }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1, borderRadius: 12, paddingHorizontal: 12, height: 44, borderWidth: 1, backgroundColor: colors.panel, borderColor: colors.border }}>
+            <Search color={colors.label} size={16} />
+            <BottomSheetTextInput
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Search items..."
+              placeholderTextColor={colors.muted}
+              style={{ flex: 1, marginLeft: 10, color: colors.heading, fontSize: 14 }}
+            />
+            {searchText.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchText("")}>
+                <X color={colors.muted} size={16} />
+              </TouchableOpacity>
+            )}
           </View>
+          <TouchableOpacity onPress={closeSearch}>
+            <Text style={{ color: colors.muted, fontSize: 14, fontWeight: "500" }}>Cancel</Text>
+          </TouchableOpacity>
         </View>
+      </View>
 
-        <BottomSheetScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 40 }}
-        >
-
-        {/* Manual List Rendering */}
-        <View className="px-5 mt-2">
-          {searchResults.length === 0 ? (
-            <View className="flex-1 items-center justify-center h-48 mt-10">
-              <Search size={48} color={colors.muted} />
-              <Text style={{ color: colors.muted, marginTop: 16, textAlign: "center" }}>
-                {searchText
-                  ? `No items found for "${searchText}"`
-                  : "No menu items available"}
-              </Text>
-            </View>
-          ) : (
-            searchResults.map((section, sectionIndex) => (
-              <View key={`section-${sectionIndex}`} className="mb-6">
-                <View className="py-2 mb-1" style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.muted, letterSpacing: 1, textTransform: "uppercase" }}>
-                    {section.title}
-                  </Text>
-                </View>
-
-                {/* Section Items */}
-                <View>
-                  {section.data.map((item) => (
-                    <SearchResultItem
-                      key={item.uniqueKey}
-                      item={item}
-                      menuName={item.menuName}
-                      displayPrice={item.displayPrice}
-                      isDisabled={item.isDisabled}
-                      disabledReason={item.disabledReason}
-                    />
-                  ))}
-                </View>
+      <BottomSheetScrollView
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40 }}
+      >
+        {searchResults.length === 0 ? (
+          <View style={{ alignItems: "center", justifyContent: "center", height: 192, marginTop: 40 }}>
+            <Search size={48} color={colors.muted} />
+            <Text style={{ color: colors.muted, marginTop: 16, textAlign: "center" }}>
+              {searchText
+                ? `No items found for "${searchText}"`
+                : "No menu items available"}
+            </Text>
+          </View>
+        ) : (
+          searchResults.map((section, sectionIndex) => (
+            <View key={`section-${sectionIndex}`} style={{ marginBottom: 24 }}>
+              <View style={{ paddingVertical: 8, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal, letterSpacing: 1, textTransform: "uppercase" }}>
+                  {section.title}
+                </Text>
               </View>
-            ))
-          )}
-        </View>
-        </BottomSheetScrollView>
-      </BottomSheetView>
+
+              {section.data.map((item) => (
+                <SearchResultItem
+                  key={item.uniqueKey}
+                  item={item}
+                  menuName={item.menuName}
+                  displayPrice={item.displayPrice}
+                  isDisabled={item.isDisabled}
+                  disabledReason={item.disabledReason}
+                />
+              ))}
+            </View>
+          ))
+        )}
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 });

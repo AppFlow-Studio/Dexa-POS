@@ -8,8 +8,6 @@ interface TableCircle6ChairProps {
   height?: number;
 }
 
-// 6 chairs evenly spaced at 0°, 60°, 120°, 180°, 240°, 300°
-// Center (60,60), table r=32. Chair orbit = r + half chair thickness = 32 + 6 = 38
 const ANGLES = [0, 60, 120, 180, 240, 300];
 const CENTER = 60;
 const CHAIR_ORBIT = 38;
@@ -22,7 +20,6 @@ const TableCircle6Chair = ({
   height = 120,
 }: TableCircle6ChairProps) => (
   <Svg width={width} height={height} viewBox="0 0 120 120" fill="none">
-    {/* Chairs rendered first so table draws on top */}
     {ANGLES.map((angleDeg) => {
       const rad = (angleDeg * Math.PI) / 180;
       const cx = CENTER + CHAIR_ORBIT * Math.sin(rad);
@@ -36,19 +33,17 @@ const TableCircle6Chair = ({
             height={CHAIR_H}
             rx="3"
             fill={color}
-            fillOpacity="0.08"
+            fillOpacity="0.12"
             stroke={color}
             strokeWidth="1"
+            strokeOpacity="0.5"
           />
         </G>
       );
     })}
     {/* Table surface */}
     <Circle cx="60" cy="60" r="32"
-      fill={color} fillOpacity="0.12" stroke={color} strokeWidth="1.5" />
-    {/* Center detail */}
-    <Circle cx="60" cy="60" r="6"
-      fill={color} fillOpacity="0.18" stroke={color} strokeWidth="0.75" />
+      fill={color} fillOpacity="0.18" stroke={color} strokeWidth="1.5" strokeOpacity="0.8" />
   </Svg>
 );
 

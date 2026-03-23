@@ -3,10 +3,10 @@ import { colors } from "@/lib/theme";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePathname, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -25,6 +25,8 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
   const menus = useMenuStore((s) => s.menus);
   const modifierGroups = useMenuStore((s) => s.modifierGroups);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchRef = useRef<any>(null);
 
   const getItemCount = (itemId: string): number => {
     switch (itemId) {
@@ -70,16 +72,35 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
 
           {/* Search */}
           <View className="p-4 border-b border-gray-700">
-            <View className="flex-row items-center bg-panel rounded-lg px-3 py-2">
-              <Search size={16} color={colors.label} />
-              <TextInput
-                className="flex-1 ml-2 text-white h-20"
-                placeholder="Search items..."
-                placeholderTextColor={colors.label}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => {
+                setSearchFocused(true);
+                setTimeout(() => searchRef.current?.focus(), 50);
+              }}
+            >
+              <View className="flex-row items-center bg-panel rounded-lg px-3 py-2">
+                <Search size={16} color={colors.label} />
+                {searchFocused ? (
+                  <TextInput
+                    ref={searchRef}
+                    className="flex-1 ml-2 text-white"
+                    placeholder="Search items..."
+                    placeholderTextColor={colors.label}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    onBlur={() => {
+                      if (!searchQuery) setSearchFocused(false);
+                    }}
+                    autoFocus={false}
+                  />
+                ) : (
+                  <Text style={{ flex: 1, marginLeft: 8, fontSize: 14, color: colors.muted }}>
+                    {searchQuery || "Search items..."}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
 
           {/* Sidebar Navigation */}

@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { Settings } from "lucide-react-native";
+import { Pencil } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -43,7 +43,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
             onPress={onEdit}
             className="p-2 bg-panel rounded border border-gray-600"
           >
-            <Settings size={20} color={colors.label} />
+            <Pencil size={16} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>

@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { ExtendedModifierGroup } from "@/lib/types";
-import { Settings } from "lucide-react-native";
+import { Pencil } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -49,7 +49,7 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
             onPress={onEdit}
             className="p-2 bg-panel rounded border border-gray-600"
           >
-            <Settings size={20} color={colors.label} />
+            <Pencil size={16} color={colors.label} />
           </TouchableOpacity>
         </View>
       </View>
