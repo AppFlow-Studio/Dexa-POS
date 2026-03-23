@@ -8,22 +8,34 @@ import {
 } from "@/types/receipt-template";
 import {
   Barcode,
+  Check,
+  ChevronDown,
+  ChevronRight,
   Clock,
+  Copy,
+  GripVertical,
+  Layers,
   Printer,
   QrCode,
   TriangleAlert,
+  X,
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
 import { TestPrintModal } from "@/components/settings/TestPrintModal";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import DraggableFlatList, {
+  RenderItemParams,
+  ScaleDecorator,
+} from "react-native-draggable-flatlist";
 
 // ============================================================================
 // TYPES
@@ -31,32 +43,226 @@ import {
 
 type TabType = "receipt" | "kitchen";
 
+export type ReceiptSectionId =
+  | "logo"
+  | "storeInfo"
+  | "orderInfo"
+  | "items"
+  | "totals"
+  | "tipLine"
+  | "payment"
+  | "footer"
+  | "barcode";
+
+export interface ReceiptSection {
+  id: ReceiptSectionId;
+  label: string;
+}
+
+const DEFAULT_RECEIPT_SECTION_ORDER: ReceiptSectionId[] = [
+  "logo",
+  "storeInfo",
+  "orderInfo",
+  "items",
+  "totals",
+  "tipLine",
+  "payment",
+  "footer",
+  "barcode",
+];
+
+const RECEIPT_SECTION_LABELS: Record<ReceiptSectionId, string> = {
+  logo: "Logo",
+  storeInfo: "Store Info",
+  orderInfo: "Order Info",
+  items: "Items",
+  totals: "Totals",
+  tipLine: "Tip Line",
+  payment: "Payment",
+  footer: "Footer",
+  barcode: "Barcode / QR",
+};
+
+// ============================================================================
+// PRESET TEMPLATES
+// ============================================================================
+
+interface PresetDefinition {
+  id: string;
+  label: string;
+  description: string;
+  overrides: Partial<ReceiptTemplateConfig>;
+}
+
+const RECEIPT_PRESETS: PresetDefinition[] = [
+  {
+    id: "minimal",
+    label: "Minimal",
+    description: "Clean and simple — just the essentials.",
+    overrides: {
+      showLogo: false,
+      showBarcode: false,
+      showQrCode: false,
+      showTipLine: false,
+      showTaxBreakdown: false,
+      showItemModifiers: false,
+      showServerName: false,
+      headerText: null,
+      footerText: null,
+    },
+  },
+  {
+    id: "standard",
+    label: "Standard",
+    description: "Balanced layout suitable for most restaurants.",
+    overrides: {
+      showLogo: true,
+      showBarcode: false,
+      showQrCode: false,
+      showTipLine: true,
+      showTaxBreakdown: true,
+      showItemModifiers: true,
+      showServerName: true,
+      showOrderType: true,
+    },
+  },
+  {
+    id: "full",
+    label: "Full Detail",
+    description: "Everything visible — max information for customers.",
+    overrides: {
+      showLogo: true,
+      showBarcode: true,
+      showQrCode: true,
+      showTipLine: true,
+      showTaxBreakdown: true,
+      showItemModifiers: true,
+      showServerName: true,
+      showOrderType: true,
+    },
+  },
+  {
+    id: "retail",
+    label: "Retail / Quick Service",
+    description: "No tip line, no server — fast and focused.",
+    overrides: {
+      showLogo: true,
+      showBarcode: true,
+      showQrCode: false,
+      showTipLine: false,
+      showTaxBreakdown: true,
+      showItemModifiers: false,
+      showServerName: false,
+      showOrderType: false,
+    },
+  },
+];
+
+const KITCHEN_PRESETS: PresetDefinition[] = [
+  {
+    id: "compact",
+    label: "Compact",
+    description: "Small text, minimal info — fast reading.",
+    overrides: {
+      largeItemText: false,
+      showModsLarge: false,
+      showServerName: false,
+      groupByStation: false,
+      showAllergyAlert: false,
+      showReadyByTime: false,
+    },
+  },
+  {
+    id: "standard_kitchen",
+    label: "Standard Kitchen",
+    description: "Balanced — modifiers visible, station grouping on.",
+    overrides: {
+      largeItemText: false,
+      showModsLarge: false,
+      showItemModifiers: true,
+      showServerName: true,
+      groupByStation: true,
+      showAllergyAlert: true,
+      showReadyByTime: false,
+    },
+  },
+  {
+    id: "large_text",
+    label: "Large Text",
+    description: "Big bold items — ideal for noisy kitchens.",
+    overrides: {
+      largeItemText: true,
+      showModsLarge: true,
+      showItemModifiers: true,
+      showAllergyAlert: true,
+      showReadyByTime: true,
+    },
+  },
+];
+
 // ============================================================================
 // SMALL COMPONENTS
 // ============================================================================
 
-function SectionHeader({ title }: { title: string }) {
+function CollapsibleSection({
+  title,
+  subtitle,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-5 mb-2 px-1">
-      {title}
-    </Text>
+    <View className="mb-2">
+      <TouchableOpacity
+        onPress={() => setOpen((v) => !v)}
+        className="flex-row items-center justify-between py-2.5 px-1 mt-3"
+      >
+        <View className="flex-1">
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            {title}
+          </Text>
+          {subtitle && !open ? (
+            <Text className="text-gray-600 text-xs mt-0.5">{subtitle}</Text>
+          ) : null}
+        </View>
+        {open
+          ? <ChevronDown size={14} color={colors.muted} />
+          : <ChevronRight size={14} color={colors.muted} />}
+      </TouchableOpacity>
+      {open && <View>{children}</View>}
+    </View>
   );
 }
 
 function ToggleRow({
   label,
+  subtitle,
   value,
   onToggle,
 }: {
   label: string;
+  subtitle?: string;
   value: boolean;
   onToggle: (val: boolean) => void;
 }) {
   return (
-    <View className="flex-row items-center justify-between py-3 px-3 bg-surface rounded-lg mb-2">
-      <Text className="text-white text-sm flex-1 mr-3">{label}</Text>
+    <TouchableOpacity
+      onPress={() => onToggle(!value)}
+      className={`flex-row items-center justify-between py-3 px-3 rounded-lg mb-1.5 border ${
+        value ? "bg-blue-600/10 border-blue-500/30" : "bg-surface border-gray-700"
+      }`}
+    >
+      <View className="flex-1 mr-3">
+        <Text className="text-white text-sm">{label}</Text>
+        {subtitle ? <Text className="text-gray-500 text-xs mt-0.5">{subtitle}</Text> : null}
+      </View>
       <Switch checked={value} onCheckedChange={onToggle} />
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -75,13 +281,145 @@ function TextRow({
     <View className="mb-2">
       <Text className="text-gray-400 text-xs mb-1 px-1">{label}</Text>
       <TextInput
-        className="bg-surface text-white text-sm px-3 py-2.5 rounded-lg"
+        className="bg-surface text-white text-sm px-3 py-2.5 rounded-lg border border-gray-700"
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder ?? label}
         placeholderTextColor={colors.muted}
       />
     </View>
+  );
+}
+
+// ============================================================================
+// PRESET PICKER MODAL
+// ============================================================================
+
+function PresetPickerModal({
+  visible,
+  presets,
+  onApply,
+  onClose,
+}: {
+  visible: boolean;
+  presets: PresetDefinition[];
+  onApply: (overrides: Partial<ReceiptTemplateConfig>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity
+        className="flex-1 bg-black/60 items-center justify-center px-8"
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <TouchableOpacity activeOpacity={1} className="w-full bg-panel rounded-2xl border border-gray-700 overflow-hidden">
+          {/* Header */}
+          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-700">
+            <View className="flex-row items-center gap-2">
+              <Layers size={16} color={colors.info} />
+              <Text className="text-white font-bold text-base">Choose a Preset</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} className="p-1">
+              <X size={18} color={colors.muted} />
+            </TouchableOpacity>
+          </View>
+          {/* Presets */}
+          <View className="p-4 gap-2">
+            {presets.map((preset) => (
+              <TouchableOpacity
+                key={preset.id}
+                onPress={() => { onApply(preset.overrides); onClose(); }}
+                className="flex-row items-center bg-surface rounded-xl border border-gray-700 px-4 py-3"
+              >
+                <View className="flex-1">
+                  <Text className="text-white font-semibold text-sm">{preset.label}</Text>
+                  <Text className="text-gray-500 text-xs mt-0.5">{preset.description}</Text>
+                </View>
+                <ChevronRight size={16} color={colors.info} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+// ============================================================================
+// COPY FROM LOCATION MODAL
+// ============================================================================
+
+function CopyFromLocationModal({
+  visible,
+  currentLocationId,
+  templateType,
+  onApply,
+  onClose,
+}: {
+  visible: boolean;
+  currentLocationId: string;
+  templateType: string;
+  onApply: (config: ReceiptTemplateConfig) => void;
+  onClose: () => void;
+}) {
+  const templates = useReceiptTemplateStore((s) => s.templates);
+
+  // Find templates from other locations that match the template type
+  const otherTemplates = templates.filter(
+    (t) => t.locationId !== currentLocationId && t.templateType === templateType,
+  );
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity
+        className="flex-1 bg-black/60 items-center justify-center px-8"
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <TouchableOpacity activeOpacity={1} className="w-full bg-panel rounded-2xl border border-gray-700 overflow-hidden">
+          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-700">
+            <View className="flex-row items-center gap-2">
+              <Copy size={16} color={colors.info} />
+              <Text className="text-white font-bold text-base">Copy from Location</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} className="p-1">
+              <X size={18} color={colors.muted} />
+            </TouchableOpacity>
+          </View>
+          <View className="p-4 gap-2">
+            {otherTemplates.length === 0 ? (
+              <View className="py-6 items-center">
+                <Text className="text-gray-500 text-sm text-center">
+                  No templates from other locations found.
+                </Text>
+                <Text className="text-gray-600 text-xs text-center mt-1">
+                  Templates are saved per location when you hit Save.
+                </Text>
+              </View>
+            ) : (
+              otherTemplates.map((tmpl) => (
+                <TouchableOpacity
+                  key={tmpl.id}
+                  onPress={() => { onApply(tmpl); onClose(); }}
+                  className="flex-row items-center bg-surface rounded-xl border border-gray-700 px-4 py-3"
+                >
+                  <View className="flex-1">
+                    <Text className="text-white font-semibold text-sm">
+                      {tmpl.templateName || tmpl.locationId || "Unknown location"}
+                    </Text>
+                    <Text className="text-gray-500 text-xs mt-0.5 capitalize">
+                      {tmpl.templateType} template
+                    </Text>
+                  </View>
+                  <Check size={16} color={colors.success} />
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
   );
 }
 
@@ -106,109 +444,110 @@ function DoubleLine() {
 }
 
 // ============================================================================
-// RECEIPT PREVIEW
+// RECEIPT PREVIEW (draggable sections)
 // ============================================================================
 
-function ReceiptPreview({
-  config,
-  storeName,
-}: {
-  config: ReceiptTemplateConfig;
-  storeName: string;
-}) {
-  return (
-    <ReceiptPaper>
-      {/* Logo */}
-      {config.showLogo && (
+function renderReceiptSection(
+  sectionId: ReceiptSectionId,
+  config: ReceiptTemplateConfig,
+  storeName: string,
+): React.ReactNode {
+  switch (sectionId) {
+    case "logo":
+      return config.showLogo ? (
         <View className="items-center mb-2">
           <View className="w-10 h-10 bg-gray-300 rounded" />
         </View>
-      )}
-
-      {/* Header */}
-      <Text className="text-black text-center font-bold text-sm">
-        {storeName || "Sample Restaurant"}
-      </Text>
-      <Text className="text-zinc-500 text-center text-[10px]">
-        123 Main St, City, ST 12345
-      </Text>
-      <Text className="text-zinc-500 text-center text-[10px]">
-        (555) 123-4567
-      </Text>
-      {config.headerText ? (
-        <Text className="text-black text-center text-[10px] mt-1">
-          {config.headerText}
-        </Text>
-      ) : null}
-
-      <DoubleLine />
-
-      {/* Order info */}
-      <View className="flex-row justify-between">
-        <Text className="text-black text-xs">Order #1042</Text>
-        <Text className="text-black text-xs">01/15/2026</Text>
-      </View>
-      {config.showOrderType && (
-        <Text className="text-zinc-500 text-xs">Dine In - Table 5</Text>
-      )}
-      {config.showServerName && (
-        <Text className="text-zinc-500 text-xs">Server: Sarah M.</Text>
-      )}
-
-      <DottedLine />
-
-      {/* Items */}
-      <View className="gap-1">
-        <View className="flex-row justify-between">
-          <Text className="text-black text-xs">1x Cheeseburger</Text>
-          <Text className="text-black text-xs">$12.99</Text>
-        </View>
-        {config.showItemModifiers && (
-          <Text className="text-zinc-500 text-[10px] ml-3">
-            + Extra Cheese, No Onions
+      ) : null;
+    case "storeInfo":
+      return (
+        <View>
+          <Text className="text-black text-center font-bold text-sm">
+            {storeName || "Sample Restaurant"}
           </Text>
-        )}
-
-        <View className="flex-row justify-between">
-          <Text className="text-black text-xs">1x Caesar Salad</Text>
-          <Text className="text-black text-xs">$9.50</Text>
-        </View>
-        {config.showItemModifiers && (
-          <Text className="text-zinc-500 text-[10px] ml-3">
-            + Grilled Chicken
+          <Text className="text-zinc-500 text-center text-[10px]">
+            123 Main St, City, ST 12345
           </Text>
-        )}
-
-        <View className="flex-row justify-between">
-          <Text className="text-black text-xs">2x Iced Tea</Text>
-          <Text className="text-black text-xs">$5.98</Text>
+          <Text className="text-zinc-500 text-center text-[10px]">
+            (555) 123-4567
+          </Text>
+          {config.headerText ? (
+            <Text className="text-black text-center text-[10px] mt-1">
+              {config.headerText}
+            </Text>
+          ) : null}
+          <DoubleLine />
         </View>
-      </View>
-
-      <DottedLine />
-
-      {/* Totals */}
-      <View className="flex-row justify-between">
-        <Text className="text-black text-xs">Subtotal</Text>
-        <Text className="text-black text-xs">$28.47</Text>
-      </View>
-      {config.showTaxBreakdown && (
-        <View className="flex-row justify-between">
-          <Text className="text-zinc-500 text-xs">Tax (8.25%)</Text>
-          <Text className="text-zinc-500 text-xs">$2.35</Text>
+      );
+    case "orderInfo":
+      return (
+        <View>
+          <View className="flex-row justify-between">
+            <Text className="text-black text-xs">Order #1042</Text>
+            <Text className="text-black text-xs">01/15/2026</Text>
+          </View>
+          {config.showOrderType && (
+            <Text className="text-zinc-500 text-xs">Dine In - Table 5</Text>
+          )}
+          {config.showServerName && (
+            <Text className="text-zinc-500 text-xs">Server: Sarah M.</Text>
+          )}
+          <DottedLine />
         </View>
-      )}
-
-      <DoubleLine />
-
-      <View className="flex-row justify-between">
-        <Text className="text-black text-sm font-bold">Total</Text>
-        <Text className="text-black text-sm font-bold">$30.82</Text>
-      </View>
-
-      {/* Tip line */}
-      {config.showTipLine && (
-        <>
+      );
+    case "items":
+      return (
+        <View>
+          <View className="gap-1">
+            <View className="flex-row justify-between">
+              <Text className="text-black text-xs">1x Cheeseburger</Text>
+              <Text className="text-black text-xs">$12.99</Text>
+            </View>
+            {config.showItemModifiers && (
+              <Text className="text-zinc-500 text-[10px] ml-3">
+                + Extra Cheese, No Onions
+              </Text>
+            )}
+            <View className="flex-row justify-between">
+              <Text className="text-black text-xs">1x Caesar Salad</Text>
+              <Text className="text-black text-xs">$9.50</Text>
+            </View>
+            {config.showItemModifiers && (
+              <Text className="text-zinc-500 text-[10px] ml-3">
+                + Grilled Chicken
+              </Text>
+            )}
+            <View className="flex-row justify-between">
+              <Text className="text-black text-xs">2x Iced Tea</Text>
+              <Text className="text-black text-xs">$5.98</Text>
+            </View>
+          </View>
+          <DottedLine />
+        </View>
+      );
+    case "totals":
+      return (
+        <View>
+          <View className="flex-row justify-between">
+            <Text className="text-black text-xs">Subtotal</Text>
+            <Text className="text-black text-xs">$28.47</Text>
+          </View>
+          {config.showTaxBreakdown && (
+            <View className="flex-row justify-between">
+              <Text className="text-zinc-500 text-xs">Tax (8.25%)</Text>
+              <Text className="text-zinc-500 text-xs">$2.35</Text>
+            </View>
+          )}
+          <DoubleLine />
+          <View className="flex-row justify-between">
+            <Text className="text-black text-sm font-bold">Total</Text>
+            <Text className="text-black text-sm font-bold">$30.82</Text>
+          </View>
+        </View>
+      );
+    case "tipLine":
+      return config.showTipLine ? (
+        <View>
           <DottedLine />
           <View className="flex-row justify-between">
             <Text className="text-black text-xs">Tip:</Text>
@@ -218,32 +557,32 @@ function ReceiptPreview({
             <Text className="text-black text-xs font-bold">Total w/ Tip:</Text>
             <Text className="text-black text-xs font-bold">________</Text>
           </View>
-        </>
-      )}
-
-      <DottedLine />
-
-      {/* Payment */}
-      <View className="flex-row justify-between">
-        <Text className="text-black text-xs">Paid: Card</Text>
-        <Text className="text-black text-xs">$30.82</Text>
-      </View>
-      <Text className="text-zinc-500 text-[10px]">
-        Visa ending in 4242
-      </Text>
-
-      {/* Footer */}
-      {config.footerText ? (
-        <>
+        </View>
+      ) : null;
+    case "payment":
+      return (
+        <View>
+          <DottedLine />
+          <View className="flex-row justify-between">
+            <Text className="text-black text-xs">Paid: Card</Text>
+            <Text className="text-black text-xs">$30.82</Text>
+          </View>
+          <Text className="text-zinc-500 text-[10px]">
+            Visa ending in 4242
+          </Text>
+        </View>
+      );
+    case "footer":
+      return config.footerText ? (
+        <View>
           <DottedLine />
           <Text className="text-black text-center text-[10px]">
             {config.footerText}
           </Text>
-        </>
-      ) : null}
-
-      {/* Barcode / QR */}
-      {(config.showBarcode || config.showQrCode) && (
+        </View>
+      ) : null;
+    case "barcode":
+      return (config.showBarcode || config.showQrCode) ? (
         <View className="flex-row justify-center items-center gap-3 mt-3">
           {config.showBarcode && (
             <Barcode size={32} color="#a1a1aa" strokeWidth={1.5} />
@@ -252,7 +591,75 @@ function ReceiptPreview({
             <QrCode size={32} color="#a1a1aa" strokeWidth={1.5} />
           )}
         </View>
-      )}
+      ) : null;
+    default:
+      return null;
+  }
+}
+
+function ReceiptPreview({
+  config,
+  storeName,
+  sectionOrder,
+  onReorder,
+}: {
+  config: ReceiptTemplateConfig;
+  storeName: string;
+  sectionOrder: ReceiptSectionId[];
+  onReorder: (newOrder: ReceiptSectionId[]) => void;
+}) {
+  const sections: ReceiptSection[] = sectionOrder.map((id) => ({
+    id,
+    label: RECEIPT_SECTION_LABELS[id],
+  }));
+
+  const renderItem = useCallback(
+    ({ item, drag, isActive }: RenderItemParams<ReceiptSection>) => {
+      const content = renderReceiptSection(item.id, config, storeName);
+      return (
+        <ScaleDecorator>
+          <TouchableOpacity
+            onLongPress={drag}
+            disabled={isActive}
+            activeOpacity={1}
+            className={`relative ${isActive ? "opacity-80" : ""}`}
+          >
+            {/* Drag handle label — only visible on hover/press */}
+            <View
+              style={{
+                position: "absolute",
+                right: -28,
+                top: 2,
+                zIndex: 10,
+              }}
+            >
+              <GripVertical size={14} color="#9ca3af" />
+            </View>
+            {content !== null ? (
+              <View>{content}</View>
+            ) : (
+              <View className="py-1 px-2 my-0.5 rounded border border-dashed border-gray-200">
+                <Text className="text-gray-300 text-[9px] text-center">
+                  {item.label} (hidden)
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </ScaleDecorator>
+      );
+    },
+    [config, storeName],
+  );
+
+  return (
+    <ReceiptPaper>
+      <DraggableFlatList
+        data={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        onDragEnd={({ data }) => onReorder(data.map((s) => s.id))}
+        scrollEnabled={false}
+      />
     </ReceiptPaper>
   );
 }
@@ -385,6 +792,11 @@ const ReceiptTemplatesScreen = () => {
 
   const [activeTab, setActiveTab] = useState<TabType>("receipt");
   const [showTestPrint, setShowTestPrint] = useState(false);
+  const [showPresets, setShowPresets] = useState(false);
+  const [showCopyFrom, setShowCopyFrom] = useState(false);
+  const [sectionOrder, setSectionOrder] = useState<ReceiptSectionId[]>(
+    DEFAULT_RECEIPT_SECTION_ORDER,
+  );
 
   // Get the stored template for the active tab
   const storedTemplate = useMemo(() => {
@@ -424,6 +836,22 @@ const ReceiptTemplatesScreen = () => {
     [],
   );
 
+  const applyPreset = useCallback((overrides: Partial<ReceiptTemplateConfig>) => {
+    setLocalConfig((prev) => ({ ...prev, ...overrides }));
+    toastService.show({ title: "Preset applied", message: "Review and save when ready.", type: "info" });
+  }, []);
+
+  const applyFromLocation = useCallback((config: ReceiptTemplateConfig) => {
+    setLocalConfig((prev) => ({
+      ...config,
+      id: prev.id,
+      merchantId: prev.merchantId,
+      locationId: prev.locationId,
+      templateType: prev.templateType,
+    }));
+    toastService.show({ title: "Copied", message: "Settings copied. Save to apply.", type: "info" });
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (!locationId || !merchantId) {
       toastService.show({
@@ -455,7 +883,7 @@ const ReceiptTemplatesScreen = () => {
       {/* Tab Bar */}
       <View className="flex-row px-4 pt-4 pb-2">
         <TouchableOpacity
-          onPress={() => setActiveTab("receipt")}
+          onPress={() => { setActiveTab("receipt"); setSectionOrder(DEFAULT_RECEIPT_SECTION_ORDER); }}
           className={`px-5 py-2.5 rounded-lg mr-2 ${
             activeTab === "receipt" ? "bg-blue-600" : "bg-surface"
           }`}
@@ -488,15 +916,27 @@ const ReceiptTemplatesScreen = () => {
       <View className="flex-1 flex-row px-4 pb-4 gap-4">
         {/* Preview Panel */}
         <View className="flex-[4] bg-card rounded-xl p-4">
-          <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3 px-1">
-            Preview
-          </Text>
+          <View className="flex-row items-center justify-between mb-3 px-1">
+            <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider">
+              Preview
+            </Text>
+            {activeTab === "receipt" && (
+              <Text className="text-gray-600 text-[10px]">
+                Long-press to reorder sections
+              </Text>
+            )}
+          </View>
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 20 }}
           >
             {activeTab === "receipt" ? (
-              <ReceiptPreview config={localConfig} storeName={storeName} />
+              <ReceiptPreview
+                config={localConfig}
+                storeName={storeName}
+                sectionOrder={sectionOrder}
+                onReorder={setSectionOrder}
+              />
             ) : (
               <KitchenPreview config={localConfig} storeName={storeName} />
             )}
@@ -505,6 +945,25 @@ const ReceiptTemplatesScreen = () => {
 
         {/* Settings Panel */}
         <View className="flex-[6] bg-card rounded-xl p-4">
+          {/* Toolbar: Presets + Copy */}
+          <View className="flex-row items-center gap-2 mb-3 pb-3 border-b border-gray-700">
+            <Text className="text-white font-semibold text-sm flex-1">Settings</Text>
+            <TouchableOpacity
+              onPress={() => setShowCopyFrom(true)}
+              className="flex-row items-center gap-1.5 px-3 py-1.5 bg-surface rounded-lg border border-gray-600"
+            >
+              <Copy size={13} color={colors.muted} />
+              <Text className="text-gray-400 text-xs font-medium">Copy from…</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowPresets(true)}
+              className="flex-row items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 rounded-lg border border-blue-500/40"
+            >
+              <Layers size={13} color={colors.info} />
+              <Text className="text-blue-300 text-xs font-medium">Presets</Text>
+            </TouchableOpacity>
+          </View>
+
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 20 }}
@@ -549,6 +1008,21 @@ const ReceiptTemplatesScreen = () => {
         onClose={() => setShowTestPrint(false)}
         initialPrintType={activeTab === "kitchen" ? "kitchen" : "receipt"}
       />
+
+      <PresetPickerModal
+        visible={showPresets}
+        presets={activeTab === "receipt" ? RECEIPT_PRESETS : KITCHEN_PRESETS}
+        onApply={applyPreset}
+        onClose={() => setShowPresets(false)}
+      />
+
+      <CopyFromLocationModal
+        visible={showCopyFrom}
+        currentLocationId={locationId}
+        templateType={activeTab}
+        onApply={applyFromLocation}
+        onClose={() => setShowCopyFrom(false)}
+      />
     </View>
   );
 };
@@ -569,63 +1043,74 @@ function ReceiptSettings({
 }) {
   return (
     <>
-      <SectionHeader title="Branding" />
-      <ToggleRow
-        label="Show Logo"
-        value={config.showLogo}
-        onToggle={(v) => updateField("showLogo", v)}
-      />
-      <TextRow
-        label="Header Text"
-        value={config.headerText ?? ""}
-        onChangeText={(v) => updateField("headerText", v || null)}
-        placeholder="Welcome message..."
-      />
-      <TextRow
-        label="Footer Text"
-        value={config.footerText ?? ""}
-        onChangeText={(v) => updateField("footerText", v || null)}
-        placeholder="Thank you message..."
-      />
+      <CollapsibleSection title="Branding" subtitle="Logo, header, and footer text" defaultOpen>
+        <ToggleRow
+          label="Show Logo"
+          subtitle="Display your business logo at the top"
+          value={config.showLogo}
+          onToggle={(v) => updateField("showLogo", v)}
+        />
+        <TextRow
+          label="Header Text"
+          value={config.headerText ?? ""}
+          onChangeText={(v) => updateField("headerText", v || null)}
+          placeholder="e.g. Welcome to Our Restaurant!"
+        />
+        <TextRow
+          label="Footer Text"
+          value={config.footerText ?? ""}
+          onChangeText={(v) => updateField("footerText", v || null)}
+          placeholder="e.g. Thank you, see you again!"
+        />
+      </CollapsibleSection>
 
-      <SectionHeader title="Content" />
-      <ToggleRow
-        label="Show Item Modifiers"
-        value={config.showItemModifiers}
-        onToggle={(v) => updateField("showItemModifiers", v)}
-      />
-      <ToggleRow
-        label="Show Tax Breakdown"
-        value={config.showTaxBreakdown}
-        onToggle={(v) => updateField("showTaxBreakdown", v)}
-      />
-      <ToggleRow
-        label="Show Tip Line"
-        value={config.showTipLine}
-        onToggle={(v) => updateField("showTipLine", v)}
-      />
-      <ToggleRow
-        label="Show Server Name"
-        value={config.showServerName}
-        onToggle={(v) => updateField("showServerName", v)}
-      />
-      <ToggleRow
-        label="Show Order Type"
-        value={config.showOrderType}
-        onToggle={(v) => updateField("showOrderType", v)}
-      />
+      <CollapsibleSection title="Content" subtitle="What information prints on the receipt" defaultOpen>
+        <ToggleRow
+          label="Show Item Modifiers"
+          subtitle="Print add-ons and customizations under each item"
+          value={config.showItemModifiers}
+          onToggle={(v) => updateField("showItemModifiers", v)}
+        />
+        <ToggleRow
+          label="Show Tax Breakdown"
+          subtitle="Print tax rate and amount as a separate line"
+          value={config.showTaxBreakdown}
+          onToggle={(v) => updateField("showTaxBreakdown", v)}
+        />
+        <ToggleRow
+          label="Show Tip Line"
+          subtitle="Add a blank tip line for card transactions"
+          value={config.showTipLine}
+          onToggle={(v) => updateField("showTipLine", v)}
+        />
+        <ToggleRow
+          label="Show Server Name"
+          subtitle="Print the name of the staff member who took the order"
+          value={config.showServerName}
+          onToggle={(v) => updateField("showServerName", v)}
+        />
+        <ToggleRow
+          label="Show Order Type"
+          subtitle="Print Dine In / Takeaway / Delivery"
+          value={config.showOrderType}
+          onToggle={(v) => updateField("showOrderType", v)}
+        />
+      </CollapsibleSection>
 
-      <SectionHeader title="Extras" />
-      <ToggleRow
-        label="Show Barcode"
-        value={config.showBarcode}
-        onToggle={(v) => updateField("showBarcode", v)}
-      />
-      <ToggleRow
-        label="Show QR Code"
-        value={config.showQrCode}
-        onToggle={(v) => updateField("showQrCode", v)}
-      />
+      <CollapsibleSection title="Extras" subtitle="Barcodes and QR codes" defaultOpen={false}>
+        <ToggleRow
+          label="Show Barcode"
+          subtitle="Print an order barcode at the bottom"
+          value={config.showBarcode}
+          onToggle={(v) => updateField("showBarcode", v)}
+        />
+        <ToggleRow
+          label="Show QR Code"
+          subtitle="Print a QR code (e.g. for digital menu or feedback)"
+          value={config.showQrCode}
+          onToggle={(v) => updateField("showQrCode", v)}
+        />
+      </CollapsibleSection>
     </>
   );
 }
@@ -646,49 +1131,62 @@ function KitchenSettings({
 }) {
   return (
     <>
-      <SectionHeader title="Content" />
-      <ToggleRow
-        label="Show Item Modifiers"
-        value={config.showItemModifiers}
-        onToggle={(v) => updateField("showItemModifiers", v)}
-      />
-      <ToggleRow
-        label="Show Server Name"
-        value={config.showServerName}
-        onToggle={(v) => updateField("showServerName", v)}
-      />
-      <ToggleRow
-        label="Show Order Type"
-        value={config.showOrderType}
-        onToggle={(v) => updateField("showOrderType", v)}
-      />
+      <CollapsibleSection title="Content" subtitle="What prints on each ticket" defaultOpen>
+        <ToggleRow
+          label="Show Item Modifiers"
+          subtitle="Print customizations and add-ons under each item"
+          value={config.showItemModifiers}
+          onToggle={(v) => updateField("showItemModifiers", v)}
+        />
+        <ToggleRow
+          label="Show Server Name"
+          subtitle="Print the server who placed the order"
+          value={config.showServerName}
+          onToggle={(v) => updateField("showServerName", v)}
+        />
+        <ToggleRow
+          label="Show Order Type"
+          subtitle="Print Dine In / Takeaway / Delivery at the top"
+          value={config.showOrderType}
+          onToggle={(v) => updateField("showOrderType", v)}
+        />
+      </CollapsibleSection>
 
-      <SectionHeader title="Kitchen" />
-      <ToggleRow
-        label="Large Item Text"
-        value={config.largeItemText}
-        onToggle={(v) => updateField("largeItemText", v)}
-      />
-      <ToggleRow
-        label="Large Modifier Text"
-        value={config.showModsLarge}
-        onToggle={(v) => updateField("showModsLarge", v)}
-      />
-      <ToggleRow
-        label="Group by Station"
-        value={config.groupByStation}
-        onToggle={(v) => updateField("groupByStation", v)}
-      />
-      <ToggleRow
-        label="Show Allergy Alerts"
-        value={config.showAllergyAlert}
-        onToggle={(v) => updateField("showAllergyAlert", v)}
-      />
-      <ToggleRow
-        label="Show Ready-By Time"
-        value={config.showReadyByTime}
-        onToggle={(v) => updateField("showReadyByTime", v)}
-      />
+      <CollapsibleSection title="Kitchen Display" subtitle="Text size and readability" defaultOpen>
+        <ToggleRow
+          label="Large Item Text"
+          subtitle="Bigger, bolder item names — easier to read across the kitchen"
+          value={config.largeItemText}
+          onToggle={(v) => updateField("largeItemText", v)}
+        />
+        <ToggleRow
+          label="Large Modifier Text"
+          subtitle="Bigger modifier text to match large item text"
+          value={config.showModsLarge}
+          onToggle={(v) => updateField("showModsLarge", v)}
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Organisation" subtitle="Grouping and timing" defaultOpen={false}>
+        <ToggleRow
+          label="Group by Station"
+          subtitle="Separate items by kitchen station (Grill, Salad, etc.)"
+          value={config.groupByStation}
+          onToggle={(v) => updateField("groupByStation", v)}
+        />
+        <ToggleRow
+          label="Show Allergy Alerts"
+          subtitle="Highlight allergy warnings in red next to affected items"
+          value={config.showAllergyAlert}
+          onToggle={(v) => updateField("showAllergyAlert", v)}
+        />
+        <ToggleRow
+          label="Show Ready-By Time"
+          subtitle="Print the target ready time at the top of each ticket"
+          value={config.showReadyByTime}
+          onToggle={(v) => updateField("showReadyByTime", v)}
+        />
+      </CollapsibleSection>
     </>
   );
 }
