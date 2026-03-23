@@ -249,6 +249,7 @@ const PrintersKitchenScreen = () => {
   const fetchPrinters = usePrinterStore((s) => s.fetchPrinters);
   const updatePrinterConfig = usePrinterStore((s) => s.updatePrinterConfig);
   const deletePrinter = usePrinterStore((s) => s.deletePrinter);
+  const routingConfigs = usePrinterStore((s) => s.routingConfigs);
 
   // Print queue (reactive via selector on jobs array)
   const jobs = usePrintQueueStore((s) => s.jobs);
@@ -1573,20 +1574,73 @@ const PrintersKitchenScreen = () => {
                 Routing is now configured per-printer. Open a kitchen/bar printer's settings and tap "Configure Routing" to set up category, item, and order type rules.
               </Text>
               {kitchenPrinters.length > 0 ? (
-                kitchenPrinters.map((kp) => (
-                  <TouchableOpacity
-                    key={kp.id}
-                    onPress={() => setRoutingModalPrinter(kp)}
-                    className="flex-row items-center justify-between py-2.5 px-3 bg-card rounded-lg mb-1.5 border border-gray-700"
-                  >
-                    <View className="flex-row items-center flex-1">
-                      <Printer size={14} color={kp.printerRole === "bar" ? "#a78bfa" : "#f97316"} />
-                      <Text className="text-white text-sm ml-2">{kp.printerName}</Text>
-                      <Text className="text-gray-500 text-xs ml-2 capitalize">({kp.routingMode})</Text>
-                    </View>
-                    <Text className="text-blue-400 text-xs">Configure</Text>
-                  </TouchableOpacity>
-                ))
+                kitchenPrinters.map((kp) => {
+                  const cfg = routingConfigs[kp.id];
+                  const categoryCount = cfg?.rules.filter((r) => r.rule_type === "category" && r.is_enabled).length ?? 0;
+                  const itemCount = cfg?.rules.filter((r) => r.rule_type === "menu_item" && r.is_enabled).length ?? 0;
+                  const orderTypeCount = cfg?.rules.filter((r) => r.rule_type === "order_type" && r.is_enabled).length ?? 0;
+                  const mode = cfg?.routingMode ?? kp.routingMode;
+                  const hasNoRules = mode === "custom" && categoryCount === 0 && itemCount === 0;
+
+                  return (
+                    <TouchableOpacity
+                      key={kp.id}
+                      onPress={() => setRoutingModalPrinter(kp)}
+                      className="py-3 px-3 bg-card rounded-xl mb-2 border border-gray-700"
+                    >
+                      {/* Top row */}
+                      <View className="flex-row items-center justify-between mb-1.5">
+                        <View className="flex-row items-center flex-1">
+                          <Printer size={14} color={kp.printerRole === "bar" ? "#a78bfa" : "#f97316"} />
+                          <Text className="text-white text-sm font-medium ml-2">{kp.printerName}</Text>
+                        </View>
+                        <Text className="text-blue-400 text-xs">Configure →</Text>
+                      </View>
+                      {/* Bottom row: badges */}
+                      <View className="flex-row items-center gap-2 flex-wrap">
+                        {/* Mode badge */}
+                        <View className={`rounded px-2 py-0.5 border ${
+                          mode === "all"
+                            ? "bg-gray-700 border-gray-600"
+                            : mode === "unassigned"
+                            ? "bg-amber-900/40 border-amber-700/50"
+                            : "bg-blue-900/40 border-blue-700/50"
+                        }`}>
+                          <Text className={`text-xs font-medium ${
+                            mode === "all" ? "text-gray-300" : mode === "unassigned" ? "text-amber-400" : "text-blue-300"
+                          }`}>
+                            {mode === "all" ? "All Items" : mode === "unassigned" ? "Catch-All" : "Custom"}
+                          </Text>
+                        </View>
+                        {/* Custom rule chips */}
+                        {mode === "custom" && !hasNoRules && (
+                          <>
+                            {categoryCount > 0 && (
+                              <View className="bg-surface border border-gray-600 rounded px-2 py-0.5">
+                                <Text className="text-gray-300 text-xs">{categoryCount} cat{categoryCount !== 1 ? "s" : ""}</Text>
+                              </View>
+                            )}
+                            {itemCount > 0 && (
+                              <View className="bg-surface border border-gray-600 rounded px-2 py-0.5">
+                                <Text className="text-gray-300 text-xs">{itemCount} item{itemCount !== 1 ? "s" : ""}</Text>
+                              </View>
+                            )}
+                          </>
+                        )}
+                        {/* No rules warning */}
+                        {hasNoRules && (
+                          <Text className="text-amber-400 text-xs">⚠ No rules configured</Text>
+                        )}
+                        {/* Order type filter chips */}
+                        {orderTypeCount > 0 && (
+                          <View className="bg-blue-900/30 border border-blue-700/40 rounded px-2 py-0.5">
+                            <Text className="text-blue-300 text-xs">{orderTypeCount} order type{orderTypeCount !== 1 ? "s" : ""}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
               ) : (
                 <Text className="text-gray-500 text-xs">No kitchen/bar printers configured</Text>
               )}
