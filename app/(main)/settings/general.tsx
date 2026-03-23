@@ -553,7 +553,7 @@ const GeneralSettingsScreen = () => {
           </View>
 
           {/* Service Charges */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+          {/* <View className="bg-panel rounded-xl border border-gray-700 mb-6">
             {renderSectionHeader(
               "Service Charges & Gratuity",
               <DollarSign size={20} color={colors.warning} />,
@@ -602,7 +602,7 @@ const GeneralSettingsScreen = () => {
                 </View>
               </View>
             )}
-          </View>
+          </View> */}
 
           <TouchableOpacity
             onPress={saveChanges}

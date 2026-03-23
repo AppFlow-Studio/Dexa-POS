@@ -56,12 +56,6 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         route: "/settings/receipt-templates",
       },
       {
-        id: "terminal",
-        label: "Terminal Management",
-        icon: Smartphone,
-        route: "/settings/terminal",
-      },
-      {
         id: "payment-systems",
         label: "Payment Systems",
         icon: Banknote,
