@@ -162,26 +162,31 @@ const KITCHEN_PRESETS: PresetDefinition[] = [
   {
     id: "compact",
     label: "Compact",
-    description: "Small text, minimal info — fast reading.",
+    description: "Item names only — no mods, no extras. Fast reads.",
     overrides: {
       largeItemText: false,
       showModsLarge: false,
+      showItemModifiers: false,
       showServerName: false,
+      showOrderType: false,
       groupByStation: false,
-      showAllergyAlert: false,
+      groupBySeat: false,
+      showAllergyAlert: true,
       showReadyByTime: false,
     },
   },
   {
     id: "standard_kitchen",
     label: "Standard Kitchen",
-    description: "Balanced — modifiers visible, station grouping on.",
+    description: "Balanced — mods on, station grouping, allergy alerts.",
     overrides: {
       largeItemText: false,
       showModsLarge: false,
       showItemModifiers: true,
       showServerName: true,
+      showOrderType: true,
       groupByStation: true,
+      groupBySeat: false,
       showAllergyAlert: true,
       showReadyByTime: false,
     },
@@ -189,11 +194,31 @@ const KITCHEN_PRESETS: PresetDefinition[] = [
   {
     id: "large_text",
     label: "Large Text",
-    description: "Big bold items — ideal for noisy kitchens.",
+    description: "Big bold items and mods — ideal for noisy, fast-paced kitchens.",
     overrides: {
       largeItemText: true,
       showModsLarge: true,
       showItemModifiers: true,
+      showServerName: false,
+      showOrderType: true,
+      groupByStation: true,
+      groupBySeat: false,
+      showAllergyAlert: true,
+      showReadyByTime: true,
+    },
+  },
+  {
+    id: "fine_dining",
+    label: "Fine Dining",
+    description: "Seat-by-seat view — perfect for plated service.",
+    overrides: {
+      largeItemText: false,
+      showModsLarge: false,
+      showItemModifiers: true,
+      showServerName: true,
+      showOrderType: false,
+      groupByStation: false,
+      groupBySeat: true,
       showAllergyAlert: true,
       showReadyByTime: true,
     },
@@ -675,37 +700,89 @@ function KitchenPreview({
   storeName: string;
 }) {
   const itemTextClass = config.largeItemText
-    ? "text-black text-lg font-bold"
-    : "text-black text-sm font-bold";
+    ? "text-black text-base font-bold"
+    : "text-black text-xs font-bold";
   const modTextClass = config.showModsLarge
-    ? "text-zinc-500 text-sm font-semibold ml-3"
+    ? "text-zinc-600 text-sm ml-3"
     : "text-zinc-500 text-[10px] ml-3";
+
+  // Sample data used for the preview
+  const grillItems = [
+    {
+      qty: 2,
+      name: "Cheeseburger",
+      mods: ["+ Extra Cheese", "- No Onions"],
+      allergy: "Dairy",
+      seat: 1,
+    },
+    { qty: 1, name: "Veggie Wrap", mods: ["+ Avocado"], allergy: null, seat: 3 },
+  ];
+  const saladItems = [
+    { qty: 1, name: "Caesar Salad", mods: ["+ Grilled Chicken"], allergy: null, seat: 2 },
+  ];
+
+  const renderItem = (
+    item: { qty: number; name: string; mods: string[]; allergy: string | null; seat: number },
+    idx: number,
+  ) => (
+    <View key={idx} className={idx > 0 ? "mt-2" : ""}>
+      <View className="flex-row items-baseline gap-1">
+        {config.groupBySeat && (
+          <Text className="text-zinc-400 text-[9px] font-semibold mr-0.5">
+            S{item.seat}
+          </Text>
+        )}
+        <Text className={itemTextClass}>
+          {item.qty}x {item.name}
+        </Text>
+      </View>
+      {config.showItemModifiers && item.mods.map((m, i) => (
+        <Text key={i} className={modTextClass}>{m}</Text>
+      ))}
+      {config.showAllergyAlert && item.allergy && (
+        <View className="flex-row items-center gap-1 ml-3 mt-0.5">
+          <TriangleAlert size={10} color="#dc2626" />
+          <Text className="text-red-600 font-bold text-[9px]">
+            ALLERGY: {item.allergy}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const StationBanner = ({ label }: { label: string }) => (
+    <View className="bg-gray-200 -mx-4 px-4 py-0.5 mb-1.5">
+      <Text className="text-center font-black text-[10px] uppercase tracking-widest text-black">
+        ▶ {label}
+      </Text>
+    </View>
+  );
 
   return (
     <ReceiptPaper>
       {/* Order header */}
-      <Text className="text-black text-center font-bold text-lg">
+      <Text className="text-black text-center font-black text-base tracking-wide">
         ORDER #1042
       </Text>
       {config.showOrderType && (
-        <Text className="text-black text-center font-semibold text-xs">
-          DINE IN - Table 5
+        <Text className="text-black text-center font-bold text-[10px] uppercase tracking-wide mt-0.5">
+          Dine In — Table 5
         </Text>
       )}
       {config.showServerName && (
-        <Text className="text-zinc-500 text-center text-xs">
+        <Text className="text-zinc-500 text-center text-[10px] mt-0.5">
           Server: Sarah M.
         </Text>
       )}
-      <Text className="text-zinc-500 text-center text-[10px]">
-        01/15/2026 12:34 PM
+      <Text className="text-zinc-400 text-center text-[9px]">
+        01/15/2026  12:34 PM
       </Text>
 
-      {/* Ready by time */}
+      {/* Ready by badge */}
       {config.showReadyByTime && (
-        <View className="flex-row items-center justify-center gap-1 mt-1">
-          <Clock size={12} color="#000" />
-          <Text className="text-black text-sm font-bold">
+        <View className="flex-row items-center justify-center gap-1 mt-1.5 bg-black rounded px-2 py-0.5">
+          <Clock size={9} color="#fff" />
+          <Text className="text-white text-[10px] font-bold">
             Ready by: 12:49 PM
           </Text>
         </View>
@@ -713,60 +790,29 @@ function KitchenPreview({
 
       <DoubleLine />
 
-      {/* Station grouping */}
-      {config.groupByStation && (
-        <View className="bg-gray-200 -mx-5 px-5 py-0.5 mb-2">
-          <Text className="text-center font-bold text-xs uppercase tracking-wider text-black">
-            GRILL STATION
-          </Text>
+      {/* Items — with optional station grouping */}
+      {config.groupByStation ? (
+        <View className="gap-0">
+          <StationBanner label="Grill" />
+          <View className="gap-0 mb-2">
+            {grillItems.map(renderItem)}
+          </View>
+          <DottedLine />
+          <StationBanner label="Salad" />
+          <View className="gap-0">
+            {saladItems.map(renderItem)}
+          </View>
+        </View>
+      ) : (
+        <View className="gap-0">
+          {[...grillItems, ...saladItems].map(renderItem)}
         </View>
       )}
 
-      {/* Items */}
-      <View className="gap-2">
-        {/* Item 1: Cheeseburger */}
-        <View>
-          <Text className={itemTextClass}>1x Cheeseburger</Text>
-          {config.showItemModifiers && (
-            <View>
-              <Text className={modTextClass}>+ Extra Cheese</Text>
-              <Text className={modTextClass}>- No Onions</Text>
-            </View>
-          )}
-          {config.showAllergyAlert && (
-            <View className="flex-row items-center gap-1 ml-3 mt-0.5">
-              <TriangleAlert size={12} color="#dc2626" />
-              <Text className="text-red-600 font-bold text-[10px]">
-                ALLERGY: Dairy
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {config.groupByStation && (
-          <>
-            <DottedLine />
-            <View className="bg-gray-200 -mx-5 px-5 py-0.5 mb-2">
-              <Text className="text-center font-bold text-xs uppercase tracking-wider text-black">
-                SALAD STATION
-              </Text>
-            </View>
-          </>
-        )}
-
-        {/* Item 2: Caesar Salad */}
-        <View>
-          <Text className={itemTextClass}>1x Caesar Salad</Text>
-          {config.showItemModifiers && (
-            <Text className={modTextClass}>+ Grilled Chicken</Text>
-          )}
-        </View>
-      </View>
-
       <DoubleLine />
 
-      <Text className="text-zinc-500 text-center text-[10px]">
-        2 items total
+      <Text className="text-zinc-400 text-center text-[9px]">
+        3 items total
       </Text>
     </ReceiptPaper>
   );
@@ -918,11 +964,15 @@ const ReceiptTemplatesScreen = () => {
         <View className="flex-[4] bg-card rounded-xl p-4">
           <View className="flex-row items-center justify-between mb-3 px-1">
             <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider">
-              Preview
+              Live Preview
             </Text>
-            {activeTab === "receipt" && (
+            {activeTab === "receipt" ? (
               <Text className="text-gray-600 text-[10px]">
                 Long-press to reorder sections
+              </Text>
+            ) : (
+              <Text className="text-gray-600 text-[10px]">
+                Updates as you change settings
               </Text>
             )}
           </View>
@@ -1131,60 +1181,115 @@ function KitchenSettings({
 }) {
   return (
     <>
-      <CollapsibleSection title="Content" subtitle="What prints on each ticket" defaultOpen>
-        <ToggleRow
-          label="Show Item Modifiers"
-          subtitle="Print customizations and add-ons under each item"
-          value={config.showItemModifiers}
-          onToggle={(v) => updateField("showItemModifiers", v)}
-        />
-        <ToggleRow
-          label="Show Server Name"
-          subtitle="Print the server who placed the order"
-          value={config.showServerName}
-          onToggle={(v) => updateField("showServerName", v)}
-        />
+      {/* ── Header Info ─────────────────────────────────────────── */}
+      <CollapsibleSection
+        title="Header"
+        subtitle="Order number, table, server, timing"
+        defaultOpen
+      >
         <ToggleRow
           label="Show Order Type"
           subtitle="Print Dine In / Takeaway / Delivery at the top"
           value={config.showOrderType}
           onToggle={(v) => updateField("showOrderType", v)}
         />
+        <ToggleRow
+          label="Show Server Name"
+          subtitle="Print the staff member who placed the order"
+          value={config.showServerName}
+          onToggle={(v) => updateField("showServerName", v)}
+        />
+        <ToggleRow
+          label="Show Ready-By Time"
+          subtitle="Print the target ready time — useful for timed pickup orders"
+          value={config.showReadyByTime}
+          onToggle={(v) => updateField("showReadyByTime", v)}
+        />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Kitchen Display" subtitle="Text size and readability" defaultOpen>
+      {/* ── Items & Modifiers ────────────────────────────────────── */}
+      <CollapsibleSection
+        title="Items & Modifiers"
+        subtitle="What detail prints per line item"
+        defaultOpen
+      >
+        <ToggleRow
+          label="Show Modifiers"
+          subtitle="Print add-ons and customizations under each item"
+          value={config.showItemModifiers}
+          onToggle={(v) => updateField("showItemModifiers", v)}
+        />
+        <ToggleRow
+          label="Show Allergy Alerts"
+          subtitle="Highlight allergy warnings in red — never miss a dietary flag"
+          value={config.showAllergyAlert}
+          onToggle={(v) => updateField("showAllergyAlert", v)}
+        />
+      </CollapsibleSection>
+
+      {/* ── Readability ──────────────────────────────────────────── */}
+      <CollapsibleSection
+        title="Readability"
+        subtitle="Text size — tune for your kitchen distance"
+        defaultOpen
+      >
+        {/* Visual size preview strip */}
+        <View className="bg-surface rounded-lg px-3 py-2.5 mb-2 border border-gray-700">
+          <Text className="text-gray-500 text-[9px] uppercase tracking-wider mb-1.5">
+            Preview
+          </Text>
+          <Text
+            className={
+              config.largeItemText
+                ? "text-white text-base font-bold"
+                : "text-white text-xs font-bold"
+            }
+          >
+            2x Cheeseburger
+          </Text>
+          {config.showItemModifiers && (
+            <Text
+              className={
+                config.showModsLarge
+                  ? "text-gray-400 text-sm ml-3"
+                  : "text-gray-400 text-[10px] ml-3"
+              }
+            >
+              + Extra Cheese
+            </Text>
+          )}
+        </View>
         <ToggleRow
           label="Large Item Text"
-          subtitle="Bigger, bolder item names — easier to read across the kitchen"
+          subtitle="Bigger, bolder item names — ideal for noisy kitchens"
           value={config.largeItemText}
           onToggle={(v) => updateField("largeItemText", v)}
         />
         <ToggleRow
           label="Large Modifier Text"
-          subtitle="Bigger modifier text to match large item text"
+          subtitle="Scale modifiers up to match large item text"
           value={config.showModsLarge}
           onToggle={(v) => updateField("showModsLarge", v)}
         />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Organisation" subtitle="Grouping and timing" defaultOpen={false}>
+      {/* ── Organisation ─────────────────────────────────────────── */}
+      <CollapsibleSection
+        title="Organisation"
+        subtitle="Grouping by station or seat"
+        defaultOpen={false}
+      >
         <ToggleRow
           label="Group by Station"
-          subtitle="Separate items by kitchen station (Grill, Salad, etc.)"
+          subtitle="Divide the ticket into sections per kitchen station (Grill, Salad…)"
           value={config.groupByStation}
           onToggle={(v) => updateField("groupByStation", v)}
         />
         <ToggleRow
-          label="Show Allergy Alerts"
-          subtitle="Highlight allergy warnings in red next to affected items"
-          value={config.showAllergyAlert}
-          onToggle={(v) => updateField("showAllergyAlert", v)}
-        />
-        <ToggleRow
-          label="Show Ready-By Time"
-          subtitle="Print the target ready time at the top of each ticket"
-          value={config.showReadyByTime}
-          onToggle={(v) => updateField("showReadyByTime", v)}
+          label="Group by Seat"
+          subtitle="Label each item with its seat number for easy runner service"
+          value={config.groupBySeat}
+          onToggle={(v) => updateField("groupBySeat", v)}
         />
       </CollapsibleSection>
     </>
