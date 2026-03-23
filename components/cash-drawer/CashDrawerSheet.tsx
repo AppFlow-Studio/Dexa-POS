@@ -32,9 +32,10 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Banknote,
-  DollarSign,
+  ExternalLink,
   Inbox,
   Lock,
+  Receipt,
   Unlock,
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -58,6 +59,30 @@ const OP_LABELS: Record<string, string> = {
   closing_count: "Closing Count",
   tip_out: "Tip Out",
 };
+
+const OP_COLORS: Record<string, { bg: string; text: string }> = {
+  cash_sale:     { bg: "bg-green-900/40",  text: "text-green-400" },
+  cash_refund:   { bg: "bg-red-900/40",    text: "text-red-400" },
+  pay_in:        { bg: "bg-green-900/40",  text: "text-green-400" },
+  pay_out:       { bg: "bg-red-900/40",    text: "text-red-400" },
+  cash_drop:     { bg: "bg-blue-900/40",   text: "text-blue-400" },
+  tip_out:       { bg: "bg-red-900/40",    text: "text-red-400" },
+  no_sale:       { bg: "bg-gray-800",      text: "text-gray-400" },
+  opening_count: { bg: "bg-gray-800",      text: "text-gray-400" },
+  closing_count: { bg: "bg-gray-800",      text: "text-gray-400" },
+};
+
+function formatTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return "";
+  }
+}
 
 const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   isOpen,
@@ -91,12 +116,12 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
     String(cashDrawerSettings.defaultOpeningAmount)
   );
 
-  // Modal states
+  // Sub-modal states — rendered OUTSIDE the BottomSheetModal so they appear above it
   const [payInOutMode, setPayInOutMode] = useState<"pay_in" | "pay_out" | "cash_drop">("pay_in");
   const [isPayInOutOpen, setPayInOutOpen] = useState(false);
   const [isNoSaleOpen, setNoSaleOpen] = useState(false);
 
-  // Close summary data (shown after close completes when blind count)
+  // Close summary data
   const [closeSummary, setCloseSummary] = useState<{
     expected: number;
     actual: number;
@@ -130,7 +155,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       openingAmount: amount,
       openingCountDetails: details,
     });
-    console.log("[CASH DRAWER] Open Drawer Result:", result);
 
     setIsSubmitting(false);
     if (result.success) {
@@ -155,7 +179,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
     setIsSubmitting(false);
     if (result.success) {
       if (cashDrawerSettings.blindCloseCount) {
-        // Show summary after close when blind counting
         setCloseSummary({
           expected,
           actual: closingTotal,
@@ -176,9 +199,26 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   const runningBalance = useMemo(() => getRunningBalance(), [operations, activeSession]);
   const variance = useMemo(() => getVariance(closingTotal), [closingTotal, operations, activeSession]);
 
-  const recentOps = useMemo(() => {
-    return [...operations].reverse().slice(0, 20);
+  // Totals for the session summary bar
+  const sessionTotals = useMemo(() => {
+    let cashIn = 0;
+    let cashOut = 0;
+    let sales = 0;
+    for (const op of operations) {
+      if (isNoEffectOperation(op.operationType)) continue;
+      if (op.operationType === "cash_sale") {
+        sales += op.amount;
+        cashIn += op.amount;
+      } else if (isDebitOperation(op.operationType)) {
+        cashOut += op.amount;
+      } else {
+        cashIn += op.amount;
+      }
+    }
+    return { cashIn, cashOut, sales };
   }, [operations]);
+
+  const recentOps = useMemo(() => [...operations].reverse().slice(0, 30), [operations]);
 
   const isBlind = cashDrawerSettings.blindCloseCount;
   const { varianceWarningThreshold, varianceAlertThreshold } = cashDrawerSettings;
@@ -191,6 +231,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
     return "text-blue-400";
   };
 
+  // ── Open view ──────────────────────────────────────────────────────────────
   const renderOpenView = () => (
     <View>
       <Text className="text-xl font-bold text-white mb-2">Open Cash Drawer</Text>
@@ -198,7 +239,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         Count the cash in the drawer to start your session.
       </Text>
 
-      {/* Quick Start Toggle */}
       <View className="flex-row items-center justify-between mb-4">
         <Text className="text-sm text-label">Quick Start (single amount)</Text>
         <TouchableOpacity
@@ -237,138 +277,178 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       <TouchableOpacity
         onPress={handleOpen}
         disabled={isSubmitting}
-        className={`mt-4 py-4 rounded-xl items-center ${
-          isSubmitting ? "bg-gray-600" : "bg-teal"
-        }`}
+        className={`mt-4 py-4 rounded-xl items-center ${isSubmitting ? "bg-gray-600" : "bg-teal"}`}
       >
         <View className="flex-row items-center gap-2">
           <Unlock size={20} color="black" />
           <Text className="text-lg font-bold text-black">
             {isSubmitting
               ? "Opening..."
-              : `Open Drawer (${formatCurrency(
-                  isQuickStart ? parseFloat(quickStartAmount) || 0 : openingTotal
-                )})`}
+              : `Open Drawer (${formatCurrency(isQuickStart ? parseFloat(quickStartAmount) || 0 : openingTotal)})`}
           </Text>
         </View>
       </TouchableOpacity>
     </View>
   );
 
+  // ── Active view ────────────────────────────────────────────────────────────
   const renderActiveView = () => (
     <View>
-      <View className="flex-row items-center justify-between mb-4">
+      {/* Header: name + balance + Close button */}
+      <View className="flex-row items-center justify-between mb-3">
         <View>
-          <Text className="text-xl font-bold text-white">
+          <Text className="text-lg font-bold text-white">
             {drawerName || "Cash Drawer"}
           </Text>
-          <Text className="text-sm text-label">Session Active</Text>
+          <View className="flex-row items-center gap-1.5 mt-0.5">
+            <View className="w-2 h-2 rounded-full bg-green-400" />
+            <Text className="text-xs text-green-400">Session Active</Text>
+          </View>
         </View>
-        <View className="items-end">
-          <Text className="text-sm text-label">Balance</Text>
-          <Text className="text-2xl font-bold text-teal">
-            {formatCurrency(runningBalance)}
-          </Text>
+        {/* Balance + close — always visible at top */}
+        <View className="flex-row items-center gap-3">
+          <View className="items-end">
+            <Text className="text-xs text-label">Balance</Text>
+            <Text className="text-xl font-bold text-teal">
+              {formatCurrency(runningBalance)}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setView("close")}
+            className="flex-row items-center gap-1.5 px-3 py-2 rounded-xl bg-red-900/60 border border-red-700"
+          >
+            <Lock size={16} color="#f87171" />
+            <Text className="text-sm font-bold text-red-400">Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Session summary chips */}
+      <View className="flex-row gap-2 mb-4">
+        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
+          <Text className="text-[10px] text-label uppercase tracking-wider">Sales</Text>
+          <Text className="text-sm font-bold text-green-400">{formatCurrency(sessionTotals.sales)}</Text>
+        </View>
+        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
+          <Text className="text-[10px] text-label uppercase tracking-wider">Cash In</Text>
+          <Text className="text-sm font-bold text-green-400">{formatCurrency(sessionTotals.cashIn)}</Text>
+        </View>
+        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
+          <Text className="text-[10px] text-label uppercase tracking-wider">Cash Out</Text>
+          <Text className="text-sm font-bold text-red-400">{formatCurrency(sessionTotals.cashOut)}</Text>
+        </View>
+        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
+          <Text className="text-[10px] text-label uppercase tracking-wider">Ops</Text>
+          <Text className="text-sm font-bold text-white">{operations.length}</Text>
         </View>
       </View>
 
       {/* Operation Buttons */}
-      <View className="flex-row flex-wrap gap-3 mb-4">
+      <View className="flex-row gap-2 mb-4">
         <TouchableOpacity
           onPress={() => openPayInOut("pay_in")}
-          className="flex-1 min-w-[120px] py-4 rounded-xl bg-green-900 border border-green-700 items-center"
+          className="flex-1 py-3.5 rounded-xl bg-green-900/60 border border-green-700 items-center"
         >
-          <ArrowDownCircle size={22} color="#4ade80" />
-          <Text className="text-sm font-semibold text-green-400 mt-1">Pay In</Text>
+          <ArrowDownCircle size={20} color="#4ade80" />
+          <Text className="text-xs font-semibold text-green-400 mt-1">Pay In</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => openPayInOut("pay_out")}
-          className="flex-1 min-w-[120px] py-4 rounded-xl bg-red-900 border border-red-700 items-center"
+          className="flex-1 py-3.5 rounded-xl bg-red-900/60 border border-red-700 items-center"
         >
-          <ArrowUpCircle size={22} color="#f87171" />
-          <Text className="text-sm font-semibold text-red-400 mt-1">Pay Out</Text>
+          <ArrowUpCircle size={20} color="#f87171" />
+          <Text className="text-xs font-semibold text-red-400 mt-1">Pay Out</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => openPayInOut("cash_drop")}
-          className="flex-1 min-w-[120px] py-4 rounded-xl bg-blue-900 border border-blue-700 items-center"
+          className="flex-1 py-3.5 rounded-xl bg-blue-900/60 border border-blue-700 items-center"
         >
-          <Inbox size={22} color="#60a5fa" />
-          <Text className="text-sm font-semibold text-blue-400 mt-1">Cash Drop</Text>
+          <Inbox size={20} color="#60a5fa" />
+          <Text className="text-xs font-semibold text-blue-400 mt-1">Cash Drop</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setNoSaleOpen(true)}
-          className="flex-1 min-w-[120px] py-4 rounded-xl bg-gray-700 border border-gray-600 items-center"
+          className="flex-1 py-3.5 rounded-xl bg-gray-800 border border-gray-600 items-center"
         >
-          <Banknote size={22} color="#d1d5db" />
-          <Text className="text-sm font-semibold text-gray-300 mt-1">No Sale</Text>
+          <Banknote size={20} color="#d1d5db" />
+          <Text className="text-xs font-semibold text-gray-300 mt-1">No Sale</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Recent Operations */}
-      <Text className="text-base font-semibold text-white mb-2">
-        Recent Operations
-      </Text>
+      {/* Operations list */}
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-sm font-semibold text-white">Transactions</Text>
+        <Text className="text-xs text-label">{operations.length} total</Text>
+      </View>
+
       {recentOps.length === 0 ? (
-        <Text className="text-sm text-label italic py-3">
-          No operations yet
-        </Text>
+        <View className="py-8 items-center">
+          <Receipt size={28} color={colors.muted} />
+          <Text className="text-sm text-label italic mt-2">No transactions yet</Text>
+        </View>
       ) : (
         recentOps.map((op) => {
           const isDebit = isDebitOperation(op.operationType);
           const isNoEffect = isNoEffectOperation(op.operationType);
+          const opStyle = OP_COLORS[op.operationType] ?? { bg: "bg-surface", text: "text-gray-400" };
+
           return (
             <View
               key={op.id}
-              className="flex-row items-center py-2 border-b border-border"
+              className={`flex-row items-center px-3 py-2.5 rounded-lg mb-1.5 ${opStyle.bg}`}
             >
-              <DollarSign
-                size={16}
-                color={isNoEffect ? colors.muted : isDebit ? colors.danger : colors.success}
-              />
-              <View className="flex-1 ml-2">
-                <Text className="text-sm text-white">
-                  {OP_LABELS[op.operationType] || op.operationType.replace(/_/g, " ")}
-                </Text>
-                {op.reason && (
-                  <Text className="text-xs text-label">{op.reason}</Text>
-                )}
+              {/* Left: label + meta */}
+              <View className="flex-1">
+                <View className="flex-row items-center gap-1.5">
+                  <Text className="text-sm font-semibold text-white">
+                    {OP_LABELS[op.operationType] ?? op.operationType.replace(/_/g, " ")}
+                  </Text>
+                  {/* Order badge */}
+                  {op.orderId && (
+                    <View className="flex-row items-center gap-0.5 bg-black/30 px-1.5 py-0.5 rounded">
+                      <ExternalLink size={9} color={colors.muted} />
+                      <Text className="text-[10px] text-gray-400">Order</Text>
+                    </View>
+                  )}
+                </View>
+                <View className="flex-row items-center gap-2 mt-0.5">
+                  {op.reason ? (
+                    <Text className="text-xs text-label">{op.reason}</Text>
+                  ) : null}
+                  {op.performedAt ? (
+                    <Text className="text-[10px] text-gray-600">{formatTime(op.performedAt)}</Text>
+                  ) : null}
+                </View>
               </View>
-              <Text
-                className={`text-base font-semibold ${
-                  isNoEffect
-                    ? "text-gray-400"
-                    : isDebit
-                    ? "text-red-400"
-                    : "text-green-400"
-                }`}
-              >
-                {isNoEffect ? "" : isDebit ? "-" : "+"}
-                {isNoEffect ? "—" : formatCurrency(op.amount)}
+
+              {/* Right: amount */}
+              <Text className={`text-base font-bold ${isNoEffect ? "text-gray-500" : opStyle.text}`}>
+                {isNoEffect
+                  ? "—"
+                  : `${isDebit ? "-" : "+"}${formatCurrency(op.amount)}`}
               </Text>
             </View>
           );
         })
       )}
-
-      {/* Close Drawer Button */}
-      <TouchableOpacity
-        onPress={() => setView("close")}
-        className="mt-4 py-4 rounded-xl items-center bg-red-900 border border-red-700"
-      >
-        <View className="flex-row items-center gap-2">
-          <Lock size={20} color="#f87171" />
-          <Text className="text-lg font-bold text-red-400">Close Drawer</Text>
-        </View>
-      </TouchableOpacity>
     </View>
   );
 
+  // ── Close view ─────────────────────────────────────────────────────────────
   const renderCloseView = () => (
     <View>
-      <Text className="text-xl font-bold text-white mb-2">Close Cash Drawer</Text>
-      <Text className="text-sm text-label mb-4">
-        Count the cash in the drawer to close your session.
-      </Text>
+      <View className="flex-row items-center justify-between mb-4">
+        <View>
+          <Text className="text-xl font-bold text-white">Close Drawer</Text>
+          <Text className="text-sm text-label mt-0.5">Count the cash to end your session</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => setView("active")}
+          className="px-3 py-1.5 rounded-lg bg-surface border border-border"
+        >
+          <Text className="text-sm text-label">Back</Text>
+        </TouchableOpacity>
+      </View>
 
       <DenominationCounter
         onTotalChange={(total, details) => {
@@ -398,15 +478,13 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             <View className="flex-row justify-between">
               <Text className="text-base font-bold text-white">Variance</Text>
               <Text className={`text-lg font-bold ${getVarianceColor(variance)}`}>
-                {variance >= 0 ? "+" : ""}
-                {formatCurrency(variance)}
+                {variance >= 0 ? "+" : ""}{formatCurrency(variance)}
               </Text>
             </View>
           </View>
         )}
       </View>
 
-      {/* Variance Notes */}
       <View className="mt-3">
         <Text className="text-sm text-label mb-1">Notes (optional)</Text>
         <TextInput
@@ -421,28 +499,22 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         />
       </View>
 
-      <View className="flex-row gap-3 mt-4">
-        <TouchableOpacity
-          onPress={() => setView("active")}
-          className="flex-1 py-4 rounded-xl items-center bg-gray-700"
-        >
-          <Text className="text-lg font-bold text-white">Back</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleClose}
-          disabled={isSubmitting}
-          className={`flex-1 py-4 rounded-xl items-center ${
-            isSubmitting ? "bg-gray-600" : "bg-red-700"
-          }`}
-        >
-          <Text className="text-lg font-bold text-white">
-            {isSubmitting ? "Closing..." : "Confirm Close"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        onPress={handleClose}
+        disabled={isSubmitting}
+        className={`mt-4 py-4 rounded-xl items-center flex-row justify-center gap-2 ${
+          isSubmitting ? "bg-gray-600" : "bg-red-700"
+        }`}
+      >
+        <Lock size={18} color="white" />
+        <Text className="text-lg font-bold text-white">
+          {isSubmitting ? "Closing..." : "Confirm Close"}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 
+  // ── Close summary ──────────────────────────────────────────────────────────
   const renderCloseSummary = () => {
     if (!closeSummary) return null;
     const v = closeSummary.variance;
@@ -451,7 +523,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         <Text className="text-xl font-bold text-white mb-4 text-center">
           Drawer Closed
         </Text>
-
         <View className="bg-surface border border-border rounded-xl p-4">
           <View className="flex-row justify-between mb-2">
             <Text className="text-base text-label">Expected</Text>
@@ -469,8 +540,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             <View className="flex-row justify-between">
               <Text className="text-base font-bold text-white">Variance</Text>
               <Text className={`text-lg font-bold ${getVarianceColor(v)}`}>
-                {v >= 0 ? "+" : ""}
-                {formatCurrency(v)}
+                {v >= 0 ? "+" : ""}{formatCurrency(v)}
               </Text>
             </View>
           </View>
@@ -490,7 +560,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
     <>
       <BottomSheetModal
         ref={bottomSheetRef}
-        snapPoints={["70%", "90%"]}
+        snapPoints={["75%", "92%"]}
         onDismiss={onClose}
         enablePanDownToClose
         {...bottomSheetTheme}
@@ -503,7 +573,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           />
         )}
       >
-        <BottomSheetScrollView contentContainerStyle={{ padding: 16 }}>
+        <BottomSheetScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
           {view === "open" && renderOpenView()}
           {view === "active" && renderActiveView()}
           {view === "close" && renderCloseView()}
@@ -511,6 +581,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         </BottomSheetScrollView>
       </BottomSheetModal>
 
+      {/* Rendered OUTSIDE BottomSheetModal so they appear above it */}
       <PayInOutModal
         isOpen={isPayInOutOpen}
         onClose={() => setPayInOutOpen(false)}
