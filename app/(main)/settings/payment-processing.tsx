@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { AlertTriangle, Banknote, Bluetooth, Building2, CheckCircle2, ChevronDown, ChevronUp, CreditCard, DollarSign, Edit3, Plus, ShieldCheck, Smartphone, SplitSquareHorizontal, Trash2, Wifi, X, XCircle } from "lucide-react-native";
+import { AlertTriangle, Banknote, Bluetooth, Building2, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Plus, Receipt, ShieldCheck, SplitSquareHorizontal, Trash2, Wifi, X, XCircle } from "lucide-react-native";
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
@@ -13,16 +13,6 @@ interface ProcessorInfo {
   accountId: string;
   type: "builtin" | "wired" | "bluetooth";
 }
-
-interface PaymentMethods {
-  cash: boolean;
-  credit: boolean;
-  debit: boolean;
-  mobileWallets: boolean;
-  bnpl: boolean;
-}
-
-// PreAuthSettings now managed by useStoreSettingsStore (persisted via MMKV)
 
 interface SplitPaymentOptions {
   byAmount: boolean;
@@ -38,24 +28,6 @@ const PROCESSOR_TYPES = [
   { value: "bluetooth", label: "Bluetooth Device" },
 ];
 
-const PROCESSOR_PRESETS: Record<string, { name: string; accountPrefix: string }[]> = {
-  builtin: [
-    { name: "Stripe", accountPrefix: "acct_" },
-    { name: "Square", accountPrefix: "sq_" },
-    { name: "PayPal", accountPrefix: "pp_" },
-  ],
-  wired: [
-    { name: "Square Terminal", accountPrefix: "sq_term_" },
-    { name: "Clover Station", accountPrefix: "clv_" },
-    { name: "Verifone", accountPrefix: "vf_" },
-  ],
-  bluetooth: [
-    { name: "Clover Flex", accountPrefix: "clv_bt_" },
-    { name: "Square Reader", accountPrefix: "sq_bt_" },
-    { name: "SumUp", accountPrefix: "sum_" },
-  ],
-};
-
 const PaymentProcessingScreen = () => {
   const [processors, setProcessors] = useState<ProcessorInfo[]>([
     { id: "1", name: "Stripe", status: "connected", accountId: "acct_1234567890", type: "builtin" },
@@ -67,13 +39,12 @@ const PaymentProcessingScreen = () => {
   const [selectedProcessor, setSelectedProcessor] = useState<ProcessorInfo | null>(null);
   const [formData, setFormData] = useState({ name: "", type: "builtin" as ProcessorInfo["type"], accountId: "" });
 
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethods>({
-    cash: true, credit: true, debit: true, mobileWallets: true, bnpl: false,
-  });
-
+  const [cashEnabled, setCashEnabled] = useState(true);
   const [startingCashAmount, setStartingCashAmount] = useState("200.00");
   const preAuthSettings = useStoreSettingsStore((s) => s.preAuthSettings);
   const updatePreAuthSettings = useStoreSettingsStore((s) => s.updatePreAuthSettings);
+  const openDrawerOnTip = useStoreSettingsStore((s) => s.openDrawerOnTip);
+  const setOpenDrawerOnTip = useStoreSettingsStore((s) => s.setOpenDrawerOnTip);
   const [splitPaymentOptions, setSplitPaymentOptions] = useState<SplitPaymentOptions>({ byAmount: true, byItem: true, evenly: true });
   const [expandedSections, setExpandedSections] = useState({ builtin: true, wired: true, bluetooth: true });
 
@@ -234,7 +205,6 @@ const PaymentProcessingScreen = () => {
 
   const renderFormModal = () => {
     const isEdit = modalType === "edit";
-    const presets = PROCESSOR_PRESETS[formData.type] || [];
     return (
       <Modal visible={modalType === "add" || modalType === "edit"} transparent animationType="fade" onRequestClose={closeModal} statusBarTranslucent>
         <View className="flex-1 justify-center items-center bg-black/60 px-6">
@@ -303,32 +273,38 @@ const PaymentProcessingScreen = () => {
       {renderDeleteModal()}
       <View className="mb-6">
         <Text className="text-3xl font-bold text-white">Payment Processing</Text>
-        <Text className="text-gray-400 mt-2">Manage payment methods, gateways, and processing settings.</Text>
+        <Text className="text-gray-400 mt-2">Manage payment gateways and processing settings.</Text>
       </View>
       <View className="h-[1px] w-full bg-gray-700 mb-6" />
       <ScrollView showsVerticalScrollIndicator={false}>
+
+        {/* Payment Methods */}
         <View className="bg-panel p-5 rounded-2xl border border-gray-700 mb-6">
           <View className="flex-row items-center mb-4">
             <Banknote size={24} color={colors.success} />
             <Text className="text-xl font-bold text-white ml-3">Payment Methods</Text>
           </View>
           <Text className="text-gray-400 mb-4">Enable or disable accepted payment methods for your business.</Text>
-          {renderToggleRow("Cash", "Accept cash payments", paymentMethods.cash, () => setPaymentMethods((prev) => ({ ...prev, cash: !prev.cash })), <Banknote size={16} color={colors.success} />)}
-          {renderToggleRow("Credit Cards", "Visa, Mastercard, Amex, Discover", paymentMethods.credit, () => setPaymentMethods((prev) => ({ ...prev, credit: !prev.credit })), <CreditCard size={16} color={colors.info} />)}
-          {renderToggleRow("Debit Cards", "PIN-based debit transactions", paymentMethods.debit, () => setPaymentMethods((prev) => ({ ...prev, debit: !prev.debit })), <CreditCard size={16} color="#a78bfa" />)}
-          {renderToggleRow("Mobile Wallets", "Apple Pay, Google Pay, Samsung Pay", paymentMethods.mobileWallets, () => setPaymentMethods((prev) => ({ ...prev, mobileWallets: !prev.mobileWallets })), <Smartphone size={16} color="#f472b6" />)}
-          <View className="flex-row items-center justify-between py-3">
-            <View className="flex-row items-center flex-1">
-              <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3"><DollarSign size={16} color={colors.warning} /></View>
-              <View className="flex-1">
-                <Text className="text-white font-medium">Buy Now, Pay Later</Text>
-                <Text className="text-gray-400 text-sm">Klarna, Afterpay, Affirm</Text>
-              </View>
-            </View>
-            <Switch checked={paymentMethods.bnpl} onCheckedChange={() => setPaymentMethods((prev) => ({ ...prev, bnpl: !prev.bnpl }))} />
-          </View>
+          {renderToggleRow("Cash", "Accept cash payments", cashEnabled, () => setCashEnabled((prev) => !prev), <Banknote size={16} color={colors.success} />)}
         </View>
 
+        {/* Tips */}
+        <View className="bg-panel p-5 rounded-2xl border border-gray-700 mb-6">
+          <View className="flex-row items-center mb-4">
+            <Receipt size={24} color={colors.warning} />
+            <Text className="text-xl font-bold text-white ml-3">Tips</Text>
+          </View>
+          <Text className="text-gray-400 mb-4">Configure tip-related behavior at checkout.</Text>
+          {renderToggleRow(
+            "Open Cash Drawer on Tip",
+            "Automatically open the cash drawer when a tip is applied",
+            openDrawerOnTip,
+            () => setOpenDrawerOnTip(!openDrawerOnTip),
+            <Banknote size={16} color={colors.success} />
+          )}
+        </View>
+
+        {/* Cash Drawer */}
         <View className="bg-panel p-5 rounded-2xl border border-gray-700 mb-6">
           <View className="flex-row items-center mb-4">
             <DollarSign size={24} color={colors.warning} />
@@ -345,6 +321,7 @@ const PaymentProcessingScreen = () => {
           </View>
         </View>
 
+        {/* Pre-Authorization */}
         <View className="bg-panel p-5 rounded-2xl border border-gray-700 mb-6">
           <View className="flex-row items-center mb-4">
             <ShieldCheck size={24} color="#a78bfa" />
@@ -370,6 +347,7 @@ const PaymentProcessingScreen = () => {
           )}
         </View>
 
+        {/* Split Payment Options */}
         <View className="bg-panel p-5 rounded-2xl border border-gray-700 mb-6">
           <View className="flex-row items-center mb-4">
             <SplitSquareHorizontal size={24} color="#f472b6" />

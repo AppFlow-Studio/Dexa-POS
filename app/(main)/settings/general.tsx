@@ -1,292 +1,375 @@
-import { SessionLogoutButton } from "@/components/auth/SessionLogoutButton";
-import { OperatingHoursTimeSheet } from "@/components/settings/OperatingHoursTimeSheet";
+import PinDisplay from "@/components/auth/PinDisplay";
+import PinNumpad from "@/components/auth/PinNumpad";
+import SessionLogoutModal from "@/components/auth/SessionLogoutModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { FailedSyncsPanel } from "@/components/settings/sync-status/FailedSyncsPanel";
 import { Switch } from "@/components/ui/switch";
-import { colors } from "@/lib/theme";
+import { colors, spinnerColor } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
-import { CacheStats, clearCache, getCacheStats } from "@/services/cacheService";
+import type { MerchantRole } from "@/lib/types";
+import { getDeviceId } from "@/lib/deviceId";
+import { replaceRoute } from "@/lib/rootNavigation";
+import { clearStationData, clearLocationData } from "@/services/cacheService";
+import { syncNow } from "@/services/offlineSyncService";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { replaceRoute } from "@/lib/rootNavigation";
-import { useRouter } from "expo-router";
-import BottomSheet from "@gorhom/bottom-sheet";
-import { format, parse } from "date-fns";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useQueryClient } from "@tanstack/react-query";
+import { useClerk } from "@clerk/clerk-expo";
 import {
   Building2,
   ChevronDown,
   ChevronUp,
   Clock,
-  DollarSign,
-  Globe,
+  ExternalLink,
+  ListChecks,
   LogOut,
   MapPin,
-  Percent,
   Phone,
+  RefreshCw,
+  ShoppingBag,
   Store,
+  Sun,
   Trash2,
+  UtensilsCrossed,
 } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
+  Modal,
   ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
+const MANAGER_ROLES: MerchantRole[] = [
+  "merchant.manager",
+  "merchant.admin",
+  "merchant.owner",
 ];
 
-const TIME_OPTIONS = [
-  "12:00 AM",
-  "12:30 AM",
-  "01:00 AM",
-  "01:30 AM",
-  "02:00 AM",
-  "02:30 AM",
-  "03:00 AM",
-  "03:30 AM",
-  "04:00 AM",
-  "04:30 AM",
-  "05:00 AM",
-  "05:30 AM",
-  "06:00 AM",
-  "06:30 AM",
-  "07:00 AM",
-  "07:30 AM",
-  "08:00 AM",
-  "08:30 AM",
-  "09:00 AM",
-  "09:30 AM",
-  "10:00 AM",
-  "10:30 AM",
-  "11:00 AM",
-  "11:30 AM",
-  "12:00 PM",
-  "12:30 PM",
-  "01:00 PM",
-  "01:30 PM",
-  "02:00 PM",
-  "02:30 PM",
-  "03:00 PM",
-  "03:30 PM",
-  "04:00 PM",
-  "04:30 PM",
-  "05:00 PM",
-  "05:30 PM",
-  "06:00 PM",
-  "06:30 PM",
-  "07:00 PM",
-  "07:30 PM",
-  "08:00 PM",
-  "08:30 PM",
-  "09:00 PM",
-  "09:30 PM",
-  "10:00 PM",
-  "10:30 PM",
-  "11:00 PM",
-  "11:30 PM",
-];
+// ─── Manager PIN Gate Modal ──────────────────────────────────────────────────
 
-const formatTo12Hour = (time: string) => {
-  if (!time) return "";
-  try {
-    const parsed = parse(time, "HH:mm", new Date());
-    return format(parsed, "hh:mm a");
-  } catch (e) {
-    return time; // Fallback if already 12h or invalid
-  }
+interface PinGateModalProps {
+  visible: boolean;
+  title: string;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+const PinGateModal: React.FC<PinGateModalProps> = ({
+  visible,
+  title,
+  onSuccess,
+  onCancel,
+}) => {
+  const [pin, setPin] = useState("");
+  const shakeX = useSharedValue(0);
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shakeX.value }],
+  }));
+
+  const handleVerify = useCallback(() => {
+    const employee = useEmployeeStore.getState().findEmployeeByPin(pin);
+    const isManager = employee && MANAGER_ROLES.includes(employee.role);
+    if (isManager) {
+      setPin("");
+      onSuccess();
+    } else {
+      shakeX.value = withSequence(
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(0, { duration: 100 })
+      );
+      setPin("");
+      toastService.show({
+        title: "Invalid PIN",
+        message: employee
+          ? "This employee does not have manager access."
+          : "PIN does not match any employee.",
+        type: "error",
+      });
+    }
+  }, [pin, onSuccess, shakeX]);
+
+  const handleCancel = () => {
+    setPin("");
+    onCancel();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={handleCancel}
+      statusBarTranslucent
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={handleCancel}
+        className="flex-1 bg-black/60 items-center justify-center px-6"
+      >
+        <TouchableOpacity activeOpacity={1} className="w-full max-w-sm">
+          <View className="bg-panel border border-gray-600 rounded-2xl p-6">
+            <Text className="text-center text-xl font-bold text-white mb-1">
+              Manager PIN Required
+            </Text>
+            <Text className="text-center text-sm text-label mb-4">{title}</Text>
+            <Animated.View style={shakeStyle}>
+              <PinDisplay pinLength={pin.length} maxLength={4} />
+              <PinNumpad
+                onKeyPress={(input) => {
+                  if (typeof input === "number") {
+                    if (pin.length < 4) setPin(pin + input.toString());
+                  } else if (input === "clear") {
+                    setPin("");
+                  } else if (input === "backspace") {
+                    setPin(pin.slice(0, -1));
+                  }
+                }}
+              />
+            </Animated.View>
+            <TouchableOpacity
+              onPress={handleVerify}
+              className="py-2.5 bg-blue-600 rounded-lg mt-3"
+            >
+              <Text className="text-center text-sm font-bold text-white">
+                Verify
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleCancel}
+              className="py-2 mt-2"
+            >
+              <Text className="text-center text-sm text-label">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
 };
 
-const formatTo24Hour = (time: string) => {
-  if (!time) return "";
-  try {
-    const parsed = parse(time, "hh:mm a", new Date());
-    return format(parsed, "HH:mm");
-  } catch (e) {
-    return time;
-  }
-};
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 const GeneralSettingsScreen = () => {
-  const router = useRouter();
-
-  // Zustand Store - only selectedStore for business info, tax rates synced from backend
-  const taxRates = useStoreSettingsStore((s) => s.taxRates);
-  const saveChanges = useStoreSettingsStore((s) => s.saveChanges);
+  const queryClient = useQueryClient();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const clearSelectedStation = useStoreSettingsStore((s) => s.clearSelectedStation);
-  const setStationSessionId = useStoreSettingsStore((s) => s.setStationSessionId);
+  const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
 
-  // Business info from selectedStore only
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+  const setShowMenuImages = useSettingsStore((s) => s.setShowMenuImages);
+
+  // ── Derived display values ──────────────────────────────────────────────
   const displayStoreName = selectedStore?.name || "No store selected";
   const displayAddress = selectedStore
-    ? `${selectedStore.address_line1}${
-        selectedStore.address_line2 ? ", " + selectedStore.address_line2 : ""
-      }, ${selectedStore.city}, ${selectedStore.state} ${
-        selectedStore.postal_code
-      }`
+    ? [
+        selectedStore.address_line1,
+        selectedStore.address_line2,
+        selectedStore.city,
+        selectedStore.state,
+        selectedStore.postal_code,
+      ]
+        .filter(Boolean)
+        .join(", ")
     : "Select a store to see address";
-  const displayPhone = selectedStore?.phone || "";
-  const displayEmail = selectedStore?.email || "";
-  const displayWebsite = ""; // Website not in location data
+  const displayPhone = selectedStore?.phone || "—";
 
-  // Define a type for display hours
   interface DisplayHour {
     day: string;
     open: string;
     close: string;
     enabled: boolean;
   }
-
-  // Convert selected store business hours to the format used by the UI
   const displayHours: DisplayHour[] = selectedStore?.business_hours
-    ? [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-      ].map((day) => {
-        const dayKey =
-          day.toLowerCase() as keyof typeof selectedStore.business_hours;
-        const dayHoursData = selectedStore.business_hours[dayKey];
-        return {
-          day: day,
-          open: dayHoursData?.open || "09:00",
-          close: dayHoursData?.close || "17:00",
-          enabled: !dayHoursData?.is_closed,
-        };
-      })
+    ? ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
+        (day) => {
+          const key = day.toLowerCase() as keyof typeof selectedStore.business_hours;
+          const h = selectedStore.business_hours[key];
+          return { day, open: h?.open || "09:00", close: h?.close || "17:00", enabled: !h?.is_closed };
+        }
+      )
     : [];
 
-  // Local state for service charge (can be added to store later)
-  const [serviceCharge, setServiceCharge] = useState({
-    enabled: true,
-    autoGratuity: true,
-    largePartySize: "6",
-    rate: "18.00",
-  });
-
-  // Local state for additional tax settings not in store
-  const [taxLabel, setTaxLabel] = useState("Sales Tax");
-  const [taxInclusive, setTaxInclusive] = useState(false);
-  const [taxEnabled, setTaxEnabled] = useState(true);
-
-  const showMenuItemPrices = useSettingsStore((s) => s.showMenuItemPrices);
-  const setShowMenuItemPrices = useSettingsStore((s) => s.setShowMenuItemPrices);
-  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
-  const setShowMenuImages = useSettingsStore((s) => s.setShowMenuImages);
-
-  const [timePickerState, setTimePickerState] = useState<{
-    dayIndex: number;
-    type: "open" | "close";
-  }>({ dayIndex: -1, type: "open" });
-
-  const timeSheetRef = useRef<BottomSheet>(null);
-
+  // ── Collapsible sections ────────────────────────────────────────────────
   const [expandedSections, setExpandedSections] = useState({
     info: true,
-    hours: true,
-    tax: true,
-    service: true,
+    hours: false,
+    display: true,
+    sync: true,
     cache: true,
   });
+  const toggleSection = (s: keyof typeof expandedSections) =>
+    setExpandedSections((prev) => ({ ...prev, [s]: !prev[s] }));
 
-  // Cache clearing state
+  // ── Sync actions ────────────────────────────────────────────────────────
+  const [syncingKey, setSyncingKey] = useState<string | null>(null);
+
+  const handleSyncPOS = async () => {
+    setSyncingKey("pos");
+    try {
+      await syncNow();
+      toastService.show({ title: "POS Synced", message: "All pending operations have been flushed.", type: "success" });
+    } catch {
+      toastService.show({ title: "Sync Failed", message: "Could not sync. Check your connection.", type: "error" });
+    } finally {
+      setSyncingKey(null);
+    }
+  };
+
+  const handleFetchOrders = async () => {
+    if (!selectedStore?.id) return;
+    setSyncingKey("orders");
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["active_orders", selectedStore.id] });
+      toastService.show({ title: "Orders Refreshed", message: "Latest orders have been fetched.", type: "success" });
+    } catch {
+      toastService.show({ title: "Failed", message: "Could not fetch orders.", type: "error" });
+    } finally {
+      setSyncingKey(null);
+    }
+  };
+
+  const handleFetchMenus = async () => {
+    if (!selectedStore?.id) return;
+    setSyncingKey("menus");
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["pos_sync", selectedStore.id] });
+      toastService.show({ title: "Menu Refreshed", message: "Latest menu data has been fetched.", type: "success" });
+    } catch {
+      toastService.show({ title: "Failed", message: "Could not fetch menus.", type: "error" });
+    } finally {
+      setSyncingKey(null);
+    }
+  };
+
+  const handleFetchSettings = async () => {
+    setSyncingKey("settings");
+    try {
+      await queryClient.invalidateQueries({ queryKey: ["pos_sync"] });
+      await queryClient.invalidateQueries({ queryKey: ["standalone_sync"] });
+      toastService.show({ title: "Settings Refreshed", message: "Latest POS settings have been fetched.", type: "success" });
+    } catch {
+      toastService.show({ title: "Failed", message: "Could not fetch settings.", type: "error" });
+    } finally {
+      setSyncingKey(null);
+    }
+  };
+
+  // ── Clear cache (preserves user session) ───────────────────────────────
   const [showClearCacheModal, setShowClearCacheModal] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [cacheStats, setCacheStats] = useState<CacheStats>({
-    orderCount: 0,
-    pendingSyncCount: 0,
-    hasCachedData: false,
-  });
-
-  // Load cache stats on mount
-  useEffect(() => {
-    setCacheStats(getCacheStats());
-  }, []);
 
   const handleClearCache = async () => {
     setIsClearing(true);
     setShowClearCacheModal(false);
-
     try {
-      const result = clearCache();
-
-      if (result.success) {
-        toastService.show({
-          title: "Cache Cleared",
-          message: "All cached data has been cleared. Returning to station select.",
-          type: "success",
-        });
-      } else {
-        toastService.show({
-          title: "Partial Clear",
-          message: `Cleared with ${result.errors.length} error(s). Returning to station select.`,
-          type: "warning",
-        });
-      }
-
-      // Navigate to station-select for clean re-initialization
-      clearSelectedStation();
-      setStationSessionId(null);
-      replaceRoute('(auth)', 'station-select');
-    } catch (error) {
+      // clearStationData preserves employees and Clerk session;
+      // only wipes orders, timeclock, and query cache
+      clearStationData();
       toastService.show({
-        title: "Error",
-        message: "Failed to clear cache. Please try again.",
-        type: "error",
+        title: "Cache Cleared",
+        message: "Orders and local data cleared. Your session is preserved.",
+        type: "success",
       });
+    } catch {
+      toastService.show({ title: "Error", message: "Failed to clear cache.", type: "error" });
+    } finally {
       setIsClearing(false);
     }
   };
 
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  // ── Log out — requires manager PIN ─────────────────────────────────────
+  const { signOut } = useClerk();
+  const supabase = useSupabaseClient();
+  const stationSessionId = useStoreSettingsStore((s) => s.stationSessionId);
+  const clearSelectedStore = useStoreSettingsStore((s) => s.clearSelectedStore);
+  const clearStationSession = useStoreSettingsStore((s) => s.clearStationSession);
+
+  const [showLogoutPinGate, setShowLogoutPinGate] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const endStationSessionOnServer = async () => {
+    if (!stationSessionId || !selectedStore) return;
+    try {
+      await supabase.rpc("pos_staff_logout", {
+        p_session_id: stationSessionId,
+        p_location_id: selectedStore.id,
+        p_pin_code: "",
+        p_device_id: getDeviceId(),
+        p_clock_out: false,
+      });
+    } catch {
+      // Non-blocking — clear local state anyway
+    }
   };
 
-  const toggleDayEnabled = (dayIndex: number) => {
-    // TODO: Implement with API when available
-    console.log("Toggle day enabled:", dayIndex);
+  const handleEndStationSession = async () => {
+    setIsLoggingOut(true);
+    try {
+      await endStationSessionOnServer();
+      clearStationSession();
+      clearStationData();
+      setShowLogoutModal(false);
+      toastService.show({ title: "Session Ended", message: "Station session has been ended.", type: "success" });
+      replaceRoute("(auth)", "station-select");
+    } catch {
+      toastService.show({ title: "Error", message: "Failed to end session. Please try again.", type: "error" });
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
-  const openTimePicker = (dayIndex: number, type: "open" | "close") => {
-    setTimePickerState({ dayIndex, type });
-    timeSheetRef.current?.expand();
+  const handleFullLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await endStationSessionOnServer();
+      clearStationSession();
+      clearSelectedStore();
+      clearLocationData();
+      await signOut();
+      setShowLogoutModal(false);
+      replaceRoute("(auth)", "login");
+    } catch {
+      toastService.show({ title: "Error", message: "Failed to logout. Please try again.", type: "error" });
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
-  const handleTimeSave = (time: string) => {
-    // TODO: Implement with API when available
-    const { dayIndex, type } = timePickerState;
-    console.log("Save time:", dayIndex, type, time);
-  };
-
+  // ── Helpers ─────────────────────────────────────────────────────────────
   const renderSectionHeader = (
     title: string,
     icon: React.ReactNode,
-    section: keyof typeof expandedSections
+    section: keyof typeof expandedSections,
+    badge?: string
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
       className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
     >
-      <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
+      <View className="flex-row items-center gap-3">
+        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center">
           {icon}
         </View>
         <Text className="text-white font-bold text-lg">{title}</Text>
+        {badge && (
+          <View className="px-2 py-0.5 bg-blue-600/30 border border-blue-500/40 rounded-full">
+            <Text className="text-xs text-blue-300">{badge}</Text>
+          </View>
+        )}
       </View>
       {expandedSections[section] ? (
         <ChevronUp size={20} color={colors.label} />
@@ -296,410 +379,316 @@ const GeneralSettingsScreen = () => {
     </TouchableOpacity>
   );
 
-  const renderInputField = (
+  const renderSyncButton = (
     label: string,
-    value: string,
-    onChange: (text: string) => void,
-    icon?: React.ReactNode,
-    placeholder?: string
+    subtitle: string,
+    icon: React.ReactNode,
+    key: string,
+    onPress: () => void
   ) => (
-    <View className="mb-4">
-      <Text className="text-gray-400 text-sm font-medium mb-2">{label}</Text>
-      <View className="flex-row items-center bg-surface border border-gray-600 rounded-lg overflow-hidden">
-        {icon && (
-          <View className="p-3 bg-card border-r border-gray-600">
-            {icon}
-          </View>
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={syncingKey !== null}
+      className="flex-row items-center p-3 bg-surface border border-border rounded-xl mb-2"
+    >
+      <View className="w-10 h-10 bg-card rounded-lg items-center justify-center mr-3">
+        {syncingKey === key ? (
+          <ActivityIndicator size="small" color={spinnerColor} />
+        ) : (
+          icon
         )}
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          className="flex-1 p-3 text-white text-base"
-          placeholder={placeholder}
-          placeholderTextColor={colors.muted}
-        />
       </View>
-    </View>
+      <View className="flex-1">
+        <Text className="text-white font-semibold text-sm">{label}</Text>
+        <Text className="text-label text-xs mt-0.5">{subtitle}</Text>
+      </View>
+      {syncingKey !== key && (
+        <RefreshCw size={16} color={colors.label} />
+      )}
+    </TouchableOpacity>
   );
 
-  // Format address for display (fallback when no store selected)
-  const addressString = displayAddress;
-
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View className="flex-1 bg-screen p-6">
+    <View className="flex-1 bg-screen p-6">
+      <View className="mb-6">
+        <Text className="text-3xl font-bold text-white">General Settings</Text>
+        <Text className="text-gray-400 mt-1">
+          Business information, display preferences, and system utilities.
+        </Text>
+      </View>
+
+      <View className="h-px w-full bg-gray-700 mb-6" />
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Failed Sync Operations */}
         <View className="mb-6">
-          <Text className="text-3xl font-bold text-white">
-            General Settings
-          </Text>
-          <Text className="text-gray-400 mt-2">
-            Manage business information, operating hours, and tax
-            configurations.
-          </Text>
+          <FailedSyncsPanel />
         </View>
 
-        <View className="h-px w-full bg-gray-700 mb-6" />
+        {/* ── Business Information (read-only) ── */}
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+          {renderSectionHeader(
+            "Business Information",
+            <Store size={20} color={colors.info} />,
+            "info",
+            "Read-only"
+          )}
+          {expandedSections.info && (
+            <View className="p-5">
+              <View className="flex-row items-center gap-2 mb-4 p-3 bg-blue-900/20 border border-blue-700/40 rounded-lg">
+                <ExternalLink size={14} color="#60a5fa" />
+                <Text className="text-blue-300 text-xs flex-1">
+                  To update business information, visit your dashboard on the website.
+                </Text>
+              </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Failed Sync Operations (Dead Letter Queue) */}
-          <View className="mb-6">
-            <FailedSyncsPanel />
-          </View>
-
-          {/* Business Information */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader(
-              "Business Information",
-              <Store size={20} color={colors.info} />,
-              "info"
-            )}
-            {expandedSections.info && (
-              <View className="p-5">
-                {renderInputField(
-                  "Business Name",
-                  displayStoreName,
-                  () => {}, // Read-only for now, API integration later
-                  <Building2 size={18} color={colors.info} />
-                )}
-                {renderInputField(
-                  "Address",
-                  addressString,
-                  () => {},
-                  <MapPin size={18} color={colors.danger} />
-                )}
-                <View className="flex-row gap-4">
-                  <View className="flex-1">
-                    {renderInputField(
-                      "Phone",
-                      displayPhone || "",
-                      () => {}, // Read-only for now
-                      <Phone size={18} color={colors.success} />
-                    )}
-                  </View>
-                  <View className="flex-1">
-                    {renderInputField(
-                      "Website",
-                      displayWebsite,
-                      () => {}, // Read-only for now
-                      <Globe size={18} color="#a78bfa" />
-                    )}
-                  </View>
+              {/* Business Name */}
+              <View className="mb-3">
+                <Text className="text-xs text-label mb-1 font-medium">Business Name</Text>
+                <View className="flex-row items-center bg-surface border border-gray-700 rounded-lg px-3 py-3 gap-2">
+                  <Building2 size={16} color={colors.info} />
+                  <Text className="text-white text-sm flex-1">{displayStoreName}</Text>
                 </View>
               </View>
-            )}
-          </View>
 
-          {/* Operating Hours */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader(
-              "Operating Hours",
-              <Clock size={20} color={colors.warning} />,
-              "hours"
-            )}
-            {expandedSections.hours && (
-              <View className="p-5">
-                <Text className="text-gray-400 text-sm mb-4">
-                  Tap on times to change. Toggle switch to enable/disable days.
+              {/* Address */}
+              <View className="mb-3">
+                <Text className="text-xs text-label mb-1 font-medium">Address</Text>
+                <View className="flex-row items-center bg-surface border border-gray-700 rounded-lg px-3 py-3 gap-2">
+                  <MapPin size={16} color={colors.danger} />
+                  <Text className="text-white text-sm flex-1">{displayAddress}</Text>
+                </View>
+              </View>
+
+              {/* Phone */}
+              <View>
+                <Text className="text-xs text-label mb-1 font-medium">Phone</Text>
+                <View className="flex-row items-center bg-surface border border-gray-700 rounded-lg px-3 py-3 gap-2">
+                  <Phone size={16} color={colors.success} />
+                  <Text className="text-white text-sm flex-1">{displayPhone}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* ── Operating Hours (read-only) ── */}
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+          {renderSectionHeader(
+            "Operating Hours",
+            <Clock size={20} color={colors.warning} />,
+            "hours",
+            "Read-only"
+          )}
+          {expandedSections.hours && (
+            <View className="p-5">
+              <View className="flex-row items-center gap-2 mb-4 p-3 bg-blue-900/20 border border-blue-700/40 rounded-lg">
+                <ExternalLink size={14} color="#60a5fa" />
+                <Text className="text-blue-300 text-xs flex-1">
+                  To update operating hours, visit your dashboard on the website.
                 </Text>
-                {displayHours.map((dayHoursItem, index) => (
+              </View>
+
+              {displayHours.length === 0 ? (
+                <Text className="text-label text-sm text-center py-2">No hours configured.</Text>
+              ) : (
+                displayHours.map((h) => (
                   <View
-                    key={dayHoursItem.day}
-                    className={`flex-row items-center justify-between py-3 border-b border-gray-700 ${
-                      !dayHoursItem.enabled ? "opacity-50" : ""
+                    key={h.day}
+                    className={`flex-row items-center justify-between py-2.5 border-b border-gray-700/50 ${
+                      !h.enabled ? "opacity-40" : ""
                     }`}
                   >
-                    <Text className="text-white font-medium w-24">
-                      {dayHoursItem.day}
-                    </Text>
-                    <View className="flex-row items-center flex-1 justify-end gap-3">
-                      <TouchableOpacity
-                        onPress={() =>
-                          dayHoursItem.enabled && openTimePicker(index, "open")
-                        }
-                        className="bg-surface px-3 py-2 rounded-lg border border-gray-600"
-                        disabled={!dayHoursItem.enabled}
-                      >
-                        <Text className="text-white font-medium">
-                          {formatTo12Hour(dayHoursItem.open)}
-                        </Text>
-                      </TouchableOpacity>
-                      <Text className="text-gray-500">-</Text>
-                      <TouchableOpacity
-                        onPress={() =>
-                          dayHoursItem.enabled && openTimePicker(index, "close")
-                        }
-                        className="bg-surface px-3 py-2 rounded-lg border border-gray-600"
-                        disabled={!dayHoursItem.enabled}
-                      >
-                        <Text className="text-white font-medium">
-                          {formatTo12Hour(dayHoursItem.close)}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View className="ml-4">
-                      <Switch
-                        checked={dayHoursItem.enabled}
-                        onCheckedChange={() => toggleDayEnabled(index)}
-                      />
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          {/* Tax Settings */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader(
-              "Tax Configuration",
-              <Percent size={20} color={colors.success} />,
-              "tax"
-            )}
-            {expandedSections.tax && (
-              <View className="p-5">
-                <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                  <View>
-                    <Text className="text-white font-medium">
-                      Enable Sales Tax
-                    </Text>
-                    <Text className="text-gray-400 text-sm">
-                      Apply tax to orders based on category rates
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={taxEnabled}
-                    onCheckedChange={setTaxEnabled}
-                  />
-                </View>
-
-                {/* Tax Rates List */}
-                <Text className="text-gray-400 text-sm mb-3 font-medium">
-                  Tax Rates by Category
-                </Text>
-                {taxRates.length === 0 ? (
-                  <View className="bg-surface rounded-lg p-4">
-                    <Text className="text-gray-400 text-center">
-                      No tax rates configured. Tax rates will be loaded from
-                      your location settings.
-                    </Text>
-                  </View>
-                ) : (
-                  taxRates.map((rate) => (
-                    <View
-                      key={rate.id}
-                      className="flex-row justify-between items-center py-3 border-b border-gray-600"
-                    >
-                      <View>
-                        <Text className="text-white font-medium">
-                          {rate.name}
-                        </Text>
-                        <Text className="text-gray-400 text-sm">
-                          Category: {rate.tax_category}
-                        </Text>
-                      </View>
-                      <Text className="text-green-400 font-bold text-lg">
-                        {rate.percentage}%
+                    <Text className="text-white font-medium w-28 text-sm">{h.day}</Text>
+                    {h.enabled ? (
+                      <Text className="text-label text-sm">
+                        {h.open} – {h.close}
                       </Text>
-                    </View>
-                  ))
-                )}
-
-                <View className="flex-row items-center justify-between py-3 mt-4 border-b border-gray-700">
-                  <View>
-                    <Text className="text-white font-medium">
-                      Tax Included in Price
-                    </Text>
-                    <Text className="text-gray-400 text-sm">
-                      Prices displayed on menu already include tax
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={taxInclusive}
-                    onCheckedChange={setTaxInclusive}
-                  />
-                </View>
-
-                <View className="flex-row items-center justify-between py-3 mt-4 border-b border-gray-700">
-                  <View className="flex-1 mr-4">
-                    <Text className="text-white font-medium">
-                      Show Menu Item Prices
-                    </Text>
-                    <Text className="text-gray-400 text-sm">
-                      Display prices on menu items in the order screen
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={showMenuItemPrices}
-                    onCheckedChange={setShowMenuItemPrices}
-                  />
-                </View>
-
-                <View className="flex-row items-center justify-between py-3 mt-4">
-                  <View className="flex-1 mr-4">
-                    <Text className="text-white font-medium">
-                      Show Menu Item Images
-                    </Text>
-                    <Text className="text-gray-400 text-sm">
-                      Display images on menu items in the order screen
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={showMenuImages}
-                    onCheckedChange={setShowMenuImages}
-                  />
-                </View>
-              </View>
-            )}
-          </View>
-
-          {/* Service Charges */}
-          {/* <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader(
-              "Service Charges & Gratuity",
-              <DollarSign size={20} color={colors.warning} />,
-              "service"
-            )}
-            {expandedSections.service && (
-              <View className="p-5">
-                <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                  <View>
-                    <Text className="text-white font-medium">
-                      Enable Auto-Gratuity
-                    </Text>
-                    <Text className="text-gray-400 text-sm">
-                      Automatically add service charge for large parties
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={serviceCharge.autoGratuity}
-                    onCheckedChange={(v) =>
-                      setServiceCharge((prev) => ({ ...prev, autoGratuity: v }))
-                    }
-                  />
-                </View>
-                <View className="flex-row gap-4">
-                  <View className="flex-1">
-                    {renderInputField(
-                      "Party Size Threshold",
-                      serviceCharge.largePartySize,
-                      (t) =>
-                        setServiceCharge((prev) => ({
-                          ...prev,
-                          largePartySize: t,
-                        })),
-                      null,
-                      "e.g. 6"
+                    ) : (
+                      <Text className="text-gray-500 text-sm italic">Closed</Text>
                     )}
                   </View>
-                  <View className="flex-1">
-                    {renderInputField(
-                      "Gratuity Percentage (%)",
-                      serviceCharge.rate,
-                      (t) => setServiceCharge((prev) => ({ ...prev, rate: t })),
-                      <Percent size={18} color={colors.label} />
-                    )}
-                  </View>
-                </View>
-              </View>
-            )}
-          </View> */}
+                ))
+              )}
+            </View>
+          )}
+        </View>
 
-          <TouchableOpacity
-            onPress={saveChanges}
-            className="w-full bg-blue-600 py-4 rounded-xl items-center mb-6"
-          >
-            <Text className="text-white font-bold text-lg">Save Changes</Text>
-          </TouchableOpacity>
-
-          {/* Cache & Data Section */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader(
-              "Cache & Data",
-              <Trash2 size={20} color={colors.danger} />,
-              "cache"
-            )}
-            {expandedSections.cache && (
-              <View className="p-5">
-                <View className="flex-row items-center justify-between mb-4">
-                  <View className="flex-1 mr-4">
-                    <Text className="text-white font-medium">Clear Cache</Text>
-                    <Text className="text-gray-400 text-sm">
-                      Clear orders, sync queues, and session data
-                    </Text>
-                    {cacheStats.hasCachedData && (
-                      <Text className="text-amber-400 text-xs mt-1">
-                        {cacheStats.orderCount} orders, {cacheStats.pendingSyncCount} pending sync
-                      </Text>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setShowClearCacheModal(true)}
-                    className="bg-red-600 px-4 py-2 rounded-lg"
-                    disabled={isClearing}
-                  >
-                    <Text className="text-white font-semibold">
-                      {isClearing ? "Clearing..." : "Clear"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <Text className="text-gray-500 text-xs">
-                  Device ID, store settings, and employee data will be preserved.
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Log Out Section */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-10 p-5">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-red-500/20 rounded-lg items-center justify-center mr-3">
-                  <LogOut size={20} color={colors.danger} />
-                </View>
-                <View>
-                  <Text className="text-white font-bold text-lg">Log Out</Text>
-                  <Text className="text-gray-400 text-sm">
-                    End station session or sign out completely
+        {/* ── Display Preferences ── */}
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+          {renderSectionHeader(
+            "Display",
+            <Sun size={20} color="#f59e0b" />,
+            "display"
+          )}
+          {expandedSections.display && (
+            <View className="p-5 gap-1">
+              {/* Show Menu Item Images */}
+              <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
+                <View className="flex-1 mr-4">
+                  <Text className="text-white font-medium">Show Menu Item Images</Text>
+                  <Text className="text-label text-xs mt-0.5">
+                    Display images on menu items in the order screen
                   </Text>
                 </View>
+                <Switch checked={showMenuImages} onCheckedChange={setShowMenuImages} />
               </View>
-              <SessionLogoutButton />
+
+              {/* Theme: coming soon placeholder */}
+              <View className="flex-row items-center justify-between py-3">
+                <View className="flex-1 mr-4">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-white font-medium">App Theme</Text>
+                    <View className="px-1.5 py-0.5 bg-gray-700 rounded">
+                      <Text className="text-xs text-gray-400">Coming Soon</Text>
+                    </View>
+                  </View>
+                  <Text className="text-label text-xs mt-0.5">
+                    Choose between Dark and Light mode
+                  </Text>
+                </View>
+                <View className="flex-row gap-2">
+                  <View className="px-3 py-1.5 bg-blue-600/20 border border-blue-500/40 rounded-lg">
+                    <Text className="text-blue-300 text-xs font-medium">Dark</Text>
+                  </View>
+                  <View className="px-3 py-1.5 bg-surface border border-border rounded-lg opacity-40">
+                    <Text className="text-label text-xs">Light</Text>
+                  </View>
+                </View>
+              </View>
             </View>
+          )}
+        </View>
+
+        {/* ── Sync ── */}
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+          {renderSectionHeader(
+            "Sync",
+            <RefreshCw size={20} color={colors.teal} />,
+            "sync"
+          )}
+          {expandedSections.sync && (
+            <View className="p-5">
+              {renderSyncButton(
+                "Sync POS",
+                "Flush all pending operations to the server",
+                <RefreshCw size={18} color={colors.teal} />,
+                "pos",
+                handleSyncPOS
+              )}
+              {renderSyncButton(
+                "Fetch Latest Orders",
+                "Re-download active orders from the server",
+                <ShoppingBag size={18} color={colors.info} />,
+                "orders",
+                handleFetchOrders
+              )}
+              {renderSyncButton(
+                "Fetch Latest Menus",
+                "Re-download current menu items and categories",
+                <UtensilsCrossed size={18} color="#a78bfa" />,
+                "menus",
+                handleFetchMenus
+              )}
+              {renderSyncButton(
+                "Fetch Latest POS Settings",
+                "Re-download all POS configurations",
+                <ListChecks size={18} color={colors.warning} />,
+                "settings",
+                handleFetchSettings
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* ── Cache & Data ── */}
+        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+          {renderSectionHeader(
+            "Cache & Data",
+            <Trash2 size={20} color={colors.danger} />,
+            "cache"
+          )}
+          {expandedSections.cache && (
+            <View className="p-5">
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-1 mr-4">
+                  <Text className="text-white font-medium">Clear Cache</Text>
+                  <Text className="text-label text-xs mt-0.5">
+                    Clears orders and local data. Your session and account remain active.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowClearCacheModal(true)}
+                  disabled={isClearing}
+                  className="bg-red-600 px-4 py-2 rounded-lg"
+                >
+                  <Text className="text-white font-semibold text-sm">
+                    {isClearing ? "Clearing..." : "Clear"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text className="text-gray-500 text-xs">
+                Device ID, store settings, employees, and your logged-in account will be preserved.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── Log Out (requires manager PIN) ── */}
+        <View className="bg-panel rounded-xl border border-gray-700 mb-10 p-5">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-3">
+              <View className="w-8 h-8 bg-red-500/20 rounded-lg items-center justify-center">
+                <LogOut size={20} color={colors.danger} />
+              </View>
+              <View>
+                <Text className="text-white font-bold text-lg">Log Out</Text>
+                <Text className="text-label text-xs">Requires manager PIN</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowLogoutPinGate(true)}
+              disabled={isLoggingOut}
+              className="px-4 py-2 bg-red-500 rounded-lg"
+            >
+              <Text className="text-white font-semibold text-lg">Log Out</Text>
+            </TouchableOpacity>
           </View>
-        </ScrollView>
+        </View>
+      </ScrollView>
 
-        <OperatingHoursTimeSheet
-          bottomSheetRef={timeSheetRef}
-          initialTime={
-            timePickerState.dayIndex >= 0 &&
-            displayHours[timePickerState.dayIndex]
-              ? formatTo12Hour(
-                  displayHours[timePickerState.dayIndex]?.[timePickerState.type]
-                )
-              : "09:00 AM"
-          }
-          day={
-            timePickerState.dayIndex >= 0 &&
-            displayHours[timePickerState.dayIndex]
-              ? displayHours[timePickerState.dayIndex]?.day
-              : ""
-          }
-          type={timePickerState.type}
-          onSave={handleTimeSave}
-          onClose={() => timeSheetRef.current?.close()}
-        />
+      {/* ── Manager PIN gate for logout ── */}
+      <PinGateModal
+        visible={showLogoutPinGate}
+        title="Approve logout from this station"
+        onSuccess={() => {
+          setShowLogoutPinGate(false);
+          setShowLogoutModal(true);
+        }}
+        onCancel={() => setShowLogoutPinGate(false)}
+      />
 
-        <ConfirmationModal
-          isOpen={showClearCacheModal}
-          onClose={() => setShowClearCacheModal(false)}
-          onConfirm={handleClearCache}
-          title="Clear Cache?"
-          description="This will remove all orders, sync queues, and session data. Device ID and settings will be preserved. This action cannot be undone."
-          confirmText="Clear Cache"
-          variant="destructive"
-        />
-      </View>
-    </GestureHandlerRootView>
+      {/* ── Logout options modal (shown after PIN) ── */}
+      <SessionLogoutModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onEndStationSession={handleEndStationSession}
+        onFullLogout={handleFullLogout}
+        isLoading={isLoggingOut}
+        stationName={selectedStation?.station_name}
+      />
+
+      {/* ── Clear Cache Confirmation ── */}
+      <ConfirmationModal
+        isOpen={showClearCacheModal}
+        onClose={() => setShowClearCacheModal(false)}
+        onConfirm={handleClearCache}
+        title="Clear Cache?"
+        description="This will remove all locally cached orders and session data. Your account, employees, device settings, and store configuration will be preserved."
+        confirmText="Clear Cache"
+        variant="destructive"
+      />
+    </View>
   );
 };
 
