@@ -149,7 +149,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
   // Only subscribe to the order_type, not the entire ordersById object
   const currentOrderType = useOrderStore((s) => {
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
-    return order?.order_type || "Takeaway";
+    return order?.order_type || "takeout";
   });
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails,

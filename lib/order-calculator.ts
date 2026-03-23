@@ -269,7 +269,14 @@ export function calculatePaidStatus(
 ): PaidStatus {
   const nonVoidedPayments = payments?.filter((p) => !p.isVoided) ?? [];
   const totalPaid = nonVoidedPayments.reduce(
-    (sum, p) => sum + (p.amount ?? 0),
+    (sum, p) => {
+      // For cash-priced payments, add back cashSavings to get card-equivalent amount
+      // so comparison against card totalAmount is apples-to-apples
+      const cardEquivalent = p.isCashPriced && p.cashSavings
+        ? (p.amount ?? 0) + p.cashSavings
+        : (p.amount ?? 0);
+      return sum + cardEquivalent;
+    },
     0
   );
 

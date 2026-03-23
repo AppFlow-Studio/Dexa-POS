@@ -309,17 +309,6 @@ const PaymentProcessingScreen = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="bg-panel p-5 rounded-2xl border border-gray-700 mb-6">
           <View className="flex-row items-center mb-4">
-            <CreditCard size={24} color={colors.info} />
-            <Text className="text-xl font-bold text-white ml-3">Payment Processors</Text>
-          </View>
-          <Text className="text-gray-400 mb-4">Configure and manage your payment processing devices and integrations.</Text>
-          {renderProcessorSection("Built-in Processor", "Software-based payment processing (Stripe, Square API)", "builtin", "builtin", <Building2 size={20} color={colors.info} />)}
-          {renderProcessorSection("Wired Card Reader", "USB or ethernet connected terminals", "wired", "wired", <Wifi size={20} color="#a78bfa" />)}
-          {renderProcessorSection("Bluetooth Devices", "Wireless card readers and mobile terminals", "bluetooth", "bluetooth", <Bluetooth size={20} color={colors.teal} />)}
-        </View>
-
-        <View className="bg-panel p-5 rounded-2xl border border-gray-700 mb-6">
-          <View className="flex-row items-center mb-4">
             <Banknote size={24} color={colors.success} />
             <Text className="text-xl font-bold text-white ml-3">Payment Methods</Text>
           </View>

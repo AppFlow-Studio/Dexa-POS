@@ -1,4 +1,5 @@
 import { getDeviceId } from "@/lib/deviceId";
+import { getKitchenSentStatus, getOrderSentStatus } from "@/lib/kitchenStatusUtils";
 import { getSyncJSON, mmkvStorage, setSyncJSON } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import {
@@ -147,7 +148,7 @@ export function getItemEffectiveCashSubtotal(item: CartItem): number {
 function calculateOrderTotals(
   items: CartItem[],
   checkDiscount: Discount | null | undefined,
-  payments: { amount: number }[],
+  payments: { amount: number; isVoided?: boolean; refundedAmount?: number; isCashPriced?: boolean; cashSavings?: number; isPreAuth?: boolean }[],
   taxRatesMap: TaxRatesMap,
 ): OrderTotals {
   return calculateOrderTotalsFromModule({
@@ -592,13 +593,7 @@ const ensureOrderCreated = async (
     const createOrderParams: CreateOrderParams = {
       p_merchant_id: selectedStore.merchant_id,
       p_location_id: selectedStore.id,
-      p_order_type: order.order_type
-        ? order.order_type === "Takeaway"
-          ? "takeout"
-          : order.order_type === "Dine In"
-            ? "dine_in"
-            : (order.order_type.toLowerCase() as DbOrderType)
-        : ("dine_in" as DbOrderType),
+      p_order_type: (order.order_type || "dine_in") as DbOrderType,
       p_table_number: order.service_location_id || null,
       p_customer_name: order.customer_name || null,
       p_customer_phone: order.customer_phone || null,
@@ -629,6 +624,7 @@ const ensureOrderCreated = async (
         service_location_id: order.service_location_id,
         storeId: selectedStore.id,
         merchantId: selectedStore.merchant_id,
+        customer_id: order.customer_id,
       },
     });
 
@@ -703,13 +699,7 @@ const ensureOrderCreated = async (
       const createOrderParams: CreateOrderParams = {
         p_merchant_id: selectedStore.merchant_id,
         p_location_id: selectedStore.id,
-        p_order_type: order.order_type
-          ? order.order_type === "Takeaway"
-            ? "takeout"
-            : order.order_type === "Dine In"
-              ? "dine_in"
-              : (order.order_type.toLowerCase() as DbOrderType)
-          : ("dine_in" as DbOrderType),
+        p_order_type: (order.order_type || "dine_in") as DbOrderType,
         p_table_number: order.service_location_id || null,
         p_customer_name: order.customer_name || null,
         p_customer_phone: order.customer_phone || null,
@@ -786,6 +776,19 @@ const ensureOrderCreated = async (
 
           // Register mapping in ID registry
           await mapLocalToBackend(order.id, backendId);
+
+          // Sync customer_id if it was set before order creation
+          const latestOrder = useOrderStore.getState().ordersById[order.id];
+          if (latestOrder?.customer_id && supabase) {
+            try {
+              await supabase
+                .from("orders")
+                .update({ customer_id: latestOrder.customer_id })
+                .eq("id", backendId);
+            } catch (e) {
+              console.warn("[ensureOrderCreated] Failed to sync pre-set customer_id:", e);
+            }
+          }
 
           return backendId;
         } else {
@@ -1764,6 +1767,13 @@ const syncPaymentToBackend = async (
     if (data?.success) {
       const activeOrderId = useOrderStore.getState().activeOrderId;
 
+      // Pre-compute fully-paid check (used both inside and outside setState)
+      const isFullyPaidByAmounts =
+        (data.order_amount_due != null && data.order_amount_due <= 0.01) ||
+        (data.order_cash_amount_due != null && data.order_cash_amount_due <= 0.01) ||
+        (data.unpaid_cash_total != null && data.unpaid_cash_total <= 0.01);
+      const isFullyPaid = data.order_fully_paid || isFullyPaidByAmounts;
+
       useOrderStore.setState((state) => {
         const currentOrder = state.ordersById[order.id];
         if (!currentOrder) return;
@@ -1842,8 +1852,8 @@ const syncPaymentToBackend = async (
         currentOrder.amount_due = data.order_amount_due;
         currentOrder.cash_amount_due =
           data.order_cash_amount_due ?? data.unpaid_cash_total;
-        currentOrder.paid_status = data.order_fully_paid ? "Paid" : "Partial";
-        currentOrder.check_status = data.order_fully_paid
+        currentOrder.paid_status = isFullyPaid ? "Paid" : "Partial";
+        currentOrder.check_status = isFullyPaid
           ? "Closed"
           : currentOrder.check_status || "Opened";
         currentOrder.order_status =
@@ -1899,7 +1909,7 @@ const syncPaymentToBackend = async (
       // CRITICAL: Auto-close check in backend if fully paid
       // We already updated local state to "Closed" above, but we must ensure backend matches
       // otherwise "Reopen Check" RPC will fail with "Check is not closed"
-      if (data.order_fully_paid) {
+      if (isFullyPaid) {
         const supabase = getOrderStoreSupabaseClient();
         const { loggedInEmployee } = useEmployeeStore.getState();
         const staffId = loggedInEmployee?.profileId;
@@ -2464,7 +2474,7 @@ export const useOrderStore = create<OrderState>()(
           }
 
           // For dine-in orders, sync based on individual item statuses
-          if (order.order_type === "Dine In") {
+          if (order.order_type === "dine_in") {
             const allItemsReady = order.items.every(
               (item) => item.item_status === "ready",
             );
@@ -3995,7 +4005,7 @@ export const useOrderStore = create<OrderState>()(
               check_status: "Opened",
               paid_status: "Unpaid",
               sync_version: 0, // Initialize at 0 for new orders (before backend creation)
-              order_type: details?.tableId ? "Dine In" : "Takeaway",
+              order_type: details?.tableId ? "dine_in" : "takeout",
               items: [],
               payments: [],
               opened_at: new Date().toISOString(),
@@ -4137,7 +4147,7 @@ export const useOrderStore = create<OrderState>()(
                 ...newItem,
                 paidQuantity: 0,
                 item_status:
-                  activeOrder.order_type === "Dine In"
+                  activeOrder.order_type === "dine_in"
                     ? "preparing"
                     : undefined,
                 kitchen_status: "new" as const,
@@ -5092,7 +5102,7 @@ export const useOrderStore = create<OrderState>()(
             let allItemsServed = false;
 
             if (
-              order.order_type === "Dine In" &&
+              order.order_type === "dine_in" &&
               order.order_status !== "draft" &&
               order.service_location_id !== null
             ) {
@@ -5188,7 +5198,7 @@ export const useOrderStore = create<OrderState>()(
 
               // Aggregate order_status for dine-in
               if (
-                order.order_type === "Dine In" &&
+                order.order_type === "dine_in" &&
                 order.order_status !== "draft" &&
                 order.service_location_id !== null
               ) {
@@ -5647,12 +5657,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Sync order_type to orders table
             if (details.order_type !== undefined) {
-              const dbOrderType =
-                details.order_type === "Takeaway"
-                  ? "takeout"
-                  : details.order_type === "Dine In"
-                    ? "dine_in"
-                    : details.order_type?.toLowerCase();
+              const dbOrderType = details.order_type?.toLowerCase() || order.order_type;
               try {
                 const { error } = await supabase
                   .from("orders")
@@ -6303,7 +6308,7 @@ export const useOrderStore = create<OrderState>()(
 
             // For dine-in orders, check if the order is paid before assigning
             if (
-              orderToAssign.order_type === "Dine In" &&
+              orderToAssign.order_type === "dine_in" &&
               orderToAssign.paid_status !== "Paid"
             ) {
               toastService.show({
@@ -6549,6 +6554,9 @@ export const useOrderStore = create<OrderState>()(
             const localPaymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const paymentTimestamp = new Date().toISOString();
 
+            // Determine if this is a cash-priced payment (cash method without forceCardPricing)
+            const isCashPayment = method === "Cash" && !forceCardPricing;
+
             // Build itemsCovered from itemAllocations for payment tracking (with quantities)
             // For full payments without explicit allocations, auto-generate from all unpaid items
             const effectiveAllocations =
@@ -6558,27 +6566,58 @@ export const useOrderStore = create<OrderState>()(
                   (item) =>
                     !item.is_voided && item.quantity > (item.paidQuantity || 0),
                 )
-                .map((item) => ({
-                  itemId: item.db_order_item_id || item.id,
-                  quantity: item.quantity - (item.paidQuantity || 0),
-                  amount:
-                    (item.price || 0) *
-                    (item.quantity - (item.paidQuantity || 0)),
-                }));
+                .map((item) => {
+                  const unitPrice = isCashPayment
+                    ? (item.cashPrice ?? item.baseCashPrice ?? item.price ?? 0)
+                    : (item.price || 0);
+                  return {
+                    itemId: item.db_order_item_id || item.id,
+                    quantity: item.quantity - (item.paidQuantity || 0),
+                    amount:
+                      unitPrice *
+                      (item.quantity - (item.paidQuantity || 0)),
+                  };
+                });
 
             const itemsCovered = effectiveAllocations.map((alloc) => {
               const item = order.items.find(
                 (i) =>
                   i.db_order_item_id === alloc.itemId || i.id === alloc.itemId,
               );
+              const unitPrice = isCashPayment
+                ? (item?.cashPrice ?? item?.baseCashPrice ?? item?.price ?? 0)
+                : (item?.price || 0);
               return {
                 itemId: alloc.itemId,
                 itemName: item?.name || "Unknown Item",
                 quantity: alloc.quantity,
-                unitPrice: item?.price || 0,
-                subtotal: (item?.price || 0) * alloc.quantity,
+                unitPrice,
+                subtotal: unitPrice * alloc.quantity,
               };
             });
+
+            // Compute cashSavings for cash-priced payments (matches backend original_amount - amount)
+            // cashSavings = card-equivalent amount - cash amount paid
+            // This tells calculateOrderTotals to treat the cash amount as covering the full card equivalent
+            let cashSavingsValue: number | undefined;
+            if (isCashPayment) {
+              const taxRatesMapForSavings = useStoreSettingsStore.getState().taxRatesMap;
+              const prePmtTotals = calculateOrderTotals(
+                order.items,
+                order.checkDiscount,
+                order.payments || [],
+                taxRatesMapForSavings,
+              );
+              const cardOutstanding = prePmtTotals.outstanding_total;
+              const cashOutstanding = prePmtTotals.cash_outstanding_total;
+              if (cashOutstanding > 0 && cardOutstanding > cashOutstanding) {
+                // Proportional: ratio of this payment to cash outstanding * total savings
+                const ratio = Math.min(amount / cashOutstanding, 1);
+                cashSavingsValue = parseFloat(
+                  (ratio * (cardOutstanding - cashOutstanding)).toFixed(2)
+                );
+              }
+            }
 
             const newPayment: OrderProfilePayment = {
               id: localPaymentId, // Use local ID as temporary main ID
@@ -6596,6 +6635,13 @@ export const useOrderStore = create<OrderState>()(
               ...(cardBrand && { cardBrand }),
               ...(last4 && { last4 }),
               ...(transactionDetails && { transactionDetails }),
+              // Cash pricing fields — mirrors backend is_cash_priced / original_amount mapping
+              ...(isCashPayment && {
+                isCashPriced: true,
+                ...(cashSavingsValue != null && cashSavingsValue > 0 && {
+                  cashSavings: cashSavingsValue,
+                }),
+              }),
               // Track split info for reconciliation
               ...(splitCount &&
                 splitPortionIndex && {
@@ -6750,12 +6796,9 @@ export const useOrderStore = create<OrderState>()(
 
               currentOrder.payments = newPayments;
               currentOrder.items = finalItems;
-              currentOrder.total_amount =
-                method === "Cash"
-                  ? totals.cash_total_amount
-                  : totals.total_amount;
-              currentOrder.total_tax =
-                method === "Cash" ? totals.cash_tax_amount : totals.tax_amount;
+              currentOrder.total_amount = totals.total_amount; // Always card total
+              currentOrder.total_cash_amount = totals.cash_total_amount; // Always set for dual pricing display
+              currentOrder.total_tax = totals.tax_amount; // Always card tax
               currentOrder.total_discount = totals.discount_amount;
               // Update order_status to "preparing" if it was in draft/pending
               currentOrder.order_status = newOrderStatus;
@@ -7603,7 +7646,7 @@ export const useOrderStore = create<OrderState>()(
               id: `order_${Date.now()}`,
               service_location_id: primaryTableId,
               order_status: "preparing" as const,
-              order_type: "Dine In" as const,
+              order_type: "dine_in" as const,
               check_status: "Opened" as const,
               paid_status: "Unpaid" as const,
               items: allItems,
@@ -7651,13 +7694,13 @@ export const useOrderStore = create<OrderState>()(
             const updatedItems = currentOrder.items.map((item) => ({
               ...item,
               item_status: "Preparing" as const,
-              kitchen_status: "sent" as const,
+              kitchen_status: getKitchenSentStatus() as any,
             }));
 
             const updatedCurrentOrder: OrderProfile = {
               ...currentOrder,
               items: updatedItems,
-              order_status: "sent_to_kitchen" as const,
+              order_status: getOrderSentStatus() as any,
               check_status: "Opened" as const,
               paid_status:
                 currentOrder.paid_status === "Paid"
@@ -7721,7 +7764,7 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.updateOrderStatus(
                   supabase,
                   currentOrder.db_order_id!,
-                  "sent_to_kitchen",
+                  getOrderSentStatus(),
                 )
                   .then(({ error }) => {
                     if (
@@ -7737,12 +7780,12 @@ export const useOrderStore = create<OrderState>()(
                   })
                   .catch(console.error);
               } else if (dbItemIds.length > 0) {
-                // Update order status FIRST (draft -> sent_to_kitchen)
+                // Update order status FIRST (draft -> sent_to_kitchen/preparing)
                 // Then update items (which also sets sent_to_kitchen_at on the order via trigger)
                 OrderService.updateOrderStatus(
                   supabase,
                   currentOrder.db_order_id!,
-                  "sent_to_kitchen",
+                  getOrderSentStatus(),
                 )
                   .then(({ error }) => {
                     if (
@@ -7765,7 +7808,7 @@ export const useOrderStore = create<OrderState>()(
                     return OrderService.bulkUpdateOrderItemStatus(
                       supabase,
                       dbItemIds,
-                      "sent",
+                      getKitchenSentStatus(),
                     );
                   })
                   .then((result) => {
@@ -7878,7 +7921,7 @@ export const useOrderStore = create<OrderState>()(
                 // If no merge candidate, just mark this new item as 'sent' and add it
                 itemsToKeep.push({
                   ...newItem,
-                  kitchen_status: "sent",
+                  kitchen_status: getKitchenSentStatus(),
                   item_status: "preparing",
                 });
               }
@@ -7903,9 +7946,9 @@ export const useOrderStore = create<OrderState>()(
               order.items = finalCart;
               order.sent_to_kitchen_at =
                 order.sent_to_kitchen_at || new Date().toISOString();
-              // Use sent_to_kitchen if order was draft, keep preparing if already preparing
+              // Use appropriate status if order was draft, keep current if already sent
               if (order.order_status === "draft") {
-                order.order_status = "sent_to_kitchen";
+                order.order_status = getOrderSentStatus();
               }
             });
 
@@ -7935,7 +7978,7 @@ export const useOrderStore = create<OrderState>()(
                 .filter((id): id is string => !!id);
 
               const isDraft = currentOrder.order_status === "draft";
-              const backendStatus = isDraft ? "sent_to_kitchen" : "preparing";
+              const backendStatus = isDraft ? getOrderSentStatus() : "preparing";
 
               if (dbItemIds.length === 0 && newItems.length > 0) {
                 // Items haven't synced to backend yet - queue for retry
@@ -7950,13 +7993,13 @@ export const useOrderStore = create<OrderState>()(
                 );
               } else if (dbItemIds.length > 0) {
                 if (isDraft) {
-                  // Draft order: must update order status FIRST (draft -> sent_to_kitchen)
+                  // Draft order: must update order status FIRST (draft -> sent_to_kitchen/preparing)
                   // before bulk_update_order_item_status can set sent_to_kitchen_at on the order
                   // (valid_status_transitions constraint rejects sent_to_kitchen_at on draft orders)
                   OrderService.updateOrderStatus(
                     supabase,
                     currentOrder.db_order_id!,
-                    "sent_to_kitchen",
+                    getOrderSentStatus(),
                   )
                     .then(({ error }) => {
                       if (
@@ -7979,7 +8022,7 @@ export const useOrderStore = create<OrderState>()(
                       return OrderService.bulkUpdateOrderItemStatus(
                         supabase,
                         dbItemIds,
-                        "sent",
+                        getKitchenSentStatus(),
                       );
                     })
                     .then((result) => {
@@ -8008,7 +8051,7 @@ export const useOrderStore = create<OrderState>()(
                   OrderService.bulkUpdateOrderItemStatus(
                     supabase,
                     dbItemIds,
-                    "sent",
+                    getKitchenSentStatus(),
                   )
                     .then(({ error }) => {
                       if (error) {
@@ -8090,7 +8133,7 @@ export const useOrderStore = create<OrderState>()(
               if (!item.kitchen_status || item.kitchen_status === "new") {
                 return {
                   ...item,
-                  kitchen_status: "sent" as const,
+                  kitchen_status: getKitchenSentStatus() as any,
                   item_status: "Preparing" as const,
                 };
               }
@@ -8099,14 +8142,14 @@ export const useOrderStore = create<OrderState>()(
 
             // Check if the timer needs to be started
             const shouldStartTimer =
-              order.order_type === "Dine In" && !order.opened_at;
+              order.order_type === "dine_in" && !order.opened_at;
 
             const updatedOrder: OrderProfile = {
               ...order,
               items: updatedItems,
               order_status:
                 order.order_status === "draft"
-                  ? "sent_to_kitchen"
+                  ? getOrderSentStatus()
                   : order.order_status,
               sent_to_kitchen_at:
                 order.sent_to_kitchen_at || new Date().toISOString(),
@@ -8141,7 +8184,7 @@ export const useOrderStore = create<OrderState>()(
                 .filter((id): id is string => !!id);
 
               const isDraft = order.order_status === "draft";
-              const backendStatus = isDraft ? "sent_to_kitchen" : "preparing";
+              const backendStatus = isDraft ? getOrderSentStatus() : "preparing";
 
               if (dbItemIds.length === 0 && newItems.length > 0) {
                 // Items haven't synced to backend yet - queue for retry
@@ -8156,14 +8199,14 @@ export const useOrderStore = create<OrderState>()(
                 );
               } else if (dbItemIds.length > 0) {
                 if (isDraft) {
-                  // Draft order: must update order status FIRST (draft -> sent_to_kitchen)
+                  // Draft order: must update order status FIRST (draft -> sent_to_kitchen/preparing)
                   // before bulk_update_order_item_status can set sent_to_kitchen_at
                   // (valid_status_transitions constraint rejects sent_to_kitchen_at on draft orders)
                   const { error: statusError } =
                     await OrderService.updateOrderStatus(
                       supabase,
                       order.db_order_id!,
-                      "sent_to_kitchen",
+                      getOrderSentStatus(),
                     );
                   if (
                     statusError &&
@@ -8186,7 +8229,7 @@ export const useOrderStore = create<OrderState>()(
                     await OrderService.bulkUpdateOrderItemStatus(
                       supabase,
                       dbItemIds,
-                      "sent",
+                      getKitchenSentStatus(),
                     );
                   if (itemError) {
                     console.error(
@@ -8205,7 +8248,7 @@ export const useOrderStore = create<OrderState>()(
                     await OrderService.bulkUpdateOrderItemStatus(
                       supabase,
                       dbItemIds,
-                      "sent",
+                      getKitchenSentStatus(),
                     );
                   if (itemError) {
                     console.error(
@@ -9003,7 +9046,25 @@ export const useOrderStore = create<OrderState>()(
             let isNewOrder = false;
 
             if (!order) {
-              // Creating new order - generate a local ID
+              // Race guard: hydrateOrderFromSeat may have set db_order_id on an
+              // existing order but dbOrderIdIndex isn't populated yet (realtime
+              // broadcast arrived before the RPC response). Scan ordersById as a
+              // fallback to prevent duplicate order creation.
+              const existingEntries = Object.entries(get().ordersById);
+              for (let i = 0; i < existingEntries.length; i++) {
+                const [key, o] = existingEntries[i];
+                if (o.db_order_id === dbOrderIdOrLocalId) {
+                  // Repair the index and return the existing order
+                  set((state) => {
+                    state.dbOrderIdIndex[dbOrderIdOrLocalId] = key;
+                  });
+                  console.log(
+                    `[syncOrderFromDatabase] Race guard: found existing order ${key} for db_order_id ${dbOrderIdOrLocalId}, repaired index`,
+                  );
+                  return key;
+                }
+              }
+              // No existing order — create new
               localOrderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
               isNewOrder = true;
             }
@@ -9022,7 +9083,7 @@ export const useOrderStore = create<OrderState>()(
                   supabase.from("orders").select("*").eq("id", dbOrderId).single(),
                   supabase
                     .from("order_items")
-                    .select("*")
+                    .select("*, order_item_modifiers (*)")
                     .eq("order_id", dbOrderId)
                     .eq("is_voided", false),
                   supabase
@@ -9112,6 +9173,12 @@ export const useOrderStore = create<OrderState>()(
                           cashTaxAmount: dbItem.cash_tax_amount,
                           sync_status: "synced" as const,
                           sync_error: undefined,
+                          customizations: {
+                            ...localItem.customizations,
+                            notes: dbItem.special_instructions || localItem.customizations?.notes,
+                            modifiers: transformBackendModifiers(dbItem.order_item_modifiers)
+                              ?? localItem.customizations?.modifiers,
+                          },
                         };
                       }
                       return localItem;
@@ -9166,6 +9233,7 @@ export const useOrderStore = create<OrderState>()(
                       sync_status: "synced" as const,
                       customizations: {
                         notes: dbItem.special_instructions || undefined,
+                        modifiers: transformBackendModifiers(dbItem.order_item_modifiers),
                       },
                       // Open item support
                       is_open_item: dbItem.is_open_item || false,
@@ -9253,6 +9321,11 @@ export const useOrderStore = create<OrderState>()(
                       isVoided: p.status === "voided",
                       sync_status: "synced" as const,
                       sync_attempt_count: 0,
+                      // Cash pricing fields
+                      isCashPriced: (p as any).is_cash_priced ?? undefined,
+                      cashSavings: (p as any).is_cash_priced && (p as any).original_amount
+                        ? (p as any).original_amount - p.amount
+                        : undefined,
                       // Pre-auth fields
                       isPreAuth,
                       ...(isPreAuth ? {
@@ -9275,10 +9348,14 @@ export const useOrderStore = create<OrderState>()(
                 // This prevents flicker caused by stale/racing backend values
                 const orderTotalAmount =
                   dbOrder.card_total || dbOrder.total_amount || 0;
-                const syncedPaidStatus = calculatePaidStatusFromPayments(
-                  syncedPayments,
-                  orderTotalAmount,
-                );
+                // Prefer backend payment_status when available (most authoritative)
+                // Falls back to local calculation for cases where backend status isn't set
+                const syncedPaidStatus = dbOrder.payment_status
+                  ? mapPaymentStatus(dbOrder.payment_status)
+                  : calculatePaidStatusFromPayments(
+                      syncedPayments,
+                      orderTotalAmount,
+                    );
                 const isPaid = syncedPaidStatus === "Paid";
 
                 // Create base order profile (either update existing or create new)

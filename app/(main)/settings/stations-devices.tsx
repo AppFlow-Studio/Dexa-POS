@@ -1,6 +1,7 @@
 import { CFDPairingQR } from "@/components/cfd/CFDPairingQR";
 import { CFDStatusBadge } from "@/components/cfd/CFDStatusBadge";
 import { createSupabaseClient } from "@/lib/supabase";
+import { colors } from "@/lib/theme";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Station } from "@/types/station";
 import { useAuth } from "@clerk/clerk-expo";
@@ -11,8 +12,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  CreditCard,
   Cpu,
+  CreditCard,
   Monitor,
   Printer,
   RefreshCw,
@@ -22,7 +23,6 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react-native";
-import { colors, spinnerColor } from "@/lib/theme";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -38,7 +38,7 @@ const StationsDevicesScreen = () => {
   const { getToken } = useAuth();
   const supabase = createSupabaseClient(getToken);
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
-  const [showPairing, setShowPairing] = useState(false)
+  const [showPairing, setShowPairing] = useState(false);
 
   const [expandedSections, setExpandedSections] = useState({
     stations: true,
@@ -65,7 +65,7 @@ const StationsDevicesScreen = () => {
         "get_location_stations_with_status",
         {
           p_location_id: selectedStore.id,
-        }
+        },
       );
 
       if (error) throw error;
@@ -80,7 +80,7 @@ const StationsDevicesScreen = () => {
     icon: React.ReactNode,
     title: string,
     subtitle: string,
-    sectionKey: keyof typeof expandedSections
+    sectionKey: keyof typeof expandedSections,
   ) => {
     const isExpanded = expandedSections[sectionKey];
     return (
@@ -109,7 +109,7 @@ const StationsDevicesScreen = () => {
   const renderCapabilityBadge = (
     label: string,
     enabled?: boolean,
-    color: string = "blue"
+    color: string = "blue",
   ) => {
     if (enabled === undefined) return null;
 
@@ -119,16 +119,16 @@ const StationsDevicesScreen = () => {
           ? "bg-blue-600/20"
           : "bg-gray-600/20"
         : enabled
-        ? "bg-green-600/20"
-        : "bg-gray-600/20";
+          ? "bg-green-600/20"
+          : "bg-gray-600/20";
     const textColor =
       color === "blue"
         ? enabled
           ? "text-blue-400"
           : "text-gray-500"
         : enabled
-        ? "text-green-400"
-        : "text-gray-500";
+          ? "text-green-400"
+          : "text-gray-500";
 
     return (
       <View className={`px-2 py-1 rounded ${bgColor}`}>
@@ -230,8 +230,8 @@ const StationsDevicesScreen = () => {
                 station.view_scope === "own"
                   ? "bg-purple-600/20"
                   : station.view_scope === "location"
-                  ? "bg-blue-600/20"
-                  : "bg-green-600/20"
+                    ? "bg-blue-600/20"
+                    : "bg-green-600/20"
               }`}
             >
               <Text
@@ -239,15 +239,15 @@ const StationsDevicesScreen = () => {
                   station.view_scope === "own"
                     ? "text-purple-400"
                     : station.view_scope === "location"
-                    ? "text-blue-400"
-                    : "text-green-400"
+                      ? "text-blue-400"
+                      : "text-green-400"
                 }`}
               >
                 {station.view_scope === "own"
                   ? "Own Orders Only"
                   : station.view_scope === "location"
-                  ? "All Location Orders"
-                  : "Online Orders"}
+                    ? "All Location Orders"
+                    : "Online Orders"}
               </Text>
             </View>
           </View>
@@ -261,33 +261,35 @@ const StationsDevicesScreen = () => {
             {renderCapabilityBadge(
               "Create Orders",
               station.can_create_orders,
-              "green"
+              "green",
             )}
             {renderCapabilityBadge(
               "Process Payments",
               station.can_process_payments,
-              "green"
+              "green",
             )}
             {renderCapabilityBadge(
               "Void Orders",
               station.can_void_orders,
-              "green"
+              "green",
             )}
             {renderCapabilityBadge(
               "Apply Discounts",
               station.can_apply_discounts,
-              "green"
+              "green",
             )}
             {renderCapabilityBadge(
               "Update Kitchen",
               station.can_update_kitchen_status,
-              "green"
+              "green",
             )}
           </View>
         </View>
 
         {/* Device Health Section */}
-        {(station.device_manufacturer || station.hardware_model || station.last_heartbeat_at) && (
+        {(station.device_manufacturer ||
+          station.hardware_model ||
+          station.last_heartbeat_at) && (
           <View className="border-t border-gray-700 pt-3 mb-3">
             <View className="flex-row items-center mb-2">
               <Smartphone size={16} color={colors.label} />
@@ -300,7 +302,8 @@ const StationsDevicesScreen = () => {
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-gray-400 text-sm">Hardware</Text>
                   <Text className="text-white text-sm">
-                    {station.device_manufacturer && `${station.device_manufacturer} `}
+                    {station.device_manufacturer &&
+                      `${station.device_manufacturer} `}
                     {station.hardware_model || station.device_model}
                   </Text>
                 </View>
@@ -329,7 +332,9 @@ const StationsDevicesScreen = () => {
               {station.app_version && (
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-gray-400 text-sm">App Version</Text>
-                  <Text className="text-white text-sm">v{station.app_version}</Text>
+                  <Text className="text-white text-sm">
+                    v{station.app_version}
+                  </Text>
                 </View>
               )}
               {/* Hardware capability badges */}
@@ -337,25 +342,33 @@ const StationsDevicesScreen = () => {
                 {station.has_builtin_printer && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
                     <Printer size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">Printer</Text>
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">
+                      Printer
+                    </Text>
                   </View>
                 )}
                 {station.has_builtin_cfd && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
                     <Monitor size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">CFD</Text>
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">
+                      CFD
+                    </Text>
                   </View>
                 )}
                 {station.has_nfc && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
                     <Cpu size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">NFC</Text>
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">
+                      NFC
+                    </Text>
                   </View>
                 )}
                 {station.has_cash_drawer_port && (
                   <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
                     <CreditCard size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">Cash Drawer</Text>
+                    <Text className="text-xs font-medium text-emerald-400 ml-1">
+                      Cash Drawer
+                    </Text>
                   </View>
                 )}
               </View>
@@ -403,9 +416,9 @@ const StationsDevicesScreen = () => {
                     Last test:{" "}
                     {formatDistanceToNow(
                       new Date(
-                        station.payment_terminal.last_connection_test_at
+                        station.payment_terminal.last_connection_test_at,
                       ),
-                      { addSuffix: true }
+                      { addSuffix: true },
                     )}
                   </Text>
                 )}
@@ -488,8 +501,8 @@ const StationsDevicesScreen = () => {
                 terminal.last_connection_status === "Online"
                   ? "text-green-400"
                   : terminal.last_connection_status === "Offline"
-                  ? "text-red-400"
-                  : "text-gray-400"
+                    ? "text-red-400"
+                    : "text-gray-400"
               }`}
             >
               {terminal.last_connection_status}
@@ -499,7 +512,7 @@ const StationsDevicesScreen = () => {
                 •{" "}
                 {formatDistanceToNow(
                   new Date(terminal.last_connection_test_at),
-                  { addSuffix: true }
+                  { addSuffix: true },
                 )}
               </Text>
             )}
@@ -581,58 +594,7 @@ const StationsDevicesScreen = () => {
 
       <View className="h-px w-full bg-gray-700 mb-6" />
 
-      {/* No stations state */}
-      {!stations || stations.length === 0 ? (
-        <View className="w-full items-center justify-center py-20">
-          <Monitor size={48} color={colors.muted} />
-          <Text className="text-gray-400 text-lg text-center mt-4">
-            No stations available
-          </Text>
-          <Text className="text-gray-500 mt-2 text-center">
-            Contact your administrator to set up stations
-          </Text>
-        </View>
-      ) : (
-        <>
-          {/* Stations Section */}
-          <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-            {renderSectionHeader(
-              <Monitor size={20} color={colors.info} />,
-              "Stations",
-              `${stations.length} station${stations.length !== 1 ? "s" : ""} configured`,
-              "stations"
-            )}
-            {expandedSections.stations && (
-              <View className="p-4">
-                {stations.map((station) => renderStationCard(station))}
-              </View>
-            )}
-          </View>
-
-          {/* Payment Terminals Section */}
-          {stations.some((s) => s.payment_terminal) && (
-            <View className="bg-panel rounded-xl border border-gray-700 mb-6">
-              {renderSectionHeader(
-                <CreditCard size={20} color={colors.success} />,
-                "Payment Terminals",
-                `${stations.filter((s) => s.payment_terminal).length} terminal${
-                  stations.filter((s) => s.payment_terminal).length !== 1
-                    ? "s"
-                    : ""
-                } linked`,
-                "terminals"
-              )}
-              {expandedSections.terminals && (
-                <View className="p-4">
-                  {stations
-                    .filter((s) => s.payment_terminal)
-                    .map((station) => renderTerminalCard(station))}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* CFD Section */}
+      {/* CFD Section */}
       <View className="bg-neutral-900 rounded-xl p-4 mt-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-3">
@@ -646,7 +608,7 @@ const StationsDevicesScreen = () => {
               </Text>
             </View>
           </View>
-          
+
           <CFDStatusBadge onPress={() => setShowPairing(true)} />
         </View>
 
@@ -670,25 +632,22 @@ const StationsDevicesScreen = () => {
         </View>
       </Modal>
 
-          {/* Security Notice */}
-          <View className="bg-gray-800/50 border border-gray-700 p-4 rounded-xl">
-            <View className="flex-row items-start">
-              <Shield size={20} color={colors.info} className="mr-3 mt-0.5" />
-              <View className="flex-1">
-                <Text className="text-blue-400 font-medium mb-1">
-                  Security & Encryption
-                </Text>
-                <Text className="text-gray-400 text-sm leading-5">
-                  All payment terminal auth keys are encrypted in the database
-                  using PGP encryption and are only decrypted in memory during
-                  payment processing. Credentials are never stored persistently
-                  on devices.
-                </Text>
-              </View>
-            </View>
+      {/* Security Notice */}
+      <View className="bg-gray-800/50 border border-gray-700 p-4 mt-12 rounded-xl">
+        <View className="flex-row items-start">
+          <Shield size={20} color={colors.info} className="mr-3 mt-0.5" />
+          <View className="flex-1">
+            <Text className="text-blue-400 font-medium mb-1">
+              Security & Encryption
+            </Text>
+            <Text className="text-gray-400 text-sm leading-5">
+              All payment terminal auth keys are encrypted in the database using
+              PGP encryption and are only decrypted in memory during payment
+              processing. Credentials are never stored persistently on devices.
+            </Text>
           </View>
-        </>
-      )}
+        </View>
+      </View>
     </ScrollView>
   );
 };

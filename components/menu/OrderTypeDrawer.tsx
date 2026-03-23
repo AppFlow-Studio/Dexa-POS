@@ -95,7 +95,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
         customer_id: customer.id,
         customer_email: customer.email || undefined,
         delivery_address:
-          currentOrderType === "Delivery" ? customer.address : undefined,
+          currentOrderType === "delivery" ? customer.address : undefined,
       });
     }
 

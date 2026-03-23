@@ -497,13 +497,13 @@ export function mapOrderType(
 ): OrderProfile["order_type"] {
   switch (orderType) {
     case "dine_in":
-      return "Dine In";
+      return "dine_in";
     case "takeout":
-      return "Takeaway";
+      return "takeout";
     case "delivery":
-      return "Delivery";
+      return "delivery";
     default:
-      return "Takeaway";
+      return "takeout";
   }
 }
 

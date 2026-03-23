@@ -56,12 +56,6 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         route: "/settings/receipt-templates",
       },
       {
-        id: "terminal",
-        label: "Terminal Management",
-        icon: Smartphone,
-        route: "/settings/terminal",
-      },
-      {
         id: "payment-systems",
         label: "Payment Systems",
         icon: Banknote,
@@ -104,46 +98,10 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         route: "/settings/general",
       },
       {
-        id: "multi-location",
-        label: "Multi-Location",
-        icon: MapPin,
-        route: "/settings/multi-location",
-      },
-      {
         id: "payment-processing",
         label: "Payment Processing",
         icon: CreditCard,
         route: "/settings/payment-processing",
-      },
-      {
-        id: "analytics",
-        label: "Real-Time Analytics",
-        icon: BarChart2,
-        route: "/settings/analytics",
-      },
-      {
-        id: "financial",
-        label: "Financial Reports",
-        icon: FileText,
-        route: "/settings/financial",
-      },
-    ],
-  },
-  {
-    id: "team",
-    title: "Team & Access",
-    items: [
-      {
-        id: "staff-permissions",
-        label: "Staff & Permissions",
-        icon: Users,
-        route: "/settings/staff-permissions",
-      },
-      {
-        id: "staff-scheduling",
-        label: "Staff & Scheduling",
-        icon: Calendar,
-        route: "/settings/staff-scheduling",
       },
     ],
   },
@@ -162,12 +120,6 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
         label: "Delivery Management",
         icon: Truck,
         route: "/settings/delivery",
-      },
-      {
-        id: "waitlist",
-        label: "Waitlist & Reservations",
-        icon: ClipboardList,
-        route: "/settings/waitlist",
       },
     ],
   },

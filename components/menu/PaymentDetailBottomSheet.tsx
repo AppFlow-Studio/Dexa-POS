@@ -42,6 +42,7 @@ import {
   Package,
   Printer,
   RefreshCcw,
+  Lock,
   RotateCcw,
   X
 } from 'lucide-react-native'
@@ -100,6 +101,8 @@ interface PaymentRowData {
   tip_adjusted_by?: string
   amountTendered?: number
   changeGiven?: number
+  isPreAuth?: boolean
+  status?: string
 }
 
 type RightPaneView = 'summary' | 'refund' | 'tipAdjust'
@@ -341,6 +344,15 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   total
 }) => {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
+
+  // Determine if order was cash-paid for price display
+  const wasCashPaid = useMemo(() => {
+    const nonVoided = (order?.payments || []).filter((p: any) => !p.isVoided)
+    return (
+      nonVoided.length > 0 &&
+      nonVoided.every((p: any) => p.isCashPriced || p.method === 'Cash')
+    )
+  }, [order?.payments])
 
   // Build timeline entries for an item
   const getItemTimeline = useCallback(
@@ -636,7 +648,9 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                           }`}
                         >
                           {isFullyRefunded && !isVoided ? '-' : ''}$
-                          {((item.price || 0) * item.quantity)?.toFixed(2)}
+                          {((wasCashPaid
+                            ? (item.cashPrice ?? item.baseCashPrice ?? item.price ?? 0)
+                            : (item.price || 0)) * item.quantity)?.toFixed(2)}
                         </Text>
                       </View>
                       {/* Status icon */}
@@ -778,6 +792,7 @@ interface RightPaneSummaryProps {
     orderCashTotal: number
     refunds: number
     collected: number
+    held?: number
     payments: PaymentRowData[]
     tips?: number
   }
@@ -817,7 +832,6 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
     (paymentSummary.collected - (paymentSummary.tips ?? 0)) +
     (paymentSummary.refunds || 0)
   const hasBalanceDue = balanceDue > 0.01
-  console.log('balanceDue', balanceDue?.toFixed(2))
   const hasCardPayments = paymentSummary.payments.some(
     p => p.method === 'Card' && !p.isVoided
   )
@@ -832,7 +846,6 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
     },
     [order?.reversals]
   )
-  console.log('paymentSummary', paymentSummary?.payments?.[0]?.itemsCovered)
   return (
     <View className='flex-[6] bg-screen'>
       <ScrollView
@@ -873,6 +886,14 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               icon={<CircleDollarSign size={16} color={colors.success} />}
               accentColor={colors.success}
             />
+            {(paymentSummary.held ?? 0) > 0 && (
+              <SummaryCard
+                amount={paymentSummary.held!}
+                label='Auth Hold'
+                icon={<Lock size={14} color={colors.warning} />}
+                accentColor={colors.warning}
+              />
+            )}
           </View>
         </View>
 
@@ -968,6 +989,13 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                             </Text>
                           </View>
                         )}
+                        {payment.isPreAuth && !payment.isVoided && (
+                          <View className='ml-2 px-1.5 py-0.5 bg-amber-500/20 rounded'>
+                            <Text className='text-[10px] text-amber-400 font-medium'>
+                              AUTH HOLD
+                            </Text>
+                          </View>
+                        )}
                       </View>
                       <View className='flex-row items-center mt-0.5'>
                         <Text className='text-xs text-gray-500'>
@@ -1000,11 +1028,17 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       )}
                       <Text
                         className={`text-base font-bold ${
-                          payment.isVoided ? 'text-red-400' : 'text-emerald-400'
+                          payment.isVoided
+                            ? 'text-red-400'
+                            : payment.isPreAuth
+                            ? 'text-amber-400'
+                            : 'text-emerald-400'
                         }`}
                       >
                         {payment.isVoided
                           ? 'Voided'
+                          : payment.isPreAuth
+                          ? `$${payment.orderAmount?.toFixed(2)} held`
                           : `$${payment.collected?.toFixed(2)}`}
                       </Text>
                     </View>
@@ -1375,6 +1409,7 @@ interface RightPaneTipAdjustProps {
     orderCashTotal: number
     refunds: number
     collected: number
+    held?: number
     payments: PaymentRowData[]
   }
   onBack: () => void
@@ -2192,6 +2227,7 @@ interface RightPaneRefundProps {
   paymentSummary: {
     orderTotal: number
     collected: number
+    held?: number
     refunds: number
     payments: PaymentRowData[]
   }
@@ -3910,9 +3946,8 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
     let totalRefunded = 0
     let totalCollected = 0
     let totalTips = 0
+    let totalHeld = 0
     const payments: PaymentRowData[] = []
-    // console.log('[PaymentDetailBottomSheet] Order', order)
-    console.log('order.payments', order.payments?.[0])
     if (order.payments && order.payments.length > 0) {
       order.payments.forEach((payment: OrderProfilePayment, index: number) => {
         const orderAmount = payment.amount || 0
@@ -3961,11 +3996,16 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
 
         // Only count non-voided payments for collected and refunded totals
         // Voided payments were never collected, so they don't affect the refundable balance
-        if (!isVoided) {
+        // Authorized holds (pre-auth) are not yet collected — track separately
+        const isAuthorizedHold = !isVoided && (payment.isPreAuth || payment.status === 'authorized')
+        if (!isVoided && !isAuthorizedHold) {
           totalCollected += collected
           totalTips += tipAmount
           // Track actual refunds from this payment (not voided amounts)
           totalRefunded += payment.refundedAmount || 0
+        }
+        if (isAuthorizedHold) {
+          totalHeld += orderAmount
         }
 
         payments.push({
@@ -4001,7 +4041,9 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           tip_adjusted_at: payment.tip_adjusted_at,
           tip_adjusted_by: payment.tip_adjusted_by,
           amountTendered: payment.transactionDetails?.amountTendered,
-          changeGiven: payment.transactionDetails?.changeGiven
+          changeGiven: payment.transactionDetails?.changeGiven,
+          isPreAuth: payment.isPreAuth,
+          status: payment.status
         })
       })
     }
@@ -4011,6 +4053,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       orderCashTotal: order.total_cash_amount || 0,
       refunds: totalRefunded,
       collected: totalCollected,
+      held: totalHeld,
       tips: totalTips,
       payments
     }
@@ -4036,17 +4079,35 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
   }, [isOpen, order, paymentSummary])
 
   // Calculate order totals for left pane
+  // Use cash pricing when all non-voided payments are cash-priced
   const orderTotals = useMemo(() => {
     if (!order) return { subtotal: 0, discount: 0, tax: 0, total: 0 }
 
+    const nonVoidedPayments = (order.payments || []).filter(
+      (p: any) => !p.isVoided
+    )
+    const wasCashPaid =
+      nonVoidedPayments.length > 0 &&
+      nonVoidedPayments.every(
+        (p: any) => p.isCashPriced || p.method === 'Cash'
+      )
+
     const subtotal = (order.items || []).reduce(
-      (sum: number, item: CartItem) =>
-        item.is_voided ? sum : sum + (item.price || 0) * item.quantity,
+      (sum: number, item: CartItem) => {
+        if (item.is_voided) return sum
+        const unitPrice = wasCashPaid
+          ? (item.cashPrice ?? item.baseCashPrice ?? item.price ?? 0)
+          : (item.price || 0)
+        return sum + unitPrice * item.quantity
+      },
       0
     )
     const discount = order.total_discount || 0
     const tax = order.total_tax || 0
-    const total = order.total_amount || 0
+    const total =
+      wasCashPaid && order.total_cash_amount != null
+        ? order.total_cash_amount
+        : order.total_amount || 0
 
     return { subtotal, discount, tax, total }
   }, [order])

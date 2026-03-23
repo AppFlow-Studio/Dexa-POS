@@ -76,9 +76,7 @@ export const initializeEventSubscribers = () => {
       // For takeout/delivery orders that are ready, archive after payment
       const isTakeoutOrDelivery =
         event.orderType === "takeout" ||
-        event.orderType === "Takeaway" ||
-        event.orderType === "delivery" ||
-        event.orderType === "Delivery";
+        event.orderType === "delivery";
 
       if (
         isTakeoutOrDelivery &&

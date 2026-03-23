@@ -30,7 +30,7 @@ import {
     queueOperation,
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
-import { getKitchenSentStatus } from "@/lib/kitchenStatusUtils";
+import { getKitchenSentStatus, getOrderSentStatus } from "@/lib/kitchenStatusUtils";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -1613,8 +1613,9 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             useOrderStore.getState().ordersById,
           ).find((o) => o.db_order_id === resolvedOrderId);
           const currentStatus = currentOrder?.order_status;
+          const targetOrderStatus = getOrderSentStatus();
           const backendStatus =
-            currentStatus === "draft" ? "sent_to_kitchen"
+            currentStatus === "draft" ? targetOrderStatus
             : currentStatus === "sent_to_kitchen" ? "sent_to_kitchen"
             : currentStatus === "preparing" ? "preparing"
             : "preparing";
