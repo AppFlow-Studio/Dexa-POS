@@ -76,7 +76,6 @@ export interface StoreSettings {
   prepTimeAdjustments: {
     kitchenLoad: boolean // +10m if >25 orders
     peakHours: boolean // +5m 5-8PM
-    weather: boolean // +15m if bad weather (simulated)
   }
 
   // Pre-Ordering
@@ -240,7 +239,6 @@ const initialData: StoreSettings = {
   prepTimeAdjustments: {
     kitchenLoad: true,
     peakHours: true,
-    weather: false
   },
   preOrderingEnabled: true,
   preOrderMaxDays: 30,
