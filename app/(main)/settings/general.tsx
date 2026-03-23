@@ -121,11 +121,36 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
         className="flex-1 bg-black/60 items-center justify-center px-6"
       >
         <TouchableOpacity activeOpacity={1} className="w-full max-w-sm">
-          <View className="bg-panel border border-gray-600 rounded-2xl p-6">
-            <Text className="text-center text-xl font-bold text-white mb-1">
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: 16,
+              padding: 24,
+            }}
+          >
+            <Text
+              style={{
+                textAlign: "center",
+                fontSize: 18,
+                fontWeight: "700",
+                color: colors.heading,
+                marginBottom: 4,
+              }}
+            >
               Manager PIN Required
             </Text>
-            <Text className="text-center text-sm text-label mb-4">{title}</Text>
+            <Text
+              style={{
+                textAlign: "center",
+                fontSize: 13,
+                color: colors.label,
+                marginBottom: 16,
+              }}
+            >
+              {title}
+            </Text>
             <Animated.View style={shakeStyle}>
               <PinDisplay pinLength={pin.length} maxLength={4} />
               <PinNumpad
@@ -142,17 +167,30 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
             </Animated.View>
             <TouchableOpacity
               onPress={handleVerify}
-              className="py-2.5 bg-blue-600 rounded-lg mt-3"
+              style={{
+                paddingVertical: 10,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
+                borderRadius: 8,
+                marginTop: 12,
+              }}
             >
-              <Text className="text-center text-sm font-bold text-white">
+              <Text
+                style={{
+                  textAlign: "center",
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.teal,
+                }}
+              >
                 Verify
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleCancel}
-              className="py-2 mt-2"
-            >
-              <Text className="text-center text-sm text-label">Cancel</Text>
+            <TouchableOpacity onPress={handleCancel} style={{ paddingVertical: 8, marginTop: 8 }}>
+              <Text style={{ textAlign: "center", fontSize: 13, color: colors.label }}>
+                Cancel
+              </Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -275,8 +313,6 @@ const GeneralSettingsScreen = () => {
     setIsClearing(true);
     setShowClearCacheModal(false);
     try {
-      // clearStationData preserves employees and Clerk session;
-      // only wipes orders, timeclock, and query cache
       clearStationData();
       toastService.show({
         title: "Cache Cleared",
@@ -358,23 +394,59 @@ const GeneralSettingsScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderBottomWidth: expandedSections[section] ? 1 : 0,
+        borderBottomColor: colors.border,
+      }}
     >
-      <View className="flex-row items-center gap-3">
-        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: colors.teal + "15",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           {icon}
         </View>
-        <Text className="text-white font-bold text-lg">{title}</Text>
+        <Text
+          style={{
+            fontSize: 13,
+            fontWeight: "700",
+            color: colors.heading,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+          }}
+        >
+          {title}
+        </Text>
         {badge && (
-          <View className="px-2 py-0.5 bg-blue-600/30 border border-blue-500/40 rounded-full">
-            <Text className="text-xs text-blue-300">{badge}</Text>
+          <View
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              borderRadius: 20,
+            }}
+          >
+            <Text style={{ fontSize: 11, color: colors.teal }}>{badge}</Text>
           </View>
         )}
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color={colors.label} />
+        <ChevronUp size={16} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color={colors.label} />
+        <ChevronDown size={16} color={colors.label} />
       )}
     </TouchableOpacity>
   );
@@ -389,83 +461,169 @@ const GeneralSettingsScreen = () => {
     <TouchableOpacity
       onPress={onPress}
       disabled={syncingKey !== null}
-      className="flex-row items-center p-3 bg-surface border border-border rounded-xl mb-2"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 10,
+        marginBottom: 8,
+      }}
     >
-      <View className="w-10 h-10 bg-card rounded-lg items-center justify-center mr-3">
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          backgroundColor: colors.teal + "15",
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 12,
+        }}
+      >
         {syncingKey === key ? (
           <ActivityIndicator size="small" color={spinnerColor} />
         ) : (
           icon
         )}
       </View>
-      <View className="flex-1">
-        <Text className="text-white font-semibold text-sm">{label}</Text>
-        <Text className="text-label text-xs mt-0.5">{subtitle}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{subtitle}</Text>
       </View>
       {syncingKey !== key && (
-        <RefreshCw size={16} color={colors.label} />
+        <RefreshCw size={14} color={colors.label} />
       )}
     </TouchableOpacity>
   );
 
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">General Settings</Text>
-        <Text className="text-gray-400 mt-1">
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      {/* Header */}
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+          General Settings
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
           Business information, display preferences, and system utilities.
         </Text>
       </View>
 
-      <View className="h-px w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Failed Sync Operations */}
-        <View className="mb-6">
+        <View style={{ marginBottom: 12 }}>
           <FailedSyncsPanel />
         </View>
 
         {/* ── Business Information (read-only) ── */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 12,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Business Information",
-            <Store size={20} color={colors.info} />,
+            <Store size={16} color={colors.teal} />,
             "info",
             "Read-only"
           )}
           {expandedSections.info && (
-            <View className="p-5">
-              <View className="flex-row items-center gap-2 mb-4 p-3 bg-blue-900/20 border border-blue-700/40 rounded-lg">
-                <ExternalLink size={14} color="#60a5fa" />
-                <Text className="text-blue-300 text-xs flex-1">
+            <View style={{ padding: 14, gap: 10 }}>
+              {/* Info notice */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: 10,
+                  backgroundColor: colors.info + "15",
+                  borderWidth: 1,
+                  borderColor: colors.info + "30",
+                  borderRadius: 8,
+                }}
+              >
+                <ExternalLink size={13} color={colors.info} />
+                <Text style={{ fontSize: 11, color: colors.info, flex: 1 }}>
                   To update business information, visit your dashboard on the website.
                 </Text>
               </View>
 
               {/* Business Name */}
-              <View className="mb-3">
-                <Text className="text-xs text-label mb-1 font-medium">Business Name</Text>
-                <View className="flex-row items-center bg-surface border border-gray-700 rounded-lg px-3 py-3 gap-2">
-                  <Building2 size={16} color={colors.info} />
-                  <Text className="text-white text-sm flex-1">{displayStoreName}</Text>
+              <View>
+                <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4, fontWeight: "500" }}>
+                  Business Name
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    gap: 8,
+                  }}
+                >
+                  <Building2 size={14} color={colors.info} />
+                  <Text style={{ fontSize: 13, color: colors.heading, flex: 1 }}>{displayStoreName}</Text>
                 </View>
               </View>
 
               {/* Address */}
-              <View className="mb-3">
-                <Text className="text-xs text-label mb-1 font-medium">Address</Text>
-                <View className="flex-row items-center bg-surface border border-gray-700 rounded-lg px-3 py-3 gap-2">
-                  <MapPin size={16} color={colors.danger} />
-                  <Text className="text-white text-sm flex-1">{displayAddress}</Text>
+              <View>
+                <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4, fontWeight: "500" }}>
+                  Address
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    gap: 8,
+                  }}
+                >
+                  <MapPin size={14} color={colors.danger} />
+                  <Text style={{ fontSize: 13, color: colors.heading, flex: 1 }}>{displayAddress}</Text>
                 </View>
               </View>
 
               {/* Phone */}
               <View>
-                <Text className="text-xs text-label mb-1 font-medium">Phone</Text>
-                <View className="flex-row items-center bg-surface border border-gray-700 rounded-lg px-3 py-3 gap-2">
-                  <Phone size={16} color={colors.success} />
-                  <Text className="text-white text-sm flex-1">{displayPhone}</Text>
+                <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4, fontWeight: "500" }}>
+                  Phone
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: colors.screen,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    gap: 8,
+                  }}
+                >
+                  <Phone size={14} color={colors.success} />
+                  <Text style={{ fontSize: 13, color: colors.heading, flex: 1 }}>{displayPhone}</Text>
                 </View>
               </View>
             </View>
@@ -473,39 +631,70 @@ const GeneralSettingsScreen = () => {
         </View>
 
         {/* ── Operating Hours (read-only) ── */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 12,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Operating Hours",
-            <Clock size={20} color={colors.warning} />,
+            <Clock size={16} color={colors.teal} />,
             "hours",
             "Read-only"
           )}
           {expandedSections.hours && (
-            <View className="p-5">
-              <View className="flex-row items-center gap-2 mb-4 p-3 bg-blue-900/20 border border-blue-700/40 rounded-lg">
-                <ExternalLink size={14} color="#60a5fa" />
-                <Text className="text-blue-300 text-xs flex-1">
+            <View style={{ padding: 14 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: 10,
+                  backgroundColor: colors.info + "15",
+                  borderWidth: 1,
+                  borderColor: colors.info + "30",
+                  borderRadius: 8,
+                  marginBottom: 12,
+                }}
+              >
+                <ExternalLink size={13} color={colors.info} />
+                <Text style={{ fontSize: 11, color: colors.info, flex: 1 }}>
                   To update operating hours, visit your dashboard on the website.
                 </Text>
               </View>
 
               {displayHours.length === 0 ? (
-                <Text className="text-label text-sm text-center py-2">No hours configured.</Text>
+                <Text style={{ fontSize: 13, color: colors.label, textAlign: "center", paddingVertical: 8 }}>
+                  No hours configured.
+                </Text>
               ) : (
                 displayHours.map((h) => (
                   <View
                     key={h.day}
-                    className={`flex-row items-center justify-between py-2.5 border-b border-gray-700/50 ${
-                      !h.enabled ? "opacity-40" : ""
-                    }`}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: 10,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                      opacity: h.enabled ? 1 : 0.4,
+                    }}
                   >
-                    <Text className="text-white font-medium w-28 text-sm">{h.day}</Text>
+                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500", width: 100 }}>
+                      {h.day}
+                    </Text>
                     {h.enabled ? (
-                      <Text className="text-label text-sm">
+                      <Text style={{ fontSize: 13, color: colors.label }}>
                         {h.open} – {h.close}
                       </Text>
                     ) : (
-                      <Text className="text-gray-500 text-sm italic">Closed</Text>
+                      <Text style={{ fontSize: 13, color: colors.muted, fontStyle: "italic" }}>Closed</Text>
                     )}
                   </View>
                 ))
@@ -515,19 +704,39 @@ const GeneralSettingsScreen = () => {
         </View>
 
         {/* ── Display Preferences ── */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 12,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Display",
-            <Sun size={20} color="#f59e0b" />,
+            <Sun size={16} color={colors.teal} />,
             "display"
           )}
           {expandedSections.display && (
-            <View className="p-5 gap-1">
+            <View style={{ padding: 14, gap: 4 }}>
               {/* Show Menu Item Images */}
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
-                <View className="flex-1 mr-4">
-                  <Text className="text-white font-medium">Show Menu Item Images</Text>
-                  <Text className="text-label text-xs mt-0.5">
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>
+                    Show Menu Item Images
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                     Display images on menu items in the order screen
                   </Text>
                 </View>
@@ -535,24 +744,57 @@ const GeneralSettingsScreen = () => {
               </View>
 
               {/* Theme: coming soon placeholder */}
-              <View className="flex-row items-center justify-between py-3">
-                <View className="flex-1 mr-4">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-white font-medium">App Theme</Text>
-                    <View className="px-1.5 py-0.5 bg-gray-700 rounded">
-                      <Text className="text-xs text-gray-400">Coming Soon</Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>App Theme</Text>
+                    <View
+                      style={{
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        backgroundColor: colors.card,
+                        borderRadius: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, color: colors.muted }}>Coming Soon</Text>
                     </View>
                   </View>
-                  <Text className="text-label text-xs mt-0.5">
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                     Choose between Dark and Light mode
                   </Text>
                 </View>
-                <View className="flex-row gap-2">
-                  <View className="px-3 py-1.5 bg-blue-600/20 border border-blue-500/40 rounded-lg">
-                    <Text className="text-blue-300 text-xs font-medium">Dark</Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "500" }}>Dark</Text>
                   </View>
-                  <View className="px-3 py-1.5 bg-surface border border-border rounded-lg opacity-40">
-                    <Text className="text-label text-xs">Light</Text>
+                  <View
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor: "transparent",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      opacity: 0.4,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.label }}>Light</Text>
                   </View>
                 </View>
               </View>
@@ -561,39 +803,48 @@ const GeneralSettingsScreen = () => {
         </View>
 
         {/* ── Sync ── */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 12,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Sync",
-            <RefreshCw size={20} color={colors.teal} />,
+            <RefreshCw size={16} color={colors.teal} />,
             "sync"
           )}
           {expandedSections.sync && (
-            <View className="p-5">
+            <View style={{ padding: 14 }}>
               {renderSyncButton(
                 "Sync POS",
                 "Flush all pending operations to the server",
-                <RefreshCw size={18} color={colors.teal} />,
+                <RefreshCw size={16} color={colors.teal} />,
                 "pos",
                 handleSyncPOS
               )}
               {renderSyncButton(
                 "Fetch Latest Orders",
                 "Re-download active orders from the server",
-                <ShoppingBag size={18} color={colors.info} />,
+                <ShoppingBag size={16} color={colors.info} />,
                 "orders",
                 handleFetchOrders
               )}
               {renderSyncButton(
                 "Fetch Latest Menus",
                 "Re-download current menu items and categories",
-                <UtensilsCrossed size={18} color="#a78bfa" />,
+                <UtensilsCrossed size={16} color="#a78bfa" />,
                 "menus",
                 handleFetchMenus
               )}
               {renderSyncButton(
                 "Fetch Latest POS Settings",
                 "Re-download all POS configurations",
-                <ListChecks size={18} color={colors.warning} />,
+                <ListChecks size={16} color={colors.warning} />,
                 "settings",
                 handleFetchSettings
               )}
@@ -602,32 +853,48 @@ const GeneralSettingsScreen = () => {
         </View>
 
         {/* ── Cache & Data ── */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 12,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Cache & Data",
-            <Trash2 size={20} color={colors.danger} />,
+            <Trash2 size={16} color={colors.teal} />,
             "cache"
           )}
           {expandedSections.cache && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="flex-1 mr-4">
-                  <Text className="text-white font-medium">Clear Cache</Text>
-                  <Text className="text-label text-xs mt-0.5">
+            <View style={{ padding: 14 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Clear Cache</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                     Clears orders and local data. Your session and account remain active.
                   </Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => setShowClearCacheModal(true)}
                   disabled={isClearing}
-                  className="bg-red-600 px-4 py-2 rounded-lg"
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    backgroundColor: colors.danger + "15",
+                    borderWidth: 1,
+                    borderColor: colors.danger + "30",
+                    borderRadius: 8,
+                  }}
                 >
-                  <Text className="text-white font-semibold text-sm">
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}>
                     {isClearing ? "Clearing..." : "Clear"}
                   </Text>
                 </TouchableOpacity>
               </View>
-              <Text className="text-gray-500 text-xs">
+              <Text style={{ fontSize: 11, color: colors.muted }}>
                 Device ID, store settings, employees, and your logged-in account will be preserved.
               </Text>
             </View>
@@ -635,23 +902,48 @@ const GeneralSettingsScreen = () => {
         </View>
 
         {/* ── Log Out (requires manager PIN) ── */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-10 p-5">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-3">
-              <View className="w-8 h-8 bg-red-500/20 rounded-lg items-center justify-center">
-                <LogOut size={20} color={colors.danger} />
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 32,
+            padding: 14,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  backgroundColor: colors.danger + "15",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <LogOut size={16} color={colors.danger} />
               </View>
               <View>
-                <Text className="text-white font-bold text-lg">Log Out</Text>
-                <Text className="text-label text-xs">Requires manager PIN</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Log Out</Text>
+                <Text style={{ fontSize: 11, color: colors.label }}>Requires manager PIN</Text>
               </View>
             </View>
             <TouchableOpacity
               onPress={() => setShowLogoutPinGate(true)}
               disabled={isLoggingOut}
-              className="px-4 py-2 bg-red-500 rounded-lg"
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                backgroundColor: colors.danger + "15",
+                borderWidth: 1,
+                borderColor: colors.danger + "30",
+                borderRadius: 8,
+              }}
             >
-              <Text className="text-white font-semibold text-lg">Log Out</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger }}>Log Out</Text>
             </TouchableOpacity>
           </View>
         </View>

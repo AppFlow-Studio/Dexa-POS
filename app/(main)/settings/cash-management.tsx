@@ -120,20 +120,17 @@ export default function CashManagementScreen() {
     if (!assigningStation || !selectedStore || !selectedStation) return;
     setIsAssigning(true);
     try {
-      // Unassign any drawer currently on this station
       await supabase
         .from("cash_drawers")
         .update({ station_id: null })
         .eq("station_id", assigningStation.id);
 
-      // Assign the chosen drawer to this station
       const { error } = await supabase
         .from("cash_drawers")
         .update({ station_id: assigningStation.id })
         .eq("id", drawer.id);
       if (error) throw error;
 
-      // If this is the current station, re-hydrate the drawer session
       if (assigningStation.id === selectedStation.id) {
         await hydrateDrawerSession(supabase, selectedStation.id, selectedStore.id);
       }
@@ -184,18 +181,28 @@ export default function CashManagementScreen() {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: 14,
+        backgroundColor: colors.panel,
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+        borderBottomWidth: expandedSections[section] ? 1 : 0,
+        borderBottomColor: colors.border,
+      }}
     >
-      <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ width: 32, height: 32, backgroundColor: colors.teal + "15", borderRadius: 8, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
           {icon}
         </View>
-        <Text className="text-white font-bold text-lg">{title}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{title}</Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color={colors.label} />
+        <ChevronUp size={16} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color={colors.label} />
+        <ChevronDown size={16} color={colors.label} />
       )}
     </TouchableOpacity>
   );
@@ -206,10 +213,10 @@ export default function CashManagementScreen() {
     value: boolean,
     onToggle: (v: boolean) => void
   ) => (
-    <View className="flex-row items-center justify-between py-3 border-b border-gray-800">
-      <View className="flex-1 mr-4">
-        <Text className="text-white text-base">{label}</Text>
-        <Text className="text-gray-500 text-xs mt-0.5">{description}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View style={{ flex: 1, marginRight: 12 }}>
+        <Text style={{ fontSize: 13, color: colors.heading }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{description}</Text>
       </View>
       <Switch checked={value} onCheckedChange={onToggle} />
     </View>
@@ -222,13 +229,13 @@ export default function CashManagementScreen() {
     onChange: (v: number) => void,
     prefix?: string
   ) => (
-    <View className="flex-row items-center justify-between py-3 border-b border-gray-800">
-      <View className="flex-1 mr-4">
-        <Text className="text-white text-base">{label}</Text>
-        <Text className="text-gray-500 text-xs mt-0.5">{description}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View style={{ flex: 1, marginRight: 12 }}>
+        <Text style={{ fontSize: 13, color: colors.heading }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{description}</Text>
       </View>
-      <View className="flex-row items-center">
-        {prefix && <Text className="text-label mr-1">{prefix}</Text>}
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {prefix && <Text style={{ fontSize: 13, color: colors.label, marginRight: 4 }}>{prefix}</Text>}
         <TextInput
           value={String(value)}
           onChangeText={(t) => {
@@ -236,7 +243,18 @@ export default function CashManagementScreen() {
             if (!isNaN(num)) onChange(num);
           }}
           keyboardType="decimal-pad"
-          className="w-20 h-9 px-2 bg-surface border border-border rounded-lg text-white text-center text-sm"
+          style={{
+            width: 72,
+            height: 36,
+            paddingHorizontal: 8,
+            backgroundColor: colors.screen,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            color: colors.heading,
+            fontSize: 13,
+            textAlign: "center",
+          }}
         />
       </View>
     </View>
@@ -244,50 +262,51 @@ export default function CashManagementScreen() {
 
   return (
     <>
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-3xl font-bold text-white">Cash Management</Text>
-          <TouchableOpacity
-            onPress={handleRefresh}
-            disabled={isRefreshing}
-            className="p-2 rounded-lg bg-panel border border-border"
-          >
-            {isRefreshing ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <RefreshCw size={20} color="white" />
-            )}
-          </TouchableOpacity>
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      {/* Header */}
+      <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Cash Management</Text>
+          <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+            Configure cash drawer operations, approval rules, and reconciliation.
+          </Text>
         </View>
-        <Text className="text-gray-400 mt-2">
-          Configure cash drawer operations, approval rules, and reconciliation settings.
-        </Text>
+        <TouchableOpacity
+          onPress={handleRefresh}
+          disabled={isRefreshing}
+          style={{ padding: 8, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+        >
+          {isRefreshing ? (
+            <ActivityIndicator size="small" color={colors.teal} />
+          ) : (
+            <RefreshCw size={16} color={colors.label} />
+          )}
+        </TouchableOpacity>
       </View>
 
-      <View className="h-px w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* ── Cash Register Assignment ── */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Cash Register Assignment",
-            <Monitor size={20} color={colors.info} />,
+            <Monitor size={16} color={colors.info} />,
             "assignment"
           )}
           {expandedSections.assignment && (
-            <View className="p-5">
-              <Text className="text-gray-500 text-xs mb-4">
+            <View style={{ padding: 14 }}>
+              <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 12 }}>
                 Assign a physical cash drawer to each station. Only drawers registered for this location are shown.
               </Text>
 
               {(loadingStations || loadingDrawers) ? (
-                <View className="items-center py-6">
-                  <ActivityIndicator color={colors.info} />
-                  <Text className="text-gray-500 text-xs mt-2">Loading stations…</Text>
+                <View style={{ alignItems: "center", paddingVertical: 20 }}>
+                  <ActivityIndicator color={colors.teal} />
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 8 }}>Loading stations…</Text>
                 </View>
               ) : stations.length === 0 ? (
-                <Text className="text-gray-500 text-sm text-center py-4">No stations found for this location.</Text>
+                <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", paddingVertical: 12 }}>No stations found for this location.</Text>
               ) : (
                 stations.map((station) => {
                   const assignedDrawer = cashDrawers.find((d) => d.station_id === station.id);
@@ -296,63 +315,89 @@ export default function CashManagementScreen() {
                   return (
                     <View
                       key={station.id}
-                      className={`mb-3 rounded-xl border overflow-hidden ${
-                        isCurrentStation ? "border-blue-500/50" : "border-gray-700"
-                      }`}
+                      style={{
+                        marginBottom: 8,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: isCurrentStation ? colors.teal + "50" : colors.border,
+                        overflow: "hidden",
+                      }}
                     >
-                      {/* Station header */}
-                      <View className={`flex-row items-center justify-between px-4 py-3 ${
-                        isCurrentStation ? "bg-blue-600/10" : "bg-surface"
-                      }`}>
-                        <View className="flex-1">
-                          <View className="flex-row items-center gap-2">
-                            <Text className="text-white font-semibold text-sm">
+                      <View style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: isCurrentStation ? colors.teal + "10" : colors.screen,
+                      }}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                               {station.station_name}
                             </Text>
                             {isCurrentStation && (
-                              <View className="bg-blue-600/30 px-1.5 py-0.5 rounded">
-                                <Text className="text-blue-300 text-[10px] font-bold">This Station</Text>
+                              <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 10, color: colors.teal, fontWeight: "700" }}>This Station</Text>
                               </View>
                             )}
                           </View>
-                          <Text className="text-gray-500 text-xs mt-0.5 capitalize">
+                          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1, textTransform: "capitalize" }}>
                             {station.station_type} · #{station.station_number}
                           </Text>
                         </View>
-                        {/* Assigned drawer badge or assign button */}
                         {assignedDrawer ? (
                           <TouchableOpacity
                             onPress={() => handleUnassignDrawer(station)}
-                            className="flex-row items-center gap-1.5 bg-teal/15 border border-teal/40 px-3 py-1.5 rounded-lg"
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 5,
+                              backgroundColor: colors.teal + "15",
+                              borderWidth: 1,
+                              borderColor: colors.teal + "40",
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                            }}
                           >
-                            <Check size={13} color={colors.teal} />
-                            <Text className="text-teal text-xs font-semibold" numberOfLines={1}>
+                            <Check size={12} color={colors.teal} />
+                            <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }} numberOfLines={1}>
                               {assignedDrawer.name}
                             </Text>
-                            <X size={11} color={colors.teal} />
+                            <X size={10} color={colors.teal} />
                           </TouchableOpacity>
                         ) : (
                           <TouchableOpacity
                             onPress={() => setAssigningStation(station)}
-                            className="flex-row items-center gap-1.5 bg-surface border border-gray-600 px-3 py-1.5 rounded-lg"
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 5,
+                              backgroundColor: colors.screen,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                            }}
                           >
-                            <Text className="text-gray-400 text-xs">Assign drawer</Text>
-                            <ChevronRight size={13} color={colors.muted} />
+                            <Text style={{ fontSize: 12, color: colors.label }}>Assign drawer</Text>
+                            <ChevronRight size={12} color={colors.muted} />
                           </TouchableOpacity>
                         )}
                       </View>
 
-                      {/* Drawer detail row (when assigned) */}
                       {assignedDrawer && (
-                        <View className="flex-row items-center gap-2 px-4 py-2 bg-surface/40 border-t border-gray-700/50">
-                          <Banknote size={12} color={colors.muted} />
-                          <Text className="text-gray-500 text-xs">
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.screen, borderTopWidth: 1, borderTopColor: colors.border }}>
+                          <Banknote size={11} color={colors.muted} />
+                          <Text style={{ fontSize: 11, color: colors.muted }}>
                             {assignedDrawer.device_catalog
                               ? `${assignedDrawer.device_catalog.manufacturer} ${assignedDrawer.device_catalog.model_name}`
                               : "Hardware not specified"}
                           </Text>
-                          <Text className="text-gray-700 text-xs mx-1">·</Text>
-                          <Text className="text-gray-600 text-xs">Tap badge to unassign</Text>
+                          <Text style={{ fontSize: 11, color: colors.border, marginHorizontal: 2 }}>·</Text>
+                          <Text style={{ fontSize: 11, color: colors.muted + "80" }}>Tap badge to unassign</Text>
                         </View>
                       )}
                     </View>
@@ -361,9 +406,9 @@ export default function CashManagementScreen() {
               )}
 
               {cashDrawers.length === 0 && !loadingDrawers && (
-                <View className="mt-2 bg-surface rounded-xl border border-gray-700 px-4 py-3">
-                  <Text className="text-gray-400 text-sm font-medium">No cash drawers found</Text>
-                  <Text className="text-gray-600 text-xs mt-0.5">
+                <View style={{ marginTop: 8, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <Text style={{ fontSize: 13, color: colors.label, fontWeight: "500" }}>No cash drawers found</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                     Add drawer records to the cash_drawers table for this location to enable assignment.
                   </Text>
                 </View>
@@ -373,66 +418,66 @@ export default function CashManagementScreen() {
         </View>
 
         {/* Drawer Session */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Drawer Session",
-            <CircleDollarSign size={20} color={colors.teal} />,
+            <CircleDollarSign size={16} color={colors.teal} />,
             "session"
           )}
           {expandedSections.session && (
-            <View className="p-5">
+            <View style={{ padding: 14 }}>
               {!drawerId ? (
-                <Text className="text-gray-500 text-sm italic">
+                <Text style={{ fontSize: 12, color: colors.muted, fontStyle: "italic" }}>
                   No cash drawer assigned to this station.
                 </Text>
               ) : !isSessionOpen ? (
                 <View>
-                  <View className="flex-row items-center justify-between mb-3">
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                     <View>
-                      <Text className="text-white text-base font-semibold">
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                         {drawerName || "Cash Drawer"}
                       </Text>
-                      <Text className="text-gray-500 text-sm">Closed</Text>
+                      <Text style={{ fontSize: 12, color: colors.label }}>Closed</Text>
                     </View>
-                    <View className="flex-row items-center">
-                      <Lock size={16} color={colors.muted} />
-                      <Text className="text-gray-500 text-sm ml-1">Closed</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Lock size={14} color={colors.muted} />
+                      <Text style={{ fontSize: 12, color: colors.muted, marginLeft: 4 }}>Locked</Text>
                     </View>
                   </View>
                   <TouchableOpacity
                     onPress={() => setCashDrawerSheetOpen(true)}
-                    className="py-3 rounded-xl items-center bg-teal"
+                    style={{ paddingVertical: 12, borderRadius: 10, alignItems: "center", backgroundColor: colors.teal }}
                   >
-                    <View className="flex-row items-center gap-2">
-                      <Unlock size={18} color="black" />
-                      <Text className="text-base font-bold text-black">Open Drawer</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Unlock size={16} color="#000" />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#000" }}>Open Drawer</Text>
                     </View>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <View>
-                  <View className="flex-row items-center justify-between mb-3">
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                     <View>
-                      <Text className="text-white text-base font-semibold">
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                         {drawerName || "Cash Drawer"}
                       </Text>
-                      <View className="flex-row items-center mt-0.5">
-                        <View className="w-2 h-2 rounded-full bg-green-400 mr-1.5" />
-                        <Text className="text-green-400 text-sm">Open</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
+                        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success, marginRight: 5 }} />
+                        <Text style={{ fontSize: 12, color: colors.success }}>Open</Text>
                       </View>
                     </View>
-                    <View className="items-end">
-                      <Text className="text-gray-500 text-xs">Running Balance</Text>
-                      <Text className="text-teal text-lg font-bold">
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={{ fontSize: 11, color: colors.label }}>Running Balance</Text>
+                      <Text style={{ fontSize: 17, fontWeight: "700", color: colors.teal }}>
                         {formatCurrency(getRunningBalance())}
                       </Text>
                     </View>
                   </View>
                   <TouchableOpacity
                     onPress={() => setCashDrawerSheetOpen(true)}
-                    className="py-3 rounded-xl items-center bg-surface border border-border"
+                    style={{ paddingVertical: 12, borderRadius: 10, alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
                   >
-                    <Text className="text-base font-semibold text-white">Manage Drawer</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Manage Drawer</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -441,14 +486,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* No Sale Settings */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "No Sale Settings",
-            <ShieldCheck size={20} color={colors.info} />,
+            <ShieldCheck size={16} color={colors.info} />,
             "noSale"
           )}
           {expandedSections.noSale && (
-            <View className="p-5">
+            <View style={{ padding: 14 }}>
               {renderToggleRow(
                 "Require Reason",
                 "Staff must select a reason for No Sale operations",
@@ -478,14 +523,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* Drawer Settings */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Drawer Settings",
-            <Banknote size={20} color={colors.success} />,
+            <Banknote size={16} color={colors.success} />,
             "drawer"
           )}
           {expandedSections.drawer && (
-            <View className="p-5">
+            <View style={{ padding: 14 }}>
               {renderToggleRow(
                 "Blind Close Count",
                 "Hide expected amount during closing count",
@@ -504,14 +549,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* Variance Thresholds */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Variance Thresholds",
-            <DollarSign size={20} color="#facc15" />,
+            <DollarSign size={16} color={colors.warning} />,
             "variance"
           )}
           {expandedSections.variance && (
-            <View className="p-5">
+            <View style={{ padding: 14 }}>
               {renderNumberRow(
                 "Warning Threshold",
                 "Show yellow warning when variance exceeds this amount",
@@ -531,14 +576,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* EOD Settings */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "End of Day",
-            <FileText size={20} color={colors.label} />,
+            <FileText size={16} color={colors.label} />,
             "eod"
           )}
           {expandedSections.eod && (
-            <View className="p-5">
+            <View style={{ padding: 14 }}>
               {renderToggleRow(
                 "Require EOD Before Close",
                 "Cash drawer must be closed through End of Day process",
@@ -564,33 +609,33 @@ export default function CashManagementScreen() {
       onRequestClose={() => setAssigningStation(null)}
     >
       <TouchableOpacity
-        className="flex-1 bg-black/60 items-center justify-center px-6"
+        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}
         activeOpacity={1}
         onPress={() => !isAssigning && setAssigningStation(null)}
       >
         <TouchableOpacity
           activeOpacity={1}
-          className="w-full bg-panel rounded-2xl border border-gray-700 overflow-hidden"
+          style={{ width: "100%", backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}
         >
           {/* Header */}
-          <View className="flex-row items-center justify-between px-4 py-3.5 border-b border-gray-700">
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <View>
-              <Text className="text-white font-bold text-base">Assign Cash Drawer</Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Assign Cash Drawer</Text>
               {assigningStation && (
-                <Text className="text-gray-500 text-xs mt-0.5">
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                   → {assigningStation.station_name}
                 </Text>
               )}
             </View>
-            <TouchableOpacity onPress={() => setAssigningStation(null)} className="p-1">
-              <X size={18} color={colors.muted} />
+            <TouchableOpacity onPress={() => setAssigningStation(null)} style={{ padding: 4 }}>
+              <X size={16} color={colors.muted} />
             </TouchableOpacity>
           </View>
 
           {/* Drawer list */}
-          <View className="p-4">
+          <View style={{ padding: 14 }}>
             {cashDrawers.length === 0 ? (
-              <Text className="text-gray-500 text-sm text-center py-4">
+              <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", paddingVertical: 16 }}>
                 No available drawers for this location.
               </Text>
             ) : (
@@ -606,19 +651,24 @@ export default function CashManagementScreen() {
                     key={drawer.id}
                     onPress={() => !isAssignedElsewhere && !isAssigning && handleAssignDrawer(drawer)}
                     disabled={isAssignedElsewhere || isAssigning}
-                    className={`flex-row items-center mb-2.5 px-4 py-3 rounded-xl border ${
-                      isAssignedHere
-                        ? "bg-teal/10 border-teal/40"
-                        : isAssignedElsewhere
-                          ? "bg-surface border-gray-700 opacity-50"
-                          : "bg-surface border-gray-600"
-                    }`}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      marginBottom: 8,
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: isAssignedHere ? colors.teal + "40" : isAssignedElsewhere ? colors.border : colors.border,
+                      backgroundColor: isAssignedHere ? colors.teal + "10" : colors.screen,
+                      opacity: isAssignedElsewhere ? 0.5 : 1,
+                    }}
                   >
-                    <View className="flex-1">
-                      <Text className={`font-semibold text-sm ${isAssignedElsewhere ? "text-gray-500" : "text-white"}`}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: isAssignedElsewhere ? colors.muted : colors.heading }}>
                         {drawer.name}
                       </Text>
-                      <Text className="text-gray-500 text-xs mt-0.5">
+                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                         {drawer.device_catalog
                           ? `${drawer.device_catalog.manufacturer} ${drawer.device_catalog.model_name}`
                           : "No hardware model"}
@@ -630,11 +680,11 @@ export default function CashManagementScreen() {
                     {isAssigning && isAssignedHere ? (
                       <ActivityIndicator size="small" color={colors.teal} />
                     ) : isAssignedHere ? (
-                      <Check size={16} color={colors.teal} />
+                      <Check size={15} color={colors.teal} />
                     ) : isAssignedElsewhere ? (
-                      <Lock size={14} color={colors.muted} />
+                      <Lock size={13} color={colors.muted} />
                     ) : (
-                      <ChevronRight size={16} color={colors.muted} />
+                      <ChevronRight size={15} color={colors.muted} />
                     )}
                   </TouchableOpacity>
                 );

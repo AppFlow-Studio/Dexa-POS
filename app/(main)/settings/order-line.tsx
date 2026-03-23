@@ -32,85 +32,144 @@ const OrderLineSettingsScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderBottomWidth: expandedSections[section] ? 1 : 0,
+        borderBottomColor: colors.border,
+      }}
     >
-      <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: colors.teal + "15",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 10,
+          }}
+        >
           {icon}
         </View>
-        <Text className="text-white font-bold text-lg">{title}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+          {title}
+        </Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color={colors.label} />
+        <ChevronUp size={16} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color={colors.label} />
+        <ChevronDown size={16} color={colors.label} />
       )}
     </TouchableOpacity>
   );
 
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      {/* Page Header */}
+      <View style={{ marginBottom: 4 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
           Order Line Settings
         </Text>
-        <Text className="text-gray-400 mt-2">
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
           Configure how orders appear in the order line.
         </Text>
       </View>
 
-      <View className="h-px w-full bg-gray-700 mb-6" />
+      <View
+        style={{ height: 1, backgroundColor: colors.border, marginVertical: 14 }}
+      />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Order Visibility */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 14,
+            overflow: "hidden",
+          }}
+        >
           {renderSectionHeader(
             "Order Visibility",
-            <List size={20} color={colors.info} />,
+            <List size={16} color={colors.teal} />,
             "visibility"
           )}
           {expandedSections.visibility && (
-            <View className="p-5">
-              <Text className="text-gray-400 text-sm mb-4">
+            <View style={{ padding: 12 }}>
+              <Text style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}>
                 Choose how many days of orders to display in the order line.
                 Older orders will be hidden from the order line but can still be
                 found in order history.
               </Text>
 
-              {DAY_OPTIONS.map((option) => {
-                const isSelected = orderLineSettings.daysToShow === option.value;
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    onPress={() =>
-                      setOrderLineSettings({ daysToShow: option.value })
-                    }
-                    className={`flex-row items-center justify-between p-4 rounded-lg mb-2 border ${
-                      isSelected
-                        ? "bg-teal/10 border-teal"
-                        : "bg-surface border-gray-600"
-                    }`}
-                  >
-                    <View className="flex-1">
-                      <Text
-                        className={`font-medium text-base ${
-                          isSelected ? "text-blue-400" : "text-white"
-                        }`}
-                      >
-                        {option.label}
-                      </Text>
-                      <Text className="text-gray-400 text-sm mt-1">
-                        {option.description}
-                      </Text>
-                    </View>
-                    {isSelected && (
-                      <View className="w-6 h-6 bg-teal rounded-full items-center justify-center ml-3">
-                        <Check size={14} color="#ffffff" />
+              <View style={{ gap: 6 }}>
+                {DAY_OPTIONS.map((option) => {
+                  const isSelected = orderLineSettings.daysToShow === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      onPress={() =>
+                        setOrderLineSettings({ daysToShow: option.value })
+                      }
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: 12,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        backgroundColor: isSelected
+                          ? colors.teal + "15"
+                          : colors.card,
+                        borderColor: isSelected ? colors.teal : colors.border,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "600",
+                            color: isSelected ? colors.teal : colors.heading,
+                          }}
+                        >
+                          {option.label}
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: colors.label,
+                            marginTop: 2,
+                          }}
+                        >
+                          {option.description}
+                        </Text>
                       </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
+                      {isSelected && (
+                        <View
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 11,
+                            backgroundColor: colors.teal,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginLeft: 10,
+                          }}
+                        >
+                          <Check size={13} color="#ffffff" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           )}
         </View>

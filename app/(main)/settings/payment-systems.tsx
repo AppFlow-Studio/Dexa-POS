@@ -622,18 +622,28 @@ const PaymentSystemsScreen = () => {
   ) => (
     <TouchableOpacity
       onPress={() => toggleSection(section)}
-      className="flex-row items-center justify-between p-4 bg-surface rounded-t-xl border-b border-gray-700"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: 14,
+        backgroundColor: colors.panel,
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+        borderBottomWidth: expandedSections[section] ? 1 : 0,
+        borderBottomColor: colors.border,
+      }}
     >
-      <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-card rounded-lg items-center justify-center mr-3">
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ width: 32, height: 32, backgroundColor: colors.teal + "15", borderRadius: 8, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
           {icon}
         </View>
-        <Text className="text-white font-bold text-lg">{title}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{title}</Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={20} color={colors.label} />
+        <ChevronUp size={16} color={colors.label} />
       ) : (
-        <ChevronDown size={20} color={colors.label} />
+        <ChevronDown size={16} color={colors.label} />
       )}
     </TouchableOpacity>
   );
@@ -643,19 +653,19 @@ const PaymentSystemsScreen = () => {
     (1 + parseFloat(dualPricing.discount || "0") / 100);
 
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">Payment Systems</Text>
-        <Text className="text-gray-400 mt-2">
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Payment Systems</Text>
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
           Advanced payment features, kitchen operations, and compliance tools.
         </Text>
       </View>
 
-      <View className="h-px w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* PAYMENT TERMINAL */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Payment Terminal",
             <Radio size={20} color={colors.info} />,
@@ -702,15 +712,15 @@ const PaymentSystemsScreen = () => {
                       onPress={() => setRegisterFormType("dejavoo")}
                       className={`flex-1 rounded-xl border p-3 items-center ${
                         registerFormType === "dejavoo"
-                          ? "bg-blue-600/20 border-blue-500"
+                          ? "bg-teal-600/20 border-teal-500"
                           : "bg-surface border-gray-700"
                       }`}
                     >
                       <CreditCard size={22} color={registerFormType === "dejavoo" ? colors.info : colors.muted} />
-                      <Text className={`font-bold text-sm mt-1.5 ${registerFormType === "dejavoo" ? "text-blue-300" : "text-gray-400"}`}>
+                      <Text style={{ fontWeight: "700", fontSize: 14, marginTop: 6, color: registerFormType === "dejavoo" ? colors.teal : colors.muted }}>
                         Dejavoo
                       </Text>
-                      <Text className={`text-[10px] mt-0.5 text-center ${registerFormType === "dejavoo" ? "text-blue-400" : "text-gray-600"}`}>
+                      <Text style={{ fontSize: 10, marginTop: 2, textAlign: "center", color: registerFormType === "dejavoo" ? colors.teal : colors.muted }}>
                         Cloud / SPIN API
                       </Text>
                     </TouchableOpacity>
@@ -907,20 +917,23 @@ const PaymentSystemsScreen = () => {
                   <TouchableOpacity
                     onPress={handleRegisterTerminal}
                     disabled={!isRegisterFormValid || isRegistering}
-                    className={`py-3 rounded-xl items-center flex-row justify-center ${
-                      isRegisterFormValid && !isRegistering
-                        ? registerFormType === "dejavoo"
-                          ? "bg-blue-600"
-                          : "bg-purple-600"
-                        : "bg-gray-700"
-                    }`}
+                    style={{
+                      paddingVertical: 12,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      flexDirection: "row",
+                      justifyContent: "center",
+                      backgroundColor: isRegisterFormValid && !isRegistering ? colors.teal + "20" : colors.screen,
+                      borderWidth: 1,
+                      borderColor: isRegisterFormValid && !isRegistering ? colors.teal + "50" : colors.border,
+                    }}
                   >
                     {isRegistering ? (
                       <ActivityIndicator size="small" color="white" />
                     ) : (
                       <>
-                        <Check size={16} color="white" />
-                        <Text className="text-white font-bold ml-2">
+                        <Check size={15} color={isRegisterFormValid ? colors.teal : colors.muted} />
+                        <Text style={{ fontSize: 13, color: isRegisterFormValid ? colors.teal : colors.muted, fontWeight: "700", marginLeft: 6 }}>
                           {registerFormType === "castles" ? "Save & Connect" : "Register Terminal"}
                         </Text>
                       </>
@@ -937,7 +950,7 @@ const PaymentSystemsScreen = () => {
                     <TouchableOpacity
                       onPress={() => setShowTerminalPicker(false)}
                     >
-                      <Text className="text-blue-400">Cancel</Text>
+                      <Text style={{ color: colors.teal }}>Cancel</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -965,7 +978,7 @@ const PaymentSystemsScreen = () => {
                           }
                           className={`bg-surface p-3 rounded-lg border mb-2 flex-row items-center justify-between ${
                             isCurrent
-                              ? "border-blue-500 bg-blue-600/10"
+                              ? "border-teal-500 bg-teal-600/10"
                               : isOtherStation
                                 ? "border-gray-700 opacity-50"
                                 : "border-gray-600"
@@ -986,14 +999,14 @@ const PaymentSystemsScreen = () => {
                                   className={`px-1.5 py-0.5 rounded mr-2 ${
                                     t.terminalType === "castles"
                                       ? "bg-purple-600/30"
-                                      : "bg-blue-600/30"
+                                      : "bg-teal-600/30"
                                   }`}
                                 >
                                   <Text
                                     className={`text-xs font-medium ${
                                       t.terminalType === "castles"
                                         ? "text-purple-300"
-                                        : "text-blue-300"
+                                        : "text-teal-300"
                                     }`}
                                   >
                                     {t.terminalType === "castles"
@@ -1010,8 +1023,8 @@ const PaymentSystemsScreen = () => {
                             </View>
                           </View>
                           {isCurrent && (
-                            <View className="bg-blue-600 px-2 py-1 rounded">
-                              <Text className="text-white text-xs font-bold">
+                            <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.teal + "50" }}>
+                              <Text style={{ fontSize: 11, color: colors.teal, fontWeight: "700" }}>
                                 Current
                               </Text>
                             </View>
@@ -1042,7 +1055,7 @@ const PaymentSystemsScreen = () => {
                     className="flex-row items-center justify-center mt-2 py-2"
                   >
                     <Plus size={16} color={colors.info} />
-                    <Text className="text-blue-400 font-medium ml-1">
+                    <Text style={{ color: colors.teal, fontWeight: "500", marginLeft: 4 }}>
                       Register New Terminal
                     </Text>
                   </TouchableOpacity>
@@ -1054,8 +1067,8 @@ const PaymentSystemsScreen = () => {
                     <View className="flex-row items-center gap-2">
                       <Pencil size={16} color={colors.label} />
                       <Text className="text-white font-bold text-base">Edit Terminal</Text>
-                      <View className={`px-2 py-0.5 rounded ${currentTerminal.terminal_type === "castles" ? "bg-purple-600/30" : "bg-blue-600/30"}`}>
-                        <Text className={`text-xs font-bold ${currentTerminal.terminal_type === "castles" ? "text-purple-300" : "text-blue-300"}`}>
+                      <View className={`px-2 py-0.5 rounded ${currentTerminal.terminal_type === "castles" ? "bg-purple-600/30" : "bg-teal-600/30"}`}>
+                        <Text className={`text-xs font-bold ${currentTerminal.terminal_type === "castles" ? "text-purple-300" : "text-teal-300"}`}>
                           {currentTerminal.terminal_type === "castles" ? "Castles" : "Dejavoo"}
                         </Text>
                       </View>
@@ -1194,20 +1207,23 @@ const PaymentSystemsScreen = () => {
                   <TouchableOpacity
                     onPress={handleSaveEdit}
                     disabled={!isEditFormValid || isSavingEdit}
-                    className={`py-3 rounded-xl items-center flex-row justify-center ${
-                      isEditFormValid && !isSavingEdit
-                        ? currentTerminal.terminal_type === "castles"
-                          ? "bg-purple-600"
-                          : "bg-blue-600"
-                        : "bg-gray-700"
-                    }`}
+                    style={{
+                      paddingVertical: 12,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      flexDirection: "row",
+                      justifyContent: "center",
+                      backgroundColor: isEditFormValid && !isSavingEdit ? colors.teal + "20" : colors.screen,
+                      borderWidth: 1,
+                      borderColor: isEditFormValid && !isSavingEdit ? colors.teal + "50" : colors.border,
+                    }}
                   >
                     {isSavingEdit ? (
                       <ActivityIndicator size="small" color="white" />
                     ) : (
                       <>
-                        <Check size={16} color="white" />
-                        <Text className="text-white font-bold ml-2">Save Changes</Text>
+                        <Check size={15} color={isEditFormValid ? colors.teal : colors.muted} />
+                        <Text style={{ fontSize: 13, color: isEditFormValid ? colors.teal : colors.muted, fontWeight: "700", marginLeft: 6 }}>Save Changes</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -1227,10 +1243,10 @@ const PaymentSystemsScreen = () => {
                             {currentTerminal.terminal_name}
                           </Text>
                           <View className={`px-2 py-0.5 rounded ${
-                            currentTerminal.terminal_type === "castles" ? "bg-purple-600/30" : "bg-blue-600/30"
+                            currentTerminal.terminal_type === "castles" ? "bg-purple-600/30" : "bg-teal-600/30"
                           }`}>
                             <Text className={`text-[10px] font-bold ${
-                              currentTerminal.terminal_type === "castles" ? "text-purple-300" : "text-blue-300"
+                              currentTerminal.terminal_type === "castles" ? "text-purple-300" : "text-teal-300"
                             }`}>
                               {currentTerminal.terminal_type === "castles" ? "Castles" : "Dejavoo"}
                             </Text>
@@ -1295,7 +1311,7 @@ const PaymentSystemsScreen = () => {
                       ) : (
                         <>
                           <RefreshCw size={15} color={currentTerminal.is_connected ? colors.success : colors.info} />
-                          <Text className={`font-medium ml-1.5 text-sm ${currentTerminal.is_connected ? "text-green-400" : "text-blue-400"}`}>
+                          <Text style={{ fontWeight: "500", marginLeft: 6, fontSize: 13, color: currentTerminal.is_connected ? colors.success : colors.teal }}>
                             Test
                           </Text>
                         </>
@@ -1403,18 +1419,18 @@ const PaymentSystemsScreen = () => {
                     {terminals.length > 0 && (
                       <TouchableOpacity
                         onPress={() => setShowTerminalPicker(true)}
-                        className="flex-1 bg-blue-600 py-3 rounded-xl flex-row items-center justify-center"
+                        style={{ flex: 1, backgroundColor: colors.teal + "20", paddingVertical: 12, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.teal + "50" }}
                       >
-                        <CreditCard size={16} color="white" />
-                        <Text className="text-white font-bold ml-2">Assign Existing</Text>
+                        <CreditCard size={15} color={colors.teal} />
+                        <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "700", marginLeft: 6 }}>Assign Existing</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity
                       onPress={() => { setShowRegisterForm(true); setQuickTestStatus("idle"); }}
-                      className="flex-1 bg-surface border border-gray-600 py-3 rounded-xl flex-row items-center justify-center"
+                      style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, paddingVertical: 12, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "center" }}
                     >
-                      <Plus size={16} color={colors.info} />
-                      <Text className="text-blue-400 font-bold ml-2">Register New</Text>
+                      <Plus size={15} color={colors.teal} />
+                      <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "700", marginLeft: 6 }}>Register New</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1424,7 +1440,7 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* TEXT-TO-PAY */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Text-to-Pay",
             <MessageSquare size={20} color="#a78bfa" />,
@@ -1465,7 +1481,7 @@ const PaymentSystemsScreen = () => {
 
                   <TouchableOpacity
                     onPress={() => setTextToPayTestSent(true)}
-                    className={`flex-row items-center justify-center py-3 rounded-lg border mb-4 ${textToPayTestSent ? "bg-green-600/20 border-green-600" : "border-blue-600"}`}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 8, borderWidth: 1, marginBottom: 14, backgroundColor: textToPayTestSent ? colors.success + "20" : "transparent", borderColor: textToPayTestSent ? colors.success : colors.teal }}
                   >
                     {textToPayTestSent ? (
                       <>
@@ -1477,7 +1493,7 @@ const PaymentSystemsScreen = () => {
                     ) : (
                       <>
                         <Send size={18} color={colors.info} />
-                        <Text className="text-blue-400 font-medium ml-2">
+                        <Text style={{ color: colors.teal, fontWeight: "500", marginLeft: 8 }}>
                           Send Test SMS
                         </Text>
                       </>
@@ -1507,7 +1523,7 @@ const PaymentSystemsScreen = () => {
         </View>
 
         {/* KITCHEN THROTTLING */}
-        <View className="bg-panel rounded-xl border border-gray-700 mb-6">
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Smart Kitchen Throttling",
             <Gauge size={20} color={colors.warning} />,

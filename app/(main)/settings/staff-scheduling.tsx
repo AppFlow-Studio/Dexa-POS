@@ -1,28 +1,14 @@
 import PeriodWizard, { PeriodData } from "@/components/scheduling/PeriodWizard";
 import QuickScheduleModal from "@/components/scheduling/QuickScheduleModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { colors } from "@/lib/theme";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useScheduleStore } from "@/stores/useScheduleStore"; // Import schedule store
+import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { addDays, format, parseISO } from "date-fns";
-import { useRouter } from "expo-router"; // Import router
+import { useRouter } from "expo-router";
 import {
   AlertTriangle,
   Calendar,
@@ -32,24 +18,21 @@ import {
   Plus,
   Trash2,
 } from "lucide-react-native";
-import { colors } from "@/lib/theme";
 import React, { useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const StaffSchedulingScreen = () => {
   const router = useRouter();
   const { templates, activeTemplateIds, actions } = useScheduleTemplateStore();
   const scheduling = useStoreSettingsStore((s) => s.scheduling);
   const updateSchedulingSettings = useStoreSettingsStore((s) => s.updateSchedulingSettings);
-  const { addWeeklySchedule, addSchedulePeriod } = useScheduleStore(); // Get actions
+  const { addWeeklySchedule, addSchedulePeriod } = useScheduleStore();
   const { loggedInEmployee } = useEmployeeStore();
 
   const [isScheduleTypeOpen, setIsScheduleTypeOpen] = useState(false);
   const [isQuickScheduleOpen, setIsQuickScheduleOpen] = useState(false);
   const [isPeriodWizardOpen, setIsPeriodWizardOpen] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
-    null
-  );
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
 
   const handleCreateTemplate = () => {
@@ -75,7 +58,7 @@ const StaffSchedulingScreen = () => {
     });
 
     setIsQuickScheduleOpen(false);
-    setIsScheduleTypeOpen(false); // Ensure this is closed too
+    setIsScheduleTypeOpen(false);
 
     if (newId && selectedTemplateId) {
       router.push({
@@ -114,109 +97,156 @@ const StaffSchedulingScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">
-          Staff & Scheduling
-        </Text>
-        <Text className="text-gray-400 mt-2">
-          Manage staff schedules, templates, and conflicts.
-        </Text>
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Staff & Scheduling</Text>
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>Manage staff schedules, templates, and conflicts.</Text>
       </View>
 
-      <View className="h-[1px] w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="gap-8 pb-10">
+        <View style={{ gap: 14, paddingBottom: 40 }}>
+
           {/* Schedule Templates Section */}
-          <View className="gap-4">
-            <View className="flex-row items-center justify-between">
+          <View>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <View>
-                <Text className="text-xl font-bold text-white">
-                  Schedule Templates
-                </Text>
-                <Text className="text-gray-400 text-sm">
-                  Pre-built schedules for common shifts
-                </Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Schedule Templates</Text>
+                <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>Pre-built schedules for common shifts</Text>
               </View>
-              <Button
-                className="flex-row items-center gap-2 bg-blue-600 hover:bg-blue-700 data-[active=true]:bg-blue-700"
+              <TouchableOpacity
                 onPress={handleCreateTemplate}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
               >
-                <Plus size={16} color="white" />
-                <Text className="text-white font-semibold">
-                  Create Template
-                </Text>
-              </Button>
+                <Plus size={14} color={colors.teal} />
+                <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>Create Template</Text>
+              </TouchableOpacity>
             </View>
 
             {templates.length === 0 ? (
-              <View className="bg-panel border border-gray-600 rounded-xl p-8 items-center justify-center gap-4">
-                <View className="h-16 w-16 bg-gray-700 rounded-full items-center justify-center">
-                  <FileText size={32} color={colors.label} />
+              <View style={{
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 28,
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 12,
+              }}>
+                <View style={{
+                  width: 52,
+                  height: 52,
+                  backgroundColor: colors.card,
+                  borderRadius: 26,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <FileText size={24} color={colors.label} />
                 </View>
-                <Text className="text-gray-300 font-medium">
-                  No templates created yet
-                </Text>
-                <Button
-                  variant="outline"
-                  className="border-gray-500"
+                <Text style={{ fontSize: 13, color: colors.label, fontWeight: "600" }}>No templates created yet</Text>
+                <TouchableOpacity
                   onPress={() => {
                     actions.addTemplate({
                       name: "Standard Weekday",
                       description: "9 AM - 5 PM shifts for M-F",
                       tags: ["weekday", "standard"],
                       lastUsed: new Date(),
-                      shifts: [], // Would normally open editor
+                      shifts: [],
                     });
                   }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                  }}
                 >
-                  <Text className="text-gray-300">
-                    Create your first template
-                  </Text>
-                </Button>
+                  <Text style={{ fontSize: 12, color: colors.label }}>Create your first template</Text>
+                </TouchableOpacity>
               </View>
             ) : (
-              <View className="gap-3">
+              <View style={{ gap: 8 }}>
                 {templates.map((template) => (
                   <View
                     key={template.id}
-                    className="bg-panel border border-gray-600 rounded-lg p-4 flex-row justify-between items-center"
+                    style={{
+                      backgroundColor: colors.panel,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 10,
+                      padding: 12,
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
                   >
-                    <View className="flex-row items-center gap-4">
-                      <View className="h-10 w-10 bg-blue-500/20 rounded-lg items-center justify-center">
-                        <Calendar size={20} color={colors.info} />
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                      <View style={{
+                        width: 32,
+                        height: 32,
+                        backgroundColor: colors.teal + "15",
+                        borderRadius: 8,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}>
+                        <Calendar size={16} color={colors.teal} />
                       </View>
                       <View>
-                        <Text className="text-white font-semibold text-lg">
-                          {template.name}
-                        </Text>
-                        <Text className="text-gray-400 text-sm">
-                          {template.shifts.length} shifts configured
-                        </Text>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{template.name}</Text>
+                        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{template.shifts.length} shifts configured</Text>
                       </View>
                     </View>
 
-                    <View className="flex-row gap-2">
+                    <View style={{ flexDirection: "row", gap: 6 }}>
                       <TouchableOpacity
-                        className="bg-screen px-3 py-2 rounded-md border border-gray-600"
                         onPress={() => handleUseTemplate(template.id)}
+                        style={{
+                          backgroundColor: colors.teal + "15",
+                          borderWidth: 1,
+                          borderColor: colors.teal + "40",
+                          borderRadius: 6,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
                       >
-                        <Text className="text-gray-300 font-medium">
-                          Use Template
-                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.teal, fontWeight: "600" }}>Use Template</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        className="p-2 border border-gray-600 rounded-md bg-screen"
                         onPress={() => actions.duplicateTemplate(template.id)}
+                        style={{
+                          padding: 7,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 6,
+                          backgroundColor: "transparent",
+                        }}
                       >
-                        <Copy size={16} color={colors.label} />
+                        <Copy size={14} color={colors.label} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        className="p-2 border border-red-900/50 bg-red-900/20 rounded-md"
                         onPress={() => setTemplateToDelete(template.id)}
+                        style={{
+                          padding: 7,
+                          borderWidth: 1,
+                          borderColor: colors.danger + "30",
+                          borderRadius: 6,
+                          backgroundColor: colors.danger + "15",
+                        }}
                       >
-                        <Trash2 size={16} color={colors.danger} />
+                        <Trash2 size={14} color={colors.danger} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -226,193 +256,226 @@ const StaffSchedulingScreen = () => {
           </View>
 
           {/* Conflict Detection Section */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center gap-3">
-                  <AlertTriangle color={colors.warning} size={24} />
+          <View style={{
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+          }}>
+            <View style={{
+              padding: 14,
+              borderBottomWidth: scheduling?.autoDetectConflicts ? 1 : 0,
+              borderBottomColor: colors.border,
+            }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <View style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: colors.warning + "15",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}>
+                    <AlertTriangle size={16} color={colors.warning} />
+                  </View>
                   <View>
-                    <CardTitle className="text-white">
-                      Conflict Detection
-                    </CardTitle>
-                    <CardDescription className="text-gray-400">
-                      Automatically identify scheduling issues
-                    </CardDescription>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Conflict Detection</Text>
+                    <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>Automatically identify scheduling issues</Text>
                   </View>
                 </View>
                 <Switch
                   checked={scheduling?.autoDetectConflicts}
-                  onCheckedChange={(val) =>
-                    updateSchedulingSettings({ autoDetectConflicts: val })
-                  }
+                  onCheckedChange={(val) => updateSchedulingSettings({ autoDetectConflicts: val })}
                 />
               </View>
-            </CardHeader>
+            </View>
 
             {scheduling?.autoDetectConflicts && (
-              <CardContent className="gap-6 pt-0">
-                <View className="h-[1px] bg-gray-700 w-full" />
+              <View style={{ padding: 14, gap: 14 }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Conflict Types Tracked</Text>
 
-                <View className="gap-4">
-                  <Text className="text-white font-medium">
-                    Conflict Types Tracked
-                  </Text>
-
-                  <View className="gap-3">
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-2">
-                        <View className="h-2 w-2 rounded-full bg-orange-500" />
-                        <Text className="text-gray-300">
-                          Double-booked shifts
-                        </Text>
+                <View style={{ gap: 10 }}>
+                  {[
+                    { label: "Double-booked shifts", key: "doubleBooked" as const, value: scheduling.conflictTypes?.doubleBooked },
+                    { label: "Overtime approaching (>40h)", key: "overtime" as const, value: scheduling.conflictTypes?.overtime },
+                    { label: "Minimum staffing not met", key: "minStaffing" as const, value: scheduling.conflictTypes?.minStaffing },
+                    { label: "Back-to-back shifts (<10hr gap)", key: "backToBack" as const, value: scheduling.conflictTypes?.backToBack },
+                  ].map((item, idx, arr) => (
+                    <View
+                      key={item.key}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        paddingBottom: idx < arr.length - 1 ? 10 : 0,
+                        borderBottomWidth: idx < arr.length - 1 ? 1 : 0,
+                        borderBottomColor: colors.border,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.warning }} />
+                        <Text style={{ fontSize: 12, color: colors.label }}>{item.label}</Text>
                       </View>
                       <Switch
-                        checked={scheduling.conflictTypes?.doubleBooked}
+                        checked={item.value}
                         onCheckedChange={(val) =>
                           updateSchedulingSettings({
                             conflictTypes: {
                               ...scheduling.conflictTypes,
-                              doubleBooked: val,
+                              [item.key]: val,
                             },
                           })
                         }
                       />
                     </View>
-
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-2">
-                        <View className="h-2 w-2 rounded-full bg-orange-500" />
-                        <Text className="text-gray-300">
-                          Overtime approaching ({">"}40h)
-                        </Text>
-                      </View>
-                      <Switch
-                        checked={scheduling.conflictTypes?.overtime}
-                        onCheckedChange={(val) =>
-                          updateSchedulingSettings({
-                            conflictTypes: {
-                              ...scheduling.conflictTypes,
-                              overtime: val,
-                            },
-                          })
-                        }
-                      />
-                    </View>
-
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-2">
-                        <View className="h-2 w-2 rounded-full bg-orange-500" />
-                        <Text className="text-gray-300">
-                          Minimum staffing not met
-                        </Text>
-                      </View>
-                      <Switch
-                        checked={scheduling.conflictTypes?.minStaffing}
-                        onCheckedChange={(val) =>
-                          updateSchedulingSettings({
-                            conflictTypes: {
-                              ...scheduling.conflictTypes,
-                              minStaffing: val,
-                            },
-                          })
-                        }
-                      />
-                    </View>
-
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-2">
-                        <View className="h-2 w-2 rounded-full bg-orange-500" />
-                        <Text className="text-gray-300">
-                          Back-to-back shifts ({"<"}10hr gap)
-                        </Text>
-                      </View>
-                      <Switch
-                        checked={scheduling.conflictTypes?.backToBack}
-                        onCheckedChange={(val) =>
-                          updateSchedulingSettings({
-                            conflictTypes: {
-                              ...scheduling.conflictTypes,
-                              backToBack: val,
-                            },
-                          })
-                        }
-                      />
-                    </View>
-                  </View>
+                  ))}
                 </View>
 
-                <View className="bg-screen rounded-lg border border-gray-700 p-3 flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <AlertTriangle size={16} color={colors.warning} />
-                    <Text className="text-gray-300">
-                      View Current Conflicts
-                    </Text>
+                <View style={{
+                  backgroundColor: colors.card,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <AlertTriangle size={14} color={colors.warning} />
+                    <Text style={{ fontSize: 12, color: colors.label }}>View Current Conflicts</Text>
                   </View>
-                  <Badge className="bg-orange-500/20 border-orange-500/50">
-                    <Text className="text-orange-500 font-bold">0 Active</Text>
-                  </Badge>
+                  <View style={{
+                    backgroundColor: colors.warning + "20",
+                    borderWidth: 1,
+                    borderColor: colors.warning + "50",
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 20,
+                  }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.warning }}>0 Active</Text>
+                  </View>
                 </View>
-              </CardContent>
+              </View>
             )}
-          </Card>
+          </View>
+
         </View>
       </ScrollView>
 
       {/* Select Schedule Type Modal */}
-      <Dialog open={isScheduleTypeOpen} onOpenChange={setIsScheduleTypeOpen}>
-        <DialogContent className="w-[500px] max-w-lg bg-panel rounded-2xl border-gray-700">
-          <DialogHeader>
-            <DialogTitle className="text-white text-xl font-bold">
-              Create New Schedule
-            </DialogTitle>
-          </DialogHeader>
-          <View className="py-2 gap-4">
-            <Text className="text-gray-400">
-              Where would you like to apply this template?
-            </Text>
+      <Modal
+        visible={isScheduleTypeOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsScheduleTypeOpen(false)}
+        statusBarTranslucent
+      >
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", paddingHorizontal: 16 }}>
+          <View style={{
+            width: "100%",
+            maxWidth: 500,
+            backgroundColor: colors.panel,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: "hidden",
+          }}>
+            <View style={{
+              padding: 16,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              backgroundColor: colors.card,
+            }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Create New Schedule</Text>
+            </View>
 
-            <TouchableOpacity
-              className="bg-screen p-4 rounded-xl border border-gray-600 flex-row items-center gap-4 hover:bg-gray-800"
-              onPress={() => {
-                setIsScheduleTypeOpen(false);
-                setIsQuickScheduleOpen(true);
-              }}
-            >
-              <View className="h-12 w-12 rounded-full bg-blue-500/10 items-center justify-center">
-                <Clock size={24} color={colors.info} />
-              </View>
-              <View className="flex-1">
-                <Text className="text-white font-bold text-lg">
-                  Quick Schedule
-                </Text>
-                <Text className="text-gray-400">
-                  Create a standard 7-day schedule
-                </Text>
-              </View>
-            </TouchableOpacity>
+            <View style={{ padding: 16, gap: 10 }}>
+              <Text style={{ fontSize: 12, color: colors.label, marginBottom: 4 }}>Where would you like to apply this template?</Text>
 
-            <TouchableOpacity
-              className="bg-screen p-4 rounded-xl border border-gray-600 flex-row items-center gap-4 hover:bg-gray-800"
-              onPress={() => {
-                setIsScheduleTypeOpen(false);
-                setIsPeriodWizardOpen(true);
-              }}
-            >
-              <View className="h-12 w-12 rounded-full bg-purple-500/10 items-center justify-center">
-                <Calendar size={24} color="#A855F7" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-white font-bold text-lg">
-                  Custom Period
-                </Text>
-                <Text className="text-gray-400">
-                  Define a specific date range (e.g. Month)
-                </Text>
-              </View>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsScheduleTypeOpen(false);
+                  setIsQuickScheduleOpen(true);
+                }}
+                style={{
+                  backgroundColor: colors.card,
+                  padding: 14,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: colors.teal + "15",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <Clock size={20} color={colors.teal} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Quick Schedule</Text>
+                  <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>Create a standard 7-day schedule</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setIsScheduleTypeOpen(false);
+                  setIsPeriodWizardOpen(true);
+                }}
+                style={{
+                  backgroundColor: colors.card,
+                  padding: 14,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: "#8b5cf6" + "20",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <Calendar size={20} color="#A855F7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Custom Period</Text>
+                  <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>Define a specific date range (e.g. Month)</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ padding: 14, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <TouchableOpacity
+                onPress={() => setIsScheduleTypeOpen(false)}
+                style={{
+                  paddingVertical: 10,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.label, fontWeight: "600" }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </DialogContent>
-      </Dialog>
+        </View>
+      </Modal>
 
       {/* Creation Modals */}
       <QuickScheduleModal

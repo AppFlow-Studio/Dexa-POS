@@ -1,7 +1,3 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
@@ -14,11 +10,10 @@ import {
   Map,
   Plus,
   Settings2,
-  Users,
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
 import { useMemo } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DiningRoomScreen = () => {
@@ -61,403 +56,474 @@ const DiningRoomScreen = () => {
     };
   }, [tables]);
 
+  const cardStyle = {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  };
+
+  const sectionTitleStyle = {
+    fontSize: 13,
+    fontWeight: "700" as const,
+    color: colors.heading,
+  };
+
+  const labelStyle = {
+    fontSize: 11,
+    color: colors.muted,
+    marginBottom: 5,
+  };
+
+  const rowStyle = {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
+  };
+
+  const inputStyle = {
+    backgroundColor: colors.screen,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 13,
+    color: colors.heading,
+  };
+
+  const dividerStyle = {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 12,
+  };
+
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">Dining Room</Text>
-        <Text className="text-gray-400 mt-2">
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      {/* Header */}
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Dining Room</Text>
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
           Manage floor plans and table configurations.
         </Text>
       </View>
 
-      <View className="h-[1px] w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
       >
-        <View className="gap-6">
-          {/* Floor Plans Section */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Map color={colors.info} size={24} />
-                <CardTitle className="text-white">Floor Plans</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-4">
-              {floorPlans.length === 0 ? (
-                <View className="p-8 items-center justify-center border border-dashed border-gray-600 rounded-lg">
-                  <Text className="text-gray-400 mb-4">
-                    No floor plans created yet.
-                  </Text>
-                  <Button
-                    onPress={handleCreateFloorPlan}
-                    className="bg-blue-600"
-                  >
-                    <Plus size={16} color="white" className="mr-2" />
-                    <Text className="text-white font-bold">Create Layout</Text>
-                  </Button>
-                </View>
-              ) : (
-                <View className="flex-row flex-wrap gap-4">
-                  {floorPlans.map((layout) => (
-                    <View
-                      key={layout.id}
-                      className="w-[48%] bg-screen p-4 rounded-lg border border-gray-700"
-                    >
-                      <View className="flex-row items-center gap-2 mb-2">
-                        <LayoutTemplate size={18} color={colors.label} />
-                        <Text className="text-white font-bold text-lg">
-                          {layout.name}
-                        </Text>
-                      </View>
-                      <Text className="text-gray-400 text-sm mb-4">
-                        {layout.table_count || 0} Tables configured
-                      </Text>
-                      <TouchableOpacity
-                        onPress={async () => {
-                          await setActiveFloorPlan(layout.id);
-                          router.push({
-                            pathname: "/tables/floor-plan",
-                            params: { returnTo: "/settings/dining-room" },
-                          });
-                        }}
-                        className="flex-row items-center justify-center bg-gray-700 py-2 rounded-md"
-                      >
-                        <Text className="text-white font-medium mr-2">
-                          Edit Layout
-                        </Text>
-                        <ArrowRight size={14} color="white" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                  <TouchableOpacity
-                    onPress={handleCreateFloorPlan}
-                    className="w-[48%] bg-screen p-4 rounded-lg border border-dashed border-gray-600 items-center justify-center min-h-[140px]"
-                  >
-                    <Plus size={24} color={colors.muted} className="mb-2" />
-                    <Text className="text-gray-400 font-medium">
-                      Create New
+        {/* Floor Plans Section */}
+        <View style={cardStyle}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center" }}>
+              <Map size={16} color={colors.teal} />
+            </View>
+            <Text style={sectionTitleStyle}>Floor Plans</Text>
+          </View>
+
+          {floorPlans.length === 0 ? (
+            <View style={{
+              padding: 24,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderStyle: "dashed",
+              borderColor: colors.border,
+              borderRadius: 10,
+            }}>
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 12 }}>
+                No floor plans created yet.
+              </Text>
+              <TouchableOpacity
+                onPress={handleCreateFloorPlan}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  backgroundColor: colors.teal + "20",
+                  borderWidth: 1,
+                  borderColor: colors.teal + "50",
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                }}
+              >
+                <Plus size={14} color={colors.teal} />
+                <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>Create Layout</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              {floorPlans.map((layout) => (
+                <View
+                  key={layout.id}
+                  style={{
+                    width: "48%",
+                    backgroundColor: colors.screen,
+                    padding: 12,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                    <LayoutTemplate size={14} color={colors.label} />
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+                      {layout.name}
                     </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 10 }}>
+                    {layout.table_count || 0} Tables configured
+                  </Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await setActiveFloorPlan(layout.id);
+                      router.push({
+                        pathname: "/tables/floor-plan",
+                        params: { returnTo: "/settings/dining-room" },
+                      });
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      paddingVertical: 7,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit Layout</Text>
+                    <ArrowRight size={12} color={colors.teal} />
                   </TouchableOpacity>
                 </View>
-              )}
-            </CardContent>
-          </Card>
+              ))}
+              <TouchableOpacity
+                onPress={handleCreateFloorPlan}
+                style={{
+                  width: "48%",
+                  backgroundColor: colors.screen,
+                  padding: 12,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: colors.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minHeight: 120,
+                  gap: 6,
+                }}
+              >
+                <Plus size={20} color={colors.muted} />
+                <Text style={{ fontSize: 12, color: colors.label }}>Create New</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
-          {/* Table Configuration Section */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Settings2 color={colors.warning} size={24} />
-                <CardTitle className="text-white">
-                  Table Configuration
-                </CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-6">
-              <View className="flex-row gap-4">
-                <View className="flex-1">
-                  <Label className="text-gray-400 text-xs mb-1.5">
-                    Start Number
-                  </Label>
-                  <Input
-                    className="bg-screen border-gray-600 text-white h-10"
-                    value={settings.tableStartNumber.toString()}
-                    onChangeText={(v) =>
-                      settings.updateDiningSettings({
-                        tableStartNumber: parseInt(v) || 1,
-                      })
-                    }
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View className="flex-1">
-                  <Label className="text-gray-400 text-xs mb-1.5">Prefix</Label>
-                  <Input
-                    className="bg-screen border-gray-600 text-white h-10"
-                    value={settings.tablePrefix}
-                    onChangeText={(v) =>
-                      settings.updateDiningSettings({ tablePrefix: v })
-                    }
-                  />
-                </View>
-                <View className="flex-1">
-                  <Label className="text-gray-400 text-xs mb-1.5">
-                    Default Party
-                  </Label>
-                  <Input
-                    className="bg-screen border-gray-600 text-white h-10"
-                    value={settings.defaultPartySize.toString()}
-                    onChangeText={(v) =>
-                      settings.updateDiningSettings({
-                        defaultPartySize: parseInt(v) || 2,
-                      })
-                    }
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
+        {/* Table Configuration Section */}
+        <View style={cardStyle}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.warning + "15", alignItems: "center", justifyContent: "center" }}>
+              <Settings2 size={16} color={colors.warning} />
+            </View>
+            <Text style={sectionTitleStyle}>Table Configuration</Text>
+          </View>
 
-              <View className="h-[1px] bg-gray-700" />
+          <View style={{ flexDirection: "row", gap: 10, marginBottom: 4 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>Start Number</Text>
+              <TextInput
+                style={inputStyle}
+                value={settings.tableStartNumber.toString()}
+                onChangeText={(v) =>
+                  settings.updateDiningSettings({
+                    tableStartNumber: parseInt(v) || 1,
+                  })
+                }
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>Prefix</Text>
+              <TextInput
+                style={inputStyle}
+                value={settings.tablePrefix}
+                onChangeText={(v) =>
+                  settings.updateDiningSettings({ tablePrefix: v })
+                }
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={labelStyle}>Default Party</Text>
+              <TextInput
+                style={inputStyle}
+                value={settings.defaultPartySize.toString()}
+                onChangeText={(v) =>
+                  settings.updateDiningSettings({
+                    defaultPartySize: parseInt(v) || 2,
+                  })
+                }
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
 
-              {/* Merging & Splitting */}
-              <View className="gap-4">
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Label className="text-white text-base">
-                      Allow Table Merging
-                    </Label>
-                    <Text className="text-gray-400 text-xs">
-                      Enables combining tables for large parties
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={settings.allowTableMerging}
-                    onCheckedChange={(v) =>
-                      settings.updateDiningSettings({ allowTableMerging: v })
-                    }
-                  />
-                </View>
+          <View style={dividerStyle} />
 
-                {settings.allowTableMerging && (
-                  <View>
-                    <Label className="text-gray-400 text-xs mb-1.5">
-                      Merge Timeout (minutes)
-                    </Label>
-                    <Input
-                      className="bg-screen border-gray-600 text-white h-10 w-32"
-                      placeholder="0 = None"
-                      placeholderClassName="text-gray-500"
-                      value={
-                        settings.mergeTimeoutMinutes === 0
-                          ? ""
-                          : settings.mergeTimeoutMinutes.toString()
-                      }
-                      onChangeText={(v) =>
-                        settings.updateDiningSettings({
-                          mergeTimeoutMinutes: parseInt(v) || 0,
-                        })
-                      }
-                      keyboardType="numeric"
-                    />
-                  </View>
-                )}
-
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Label className="text-white text-base">
-                      Allow Table Splitting
-                    </Label>
-                    <Text className="text-gray-400 text-xs">
-                      Multiple checks per table
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={settings.allowTableSplitting}
-                    onCheckedChange={(v) =>
-                      settings.updateDiningSettings({ allowTableSplitting: v })
-                    }
-                  />
-                </View>
-              </View>
-            </CardContent>
-          </Card>
-
-          {/* Order Management Section */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Grid color="#14b8a6" size={24} />
-                <CardTitle className="text-white">Order Management</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-4">
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Label className="text-white text-base">
-                    Per-Seat Ordering
-                  </Label>
-                  <Text className="text-gray-400 text-xs">
-                    Assign items to seats for accurate delivery and split billing
-                  </Text>
-                </View>
-                <Switch
-                  checked={settings.enablePerSeatOrdering}
-                  onCheckedChange={(v) =>
-                    settings.updateDiningSettings({ enablePerSeatOrdering: v })
-                  }
-                />
-              </View>
-
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Label className="text-white text-base">
-                    Coursing
-                  </Label>
-                  <Text className="text-gray-400 text-xs">
-                    Group items by course for multi-course service
-                  </Text>
-                </View>
-                <Switch
-                  checked={settings.enableCoursing}
-                  onCheckedChange={(v) =>
-                    settings.updateDiningSettings({ enableCoursing: v })
-                  }
-                />
-              </View>
-            </CardContent>
-          </Card>
-
-          {/* Table Status Section */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Clock color={colors.success} size={24} />
-                <CardTitle className="text-white">Table Status</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-6">
-              {/* Status Legend / Live Counts */}
-              <View className="flex-row gap-4 flex-wrap">
-                <View className="flex-row items-center gap-2 bg-screen px-3 py-2 rounded-full border border-gray-700">
-                  <View className="w-2 h-2 rounded-full bg-green-500" />
-                  <Text className="text-white text-sm">
-                    {tableStats.available} Available
-                  </Text>
-                </View>
-                <View className="flex-row items-center gap-2 bg-screen px-3 py-2 rounded-full border border-gray-700">
-                  <View className="w-2 h-2 rounded-full bg-blue-500" />
-                  <Text className="text-white text-sm">
-                    {tableStats.inUse} Seated
-                  </Text>
-                </View>
-                <View className="flex-row items-center gap-2 bg-screen px-3 py-2 rounded-full border border-gray-700">
-                  <View className="w-2 h-2 rounded-full bg-red-500" />
-                  <Text className="text-white text-sm">
-                    {tableStats.cleaning} Dirty
-                  </Text>
-                </View>
-              </View>
-
-              <View className="h-[1px] bg-gray-700" />
-
-              {/* Sitting Time & Automation */}
-              <View className="gap-4">
-                <View>
-                  <View className="flex-row items-center justify-between mb-2">
-                    <View>
-                      <Label className="text-white text-base">
-                        Limit Sitting Time
-                      </Label>
-                      <Text className="text-gray-400 text-xs">
-                        Alert when tables exceed time limit
-                      </Text>
-                    </View>
-                    <Switch
-                      checked={settings.defaultSittingTimeMinutes > 0}
-                      onCheckedChange={(v) =>
-                        settings.setDefaultSittingTimeMinutes(v ? 60 : 0)
-                      }
-                    />
-                  </View>
-
-                  {settings.defaultSittingTimeMinutes > 0 && (
-                    <View>
-                      <Label className="text-gray-400 text-xs mb-1.5">
-                        Duration (minutes)
-                      </Label>
-                      <Input
-                        className="bg-screen border-gray-600 text-white h-10"
-                        value={settings.defaultSittingTimeMinutes.toString()}
-                        onChangeText={(v) => {
-                          const val = parseInt(v);
-                          settings.setDefaultSittingTimeMinutes(
-                            isNaN(val) ? 0 : val,
-                          );
-                        }}
-                        keyboardType="numeric"
-                      />
-                    </View>
-                  )}
-                </View>
-
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Label className="text-white text-base">
-                      Auto-Update Status
-                    </Label>
-                    <Text className="text-gray-400 text-xs">
-                      Change to 'Dirty' after payment
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={settings.autoUpdateTableStatus}
-                    onCheckedChange={(v) =>
-                      settings.updateDiningSettings({
-                        autoUpdateTableStatus: v,
-                      })
-                    }
-                  />
-                </View>
-              </View>
-            </CardContent>
-          </Card>
-
-          {/* Server Sections (Mock / Config) */}
-          {/* <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Users color="#8b5cf6" size={24} />
-                <CardTitle className="text-white">Server Sections</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-6">
-              <View className="gap-4">
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Label className="text-white text-base">
-                      Auto-Rotate Sections
-                    </Label>
-                    <Text className="text-gray-400 text-xs">
-                      Rotate servers daily
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={settings.autoRotateSections}
-                    onCheckedChange={(v) =>
-                      settings.updateDiningSettings({ autoRotateSections: v })
-                    }
-                  />
-                </View>
-
-                <View className="flex-row items-center justify-between">
-                  <View>
-                    <Label className="text-white text-base">
-                      Balance Section Load
-                    </Label>
-                    <Text className="text-gray-400 text-xs">
-                      Distribute guests evenly
-                    </Text>
-                  </View>
-                  <Switch
-                    checked={settings.balanceSectionLoad}
-                    onCheckedChange={(v) =>
-                      settings.updateDiningSettings({ balanceSectionLoad: v })
-                    }
-                  />
-                </View>
-              </View>
-              <View className="bg-screen p-4 rounded-lg border border-gray-700 items-center">
-                <Grid size={32} color={colors.muted} className="mb-2" />
-                <Text className="text-gray-500 text-center">
-                  Section visuals are available in the floor plan editor.
+          {/* Merging & Splitting */}
+          <View style={{ gap: 12 }}>
+            <View style={rowStyle}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ fontSize: 13, color: colors.heading }}>Allow Table Merging</Text>
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                  Enables combining tables for large parties
                 </Text>
               </View>
-            </CardContent>
-          </Card> */}
+              <Switch
+                checked={settings.allowTableMerging}
+                onCheckedChange={(v) =>
+                  settings.updateDiningSettings({ allowTableMerging: v })
+                }
+              />
+            </View>
+
+            {settings.allowTableMerging && (
+              <View>
+                <Text style={labelStyle}>Merge Timeout (minutes)</Text>
+                <TextInput
+                  style={[inputStyle, { width: 120 }]}
+                  placeholder="0 = None"
+                  placeholderTextColor={colors.muted}
+                  value={
+                    settings.mergeTimeoutMinutes === 0
+                      ? ""
+                      : settings.mergeTimeoutMinutes.toString()
+                  }
+                  onChangeText={(v) =>
+                    settings.updateDiningSettings({
+                      mergeTimeoutMinutes: parseInt(v) || 0,
+                    })
+                  }
+                  keyboardType="numeric"
+                />
+              </View>
+            )}
+
+            <View style={rowStyle}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ fontSize: 13, color: colors.heading }}>Allow Table Splitting</Text>
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                  Multiple checks per table
+                </Text>
+              </View>
+              <Switch
+                checked={settings.allowTableSplitting}
+                onCheckedChange={(v) =>
+                  settings.updateDiningSettings({ allowTableSplitting: v })
+                }
+              />
+            </View>
+          </View>
         </View>
+
+        {/* Order Management Section */}
+        <View style={cardStyle}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center" }}>
+              <Grid size={16} color={colors.teal} />
+            </View>
+            <Text style={sectionTitleStyle}>Order Management</Text>
+          </View>
+
+          <View style={{ gap: 12 }}>
+            <View style={rowStyle}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ fontSize: 13, color: colors.heading }}>Per-Seat Ordering</Text>
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                  Assign items to seats for accurate delivery and split billing
+                </Text>
+              </View>
+              <Switch
+                checked={settings.enablePerSeatOrdering}
+                onCheckedChange={(v) =>
+                  settings.updateDiningSettings({ enablePerSeatOrdering: v })
+                }
+              />
+            </View>
+
+            <View style={rowStyle}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ fontSize: 13, color: colors.heading }}>Coursing</Text>
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                  Group items by course for multi-course service
+                </Text>
+              </View>
+              <Switch
+                checked={settings.enableCoursing}
+                onCheckedChange={(v) =>
+                  settings.updateDiningSettings({ enableCoursing: v })
+                }
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Table Status Section */}
+        <View style={cardStyle}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.success + "15", alignItems: "center", justifyContent: "center" }}>
+              <Clock size={16} color={colors.success} />
+            </View>
+            <Text style={sectionTitleStyle}>Table Status</Text>
+          </View>
+
+          {/* Status pills */}
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            <View style={{
+              flexDirection: "row", alignItems: "center", gap: 6,
+              backgroundColor: colors.success + "15", borderWidth: 1,
+              borderColor: colors.success + "40", paddingHorizontal: 10,
+              paddingVertical: 4, borderRadius: 20,
+            }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success }} />
+              <Text style={{ fontSize: 11, color: colors.success }}>{tableStats.available} Available</Text>
+            </View>
+            <View style={{
+              flexDirection: "row", alignItems: "center", gap: 6,
+              backgroundColor: colors.info + "15", borderWidth: 1,
+              borderColor: colors.info + "40", paddingHorizontal: 10,
+              paddingVertical: 4, borderRadius: 20,
+            }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.info }} />
+              <Text style={{ fontSize: 11, color: colors.info }}>{tableStats.inUse} Seated</Text>
+            </View>
+            <View style={{
+              flexDirection: "row", alignItems: "center", gap: 6,
+              backgroundColor: colors.danger + "15", borderWidth: 1,
+              borderColor: colors.danger + "40", paddingHorizontal: 10,
+              paddingVertical: 4, borderRadius: 20,
+            }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger }} />
+              <Text style={{ fontSize: 11, color: colors.danger }}>{tableStats.cleaning} Dirty</Text>
+            </View>
+          </View>
+
+          <View style={dividerStyle} />
+
+          {/* Sitting Time & Automation */}
+          <View style={{ gap: 12 }}>
+            <View>
+              <View style={{ ...rowStyle, marginBottom: 8 }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading }}>Limit Sitting Time</Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                    Alert when tables exceed time limit
+                  </Text>
+                </View>
+                <Switch
+                  checked={settings.defaultSittingTimeMinutes > 0}
+                  onCheckedChange={(v) =>
+                    settings.setDefaultSittingTimeMinutes(v ? 60 : 0)
+                  }
+                />
+              </View>
+
+              {settings.defaultSittingTimeMinutes > 0 && (
+                <View>
+                  <Text style={labelStyle}>Duration (minutes)</Text>
+                  <TextInput
+                    style={inputStyle}
+                    value={settings.defaultSittingTimeMinutes.toString()}
+                    onChangeText={(v) => {
+                      const val = parseInt(v);
+                      settings.setDefaultSittingTimeMinutes(
+                        isNaN(val) ? 0 : val,
+                      );
+                    }}
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
+            </View>
+
+            <View style={rowStyle}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ fontSize: 13, color: colors.heading }}>Auto-Update Status</Text>
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                  Change to 'Dirty' after payment
+                </Text>
+              </View>
+              <Switch
+                checked={settings.autoUpdateTableStatus}
+                onCheckedChange={(v) =>
+                  settings.updateDiningSettings({
+                    autoUpdateTableStatus: v,
+                  })
+                }
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* Server Sections (Mock / Config) */}
+        {/* <Card className="bg-panel border-gray-600">
+          <CardHeader>
+            <View className="flex-row items-center gap-3">
+              <Users color="#8b5cf6" size={24} />
+              <CardTitle className="text-white">Server Sections</CardTitle>
+            </View>
+          </CardHeader>
+          <CardContent className="gap-6">
+            <View className="gap-4">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Label className="text-white text-base">
+                    Auto-Rotate Sections
+                  </Label>
+                  <Text className="text-gray-400 text-xs">
+                    Rotate servers daily
+                  </Text>
+                </View>
+                <Switch
+                  checked={settings.autoRotateSections}
+                  onCheckedChange={(v) =>
+                    settings.updateDiningSettings({ autoRotateSections: v })
+                  }
+                />
+              </View>
+
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Label className="text-white text-base">
+                    Balance Section Load
+                  </Label>
+                  <Text className="text-gray-400 text-xs">
+                    Distribute guests evenly
+                  </Text>
+                </View>
+                <Switch
+                  checked={settings.balanceSectionLoad}
+                  onCheckedChange={(v) =>
+                    settings.updateDiningSettings({ balanceSectionLoad: v })
+                  }
+                />
+              </View>
+            </View>
+            <View className="bg-screen p-4 rounded-lg border border-gray-700 items-center">
+              <Grid size={32} color={colors.muted} className="mb-2" />
+              <Text className="text-gray-500 text-center">
+                Section visuals are available in the floor plan editor.
+              </Text>
+            </View>
+          </CardContent>
+        </Card> */}
       </ScrollView>
     </View>
   );

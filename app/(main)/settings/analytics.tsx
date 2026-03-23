@@ -1,7 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   Bell,
@@ -56,202 +54,384 @@ const AnalyticsScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-screen p-6">
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">
+    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+      {/* Header */}
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
           Real-Time Analytics
         </Text>
-        <Text className="text-gray-400 mt-2">
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
           Configure dashboards and real-time alerts.
         </Text>
       </View>
 
-      <View className="h-[1px] w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20, gap: 12 }}
       >
-        <View className="gap-6">
-          {/* Live Dashboard Configuration */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <LayoutDashboard color={colors.info} size={24} />
-                <CardTitle className="text-white">Live Dashboard</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent className="gap-6">
-              {/* Enable Dashboard Toggle */}
-              <View className="flex-row items-center justify-between">
-                <Label className="text-white text-base">Enable Dashboard</Label>
-                <Switch
-                  checked={enableDashboard}
-                  onCheckedChange={setEnableDashboard}
-                />
-              </View>
+        {/* ── Live Dashboard Configuration ── */}
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: "hidden",
+          }}
+        >
+          {/* Card header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                backgroundColor: colors.teal + "15",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <LayoutDashboard size={16} color={colors.teal} />
+            </View>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: colors.heading,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Live Dashboard
+            </Text>
+          </View>
 
-              {enableDashboard && (
-                <>
-                  {/* Widget Configurator */}
-                  <View className="gap-3">
-                    <Label className="text-gray-300 font-semibold mb-1">
-                      Visible Widgets
-                    </Label>
-                    <View className="gap-3">
-                      {[
-                        { key: "salesToday", label: "Sales Today" },
-                        {
-                          key: "ordersInProgress",
-                          label: "Orders in Progress",
-                        },
-                        { key: "laborCost", label: "Labor Cost %" },
-                        { key: "topSelling", label: "Top Selling Items" },
-                        { key: "customerCount", label: "Customer Count" },
-                        { key: "avgTicket", label: "Avg Ticket Size" },
-                        { key: "kitchenLoad", label: "Kitchen Load" },
-                      ].map((widget) => (
-                        <View
+          <View style={{ padding: 14, gap: 14 }}>
+            {/* Enable Dashboard Toggle */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 4,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>
+                Enable Dashboard
+              </Text>
+              <Switch checked={enableDashboard} onCheckedChange={setEnableDashboard} />
+            </View>
+
+            {enableDashboard && (
+              <>
+                {/* Widget Configurator */}
+                <View style={{ gap: 4 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: "700",
+                      color: colors.label,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Visible Widgets
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {[
+                      { key: "salesToday", label: "Sales Today" },
+                      { key: "ordersInProgress", label: "Orders in Progress" },
+                      { key: "laborCost", label: "Labor Cost %" },
+                      { key: "topSelling", label: "Top Selling Items" },
+                      { key: "customerCount", label: "Customer Count" },
+                      { key: "avgTicket", label: "Avg Ticket Size" },
+                      { key: "kitchenLoad", label: "Kitchen Load" },
+                    ].map((widget) => {
+                      const checked = widgets[widget.key as keyof typeof widgets];
+                      return (
+                        <TouchableOpacity
                           key={widget.key}
-                          className="flex-row items-center gap-3"
+                          onPress={() => toggleWidget(widget.key as keyof typeof widgets)}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                            paddingHorizontal: 10,
+                            paddingVertical: 7,
+                            backgroundColor: checked ? colors.teal + "15" : colors.card,
+                            borderWidth: 1,
+                            borderColor: checked ? colors.teal + "50" : colors.border,
+                            borderRadius: 8,
+                          }}
                         >
                           <Checkbox
-                            checked={
-                              widgets[widget.key as keyof typeof widgets]
-                            }
+                            checked={checked}
                             onCheckedChange={() =>
                               toggleWidget(widget.key as keyof typeof widgets)
                             }
-                            className="border-gray-500 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                           />
-                          <Text className="text-gray-300 text-sm">
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: checked ? colors.teal : colors.label,
+                              fontWeight: checked ? "600" : "400",
+                            }}
+                          >
                             {widget.label}
                           </Text>
-                        </View>
-                      ))}
-                    </View>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
+                </View>
 
-                  {/* Customize Layout Button */}
-                  <TouchableOpacity className="flex-row items-center justify-center border border-gray-500 p-3 rounded-lg mt-2 border-dashed">
-                    <Text className="text-gray-300 font-medium">
-                      Customize Dashboard Layout
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                {/* Customize Layout Button */}
+                <TouchableOpacity
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderStyle: "dashed",
+                    borderColor: colors.border,
+                    paddingVertical: 10,
+                    borderRadius: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>
+                    Customize Dashboard Layout
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
 
-          {/* Real-Time Alerts Configuration */}
-          <Card className="bg-panel border-gray-600">
-            <CardHeader>
-              <View className="flex-row items-center gap-3">
-                <Bell color={colors.warning} size={24} />
-                <CardTitle className="text-white">Real-Time Alerts</CardTitle>
+        {/* ── Real-Time Alerts Configuration ── */}
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: "hidden",
+          }}
+        >
+          {/* Card header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                backgroundColor: colors.warning + "15",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Bell size={16} color={colors.warning} />
+            </View>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: colors.heading,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Real-Time Alerts
+            </Text>
+          </View>
+
+          <View style={{ padding: 14, gap: 14 }}>
+            {/* Alert Triggers section label */}
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: colors.label,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Alert Triggers
+            </Text>
+
+            {/* Sales Goal Input */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Daily Sales Goal ($)</Text>
+              <Input
+                style={{
+                  backgroundColor: colors.screen,
+                  borderColor: colors.border,
+                  color: colors.heading,
+                  height: 40,
+                  fontSize: 13,
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                }}
+                placeholder="e.g. 5000"
+                placeholderTextColor={colors.muted}
+                keyboardType="numeric"
+                value={salesGoal}
+                onChangeText={setSalesGoal}
+              />
+            </View>
+
+            {/* Labor Cost Threshold Input */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Labor Cost Threshold (%)</Text>
+              <Input
+                style={{
+                  backgroundColor: colors.screen,
+                  borderColor: colors.border,
+                  color: colors.heading,
+                  height: 40,
+                  fontSize: 13,
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                }}
+                placeholder="e.g. 30"
+                placeholderTextColor={colors.muted}
+                keyboardType="numeric"
+                value={laborCostThreshold}
+                onChangeText={setLaborCostThreshold}
+              />
+            </View>
+
+            {/* Kitchen Backed Up Switch */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: colors.heading }}>Kitchen Backed Up</Text>
+              <Switch
+                checked={alertTriggers.kitchenBackedUp}
+                onCheckedChange={() => toggleAlertTrigger("kitchenBackedUp")}
+              />
+            </View>
+
+            {/* Inventory Low Switch */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <Text style={{ fontSize: 13, color: colors.heading }}>Inventory Low</Text>
+              <Switch
+                checked={alertTriggers.inventoryLow}
+                onCheckedChange={() => toggleAlertTrigger("inventoryLow")}
+              />
+            </View>
+
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+
+            {/* Notification Channels */}
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: colors.label,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Notification Channels
+            </Text>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Smartphone size={14} color={colors.label} />
+                <Text style={{ fontSize: 13, color: colors.heading }}>Push Notifications</Text>
               </View>
-            </CardHeader>
-            <CardContent className="gap-6">
-              {/* Alert Triggers */}
-              <View className="gap-4">
-                <Label className="text-gray-300 font-semibold">
-                  Alert Triggers
-                </Label>
+              <Switch
+                checked={deliveryMethods.push}
+                onCheckedChange={() => toggleDeliveryMethod("push")}
+              />
+            </View>
 
-                {/* Sales Goal Input */}
-                <View>
-                  <Label className="text-gray-400 text-sm mb-1.5">
-                    Daily Sales Goal ($)
-                  </Label>
-                  <Input
-                    className="bg-screen border-gray-600 text-white h-10"
-                    placeholder="e.g. 5000"
-                    placeholderClassName="text-gray-500"
-                    keyboardType="numeric"
-                    value={salesGoal}
-                    onChangeText={setSalesGoal}
-                  />
-                </View>
-
-                {/* Labor Cost Threshold Input */}
-                <View>
-                  <Label className="text-gray-400 text-sm mb-1.5">
-                    Labor Cost Threshold (%)
-                  </Label>
-                  <Input
-                    className="bg-screen border-gray-600 text-white h-10"
-                    placeholder="e.g. 30"
-                    placeholderClassName="text-gray-500"
-                    keyboardType="numeric"
-                    value={laborCostThreshold}
-                    onChangeText={setLaborCostThreshold}
-                  />
-                </View>
-
-                {/* Kitchen Backed Up Switch */}
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-gray-300">Kitchen Backed Up</Text>
-                  <Switch
-                    checked={alertTriggers.kitchenBackedUp}
-                    onCheckedChange={() =>
-                      toggleAlertTrigger("kitchenBackedUp")
-                    }
-                  />
-                </View>
-
-                {/* Inventory Low Switch */}
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-gray-300">Inventory Low</Text>
-                  <Switch
-                    checked={alertTriggers.inventoryLow}
-                    onCheckedChange={() => toggleAlertTrigger("inventoryLow")}
-                  />
-                </View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <MessageSquare size={14} color={colors.label} />
+                <Text style={{ fontSize: 13, color: colors.heading }}>SMS</Text>
               </View>
+              <Switch
+                checked={deliveryMethods.sms}
+                onCheckedChange={() => toggleDeliveryMethod("sms")}
+              />
+            </View>
 
-              <View className="h-[1px] bg-gray-700 my-1" />
-
-              {/* Delivery Methods */}
-              <View className="gap-3">
-                <Label className="text-gray-300 font-semibold mb-1">
-                  Notification Channels
-                </Label>
-
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <Smartphone size={16} color={colors.label} />
-                    <Text className="text-gray-300">Push Notifications</Text>
-                  </View>
-                  <Switch
-                    checked={deliveryMethods.push}
-                    onCheckedChange={() => toggleDeliveryMethod("push")}
-                  />
-                </View>
-
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <MessageSquare size={16} color={colors.label} />
-                    <Text className="text-gray-300">SMS</Text>
-                  </View>
-                  <Switch
-                    checked={deliveryMethods.sms}
-                    onCheckedChange={() => toggleDeliveryMethod("sms")}
-                  />
-                </View>
-
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2">
-                    <Mail size={16} color={colors.label} />
-                    <Text className="text-gray-300">Email</Text>
-                  </View>
-                  <Switch
-                    checked={deliveryMethods.email}
-                    onCheckedChange={() => toggleDeliveryMethod("email")}
-                  />
-                </View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingVertical: 6,
+                borderTopWidth: 1,
+                borderTopColor: colors.border,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Mail size={14} color={colors.label} />
+                <Text style={{ fontSize: 13, color: colors.heading }}>Email</Text>
               </View>
-            </CardContent>
-          </Card>
+              <Switch
+                checked={deliveryMethods.email}
+                onCheckedChange={() => toggleDeliveryMethod("email")}
+              />
+            </View>
+          </View>
         </View>
       </ScrollView>
     </View>

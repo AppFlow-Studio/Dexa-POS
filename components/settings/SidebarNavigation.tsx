@@ -5,7 +5,7 @@ import {
   BarChart2,
   Calendar,
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
   ClipboardList,
   CreditCard,
   DollarSign,
@@ -43,84 +43,29 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     id: "operations",
     title: "Operations & Hardware",
     items: [
-      {
-        id: "printers-kitchen",
-        label: "Printers & Kitchen",
-        icon: Printer,
-        route: "/settings/printers-kitchen",
-      },
-      {
-        id: "receipt-templates",
-        label: "Receipt Templates",
-        icon: Receipt,
-        route: "/settings/receipt-templates",
-      },
-      {
-        id: "payment-systems",
-        label: "Payment Systems",
-        icon: Banknote,
-        route: "/settings/payment-systems",
-      },
-      {
-        id: "cash-management",
-        label: "Cash Management",
-        icon: DollarSign,
-        route: "/settings/cash-management",
-      },
-      {
-        id: "dining-room",
-        label: "Dining Room",
-        icon: LayoutGrid,
-        route: "/settings/dining-room",
-      },
-      {
-        id: "stations-devices",
-        label: "Stations & Devices",
-        icon: Monitor,
-        route: "/settings/stations-devices",
-      },
-      {
-        id: "order-line",
-        label: "Order Line",
-        icon: List,
-        route: "/settings/order-line",
-      },
+      { id: "printers-kitchen", label: "Printers & Kitchen", icon: Printer, route: "/settings/printers-kitchen" },
+      { id: "receipt-templates", label: "Receipt Templates", icon: Receipt, route: "/settings/receipt-templates" },
+      { id: "payment-systems", label: "Payment Systems", icon: Banknote, route: "/settings/payment-systems" },
+      { id: "cash-management", label: "Cash Management", icon: DollarSign, route: "/settings/cash-management" },
+      { id: "dining-room", label: "Dining Room", icon: LayoutGrid, route: "/settings/dining-room" },
+      { id: "stations-devices", label: "Stations & Devices", icon: Monitor, route: "/settings/stations-devices" },
+      { id: "order-line", label: "Order Line", icon: List, route: "/settings/order-line" },
     ],
   },
   {
     id: "business",
     title: "Business Management",
     items: [
-      {
-        id: "general",
-        label: "General Settings",
-        icon: Settings,
-        route: "/settings/general",
-      },
-      {
-        id: "payment-processing",
-        label: "Payment Processing",
-        icon: CreditCard,
-        route: "/settings/payment-processing",
-      },
+      { id: "general", label: "General Settings", icon: Settings, route: "/settings/general" },
+      { id: "payment-processing", label: "Payment Processing", icon: CreditCard, route: "/settings/payment-processing" },
     ],
   },
   {
     id: "customer",
     title: "Customer Experience",
     items: [
-      {
-        id: "online-ordering",
-        label: "Online Ordering",
-        icon: Globe,
-        route: "/settings/online-ordering",
-      },
-      {
-        id: "delivery",
-        label: "Delivery Management",
-        icon: Truck,
-        route: "/settings/delivery",
-      },
+      { id: "online-ordering", label: "Online Ordering", icon: Globe, route: "/settings/online-ordering" },
+      { id: "delivery", label: "Delivery Management", icon: Truck, route: "/settings/delivery" },
     ],
   },
 ];
@@ -128,70 +73,68 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
 const SidebarNavigation = () => {
   const router = useRouter();
   const pathname = usePathname();
-  // Automatically expand the section that contains the current route on mount
-  const [expandedSections, setExpandedSections] = useState<
-    Record<string, boolean>
-  >(() => {
+
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
     const activeSection = SETTINGS_SECTIONS.find((section) =>
       section.items.some((item) => pathname.startsWith(item.route))
     );
     return activeSection ? { [activeSection.id]: true } : {};
   });
 
-  // Keep expanding sections if route changes (optional, but good for deep linking or redirects)
   useEffect(() => {
     const activeSection = SETTINGS_SECTIONS.find((section) =>
       section.items.some((item) => pathname.startsWith(item.route))
     );
-
     if (activeSection && !expandedSections[activeSection.id]) {
-      setExpandedSections((prev) => ({
-        ...prev,
-        [activeSection.id]: true,
-      }));
+      setExpandedSections((prev) => ({ ...prev, [activeSection.id]: true }));
     }
   }, [pathname]);
 
   const toggleSection = (sectionId: string) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [sectionId]: !prev[sectionId],
-    }));
+    setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
   };
 
   return (
-    <View className="w-80 h-full bg-panel border-r border-gray-800 flex flex-col pt-4">
-      {/* Navigation Items */}
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="px-3 pb-4">
+    <View style={{ width: 220, height: "100%", backgroundColor: colors.panel, borderRightWidth: 1, borderRightColor: colors.border, flexDirection: "column", paddingTop: 12 }}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        <View style={{ paddingHorizontal: 10, paddingBottom: 16 }}>
           {SETTINGS_SECTIONS.map((section) => {
             const isExpanded = expandedSections[section.id];
-            // Check if any child is active to highlight the section header potentially,
-            // or just rely on the open state.
-            const hasActiveChild = section.items.some((item) =>
-              pathname.startsWith(item.route)
-            );
+            const hasActiveChild = section.items.some((item) => pathname.startsWith(item.route));
 
             return (
-              <View key={section.id} className="mb-2">
+              <View key={section.id} style={{ marginBottom: 4 }}>
+                {/* Section header */}
                 <TouchableOpacity
                   onPress={() => toggleSection(section.id)}
-                  className={`flex-row items-center justify-between p-3 rounded-lg ${
-                    hasActiveChild ? "bg-gray-800/30" : "transparent"
-                  }`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                    borderRadius: 8,
+                    backgroundColor: hasActiveChild ? colors.teal + "08" : "transparent",
+                  }}
                 >
-                  <Text className="text-gray-400 font-semibold text-sm uppercase tracking-wider">
+                  <Text style={{
+                    fontSize: 10,
+                    fontWeight: "600",
+                    color: hasActiveChild ? colors.teal : colors.muted,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}>
                     {section.title}
                   </Text>
-                  {isExpanded ? (
-                    <ChevronUp size={16} color={colors.label} />
-                  ) : (
-                    <ChevronDown size={16} color={colors.label} />
-                  )}
+                  {isExpanded
+                    ? <ChevronDown size={13} color={hasActiveChild ? colors.teal : colors.muted} />
+                    : <ChevronRight size={13} color={hasActiveChild ? colors.teal : colors.muted} />
+                  }
                 </TouchableOpacity>
 
+                {/* Items */}
                 {isExpanded && (
-                  <View className="mt-1 ml-1">
+                  <View style={{ marginTop: 2 }}>
                     {section.items.map((item) => {
                       const isActive = pathname.startsWith(item.route);
                       const Icon = item.icon;
@@ -200,27 +143,51 @@ const SidebarNavigation = () => {
                         <TouchableOpacity
                           key={item.id}
                           onPress={() => router.push(item.route as any)}
-                          className={`flex-row items-center p-3 rounded-lg mb-1 ${
-                            isActive ? "bg-blue-600/10" : "transparent"
-                          }`}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            marginBottom: 1,
+                            backgroundColor: isActive ? colors.teal + "15" : "transparent",
+                          }}
                         >
-                          {/* Active Indicator Bar */}
+                          {/* Active left bar */}
                           {isActive && (
-                            <View className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 rounded-r-full" />
+                            <View style={{
+                              position: "absolute",
+                              left: 0,
+                              top: 6,
+                              bottom: 6,
+                              width: 2,
+                              backgroundColor: colors.teal,
+                              borderRadius: 2,
+                            }} />
                           )}
 
-                          <View className="ml-2 mr-3">
+                          <View style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 7,
+                            backgroundColor: isActive ? colors.teal + "20" : colors.card,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginRight: 9,
+                          }}>
                             <Icon
-                              size={20}
-                              color={isActive ? colors.info : colors.label}
+                              size={14}
+                              color={isActive ? colors.teal : colors.label}
                               strokeWidth={isActive ? 2.5 : 2}
                             />
                           </View>
-                          <Text
-                            className={`text-sm font-medium ${
-                              isActive ? "text-blue-500" : "text-gray-400"
-                            }`}
-                          >
+
+                          <Text style={{
+                            fontSize: 12,
+                            fontWeight: isActive ? "600" : "400",
+                            color: isActive ? colors.teal : colors.label,
+                            flex: 1,
+                          }}>
                             {item.label}
                           </Text>
                         </TouchableOpacity>
@@ -235,14 +202,10 @@ const SidebarNavigation = () => {
       </ScrollView>
 
       {/* Footer */}
-      <View className="p-6 border-t border-gray-800 bg-panel">
-        <View className="bg-gray-800/50 rounded-lg p-3">
-          <Text className="text-xs text-gray-400 text-center">
-            Version 2.4.1
-          </Text>
-          <Text className="text-xs text-gray-500 text-center mt-1">
-            © 2025 DEXA Systems
-          </Text>
+      <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ backgroundColor: colors.card, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center" }}>Version 2.4.1</Text>
+          <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center", marginTop: 2, opacity: 0.7 }}>© 2025 DEXA Systems</Text>
         </View>
       </View>
     </View>

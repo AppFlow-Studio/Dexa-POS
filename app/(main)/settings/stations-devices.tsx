@@ -86,21 +86,31 @@ const StationsDevicesScreen = () => {
     return (
       <TouchableOpacity
         onPress={() => toggleSection(sectionKey)}
-        className="bg-surface p-4 rounded-t-xl border-b border-gray-700 flex-row items-center justify-between"
+        style={{
+          backgroundColor: colors.panel,
+          padding: 14,
+          borderTopLeftRadius: 12,
+          borderTopRightRadius: 12,
+          borderBottomWidth: 1,
+          borderColor: colors.border,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
       >
-        <View className="flex-row items-center flex-1">
-          <View className="w-10 h-10 bg-card rounded-lg items-center justify-center mr-3">
+        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.card, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
             {icon}
           </View>
-          <View className="flex-1">
-            <Text className="text-white font-bold text-lg">{title}</Text>
-            <Text className="text-gray-400 text-sm mt-0.5">{subtitle}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{title}</Text>
+            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{subtitle}</Text>
           </View>
         </View>
         {isExpanded ? (
-          <ChevronUp size={24} color={colors.label} />
+          <ChevronUp size={18} color={colors.label} />
         ) : (
-          <ChevronDown size={24} color={colors.label} />
+          <ChevronDown size={18} color={colors.label} />
         )}
       </TouchableOpacity>
     );
@@ -109,30 +119,21 @@ const StationsDevicesScreen = () => {
   const renderCapabilityBadge = (
     label: string,
     enabled?: boolean,
-    color: string = "blue",
   ) => {
     if (enabled === undefined) return null;
 
-    const bgColor =
-      color === "blue"
-        ? enabled
-          ? "bg-blue-600/20"
-          : "bg-gray-600/20"
-        : enabled
-          ? "bg-green-600/20"
-          : "bg-gray-600/20";
-    const textColor =
-      color === "blue"
-        ? enabled
-          ? "text-blue-400"
-          : "text-gray-500"
-        : enabled
-          ? "text-green-400"
-          : "text-gray-500";
-
     return (
-      <View className={`px-2 py-1 rounded ${bgColor}`}>
-        <Text className={`text-xs font-medium ${textColor}`}>{label}</Text>
+      <View style={{
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        backgroundColor: enabled ? colors.success + "20" : colors.border + "80",
+        borderWidth: 1,
+        borderColor: enabled ? colors.success + "40" : colors.border,
+      }}>
+        <Text style={{ fontSize: 11, fontWeight: "500", color: enabled ? colors.success : colors.muted }}>
+          {label}
+        </Text>
       </View>
     );
   };
@@ -144,65 +145,58 @@ const StationsDevicesScreen = () => {
     return (
       <View
         key={station.id}
-        className="bg-surface p-4 rounded-xl border border-gray-600 mb-3"
+        style={{
+          backgroundColor: colors.card,
+          padding: 14,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          marginBottom: 10,
+        }}
       >
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center flex-1">
-            <View
-              className={`w-12 h-12 rounded-lg items-center justify-center mr-3 ${
-                isAvailable ? "bg-green-600/20" : "bg-amber-600/20"
-              }`}
-            >
-              <Monitor
-                size={24}
-                color={isAvailable ? colors.success : colors.warning}
-              />
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+            <View style={{
+              width: 40, height: 40, borderRadius: 10,
+              backgroundColor: isAvailable ? colors.success + "20" : colors.warning + "20",
+              alignItems: "center", justifyContent: "center", marginRight: 10,
+            }}>
+              <Monitor size={20} color={isAvailable ? colors.success : colors.warning} />
             </View>
-            <View className="flex-1">
-              <View className="flex-row items-center">
-                <Text className="text-xl font-medium text-white">
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: colors.heading }}>
                   {station.station_name}
                 </Text>
                 {station.station_number > 0 && (
-                  <View className="ml-2 px-2 py-0.5 bg-gray-600 rounded">
-                    <Text className="text-xs text-gray-300">
-                      #{station.station_number}
-                    </Text>
+                  <View style={{ marginLeft: 8, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: colors.border, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 10, color: colors.label }}>#{station.station_number}</Text>
                   </View>
                 )}
               </View>
-              <Text className="text-sm text-gray-400 mt-1">
-                {station.station_type.charAt(0).toUpperCase() +
-                  station.station_type.slice(1)}
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                {station.station_type.charAt(0).toUpperCase() + station.station_type.slice(1)}
               </Text>
             </View>
           </View>
-          <View className="items-end">
-            <View className="flex-row items-center mb-1">
+          <View style={{ alignItems: "flex-end" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
               {isOnline ? (
-                <Wifi size={16} color={colors.success} />
+                <Wifi size={13} color={colors.success} />
               ) : (
-                <WifiOff size={16} color={colors.muted} />
+                <WifiOff size={13} color={colors.muted} />
               )}
-              <Text
-                className={`text-sm ml-1 ${
-                  isOnline ? "text-green-400" : "text-gray-500"
-                }`}
-              >
+              <Text style={{ fontSize: 11, marginLeft: 4, color: isOnline ? colors.success : colors.muted }}>
                 {isOnline ? "Online" : "Offline"}
               </Text>
             </View>
-            <View className="flex-row items-center">
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               {isAvailable ? (
-                <CheckCircle2 size={16} color={colors.success} />
+                <CheckCircle2 size={13} color={colors.success} />
               ) : (
-                <AlertCircle size={16} color={colors.warning} />
+                <AlertCircle size={13} color={colors.warning} />
               )}
-              <Text
-                className={`text-sm ml-1 ${
-                  isAvailable ? "text-green-400" : "text-amber-400"
-                }`}
-              >
+              <Text style={{ fontSize: 11, marginLeft: 4, color: isAvailable ? colors.success : colors.warning }}>
                 {isAvailable ? "Available" : "In Use"}
               </Text>
             </View>
@@ -210,79 +204,49 @@ const StationsDevicesScreen = () => {
         </View>
 
         {!isAvailable && station.current_session && (
-          <View className="flex-row items-center mb-3 p-2 bg-surface rounded-lg">
-            <User size={14} color={colors.label} />
-            <Text className="text-gray-400 text-sm ml-2">
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10, padding: 8, backgroundColor: colors.panel, borderRadius: 8 }}>
+            <User size={12} color={colors.label} />
+            <Text style={{ fontSize: 11, color: colors.label, marginLeft: 6 }}>
               In use by {station.current_session.staff_name}
-              {station.current_session.device_name &&
-                ` on ${station.current_session.device_name}`}
+              {station.current_session.device_name && ` on ${station.current_session.device_name}`}
             </Text>
           </View>
         )}
 
-        <View className="border-t border-gray-700 pt-3 mb-3">
-          <Text className="text-gray-400 text-sm font-medium mb-2">
-            View Scope
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            <View
-              className={`px-3 py-1.5 rounded-lg ${
-                station.view_scope === "own"
-                  ? "bg-purple-600/20"
-                  : station.view_scope === "location"
-                    ? "bg-blue-600/20"
-                    : "bg-green-600/20"
-              }`}
-            >
-              <Text
-                className={`text-sm font-medium ${
-                  station.view_scope === "own"
-                    ? "text-purple-400"
-                    : station.view_scope === "location"
-                      ? "text-blue-400"
-                      : "text-green-400"
-                }`}
-              >
-                {station.view_scope === "own"
-                  ? "Own Orders Only"
-                  : station.view_scope === "location"
-                    ? "All Location Orders"
-                    : "Online Orders"}
-              </Text>
-            </View>
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginBottom: 10 }}>
+          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 6 }}>View Scope</Text>
+          <View>
+            {(() => {
+              const scopeColor =
+                station.view_scope === "own" ? "#a78bfa" :
+                station.view_scope === "location" ? colors.teal :
+                colors.success;
+              const scopeLabel =
+                station.view_scope === "own" ? "Own Orders Only" :
+                station.view_scope === "location" ? "All Location Orders" :
+                "Online Orders";
+              return (
+                <View style={{
+                  paddingHorizontal: 10, paddingVertical: 4,
+                  borderRadius: 6, alignSelf: "flex-start",
+                  backgroundColor: scopeColor + "20",
+                  borderWidth: 1, borderColor: scopeColor + "40",
+                }}>
+                  <Text style={{ fontSize: 11, fontWeight: "500", color: scopeColor }}>{scopeLabel}</Text>
+                </View>
+              );
+            })()}
           </View>
         </View>
 
-        <View className="border-t border-gray-700 pt-3 mb-3">
-          <Text className="text-gray-400 text-sm font-medium mb-2">
-            Capabilities
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {renderCapabilityBadge(
-              "Create Orders",
-              station.can_create_orders,
-              "green",
-            )}
-            {renderCapabilityBadge(
-              "Process Payments",
-              station.can_process_payments,
-              "green",
-            )}
-            {renderCapabilityBadge(
-              "Void Orders",
-              station.can_void_orders,
-              "green",
-            )}
-            {renderCapabilityBadge(
-              "Apply Discounts",
-              station.can_apply_discounts,
-              "green",
-            )}
-            {renderCapabilityBadge(
-              "Update Kitchen",
-              station.can_update_kitchen_status,
-              "green",
-            )}
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginBottom: 10 }}>
+          <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>Capabilities</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {renderCapabilityBadge("Create Orders", station.can_create_orders)}
+            {renderCapabilityBadge("Process Payments", station.can_process_payments)}
+            {renderCapabilityBadge("Void Orders", station.can_void_orders)}
+            {renderCapabilityBadge("Apply Discounts", station.can_apply_discounts)}
+            {renderCapabilityBadge("Update Kitchen", station.can_update_kitchen_status)}
           </View>
         </View>
 
@@ -290,85 +254,68 @@ const StationsDevicesScreen = () => {
         {(station.device_manufacturer ||
           station.hardware_model ||
           station.last_heartbeat_at) && (
-          <View className="border-t border-gray-700 pt-3 mb-3">
-            <View className="flex-row items-center mb-2">
-              <Smartphone size={16} color={colors.label} />
-              <Text className="text-gray-400 text-sm font-medium ml-2">
-                Device Health
-              </Text>
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginBottom: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+              <Smartphone size={13} color={colors.label} />
+              <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>Device Health</Text>
             </View>
-            <View className="bg-surface p-3 rounded-lg">
+            <View style={{ backgroundColor: colors.panel, padding: 10, borderRadius: 8, gap: 6 }}>
               {station.hardware_model && (
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-gray-400 text-sm">Hardware</Text>
-                  <Text className="text-white text-sm">
-                    {station.device_manufacturer &&
-                      `${station.device_manufacturer} `}
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, color: colors.label }}>Hardware</Text>
+                  <Text style={{ fontSize: 11, color: colors.heading }}>
+                    {station.device_manufacturer && `${station.device_manufacturer} `}
                     {station.hardware_model || station.device_model}
                   </Text>
                 </View>
               )}
               {station.last_heartbeat_at && (
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-gray-400 text-sm">Last Heartbeat</Text>
-                  <Text className="text-white text-sm">
-                    {formatDistanceToNow(new Date(station.last_heartbeat_at), {
-                      addSuffix: true,
-                    })}
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, color: colors.label }}>Last Heartbeat</Text>
+                  <Text style={{ fontSize: 11, color: colors.heading }}>
+                    {formatDistanceToNow(new Date(station.last_heartbeat_at), { addSuffix: true })}
                   </Text>
                 </View>
               )}
               {station.network_type && (
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-gray-400 text-sm">Network</Text>
-                  <View className="flex-row items-center">
-                    <Wifi size={12} color={colors.label} />
-                    <Text className="text-white text-sm ml-1">
-                      {station.network_type}
-                    </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 11, color: colors.label }}>Network</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Wifi size={10} color={colors.label} />
+                    <Text style={{ fontSize: 11, color: colors.heading }}>{station.network_type}</Text>
                   </View>
                 </View>
               )}
               {station.app_version && (
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-gray-400 text-sm">App Version</Text>
-                  <Text className="text-white text-sm">
-                    v{station.app_version}
-                  </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, color: colors.label }}>App Version</Text>
+                  <Text style={{ fontSize: 11, color: colors.heading }}>v{station.app_version}</Text>
                 </View>
               )}
               {/* Hardware capability badges */}
-              <View className="flex-row flex-wrap gap-2 mt-1">
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
                 {station.has_builtin_printer && (
-                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <Printer size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">
-                      Printer
-                    </Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.success + "15", flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Printer size={9} color={colors.success} />
+                    <Text style={{ fontSize: 10, fontWeight: "500", color: colors.success }}>Printer</Text>
                   </View>
                 )}
                 {station.has_builtin_cfd && (
-                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <Monitor size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">
-                      CFD
-                    </Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.success + "15", flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Monitor size={9} color={colors.success} />
+                    <Text style={{ fontSize: 10, fontWeight: "500", color: colors.success }}>CFD</Text>
                   </View>
                 )}
                 {station.has_nfc && (
-                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <Cpu size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">
-                      NFC
-                    </Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.success + "15", flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Cpu size={9} color={colors.success} />
+                    <Text style={{ fontSize: 10, fontWeight: "500", color: colors.success }}>NFC</Text>
                   </View>
                 )}
                 {station.has_cash_drawer_port && (
-                  <View className="px-2 py-1 rounded bg-emerald-600/20 flex-row items-center">
-                    <CreditCard size={10} color={colors.success} />
-                    <Text className="text-xs font-medium text-emerald-400 ml-1">
-                      Cash Drawer
-                    </Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.success + "15", flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <CreditCard size={9} color={colors.success} />
+                    <Text style={{ fontSize: 10, fontWeight: "500", color: colors.success }}>Cash Drawer</Text>
                   </View>
                 )}
               </View>
@@ -377,49 +324,35 @@ const StationsDevicesScreen = () => {
         )}
 
         {station.payment_terminal && (
-          <View className="border-t border-gray-700 pt-3">
-            <View className="flex-row items-center mb-2">
-              <CreditCard size={16} color={colors.label} />
-              <Text className="text-gray-400 text-sm font-medium ml-2">
-                Linked Payment Terminal
-              </Text>
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+              <CreditCard size={13} color={colors.label} />
+              <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 6 }}>Linked Payment Terminal</Text>
             </View>
-            <View className="bg-surface p-3 rounded-lg">
-              <Text className="text-white font-medium">
+            <View style={{ backgroundColor: colors.panel, padding: 10, borderRadius: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                 {station.payment_terminal.terminal_name}
               </Text>
-              <View className="flex-row items-center mt-1">
-                {station.payment_terminal.register_id && (
-                  <Text className="text-gray-400 text-sm">
-                    Register: {station.payment_terminal.register_id}
-                  </Text>
-                )}
-              </View>
-              <View className="flex-row items-center mt-2">
+              {station.payment_terminal.register_id && (
+                <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
+                  Register: {station.payment_terminal.register_id}
+                </Text>
+              )}
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
                 {station.payment_terminal.is_connected ? (
                   <>
-                    <CheckCircle2 size={14} color={colors.success} />
-                    <Text className="text-green-400 text-xs ml-1">
-                      Connected
-                    </Text>
+                    <CheckCircle2 size={12} color={colors.success} />
+                    <Text style={{ fontSize: 11, color: colors.success, marginLeft: 4 }}>Connected</Text>
                   </>
                 ) : (
                   <>
-                    <AlertCircle size={14} color={colors.danger} />
-                    <Text className="text-red-400 text-xs ml-1">
-                      Disconnected
-                    </Text>
+                    <AlertCircle size={12} color={colors.danger} />
+                    <Text style={{ fontSize: 11, color: colors.danger, marginLeft: 4 }}>Disconnected</Text>
                   </>
                 )}
                 {station.payment_terminal.last_connection_test_at && (
-                  <Text className="text-gray-500 text-xs ml-2">
-                    Last test:{" "}
-                    {formatDistanceToNow(
-                      new Date(
-                        station.payment_terminal.last_connection_test_at,
-                      ),
-                      { addSuffix: true },
-                    )}
+                  <Text style={{ fontSize: 10, color: colors.muted, marginLeft: 8 }}>
+                    Last test: {formatDistanceToNow(new Date(station.payment_terminal.last_connection_test_at), { addSuffix: true })}
                   </Text>
                 )}
               </View>
@@ -438,92 +371,92 @@ const StationsDevicesScreen = () => {
     return (
       <View
         key={terminal.id}
-        className="bg-surface p-4 rounded-xl border border-gray-600 mb-3"
+        style={{
+          backgroundColor: colors.card,
+          padding: 14,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          marginBottom: 10,
+        }}
       >
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center flex-1">
-            <View
-              className={`w-12 h-12 rounded-lg items-center justify-center mr-3 ${
-                terminal.is_connected ? "bg-green-600/20" : "bg-red-600/20"
-              }`}
-            >
-              <CreditCard
-                size={24}
-                color={terminal.is_connected ? colors.success : colors.danger}
-              />
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+            <View style={{
+              width: 40, height: 40, borderRadius: 10,
+              backgroundColor: terminal.is_connected ? colors.success + "20" : colors.danger + "20",
+              alignItems: "center", justifyContent: "center", marginRight: 10,
+            }}>
+              <CreditCard size={20} color={terminal.is_connected ? colors.success : colors.danger} />
             </View>
-            <View className="flex-1">
-              <Text className="text-xl font-medium text-white">
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.heading }}>
                 {terminal.terminal_name}
               </Text>
-              <Text className="text-sm text-gray-400 mt-1">
-                {terminal.terminal_type.charAt(0).toUpperCase() +
-                  terminal.terminal_type.slice(1)}
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                {terminal.terminal_type.charAt(0).toUpperCase() + terminal.terminal_type.slice(1)}
                 {terminal.terminal_model && ` • ${terminal.terminal_model}`}
               </Text>
             </View>
           </View>
-          <View className="items-end">
+          <View style={{ alignItems: "flex-end" }}>
             {terminal.is_connected ? (
               <>
-                <CheckCircle2 size={20} color={colors.success} />
-                <Text className="text-green-400 text-xs mt-1">Connected</Text>
+                <CheckCircle2 size={16} color={colors.success} />
+                <Text style={{ fontSize: 10, color: colors.success, marginTop: 3 }}>Connected</Text>
               </>
             ) : (
               <>
-                <AlertCircle size={20} color={colors.danger} />
-                <Text className="text-red-400 text-xs mt-1">Offline</Text>
+                <AlertCircle size={16} color={colors.danger} />
+                <Text style={{ fontSize: 10, color: colors.danger, marginTop: 3 }}>Offline</Text>
               </>
             )}
           </View>
         </View>
 
-        <View className="bg-surface p-3 rounded-lg mb-3">
+        <View style={{ backgroundColor: colors.panel, padding: 10, borderRadius: 8, marginBottom: 10, gap: 6 }}>
           {terminal.register_id && (
-            <View className="flex-row items-center justify-between mb-2">
-              <Text className="text-gray-400 text-sm">Register ID</Text>
-              <Text className="text-white font-mono">
-                {terminal.register_id}
-              </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, color: colors.label }}>Register ID</Text>
+              <Text style={{ fontSize: 11, fontFamily: "monospace", color: colors.heading }}>{terminal.register_id}</Text>
             </View>
           )}
-          <View className="flex-row items-center justify-between">
-            <Text className="text-gray-400 text-sm">Linked Station</Text>
-            <Text className="text-white">{station.station_name}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 11, color: colors.label }}>Linked Station</Text>
+            <Text style={{ fontSize: 11, color: colors.heading }}>{station.station_name}</Text>
           </View>
         </View>
 
         {terminal.last_connection_status && (
-          <View className="flex-row items-center mb-3">
-            <Text className="text-gray-400 text-sm">Status: </Text>
-            <Text
-              className={`text-sm font-medium ${
-                terminal.last_connection_status === "Online"
-                  ? "text-green-400"
-                  : terminal.last_connection_status === "Offline"
-                    ? "text-red-400"
-                    : "text-gray-400"
-              }`}
-            >
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+            <Text style={{ fontSize: 11, color: colors.label }}>Status: </Text>
+            <Text style={{
+              fontSize: 11, fontWeight: "600",
+              color: terminal.last_connection_status === "Online" ? colors.success :
+                terminal.last_connection_status === "Offline" ? colors.danger : colors.label,
+            }}>
               {terminal.last_connection_status}
             </Text>
             {terminal.last_connection_test_at && (
-              <Text className="text-gray-500 text-sm ml-2">
-                •{" "}
-                {formatDistanceToNow(
-                  new Date(terminal.last_connection_test_at),
-                  { addSuffix: true },
-                )}
+              <Text style={{ fontSize: 10, color: colors.muted, marginLeft: 8 }}>
+                • {formatDistanceToNow(new Date(terminal.last_connection_test_at), { addSuffix: true })}
               </Text>
             )}
           </View>
         )}
 
-        <View className="bg-blue-600/10 border border-blue-600/30 p-3 rounded-lg flex-row items-center">
-          <Shield size={16} color={colors.info} />
-          <Text className="text-blue-400 text-xs ml-2 flex-1">
-            Auth credentials encrypted and accessed securely during payment
-            processing
+        <View style={{
+          backgroundColor: colors.teal + "10",
+          borderWidth: 1,
+          borderColor: colors.teal + "30",
+          padding: 10,
+          borderRadius: 8,
+          flexDirection: "row",
+          alignItems: "center",
+        }}>
+          <Shield size={14} color={colors.teal} />
+          <Text style={{ fontSize: 11, color: colors.teal, marginLeft: 8, flex: 1 }}>
+            Auth credentials encrypted and accessed securely during payment processing
           </Text>
         </View>
       </View>
@@ -533,10 +466,10 @@ const StationsDevicesScreen = () => {
   // Loading state
   if (isLoading) {
     return (
-      <ScrollView className="flex-1 bg-screen p-6">
-        <View className="w-full items-center justify-center py-20">
-          <ActivityIndicator size="large" color={colors.info} />
-          <Text className="text-gray-400 mt-4">Loading stations...</Text>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+        <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 80 }}>
+          <ActivityIndicator size="large" color={colors.teal} />
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 12 }}>Loading stations...</Text>
         </View>
       </ScrollView>
     );
@@ -545,20 +478,28 @@ const StationsDevicesScreen = () => {
   // Error state
   if (error) {
     return (
-      <ScrollView className="flex-1 bg-screen p-6">
-        <View className="w-full items-center justify-center py-20">
-          <AlertCircle size={48} color={colors.danger} />
-          <Text className="text-red-400 text-lg text-center mt-4">
+      <ScrollView style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+        <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 80 }}>
+          <AlertCircle size={40} color={colors.danger} />
+          <Text style={{ fontSize: 14, color: colors.danger, textAlign: "center", marginTop: 12 }}>
             Failed to load stations
           </Text>
-          <Text className="text-gray-400 mt-2 text-center">
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4, textAlign: "center" }}>
             {(error as Error).message || "Please try again later"}
           </Text>
           <TouchableOpacity
             onPress={() => refetch()}
-            className="mt-4 bg-blue-600 px-4 py-2 rounded-lg"
+            style={{
+              marginTop: 14,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 8,
+            }}
           >
-            <Text className="text-white font-medium">Retry</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Retry</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -566,57 +507,67 @@ const StationsDevicesScreen = () => {
   }
 
   return (
-    <ScrollView className="flex-1 bg-screen p-6">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.screen }} contentContainerStyle={{ padding: 20 }}>
       {/* Header */}
-      <View className="flex-row items-center justify-between mb-6">
-        <View className="flex-1">
-          <Text className="text-3xl font-bold text-white">
-            Stations & Devices
-          </Text>
-          <Text className="text-gray-400 mt-2">
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Stations & Devices</Text>
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
             View stations, capabilities, and linked payment terminals
           </Text>
         </View>
         <TouchableOpacity
           onPress={() => refetch()}
           disabled={isRefetching}
-          className={`ml-4 p-3 rounded-lg ${
-            isRefetching ? "bg-gray-700" : "bg-blue-600"
-          }`}
+          style={{
+            marginLeft: 12,
+            padding: 10,
+            borderRadius: 8,
+            backgroundColor: isRefetching ? colors.border : colors.teal + "20",
+            borderWidth: 1,
+            borderColor: isRefetching ? colors.border : colors.teal + "50",
+          }}
         >
-          <RefreshCw
-            size={20}
-            color="white"
-            style={isRefetching ? { opacity: 0.5 } : undefined}
-          />
+          <RefreshCw size={16} color={isRefetching ? colors.muted : colors.teal} style={isRefetching ? { opacity: 0.5 } : undefined} />
         </TouchableOpacity>
       </View>
 
-      <View className="h-px w-full bg-gray-700 mb-6" />
+      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
 
       {/* CFD Section */}
-      <View className="bg-neutral-900 rounded-xl p-4 mt-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3">
-            <Monitor size={24} color={colors.label} />
+      <View style={{
+        backgroundColor: colors.panel,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 16,
+      }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.teal + "15", alignItems: "center", justifyContent: "center" }}>
+              <Monitor size={16} color={colors.teal} />
+            </View>
             <View>
-              <Text className="text-white text-lg font-semibold">
-                Customer Display
-              </Text>
-              <Text className="text-neutral-500 text-sm">
-                Show order details to customers
-              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Customer Display</Text>
+              <Text style={{ fontSize: 11, color: colors.muted }}>Show order details to customers</Text>
             </View>
           </View>
-
           <CFDStatusBadge onPress={() => setShowPairing(true)} />
         </View>
 
         <Pressable
           onPress={() => setShowPairing(true)}
-          className="bg-emerald-600 mt-4 py-3 rounded-lg items-center"
+          style={{
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "50",
+            paddingVertical: 10,
+            borderRadius: 8,
+            alignItems: "center",
+          }}
         >
-          <Text className="text-white font-semibold">Connect Display</Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>Connect Display</Text>
         </Pressable>
       </View>
 
@@ -627,23 +578,78 @@ const StationsDevicesScreen = () => {
         animationType="fade"
         onRequestClose={() => setShowPairing(false)}
       >
-        <View className="flex-1 bg-black/80 justify-center items-center p-4">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "center", alignItems: "center", padding: 16 }}>
           <CFDPairingQR onClose={() => setShowPairing(false)} />
         </View>
       </Modal>
 
+      {/* Stations Section */}
+      {stations && stations.length > 0 && (
+        <View style={{ marginBottom: 16 }}>
+          {renderSectionHeader(
+            <Monitor size={14} color={colors.teal} />,
+            "Stations",
+            `${stations.length} station${stations.length !== 1 ? "s" : ""} registered`,
+            "stations",
+          )}
+          {expandedSections.stations && (
+            <View style={{
+              backgroundColor: colors.panel,
+              borderBottomLeftRadius: 12,
+              borderBottomRightRadius: 12,
+              borderWidth: 1,
+              borderTopWidth: 0,
+              borderColor: colors.border,
+              padding: 12,
+            }}>
+              {stations.map(renderStationCard)}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Terminals Section */}
+      {stations && stations.some((s) => s.payment_terminal) && (
+        <View style={{ marginBottom: 16 }}>
+          {renderSectionHeader(
+            <CreditCard size={14} color={colors.warning} />,
+            "Payment Terminals",
+            `${stations.filter((s) => s.payment_terminal).length} terminal${stations.filter((s) => s.payment_terminal).length !== 1 ? "s" : ""} linked`,
+            "terminals",
+          )}
+          {expandedSections.terminals && (
+            <View style={{
+              backgroundColor: colors.panel,
+              borderBottomLeftRadius: 12,
+              borderBottomRightRadius: 12,
+              borderWidth: 1,
+              borderTopWidth: 0,
+              borderColor: colors.border,
+              padding: 12,
+            }}>
+              {stations.filter((s) => s.payment_terminal).map(renderTerminalCard)}
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Security Notice */}
-      <View className="bg-gray-800/50 border border-gray-700 p-4 mt-12 rounded-xl">
-        <View className="flex-row items-start">
-          <Shield size={20} color={colors.info} className="mr-3 mt-0.5" />
-          <View className="flex-1">
-            <Text className="text-blue-400 font-medium mb-1">
+      <View style={{
+        backgroundColor: colors.panel,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 14,
+        borderRadius: 12,
+        marginTop: 8,
+      }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+          <Shield size={16} color={colors.teal} style={{ marginTop: 1 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal, marginBottom: 4 }}>
               Security & Encryption
             </Text>
-            <Text className="text-gray-400 text-sm leading-5">
-              All payment terminal auth keys are encrypted in the database using
-              PGP encryption and are only decrypted in memory during payment
-              processing. Credentials are never stored persistently on devices.
+            <Text style={{ fontSize: 11, color: colors.label, lineHeight: 16 }}>
+              All payment terminal auth keys are encrypted in the database using PGP encryption and are only decrypted in memory during payment processing. Credentials are never stored persistently on devices.
             </Text>
           </View>
         </View>

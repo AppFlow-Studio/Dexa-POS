@@ -242,22 +242,22 @@ function CollapsibleSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <View className="mb-2">
+    <View style={{ marginBottom: 6 }}>
       <TouchableOpacity
         onPress={() => setOpen((v) => !v)}
-        className="flex-row items-center justify-between py-2.5 px-1 mt-3"
+        style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, paddingHorizontal: 2, marginTop: 10 }}
       >
-        <View className="flex-1">
-          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 11, fontWeight: "700", color: colors.heading, textTransform: "uppercase", letterSpacing: 0.8 }}>
             {title}
           </Text>
           {subtitle && !open ? (
-            <Text className="text-gray-600 text-xs mt-0.5">{subtitle}</Text>
+            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{subtitle}</Text>
           ) : null}
         </View>
         {open
-          ? <ChevronDown size={14} color={colors.muted} />
-          : <ChevronRight size={14} color={colors.muted} />}
+          ? <ChevronDown size={13} color={colors.muted} />
+          : <ChevronRight size={13} color={colors.muted} />}
       </TouchableOpacity>
       {open && <View>{children}</View>}
     </View>
@@ -278,13 +278,22 @@ function ToggleRow({
   return (
     <TouchableOpacity
       onPress={() => onToggle(!value)}
-      className={`flex-row items-center justify-between py-3 px-3 rounded-lg mb-1.5 border ${
-        value ? "bg-blue-600/10 border-blue-500/30" : "bg-surface border-gray-700"
-      }`}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        marginBottom: 4,
+        borderWidth: 1,
+        borderColor: value ? colors.teal + "30" : colors.border,
+        backgroundColor: value ? colors.teal + "10" : colors.screen,
+      }}
     >
-      <View className="flex-1 mr-3">
-        <Text className="text-white text-sm">{label}</Text>
-        {subtitle ? <Text className="text-gray-500 text-xs mt-0.5">{subtitle}</Text> : null}
+      <View style={{ flex: 1, marginRight: 10 }}>
+        <Text style={{ fontSize: 13, color: colors.heading }}>{label}</Text>
+        {subtitle ? <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{subtitle}</Text> : null}
       </View>
       <Switch checked={value} onCheckedChange={onToggle} />
     </TouchableOpacity>
@@ -303,10 +312,19 @@ function TextRow({
   placeholder?: string;
 }) {
   return (
-    <View className="mb-2">
-      <Text className="text-gray-400 text-xs mb-1 px-1">{label}</Text>
+    <View style={{ marginBottom: 8 }}>
+      <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4, paddingHorizontal: 2 }}>{label}</Text>
       <TextInput
-        className="bg-surface text-white text-sm px-3 py-2.5 rounded-lg border border-gray-700"
+        style={{
+          backgroundColor: colors.screen,
+          color: colors.heading,
+          fontSize: 13,
+          paddingHorizontal: 10,
+          paddingVertical: 9,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder ?? label}
@@ -925,61 +943,55 @@ const ReceiptTemplatesScreen = () => {
   }, [localConfig, merchantId, locationId, saveTemplate]);
 
   return (
-    <View className="flex-1 bg-panel">
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Tab Bar */}
-      <View className="flex-row px-4 pt-4 pb-2">
+      <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
         <TouchableOpacity
           onPress={() => { setActiveTab("receipt"); setSectionOrder(DEFAULT_RECEIPT_SECTION_ORDER); }}
-          className={`px-5 py-2.5 rounded-lg mr-2 ${
-            activeTab === "receipt" ? "bg-blue-600" : "bg-surface"
-          }`}
+          style={{
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderRadius: 8,
+            marginRight: 8,
+            backgroundColor: activeTab === "receipt" ? colors.teal + "20" : colors.screen,
+            borderWidth: 1,
+            borderColor: activeTab === "receipt" ? colors.teal + "50" : colors.border,
+          }}
         >
-          <Text
-            className={`text-sm font-medium ${
-              activeTab === "receipt" ? "text-white" : "text-gray-400"
-            }`}
-          >
+          <Text style={{ fontSize: 13, fontWeight: "500", color: activeTab === "receipt" ? colors.teal : colors.label }}>
             Sale Receipt
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setActiveTab("kitchen")}
-          className={`px-5 py-2.5 rounded-lg ${
-            activeTab === "kitchen" ? "bg-blue-600" : "bg-surface"
-          }`}
+          style={{
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderRadius: 8,
+            backgroundColor: activeTab === "kitchen" ? colors.teal + "20" : colors.screen,
+            borderWidth: 1,
+            borderColor: activeTab === "kitchen" ? colors.teal + "50" : colors.border,
+          }}
         >
-          <Text
-            className={`text-sm font-medium ${
-              activeTab === "kitchen" ? "text-white" : "text-gray-400"
-            }`}
-          >
+          <Text style={{ fontSize: 13, fontWeight: "500", color: activeTab === "kitchen" ? colors.teal : colors.label }}>
             Kitchen Ticket
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* Main Content: Preview + Settings side by side */}
-      <View className="flex-1 flex-row px-4 pb-4 gap-4">
+      <View style={{ flex: 1, flexDirection: "row", paddingHorizontal: 16, paddingBottom: 16, gap: 12 }}>
         {/* Preview Panel */}
-        <View className="flex-[4] bg-card rounded-xl p-4">
-          <View className="flex-row items-center justify-between mb-3 px-1">
-            <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider">
+        <View style={{ flex: 4, backgroundColor: colors.card, borderRadius: 12, padding: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingHorizontal: 2 }}>
+            <Text style={{ fontSize: 11, fontWeight: "700", color: colors.label, textTransform: "uppercase", letterSpacing: 0.8 }}>
               Live Preview
             </Text>
-            {activeTab === "receipt" ? (
-              <Text className="text-gray-600 text-[10px]">
-                Long-press to reorder sections
-              </Text>
-            ) : (
-              <Text className="text-gray-600 text-[10px]">
-                Updates as you change settings
-              </Text>
-            )}
+            <Text style={{ fontSize: 10, color: colors.muted }}>
+              {activeTab === "receipt" ? "Long-press to reorder" : "Updates live"}
+            </Text>
           </View>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 20 }}
-          >
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
             {activeTab === "receipt" ? (
               <ReceiptPreview
                 config={localConfig}
@@ -994,30 +1006,27 @@ const ReceiptTemplatesScreen = () => {
         </View>
 
         {/* Settings Panel */}
-        <View className="flex-[6] bg-card rounded-xl p-4">
+        <View style={{ flex: 6, backgroundColor: colors.card, borderRadius: 12, padding: 14 }}>
           {/* Toolbar: Presets + Copy */}
-          <View className="flex-row items-center gap-2 mb-3 pb-3 border-b border-gray-700">
-            <Text className="text-white font-semibold text-sm flex-1">Settings</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}>Settings</Text>
             <TouchableOpacity
               onPress={() => setShowCopyFrom(true)}
-              className="flex-row items-center gap-1.5 px-3 py-1.5 bg-surface rounded-lg border border-gray-600"
+              style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "transparent", borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
             >
-              <Copy size={13} color={colors.muted} />
-              <Text className="text-gray-400 text-xs font-medium">Copy from…</Text>
+              <Copy size={12} color={colors.muted} />
+              <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>Copy from…</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setShowPresets(true)}
-              className="flex-row items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 rounded-lg border border-blue-500/40"
+              style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.teal + "20", borderRadius: 8, borderWidth: 1, borderColor: colors.teal + "50" }}
             >
-              <Layers size={13} color={colors.info} />
-              <Text className="text-blue-300 text-xs font-medium">Presets</Text>
+              <Layers size={12} color={colors.teal} />
+              <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "500" }}>Presets</Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 20 }}
-          >
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
             {activeTab === "receipt" ? (
               <ReceiptSettings config={localConfig} updateField={updateField} />
             ) : (
@@ -1026,25 +1035,31 @@ const ReceiptTemplatesScreen = () => {
           </ScrollView>
 
           {/* Save + Test Print Buttons */}
-          <View className="pt-3 border-t border-gray-700 flex-row gap-2">
+          <View style={{ paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
               onPress={() => setShowTestPrint(true)}
-              className="flex-row items-center justify-center px-4 py-3 rounded-lg bg-surface border border-gray-600"
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border }}
             >
-              <Printer size={16} color={colors.info} />
-              <Text className="text-blue-400 font-semibold text-sm ml-1.5">Test Print</Text>
+              <Printer size={15} color={colors.teal} />
+              <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600", marginLeft: 5 }}>Test Print</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleSave}
               disabled={!hasChanges || isSaving}
-              className={`flex-1 py-3 rounded-lg items-center ${
-                hasChanges && !isSaving ? "bg-blue-600" : "bg-gray-600"
-              }`}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 8,
+                alignItems: "center",
+                backgroundColor: hasChanges && !isSaving ? colors.teal + "20" : colors.screen,
+                borderWidth: 1,
+                borderColor: hasChanges && !isSaving ? colors.teal + "50" : colors.border,
+              }}
             >
               {isSaving ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.teal} size="small" />
               ) : (
-                <Text className="text-white font-semibold text-sm">
+                <Text style={{ fontSize: 13, color: hasChanges && !isSaving ? colors.teal : colors.muted, fontWeight: "600" }}>
                   {hasChanges ? "Save Changes" : "No Changes"}
                 </Text>
               )}
@@ -1234,27 +1249,15 @@ function KitchenSettings({
         defaultOpen
       >
         {/* Visual size preview strip */}
-        <View className="bg-surface rounded-lg px-3 py-2.5 mb-2 border border-gray-700">
-          <Text className="text-gray-500 text-[9px] uppercase tracking-wider mb-1.5">
+        <View style={{ backgroundColor: colors.screen, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10, marginBottom: 8, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ fontSize: 9, color: colors.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
             Preview
           </Text>
-          <Text
-            className={
-              config.largeItemText
-                ? "text-white text-base font-bold"
-                : "text-white text-xs font-bold"
-            }
-          >
+          <Text style={{ color: colors.heading, fontWeight: "700", fontSize: config.largeItemText ? 16 : 12 }}>
             2x Cheeseburger
           </Text>
           {config.showItemModifiers && (
-            <Text
-              className={
-                config.showModsLarge
-                  ? "text-gray-400 text-sm ml-3"
-                  : "text-gray-400 text-[10px] ml-3"
-              }
-            >
+            <Text style={{ color: colors.label, marginLeft: 10, fontSize: config.showModsLarge ? 14 : 10 }}>
               + Extra Cheese
             </Text>
           )}
