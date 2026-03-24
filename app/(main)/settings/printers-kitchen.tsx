@@ -18,8 +18,10 @@ import {
 import { colors, spinnerColor } from "@/lib/theme";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { PrinterRoutingModal } from "@/components/settings/PrinterRoutingModal";
+import { useKDSStore } from "@/stores/useKDSStore";
 import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import type { ModifierStyle } from "@/types/receipt-template";
@@ -257,6 +259,10 @@ const PrintersKitchenScreen = () => {
   const jobs = usePrintQueueStore((s) => s.jobs);
   const queuedJobCount = jobs.filter((j) => j.status === "queued" || j.status === "processing").length;
   const failedJobCount = jobs.filter((j) => j.status === "failed").length;
+
+  // Throttling & KDS store (must be at top level, not in conditional)
+  const { throttling, setThrottling } = useSettingsStore();
+  const kdsCount = useKDSStore((s) => s.counts);
 
   // Device capabilities
   const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(
@@ -1961,6 +1967,150 @@ const PrintersKitchenScreen = () => {
               ) : (
                 <Text style={{ fontSize: 11, color: colors.muted }}>No kitchen/bar printers configured</Text>
               )}
+            </View>
+
+            <SectionHeader title="Smart Kitchen Throttling" />
+            <View style={{ backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+
+              {/* Auto-Throttle toggle */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12 }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 12, marginBottom: 2 }}>Auto-Throttle</Text>
+                  <Text style={{ color: colors.muted, fontSize: 10 }}>Automatically manage capacity</Text>
+                </View>
+                <Switch checked={throttling.enabled} onCheckedChange={(v) => setThrottling({ enabled: v })} />
+              </View>
+
+              {throttling.enabled && (() => {
+                const activeCount = kdsCount.cooking;
+                const pendingCount = kdsCount.pending;
+                const totalLoad = activeCount + pendingCount;
+                const maxCapacity = throttling.maxCapacity ?? 100;
+                const loadPercentage = Math.min(Math.round((totalLoad / maxCapacity) * 100), 100);
+                const loadColor = loadPercentage >= throttling.capacity ? colors.danger : loadPercentage >= throttling.capacity * 0.8 ? colors.warning : colors.teal;
+
+                return (
+                  <>
+                    <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                    {/* Current Load */}
+                    <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                        <View>
+                          <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Current Load</Text>
+                          <Text style={{ color: colors.muted, fontSize: 10 }}>{activeCount} cooking • {pendingCount} pending</Text>
+                        </View>
+                        <Text style={{ fontSize: 20, fontWeight: "700", color: loadColor }}>{loadPercentage}%</Text>
+                      </View>
+
+                      {/* Heat line */}
+                      <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.screen, overflow: "hidden", marginBottom: 4 }}>
+                        <View style={{ position: "absolute", left: 0, top: 0, width: `${loadPercentage}%`, height: "100%", borderRadius: 3, backgroundColor: loadColor }} />
+                        <View style={{ position: "absolute", left: `${throttling.capacity}%`, top: -1, width: 2, height: 8, backgroundColor: colors.heading, borderRadius: 1, marginLeft: -1 }} />
+                      </View>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ fontSize: 9, color: colors.muted }}>0</Text>
+                        <Text style={{ fontSize: 9, color: colors.muted }}>Threshold {throttling.capacity}%</Text>
+                        <Text style={{ fontSize: 9, color: colors.muted }}>{maxCapacity} items</Text>
+                      </View>
+                    </View>
+
+                    <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                    {/* Max Capacity */}
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 10 }}>
+                      <View>
+                        <Text style={{ color: colors.heading, fontSize: 12, fontWeight: "600", marginBottom: 2 }}>Max Capacity</Text>
+                        <Text style={{ color: colors.muted, fontSize: 10 }}>Total items kitchen can handle</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <TouchableOpacity
+                          onPress={() => setThrottling({ maxCapacity: Math.max(10, maxCapacity - 5) })}
+                          style={{ backgroundColor: colors.screen, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}
+                        >
+                          <Minus size={12} color={colors.heading} />
+                        </TouchableOpacity>
+                        <TextInput
+                          value={String(maxCapacity)}
+                          onChangeText={(val) => {
+                            const num = parseInt(val, 10);
+                            if (!isNaN(num) && num >= 10 && num <= 500) setThrottling({ maxCapacity: num });
+                          }}
+                          keyboardType="number-pad"
+                          style={{
+                            backgroundColor: colors.screen,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 6,
+                            paddingHorizontal: 8,
+                            paddingVertical: 5,
+                            color: colors.teal,
+                            fontSize: 12,
+                            fontWeight: "700",
+                            textAlign: "center",
+                            width: 54,
+                          }}
+                          placeholderTextColor={colors.muted}
+                        />
+                        <TouchableOpacity
+                          onPress={() => setThrottling({ maxCapacity: Math.min(500, maxCapacity + 5) })}
+                          style={{ backgroundColor: colors.screen, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}
+                        >
+                          <Plus size={12} color={colors.heading} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                    {/* Throttle Threshold */}
+                    <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+                      <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                        Throttle Threshold — {throttling.capacity}%
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 4 }}>
+                        {[50, 60, 70, 75, 80, 90].map((val) => (
+                          <TouchableOpacity
+                            key={val}
+                            onPress={() => setThrottling({ capacity: val })}
+                            style={{
+                              flex: 1, paddingVertical: 6, borderRadius: 6, borderWidth: 1,
+                              backgroundColor: throttling.capacity === val ? colors.teal + "20" : colors.screen,
+                              borderColor: throttling.capacity === val ? colors.teal + "50" : colors.border,
+                            }}
+                          >
+                            <Text style={{ textAlign: "center", fontSize: 10, fontWeight: "600", color: throttling.capacity === val ? colors.teal : colors.muted }}>
+                              {val}%
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+
+                    <View style={{ height: 1, backgroundColor: colors.border }} />
+
+                    {/* Actions */}
+                    <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 }}>
+                      <Text style={{ color: colors.label, fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                        Actions When Threshold Reached
+                      </Text>
+                    </View>
+                    {[
+                      { label: "Pause online orders", key: "pauseOnline" as const, value: throttling.pauseOnline },
+                      { label: "Increase prep times", key: "increasePrepTime" as const, value: throttling.increasePrepTime },
+                      { label: "Alert manager", key: "alertManager" as const, value: throttling.alertManager },
+                    ].map((item, i, arr) => (
+                      <View key={item.key}>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 10 }}>
+                          <Text style={{ color: colors.heading, fontSize: 12 }}>{item.label}</Text>
+                          <Switch checked={item.value} onCheckedChange={(v) => setThrottling({ [item.key]: v })} />
+                        </View>
+                        {i < arr.length - 1 && <View style={{ height: 1, backgroundColor: colors.border }} />}
+                      </View>
+                    ))}
+                  </>
+                );
+              })()}
             </View>
           </View>
         )}

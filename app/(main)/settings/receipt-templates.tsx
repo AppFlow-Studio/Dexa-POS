@@ -279,7 +279,7 @@ function CollapsibleSection({
           paddingHorizontal: 10,
           marginTop: 6,
           borderRadius: 8,
-          backgroundColor: colors.screen,
+          backgroundColor: colors.panel,
           borderWidth: 1,
           borderColor: colors.border,
         }}
@@ -329,7 +329,7 @@ function ToggleRow({
         marginBottom: 3,
         borderWidth: 1,
         borderColor: value ? colors.teal + "40" : colors.border,
-        backgroundColor: value ? colors.teal + "0D" : "transparent",
+        backgroundColor: value ? colors.teal + "0D" : colors.card,
       }}
     >
       <View style={{ flex: 1, marginRight: 10 }}>
@@ -1212,7 +1212,7 @@ const ReceiptTemplatesScreen = () => {
       <View style={{ flex: 1, flexDirection: "row", padding: 14, gap: 12 }}>
 
         {/* Preview Panel */}
-        <View style={{ flex: 4, backgroundColor: colors.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border }}>
+        <View style={{ flex: 4, backgroundColor: colors.screen, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <Text style={{ fontSize: 11, fontWeight: "700", color: colors.label, textTransform: "uppercase", letterSpacing: 0.8 }}>
               Live Preview
@@ -1242,7 +1242,7 @@ const ReceiptTemplatesScreen = () => {
         </View>
 
         {/* Settings Panel */}
-        <View style={{ flex: 6, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+        <View style={{ flex: 6, backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
           {/* Toolbar */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }} numberOfLines={1}>Settings</Text>

@@ -3,7 +3,6 @@ import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
-import { useKDSStore } from "@/stores/useKDSStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { StationPaymentTerminal } from "@/types/station";
@@ -13,10 +12,8 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Clock,
   CreditCard,
   DollarSign,
-  Gauge,
   Lock,
   MessageSquare,
   Minus,
@@ -70,8 +67,6 @@ const PaymentSystemsScreen = () => {
     setFunding,
     tokenizationEnabled,
     textToPayEnabled,
-    throttling,
-    setThrottling,
     kdsEnabled,
     prepCategories,
     adjustPrepTime,
@@ -1579,183 +1574,6 @@ const PaymentSystemsScreen = () => {
           )}
         </View>
 
-        {/* KITCHEN THROTTLING */}
-        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
-          {renderSectionHeader(
-            "Smart Kitchen Throttling",
-            <Gauge size={20} color={colors.teal} />,
-            "throttle"
-          )}
-          {expandedSections.throttle && (
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 12 }}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 13 }}>Auto-Throttle</Text>
-                  <Text style={{ color: colors.muted, fontSize: 11 }}>
-                    Automatically manage kitchen capacity
-                  </Text>
-                </View>
-                <Switch
-                  checked={throttling.enabled}
-                  onCheckedChange={(v) => setThrottling({ enabled: v })}
-                />
-              </View>
-
-              {throttling.enabled && (
-                <>
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={{ color: colors.label, fontWeight: "700", fontSize: 11, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      Throttle Threshold: {throttling.capacity}%
-                    </Text>
-                    <View style={{ flexDirection: "row", gap: 4, marginBottom: 10 }}>
-                      {[50, 60, 70, 75, 80, 90].map((val) => (
-                        <TouchableOpacity
-                          key={val}
-                          onPress={() => setThrottling({ capacity: val })}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 6,
-                            borderRadius: 6,
-                            backgroundColor: throttling.capacity === val ? colors.teal + "20" : colors.screen,
-                            borderWidth: 1,
-                            borderColor: throttling.capacity === val ? colors.teal + "50" : colors.border,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              textAlign: "center",
-                              fontSize: 11,
-                              fontWeight: "700",
-                              color: throttling.capacity === val ? colors.teal : colors.muted,
-                            }}
-                          >
-                            {val}%
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    {/* Heat line */}
-                    <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.screen, overflow: "hidden", marginBottom: 4 }}>
-                      <View
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          top: 0,
-                          width: `${throttling.currentLoad}%`,
-                          height: "100%",
-                          borderRadius: 2,
-                          backgroundColor:
-                            throttling.currentLoad >= throttling.capacity
-                              ? colors.danger
-                              : throttling.currentLoad >= throttling.capacity * 0.8
-                                ? colors.warning
-                                : colors.teal,
-                        }}
-                      />
-                      {/* Threshold marker */}
-                      <View
-                        style={{
-                          position: "absolute",
-                          left: `${throttling.capacity}%`,
-                          top: -2,
-                          width: 2,
-                          height: 8,
-                          backgroundColor: colors.heading,
-                          borderRadius: 1,
-                          marginLeft: -1,
-                        }}
-                      />
-                    </View>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                      <Text style={{ fontSize: 8, color: colors.muted }}>0%</Text>
-                      <Text style={{ fontSize: 8, color: colors.muted }}>Threshold: {throttling.capacity}%</Text>
-                      <Text style={{ fontSize: 8, color: colors.muted }}>100%</Text>
-                    </View>
-                  </View>
-
-                  <View
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      marginBottom: 12,
-                      backgroundColor: colors.screen,
-                      borderColor:
-                        throttling.currentLoad >= throttling.capacity
-                          ? colors.danger + "40"
-                          : throttling.currentLoad >= throttling.capacity * 0.8
-                            ? colors.warning + "40"
-                            : colors.border,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 13 }}>
-                          Current Load
-                        </Text>
-                        <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>
-                          12 active • 3 pending
-                        </Text>
-                      </View>
-                      <Text
-                        style={{
-                          fontSize: 18,
-                          fontWeight: "700",
-                          color:
-                            throttling.currentLoad >= throttling.capacity
-                              ? colors.danger
-                              : throttling.currentLoad >= throttling.capacity * 0.8
-                                ? colors.warning
-                                : colors.teal,
-                          marginLeft: 8,
-                        }}
-                      >
-                        {throttling.currentLoad}%
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={{ color: colors.label, fontWeight: "700", fontSize: 11, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    Actions When Threshold Reached
-                  </Text>
-                  <View style={{ backgroundColor: colors.screen, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border, gap: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 }}>
-                      <Text style={{ color: colors.heading, fontSize: 12 }}>Pause online orders</Text>
-                      <Switch
-                        checked={throttling.pauseOnline}
-                        onCheckedChange={(v) =>
-                          setThrottling({ pauseOnline: v })
-                        }
-                      />
-                    </View>
-                    <View style={{ height: 1, backgroundColor: colors.border }} />
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 }}>
-                      <Text style={{ color: colors.heading, fontSize: 12 }}>Increase prep times</Text>
-                      <Switch
-                        checked={throttling.increasePrepTime}
-                        onCheckedChange={(v) =>
-                          setThrottling({ increasePrepTime: v })
-                        }
-                      />
-                    </View>
-                    <View style={{ height: 1, backgroundColor: colors.border }} />
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 }}>
-                      <Text style={{ color: colors.heading, fontSize: 12 }}>Alert manager</Text>
-                      <Switch
-                        checked={throttling.alertManager}
-                        onCheckedChange={(v) =>
-                          setThrottling({ alertManager: v })
-                        }
-                      />
-                    </View>
-                  </View>
-                </>
-              )}
-            </View>
-          )}
-        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>

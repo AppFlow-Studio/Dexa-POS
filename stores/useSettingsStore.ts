@@ -64,6 +64,7 @@ export interface FundingSettings {
 export interface ThrottlingSettings {
   enabled: boolean;
   capacity: number;
+  maxCapacity: number;
   currentLoad: number;
   pauseOnline: boolean;
   increasePrepTime: boolean;
@@ -239,6 +240,7 @@ const initialSurcharging: SurchargingSettings = {
 const initialThrottling: ThrottlingSettings = {
   enabled: true,
   capacity: 75,
+  maxCapacity: 100,
   currentLoad: 68,
   pauseOnline: true,
   increasePrepTime: true,
