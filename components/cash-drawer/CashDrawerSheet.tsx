@@ -22,6 +22,7 @@ import {
   useCashDrawerStore,
 } from "@/stores/useCashDrawerStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
@@ -459,9 +460,26 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           const isDebit = isDebitOperation(op.operationType);
           const isNoEffect = isNoEffectOperation(op.operationType);
 
-          // Look up order if present
-          const order = op.orderId ? useOrderStore.getState().ordersById[op.orderId] : null;
-          const orderNumber = order?.order_number || (op.orderId ? `ORD-${op.orderId.slice(0, 6)}` : null);
+          // Resolve order across both active and previous-orders stores.
+          // Drawer operations often persist DB order IDs, while in-memory orders can be local IDs.
+          const activeOrder = op.orderId
+            ? useOrderStore.getState().getOrder(op.orderId)
+            : null;
+          const previousOrder = op.orderId
+            ? usePreviousOrdersStore.getState().getOrderById(op.orderId)
+            : null;
+
+          const resolvedDisplayNumber =
+            activeOrder?.display_number ||
+            activeOrder?.order_number ||
+            previousOrder?.display_number ||
+            previousOrder?.order_number;
+
+          const orderNumber = resolvedDisplayNumber
+            ? String(resolvedDisplayNumber)
+            : op.orderId
+              ? `ORD-${op.orderId.slice(0, 6)}`
+              : null;
 
           const handleCardPress = () => {
             if (op.orderId) {
