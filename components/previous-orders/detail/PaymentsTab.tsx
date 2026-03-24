@@ -1,5 +1,6 @@
 import PaymentCoverageSection from "@/components/previous-orders/PaymentCoverageSection";
 import PaymentTimelineSection from "@/components/previous-orders/PaymentTimelineSection";
+import { colors } from "@/lib/theme";
 import { PreviousOrder } from "@/lib/types";
 import { previousOrderToOrderProfile } from "@/utils/previousOrderMapper";
 import React, { useMemo } from "react";
@@ -20,8 +21,10 @@ const PaymentsTab: React.FC<PaymentsTabProps> = ({ order }) => {
   if (!hasPayments) {
     return (
       <View className="flex-1 items-center justify-center py-12">
-        <Text className="text-gray-500 text-lg">No payments recorded</Text>
-        <Text className="text-gray-600 text-sm mt-1">
+        <Text style={{ fontSize: 18, color: colors.muted }}>
+          No payments recorded
+        </Text>
+        <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>
           This order has no payment history
         </Text>
       </View>
@@ -31,18 +34,32 @@ const PaymentsTab: React.FC<PaymentsTabProps> = ({ order }) => {
   return (
     <ScrollView
       className="flex-1"
-      contentContainerStyle={{ padding: 16 }}
+      contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10 }}
       showsVerticalScrollIndicator={false}
     >
       <View className="mb-6">
-        <Text className="text-lg font-bold text-white mb-3">
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: "700",
+            color: colors.heading,
+            marginBottom: 12,
+          }}
+        >
           Payment Timeline
         </Text>
         <PaymentTimelineSection order={mappedOrder} />
       </View>
 
       <View>
-        <Text className="text-lg font-bold text-white mb-3">
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: "700",
+            color: colors.heading,
+            marginBottom: 12,
+          }}
+        >
           Payment Coverage
         </Text>
         <PaymentCoverageSection order={mappedOrder} />

@@ -1,7 +1,8 @@
+import { colors } from "@/lib/theme";
 import { PreviousOrder } from "@/lib/types";
 import { computeOrderTotals } from "@/utils/previousOrderMapper";
-import React, { useCallback, useMemo, useState } from "react";
-import { FlatList, Switch, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Switch, Text, View } from "react-native";
 import OrderDetailBillItem from "./OrderDetailBillItem";
 
 interface BillTabProps {
@@ -26,107 +27,107 @@ const BillTab: React.FC<BillTabProps> = ({ order }) => {
     ? totals.cashDiscountAmount
     : totals.discountAmount;
 
-  const renderItem = useCallback(
-    ({ item }: { item: (typeof order.items)[0] }) => (
-      <View className="mb-2.5">
-        <OrderDetailBillItem item={item} showCashPricing={showCashPricing} />
-      </View>
-    ),
-    [showCashPricing],
-  );
-
-  const keyExtractor = useCallback(
-    (item: (typeof order.items)[0]) => item.id,
-    [],
-  );
-
   return (
     <View className="flex-1">
       {/* Cash/Card pricing toggle */}
       {hasCashPricing && (
-        <View className="flex-row items-center justify-between px-4 py-2.5 mb-2 bg-panel rounded-lg mx-4 mt-2">
-          <Text className="text-sm text-gray-400">
+        <View
+          className="flex-row items-center justify-between px-4 py-2.5 mb-2 rounded-lg mx-4 mt-2"
+          style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.teal + '30' }}
+        >
+          <Text style={{ fontSize: 14, color: colors.label }}>
             Show Cash Pricing
           </Text>
           <Switch
             value={showCashPricing}
             onValueChange={setShowCashPricing}
-            trackColor={{ false: "#525252", true: "#22C55E" }}
-            thumbColor="#FFFFFF"
+            trackColor={{ false: colors.muted, true: colors.teal }}
+            thumbColor={colors.onSolid}
           />
         </View>
       )}
 
       {/* Items list */}
-      <FlatList
-        data={order.items}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8 }}
-        showsVerticalScrollIndicator={false}
-        ListFooterComponent={
-          <View className="mt-3 pt-3 border-t border-border">
-            {/* Subtotal */}
-            <TotalRow label="Subtotal" value={displaySubtotal} />
-
-            {/* Discount */}
-            {displayDiscount > 0 && (
-              <TotalRow
-                label="Discount"
-                value={-displayDiscount}
-                color="text-green-400"
-              />
-            )}
-
-            {/* Tax */}
-            <TotalRow label="Tax" value={displayTax} />
-
-            {/* Voided items note */}
-            {totals.voidedCount > 0 && (
-              <Text className="text-xs text-gray-500 mt-1">
-                {totals.voidedCount} voided item
-                {totals.voidedCount > 1 ? "s" : ""} excluded
-              </Text>
-            )}
-
-            {/* Total */}
-            <View className="flex-row justify-between items-center pt-3 mt-2 border-t border-border">
-              <Text className="text-xl font-bold text-white">Total</Text>
-              <Text className="text-xl font-bold text-white">
-                ${totals.total.toFixed(2)}
-              </Text>
-            </View>
-
-            {/* Amount Paid */}
-            <TotalRow
-              label="Amount Paid"
-              value={totals.totalPaid}
-              color="text-green-400"
-            />
-
-            {/* Refunded */}
-            {totals.totalRefunded > 0 && (
-              <TotalRow
-                label="Refunded"
-                value={totals.totalRefunded}
-                color="text-red-400"
-              />
-            )}
-
-            {/* Balance Due */}
-            {totals.balanceDue > 0 && (
-              <TotalRow
-                label="Balance Due"
-                value={totals.balanceDue}
-                color="text-yellow-400"
-                bold
-              />
-            )}
-
-            <View className="h-4" />
+      <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+        {order.items.map((item) => (
+          <View key={item.id} className="mb-2.5">
+            <OrderDetailBillItem item={item} showCashPricing={showCashPricing} />
           </View>
-        }
-      />
+        ))}
+
+        <View
+          style={{
+            marginTop: 10,
+            backgroundColor: colors.panel,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10
+          }}
+        >
+          {/* Subtotal */}
+          <TotalRow label="Subtotal" value={displaySubtotal} />
+
+          {/* Discount */}
+          {displayDiscount > 0 && (
+            <TotalRow
+              label="Discount"
+              value={-displayDiscount}
+              color={colors.teal}
+            />
+          )}
+
+          {/* Tax */}
+          <TotalRow label="Tax" value={displayTax} />
+
+          {/* Voided items note */}
+          {totals.voidedCount > 0 && (
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+              {totals.voidedCount} voided item
+              {totals.voidedCount > 1 ? "s" : ""} excluded
+            </Text>
+          )}
+
+          {/* Total */}
+          <View className="flex-row justify-between items-center pt-2 mt-2 border-t border-border">
+            <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}>
+              Total
+            </Text>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: colors.teal }}>
+              ${totals.total.toFixed(2)}
+            </Text>
+          </View>
+
+          {/* Amount Paid */}
+          <TotalRow
+            label="Amount Paid"
+            value={totals.totalPaid}
+            color={colors.teal}
+          />
+
+          {/* Refunded */}
+          {totals.totalRefunded > 0 && (
+            <TotalRow
+              label="Refunded"
+              value={totals.totalRefunded}
+              color={colors.danger}
+            />
+          )}
+
+          {/* Balance Due */}
+          {totals.balanceDue > 0 && (
+            <TotalRow
+              label="Balance Due"
+              value={totals.balanceDue}
+              color={colors.teal}
+              bold
+            />
+          )}
+
+          <View className="h-1" />
+        </View>
+      </View>
     </View>
   );
 };
@@ -134,7 +135,7 @@ const BillTab: React.FC<BillTabProps> = ({ order }) => {
 const TotalRow = ({
   label,
   value,
-  color = "text-gray-300",
+  color = colors.label,
   bold = false,
 }: {
   label: string;
@@ -143,10 +144,10 @@ const TotalRow = ({
   bold?: boolean;
 }) => (
   <View className="flex-row justify-between py-1">
-    <Text className={`text-sm ${color} ${bold ? "font-bold" : ""}`}>
+    <Text style={{ fontSize: 14, color, fontWeight: bold ? "700" : "400" }}>
       {label}
     </Text>
-    <Text className={`text-sm font-semibold ${color} ${bold ? "font-bold" : ""}`}>
+    <Text style={{ fontSize: 14, color, fontWeight: bold ? "700" : "600" }}>
       {value < 0 ? "-" : ""}${Math.abs(value).toFixed(2)}
     </Text>
   </View>

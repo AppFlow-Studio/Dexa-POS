@@ -64,10 +64,10 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   const anyLoading = isClosingCheck || isReopeningCheck || isVoiding;
 
   return (
-    <View className="mt-4 gap-2.5">
+    <View style={{ marginTop: 16, gap: 10 }}>
       {/* Print Receipt - always visible */}
       <ActionButton
-        icon={<Printer color="#FFFFFF" size={18} />}
+        icon={<Printer color={colors.onSolid} size={18} />}
         label="Print Receipt"
         onPress={onPrint}
         variant="primary"
@@ -88,10 +88,10 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       {/* Tip Adjust */}
       {hasCardPayments && (
         <ActionButton
-          icon={<CreditCard color="#8B5CF6" size={18} />}
+          icon={<CreditCard color={colors.teal} size={18} />}
           label="Tip Adjust"
           onPress={onTipAdjust}
-          variant="purple"
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -101,14 +101,14 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isClosingCheck ? (
-              <ActivityIndicator size="small" color={colors.success} />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : (
-              <CheckCircle color={colors.success} size={18} />
+              <CheckCircle color={colors.teal} size={18} />
             )
           }
           label={isClosingCheck ? "Closing..." : "Close Check"}
           onPress={() => setConfirmAction("close")}
-          variant="success"
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -118,14 +118,14 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
         <ActionButton
           icon={
             isReopeningCheck ? (
-              <ActivityIndicator size="small" color={colors.warning} />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : (
-              <RefreshCcw color={colors.warning} size={18} />
+              <RefreshCcw color={colors.teal} size={18} />
             )
           }
           label={isReopeningCheck ? "Reopening..." : "Re-open Order"}
           onPress={onReopen}
-          variant="warning"
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -133,10 +133,10 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
       {/* Order Notes */}
       {order.notes && (
         <ActionButton
-          icon={<FileText color={colors.label} size={18} />}
+          icon={<FileText color={colors.teal} size={18} />}
           label="Order Notes"
           onPress={onNotes}
-          variant="default"
+          variant="teal"
           disabled={anyLoading}
         />
       )}
@@ -188,13 +188,21 @@ const ActionsPanel: React.FC<ActionsPanelProps> = ({
   );
 };
 
-const variantStyles: Record<string, { border: string; bg: string }> = {
-  primary: { border: "border-blue-500", bg: "bg-blue-600" },
-  danger: { border: "border-red-500", bg: "bg-red-900/30" },
-  purple: { border: "border-purple-500", bg: "bg-purple-900/30" },
-  warning: { border: "border-yellow-500", bg: "bg-yellow-900/30" },
-  success: { border: "border-green-500", bg: "bg-green-900/30" },
-  default: { border: "border-gray-600", bg: "bg-surface" },
+type ButtonVariant = "primary" | "danger" | "teal";
+
+const variantStyleMap: Record<
+  ButtonVariant,
+  { backgroundColor: string; borderColor: string }
+> = {
+  primary: { backgroundColor: colors.teal, borderColor: colors.teal },
+  danger: {
+    backgroundColor: colors.danger + "15",
+    borderColor: colors.danger + "40",
+  },
+  teal: {
+    backgroundColor: colors.teal + "15",
+    borderColor: colors.teal + "40",
+  }
 };
 
 const ActionButton = ({
@@ -207,22 +215,41 @@ const ActionButton = ({
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
-  variant: keyof typeof variantStyles;
+  variant: ButtonVariant;
   disabled?: boolean;
 }) => {
-  const style = variantStyles[variant];
+  const variantStyle = variantStyleMap[variant];
   const isPrimary = variant === "primary";
+  const isDanger = variant === "danger";
 
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
       disabled={disabled}
-      className={`flex-row items-center justify-center gap-2 py-3 rounded-xl border ${style.border} ${style.bg} ${disabled ? "opacity-50" : ""}`}
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderRadius: 10,
+          borderWidth: 1,
+          backgroundColor: variantStyle.backgroundColor,
+          borderColor: variantStyle.borderColor,
+        },
+        disabled ? { opacity: 0.5 } : undefined,
+      ]}
     >
       {icon}
       <Text
-        className={`text-base font-bold ${isPrimary ? "text-white" : "text-gray-300"}`}
+        style={{
+          fontSize: 13,
+          fontWeight: "600",
+          color: isPrimary ? colors.onSolid : isDanger ? colors.danger : colors.teal,
+        }}
       >
         {label}
       </Text>

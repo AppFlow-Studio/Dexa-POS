@@ -1,8 +1,7 @@
 import { OrderProfile } from "@/lib/types";
 import { colors } from "@/lib/theme";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import React, { useMemo } from "react";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 interface TimelineTabProps {
   order: OrderProfile;
@@ -33,7 +32,7 @@ function buildTimeline(
     events.push({
       timestamp: order.opened_at,
       label: "Order Created",
-      color: colors.orderCompleted,
+      color: colors.teal,
     });
   }
 
@@ -42,7 +41,7 @@ function buildTimeline(
     events.push({
       timestamp: order.sent_to_kitchen_at,
       label: "Sent to Kitchen",
-      color: colors.orderPreparing,
+      color: colors.teal,
     });
   }
 
@@ -59,20 +58,20 @@ function buildTimeline(
         refunded: "Refunded",
       };
       const statusColorMap: Record<string, string> = {
-        pending: colors.orderPreparing,
-        preparing: colors.orderCompleted,
-        ready: colors.orderReady,
-        completed: colors.orderReady,
-        cancelled: colors.orderCancelled,
-        void: colors.orderCancelled,
-        refunded: colors.orderCancelled,
+        pending: colors.teal,
+        preparing: colors.teal,
+        ready: colors.success,
+        completed: colors.success,
+        cancelled: colors.danger,
+        void: colors.danger,
+        refunded: colors.danger,
       };
 
       events.push({
         timestamp: entry.changed_at,
         label: statusLabels[entry.status] || `Status: ${entry.status}`,
         detail: entry.notes || (entry.changed_by ? `By: ${entry.changed_by}` : undefined),
-        color: statusColorMap[entry.status] || colors.orderDefault,
+        color: statusColorMap[entry.status] || colors.teal,
       });
     });
   }
@@ -91,7 +90,7 @@ function buildTimeline(
         timestamp: payment.timestamp,
         label: `Payment #${idx + 1} (${methodLabel})`,
         detail: `$${payment.amount.toFixed(2)}${payment.tip_amount > 0 ? ` + $${payment.tip_amount.toFixed(2)} tip` : ""}`,
-        color: payment.isVoided ? colors.orderCancelled : colors.paymentPaid,
+        color: payment.isVoided ? colors.danger : colors.teal,
       });
 
       // Tip adjustment
@@ -100,7 +99,7 @@ function buildTimeline(
           timestamp: payment.tip_adjusted_at,
           label: `Tip Adjusted on Payment #${idx + 1}`,
           detail: `New tip: $${payment.tip_amount.toFixed(2)}${payment.original_tip_amount != null ? ` (was $${payment.original_tip_amount.toFixed(2)})` : ""}`,
-          color: colors.orderSentToKitchen,
+          color: colors.teal,
         });
       }
 
@@ -110,7 +109,7 @@ function buildTimeline(
           timestamp: payment.voidedAt,
           label: `Payment #${idx + 1} Voided`,
           detail: payment.voidReason || undefined,
-          color: colors.orderCancelled,
+          color: colors.danger,
         });
       }
     });
@@ -133,7 +132,7 @@ function buildTimeline(
         timestamp: ts,
         label: `${typeLabel} Processed`,
         detail: `$${reversal.amount.toFixed(2)}${reversal.reason_description ? ` - ${reversal.reason_description}` : ""}`,
-        color: colors.orderCancelled,
+        color: colors.danger,
       });
     });
   }
@@ -143,7 +142,7 @@ function buildTimeline(
     events.push({
       timestamp: order.closed_at,
       label: "Order Closed",
-      color: colors.orderDefault,
+      color: colors.teal,
     });
   }
 
@@ -164,8 +163,10 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order, statusHistory }) => {
   if (events.length === 0) {
     return (
       <View className="flex-1 items-center justify-center py-12">
-        <Text className="text-gray-500 text-lg">No timeline data</Text>
-        <Text className="text-gray-600 text-sm mt-1">
+        <Text style={{ fontSize: 18, color: colors.muted }}>
+          No timeline data
+        </Text>
+        <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>
           No events recorded for this order
         </Text>
       </View>
@@ -173,7 +174,7 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order, statusHistory }) => {
   }
 
   return (
-    <BottomSheetScrollView
+    <ScrollView
       className="flex-1"
       contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       showsVerticalScrollIndicator={false}
@@ -181,7 +182,7 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order, statusHistory }) => {
       {events.map((event, idx) => {
         const isLast = idx === events.length - 1;
         return (
-          <View key={`${event.timestamp}-${idx}`} className="flex-row">
+          <View key={`${event.timestamp}-${idx}`} className="flex-row" style={{ marginBottom: 6 }}>
             {/* Timeline column */}
             <View className="items-center mr-3" style={{ width: 20 }}>
               <View
@@ -207,24 +208,30 @@ const TimelineTab: React.FC<TimelineTabProps> = ({ order, statusHistory }) => {
 
             {/* Content */}
             <View className="flex-1 pb-5">
-              <Text className="text-sm font-semibold text-white">
-                {event.label}
-              </Text>
-              {event.detail && (
-                <Text className="text-xs text-gray-400 mt-0.5">
-                  {event.detail}
+              <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
+                <Text
+                  style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}
+                >
+                  {event.label}
                 </Text>
-              )}
-              <Text className="text-xs text-gray-500 mt-1">
-                {formatTimestamp(event.timestamp)}
-              </Text>
+                {event.detail && (
+                  <Text
+                    style={{ fontSize: 12, color: colors.label, marginTop: 2 }}
+                  >
+                    {event.detail}
+                  </Text>
+                )}
+                <Text style={{ fontSize: 11, color: colors.teal, marginTop: 5, fontWeight: "600" }}>
+                  {formatTimestamp(event.timestamp)}
+                </Text>
+              </View>
             </View>
           </View>
         );
       })}
 
       <View className="h-4" />
-    </BottomSheetScrollView>
+    </ScrollView>
   );
 };
 

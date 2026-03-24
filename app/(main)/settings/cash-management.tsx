@@ -185,7 +185,8 @@ export default function CashManagementScreen() {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
         backgroundColor: colors.panel,
         borderTopLeftRadius: 12,
         borderTopRightRadius: 12,
@@ -194,15 +195,15 @@ export default function CashManagementScreen() {
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <View style={{ width: 32, height: 32, backgroundColor: colors.teal + "15", borderRadius: 8, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+        <View style={{ width: 28, height: 28, backgroundColor: colors.teal + "15", borderRadius: 8, alignItems: "center", justifyContent: "center", marginRight: 8 }}>
           {icon}
         </View>
         <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{title}</Text>
       </View>
       {expandedSections[section] ? (
-        <ChevronUp size={16} color={colors.label} />
+        <ChevronUp size={14} color={colors.label} />
       ) : (
-        <ChevronDown size={16} color={colors.label} />
+        <ChevronDown size={14} color={colors.label} />
       )}
     </TouchableOpacity>
   );
@@ -213,10 +214,10 @@ export default function CashManagementScreen() {
     value: boolean,
     onToggle: (v: boolean) => void
   ) => (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
       <View style={{ flex: 1, marginRight: 12 }}>
-        <Text style={{ fontSize: 13, color: colors.heading }}>{label}</Text>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{description}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "500", color: colors.heading }}>{label}</Text>
+        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>{description}</Text>
       </View>
       <Switch checked={value} onCheckedChange={onToggle} />
     </View>
@@ -229,13 +230,13 @@ export default function CashManagementScreen() {
     onChange: (v: number) => void,
     prefix?: string
   ) => (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
       <View style={{ flex: 1, marginRight: 12 }}>
-        <Text style={{ fontSize: 13, color: colors.heading }}>{label}</Text>
-        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{description}</Text>
+        <Text style={{ fontSize: 13, fontWeight: "500", color: colors.heading }}>{label}</Text>
+        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>{description}</Text>
       </View>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
-        {prefix && <Text style={{ fontSize: 13, color: colors.label, marginRight: 4 }}>{prefix}</Text>}
+        {prefix && <Text style={{ fontSize: 12, color: colors.label, marginRight: 3 }}>{prefix}</Text>}
         <TextInput
           value={String(value)}
           onChangeText={(t) => {
@@ -244,15 +245,15 @@ export default function CashManagementScreen() {
           }}
           keyboardType="decimal-pad"
           style={{
-            width: 72,
-            height: 36,
+            width: 64,
+            height: 32,
             paddingHorizontal: 8,
-            backgroundColor: colors.screen,
+            backgroundColor: colors.inset,
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: 8,
             color: colors.heading,
-            fontSize: 13,
+            fontSize: 12,
             textAlign: "center",
           }}
         />
@@ -262,42 +263,40 @@ export default function CashManagementScreen() {
 
   return (
     <>
-    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 14, paddingVertical: 10 }}>
       {/* Header */}
-      <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <View>
+      <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Cash Management</Text>
-          <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
-            Configure cash drawer operations, approval rules, and reconciliation.
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+            Configure drawers, approval rules, and reconciliation
           </Text>
         </View>
         <TouchableOpacity
           onPress={handleRefresh}
           disabled={isRefreshing}
-          style={{ padding: 8, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+          style={{ marginLeft: 12, padding: 7, borderRadius: 8, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "30" }}
         >
           {isRefreshing ? (
             <ActivityIndicator size="small" color={colors.teal} />
           ) : (
-            <RefreshCw size={16} color={colors.label} />
+            <RefreshCw size={14} color={colors.teal} />
           )}
         </TouchableOpacity>
       </View>
 
-      <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
-
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
         {/* ── Cash Register Assignment ── */}
-        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: "hidden" }}>
           {renderSectionHeader(
             "Cash Register Assignment",
-            <Monitor size={16} color={colors.info} />,
+            <Monitor size={14} color={colors.teal} />,
             "assignment"
           )}
           {expandedSections.assignment && (
-            <View style={{ padding: 14 }}>
-              <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 12 }}>
-                Assign a physical cash drawer to each station. Only drawers registered for this location are shown.
+            <View style={{ padding: 12 }}>
+              <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 10 }}>
+                Assign physical cash drawers to stations. Only active drawers for this location shown.
               </Text>
 
               {(loadingStations || loadingDrawers) ? (
@@ -316,10 +315,10 @@ export default function CashManagementScreen() {
                     <View
                       key={station.id}
                       style={{
-                        marginBottom: 8,
+                        marginBottom: 6,
                         borderRadius: 10,
                         borderWidth: 1,
-                        borderColor: isCurrentStation ? colors.teal + "50" : colors.border,
+                        borderColor: isCurrentStation ? colors.teal + "40" : colors.border,
                         overflow: "hidden",
                       }}
                     >
@@ -328,7 +327,7 @@ export default function CashManagementScreen() {
                         alignItems: "center",
                         justifyContent: "space-between",
                         paddingHorizontal: 12,
-                        paddingVertical: 10,
+                        paddingVertical: 9,
                         backgroundColor: isCurrentStation ? colors.teal + "10" : colors.screen,
                       }}>
                         <View style={{ flex: 1 }}>
@@ -337,12 +336,12 @@ export default function CashManagementScreen() {
                               {station.station_name}
                             </Text>
                             {isCurrentStation && (
-                              <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                <Text style={{ fontSize: 10, color: colors.teal, fontWeight: "700" }}>This Station</Text>
+                              <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 9, color: colors.teal, fontWeight: "700" }}>Active</Text>
                               </View>
                             )}
                           </View>
-                          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1, textTransform: "capitalize" }}>
+                          <Text style={{ fontSize: 10, color: colors.muted, marginTop: 0.5, textTransform: "capitalize" }}>
                             {station.station_type} · #{station.station_number}
                           </Text>
                         </View>
@@ -352,20 +351,20 @@ export default function CashManagementScreen() {
                             style={{
                               flexDirection: "row",
                               alignItems: "center",
-                              gap: 5,
+                              gap: 4,
                               backgroundColor: colors.teal + "15",
                               borderWidth: 1,
                               borderColor: colors.teal + "40",
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
+                              paddingHorizontal: 8,
+                              paddingVertical: 5,
                               borderRadius: 8,
                             }}
                           >
-                            <Check size={12} color={colors.teal} />
-                            <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }} numberOfLines={1}>
+                            <Check size={11} color={colors.teal} />
+                            <Text style={{ fontSize: 11, color: colors.teal, fontWeight: "600" }} numberOfLines={1}>
                               {assignedDrawer.name}
                             </Text>
-                            <X size={10} color={colors.teal} />
+                            <X size={9} color={colors.teal} />
                           </TouchableOpacity>
                         ) : (
                           <TouchableOpacity
@@ -373,31 +372,29 @@ export default function CashManagementScreen() {
                             style={{
                               flexDirection: "row",
                               alignItems: "center",
-                              gap: 5,
+                              gap: 4,
                               backgroundColor: colors.screen,
                               borderWidth: 1,
                               borderColor: colors.border,
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
+                              paddingHorizontal: 8,
+                              paddingVertical: 5,
                               borderRadius: 8,
                             }}
                           >
-                            <Text style={{ fontSize: 12, color: colors.label }}>Assign drawer</Text>
-                            <ChevronRight size={12} color={colors.muted} />
+                            <Text style={{ fontSize: 11, color: colors.label }}>Assign</Text>
+                            <ChevronRight size={11} color={colors.muted} />
                           </TouchableOpacity>
                         )}
                       </View>
 
                       {assignedDrawer && (
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.screen, borderTopWidth: 1, borderTopColor: colors.border }}>
-                          <Banknote size={11} color={colors.muted} />
-                          <Text style={{ fontSize: 11, color: colors.muted }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.screen, borderTopWidth: 1, borderTopColor: colors.border }}>
+                          <Banknote size={10} color={colors.teal} />
+                          <Text style={{ fontSize: 10, color: colors.label }}>
                             {assignedDrawer.device_catalog
                               ? `${assignedDrawer.device_catalog.manufacturer} ${assignedDrawer.device_catalog.model_name}`
-                              : "Hardware not specified"}
+                              : "No hardware"}
                           </Text>
-                          <Text style={{ fontSize: 11, color: colors.border, marginHorizontal: 2 }}>·</Text>
-                          <Text style={{ fontSize: 11, color: colors.muted + "80" }}>Tap badge to unassign</Text>
                         </View>
                       )}
                     </View>
@@ -406,10 +403,10 @@ export default function CashManagementScreen() {
               )}
 
               {cashDrawers.length === 0 && !loadingDrawers && (
-                <View style={{ marginTop: 8, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 12 }}>
-                  <Text style={{ fontSize: 13, color: colors.label, fontWeight: "500" }}>No cash drawers found</Text>
-                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-                    Add drawer records to the cash_drawers table for this location to enable assignment.
+                <View style={{ marginTop: 6, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 10 }}>
+                  <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>No cash drawers registered</Text>
+                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                    Add drawers to this location to enable assignment.
                   </Text>
                 </View>
               )}
@@ -418,66 +415,65 @@ export default function CashManagementScreen() {
         </View>
 
         {/* Drawer Session */}
-        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: "hidden" }}>
           {renderSectionHeader(
             "Drawer Session",
-            <CircleDollarSign size={16} color={colors.teal} />,
+            <CircleDollarSign size={14} color={colors.teal} />,
             "session"
           )}
           {expandedSections.session && (
-            <View style={{ padding: 14 }}>
+            <View style={{ padding: 12 }}>
               {!drawerId ? (
-                <Text style={{ fontSize: 12, color: colors.muted, fontStyle: "italic" }}>
-                  No cash drawer assigned to this station.
+                <Text style={{ fontSize: 11, color: colors.muted }}>
+                  No drawer assigned to this station.
                 </Text>
               ) : !isSessionOpen ? (
                 <View>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <View>
                       <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                         {drawerName || "Cash Drawer"}
                       </Text>
-                      <Text style={{ fontSize: 12, color: colors.label }}>Closed</Text>
-                    </View>
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Lock size={14} color={colors.muted} />
-                      <Text style={{ fontSize: 12, color: colors.muted, marginLeft: 4 }}>Locked</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 1, gap: 4 }}>
+                        <Lock size={11} color={colors.muted} />
+                        <Text style={{ fontSize: 11, color: colors.muted }}>Closed</Text>
+                      </View>
                     </View>
                   </View>
                   <TouchableOpacity
                     onPress={() => setCashDrawerSheetOpen(true)}
-                    style={{ paddingVertical: 12, borderRadius: 10, alignItems: "center", backgroundColor: colors.teal }}
+                    style={{ paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: colors.teal }}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <Unlock size={16} color="#000" />
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#000" }}>Open Drawer</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Unlock size={14} color={colors.onSolid} />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>Open Drawer</Text>
                     </View>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <View>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                     <View>
                       <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
                         {drawerName || "Cash Drawer"}
                       </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
-                        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success, marginRight: 5 }} />
-                        <Text style={{ fontSize: 12, color: colors.success }}>Open</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 1, gap: 4 }}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success }} />
+                        <Text style={{ fontSize: 11, color: colors.success }}>Active</Text>
                       </View>
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
-                      <Text style={{ fontSize: 11, color: colors.label }}>Running Balance</Text>
-                      <Text style={{ fontSize: 17, fontWeight: "700", color: colors.teal }}>
+                      <Text style={{ fontSize: 10, color: colors.muted }}>Balance</Text>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.teal }}>
                         {formatCurrency(getRunningBalance())}
                       </Text>
                     </View>
                   </View>
                   <TouchableOpacity
                     onPress={() => setCashDrawerSheetOpen(true)}
-                    style={{ paddingVertical: 12, borderRadius: 10, alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
+                    style={{ paddingVertical: 10, borderRadius: 10, alignItems: "center", backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40" }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Manage Drawer</Text>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Manage Drawer</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -486,14 +482,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* No Sale Settings */}
-        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: "hidden" }}>
           {renderSectionHeader(
             "No Sale Settings",
-            <ShieldCheck size={16} color={colors.info} />,
+            <ShieldCheck size={14} color={colors.teal} />,
             "noSale"
           )}
           {expandedSections.noSale && (
-            <View style={{ padding: 14 }}>
+            <View style={{ padding: 12 }}>
               {renderToggleRow(
                 "Require Reason",
                 "Staff must select a reason for No Sale operations",
@@ -523,14 +519,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* Drawer Settings */}
-        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: "hidden" }}>
           {renderSectionHeader(
             "Drawer Settings",
-            <Banknote size={16} color={colors.success} />,
+            <Banknote size={14} color={colors.teal} />,
             "drawer"
           )}
           {expandedSections.drawer && (
-            <View style={{ padding: 14 }}>
+            <View style={{ padding: 12 }}>
               {renderToggleRow(
                 "Blind Close Count",
                 "Hide expected amount during closing count",
@@ -549,14 +545,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* Variance Thresholds */}
-        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: "hidden" }}>
           {renderSectionHeader(
             "Variance Thresholds",
-            <DollarSign size={16} color={colors.warning} />,
+            <DollarSign size={14} color={colors.teal} />,
             "variance"
           )}
           {expandedSections.variance && (
-            <View style={{ padding: 14 }}>
+            <View style={{ padding: 12 }}>
               {renderNumberRow(
                 "Warning Threshold",
                 "Show yellow warning when variance exceeds this amount",
@@ -576,14 +572,14 @@ export default function CashManagementScreen() {
         </View>
 
         {/* EOD Settings */}
-        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
+        <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: "hidden" }}>
           {renderSectionHeader(
             "End of Day",
-            <FileText size={16} color={colors.label} />,
+            <FileText size={14} color={colors.teal} />,
             "eod"
           )}
           {expandedSections.eod && (
-            <View style={{ padding: 14 }}>
+            <View style={{ padding: 12 }}>
               {renderToggleRow(
                 "Require EOD Before Close",
                 "Cash drawer must be closed through End of Day process",
@@ -609,7 +605,7 @@ export default function CashManagementScreen() {
       onRequestClose={() => setAssigningStation(null)}
     >
       <TouchableOpacity
-        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}
+        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}
         activeOpacity={1}
         onPress={() => !isAssigning && setAssigningStation(null)}
       >
@@ -618,25 +614,25 @@ export default function CashManagementScreen() {
           style={{ width: "100%", backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}
         >
           {/* Header */}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <View>
               <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Assign Cash Drawer</Text>
               {assigningStation && (
-                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-                  → {assigningStation.station_name}
+                <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+                  {assigningStation.station_name}
                 </Text>
               )}
             </View>
             <TouchableOpacity onPress={() => setAssigningStation(null)} style={{ padding: 4 }}>
-              <X size={16} color={colors.muted} />
+              <X size={14} color={colors.muted} />
             </TouchableOpacity>
           </View>
 
           {/* Drawer list */}
-          <View style={{ padding: 14 }}>
+          <View style={{ padding: 12 }}>
             {cashDrawers.length === 0 ? (
-              <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", paddingVertical: 16 }}>
-                No available drawers for this location.
+              <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center", paddingVertical: 14 }}>
+                No drawers available for this location.
               </Text>
             ) : (
               cashDrawers.map((drawer) => {
@@ -654,12 +650,12 @@ export default function CashManagementScreen() {
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      marginBottom: 8,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
+                      marginBottom: 6,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
                       borderRadius: 10,
                       borderWidth: 1,
-                      borderColor: isAssignedHere ? colors.teal + "40" : isAssignedElsewhere ? colors.border : colors.border,
+                      borderColor: isAssignedHere ? colors.teal + "40" : colors.border,
                       backgroundColor: isAssignedHere ? colors.teal + "10" : colors.screen,
                       opacity: isAssignedElsewhere ? 0.5 : 1,
                     }}
@@ -668,23 +664,23 @@ export default function CashManagementScreen() {
                       <Text style={{ fontSize: 13, fontWeight: "600", color: isAssignedElsewhere ? colors.muted : colors.heading }}>
                         {drawer.name}
                       </Text>
-                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                      <Text style={{ fontSize: 10, color: colors.muted, marginTop: 0.5 }}>
                         {drawer.device_catalog
                           ? `${drawer.device_catalog.manufacturer} ${drawer.device_catalog.model_name}`
-                          : "No hardware model"}
+                          : "No hardware"}
                         {isAssignedElsewhere && occupiedByStation
-                          ? ` · In use at ${occupiedByStation.station_name}`
+                          ? ` · ${occupiedByStation.station_name}`
                           : ""}
                       </Text>
                     </View>
                     {isAssigning && isAssignedHere ? (
                       <ActivityIndicator size="small" color={colors.teal} />
                     ) : isAssignedHere ? (
-                      <Check size={15} color={colors.teal} />
+                      <Check size={13} color={colors.teal} />
                     ) : isAssignedElsewhere ? (
-                      <Lock size={13} color={colors.muted} />
+                      <Lock size={11} color={colors.muted} />
                     ) : (
-                      <ChevronRight size={15} color={colors.muted} />
+                      <ChevronRight size={13} color={colors.muted} />
                     )}
                   </TouchableOpacity>
                 );

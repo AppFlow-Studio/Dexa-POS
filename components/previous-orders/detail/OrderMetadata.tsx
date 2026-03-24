@@ -39,48 +39,64 @@ const OrderMetadata: React.FC<OrderMetadataProps> = ({ order }) => {
   const TypeIcon = typeIcons[order.type] || Utensils;
 
   return (
-    <View className="bg-panel rounded-xl p-4 mt-4 border border-gray-700">
-      <Text className="text-base font-bold text-white mb-3">
+    <View
+      style={{
+        backgroundColor: colors.panel,
+        borderRadius: 12,
+        padding: 12,
+        marginTop: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 15,
+          fontWeight: "700",
+          color: colors.heading,
+          marginBottom: 10,
+        }}
+      >
         Order Details
       </Text>
 
       <MetadataRow
-        icon={<TypeIcon color={colors.label} size={16} />}
+        icon={<TypeIcon color={colors.teal} size={15} />}
         label="Order Type"
         value={order.type}
       />
 
       {order.service_location_name && (
         <MetadataRow
-          icon={<MapPin color={colors.label} size={16} />}
+          icon={<MapPin color={colors.teal} size={15} />}
           label="Table / Location"
           value={order.service_location_name}
         />
       )}
 
       <MetadataRow
-        icon={<User color={colors.label} size={16} />}
+        icon={<User color={colors.teal} size={15} />}
         label="Server"
         value={order.server}
       />
 
       {order.station_name && (
         <MetadataRow
-          icon={<Monitor color={colors.label} size={16} />}
+          icon={<Monitor color={colors.teal} size={15} />}
           label="Station"
           value={order.station_name}
         />
       )}
 
       <MetadataRow
-        icon={<Users color={colors.label} size={16} />}
+        icon={<Users color={colors.teal} size={15} />}
         label="Customer"
         value={order.customer}
       />
 
       {order.opened_at && (
         <MetadataRow
-          icon={<Clock color={colors.label} size={16} />}
+          icon={<Clock color={colors.teal} size={15} />}
           label="Opened"
           value={formatDateTime(order.opened_at)}
         />
@@ -88,7 +104,7 @@ const OrderMetadata: React.FC<OrderMetadataProps> = ({ order }) => {
 
       {order.closed_at && (
         <MetadataRow
-          icon={<Clock color={colors.label} size={16} />}
+          icon={<Clock color={colors.teal} size={15} />}
           label="Closed"
           value={formatDateTime(order.closed_at)}
         />
@@ -96,7 +112,7 @@ const OrderMetadata: React.FC<OrderMetadataProps> = ({ order }) => {
 
       {duration && (
         <MetadataRow
-          icon={<Clock color={colors.label} size={16} />}
+          icon={<Clock color={colors.teal} size={15} />}
           label="Duration"
           value={duration}
         />
@@ -114,10 +130,35 @@ const MetadataRow = ({
   label: string;
   value: string;
 }) => (
-  <View className="flex-row items-center py-2 border-b border-dashed border-gray-700">
-    <View className="mr-2">{icon}</View>
-    <Text className="text-sm text-gray-400 flex-1">{label}</Text>
-    <Text className="text-sm font-semibold text-white" numberOfLines={1}>
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 7,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    }}
+  >
+    <View
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: colors.teal + "15",
+        borderWidth: 1,
+        borderColor: colors.teal + "30",
+        marginRight: 8,
+      }}
+    >
+      {icon}
+    </View>
+    <Text style={{ fontSize: 12, color: colors.label, flex: 1 }}>{label}</Text>
+    <Text
+      style={{ fontSize: 12, fontWeight: "600", color: colors.heading, maxWidth: "50%" }}
+      numberOfLines={1}
+    >
       {value}
     </Text>
   </View>

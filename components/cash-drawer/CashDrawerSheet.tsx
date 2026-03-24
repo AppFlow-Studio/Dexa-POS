@@ -23,6 +23,7 @@ import {
 } from "@/stores/useCashDrawerStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
@@ -38,6 +39,7 @@ import {
   Receipt,
   Unlock,
 } from "lucide-react-native";
+import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -88,6 +90,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   isOpen,
   onClose,
 }) => {
+  const router = useRouter();
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const supabase = useSupabaseClient();
 
@@ -234,35 +237,51 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   // ── Open view ──────────────────────────────────────────────────────────────
   const renderOpenView = () => (
     <View>
-      <Text className="text-xl font-bold text-white mb-2">Open Cash Drawer</Text>
-      <Text className="text-sm text-label mb-4">
-        Count the cash in the drawer to start your session.
+      <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading, marginBottom: 2 }}>Open Cash Drawer</Text>
+      <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 12 }}>
+        Count the cash to start your session.
       </Text>
 
-      <View className="flex-row items-center justify-between mb-4">
-        <Text className="text-sm text-label">Quick Start (single amount)</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <Text style={{ fontSize: 12, color: colors.label }}>Quick Start</Text>
         <TouchableOpacity
           onPress={() => setIsQuickStart(!isQuickStart)}
-          className={`px-3 py-1.5 rounded-lg border ${
-            isQuickStart ? "bg-blue-600 border-blue-500" : "bg-surface border-border"
-          }`}
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: isQuickStart ? colors.teal + "50" : colors.border,
+            backgroundColor: isQuickStart ? colors.teal + "20" : colors.screen,
+          }}
         >
-          <Text className={`text-sm font-medium ${isQuickStart ? "text-white" : "text-label"}`}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: isQuickStart ? colors.teal : colors.label }}>
             {isQuickStart ? "On" : "Off"}
           </Text>
         </TouchableOpacity>
       </View>
 
       {isQuickStart ? (
-        <View className="bg-surface border border-border rounded-xl p-4 mb-4">
-          <Text className="text-sm text-label mb-2">Opening Amount</Text>
+        <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+          <Text style={{ fontSize: 12, color: colors.label, marginBottom: 8 }}>Opening Amount</Text>
           <TextInput
             value={quickStartAmount}
             onChangeText={setQuickStartAmount}
             keyboardType="decimal-pad"
             placeholder="0.00"
             placeholderTextColor={colors.muted}
-            className="h-14 px-4 bg-panel border border-border rounded-lg text-white text-2xl text-center"
+            style={{
+              height: 40,
+              paddingHorizontal: 12,
+              backgroundColor: colors.inset,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              color: colors.heading,
+              fontSize: 20,
+              fontWeight: "700",
+              textAlign: "center",
+            }}
           />
         </View>
       ) : (
@@ -277,14 +296,21 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       <TouchableOpacity
         onPress={handleOpen}
         disabled={isSubmitting}
-        className={`mt-4 py-4 rounded-xl items-center ${isSubmitting ? "bg-gray-600" : "bg-teal"}`}
+        style={{
+          marginTop: 14,
+          paddingVertical: 11,
+          borderRadius: 10,
+          alignItems: "center",
+          backgroundColor: isSubmitting ? colors.border : colors.teal,
+          opacity: isSubmitting ? 0.6 : 1,
+        }}
       >
-        <View className="flex-row items-center gap-2">
-          <Unlock size={20} color="black" />
-          <Text className="text-lg font-bold text-black">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Unlock size={16} color={colors.onSolid} />
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>
             {isSubmitting
               ? "Opening..."
-              : `Open Drawer (${formatCurrency(isQuickStart ? parseFloat(quickStartAmount) || 0 : openingTotal)})`}
+              : `Open (${formatCurrency(isQuickStart ? parseFloat(quickStartAmount) || 0 : openingTotal)})`}
           </Text>
         </View>
       </TouchableOpacity>
@@ -295,139 +321,204 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   const renderActiveView = () => (
     <View>
       {/* Header: name + balance + Close button */}
-      <View className="flex-row items-center justify-between mb-3">
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <View>
-          <Text className="text-lg font-bold text-white">
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
             {drawerName || "Cash Drawer"}
           </Text>
-          <View className="flex-row items-center gap-1.5 mt-0.5">
-            <View className="w-2 h-2 rounded-full bg-green-400" />
-            <Text className="text-xs text-green-400">Session Active</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.success }} />
+            <Text style={{ fontSize: 11, color: colors.success }}>Active</Text>
           </View>
         </View>
         {/* Balance + close — always visible at top */}
-        <View className="flex-row items-center gap-3">
-          <View className="items-end">
-            <Text className="text-xs text-label">Balance</Text>
-            <Text className="text-xl font-bold text-teal">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={{ fontSize: 10, color: colors.muted }}>Balance</Text>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.teal }}>
               {formatCurrency(runningBalance)}
             </Text>
           </View>
           <TouchableOpacity
             onPress={() => setView("close")}
-            className="flex-row items-center gap-1.5 px-3 py-2 rounded-xl bg-red-900/60 border border-red-700"
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              paddingHorizontal: 8,
+              paddingVertical: 5,
+              borderRadius: 8,
+              backgroundColor: colors.danger + "20",
+              borderWidth: 1,
+              borderColor: colors.danger + "40",
+            }}
           >
-            <Lock size={16} color="#f87171" />
-            <Text className="text-sm font-bold text-red-400">Close</Text>
+            <Lock size={13} color={colors.danger} />
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.danger }}>Close</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Session summary chips */}
-      <View className="flex-row gap-2 mb-4">
-        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
-          <Text className="text-[10px] text-label uppercase tracking-wider">Sales</Text>
-          <Text className="text-sm font-bold text-green-400">{formatCurrency(sessionTotals.sales)}</Text>
+      <View style={{ flexDirection: "row", gap: 6, marginBottom: 10 }}>
+        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
+          <Text style={{ fontSize: 9, color: colors.muted, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Sales</Text>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal, marginTop: 2 }}>{formatCurrency(sessionTotals.sales)}</Text>
         </View>
-        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
-          <Text className="text-[10px] text-label uppercase tracking-wider">Cash In</Text>
-          <Text className="text-sm font-bold text-green-400">{formatCurrency(sessionTotals.cashIn)}</Text>
+        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
+          <Text style={{ fontSize: 9, color: colors.muted, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>In</Text>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal, marginTop: 2 }}>{formatCurrency(sessionTotals.cashIn)}</Text>
         </View>
-        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
-          <Text className="text-[10px] text-label uppercase tracking-wider">Cash Out</Text>
-          <Text className="text-sm font-bold text-red-400">{formatCurrency(sessionTotals.cashOut)}</Text>
+        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
+          <Text style={{ fontSize: 9, color: colors.muted, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Out</Text>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger, marginTop: 2 }}>{formatCurrency(sessionTotals.cashOut)}</Text>
         </View>
-        <View className="flex-1 bg-surface rounded-lg px-3 py-2 border border-border items-center">
-          <Text className="text-[10px] text-label uppercase tracking-wider">Ops</Text>
-          <Text className="text-sm font-bold text-white">{operations.length}</Text>
+        <View style={{ flex: 1, backgroundColor: colors.panel, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}>
+          <Text style={{ fontSize: 9, color: colors.muted, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Ops</Text>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading, marginTop: 2 }}>{operations.length}</Text>
         </View>
       </View>
 
       {/* Operation Buttons */}
-      <View className="flex-row gap-2 mb-4">
+      <View style={{ flexDirection: "row", gap: 6, marginBottom: 10 }}>
         <TouchableOpacity
           onPress={() => openPayInOut("pay_in")}
-          className="flex-1 py-3.5 rounded-xl bg-green-900/60 border border-green-700 items-center"
+          style={{
+            flex: 1,
+            paddingVertical: 9,
+            borderRadius: 10,
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "40",
+            alignItems: "center",
+          }}
         >
-          <ArrowDownCircle size={20} color="#4ade80" />
-          <Text className="text-xs font-semibold text-green-400 mt-1">Pay In</Text>
+          <ArrowDownCircle size={16} color={colors.teal} />
+          <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal, marginTop: 2 }}>Pay In</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => openPayInOut("pay_out")}
-          className="flex-1 py-3.5 rounded-xl bg-red-900/60 border border-red-700 items-center"
+          style={{
+            flex: 1,
+            paddingVertical: 9,
+            borderRadius: 10,
+            backgroundColor: colors.danger + "20",
+            borderWidth: 1,
+            borderColor: colors.danger + "40",
+            alignItems: "center",
+          }}
         >
-          <ArrowUpCircle size={20} color="#f87171" />
-          <Text className="text-xs font-semibold text-red-400 mt-1">Pay Out</Text>
+          <ArrowUpCircle size={16} color={colors.danger} />
+          <Text style={{ fontSize: 10, fontWeight: "600", color: colors.danger, marginTop: 2 }}>Pay Out</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => openPayInOut("cash_drop")}
-          className="flex-1 py-3.5 rounded-xl bg-blue-900/60 border border-blue-700 items-center"
+          style={{
+            flex: 1,
+            paddingVertical: 9,
+            borderRadius: 10,
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "40",
+            alignItems: "center",
+          }}
         >
-          <Inbox size={20} color="#60a5fa" />
-          <Text className="text-xs font-semibold text-blue-400 mt-1">Cash Drop</Text>
+          <Inbox size={16} color={colors.teal} />
+          <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal, marginTop: 2 }}>Drop</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setNoSaleOpen(true)}
-          className="flex-1 py-3.5 rounded-xl bg-gray-800 border border-gray-600 items-center"
+          style={{
+            flex: 1,
+            paddingVertical: 9,
+            borderRadius: 10,
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "40",
+            alignItems: "center",
+          }}
         >
-          <Banknote size={20} color="#d1d5db" />
-          <Text className="text-xs font-semibold text-gray-300 mt-1">No Sale</Text>
+          <Banknote size={16} color={colors.teal} />
+          <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal, marginTop: 2 }}>No Sale</Text>
         </TouchableOpacity>
       </View>
 
       {/* Operations list */}
-      <View className="flex-row items-center justify-between mb-2">
-        <Text className="text-sm font-semibold text-white">Transactions</Text>
-        <Text className="text-xs text-label">{operations.length} total</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>Transactions</Text>
+        <Text style={{ fontSize: 10, color: colors.muted }}>{operations.length}</Text>
       </View>
 
       {recentOps.length === 0 ? (
-        <View className="py-8 items-center">
-          <Receipt size={28} color={colors.muted} />
-          <Text className="text-sm text-label italic mt-2">No transactions yet</Text>
+        <View style={{ paddingVertical: 16, alignItems: "center" }}>
+          <Receipt size={22} color={colors.muted} />
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 6 }}>No transactions yet</Text>
         </View>
       ) : (
         recentOps.map((op) => {
           const isDebit = isDebitOperation(op.operationType);
           const isNoEffect = isNoEffectOperation(op.operationType);
-          const opStyle = OP_COLORS[op.operationType] ?? { bg: "bg-surface", text: "text-gray-400" };
+
+          // Look up order if present
+          const order = op.orderId ? useOrderStore.getState().ordersById[op.orderId] : null;
+          const orderNumber = order?.order_number || (op.orderId ? `ORD-${op.orderId.slice(0, 6)}` : null);
+
+          const handleCardPress = () => {
+            if (op.orderId) {
+              router.push(`/previous-orders/${op.orderId}`);
+            }
+          };
 
           return (
-            <View
+            <TouchableOpacity
               key={op.id}
-              className={`flex-row items-center px-3 py-2.5 rounded-lg mb-1.5 ${opStyle.bg}`}
+              onPress={handleCardPress}
+              disabled={!op.orderId}
+              activeOpacity={op.orderId ? 0.7 : 1}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 9,
+                borderRadius: 10,
+                marginBottom: 6,
+                backgroundColor: colors.panel,
+                borderWidth: 1,
+                borderColor: op.orderId ? colors.teal + "40" : colors.border,
+              }}
             >
-              {/* Left: label + meta */}
-              <View className="flex-1">
-                <View className="flex-row items-center gap-1.5">
-                  <Text className="text-sm font-semibold text-white">
-                    {OP_LABELS[op.operationType] ?? op.operationType.replace(/_/g, " ")}
-                  </Text>
-                  {/* Order badge */}
-                  {op.orderId && (
-                    <View className="flex-row items-center gap-0.5 bg-black/30 px-1.5 py-0.5 rounded">
-                      <ExternalLink size={9} color={colors.muted} />
-                      <Text className="text-[10px] text-gray-400">Order</Text>
-                    </View>
-                  )}
-                </View>
-                <View className="flex-row items-center gap-2 mt-0.5">
-                  {op.reason ? (
-                    <Text className="text-xs text-label">{op.reason}</Text>
-                  ) : null}
-                  {op.performedAt ? (
-                    <Text className="text-[10px] text-gray-600">{formatTime(op.performedAt)}</Text>
-                  ) : null}
-                </View>
+              {/* Top row: Type + Amount */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+                  {OP_LABELS[op.operationType] ?? op.operationType.replace(/_/g, " ")}
+                </Text>
+                {/* Amount */}
+                <Text style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: isNoEffect ? colors.muted : (isDebit ? colors.danger : colors.teal),
+                }}>
+                  {isNoEffect
+                    ? "—"
+                    : `${isDebit ? "-" : "+"}${formatCurrency(op.amount)}`}
+                </Text>
               </View>
 
-              {/* Right: amount */}
-              <Text className={`text-base font-bold ${isNoEffect ? "text-gray-500" : opStyle.text}`}>
-                {isNoEffect
-                  ? "—"
-                  : `${isDebit ? "-" : "+"}${formatCurrency(op.amount)}`}
-              </Text>
-            </View>
+              {/* Bottom row: Order number + reason + time */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {orderNumber && (
+                  <View style={{ backgroundColor: colors.teal + "15", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 10, color: colors.teal, fontWeight: "600" }}>{orderNumber}</Text>
+                  </View>
+                )}
+                {op.reason && (
+                  <Text style={{ fontSize: 10, color: colors.label }}>{op.reason}</Text>
+                )}
+                {op.performedAt && (
+                  <Text style={{ fontSize: 9, color: colors.muted }}>
+                    {formatTime(op.performedAt)}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
           );
         })
       )}
@@ -437,16 +528,16 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
   // ── Close view ─────────────────────────────────────────────────────────────
   const renderCloseView = () => (
     <View>
-      <View className="flex-row items-center justify-between mb-4">
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <View>
-          <Text className="text-xl font-bold text-white">Close Drawer</Text>
-          <Text className="text-sm text-label mt-0.5">Count the cash to end your session</Text>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}>Close Drawer</Text>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>Count the cash to end your session</Text>
         </View>
         <TouchableOpacity
           onPress={() => setView("active")}
-          className="px-3 py-1.5 rounded-lg bg-surface border border-border"
+          style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
         >
-          <Text className="text-sm text-label">Back</Text>
+          <Text style={{ fontSize: 11, color: colors.label }}>Back</Text>
         </TouchableOpacity>
       </View>
 
@@ -458,26 +549,30 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
       />
 
       {/* Variance Display */}
-      <View className="bg-surface border border-border rounded-xl p-4 mt-4">
+      <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginTop: 12 }}>
         {!isBlind && (
-          <View className="flex-row justify-between mb-2">
-            <Text className="text-base text-label">Expected</Text>
-            <Text className="text-base font-semibold text-white">
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: colors.label }}>Expected</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
               {formatCurrency(runningBalance)}
             </Text>
           </View>
         )}
-        <View className="flex-row justify-between mb-2">
-          <Text className="text-base text-label">Counted</Text>
-          <Text className="text-base font-semibold text-white">
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 12, color: colors.label }}>Counted</Text>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
             {formatCurrency(closingTotal)}
           </Text>
         </View>
         {!isBlind && (
-          <View className="border-t border-border pt-2">
-            <View className="flex-row justify-between">
-              <Text className="text-base font-bold text-white">Variance</Text>
-              <Text className={`text-lg font-bold ${getVarianceColor(variance)}`}>
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>Variance</Text>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: Math.abs(variance) === 0 ? colors.success : (Math.abs(variance) >= varianceAlertThreshold ? colors.danger : (Math.abs(variance) >= varianceWarningThreshold ? colors.warning : colors.info)),
+              }}>
                 {variance >= 0 ? "+" : ""}{formatCurrency(variance)}
               </Text>
             </View>
@@ -485,8 +580,8 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
         )}
       </View>
 
-      <View className="mt-3">
-        <Text className="text-sm text-label mb-1">Notes (optional)</Text>
+      <View style={{ marginTop: 10 }}>
+        <Text style={{ fontSize: 11, color: colors.label, marginBottom: 6 }}>Notes (optional)</Text>
         <TextInput
           value={varianceNotes}
           onChangeText={setVarianceNotes}
@@ -494,20 +589,38 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           placeholderTextColor={colors.muted}
           multiline
           numberOfLines={2}
-          className="h-16 px-3 py-2 bg-surface border border-border rounded-lg text-white text-sm"
-          textAlignVertical="top"
+          style={{
+            minHeight: 40,
+            paddingHorizontal: 10,
+            paddingVertical: 8,
+            backgroundColor: colors.inset,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 8,
+            color: colors.heading,
+            fontSize: 12,
+            textAlignVertical: "top",
+          }}
         />
       </View>
 
       <TouchableOpacity
         onPress={handleClose}
         disabled={isSubmitting}
-        className={`mt-4 py-4 rounded-xl items-center flex-row justify-center gap-2 ${
-          isSubmitting ? "bg-gray-600" : "bg-red-700"
-        }`}
+        style={{
+          marginTop: 12,
+          paddingVertical: 11,
+          borderRadius: 10,
+          alignItems: "center",
+          flexDirection: "row",
+          justifyContent: "center",
+          gap: 6,
+          backgroundColor: isSubmitting ? colors.border : colors.danger,
+          opacity: isSubmitting ? 0.6 : 1,
+        }}
       >
-        <Lock size={18} color="white" />
-        <Text className="text-lg font-bold text-white">
+        <Lock size={14} color={isSubmitting ? colors.muted : colors.onSolid} />
+        <Text style={{ fontSize: 13, fontWeight: "700", color: isSubmitting ? colors.muted : colors.onSolid }}>
           {isSubmitting ? "Closing..." : "Confirm Close"}
         </Text>
       </TouchableOpacity>
@@ -520,26 +633,30 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
     const v = closeSummary.variance;
     return (
       <View>
-        <Text className="text-xl font-bold text-white mb-4 text-center">
+        <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading, marginBottom: 12, textAlign: "center" }}>
           Drawer Closed
         </Text>
-        <View className="bg-surface border border-border rounded-xl p-4">
-          <View className="flex-row justify-between mb-2">
-            <Text className="text-base text-label">Expected</Text>
-            <Text className="text-base font-semibold text-white">
+        <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: colors.label }}>Expected</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
               {formatCurrency(closeSummary.expected)}
             </Text>
           </View>
-          <View className="flex-row justify-between mb-2">
-            <Text className="text-base text-label">Actual Count</Text>
-            <Text className="text-base font-semibold text-white">
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: colors.label }}>Actual</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
               {formatCurrency(closeSummary.actual)}
             </Text>
           </View>
-          <View className="border-t border-border pt-2">
-            <View className="flex-row justify-between">
-              <Text className="text-base font-bold text-white">Variance</Text>
-              <Text className={`text-lg font-bold ${getVarianceColor(v)}`}>
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>Variance</Text>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: Math.abs(v) === 0 ? colors.success : (Math.abs(v) >= varianceAlertThreshold ? colors.danger : (Math.abs(v) >= varianceWarningThreshold ? colors.warning : colors.info)),
+              }}>
                 {v >= 0 ? "+" : ""}{formatCurrency(v)}
               </Text>
             </View>
@@ -548,9 +665,9 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
         <TouchableOpacity
           onPress={onClose}
-          className="mt-6 py-4 rounded-xl items-center bg-teal"
+          style={{ paddingVertical: 11, borderRadius: 10, alignItems: "center", backgroundColor: colors.teal }}
         >
-          <Text className="text-lg font-bold text-black">Done</Text>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>Done</Text>
         </TouchableOpacity>
       </View>
     );
@@ -573,7 +690,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           />
         )}
       >
-        <BottomSheetScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+        <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12, paddingBottom: 40 }}>
           {view === "open" && renderOpenView()}
           {view === "active" && renderActiveView()}
           {view === "close" && renderCloseView()}
