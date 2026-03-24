@@ -3,6 +3,7 @@ import { usePaymentTerminal } from "@/hooks/usePaymentTerminal";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
+import { useKDSStore } from "@/stores/useKDSStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { StationPaymentTerminal } from "@/types/station";
@@ -224,12 +225,6 @@ const PaymentSystemsScreen = () => {
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  const getCapacityColor = (value: number) => {
-    if (value < 60) return { bg: "bg-green-600", text: "text-green-400" };
-    if (value < 80) return { bg: "bg-yellow-600", text: "text-yellow-400" };
-    return { bg: "bg-red-600", text: "text-red-400" };
   };
 
   const stateCompliance: Record<string, boolean> = {
@@ -653,10 +648,10 @@ const PaymentSystemsScreen = () => {
     (1 + parseFloat(dualPricing.discount || "0") / 100);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.screen, padding: 20 }}>
-      <View style={{ marginBottom: 16 }}>
-        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Payment Systems</Text>
-        <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+    <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 14, paddingVertical: 10 }}>
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}>Payment Systems</Text>
+        <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
           Advanced payment features, kitchen operations, and compliance tools.
         </Text>
       </View>
@@ -668,59 +663,69 @@ const PaymentSystemsScreen = () => {
         <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Payment Terminal",
-            <Radio size={20} color={colors.info} />,
+            <Radio size={20} color={colors.teal} />,
             "terminal"
           )}
           {expandedSections.terminal && (
-            <View className="p-5">
+            <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
               {/* ---- Register form view ---- */}
               {showRegisterForm ? (
                 <View>
                   {/* Header */}
-                  <View className="flex-row items-center justify-between mb-4">
-                    <View className="flex-row items-center gap-2">
-                      <Plus size={18} color={colors.info} />
-                      <Text className="text-white font-bold text-base">Add Terminal</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Plus size={16} color={colors.teal} />
+                      <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 13 }}>Add Terminal</Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => { setShowRegisterForm(false); setQuickTestStatus("idle"); }}
-                      className="p-1"
+                      style={{ padding: 4 }}
                     >
                       <X size={18} color={colors.muted} />
                     </TouchableOpacity>
                   </View>
 
                   {/* Terminal type selector — card style */}
-                  <View className="flex-row gap-3 mb-5">
+                  <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
                     <TouchableOpacity
                       onPress={() => setRegisterFormType("castles")}
-                      className={`flex-1 rounded-xl border p-3 items-center ${
-                        registerFormType === "castles"
-                          ? "bg-purple-600/20 border-purple-500"
-                          : "bg-surface border-gray-700"
-                      }`}
+                      style={{
+                        flex: 1,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        alignItems: "center",
+                        backgroundColor: registerFormType === "castles" ? colors.teal + "20" : "transparent",
+                        borderColor: registerFormType === "castles" ? colors.teal + "50" : colors.border,
+                      }}
                     >
-                      <Wifi size={22} color={registerFormType === "castles" ? "#a78bfa" : colors.muted} />
-                      <Text className={`font-bold text-sm mt-1.5 ${registerFormType === "castles" ? "text-purple-300" : "text-gray-400"}`}>
+                      <Wifi size={18} color={registerFormType === "castles" ? colors.teal : colors.muted} />
+                      <Text style={{ fontWeight: "700", fontSize: 12, marginTop: 6, color: registerFormType === "castles" ? colors.teal : colors.muted }}>
                         Castles
                       </Text>
-                      <Text className={`text-[10px] mt-0.5 text-center ${registerFormType === "castles" ? "text-purple-400" : "text-gray-600"}`}>
+                      <Text style={{ fontSize: 10, marginTop: 2, textAlign: "center", color: registerFormType === "castles" ? colors.label : colors.muted }}>
                         Local TCP / IP
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => setRegisterFormType("dejavoo")}
-                      className={`flex-1 rounded-xl border p-3 items-center ${
-                        registerFormType === "dejavoo"
-                          ? "bg-teal-600/20 border-teal-500"
-                          : "bg-surface border-gray-700"
-                      }`}
+                      style={{
+                        flex: 1,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        alignItems: "center",
+                        backgroundColor: registerFormType === "dejavoo" ? colors.teal + "20" : "transparent",
+                        borderColor: registerFormType === "dejavoo" ? colors.teal + "50" : colors.border,
+                      }}
                     >
-                      <CreditCard size={22} color={registerFormType === "dejavoo" ? colors.info : colors.muted} />
-                      <Text style={{ fontWeight: "700", fontSize: 14, marginTop: 6, color: registerFormType === "dejavoo" ? colors.teal : colors.muted }}>
+                      <CreditCard size={18} color={registerFormType === "dejavoo" ? colors.teal : colors.muted} />
+                      <Text style={{ fontWeight: "700", fontSize: 12, marginTop: 6, color: registerFormType === "dejavoo" ? colors.teal : colors.muted }}>
                         Dejavoo
                       </Text>
-                      <Text style={{ fontSize: 10, marginTop: 2, textAlign: "center", color: registerFormType === "dejavoo" ? colors.teal : colors.muted }}>
+                      <Text style={{ fontSize: 10, marginTop: 2, textAlign: "center", color: registerFormType === "dejavoo" ? colors.label : colors.muted }}>
                         Cloud / SPIN API
                       </Text>
                     </TouchableOpacity>
@@ -730,16 +735,16 @@ const PaymentSystemsScreen = () => {
                   {registerFormType === "castles" && (
                     <>
                       {/* Step 1: Connection */}
-                      <View className="mb-4">
-                        <View className="flex-row items-center gap-2 mb-2">
-                          <View className="w-5 h-5 rounded-full bg-purple-600 items-center justify-center">
-                            <Text className="text-white text-[10px] font-bold">1</Text>
+                      <View style={{ marginBottom: 16 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: colors.teal + "20", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.teal + "50" }}>
+                            <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "bold" }}>1</Text>
                           </View>
-                          <Text className="text-gray-300 text-sm font-semibold">Connection</Text>
+                          <Text style={{ color: colors.label, fontSize: 13, fontWeight: "600" }}>Connection</Text>
                         </View>
-                        <View className="flex-row gap-2">
-                          <View className="flex-[3]">
-                            <Text className="text-gray-500 text-xs mb-1">IP Address *</Text>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <View style={{ flex: 3 }}>
+                            <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>IP Address *</Text>
                             <TextInput
                               value={registerForm.ipAddress}
                               onChangeText={(v) => {
@@ -749,18 +754,18 @@ const PaymentSystemsScreen = () => {
                               placeholder="192.168.1.100"
                               placeholderTextColor={colors.muted}
                               keyboardType="decimal-pad"
-                              className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                              style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                             />
                           </View>
-                          <View className="flex-[1.2]">
-                            <Text className="text-gray-500 text-xs mb-1">Port</Text>
+                          <View style={{ flex: 1.2 }}>
+                            <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Port</Text>
                             <TextInput
                               value={registerForm.port}
                               onChangeText={(v) => setRegisterForm((f) => ({ ...f, port: v }))}
                               placeholder="8080"
                               placeholderTextColor={colors.muted}
                               keyboardType="number-pad"
-                              className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                              style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                             />
                           </View>
                         </View>
@@ -782,63 +787,78 @@ const PaymentSystemsScreen = () => {
                             }
                           }}
                           disabled={!registerForm.ipAddress.trim() || quickTestStatus === "testing"}
-                          className={`mt-2 flex-row items-center justify-center py-2.5 rounded-lg border ${
-                            quickTestStatus === "online"
-                              ? "bg-green-600/15 border-green-600/50"
+                          style={{
+                            marginTop: 8,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            paddingVertical: 10,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            backgroundColor: quickTestStatus === "online"
+                              ? colors.success + "15"
                               : quickTestStatus === "offline"
-                                ? "bg-red-600/15 border-red-600/50"
+                                ? colors.danger + "15"
                                 : registerForm.ipAddress.trim()
-                                  ? "bg-purple-600/15 border-purple-500/50"
-                                  : "bg-surface border-gray-700 opacity-50"
-                          }`}
+                                  ? colors.teal + "15"
+                                  : colors.screen,
+                            borderColor: quickTestStatus === "online"
+                              ? colors.success + "50"
+                              : quickTestStatus === "offline"
+                                ? colors.danger + "50"
+                                : registerForm.ipAddress.trim()
+                                  ? colors.teal + "50"
+                                  : colors.border,
+                            opacity: !registerForm.ipAddress.trim() ? 0.5 : 1,
+                          }}
                         >
                           {quickTestStatus === "testing" ? (
                             <>
-                              <ActivityIndicator size="small" color="#a78bfa" />
-                              <Text className="text-purple-300 text-sm ml-2">Testing connection…</Text>
+                              <ActivityIndicator size="small" color={colors.teal} />
+                              <Text style={{ color: colors.teal, fontSize: 13, marginLeft: 8 }}>Testing connection…</Text>
                             </>
                           ) : quickTestStatus === "online" ? (
                             <>
                               <Check size={15} color={colors.success} />
-                              <Text className="text-green-400 text-sm font-semibold ml-2">Connected — terminal reachable</Text>
+                              <Text style={{ color: colors.success, fontSize: 13, fontWeight: "600", marginLeft: 8 }}>Connected — terminal reachable</Text>
                             </>
                           ) : quickTestStatus === "offline" ? (
                             <>
                               <WifiOff size={15} color={colors.danger} />
-                              <Text className="text-red-400 text-sm ml-2">No response — check IP &amp; network</Text>
+                              <Text style={{ color: colors.danger, fontSize: 13, marginLeft: 8 }}>No response — check IP &amp; network</Text>
                             </>
                           ) : (
                             <>
-                              <Wifi size={15} color="#a78bfa" />
-                              <Text className="text-purple-300 text-sm ml-2">Test Connection</Text>
+                              <Wifi size={15} color={colors.teal} />
+                              <Text style={{ color: colors.teal, fontSize: 13, marginLeft: 8 }}>Test Connection</Text>
                             </>
                           )}
                         </TouchableOpacity>
                       </View>
 
                       {/* Step 2: Name */}
-                      <View className="mb-5">
-                        <View className="flex-row items-center gap-2 mb-2">
-                          <View className="w-5 h-5 rounded-full bg-purple-600 items-center justify-center">
-                            <Text className="text-white text-[10px] font-bold">2</Text>
+                      <View style={{ marginBottom: 20 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: colors.teal + "20", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.teal + "50" }}>
+                            <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "bold" }}>2</Text>
                           </View>
-                          <Text className="text-gray-300 text-sm font-semibold">Label</Text>
+                          <Text style={{ color: colors.label, fontSize: 13, fontWeight: "600" }}>Label</Text>
                         </View>
                         <TextInput
                           value={registerForm.name}
                           onChangeText={(v) => setRegisterForm((f) => ({ ...f, name: v }))}
                           placeholder="e.g. Front Counter, Bar"
                           placeholderTextColor={colors.muted}
-                          className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
-                        <View className="mt-2">
-                          <Text className="text-gray-500 text-xs mb-1">Model (optional)</Text>
+                        <View style={{ marginTop: 8 }}>
+                          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Model (optional)</Text>
                           <TextInput
                             value={registerForm.model}
                             onChangeText={(v) => setRegisterForm((f) => ({ ...f, model: v }))}
                             placeholder="e.g. S1F2"
                             placeholderTextColor={colors.muted}
-                            className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                            style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                           />
                         </View>
                       </View>
@@ -848,63 +868,63 @@ const PaymentSystemsScreen = () => {
                   {/* ── DEJAVOO FLOW ─────────────────────────────────── */}
                   {registerFormType === "dejavoo" && (
                     <>
-                      <View className="mb-3">
-                        <Text className="text-gray-500 text-xs mb-1">Terminal Name *</Text>
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Terminal Name *</Text>
                         <TextInput
                           value={registerForm.name}
                           onChangeText={(v) => setRegisterForm((f) => ({ ...f, name: v }))}
                           placeholder="e.g. Front Counter"
                           placeholderTextColor={colors.muted}
-                          className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
                       </View>
-                      <View className="mb-3">
-                        <Text className="text-gray-500 text-xs mb-1">Model (optional)</Text>
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Model (optional)</Text>
                         <TextInput
                           value={registerForm.model}
                           onChangeText={(v) => setRegisterForm((f) => ({ ...f, model: v }))}
                           placeholder="e.g. QD4"
                           placeholderTextColor={colors.muted}
-                          className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
                       </View>
-                      <View className="mb-3">
-                        <Text className="text-gray-500 text-xs mb-1">TPN *</Text>
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>TPN *</Text>
                         <TextInput
                           value={registerForm.tpn}
                           onChangeText={(v) => setRegisterForm((f) => ({ ...f, tpn: v }))}
                           placeholder="Terminal Point Number"
                           placeholderTextColor={colors.muted}
-                          className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
                       </View>
-                      <View className="mb-3">
-                        <Text className="text-gray-500 text-xs mb-1">Auth Key *</Text>
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Auth Key *</Text>
                         <TextInput
                           value={registerForm.authKey}
                           onChangeText={(v) => setRegisterForm((f) => ({ ...f, authKey: v }))}
                           placeholder="Authentication Key"
                           placeholderTextColor={colors.muted}
                           secureTextEntry
-                          className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
                       </View>
-                      <View className="mb-5">
-                        <Text className="text-gray-500 text-xs mb-1.5">Environment</Text>
-                        <View className="flex-row bg-surface rounded-lg overflow-hidden border border-gray-600">
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 6 }}>Environment</Text>
+                        <View style={{ flexDirection: "row", backgroundColor: colors.screen, borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
                           <TouchableOpacity
                             onPress={() => setRegisterForm((f) => ({ ...f, environment: "sandbox" }))}
-                            className={`flex-1 py-2.5 items-center ${registerForm.environment === "sandbox" ? "bg-yellow-600" : ""}`}
+                            style={{ flex: 1, paddingVertical: 10, alignItems: "center", backgroundColor: registerForm.environment === "sandbox" ? colors.teal + "20" : "transparent" }}
                           >
-                            <Text className={`text-sm font-medium ${registerForm.environment === "sandbox" ? "text-white" : "text-gray-400"}`}>
+                            <Text style={{ fontSize: 13, fontWeight: "500", color: registerForm.environment === "sandbox" ? colors.teal : colors.muted }}>
                               Sandbox
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => setRegisterForm((f) => ({ ...f, environment: "production" }))}
-                            className={`flex-1 py-2.5 items-center ${registerForm.environment === "production" ? "bg-green-600" : ""}`}
+                            style={{ flex: 1, paddingVertical: 10, alignItems: "center", backgroundColor: registerForm.environment === "production" ? colors.teal + "20" : "transparent" }}
                           >
-                            <Text className={`text-sm font-medium ${registerForm.environment === "production" ? "text-white" : "text-gray-400"}`}>
+                            <Text style={{ fontSize: 13, fontWeight: "500", color: registerForm.environment === "production" ? colors.teal : colors.muted }}>
                               Production
                             </Text>
                           </TouchableOpacity>
@@ -929,7 +949,7 @@ const PaymentSystemsScreen = () => {
                     }}
                   >
                     {isRegistering ? (
-                      <ActivityIndicator size="small" color="white" />
+                      <ActivityIndicator size="small" color={colors.teal} />
                     ) : (
                       <>
                         <Check size={15} color={isRegisterFormValid ? colors.teal : colors.muted} />
@@ -943,8 +963,8 @@ const PaymentSystemsScreen = () => {
               ) : showTerminalPicker ? (
                 /* ---- Terminal picker view ---- */
                 <View>
-                  <View className="flex-row items-center justify-between mb-4">
-                    <Text className="text-white font-bold text-base">
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                    <Text style={{ color: colors.heading, fontWeight: "bold", fontSize: 14 }}>
                       Available Terminals
                     </Text>
                     <TouchableOpacity
@@ -955,7 +975,7 @@ const PaymentSystemsScreen = () => {
                   </View>
 
                   {terminals.length === 0 ? (
-                    <Text className="text-gray-400 text-center py-4">
+                    <Text style={{ color: colors.muted, textAlign: "center", paddingVertical: 16 }}>
                       No terminals found for this location.
                     </Text>
                   ) : (
@@ -976,38 +996,50 @@ const PaymentSystemsScreen = () => {
                           disabled={
                             isCurrent || isAssigning || !!isOtherStation
                           }
-                          className={`bg-surface p-3 rounded-lg border mb-2 flex-row items-center justify-between ${
-                            isCurrent
-                              ? "border-teal-500 bg-teal-600/10"
-                              : isOtherStation
-                                ? "border-gray-700 opacity-50"
-                                : "border-gray-600"
-                          }`}
+                          style={{
+                            backgroundColor: isCurrent ? colors.teal + "10" : colors.screen,
+                            paddingHorizontal: 12,
+                            paddingVertical: 12,
+                            borderRadius: 8,
+                            marginBottom: 8,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            borderWidth: 1,
+                            borderColor: isCurrent ? colors.teal + "50" : isOtherStation ? colors.border : colors.border,
+                            opacity: isOtherStation ? 0.5 : 1,
+                          }}
                         >
-                          <View className="flex-row items-center flex-1">
+                          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                             <View
-                              className={`w-3 h-3 rounded-full mr-3 ${
-                                t.isConnected ? "bg-green-500" : "bg-gray-500"
-                              }`}
+                              style={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: 6,
+                                marginRight: 12,
+                                backgroundColor: t.isConnected ? colors.success : colors.muted,
+                              }}
                             />
-                            <View className="flex-1">
-                              <Text className="text-white font-medium">
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: colors.heading, fontWeight: "500" }}>
                                 {t.name}
                               </Text>
-                              <View className="flex-row items-center mt-0.5">
+                              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                                 <View
-                                  className={`px-1.5 py-0.5 rounded mr-2 ${
-                                    t.terminalType === "castles"
-                                      ? "bg-purple-600/30"
-                                      : "bg-teal-600/30"
-                                  }`}
+                                  style={{
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 2,
+                                    borderRadius: 4,
+                                    marginRight: 8,
+                                    backgroundColor: t.terminalType === "castles" ? colors.teal + "30" : colors.teal + "30",
+                                  }}
                                 >
                                   <Text
-                                    className={`text-xs font-medium ${
-                                      t.terminalType === "castles"
-                                        ? "text-purple-300"
-                                        : "text-teal-300"
-                                    }`}
+                                    style={{
+                                      fontSize: 11,
+                                      fontWeight: "500",
+                                      color: colors.teal,
+                                    }}
                                   >
                                     {t.terminalType === "castles"
                                       ? "Castles"
@@ -1015,7 +1047,7 @@ const PaymentSystemsScreen = () => {
                                   </Text>
                                 </View>
                                 {t.model && (
-                                  <Text className="text-gray-500 text-xs">
+                                  <Text style={{ color: colors.muted, fontSize: 11 }}>
                                     {t.model}
                                   </Text>
                                 )}
@@ -1023,15 +1055,15 @@ const PaymentSystemsScreen = () => {
                             </View>
                           </View>
                           {isCurrent && (
-                            <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.teal + "50" }}>
+                            <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1, borderColor: colors.teal + "50" }}>
                               <Text style={{ fontSize: 11, color: colors.teal, fontWeight: "700" }}>
                                 Current
                               </Text>
                             </View>
                           )}
                           {isOtherStation && (
-                            <View className="bg-gray-600 px-2 py-1 rounded">
-                              <Text className="text-gray-300 text-xs font-bold">
+                            <View style={{ backgroundColor: colors.border, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                              <Text style={{ color: colors.label, fontSize: 11, fontWeight: "bold" }}>
                                 In Use
                               </Text>
                             </View>
@@ -1052,9 +1084,9 @@ const PaymentSystemsScreen = () => {
                       setShowTerminalPicker(false);
                       setShowRegisterForm(true);
                     }}
-                    className="flex-row items-center justify-center mt-2 py-2"
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 8, paddingVertical: 8 }}
                   >
-                    <Plus size={16} color={colors.info} />
+                    <Plus size={16} color={colors.teal} />
                     <Text style={{ color: colors.teal, fontWeight: "500", marginLeft: 4 }}>
                       Register New Terminal
                     </Text>
@@ -1063,73 +1095,73 @@ const PaymentSystemsScreen = () => {
               ) : isEditingTerminal && currentTerminal ? (
                 /* ---- Edit terminal form ---- */
                 <View>
-                  <View className="flex-row items-center justify-between mb-4">
-                    <View className="flex-row items-center gap-2">
-                      <Pencil size={16} color={colors.label} />
-                      <Text className="text-white font-bold text-base">Edit Terminal</Text>
-                      <View className={`px-2 py-0.5 rounded ${currentTerminal.terminal_type === "castles" ? "bg-purple-600/30" : "bg-teal-600/30"}`}>
-                        <Text className={`text-xs font-bold ${currentTerminal.terminal_type === "castles" ? "text-purple-300" : "text-teal-300"}`}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Pencil size={16} color={colors.teal} />
+                      <Text style={{ color: colors.heading, fontWeight: "bold", fontSize: 14 }}>Edit Terminal</Text>
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + "30" }}>
+                        <Text style={{ fontSize: 11, fontWeight: "bold", color: colors.teal }}>
                           {currentTerminal.terminal_type === "castles" ? "Castles" : "Dejavoo"}
                         </Text>
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => setIsEditingTerminal(false)} className="p-1">
+                    <TouchableOpacity onPress={() => setIsEditingTerminal(false)} style={{ padding: 4 }}>
                       <X size={18} color={colors.muted} />
                     </TouchableOpacity>
                   </View>
 
                   {/* Name */}
-                  <View className="mb-3">
-                    <Text className="text-gray-500 text-xs mb-1">Terminal Name *</Text>
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Terminal Name *</Text>
                     <TextInput
                       value={editForm.name}
                       onChangeText={(v) => setEditForm((f) => ({ ...f, name: v }))}
                       placeholder="e.g. Front Counter"
                       placeholderTextColor={colors.muted}
-                      className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                      style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                     />
                   </View>
-                  <View className="mb-4">
-                    <Text className="text-gray-500 text-xs mb-1">Model (optional)</Text>
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Model (optional)</Text>
                     <TextInput
                       value={editForm.model}
                       onChangeText={(v) => setEditForm((f) => ({ ...f, model: v }))}
                       placeholder="e.g. QD4"
                       placeholderTextColor={colors.muted}
-                      className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                      style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                     />
                   </View>
 
                   {/* Castles: IP + Port + inline test */}
                   {currentTerminal.terminal_type === "castles" && (
                     <>
-                      <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Connection</Text>
-                      <View className="flex-row gap-2 mb-2">
-                        <View className="flex-[3]">
-                          <Text className="text-gray-500 text-xs mb-1">IP Address *</Text>
+                      <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Connection</Text>
+                      <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                        <View style={{ flex: 3 }}>
+                          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>IP Address *</Text>
                           <TextInput
                             value={editForm.ipAddress}
                             onChangeText={(v) => setEditForm((f) => ({ ...f, ipAddress: v }))}
                             placeholder="192.168.1.100"
                             placeholderTextColor={colors.muted}
                             keyboardType="decimal-pad"
-                            className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                            style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                           />
                         </View>
-                        <View className="flex-[1.2]">
-                          <Text className="text-gray-500 text-xs mb-1">Port</Text>
+                        <View style={{ flex: 1.2 }}>
+                          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Port</Text>
                           <TextInput
                             value={editForm.port}
                             onChangeText={(v) => setEditForm((f) => ({ ...f, port: v }))}
                             placeholder="8080"
                             placeholderTextColor={colors.muted}
                             keyboardType="number-pad"
-                            className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                            style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                           />
                         </View>
                       </View>
                       {/* Inline test */}
-                      <View className="flex-row gap-2 mb-4">
+                      <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
                         <TouchableOpacity
                           onPress={async () => {
                             if (!editForm.ipAddress.trim()) return;
@@ -1147,30 +1179,42 @@ const PaymentSystemsScreen = () => {
                             }
                           }}
                           disabled={!editForm.ipAddress.trim() || quickTestStatus === "testing"}
-                          className={`flex-1 flex-row items-center justify-center py-2.5 rounded-lg border ${
-                            quickTestStatus === "online"
-                              ? "bg-green-600/15 border-green-600/50"
+                          style={{
+                            flex: 1,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            paddingVertical: 10,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            backgroundColor: quickTestStatus === "online"
+                              ? colors.success + "15"
                               : quickTestStatus === "offline"
-                                ? "bg-red-600/15 border-red-600/50"
-                                : "bg-surface border-gray-600"
-                          }`}
+                                ? colors.danger + "15"
+                                : colors.screen,
+                            borderColor: quickTestStatus === "online"
+                              ? colors.success + "50"
+                              : quickTestStatus === "offline"
+                                ? colors.danger + "50"
+                                : colors.border,
+                          }}
                         >
                           {quickTestStatus === "testing" ? (
-                            <ActivityIndicator size="small" color="#a78bfa" />
+                            <ActivityIndicator size="small" color={colors.teal} />
                           ) : quickTestStatus === "online" ? (
-                            <><Check size={14} color={colors.success} /><Text className="text-green-400 text-sm ml-1.5">Reachable</Text></>
+                            <><Check size={14} color={colors.success} /><Text style={{ color: colors.success, fontSize: 13, marginLeft: 6, fontWeight: "500" }}>Reachable</Text></>
                           ) : quickTestStatus === "offline" ? (
-                            <><WifiOff size={14} color={colors.danger} /><Text className="text-red-400 text-sm ml-1.5">Unreachable</Text></>
+                            <><WifiOff size={14} color={colors.danger} /><Text style={{ color: colors.danger, fontSize: 13, marginLeft: 6, fontWeight: "500" }}>Unreachable</Text></>
                           ) : (
-                            <><Wifi size={14} color={colors.muted} /><Text className="text-gray-400 text-sm ml-1.5">Test IP</Text></>
+                            <><Wifi size={14} color={colors.muted} /><Text style={{ color: colors.muted, fontSize: 13, marginLeft: 6 }}>Test IP</Text></>
                           )}
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={handleDiagnoseCastles}
-                          className="flex-row items-center justify-center px-3 py-2.5 rounded-lg border border-gray-600 bg-surface"
+                          style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.teal + "50", backgroundColor: colors.teal + "20" }}
                         >
-                          <RefreshCw size={14} color={colors.warning} />
-                          <Text className="text-yellow-400 text-sm ml-1.5">Diagnose</Text>
+                          <RefreshCw size={14} color={colors.teal} />
+                          <Text style={{ color: colors.teal, fontSize: 13, marginLeft: 6, fontWeight: "500" }}>Diagnose</Text>
                         </TouchableOpacity>
                       </View>
                     </>
@@ -1179,25 +1223,25 @@ const PaymentSystemsScreen = () => {
                   {/* Dejavoo: TPN + AuthKey */}
                   {currentTerminal.terminal_type !== "castles" && (
                     <>
-                      <View className="mb-3">
-                        <Text className="text-gray-500 text-xs mb-1">TPN *</Text>
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>TPN *</Text>
                         <TextInput
                           value={editForm.tpn}
                           onChangeText={(v) => setEditForm((f) => ({ ...f, tpn: v }))}
                           placeholder="Terminal Point Number"
                           placeholderTextColor={colors.muted}
-                          className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
                       </View>
-                      <View className="mb-5">
-                        <Text className="text-gray-500 text-xs mb-1">Auth Key</Text>
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Auth Key</Text>
                         <TextInput
                           value={editForm.authKey}
                           onChangeText={(v) => setEditForm((f) => ({ ...f, authKey: v }))}
                           placeholder="Leave blank to keep current"
                           placeholderTextColor={colors.muted}
                           secureTextEntry
-                          className="bg-surface border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
                       </View>
                     </>
@@ -1232,86 +1276,85 @@ const PaymentSystemsScreen = () => {
                 /* ---- Terminal info card (assigned) ---- */
                 <View>
                   {/* Main card */}
-                  <View className={`rounded-xl border mb-3 overflow-hidden ${
-                    currentTerminal.is_connected ? "border-green-600/40" : "border-gray-700"
-                  }`}>
+                  <View style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: currentTerminal.is_connected ? colors.success + "40" : colors.border,
+                    marginBottom: 12,
+                    overflow: "hidden",
+                  }}>
                     {/* Top: name + type badge */}
-                    <View className="flex-row items-center justify-between px-4 pt-4 pb-3">
-                      <View className="flex-1">
-                        <View className="flex-row items-center gap-2">
-                          <Text className="text-white font-bold text-base">
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 13 }}>
                             {currentTerminal.terminal_name}
                           </Text>
-                          <View className={`px-2 py-0.5 rounded ${
-                            currentTerminal.terminal_type === "castles" ? "bg-purple-600/30" : "bg-teal-600/30"
-                          }`}>
-                            <Text className={`text-[10px] font-bold ${
-                              currentTerminal.terminal_type === "castles" ? "text-purple-300" : "text-teal-300"
-                            }`}>
-                              {currentTerminal.terminal_type === "castles" ? "Castles" : "Dejavoo"}
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.teal + "20" }}>
+                            <Text style={{ fontSize: 9, fontWeight: "700", color: colors.teal }}>
+                              {currentTerminal.terminal_type === "castles" ? "CASTLES" : "DEJAVOO"}
                             </Text>
                           </View>
                         </View>
-                        {currentTerminal.terminal_model ? (
-                          <Text className="text-gray-500 text-xs mt-0.5">{currentTerminal.terminal_model}</Text>
-                        ) : null}
+                        <View style={{ marginTop: 4, gap: 2 }}>
+                          {currentTerminal.terminal_model && (
+                            <Text style={{ color: colors.muted, fontSize: 10 }}>{currentTerminal.terminal_model}</Text>
+                          )}
+                          {currentTerminal.terminal_type === "castles" && currentTerminal.ip_address ? (
+                            <Text style={{ color: colors.muted, fontSize: 9, fontFamily: "monospace" }}>
+                              {currentTerminal.ip_address}:{currentTerminal.port || 8080}
+                            </Text>
+                          ) : currentTerminal.register_id ? (
+                            <Text style={{ color: colors.muted, fontSize: 9 }}>TPN: {currentTerminal.register_id}</Text>
+                          ) : null}
+                          {currentTerminal.last_connection_test_at && (
+                            <Text style={{ color: colors.muted, fontSize: 8 }}>
+                              {new Date(currentTerminal.last_connection_test_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                            </Text>
+                          )}
+                        </View>
                       </View>
                       {/* Status dot */}
-                      <View className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg ${
-                        currentTerminal.is_connected ? "bg-green-600/15" : "bg-gray-700"
-                      }`}>
-                        <View className={`w-2 h-2 rounded-full ${currentTerminal.is_connected ? "bg-green-400" : "bg-gray-500"}`} />
-                        <Text className={`text-xs font-semibold ${currentTerminal.is_connected ? "text-green-400" : "text-gray-400"}`}>
+                      <View style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                        backgroundColor: currentTerminal.is_connected ? colors.success + "15" : colors.danger + "15",
+                      }}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: currentTerminal.is_connected ? colors.success : colors.danger }} />
+                        <Text style={{ fontSize: 10, fontWeight: "600", color: currentTerminal.is_connected ? colors.success : colors.danger }}>
                           {currentTerminal.is_connected ? "Online" : "Offline"}
                         </Text>
                       </View>
                     </View>
-
-                    {/* Connection detail row */}
-                    <View className="flex-row items-center justify-between px-4 py-2.5 bg-surface/50 border-t border-gray-700/60">
-                      {currentTerminal.terminal_type === "castles" && currentTerminal.ip_address ? (
-                        <View className="flex-row items-center gap-1.5">
-                          <Wifi size={13} color={colors.muted} />
-                          <Text className="text-gray-400 text-sm font-mono">
-                            {currentTerminal.ip_address}:{currentTerminal.port || 8080}
-                          </Text>
-                        </View>
-                      ) : currentTerminal.register_id ? (
-                        <View className="flex-row items-center gap-1.5">
-                          <CreditCard size={13} color={colors.muted} />
-                          <Text className="text-gray-400 text-sm">TPN: {currentTerminal.register_id}</Text>
-                        </View>
-                      ) : (
-                        <View />
-                      )}
-                      {currentTerminal.last_connection_test_at && (
-                        <View className="flex-row items-center gap-1">
-                          <Clock size={11} color={colors.muted} />
-                          <Text className="text-gray-600 text-xs">
-                            {new Date(currentTerminal.last_connection_test_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
                   </View>
 
                   {/* Action row */}
-                  <View className="flex-row gap-2">
+                  <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 12, paddingVertical: 8 }}>
                     <TouchableOpacity
                       onPress={handleTestConnection}
                       disabled={isTestingConnection}
-                      className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center border ${
-                        currentTerminal.is_connected
-                          ? "bg-green-600/15 border-green-600/40"
-                          : "bg-surface border-gray-600"
-                      }`}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "center",
+                        borderWidth: 1,
+                        backgroundColor: currentTerminal.is_connected ? colors.success + "20" : colors.teal + "20",
+                        borderColor: currentTerminal.is_connected ? colors.success + "50" : colors.teal + "50",
+                      }}
                     >
                       {isTestingConnection ? (
-                        <ActivityIndicator size="small" color={colors.info} />
+                        <ActivityIndicator size="small" color={colors.teal} />
                       ) : (
                         <>
-                          <RefreshCw size={15} color={currentTerminal.is_connected ? colors.success : colors.info} />
-                          <Text style={{ fontWeight: "500", marginLeft: 6, fontSize: 13, color: currentTerminal.is_connected ? colors.success : colors.teal }}>
+                          <RefreshCw size={13} color={currentTerminal.is_connected ? colors.success : colors.teal} />
+                          <Text style={{ fontWeight: "600", marginLeft: 4, fontSize: 11, color: currentTerminal.is_connected ? colors.success : colors.teal }}>
                             Test
                           </Text>
                         </>
@@ -1319,24 +1362,24 @@ const PaymentSystemsScreen = () => {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleStartEdit}
-                      className="flex-1 bg-surface border border-gray-600 py-2.5 rounded-xl items-center flex-row justify-center"
+                      style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingVertical: 8, borderRadius: 8, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
                     >
-                      <Pencil size={15} color={colors.label} />
-                      <Text className="text-gray-300 font-medium ml-1.5 text-sm">Edit</Text>
+                      <Pencil size={13} color={colors.teal} />
+                      <Text style={{ color: colors.teal, fontWeight: "600", marginLeft: 4, fontSize: 11 }}>Edit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => setShowTerminalPicker(true)}
-                      className="flex-1 bg-surface border border-gray-600 py-2.5 rounded-xl items-center flex-row justify-center"
+                      style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingVertical: 8, borderRadius: 8, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
                     >
-                      <CreditCard size={15} color={colors.label} />
-                      <Text className="text-gray-300 font-medium ml-1.5 text-sm">Switch</Text>
+                      <CreditCard size={13} color={colors.teal} />
+                      <Text style={{ color: colors.teal, fontWeight: "600", marginLeft: 4, fontSize: 11 }}>Switch</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { setShowRegisterForm(true); setQuickTestStatus("idle"); }}
-                      className="flex-1 bg-surface border border-gray-600 py-2.5 rounded-xl items-center flex-row justify-center"
+                      style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingVertical: 8, borderRadius: 8, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
                     >
-                      <Plus size={15} color={colors.success} />
-                      <Text className="text-green-400 font-medium ml-1.5 text-sm">Add</Text>
+                      <Plus size={13} color={colors.teal} />
+                      <Text style={{ color: colors.teal, fontWeight: "600", marginLeft: 4, fontSize: 11 }}>Add</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1344,58 +1387,72 @@ const PaymentSystemsScreen = () => {
                 /* ---- Empty state (no terminal) ---- */
                 <View>
                   {/* Quick IP tester */}
-                  <View className="bg-surface rounded-xl border border-gray-700 p-4 mb-4">
-                    <View className="flex-row items-center gap-2 mb-3">
-                      <Wifi size={16} color="#a78bfa" />
-                      <Text className="text-white font-semibold text-sm">Quick Connect Test</Text>
-                      <Text className="text-gray-600 text-xs ml-1">— no setup required</Text>
+                  <View style={{ backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, paddingVertical: 16, marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                      <Wifi size={16} color={colors.teal} />
+                      <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 13 }}>Quick Connect Test</Text>
+                      <Text style={{ color: colors.muted, fontSize: 11, marginLeft: 4 }}>— no setup required</Text>
                     </View>
-                    <Text className="text-gray-500 text-xs mb-3">
+                    <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 12 }}>
                       Enter your terminal's IP address to verify it's reachable on this network before registering.
                     </Text>
-                    <View className="flex-row gap-2 mb-2">
-                      <View className="flex-[3]">
+                    <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                      <View style={{ flex: 3 }}>
                         <TextInput
                           value={quickTestIp}
                           onChangeText={(v) => { setQuickTestIp(v); setQuickTestStatus("idle"); }}
                           placeholder="192.168.1.100"
                           placeholderTextColor={colors.muted}
                           keyboardType="decimal-pad"
-                          className="bg-panel border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm font-mono"
+                          style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13, fontFamily: "monospace" }}
                         />
                       </View>
-                      <View className="flex-[1.2]">
+                      <View style={{ flex: 1.2 }}>
                         <TextInput
                           value={quickTestPort}
                           onChangeText={(v) => setQuickTestPort(v)}
                           placeholder="8080"
                           placeholderTextColor={colors.muted}
                           keyboardType="number-pad"
-                          className="bg-panel border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm"
+                          style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.heading, fontSize: 13 }}
                         />
                       </View>
                     </View>
                     <TouchableOpacity
                       onPress={handleQuickTest}
                       disabled={!quickTestIp.trim() || quickTestStatus === "testing"}
-                      className={`flex-row items-center justify-center py-2.5 rounded-lg border ${
-                        quickTestStatus === "online"
-                          ? "bg-green-600/15 border-green-600/50"
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        backgroundColor: quickTestStatus === "online"
+                          ? colors.success + "15"
                           : quickTestStatus === "offline"
-                            ? "bg-red-600/15 border-red-600/50"
+                            ? colors.danger + "15"
                             : quickTestIp.trim()
-                              ? "bg-purple-600/15 border-purple-500/50"
-                              : "bg-panel border-gray-700 opacity-40"
-                      }`}
+                              ? colors.teal + "15"
+                              : colors.panel,
+                        borderColor: quickTestStatus === "online"
+                          ? colors.success + "50"
+                          : quickTestStatus === "offline"
+                            ? colors.danger + "50"
+                            : quickTestIp.trim()
+                              ? colors.teal + "50"
+                              : colors.border,
+                        opacity: !quickTestIp.trim() && quickTestStatus !== "testing" ? 0.4 : 1,
+                      }}
                     >
                       {quickTestStatus === "testing" ? (
-                        <><ActivityIndicator size="small" color="#a78bfa" /><Text className="text-purple-300 text-sm ml-2">Testing…</Text></>
+                        <><ActivityIndicator size="small" color={colors.teal} /><Text style={{ color: colors.teal, fontSize: 13, marginLeft: 8 }}>Testing…</Text></>
                       ) : quickTestStatus === "online" ? (
-                        <><Check size={15} color={colors.success} /><Text className="text-green-400 text-sm font-semibold ml-2">Terminal reachable — ready to register</Text></>
+                        <><Check size={15} color={colors.success} /><Text style={{ color: colors.success, fontSize: 13, fontWeight: "600", marginLeft: 8 }}>Terminal reachable — ready to register</Text></>
                       ) : quickTestStatus === "offline" ? (
-                        <><WifiOff size={15} color={colors.danger} /><Text className="text-red-400 text-sm ml-2">No response — check IP address &amp; network</Text></>
+                        <><WifiOff size={15} color={colors.danger} /><Text style={{ color: colors.danger, fontSize: 13, marginLeft: 8 }}>No response — check IP address &amp; network</Text></>
                       ) : (
-                        <><Wifi size={15} color="#a78bfa" /><Text className="text-purple-300 text-sm ml-2">Test Connection</Text></>
+                        <><Wifi size={15} color={colors.teal} /><Text style={{ color: colors.teal, fontSize: 13, marginLeft: 8 }}>Test Connection</Text></>
                       )}
                     </TouchableOpacity>
                     {/* Auto-fill button if test passed */}
@@ -1406,16 +1463,16 @@ const PaymentSystemsScreen = () => {
                           setShowRegisterForm(true);
                           setRegisterFormType("castles");
                         }}
-                        className="flex-row items-center justify-center py-2 mt-2 rounded-lg bg-green-600/20"
+                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 8, marginTop: 8, borderRadius: 8, backgroundColor: colors.success + "20" }}
                       >
                         <ChevronRight size={14} color={colors.success} />
-                        <Text className="text-green-400 text-sm font-semibold ml-1">Register this terminal</Text>
+                        <Text style={{ color: colors.success, fontSize: 13, fontWeight: "600", marginLeft: 4 }}>Register this terminal</Text>
                       </TouchableOpacity>
                     )}
                   </View>
 
                   {/* CTA buttons */}
-                  <View className="flex-row gap-3">
+                  <View style={{ flexDirection: "row", gap: 12 }}>
                     {terminals.length > 0 && (
                       <TouchableOpacity
                         onPress={() => setShowTerminalPicker(true)}
@@ -1443,17 +1500,17 @@ const PaymentSystemsScreen = () => {
         <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Text-to-Pay",
-            <MessageSquare size={20} color="#a78bfa" />,
+            <MessageSquare size={20} color={colors.teal} />,
             "text"
           )}
           {expandedSections.text && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-white font-medium">
+            <View style={{ paddingHorizontal: 20, paddingVertical: 20 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 16 }}>
+                <View style={{ flex: 1, paddingRight: 16 }}>
+                  <Text style={{ color: colors.heading, fontWeight: "500" }}>
                     Enable SMS Payment Links
                   </Text>
-                  <Text className="text-gray-400 text-sm">
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>
                     Send payment links via text
                   </Text>
                 </View>
@@ -1467,12 +1524,12 @@ const PaymentSystemsScreen = () => {
 
               {textToPayEnabled && (
                 <>
-                  <View className="bg-surface p-4 rounded-lg border border-gray-600 mb-4">
-                    <Text className="text-gray-400 text-xs mb-2">
+                  <View style={{ backgroundColor: colors.screen, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginBottom: 16 }}>
+                    <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 8 }}>
                       SMS Preview
                     </Text>
-                    <View className="bg-panel p-3 rounded-lg">
-                      <Text className="text-white text-sm">
+                    <View style={{ backgroundColor: colors.panel, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 8 }}>
+                      <Text style={{ color: colors.heading, fontSize: 13 }}>
                         "Hi [Name], your order at Dexa POS is ready! Pay
                         securely here: https://pay.dexa.app/abc123"
                       </Text>
@@ -1481,37 +1538,37 @@ const PaymentSystemsScreen = () => {
 
                   <TouchableOpacity
                     onPress={() => setTextToPayTestSent(true)}
-                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 8, borderWidth: 1, marginBottom: 14, backgroundColor: textToPayTestSent ? colors.success + "20" : "transparent", borderColor: textToPayTestSent ? colors.success : colors.teal }}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, marginBottom: 12, backgroundColor: textToPayTestSent ? colors.success + "20" : colors.teal + "20", borderColor: textToPayTestSent ? colors.success + "50" : colors.teal + "50" }}
                   >
                     {textToPayTestSent ? (
                       <>
-                        <Check size={18} color={colors.success} />
-                        <Text className="text-green-400 font-medium ml-2">
+                        <Check size={14} color={colors.success} />
+                        <Text style={{ color: colors.success, fontWeight: "600", fontSize: 12, marginLeft: 6 }}>
                           Test Sent Successfully!
                         </Text>
                       </>
                     ) : (
                       <>
-                        <Send size={18} color={colors.info} />
-                        <Text style={{ color: colors.teal, fontWeight: "500", marginLeft: 8 }}>
+                        <Send size={14} color={colors.teal} />
+                        <Text style={{ color: colors.teal, fontWeight: "600", fontSize: 12, marginLeft: 6 }}>
                           Send Test SMS
                         </Text>
                       </>
                     )}
                   </TouchableOpacity>
 
-                  <View className="flex-row gap-4">
-                    <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
-                      <Text className="text-gray-400 text-xs uppercase">
+                  <View style={{ flexDirection: "row", gap: 16 }}>
+                    <View style={{ backgroundColor: colors.screen, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 8, flex: 1, borderWidth: 1, borderColor: colors.border }}>
+                      <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase", fontWeight: "600" }}>
                         Paid via Text
                       </Text>
-                      <Text className="text-white text-xl font-bold">328</Text>
+                      <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "bold", marginTop: 4 }}>328</Text>
                     </View>
-                    <View className="bg-surface p-3 rounded-lg flex-1 border border-gray-600">
-                      <Text className="text-gray-400 text-xs uppercase">
+                    <View style={{ backgroundColor: colors.screen, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 8, flex: 1, borderWidth: 1, borderColor: colors.border }}>
+                      <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase", fontWeight: "600" }}>
                         Avg. Pay Time
                       </Text>
-                      <Text className="text-white text-xl font-bold">
+                      <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "bold", marginTop: 4 }}>
                         2.3 min
                       </Text>
                     </View>
@@ -1526,15 +1583,15 @@ const PaymentSystemsScreen = () => {
         <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: "hidden" }}>
           {renderSectionHeader(
             "Smart Kitchen Throttling",
-            <Gauge size={20} color={colors.warning} />,
+            <Gauge size={20} color={colors.teal} />,
             "throttle"
           )}
           {expandedSections.throttle && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View className="flex-1 pr-4">
-                  <Text className="text-white font-medium">Auto-Throttle</Text>
-                  <Text className="text-gray-400 text-sm">
+            <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 12 }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 13 }}>Auto-Throttle</Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>
                     Automatically manage kitchen capacity
                   </Text>
                 </View>
@@ -1546,56 +1603,126 @@ const PaymentSystemsScreen = () => {
 
               {throttling.enabled && (
                 <>
-                  <View className="mb-4">
-                    <Text className="text-gray-300 font-medium mb-2">
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ color: colors.label, fontWeight: "700", fontSize: 11, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
                       Throttle Threshold: {throttling.capacity}%
                     </Text>
-                    <View className="flex-row gap-1 mb-2">
+                    <View style={{ flexDirection: "row", gap: 4, marginBottom: 10 }}>
                       {[50, 60, 70, 75, 80, 90].map((val) => (
                         <TouchableOpacity
                           key={val}
                           onPress={() => setThrottling({ capacity: val })}
-                          className={`flex-1 py-2 rounded ${throttling.capacity === val ? getCapacityColor(val).bg : "bg-surface"}`}
+                          style={{
+                            flex: 1,
+                            paddingVertical: 6,
+                            borderRadius: 6,
+                            backgroundColor: throttling.capacity === val ? colors.teal + "20" : colors.screen,
+                            borderWidth: 1,
+                            borderColor: throttling.capacity === val ? colors.teal + "50" : colors.border,
+                          }}
                         >
                           <Text
-                            className={`text-center text-sm font-bold ${throttling.capacity === val ? "text-white" : "text-gray-500"}`}
+                            style={{
+                              textAlign: "center",
+                              fontSize: 11,
+                              fontWeight: "700",
+                              color: throttling.capacity === val ? colors.teal : colors.muted,
+                            }}
                           >
                             {val}%
                           </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
-                    <View className="flex-row h-3 rounded-full overflow-hidden">
-                      <View className="flex-[60] bg-green-600" />
-                      <View className="flex-[20] bg-yellow-600" />
-                      <View className="flex-[20] bg-red-600" />
+
+                    {/* Heat line */}
+                    <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.screen, overflow: "hidden", marginBottom: 4 }}>
+                      <View
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          top: 0,
+                          width: `${throttling.currentLoad}%`,
+                          height: "100%",
+                          borderRadius: 2,
+                          backgroundColor:
+                            throttling.currentLoad >= throttling.capacity
+                              ? colors.danger
+                              : throttling.currentLoad >= throttling.capacity * 0.8
+                                ? colors.warning
+                                : colors.teal,
+                        }}
+                      />
+                      {/* Threshold marker */}
+                      <View
+                        style={{
+                          position: "absolute",
+                          left: `${throttling.capacity}%`,
+                          top: -2,
+                          width: 2,
+                          height: 8,
+                          backgroundColor: colors.heading,
+                          borderRadius: 1,
+                          marginLeft: -1,
+                        }}
+                      />
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                      <Text style={{ fontSize: 8, color: colors.muted }}>0%</Text>
+                      <Text style={{ fontSize: 8, color: colors.muted }}>Threshold: {throttling.capacity}%</Text>
+                      <Text style={{ fontSize: 8, color: colors.muted }}>100%</Text>
                     </View>
                   </View>
 
                   <View
-                    className={`p-4 rounded-lg border mb-4 ${getCapacityColor(throttling.currentLoad).bg}/10 border-${getCapacityColor(throttling.currentLoad).bg}/30`}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      marginBottom: 12,
+                      backgroundColor: colors.screen,
+                      borderColor:
+                        throttling.currentLoad >= throttling.capacity
+                          ? colors.danger + "40"
+                          : throttling.currentLoad >= throttling.capacity * 0.8
+                            ? colors.warning + "40"
+                            : colors.border,
+                    }}
                   >
-                    <View className="flex-row justify-between items-center">
-                      <Text className="text-white font-bold">
-                        Current Kitchen Load
-                      </Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 13 }}>
+                          Current Load
+                        </Text>
+                        <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>
+                          12 active • 3 pending
+                        </Text>
+                      </View>
                       <Text
-                        className={`text-2xl font-bold ${getCapacityColor(throttling.currentLoad).text}`}
+                        style={{
+                          fontSize: 18,
+                          fontWeight: "700",
+                          color:
+                            throttling.currentLoad >= throttling.capacity
+                              ? colors.danger
+                              : throttling.currentLoad >= throttling.capacity * 0.8
+                                ? colors.warning
+                                : colors.teal,
+                          marginLeft: 8,
+                        }}
                       >
                         {throttling.currentLoad}%
                       </Text>
                     </View>
-                    <Text className="text-gray-400 text-sm mt-1">
-                      12 active orders • 3 pending fire
-                    </Text>
                   </View>
 
-                  <Text className="text-gray-300 font-medium mb-2">
+                  <Text style={{ color: colors.label, fontWeight: "700", fontSize: 11, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
                     Actions When Threshold Reached
                   </Text>
-                  <View className="bg-surface p-3 rounded-lg border border-gray-600">
-                    <View className="flex-row items-center justify-between py-2 border-b border-gray-700">
-                      <Text className="text-white">Pause online orders</Text>
+                  <View style={{ backgroundColor: colors.screen, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border, gap: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 }}>
+                      <Text style={{ color: colors.heading, fontSize: 12 }}>Pause online orders</Text>
                       <Switch
                         checked={throttling.pauseOnline}
                         onCheckedChange={(v) =>
@@ -1603,8 +1730,9 @@ const PaymentSystemsScreen = () => {
                         }
                       />
                     </View>
-                    <View className="flex-row items-center justify-between py-2 border-b border-gray-700">
-                      <Text className="text-white">Increase prep times</Text>
+                    <View style={{ height: 1, backgroundColor: colors.border }} />
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 }}>
+                      <Text style={{ color: colors.heading, fontSize: 12 }}>Increase prep times</Text>
                       <Switch
                         checked={throttling.increasePrepTime}
                         onCheckedChange={(v) =>
@@ -1612,8 +1740,9 @@ const PaymentSystemsScreen = () => {
                         }
                       />
                     </View>
-                    <View className="flex-row items-center justify-between py-2">
-                      <Text className="text-white">Alert manager</Text>
+                    <View style={{ height: 1, backgroundColor: colors.border }} />
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 }}>
+                      <Text style={{ color: colors.heading, fontSize: 12 }}>Alert manager</Text>
                       <Switch
                         checked={throttling.alertManager}
                         onCheckedChange={(v) =>
@@ -1628,7 +1757,7 @@ const PaymentSystemsScreen = () => {
           )}
         </View>
 
-        <View className="h-10" />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
