@@ -69,8 +69,8 @@ const MenuCard: React.FC<MenuCardProps> = ({
       {/* Icon */}
       <View
         style={{
-          width: 40,
-          height: 40,
+          width: 43,
+          height: 43,
           borderRadius: 10,
           backgroundColor: colors.teal + '18',
           borderWidth: 1,
@@ -122,42 +122,42 @@ const MainMenu: React.FC = () => {
   const menuItems = [
     {
       id: 'home',
-      icon: <Home color={colors.teal} size={18} />,
+      icon: <Home color={colors.teal} size={20} />,
       title: 'Sales',
       subtitle: 'Process Orders',
       route: '/order-processing',
     },
     {
       id: 'tables',
-      icon: <Table color={colors.teal} size={18} />,
+      icon: <Table color={colors.teal} size={20} />,
       title: 'Tables',
       subtitle: 'Manage Seating',
       route: '/tables',
     },
     {
       id: 'previous-orders',
-      icon: <History color={colors.teal} size={18} />,
+      icon: <History color={colors.teal} size={20} />,
       title: 'Previous Orders',
       subtitle: 'Order History',
       route: '/previous-orders',
     },
     {
       id: 'online-orders',
-      icon: <ShoppingBag color={colors.teal} size={18} />,
+      icon: <ShoppingBag color={colors.teal} size={20} />,
       title: 'Online Orders',
       subtitle: 'Web & App Orders',
       route: '/online-orders',
     },
     {
       id: 'kds',
-      icon: <ChefHat color={colors.teal} size={18} />,
+      icon: <ChefHat color={colors.teal} size={20} />,
       title: 'Kitchen Display',
       subtitle: 'Manage Orders',
       route: '/kds',
     },
     {
       id: 'scheduling',
-      icon: <CalendarClock color={colors.teal} size={18} />,
+      icon: <CalendarClock color={colors.teal} size={20} />,
       title: 'Scheduling',
       subtitle: 'Time Management',
       route: '/scheduling',
@@ -165,7 +165,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'menu-management',
-      icon: <UtensilsCrossed color={colors.teal} size={18} />,
+      icon: <UtensilsCrossed color={colors.teal} size={20} />,
       title: 'Menu Management',
       subtitle: 'Edit Menu Items',
       route: '/menu',
@@ -173,7 +173,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'inventory',
-      icon: <Package color={colors.teal} size={18} />,
+      icon: <Package color={colors.teal} size={20} />,
       title: 'Inventory',
       subtitle: 'Stock Management',
       route: '/inventory',
@@ -181,7 +181,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'analytics',
-      icon: <BarChart3 color={colors.teal} size={18} />,
+      icon: <BarChart3 color={colors.teal} size={20} />,
       title: 'Analytics',
       subtitle: 'Sales Reports',
       route: '/analytics',
@@ -189,7 +189,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'settings',
-      icon: <Settings color={colors.teal} size={18} />,
+      icon: <Settings color={colors.teal} size={20} />,
       title: 'Settings',
       subtitle: 'System Config',
       route: '/settings',
@@ -197,7 +197,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'castlestest',
-      icon: <Shield color={colors.teal} size={18} />,
+      icon: <Shield color={colors.teal} size={20} />,
       title: 'Castles Test',
       subtitle: 'Castles device test',
       route: '/castlestest',
@@ -208,9 +208,9 @@ const MainMenu: React.FC = () => {
   const managementItems = menuItems.filter((item) => item.isLocked)
 
   const renderRow = (items: typeof menuItems) => (
-    <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'center' }}>
+    <View style={{ flexDirection: 'row', gap: 20, justifyContent: 'center' }}>
       {items.map((item) => (
-        <View key={item.id} style={{ width: 110, height: 110 }}>
+        <View key={item.id} style={{ width: 150, height: 150 }}>
           <MenuCard
             icon={item.icon}
             title={item.title}
@@ -239,28 +239,20 @@ const MainMenu: React.FC = () => {
           justifyContent: 'center',
           alignItems: 'center',
           padding: 20,
-          gap: 10,
+          gap: 50,
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ alignItems: 'center', gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '80%' }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-            <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' }}>
-              Operations
-            </Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-          </View>
+        <View style={{ alignItems: 'center', gap: 10 }}>
+          <Text style={{ fontSize: 10, color: colors.heading, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', padding: 10 }}>
+            Operations
+          </Text>
           {renderRow(regularItems)}
         </View>
-        <View style={{ alignItems: 'center', gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '80%' }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-            <Text style={{ fontSize: 9, color: colors.muted, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' }}>
-              Management
-            </Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-          </View>
+        <View style={{ alignItems: 'center', gap: 10 }}>
+          <Text style={{ fontSize: 10, color: colors.heading, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', padding: 10 }}>
+            Management
+          </Text>
           {renderRow(managementItems)}
         </View>
       </ScrollView>
