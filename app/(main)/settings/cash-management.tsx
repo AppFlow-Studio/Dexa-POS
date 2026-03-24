@@ -123,7 +123,7 @@ export default function CashManagementScreen () {
         .eq('is_active', true)
         .order('name')
       if (error) throw error
-      return (data as CashDrawerRow[]) || []
+      return (data as unknown as CashDrawerRow[]) || []
     },
     enabled: !!selectedStore?.id,
     staleTime: 30000
