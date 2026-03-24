@@ -100,6 +100,17 @@ interface DiningRoomSettings {
   enableCoursing: boolean;
 }
 
+/** Subset of dining settings that sync across stations via Supabase */
+export interface SyncableDiningSettings {
+  enablePerSeatOrdering: boolean;
+  enableCoursing: boolean;
+  allowTableMerging: boolean;
+  allowTableSplitting: boolean;
+  autoUpdateTableStatus: boolean;
+  defaultSittingTimeMinutes: number;
+  defaultPartySize: number;
+}
+
 export interface OrderLineSettings {
   /** Number of days of orders to show. 0 = today only, 1 = today + yesterday, etc. */
   daysToShow: number;

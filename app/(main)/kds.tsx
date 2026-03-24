@@ -909,6 +909,14 @@ const KitchenDisplayScreen = () => {
   const [activeStatus, setActiveStatus] = useState<StatusFilter>(
     workflowMode === '2-step' ? 'cooking' : 'pending'
   );
+
+  // Reset active tab when workflow mode changes (e.g. via broadcast from another device)
+  useEffect(() => {
+    if (workflowMode === '2-step' && activeStatus === 'pending') {
+      setActiveStatus('cooking');
+    }
+  }, [workflowMode]);
+
   const [activeType, setActiveType] = useState<OrderTypeFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(false);

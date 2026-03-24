@@ -5,6 +5,7 @@ import { useTableTimerTick } from '@/hooks/useTableTimerTick'
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { usePendingTableOverlay } from '@/stores/usePendingTableOverlay'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { FloorPlanObject, WaitlistEntry } from '@/types/db-floor-plan-types'
@@ -325,6 +326,7 @@ const TablePickerModal: React.FC<{
   const sheetRef = useRef<BottomSheet>(null)
   const tables = useFloorPlanStore(s => s.tables)
   const snapPoints = useMemo(() => ['55%'], [])
+  const [pendingTable, setPendingTable] = useState<FloorPlanObject | null>(null)
 
   const availableTables = useMemo(
     () =>
@@ -346,8 +348,14 @@ const TablePickerModal: React.FC<{
       sheetRef.current?.expand()
     } else {
       sheetRef.current?.close()
+      setPendingTable(null)
     }
   }, [isOpen])
+
+  const handleClose = useCallback(() => {
+    setPendingTable(null)
+    onClose()
+  }, [onClose])
 
   return (
     <BottomSheet
@@ -355,7 +363,7 @@ const TablePickerModal: React.FC<{
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose
-      onClose={onClose}
+      onClose={handleClose}
       {...bottomSheetTheme}
       backdropComponent={props => (
         <BottomSheetBackdrop
@@ -367,41 +375,72 @@ const TablePickerModal: React.FC<{
       )}
     >
       <BottomSheetView className='flex-1 bg-panel px-4 pt-2'>
-        <Text className='text-white text-xl font-bold mb-1'>
-          Seat {entry?.party_name}
-        </Text>
-        <Text className='text-muted text-sm mb-4'>
-          Party of {entry?.party_size} — Quoted {entry?.quoted_wait_minutes}m
-        </Text>
-        <Text className='text-teal font-semibold text-xs uppercase tracking-wider mb-3'>
-          Available Tables
-        </Text>
-        <BottomSheetFlatList
-          data={recommendedTables}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => onSelectTable(item)}
-              className='bg-card p-4 rounded-xl mb-2.5 flex-row justify-between items-center border border-border'
-            >
-              <View>
-                <Text className='text-white text-base font-semibold'>{item.name}</Text>
-                <Text className='text-muted text-sm'>Capacity: {item.capacity}</Text>
-              </View>
-              <View className='bg-teal px-4 py-2 rounded-lg'>
-                <Text className='text-white font-semibold'>Seat</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          ListEmptyComponent={
-            <View className='items-center py-8'>
-              <Text className='text-muted italic text-center'>
-                No available tables match the party size.
-              </Text>
+        {pendingTable ? (
+          /* ── Confirmation View ── */
+          <View className='flex-1 items-center justify-center py-8'>
+            <Text className='text-white text-xl font-bold text-center mb-2'>
+              Seat {entry?.party_name}?
+            </Text>
+            <Text className='text-muted text-base text-center mb-6'>
+              Party of {entry?.party_size} at{' '}
+              <Text className='text-white font-semibold'>{pendingTable.name}</Text>
+              {pendingTable.capacity ? ` (capacity ${pendingTable.capacity})` : ''}
+            </Text>
+            <View className='flex-row gap-3 w-full px-4'>
+              <TouchableOpacity
+                onPress={() => setPendingTable(null)}
+                className='flex-1 items-center justify-center py-3 rounded-xl border border-border'
+              >
+                <Text className='text-label font-semibold'>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onSelectTable(pendingTable)}
+                className='flex-1 items-center justify-center py-3 rounded-xl bg-teal'
+              >
+                <Text className='text-white font-semibold'>Confirm Seat</Text>
+              </TouchableOpacity>
             </View>
-          }
-          contentContainerStyle={{ paddingBottom: 40 }}
-        />
+          </View>
+        ) : (
+          /* ── Table List View ── */
+          <>
+            <Text className='text-white text-xl font-bold mb-1'>
+              Seat {entry?.party_name}
+            </Text>
+            <Text className='text-muted text-sm mb-4'>
+              Party of {entry?.party_size} — Quoted {entry?.quoted_wait_minutes}m
+            </Text>
+            <Text className='text-teal font-semibold text-xs uppercase tracking-wider mb-3'>
+              Available Tables
+            </Text>
+            <BottomSheetFlatList
+              data={recommendedTables}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => setPendingTable(item)}
+                  className='bg-card p-4 rounded-xl mb-2.5 flex-row justify-between items-center border border-border'
+                >
+                  <View>
+                    <Text className='text-white text-base font-semibold'>{item.name}</Text>
+                    <Text className='text-muted text-sm'>Capacity: {item.capacity}</Text>
+                  </View>
+                  <View className='bg-teal px-4 py-2 rounded-lg'>
+                    <Text className='text-white font-semibold'>Seat</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View className='items-center py-8'>
+                  <Text className='text-muted italic text-center'>
+                    No available tables match the party size.
+                  </Text>
+                </View>
+              }
+              contentContainerStyle={{ paddingBottom: 40 }}
+            />
+          </>
+        )}
       </BottomSheetView>
     </BottomSheet>
   )
@@ -465,7 +504,9 @@ export default function WaitlistScreen() {
         setActiveOrder(newOrder.id)
       }
 
-      router.push(`/tables/${table.id}`)
+      // Navigate to tables overview and auto-open the table modal overlay
+      usePendingTableOverlay.getState().setPendingTableId(table.id)
+      router.push('/tables')
       setTablePickerOpen(false)
       setSelectedEntry(null)
     },
