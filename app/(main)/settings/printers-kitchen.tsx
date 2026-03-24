@@ -92,20 +92,27 @@ interface KitchenTicketSettings {
 // SMALL COMPONENTS
 // ---------------------------------------------------------------------------
 
-function SectionHeader({ title }: { title: string }) {
+function SectionHeader({ title, rightContent }: { title: string; rightContent?: React.ReactNode }) {
   return (
-    <Text style={{
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.muted,
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
+    <View style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
       marginTop: 16,
       marginBottom: 6,
       paddingHorizontal: 2,
     }}>
-      {title}
-    </Text>
+      <Text style={{
+        fontSize: 11,
+        fontWeight: "700",
+        color: colors.muted,
+        textTransform: "uppercase",
+        letterSpacing: 0.6,
+      }}>
+        {title}
+      </Text>
+      {rightContent}
+    </View>
   );
 }
 
@@ -1449,7 +1456,28 @@ const PrintersKitchenScreen = () => {
             )}
 
             {/* RECEIPT PRINTERS SECTION */}
-            <SectionHeader title="Receipt Printers" />
+            <SectionHeader
+              title="Receipt Printers"
+              rightContent={
+                addingForRole !== "receipt" && (
+                  <TouchableOpacity
+                    onPress={() => handleStartAdding("receipt")}
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 5,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      backgroundColor: colors.teal + "18",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "45",
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Plus size={14} color={colors.teal} />
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Add Printer</Text>
+                  </TouchableOpacity>
+                )
+              }
+            />
             {receiptPrinters.length === 0 && addingForRole !== "receipt" && (
               <View style={{
                 backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
@@ -1461,27 +1489,33 @@ const PrintersKitchenScreen = () => {
               </View>
             )}
             {receiptPrinters.map(renderPrinterCard)}
-            {addingForRole === "receipt" ? (
+            {addingForRole === "receipt" && (
               renderAddPrinterPanel("receipt")
-            ) : (
-              <TouchableOpacity
-                onPress={() => handleStartAdding("receipt")}
-                style={{
-                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7,
-                  backgroundColor: colors.teal + "18",
-                  borderWidth: 1, borderColor: colors.teal + "45",
-                  borderRadius: 10,
-                  paddingVertical: 11,
-                  marginBottom: 10,
-                }}
-              >
-                <Plus size={15} color={colors.teal} />
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>Add Receipt Printer</Text>
-              </TouchableOpacity>
             )}
 
             {/* KITCHEN & BAR PRINTERS SECTION */}
-            <SectionHeader title="Kitchen & Bar Printers" />
+            <SectionHeader
+              title="Kitchen & Bar Printers"
+              rightContent={
+                addingForRole !== "kitchen" && (
+                  <TouchableOpacity
+                    onPress={() => handleStartAdding("kitchen")}
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 5,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      backgroundColor: colors.teal + "18",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "45",
+                      borderRadius: 6,
+                    }}
+                  >
+                    <Plus size={14} color={colors.teal} />
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Add Printer</Text>
+                  </TouchableOpacity>
+                )
+              }
+            />
             {kitchenPrinters.length === 0 && addingForRole !== "kitchen" && (
               <View style={{
                 backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
@@ -1493,23 +1527,8 @@ const PrintersKitchenScreen = () => {
               </View>
             )}
             {kitchenPrinters.map(renderPrinterCard)}
-            {addingForRole === "kitchen" ? (
+            {addingForRole === "kitchen" && (
               renderAddPrinterPanel("kitchen")
-            ) : (
-              <TouchableOpacity
-                onPress={() => handleStartAdding("kitchen")}
-                style={{
-                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7,
-                  backgroundColor: colors.teal + "18",
-                  borderWidth: 1, borderColor: colors.teal + "45",
-                  borderRadius: 10,
-                  paddingVertical: 11,
-                  marginBottom: 10,
-                }}
-              >
-                <Plus size={15} color={colors.teal} />
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>Add Kitchen Printer</Text>
-              </TouchableOpacity>
             )}
           </View>
         )}
