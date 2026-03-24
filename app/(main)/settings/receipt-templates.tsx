@@ -395,41 +395,73 @@ function PresetPickerModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity
-        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}
+        style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", paddingHorizontal: 40 }}
         activeOpacity={1}
         onPress={onClose}
       >
         <TouchableOpacity
           activeOpacity={1}
-          style={{ width: "100%", backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}
+          style={{ width: "100%", maxWidth: 400, backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}
         >
           {/* Header */}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: colors.info + "20", alignItems: "center", justifyContent: "center" }}>
-                <Layers size={14} color={colors.info} />
-              </View>
-              <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 14 }}>Choose a Preset</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+              <Layers size={15} color={colors.teal} />
             </View>
-            <TouchableOpacity onPress={onClose} style={{ padding: 6, borderRadius: 8, backgroundColor: colors.screen }}>
-              <X size={14} color={colors.muted} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Choose a Preset</Text>
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>One-tap template configuration</Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={{ width: 26, height: 26, borderRadius: 7, backgroundColor: colors.screen, alignItems: "center", justifyContent: "center" }}
+            >
+              <X size={13} color={colors.muted} />
             </TouchableOpacity>
           </View>
-          {/* Presets */}
-          <View style={{ padding: 12, gap: 6 }}>
-            {presets.map((preset) => (
-              <TouchableOpacity
-                key={preset.id}
-                onPress={() => { onApply(preset.overrides); onClose(); }}
-                style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 10 }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 13 }}>{preset.label}</Text>
-                  <Text style={{ color: colors.muted, fontSize: 11, marginTop: 1 }}>{preset.description}</Text>
-                </View>
-                <ChevronRight size={14} color={colors.info} />
-              </TouchableOpacity>
-            ))}
+
+          {/* Preset list */}
+          <View style={{ padding: 10 }}>
+            {presets.map((preset, idx) => {
+              const isLast = idx === presets.length - 1;
+              return (
+                <TouchableOpacity
+                  key={preset.id}
+                  onPress={() => { onApply(preset.overrides); onClose(); }}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: colors.card,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    paddingHorizontal: 10,
+                    paddingVertical: 10,
+                    marginBottom: isLast ? 0 : 6,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{preset.label}</Text>
+                    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{preset.description}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Apply</Text>
+                    <ChevronRight size={12} color={colors.teal} style={{ marginLeft: 2 }} />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Footer */}
+          <View style={{ paddingHorizontal: 10, paddingBottom: 10 }}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={{ paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: "transparent" }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "500", color: colors.label }}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </TouchableOpacity>
