@@ -17,11 +17,11 @@ import TipAdjustSheet, {
 } from '@/components/previous-orders/detail/TipAdjustSheet'
 import { useToast } from '@/contexts/ToastContext'
 import { colors } from '@/lib/theme'
-import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
+import type { PreviousOrder } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
+import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { previousOrderToOrderProfile } from '@/utils/previousOrderMapper'
-import type { PreviousOrder } from '@/lib/types'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Clock, CreditCard, Receipt, RotateCcw } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -73,7 +73,8 @@ const OrderDetailsScreen = () => {
 
       // If order not found in previous orders, try current orders
       if (!foundOrder) {
-        const currentOrder = useOrderStore.getState().ordersById[orderId as string]
+        const currentOrder =
+          useOrderStore.getState().ordersById[orderId as string]
         if (currentOrder) {
           // Add to history
           usePreviousOrdersStore.getState().addOrderToHistory(currentOrder)
@@ -116,9 +117,23 @@ const OrderDetailsScreen = () => {
   // Not-found state
   if (!order) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.screen, paddingHorizontal: 14, paddingVertical: 12 }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.screen,
+          paddingHorizontal: 14,
+          paddingVertical: 12
+        }}
+      >
         {/* Header */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 20
+          }}
+        >
           <TouchableOpacity
             onPress={() => {
               const canGoBack = router.canGoBack?.()
@@ -128,79 +143,103 @@ const OrderDetailsScreen = () => {
                 router.replace('/previous-orders')
               }
             }}
-            style={{ padding: 6, backgroundColor: colors.teal + '10', borderRadius: 10, borderWidth: 1, borderColor: colors.teal + '30' }}
+            style={{
+              padding: 6,
+              backgroundColor: colors.teal + '10',
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.teal + '30'
+            }}
           >
             <Text style={{ fontSize: 16, color: colors.teal }}>←</Text>
           </TouchableOpacity>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Order Details</Text>
+          <Text
+            style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          >
+            Order Details
+          </Text>
           <View style={{ width: 28 }} />
         </View>
 
         {/* Center content */}
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <View
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+        >
           {/* Small icon box */}
-          <View style={{
-            width: 56,
-            height: 56,
-            borderRadius: 12,
-            backgroundColor: colors.danger + '15',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginBottom: 16,
-            borderWidth: 1,
-            borderColor: colors.danger + '30'
-          }}>
+          <View
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 12,
+              backgroundColor: colors.danger + '15',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: colors.danger + '30'
+            }}
+          >
             <Text style={{ fontSize: 24 }}>⚠</Text>
           </View>
 
           {/* Title */}
-          <Text style={{
-            fontSize: 16,
-            fontWeight: '700',
-            color: colors.heading,
-            textAlign: 'center',
-            marginBottom: 8
-          }}>
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: '700',
+              color: colors.heading,
+              textAlign: 'center',
+              marginBottom: 8
+            }}
+          >
             Order Not Found
           </Text>
 
           {/* Description */}
-          <Text style={{
-            fontSize: 12,
-            color: colors.label,
-            textAlign: 'center',
-            marginBottom: 20,
-            lineHeight: 18
-          }}>
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.label,
+              textAlign: 'center',
+              marginBottom: 20,
+              lineHeight: 18
+            }}
+          >
             This order may have been archived or the link is invalid.
           </Text>
 
           {/* Order ID display */}
-          <View style={{
-            backgroundColor: colors.panel,
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            width: '100%',
-            marginBottom: 24
-          }}>
-            <Text style={{
-              fontSize: 10,
-              fontWeight: '600',
-              color: colors.muted,
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-              marginBottom: 6
-            }}>
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              width: '100%',
+              marginBottom: 24
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '600',
+                color: colors.muted,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                marginBottom: 6
+              }}
+            >
               Looking for
             </Text>
-            <Text style={{
-              fontSize: 13,
-              fontFamily: 'Courier',
-              color: colors.heading
-            }}>
+            <Text
+              style={{
+                fontSize: 13,
+                fontFamily: 'Courier',
+                color: colors.heading
+              }}
+            >
               {orderId}
             </Text>
           </View>
@@ -217,7 +256,11 @@ const OrderDetailsScreen = () => {
               marginBottom: 10
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}>View All Orders</Text>
+            <Text
+              style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}
+            >
+              View All Orders
+            </Text>
           </TouchableOpacity>
 
           {/* Secondary action */}
@@ -240,7 +283,11 @@ const OrderDetailsScreen = () => {
               alignItems: 'center'
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.label }}>Go Back</Text>
+            <Text
+              style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+            >
+              Go Back
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -258,7 +305,14 @@ const OrderDetailsScreen = () => {
 
       <View style={{ flex: 1, flexDirection: 'row' }}>
         {/* Left Pane */}
-        <View style={{ flex: 3, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.screen }}>
+        <View
+          style={{
+            flex: 3,
+            borderRightWidth: 1,
+            borderRightColor: colors.border,
+            backgroundColor: colors.screen
+          }}
+        >
           {/* Tab Bar */}
           <View
             style={{
@@ -285,7 +339,9 @@ const OrderDetailsScreen = () => {
                     paddingHorizontal: 10,
                     borderBottomWidth: 2,
                     borderBottomColor: isActive ? colors.teal : 'transparent',
-                    backgroundColor: isActive ? colors.teal + '10' : 'transparent',
+                    backgroundColor: isActive
+                      ? colors.teal + '10'
+                      : 'transparent',
                     borderTopLeftRadius: 8,
                     borderTopRightRadius: 8
                   }}
@@ -311,7 +367,10 @@ const OrderDetailsScreen = () => {
           {/* Tab Content */}
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 8 }}
+            contentContainerStyle={{
+              paddingHorizontal: 10,
+              paddingVertical: 8
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}

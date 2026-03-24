@@ -89,7 +89,9 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
 
   const refundableItems = useMemo(() => {
     if (!order) return []
-    return order.items.filter(item => (item.refundedQuantity || 0) < item.quantity)
+    return order.items.filter(
+      item => (item.refundedQuantity || 0) < item.quantity
+    )
   }, [order])
 
   const selectedMap = useMemo(() => {
@@ -112,7 +114,9 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     const exists = selectedItems.some(selected => selected.itemId === item.id)
 
     if (exists) {
-      setSelectedItems(prev => prev.filter(selected => selected.itemId !== item.id))
+      setSelectedItems(prev =>
+        prev.filter(selected => selected.itemId !== item.id)
+      )
       return
     }
 
@@ -192,14 +196,15 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
   }
 
   const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   )
 
@@ -216,7 +221,9 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
           }}
         >
           <TouchableOpacity
-            onPress={refundType === 'full' ? handleFullRefund : handlePartialRefund}
+            onPress={
+              refundType === 'full' ? handleFullRefund : handlePartialRefund
+            }
             style={{
               width: '100%',
               paddingVertical: 8,
@@ -225,7 +232,9 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
               alignItems: 'center'
             }}
           >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.onSolid }}>
+            <Text
+              style={{ fontSize: 12, fontWeight: '700', color: colors.onSolid }}
+            >
               PROCESS REFUND
             </Text>
           </TouchableOpacity>
@@ -262,13 +271,26 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
             borderBottomColor: colors.border
           }}
         >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}
+          >
             <View>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: '700',
+                  color: colors.heading
+                }}
+              >
                 Process Refund
               </Text>
               <Text style={{ fontSize: 12, color: colors.label }}>
-                Order #{order.display_number || order.order_number || orderId} | ${orderTotal.toFixed(2)}
+                Order #{order.display_number || order.order_number || orderId} |
+                ${orderTotal.toFixed(2)}
               </Text>
             </View>
             <TouchableOpacity
@@ -287,7 +309,11 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
         </View>
 
         <BottomSheetScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 80 }}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 80
+          }}
           showsVerticalScrollIndicator
         >
           <Text
@@ -336,13 +362,23 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
             <MethodButton
               label='Card'
               active={paymentMethod === 'Card'}
-              icon={<CreditCard color={paymentMethod === 'Card' ? colors.teal : colors.label} size={14} />}
+              icon={
+                <CreditCard
+                  color={paymentMethod === 'Card' ? colors.teal : colors.label}
+                  size={14}
+                />
+              }
               onPress={() => setPaymentMethod('Card')}
             />
             <MethodButton
               label='Cash'
               active={paymentMethod === 'Cash'}
-              icon={<DollarSign color={paymentMethod === 'Cash' ? colors.teal : colors.label} size={14} />}
+              icon={
+                <DollarSign
+                  color={paymentMethod === 'Cash' ? colors.teal : colors.label}
+                  size={14}
+                />
+              }
               onPress={() => setPaymentMethod('Cash')}
             />
           </View>
@@ -402,8 +438,10 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
               <View style={{ gap: 8 }}>
                 {refundableItems.map(item => {
                   const isSelected = selectedMap.has(item.id)
-                  const maxRefundable = item.quantity - (item.refundedQuantity || 0)
-                  const currentQty = selectedMap.get(item.id)?.quantity || maxRefundable
+                  const maxRefundable =
+                    item.quantity - (item.refundedQuantity || 0)
+                  const currentQty =
+                    selectedMap.get(item.id)?.quantity || maxRefundable
                   const currentReason = selectedMap.get(item.id)?.reason || ''
 
                   return (
@@ -413,13 +451,29 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                         padding: 10,
                         borderRadius: 10,
                         borderWidth: 1,
-                        borderColor: isSelected ? colors.teal + '50' : colors.border,
-                        backgroundColor: isSelected ? colors.teal + '10' : colors.screen
+                        borderColor: isSelected
+                          ? colors.teal + '50'
+                          : colors.border,
+                        backgroundColor: isSelected
+                          ? colors.teal + '10'
+                          : colors.screen
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
                         <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: '600',
+                              color: colors.heading
+                            }}
+                          >
                             {item.name}
                           </Text>
                           <Text style={{ fontSize: 11, color: colors.label }}>
@@ -434,22 +488,43 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                             borderRadius: 8,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: isSelected ? colors.danger + '15' : colors.success + '15',
+                            backgroundColor: isSelected
+                              ? colors.danger + '15'
+                              : colors.success + '15',
                             borderWidth: 1,
-                            borderColor: isSelected ? colors.danger + '40' : colors.success + '40'
+                            borderColor: isSelected
+                              ? colors.danger + '40'
+                              : colors.success + '40'
                           }}
                         >
-                          {isSelected ? <X color={colors.danger} size={14} /> : <Check color={colors.success} size={14} />}
+                          {isSelected ? (
+                            <X color={colors.danger} size={14} />
+                          ) : (
+                            <Check color={colors.success} size={14} />
+                          )}
                         </TouchableOpacity>
                       </View>
 
                       {isSelected && (
                         <View style={{ marginTop: 8, gap: 6 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Text style={{ fontSize: 12, color: colors.label }}>Qty:</Text>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8
+                            }}
+                          >
+                            <Text style={{ fontSize: 12, color: colors.label }}>
+                              Qty:
+                            </Text>
                             <BottomSheetTextInput
                               value={String(currentQty)}
-                              onChangeText={value => updateItemQuantity(item.id, parseInt(value, 10) || 0)}
+                              onChangeText={value =>
+                                updateItemQuantity(
+                                  item.id,
+                                  parseInt(value, 10) || 0
+                                )
+                              }
                               keyboardType='numeric'
                               style={{
                                 flex: 1,
@@ -463,12 +538,16 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                                 textAlign: 'center'
                               }}
                             />
-                            <Text style={{ fontSize: 12, color: colors.label }}>/ {maxRefundable}</Text>
+                            <Text style={{ fontSize: 12, color: colors.label }}>
+                              / {maxRefundable}
+                            </Text>
                           </View>
 
                           <BottomSheetTextInput
                             value={currentReason}
-                            onChangeText={value => updateItemReason(item.id, value)}
+                            onChangeText={value =>
+                              updateItemReason(item.id, value)
+                            }
                             placeholder='Reason...'
                             placeholderTextColor={colors.muted}
                             style={{
@@ -512,22 +591,72 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
               borderColor: colors.border
             }}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={{ fontSize: 12, color: colors.label }}>Original Total</Text>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginBottom: 4
+              }}
+            >
+              <Text style={{ fontSize: 12, color: colors.label }}>
+                Original Total
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.heading
+                }}
+              >
                 ${orderTotal.toFixed(2)}
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ fontSize: 12, color: colors.danger }}>Refund Amount</Text>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.danger }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginBottom: 8
+              }}
+            >
+              <Text style={{ fontSize: 12, color: colors.danger }}>
+                Refund Amount
+              </Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: colors.danger
+                }}
+              >
                 -${refundAmount.toFixed(2)}
               </Text>
             </View>
-            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 8 }} />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 13, color: colors.heading, fontWeight: '700' }}>New Total</Text>
-              <Text style={{ fontSize: 13, color: colors.heading, fontWeight: '700' }}>
+            <View
+              style={{
+                height: 1,
+                backgroundColor: colors.border,
+                marginBottom: 8
+              }}
+            />
+            <View
+              style={{ flexDirection: 'row', justifyContent: 'space-between' }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: colors.heading,
+                  fontWeight: '700'
+                }}
+              >
+                New Total
+              </Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: colors.heading,
+                  fontWeight: '700'
+                }}
+              >
                 ${(orderTotal - refundAmount).toFixed(2)}
               </Text>
             </View>
@@ -565,10 +694,24 @@ const ChoiceButton = ({
       opacity: disabled ? 0.5 : 1
     }}
   >
-    <Text style={{ fontSize: 12, fontWeight: '700', textAlign: 'center', color: active ? colors.teal : colors.heading }}>
+    <Text
+      style={{
+        fontSize: 12,
+        fontWeight: '700',
+        textAlign: 'center',
+        color: active ? colors.teal : colors.heading
+      }}
+    >
       {title}
     </Text>
-    <Text style={{ fontSize: 11, textAlign: 'center', marginTop: 2, color: active ? colors.teal : colors.label }}>
+    <Text
+      style={{
+        fontSize: 11,
+        textAlign: 'center',
+        marginTop: 2,
+        color: active ? colors.teal : colors.label
+      }}
+    >
       {subtitle}
     </Text>
   </TouchableOpacity>
@@ -602,12 +745,22 @@ const MethodButton = ({
     }}
   >
     {icon}
-    <Text style={{ fontSize: 12, fontWeight: '600', color: active ? colors.teal : colors.heading }}>{label}</Text>
+    <Text
+      style={{
+        fontSize: 12,
+        fontWeight: '600',
+        color: active ? colors.teal : colors.heading
+      }}
+    >
+      {label}
+    </Text>
   </TouchableOpacity>
 )
 
 const SectionDivider = () => (
-  <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 12 }} />
+  <View
+    style={{ height: 1, backgroundColor: colors.border, marginBottom: 12 }}
+  />
 )
 
 const AdvancedRefundModal = forwardRef(AdvancedRefundModalComponent)

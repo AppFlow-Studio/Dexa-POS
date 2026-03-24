@@ -72,7 +72,13 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
                   borderColor: colors.teal + '40'
                 }}
               >
-                <Text style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.teal,
+                    fontWeight: '600'
+                  }}
+                >
                   {item.customizations.size.name}
                 </Text>
               </View>
@@ -96,7 +102,12 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
               {item.quantity} x ${displayPrice.toFixed(2)}
             </Text>
             <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.teal, marginTop: 2 }}
+              style={{
+                fontSize: 13,
+                fontWeight: '700',
+                color: colors.teal,
+                marginTop: 2
+              }}
             >
               ${displaySubtotal.toFixed(2)}
             </Text>
@@ -105,7 +116,17 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
         {/* Modifiers */}
         {hasModifiers && (
-          <View style={{ marginTop: 6, backgroundColor: colors.teal + '10', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, borderWidth: 1, borderColor: colors.teal + '30' }}>
+          <View
+            style={{
+              marginTop: 6,
+              backgroundColor: colors.teal + '10',
+              borderRadius: 8,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: colors.teal + '30'
+            }}
+          >
             {item.customizations.modifiers!.map((mod, idx) => (
               <View
                 key={idx}
@@ -117,7 +138,12 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
                 }}
               >
                 <Text
-                  style={{ fontSize: 11, color: colors.teal, marginRight: 4, fontWeight: '600' }}
+                  style={{
+                    fontSize: 11,
+                    color: colors.teal,
+                    marginRight: 4,
+                    fontWeight: '600'
+                  }}
                 >
                   {mod.categoryName}:
                 </Text>
@@ -138,8 +164,22 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
         {/* Add-ons */}
         {hasAddOns && (
-          <View style={{ marginTop: 6, backgroundColor: colors.teal + '10', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, borderWidth: 1, borderColor: colors.teal + '30' }}>
-            <Text style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}>Add-ons:</Text>
+          <View
+            style={{
+              marginTop: 6,
+              backgroundColor: colors.teal + '10',
+              borderRadius: 8,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: colors.teal + '30'
+            }}
+          >
+            <Text
+              style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}
+            >
+              Add-ons:
+            </Text>
             {item.customizations.addOns!.map((addon, idx) => (
               <Text
                 key={idx}
