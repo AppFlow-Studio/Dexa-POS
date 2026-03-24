@@ -4,14 +4,14 @@ import {
   BarChart3,
   CalendarClock,
   ChefHat,
+  Cpu,
   History,
-  Home,
+  LayoutGrid,
   Lock,
   Package,
   Settings,
-  Shield,
   ShoppingBag,
-  Table,
+  ShoppingCart,
   UtensilsCrossed,
 } from 'lucide-react-native'
 import { useState } from 'react'
@@ -39,28 +39,36 @@ const MenuCard: React.FC<MenuCardProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.75}
+      activeOpacity={0.7}
       style={{
         width: '100%',
         height: '100%',
-        borderRadius: 12,
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.panel,
+        borderColor: colors.teal + '25',
+        backgroundColor: colors.card,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 10,
+        padding: 12,
       }}
     >
+      {/* Top accent line */}
+      <View style={{
+        position: 'absolute',
+        top: 0,
+        left: '20%',
+        right: '20%',
+        height: 2,
+        backgroundColor: colors.teal + '60',
+        borderBottomLeftRadius: 2,
+        borderBottomRightRadius: 2,
+      }} />
+
       {isLocked && (
         <TouchableOpacity
           onPress={onLockPress}
           hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-          style={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-          }}
+          style={{ position: 'absolute', top: 10, right: 10 }}
         >
           <Lock color={colors.muted} size={11} />
         </TouchableOpacity>
@@ -69,15 +77,15 @@ const MenuCard: React.FC<MenuCardProps> = ({
       {/* Icon */}
       <View
         style={{
-          width: 43,
-          height: 43,
-          borderRadius: 10,
-          backgroundColor: colors.teal + '18',
+          width: 48,
+          height: 48,
+          borderRadius: 14,
+          backgroundColor: colors.teal + '15',
           borderWidth: 1,
-          borderColor: colors.teal + '30',
+          borderColor: colors.teal + '40',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 8,
+          marginBottom: 10,
         }}
       >
         {icon}
@@ -122,14 +130,14 @@ const MainMenu: React.FC = () => {
   const menuItems = [
     {
       id: 'home',
-      icon: <Home color={colors.teal} size={20} />,
+      icon: <ShoppingCart color={colors.teal} size={20} />,
       title: 'Sales',
       subtitle: 'Process Orders',
       route: '/order-processing',
     },
     {
       id: 'tables',
-      icon: <Table color={colors.teal} size={20} />,
+      icon: <LayoutGrid color={colors.teal} size={20} />,
       title: 'Tables',
       subtitle: 'Manage Seating',
       route: '/tables',
@@ -197,7 +205,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: 'castlestest',
-      icon: <Shield color={colors.teal} size={20} />,
+      icon: <Cpu color={colors.teal} size={20} />,
       title: 'Castles Test',
       subtitle: 'Castles device test',
       route: '/castlestest',
@@ -243,14 +251,14 @@ const MainMenu: React.FC = () => {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ alignItems: 'center', gap: 10 }}>
-          <Text style={{ fontSize: 10, color: colors.heading, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', padding: 10 }}>
+        <View style={{ alignItems: 'center', gap: 14 }}>
+          <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase',padding:8 }}>
             Operations
           </Text>
           {renderRow(regularItems)}
         </View>
-        <View style={{ alignItems: 'center', gap: 10 }}>
-          <Text style={{ fontSize: 10, color: colors.heading, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase', padding: 10 }}>
+        <View style={{ alignItems: 'center', gap: 14 }}>
+          <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase',padding:8  }}>
             Management
           </Text>
           {renderRow(managementItems)}
