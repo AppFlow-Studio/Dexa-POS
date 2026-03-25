@@ -191,8 +191,6 @@ const OnlineOrderingScreen = () => {
     m => m.schedules && m.schedules.length > 0
   )
 
-  const menusWithSchedules = menus.filter((m) => m.schedules && m.schedules.length > 0);
-
   return (
     <View
       style={{
