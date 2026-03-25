@@ -619,6 +619,11 @@ export const useMenuStore = create<MenuState>((set, get) => {
         },
       });
 
+      // Clear stale precomputed modifier cache so newly synced modifiers are picked up
+      // Lazy require to avoid circular import: useMenuStore ↔ useModifierSidebarStore
+      const { clearModifierPreWarmCache } = require("./useModifierSidebarStore");
+      clearModifierPreWarmCache();
+
       console.log("Menu data set from sync:", {
         menusCount: menus.length,
         categoriesCount: categories.length,

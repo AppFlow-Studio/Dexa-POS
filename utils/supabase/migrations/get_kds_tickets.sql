@@ -33,7 +33,7 @@ BEGIN
   FROM (
     SELECT jsonb_build_object(
       'ticket_id', o.id::text || '_c' || COALESCE(oi_grouped.course_number, 1)::text
-        || '_f' || COALESCE(EXTRACT(EPOCH FROM oi_grouped.fire_time)::bigint::text, '0'),
+        || '_f' || COALESCE(EXTRACT(EPOCH FROM oi_grouped.fire_time::timestamptz)::bigint::text, '0'),
       'order_id', o.id,
       'db_order_id', o.id,
       'order_number', o.order_number,
@@ -48,7 +48,7 @@ BEGIN
       'order_source', o.order_source,
       'table_name', o.table_number,
       'customer_name', o.customer_name,
-      'start_time', COALESCE(oi_grouped.fire_time, o.sent_to_kitchen_at, o.created_at),
+      'start_time', COALESCE(oi_grouped.fire_time::timestamptz, o.sent_to_kitchen_at, o.created_at),
       'item_count', oi_grouped.item_count,
       'prioritized', oi_grouped.any_prioritized,
       'items', oi_grouped.items_json
@@ -82,7 +82,7 @@ BEGIN
             'prep_station', oi.prep_station,
             'rush', COALESCE(oi.rush, false),
             'is_prioritized', COALESCE(oi.is_prioritized, false),
-            'fire_time', oi.fire_time,
+            'fire_time', oi.fire_time::timestamptz,
             'modifiers', (
               SELECT COALESCE(jsonb_agg(
                 jsonb_build_object(

@@ -242,12 +242,30 @@ BEGIN
 
   -- Fire the course (lock it)
   UPDATE public.order_courses
-  SET 
+  SET
     status = 'fired',
     fired_at = NOW(),
     fired_by = user_staff_profile_id(),
     notes = COALESCE(p_notes, notes)
   WHERE id = v_course_id;
+
+  -- Set fire_time on items for this course so broadcast carries correct timestamp
+  -- (defensive — bulkUpdateOrderItemStatus also sets this, but may run later)
+  UPDATE public.order_items
+  SET
+    fire_time = COALESCE(fire_time, NOW()),
+    updated_at = NOW()
+  WHERE order_id = p_order_id
+    AND course_number = p_course_number
+    AND is_voided = FALSE
+    AND fire_time IS NULL;
+
+  -- Bump order sync_version so broadcast carries updated items with fire_time
+  UPDATE public.orders
+  SET
+    sync_version = COALESCE(sync_version, 0) + 1,
+    updated_at = NOW()
+  WHERE id = p_order_id;
 
   -- Update table session's working course to next available
   SELECT ts.id INTO v_session_id

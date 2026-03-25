@@ -50,6 +50,26 @@ export function useTipAdjustMutation() {
         throw new Error("No payment terminal configured.");
       }
 
+      // Block tip adjustments on settled payments
+      const localOrderId = input.orderId || input.dbOrderId;
+      const orderState = useOrderStore.getState();
+      const localKey = orderState.dbOrderIdIndex[input.dbOrderId] ?? localOrderId;
+      const existingOrder = orderState.ordersById[localKey];
+      const prevOrder = usePreviousOrdersStore.getState().getOrderById(localOrderId)
+        ?? usePreviousOrdersStore.getState().getOrderById(input.dbOrderId);
+      const currentPayments = existingOrder?.payments || prevOrder?.payments || [];
+
+      for (const adj of input.payments) {
+        const payment = currentPayments.find(
+          (p, idx) => p.db_payment_id === adj.dbPaymentId || idx === adj.paymentIndex,
+        );
+        if (payment?.is_settled) {
+          throw new Error(
+            "Tips cannot be adjusted after batch settlement. The batch containing this payment has already been closed.",
+          );
+        }
+      }
+
       const terminal = selectedStation.payment_terminal;
 
       if (terminal.terminal_type === "castles") {

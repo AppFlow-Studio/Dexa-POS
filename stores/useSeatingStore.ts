@@ -1,3 +1,4 @@
+import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { isValidUUID } from "@/utils/orderIdHelpers";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
@@ -281,22 +282,47 @@ export const useSeatingStore = create<SeatingState>((set, get) => ({
       },
     }));
 
-    // Sync to backend if we have a valid DB Item ID AND not explicitly skipped
+    // Sync to backend — queue for offline if needed
+    if (skipBackendSync) return;
+
     const dbOrderId = orderData.dbOrderId;
-    if (
-      _supabaseClient &&
-      dbOrderId &&
-      dbItemId &&
-      isValidUUID(dbItemId) &&
-      !skipBackendSync
-    ) {
+
+    // If we don't have a valid DB item ID yet, queue immediately
+    if (!dbItemId || !isValidUUID(dbItemId)) {
+      queueOperation({
+        type: "set_item_seat",
+        params: { dbItemId: dbItemId ?? null, seatNumber, localOrderId: orderId, localItemId: itemId },
+        localOrderId: orderId,
+      });
+      return;
+    }
+
+    // If offline, queue directly
+    if (!getIsOnline()) {
+      queueOperation({
+        type: "set_item_seat",
+        params: { dbItemId, seatNumber },
+        localOrderId: orderId,
+      });
+      return;
+    }
+
+    // Online with valid IDs — try RPC, queue on failure
+    if (_supabaseClient && dbOrderId) {
       _supabaseClient
         .rpc("set_item_seat", {
           p_order_item_id: dbItemId,
           p_seat_number: seatNumber,
         })
-        .then(({ error }) => {
-          if (error) console.error("Failed to sync item seat:", error);
+        .then(({ error }: { error: any }) => {
+          if (error) {
+            console.error("Failed to sync item seat, queuing:", error);
+            queueOperation({
+              type: "set_item_seat",
+              params: { dbItemId, seatNumber },
+              localOrderId: orderId,
+            });
+          }
         });
     }
   },

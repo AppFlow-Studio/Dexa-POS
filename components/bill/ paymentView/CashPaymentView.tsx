@@ -4,7 +4,7 @@ import { toastService } from "@/lib/toastService";
 import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -55,7 +55,7 @@ const CashPaymentView = () => {
     showDeclined,
   } = useCFD();
 
-  const tipPresetPercentages = useStoreSettingsStore((s) => s.tipPresetPercentages);
+  const tipPresetPercentages = useLocationConfigStore((s) => s.config.tips.presetPercentages);
   const TIP_PRESETS = tipPresetPercentages;
 
   // Get the active order for backend cash_amount_due

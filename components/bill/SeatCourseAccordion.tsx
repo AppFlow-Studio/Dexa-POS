@@ -1,21 +1,44 @@
 import { CartItem, OrderProfile } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
   LinearTransition,
 } from "react-native-reanimated";
 import {
+  ArrowUpToLine,
   ChevronDown,
   ChevronRight,
+  Flame,
   Plus,
   Send,
 } from "lucide-react-native";
 import BillItem from "./BillItem";
 
 // --- Types ---
+type AggregateKitchenStatus = "sent" | "preparing" | "ready" | "served" | null;
+
+const BADGE_CONFIG: Record<
+  NonNullable<AggregateKitchenStatus>,
+  { bg: string; text: string; label: string }
+> = {
+  sent: { bg: "bg-amber-600/20", text: "text-amber-400", label: "Queued" },
+  preparing: { bg: "bg-orange-600/20", text: "text-orange-400", label: "Preparing" },
+  ready: { bg: "bg-green-600/20", text: "text-green-400", label: "Ready" },
+  served: { bg: "bg-emerald-900/30", text: "text-emerald-500", label: "Served" },
+};
+
+function deriveAggregateStatus(items: CartItem[]): AggregateKitchenStatus {
+  if (items.length === 0) return null;
+  if (items.every((i) => i.kitchen_status === "served")) return "served";
+  if (items.every((i) => i.kitchen_status === "ready" || i.kitchen_status === "served")) return "ready";
+  if (items.some((i) => i.kitchen_status === "preparing")) return "preparing";
+  if (items.some((i) => i.kitchen_status === "sent")) return "sent";
+  return null;
+}
+
 interface SeatCourseAccordionProps {
   activeOrder: OrderProfile | undefined;
   itemSeatMap?: Record<string, number | null>;
@@ -28,6 +51,9 @@ interface SeatCourseAccordionProps {
   onSelectCourse?: (course: number | null) => void;
   onPressStartNewCourse: () => void;
   onDoubleTapCourse: (courseId: number) => void;
+  onRushCourse?: (courseId: number) => void;
+  onPrioritizeCourse?: (courseId: number) => void;
+  onResendCourse?: (courseId: number) => void;
 }
 
 // --- Main Component ---
@@ -43,10 +69,14 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
   onSelectCourse,
   onPressStartNewCourse,
   onDoubleTapCourse,
+  onRushCourse,
+  onPrioritizeCourse,
+  onResendCourse,
 }) => {
   const [expandedSeat, setExpandedSeat] = useState<number | null | "shared">(
     null,
   );
+  const [actionCourse, setActionCourse] = useState<number | null>(null);
   const prevItemCount = useRef<number>(0);
 
   // Group items: seat -> course -> items
@@ -234,11 +264,17 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                         (s, i) => s + i.quantity,
                         0,
                       );
+                      const aggregateStatus = deriveAggregateStatus(items);
+                      const canLongPress = isSent && aggregateStatus && aggregateStatus !== 'served';
 
                       return (
                         <View key={`course-${course}`} className="mb-1">
                           {/* Course sub-header */}
-                          <View className="flex-row items-center justify-between py-2 px-2">
+                          <TouchableOpacity
+                            className="flex-row items-center justify-between py-2 px-2"
+                            activeOpacity={0.7}
+                            onLongPress={canLongPress ? () => setActionCourse(course) : undefined}
+                          >
                             <View className="flex-row items-center">
                               <View
                                 className="w-1.5 h-1.5 rounded-full mr-2"
@@ -268,6 +304,13 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                                 >
                                   Sent
                                 </Text>
+                              )}
+                              {aggregateStatus && (
+                                <View className={`ml-1 px-2 py-0.5 rounded ${BADGE_CONFIG[aggregateStatus].bg}`}>
+                                  <Text className={`text-xs font-bold ${BADGE_CONFIG[aggregateStatus].text}`}>
+                                    {BADGE_CONFIG[aggregateStatus].label}
+                                  </Text>
+                                </View>
                               )}
                               <Text
                                 style={{
@@ -309,12 +352,12 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                                 </Text>
                               </TouchableOpacity>
                             )}
-                          </View>
+                          </TouchableOpacity>
 
                           {/* Items */}
                           <View
                             className="pl-3 gap-y-2"
-                            style={isSent ? { opacity: 0.5 } : undefined}
+                            style={isSent || aggregateStatus ? { opacity: 0.5 } : undefined}
                           >
                             {items.map((item) => (
                               <Animated.View
@@ -324,7 +367,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                               >
                                 <BillItem
                                   item={item}
-                                  isEditable={!isSent}
+                                  isEditable={true}
                                 />
                               </Animated.View>
                             ))}
@@ -347,6 +390,62 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
           )}
         </Animated.View>
       </ScrollView>
+
+      {/* Long-press action menu for sent courses */}
+      {actionCourse !== null && (
+        <Modal transparent animationType="fade" visible onRequestClose={() => setActionCourse(null)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => setActionCourse(null)}
+          >
+            <View style={{
+              backgroundColor: colors.panel,
+              borderRadius: 12,
+              padding: 8,
+              width: 220,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.heading, paddingHorizontal: 12, paddingVertical: 6 }}>
+                Course {actionCourse} Actions
+              </Text>
+              {onRushCourse && (
+                <TouchableOpacity
+                  onPress={() => { const c = actionCourse; setActionCourse(null); onRushCourse(c); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Flame size={16} color={colors.danger} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>Rush Course</Text>
+                </TouchableOpacity>
+              )}
+              {onPrioritizeCourse && (
+                <TouchableOpacity
+                  onPress={() => { const c = actionCourse; setActionCourse(null); onPrioritizeCourse(c); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <ArrowUpToLine size={16} color="#f59e0b" />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#f59e0b' }}>Prioritize Course</Text>
+                </TouchableOpacity>
+              )}
+              {onResendCourse && (
+                <TouchableOpacity
+                  onPress={() => { const c = actionCourse; setActionCourse(null); onResendCourse(c); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Send size={16} color={colors.teal} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>Resend Course</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </Pressable>
+        </Modal>
+      )}
     </View>
   );
 };

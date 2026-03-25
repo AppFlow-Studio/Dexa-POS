@@ -1174,6 +1174,7 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
   const typesRequiringOrder = [
     "add_item",
     "apply_discount",
+    "void_discount",
     "process_payment",
     "process_cash_payment",
     "process_card_payment",

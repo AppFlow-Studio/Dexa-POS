@@ -11,6 +11,7 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
@@ -107,7 +108,7 @@ const BillSectionContent = ({
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
   const { show } = useToast();
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const autoPrintKitchenTickets = useStoreSettingsStore((s) => s.autoPrintKitchenTickets);
+  const autoPrintKitchenTickets = useLocationConfigStore((s) => s.config.printing.autoPrintKitchenTickets);
 
   // Memoize computed values to prevent unnecessary recalculations
   const cart = useMemo(() => activeOrderItems || [], [activeOrderItems]);

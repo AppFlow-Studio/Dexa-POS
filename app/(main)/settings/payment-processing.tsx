@@ -1,6 +1,6 @@
 import { colors } from "@/lib/theme";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { AlertTriangle, Banknote, Bluetooth, Building2, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Plus, Receipt, ShieldCheck, SplitSquareHorizontal, Trash2, Wifi, X, XCircle } from "lucide-react-native";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import { AlertTriangle, Banknote, Bluetooth, Building2, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Edit3, Percent, Plus, Receipt, ShieldCheck, SplitSquareHorizontal, Trash2, Wifi, X, XCircle } from "lucide-react-native";
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
@@ -20,6 +20,7 @@ interface SplitPaymentOptions {
   evenly: boolean;
 }
 
+// Kept for type usage in renderToggleRow calls
 type ModalType = "add" | "edit" | "delete" | null;
 
 const PROCESSOR_TYPES = [
@@ -39,13 +40,31 @@ const PaymentProcessingScreen = () => {
   const [selectedProcessor, setSelectedProcessor] = useState<ProcessorInfo | null>(null);
   const [formData, setFormData] = useState({ name: "", type: "builtin" as ProcessorInfo["type"], accountId: "" });
 
-  const [cashEnabled, setCashEnabled] = useState(true);
-  const [startingCashAmount, setStartingCashAmount] = useState("200.00");
-  const preAuthSettings = useStoreSettingsStore((s) => s.preAuthSettings);
-  const updatePreAuthSettings = useStoreSettingsStore((s) => s.updatePreAuthSettings);
-  const openDrawerOnTip = useStoreSettingsStore((s) => s.openDrawerOnTip);
-  const setOpenDrawerOnTip = useStoreSettingsStore((s) => s.setOpenDrawerOnTip);
-  const [splitPaymentOptions, setSplitPaymentOptions] = useState<SplitPaymentOptions>({ byAmount: true, byItem: true, evenly: true });
+  const paymentConfig = useLocationConfigStore((s) => s.config.payment);
+  const cashDrawerConfig = useLocationConfigStore((s) => s.config.cashDrawer);
+  const preAuthConfig = useLocationConfigStore((s) => s.config.preAuth);
+  const tipsConfig = useLocationConfigStore((s) => s.config.tips);
+  const updateConfig = useLocationConfigStore((s) => s.updateConfig);
+
+  const cashEnabled = paymentConfig.cashEnabled;
+  const startingCashAmount = String(cashDrawerConfig.defaultOpeningAmount);
+  const preAuthSettings = { preAuthEnabled: preAuthConfig.enabled, defaultPreAuthAmount: preAuthConfig.defaultAmount };
+  const updatePreAuthSettings = (updates: Partial<{ preAuthEnabled: boolean; defaultPreAuthAmount: number }>) => {
+    updateConfig('preAuth', {
+      ...(updates.preAuthEnabled !== undefined ? { enabled: updates.preAuthEnabled } : {}),
+      ...(updates.defaultPreAuthAmount !== undefined ? { defaultAmount: updates.defaultPreAuthAmount } : {}),
+    });
+  };
+  const openDrawerOnTip = tipsConfig.openDrawerOnTip;
+  const setOpenDrawerOnTip = (value: boolean) => updateConfig('tips', { openDrawerOnTip: value });
+  const splitPaymentOptions: SplitPaymentOptions = {
+    byAmount: paymentConfig.splitByAmount,
+    byItem: paymentConfig.splitByItem,
+    evenly: paymentConfig.splitEvenly,
+  };
+
+  // Tip presets editing state
+  const [editingTipPreset, setEditingTipPreset] = useState<string>("");
   const [expandedSections, setExpandedSections] = useState({ builtin: true, wired: true, bluetooth: true });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -300,67 +319,6 @@ const PaymentProcessingScreen = () => {
       <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* Payment Processors */}
-        {(["builtin", "wired", "bluetooth"] as ProcessorInfo["type"][]).map((type) => {
-          const sectionKey = type as keyof typeof expandedSections;
-          const titleMap: Record<ProcessorInfo["type"], string> = { builtin: "Built-in Processors", wired: "Wired Card Readers", bluetooth: "Bluetooth Devices" };
-          const descMap: Record<ProcessorInfo["type"], string> = { builtin: "Integrated software payment processors", wired: "USB / LAN connected card readers", bluetooth: "Wireless Bluetooth card readers" };
-          const iconMap: Record<ProcessorInfo["type"], React.ReactNode> = {
-            builtin: <Building2 size={16} color={colors.info} />,
-            wired: <Wifi size={16} color="#a78bfa" />,
-            bluetooth: <Bluetooth size={16} color={colors.teal} />,
-          };
-          const sectionProcessors = processors.filter((p) => p.type === type);
-          const isExpanded = expandedSections[sectionKey];
-          return (
-            <View key={type} style={{ marginBottom: 10 }}>
-              <TouchableOpacity
-                onPress={() => toggleSection(sectionKey)}
-                style={{ backgroundColor: colors.panel, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                  <View style={{ width: 32, height: 32, backgroundColor: colors.teal + "15", borderRadius: 8, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
-                    {iconMap[type]}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>{titleMap[type]}</Text>
-                    <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>{descMap[type]}</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <TouchableOpacity
-                    onPress={() => openAddModal(type)}
-                    style={{ padding: 6, backgroundColor: colors.teal + "20", borderRadius: 8, borderWidth: 1, borderColor: colors.teal + "50" }}
-                  >
-                    <Plus size={15} color={colors.teal} />
-                  </TouchableOpacity>
-                  <View style={{ backgroundColor: colors.teal + "20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1, borderColor: colors.teal + "50" }}>
-                    <Text style={{ fontSize: 11, color: colors.teal, fontWeight: "600" }}>{sectionProcessors.length}</Text>
-                  </View>
-                  {isExpanded ? <ChevronUp size={16} color={colors.label} /> : <ChevronDown size={16} color={colors.label} />}
-                </View>
-              </TouchableOpacity>
-              {isExpanded && (
-                <View style={{ marginTop: 4, marginLeft: 12 }}>
-                  {sectionProcessors.length > 0
-                    ? sectionProcessors.map(renderProcessorCard)
-                    : (
-                      <View style={{ backgroundColor: colors.screen, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
-                        <Text style={{ fontSize: 12, color: colors.label, textAlign: "center" }}>No devices connected</Text>
-                        <TouchableOpacity
-                          onPress={() => openAddModal(type)}
-                          style={{ marginTop: 10, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, alignSelf: "center" }}
-                        >
-                          <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>Add Device</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                </View>
-              )}
-            </View>
-          );
-        })}
-
         {/* Payment Methods */}
         <View style={{ backgroundColor: colors.panel, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
@@ -370,7 +328,7 @@ const PaymentProcessingScreen = () => {
             <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Payment Methods</Text>
           </View>
           <Text style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}>Enable or disable accepted payment methods for your business.</Text>
-          {renderToggleRow("Cash", "Accept cash payments", cashEnabled, () => setCashEnabled((prev) => !prev), <Banknote size={16} color={colors.success} />)}
+          {renderToggleRow("Cash", "Accept cash payments", cashEnabled, () => updateConfig('payment', { cashEnabled: !cashEnabled }), <Banknote size={16} color={colors.success} />)}
         </View>
 
         {/* Tips */}
@@ -389,6 +347,53 @@ const PaymentProcessingScreen = () => {
             () => setOpenDrawerOnTip(!openDrawerOnTip),
             <Banknote size={16} color={colors.success} />
           )}
+          <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }} />
+          <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500", marginBottom: 8 }}>Tip Preset Percentages</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+            {tipsConfig.presetPercentages.map((pct, idx) => (
+              <View key={idx} style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 10, paddingVertical: 6, gap: 6 }}>
+                <Percent size={12} color={colors.teal} />
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{pct}%</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const updated = tipsConfig.presetPercentages.filter((_, i) => i !== idx);
+                    updateConfig('tips', { presetPercentages: updated });
+                  }}
+                  style={{ padding: 2 }}
+                >
+                  <X size={12} color={colors.danger} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flex: 1 }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Percent size={14} color={colors.label} />
+              </View>
+              <TextInput
+                value={editingTipPreset}
+                onChangeText={setEditingTipPreset}
+                keyboardType="numeric"
+                placeholder="e.g. 15"
+                placeholderTextColor={colors.muted}
+                style={{ flex: 1, paddingHorizontal: 10, paddingVertical: 8, color: colors.heading, fontSize: 13 }}
+              />
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                const num = parseInt(editingTipPreset, 10);
+                if (!isNaN(num) && num > 0 && num <= 100 && !tipsConfig.presetPercentages.includes(num)) {
+                  updateConfig('tips', { presetPercentages: [...tipsConfig.presetPercentages, num].sort((a, b) => a - b) });
+                  setEditingTipPreset("");
+                }
+              }}
+              style={{ backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Add</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>These percentages appear as quick-select options at checkout.</Text>
         </View>
 
         {/* Cash Drawer */}
@@ -408,7 +413,7 @@ const PaymentProcessingScreen = () => {
               </View>
               <TextInput
                 value={startingCashAmount}
-                onChangeText={setStartingCashAmount}
+                onChangeText={(text) => { const num = parseFloat(text); if (!isNaN(num)) updateConfig('cashDrawer', { defaultOpeningAmount: num }); }}
                 keyboardType="decimal-pad"
                 style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 10, color: colors.heading, fontSize: 15 }}
                 placeholderTextColor={colors.muted}
@@ -465,8 +470,8 @@ const PaymentProcessingScreen = () => {
             <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Split Payment Options</Text>
           </View>
           <Text style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}>Configure how customers can split their payments.</Text>
-          {renderToggleRow("Split by Amount", "Allow customers to specify exact amounts per payment", splitPaymentOptions.byAmount, () => setSplitPaymentOptions((prev) => ({ ...prev, byAmount: !prev.byAmount })), <DollarSign size={16} color={colors.success} />)}
-          {renderToggleRow("Split by Item", "Allow customers to assign items to different payments", splitPaymentOptions.byItem, () => setSplitPaymentOptions((prev) => ({ ...prev, byItem: !prev.byItem })), <SplitSquareHorizontal size={16} color={colors.info} />)}
+          {renderToggleRow("Split by Amount", "Allow customers to specify exact amounts per payment", splitPaymentOptions.byAmount, () => updateConfig('payment', { splitByAmount: !splitPaymentOptions.byAmount }), <DollarSign size={16} color={colors.success} />)}
+          {renderToggleRow("Split by Item", "Allow customers to assign items to different payments", splitPaymentOptions.byItem, () => updateConfig('payment', { splitByItem: !splitPaymentOptions.byItem }), <SplitSquareHorizontal size={16} color={colors.info} />)}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10 }}>
             <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
               <View style={{ width: 32, height: 32, backgroundColor: "#a78bfa15", borderRadius: 8, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
@@ -477,7 +482,7 @@ const PaymentProcessingScreen = () => {
                 <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>Divide total equally among multiple payments</Text>
               </View>
             </View>
-            <Switch checked={splitPaymentOptions.evenly} onCheckedChange={() => setSplitPaymentOptions((prev) => ({ ...prev, evenly: !prev.evenly }))} />
+            <Switch checked={splitPaymentOptions.evenly} onCheckedChange={() => updateConfig('payment', { splitEvenly: !splitPaymentOptions.evenly })} />
           </View>
         </View>
 

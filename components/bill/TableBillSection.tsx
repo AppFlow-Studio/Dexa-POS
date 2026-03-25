@@ -41,6 +41,10 @@ const TableBillSection = ({
   onSelectSeat,
   enablePerSeatOrdering = false,
   enableCoursing = true,
+  // Course action props
+  onRushCourse,
+  onPrioritizeCourse,
+  onResendCourse,
 }: {
   showOrderDetails?: boolean;
   itemCourseMap?: Record<string, number>;
@@ -69,6 +73,10 @@ const TableBillSection = ({
   onSelectSeat?: (seat: number | null) => void;
   enablePerSeatOrdering?: boolean;
   enableCoursing?: boolean;
+  // Course action props
+  onRushCourse?: (courseId: number) => void;
+  onPrioritizeCourse?: (courseId: number) => void;
+  onResendCourse?: (courseId: number) => void;
 }) => {
   const storeActiveOrder = useOrderStore((state) =>
     state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
@@ -107,6 +115,9 @@ const TableBillSection = ({
           onSelectCourse={onSelectCourse}
           onPressStartNewCourse={onPressStartNewCourse}
           onDoubleTapCourse={onDoubleTapCourse}
+          onRushCourse={onRushCourse}
+          onPrioritizeCourse={onPrioritizeCourse}
+          onResendCourse={onResendCourse}
         />
       );
     }
@@ -135,6 +146,9 @@ const TableBillSection = ({
         onPressStartNewCourse={onPressStartNewCourse}
         onDoubleTapCourse={onDoubleTapCourse}
         onOpenServerSheet={onOpenServerSheet}
+        onRushCourse={onRushCourse}
+        onPrioritizeCourse={onPrioritizeCourse}
+        onResendCourse={onResendCourse}
       />
     );
   };

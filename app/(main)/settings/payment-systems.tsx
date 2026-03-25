@@ -27,6 +27,7 @@ import {
   Send,
   Shield,
   Trash2,
+  Usb,
   Wifi,
   WifiOff,
   X,
@@ -111,6 +112,7 @@ const PaymentSystemsScreen = () => {
     environment: "sandbox" as "sandbox" | "production",
     ipAddress: "",
     port: "8080",
+    connectionType: "local_socket" as "local_socket" | "usb",
   });
   const [isAssigning, setIsAssigning] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
@@ -122,6 +124,7 @@ const PaymentSystemsScreen = () => {
     authKey: "",
     ipAddress: "",
     port: "8080",
+    connectionType: "local_socket" as "local_socket" | "usb",
   });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
@@ -156,6 +159,24 @@ const PaymentSystemsScreen = () => {
       loadTerminals(selectedStore.id);
     }
   }, [selectedStore?.id, loadTerminals]);
+
+  // Hydrate station terminal with IP/port from full terminal record.
+  // The station RPC may not return these fields, but loadTerminals fetches them.
+  useEffect(() => {
+    if (!currentTerminal || currentTerminal.ip_address || !terminals.length || !selectedStation) return;
+    const fullRecord = terminals.find((t) => t.id === currentTerminal.id);
+    if (fullRecord?.ipAddress) {
+      setSelectedStation({
+        ...selectedStation,
+        payment_terminal: {
+          ...currentTerminal,
+          ip_address: fullRecord.ipAddress,
+          port: fullRecord.port,
+          connection_type: fullRecord.connectionType,
+        },
+      });
+    }
+  }, [terminals, currentTerminal, selectedStation, setSelectedStation]);
 
   // Local state for features not fully in store yet
   const [textToPayTestSent, setTextToPayTestSent] = useState(false);
@@ -400,8 +421,9 @@ const PaymentSystemsScreen = () => {
             terminal_model: registerForm.model || null,
             register_id: "CASTLES",
             auth_key: "CASTLES",
-            local_ip_address: registerForm.ipAddress,
-            local_port: parseInt(registerForm.port, 10) || 8080,
+            local_ip_address: registerForm.connectionType === "local_socket" ? registerForm.ipAddress : null,
+            local_port: registerForm.connectionType === "local_socket" ? (parseInt(registerForm.port, 10) || 8080) : null,
+            connection_type: registerForm.connectionType === "usb" ? "usb" : "local",
             is_active: true,
             is_connected: false,
             api_environment: "production",
@@ -432,8 +454,9 @@ const PaymentSystemsScreen = () => {
           terminal_type: "castles",
           terminal_model: registerForm.model || null,
           is_connected: false,
-          ip_address: registerForm.ipAddress,
-          port: parseInt(registerForm.port, 10) || 8080,
+          ip_address: registerForm.connectionType === "local_socket" ? registerForm.ipAddress : undefined,
+          port: registerForm.connectionType === "local_socket" ? (parseInt(registerForm.port, 10) || 8080) : undefined,
+          connection_type: registerForm.connectionType === "usb" ? "usb" : "local_socket",
           last_connection_status: null,
           last_connection_test_at: null,
         };
@@ -487,6 +510,7 @@ const PaymentSystemsScreen = () => {
         environment: "sandbox",
         ipAddress: "",
         port: "8080",
+        connectionType: "local_socket",
       });
     } catch (err) {
       console.error("[PaymentSystems] registerTerminal error:", err);
@@ -506,11 +530,11 @@ const PaymentSystemsScreen = () => {
       ? registerForm.name.trim() &&
         registerForm.tpn.trim() &&
         registerForm.authKey.trim()
-      : registerForm.name.trim() && registerForm.ipAddress.trim();
+      : registerForm.name.trim() && (registerForm.connectionType === "usb" || registerForm.ipAddress.trim());
 
   const isEditFormValid =
     currentTerminal?.terminal_type === "castles"
-      ? editForm.name.trim() && editForm.ipAddress.trim()
+      ? editForm.name.trim() && (editForm.connectionType === "usb" || editForm.ipAddress.trim())
       : editForm.name.trim() && editForm.tpn.trim();
 
   const handleStartEdit = () => {
@@ -522,6 +546,7 @@ const PaymentSystemsScreen = () => {
       authKey: "", // Never pre-fill auth key
       ipAddress: currentTerminal.ip_address || "",
       port: String(currentTerminal.port || 8080),
+      connectionType: (currentTerminal.connection_type === "usb" ? "usb" : "local_socket") as "local_socket" | "usb",
     });
     setIsEditingTerminal(true);
   };
@@ -556,8 +581,9 @@ const PaymentSystemsScreen = () => {
       };
 
       if (currentTerminal.terminal_type === "castles") {
-        updatePayload.local_ip_address = editForm.ipAddress.trim();
-        updatePayload.local_port = parseInt(editForm.port, 10) || 8080;
+        updatePayload.connection_type = editForm.connectionType === "usb" ? "usb" : "local";
+        updatePayload.local_ip_address = editForm.connectionType === "local_socket" ? editForm.ipAddress.trim() : null;
+        updatePayload.local_port = editForm.connectionType === "local_socket" ? (parseInt(editForm.port, 10) || 8080) : null;
       } else {
         updatePayload.tpn = editForm.tpn.trim();
         updatePayload.register_id = editForm.tpn.trim();
@@ -581,8 +607,9 @@ const PaymentSystemsScreen = () => {
         terminal_model: editForm.model.trim() || null,
         ...(currentTerminal.terminal_type === "castles"
           ? {
-              ip_address: editForm.ipAddress.trim(),
-              port: parseInt(editForm.port, 10) || 8080,
+              ip_address: editForm.connectionType === "local_socket" ? editForm.ipAddress.trim() : undefined,
+              port: editForm.connectionType === "local_socket" ? (parseInt(editForm.port, 10) || 8080) : undefined,
+              connection_type: editForm.connectionType === "usb" ? "usb" as const : "local_socket" as const,
             }
           : {
               register_id: editForm.tpn.trim(),
@@ -737,6 +764,39 @@ const PaymentSystemsScreen = () => {
                           </View>
                           <Text className="text-gray-300 text-sm font-semibold">Connection</Text>
                         </View>
+
+                        {/* Connection type toggle: WiFi vs USB */}
+                        <View className="flex-row gap-2 mb-3">
+                          <TouchableOpacity
+                            onPress={() => setRegisterForm((f) => ({ ...f, connectionType: "local_socket" }))}
+                            className={`flex-1 flex-row items-center justify-center py-2.5 rounded-lg border ${
+                              registerForm.connectionType === "local_socket"
+                                ? "bg-purple-600/20 border-purple-500/50"
+                                : "bg-surface border-gray-600"
+                            }`}
+                          >
+                            <Wifi size={14} color={registerForm.connectionType === "local_socket" ? "#a78bfa" : colors.muted} />
+                            <Text className={`text-sm ml-1.5 font-semibold ${
+                              registerForm.connectionType === "local_socket" ? "text-purple-300" : "text-gray-400"
+                            }`}>WiFi / TCP</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => setRegisterForm((f) => ({ ...f, connectionType: "usb" }))}
+                            className={`flex-1 flex-row items-center justify-center py-2.5 rounded-lg border ${
+                              registerForm.connectionType === "usb"
+                                ? "bg-purple-600/20 border-purple-500/50"
+                                : "bg-surface border-gray-600"
+                            }`}
+                          >
+                            <Usb size={14} color={registerForm.connectionType === "usb" ? "#a78bfa" : colors.muted} />
+                            <Text className={`text-sm ml-1.5 font-semibold ${
+                              registerForm.connectionType === "usb" ? "text-purple-300" : "text-gray-400"
+                            }`}>USB</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* IP + Port fields — only for WiFi/TCP */}
+                        {registerForm.connectionType === "local_socket" && (
                         <View className="flex-row gap-2">
                           <View className="flex-[3]">
                             <Text className="text-gray-500 text-xs mb-1">IP Address *</Text>
@@ -764,7 +824,9 @@ const PaymentSystemsScreen = () => {
                             />
                           </View>
                         </View>
-                        {/* Inline test button */}
+                        )}
+                        {/* Inline test button — WiFi/TCP only */}
+                        {registerForm.connectionType === "local_socket" && (
                         <TouchableOpacity
                           onPress={async () => {
                             if (!registerForm.ipAddress.trim()) return;
@@ -814,6 +876,15 @@ const PaymentSystemsScreen = () => {
                             </>
                           )}
                         </TouchableOpacity>
+                        )}
+
+                        {/* USB info message */}
+                        {registerForm.connectionType === "usb" && (
+                          <View className="mt-2 flex-row items-center gap-2 px-3 py-2.5 rounded-lg bg-purple-600/10 border border-purple-500/30">
+                            <Usb size={14} color="#a78bfa" />
+                            <Text className="text-purple-300 text-xs flex-1">USB connection — no IP configuration needed. Ensure the terminal is plugged in via USB.</Text>
+                          </View>
+                        )}
                       </View>
 
                       {/* Step 2: Name */}
@@ -1100,10 +1171,43 @@ const PaymentSystemsScreen = () => {
                     />
                   </View>
 
-                  {/* Castles: IP + Port + inline test */}
+                  {/* Castles: Connection type + IP/Port + inline test */}
                   {currentTerminal.terminal_type === "castles" && (
                     <>
                       <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">Connection</Text>
+
+                      {/* Connection type toggle */}
+                      <View className="flex-row gap-2 mb-3">
+                        <TouchableOpacity
+                          onPress={() => setEditForm((f) => ({ ...f, connectionType: "local_socket" }))}
+                          className={`flex-1 flex-row items-center justify-center py-2 rounded-lg border ${
+                            editForm.connectionType === "local_socket"
+                              ? "bg-purple-600/20 border-purple-500/50"
+                              : "bg-surface border-gray-600"
+                          }`}
+                        >
+                          <Wifi size={14} color={editForm.connectionType === "local_socket" ? "#a78bfa" : colors.muted} />
+                          <Text className={`text-sm ml-1.5 font-semibold ${
+                            editForm.connectionType === "local_socket" ? "text-purple-300" : "text-gray-400"
+                          }`}>WiFi / TCP</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setEditForm((f) => ({ ...f, connectionType: "usb" }))}
+                          className={`flex-1 flex-row items-center justify-center py-2 rounded-lg border ${
+                            editForm.connectionType === "usb"
+                              ? "bg-purple-600/20 border-purple-500/50"
+                              : "bg-surface border-gray-600"
+                          }`}
+                        >
+                          <Usb size={14} color={editForm.connectionType === "usb" ? "#a78bfa" : colors.muted} />
+                          <Text className={`text-sm ml-1.5 font-semibold ${
+                            editForm.connectionType === "usb" ? "text-purple-300" : "text-gray-400"
+                          }`}>USB</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* IP + Port — WiFi/TCP only */}
+                      {editForm.connectionType === "local_socket" && (
                       <View className="flex-row gap-2 mb-2">
                         <View className="flex-[3]">
                           <Text className="text-gray-500 text-xs mb-1">IP Address *</Text>
@@ -1128,7 +1232,9 @@ const PaymentSystemsScreen = () => {
                           />
                         </View>
                       </View>
-                      {/* Inline test */}
+                      )}
+                      {/* Inline test — WiFi/TCP only */}
+                      {editForm.connectionType === "local_socket" && (
                       <View className="flex-row gap-2 mb-4">
                         <TouchableOpacity
                           onPress={async () => {
@@ -1173,6 +1279,15 @@ const PaymentSystemsScreen = () => {
                           <Text className="text-yellow-400 text-sm ml-1.5">Diagnose</Text>
                         </TouchableOpacity>
                       </View>
+                      )}
+
+                      {/* USB info message */}
+                      {editForm.connectionType === "usb" && (
+                        <View className="flex-row items-center gap-2 px-3 py-2.5 rounded-lg bg-purple-600/10 border border-purple-500/30 mb-4">
+                          <Usb size={14} color="#a78bfa" />
+                          <Text className="text-purple-300 text-xs flex-1">USB connection — no IP configuration needed. Ensure the terminal is plugged in via USB.</Text>
+                        </View>
+                      )}
                     </>
                   )}
 
@@ -1269,7 +1384,12 @@ const PaymentSystemsScreen = () => {
 
                     {/* Connection detail row */}
                     <View className="flex-row items-center justify-between px-4 py-2.5 bg-surface/50 border-t border-gray-700/60">
-                      {currentTerminal.terminal_type === "castles" && currentTerminal.ip_address ? (
+                      {currentTerminal.terminal_type === "castles" && currentTerminal.connection_type === "usb" ? (
+                        <View className="flex-row items-center gap-1.5">
+                          <Usb size={13} color={colors.muted} />
+                          <Text className="text-gray-400 text-sm">USB Connection</Text>
+                        </View>
+                      ) : currentTerminal.terminal_type === "castles" && currentTerminal.ip_address ? (
                         <View className="flex-row items-center gap-1.5">
                           <Wifi size={13} color={colors.muted} />
                           <Text className="text-gray-400 text-sm font-mono">

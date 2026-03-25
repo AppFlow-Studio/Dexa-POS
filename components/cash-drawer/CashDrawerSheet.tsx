@@ -22,6 +22,7 @@ import {
   useCashDrawerStore,
 } from "@/stores/useCashDrawerStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   BottomSheetBackdrop,
@@ -100,7 +101,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
   const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const cashDrawerSettings = useStoreSettingsStore((s) => s.cashDrawerSettings);
+  const cashDrawerSettings = useLocationConfigStore((s) => s.config.cashDrawer);
 
   const [view, setView] = useState<DrawerView>(
     activeSession?.status === "open" ? "active" : "open"
@@ -264,6 +265,29 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
             placeholderTextColor={colors.muted}
             className="h-14 px-4 bg-panel border border-border rounded-lg text-white text-2xl text-center"
           />
+          <View className="flex-row flex-wrap gap-2 mt-3">
+            {[50, 100, 150, 200, 300, 500].map((preset) => {
+              const isSelected = quickStartAmount === String(preset);
+              return (
+                <TouchableOpacity
+                  key={preset}
+                  onPress={() => setQuickStartAmount(String(preset))}
+                  className="rounded-lg px-3 py-2 border"
+                  style={{
+                    backgroundColor: isSelected ? colors.teal + "26" : colors.panel,
+                    borderColor: isSelected ? colors.teal : colors.border,
+                  }}
+                >
+                  <Text
+                    className="text-sm font-semibold"
+                    style={{ color: isSelected ? colors.teal : colors.label }}
+                  >
+                    ${preset}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       ) : (
         <DenominationCounter

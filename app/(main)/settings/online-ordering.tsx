@@ -13,15 +13,19 @@ import { colors } from "@/lib/theme";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import {
   CheckCircle2,
   Clock,
+  Package,
   PauseCircle,
   PlayCircle,
+  Settings2,
+  ShoppingCart,
   Utensils,
 } from "lucide-react-native";
 import React, { useMemo } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Helper to get local minutes from ISO or HH:MM:SS time string
@@ -114,14 +118,31 @@ const OnlineOrderingScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // Store Connection
-  const onlineOrderingEnabled = useStoreSettingsStore((s) => s.onlineOrderingEnabled);
-  const updateField = useStoreSettingsStore((s) => s.updateField);
-  const onlinePauseReason = useStoreSettingsStore((s) => s.onlinePauseReason);
-  const dynamicPrepTimeEnabled = useStoreSettingsStore((s) => s.dynamicPrepTimeEnabled);
-  const basePrepTime = useStoreSettingsStore((s) => s.basePrepTime);
-  const prepTimeAdjustments = useStoreSettingsStore((s) => s.prepTimeAdjustments);
-  const updatePrepAdjustment = useStoreSettingsStore((s) => s.updatePrepAdjustment);
+  // Store Connection — unified config
+  const onlineConfig = useLocationConfigStore((s) => s.config.onlineOrdering);
+  const updateConfig = useLocationConfigStore((s) => s.updateConfig);
+  const onlineOrderingEnabled = onlineConfig.enabled;
+  const onlinePauseReason = onlineConfig.pauseReason;
+  const dynamicPrepTimeEnabled = onlineConfig.dynamicPrepTimeEnabled;
+  const basePrepTime = onlineConfig.basePrepTime;
+  const prepTimeAdjustments = onlineConfig.prepTimeAdjustments;
+
+  // Compatibility shims for existing call sites
+  const updateField = (field: string, value: any) => {
+    const fieldMap: Record<string, string> = {
+      onlineOrderingEnabled: 'enabled',
+      onlinePauseReason: 'pauseReason',
+      dynamicPrepTimeEnabled: 'dynamicPrepTimeEnabled',
+      basePrepTime: 'basePrepTime',
+    };
+    const configKey = fieldMap[field] || field;
+    updateConfig('onlineOrdering', { [configKey]: value });
+  };
+  const updatePrepAdjustment = (key: keyof typeof prepTimeAdjustments, value: boolean) => {
+    updateConfig('onlineOrdering', {
+      prepTimeAdjustments: { ...prepTimeAdjustments, [key]: value },
+    });
+  };
 
   const { menus } = useMenuStore();
 
@@ -454,6 +475,128 @@ const OnlineOrderingScreen = () => {
                 >
                   <Text style={{ fontSize: 13, fontWeight: "700", color: colors.label }}>Edit Menu Schedules</Text>
                 </TouchableOpacity>
+              </View>
+              {/* Order Management */}
+              <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <View style={{ width: 32, height: 32, backgroundColor: colors.info + "15", borderRadius: 8, alignItems: "center", justifyContent: "center" }}>
+                    <ShoppingCart color={colors.info} size={16} />
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Order Management</Text>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Auto-Accept Orders</Text>
+                    <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>Automatically accept incoming online orders</Text>
+                  </View>
+                  <Switch checked={onlineConfig.autoAcceptOrders} onCheckedChange={(val) => updateConfig('onlineOrdering', { autoAcceptOrders: val })} />
+                </View>
+
+                <View style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 6 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Large Order Approval Threshold ($)</Text>
+                  <Text style={{ fontSize: 11, color: colors.label }}>Orders above this amount require manual approval</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderRadius: 8, borderWidth: 1, borderColor: colors.border, marginTop: 4 }}>
+                    <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>$</Text>
+                    </View>
+                    <TextInput
+                      value={String(onlineConfig.largeOrderApprovalThreshold)}
+                      onChangeText={(text) => { const num = parseFloat(text); if (!isNaN(num)) updateConfig('onlineOrdering', { largeOrderApprovalThreshold: num }); }}
+                      keyboardType="numeric"
+                      style={{ flex: 1, paddingHorizontal: 12, paddingVertical: 8, color: colors.heading, fontSize: 13 }}
+                      placeholderTextColor={colors.muted}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ paddingVertical: 10, gap: 6 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Reject When Busy Threshold</Text>
+                  <Text style={{ fontSize: 11, color: colors.label }}>Auto-reject new orders when kitchen has this many active orders</Text>
+                  <TextInput
+                    value={String(onlineConfig.rejectWhenBusyThreshold)}
+                    onChangeText={(text) => { const num = parseInt(text, 10); if (!isNaN(num)) updateConfig('onlineOrdering', { rejectWhenBusyThreshold: num }); }}
+                    keyboardType="numeric"
+                    style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, color: colors.heading, fontSize: 13, marginTop: 4 }}
+                    placeholderTextColor={colors.muted}
+                  />
+                </View>
+              </View>
+
+              {/* Auto Resume */}
+              <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <View style={{ width: 32, height: 32, backgroundColor: "#a78bfa15", borderRadius: 8, alignItems: "center", justifyContent: "center" }}>
+                    <Settings2 color="#a78bfa" size={16} />
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Auto Resume</Text>
+                </View>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Auto Resume Time</Text>
+                  <Text style={{ fontSize: 11, color: colors.label }}>If orders are paused, automatically resume at this time (ISO format, e.g. 2026-03-24T17:00:00)</Text>
+                  <TextInput
+                    value={onlineConfig.autoResumeTime ?? ""}
+                    onChangeText={(text) => updateConfig('onlineOrdering', { autoResumeTime: text || null })}
+                    placeholder="Not set"
+                    style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, color: colors.heading, fontSize: 13, marginTop: 4 }}
+                    placeholderTextColor={colors.muted}
+                  />
+                </View>
+              </View>
+
+              {/* Pre-Ordering */}
+              <View style={{ backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <View style={{ width: 32, height: 32, backgroundColor: colors.success + "15", borderRadius: 8, alignItems: "center", justifyContent: "center" }}>
+                    <Package color={colors.success} size={16} />
+                  </View>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Pre-Ordering</Text>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>Enable Pre-Ordering</Text>
+                    <Text style={{ fontSize: 11, color: colors.label, marginTop: 1 }}>Allow customers to place orders for future dates</Text>
+                  </View>
+                  <Switch checked={onlineConfig.preOrderingEnabled} onCheckedChange={(val) => updateConfig('onlineOrdering', { preOrderingEnabled: val })} />
+                </View>
+
+                {onlineConfig.preOrderingEnabled && (
+                  <View style={{ gap: 10, marginTop: 10 }}>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ fontSize: 11, color: colors.label }}>Max Days Ahead</Text>
+                        <TextInput
+                          value={String(onlineConfig.preOrderMaxDays)}
+                          onChangeText={(text) => { const num = parseInt(text, 10); if (!isNaN(num)) updateConfig('onlineOrdering', { preOrderMaxDays: num }); }}
+                          keyboardType="numeric"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.heading, fontSize: 13 }}
+                          placeholderTextColor={colors.muted}
+                        />
+                      </View>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ fontSize: 11, color: colors.label }}>Min Advance (min)</Text>
+                        <TextInput
+                          value={String(onlineConfig.preOrderMinAdvanceMinutes)}
+                          onChangeText={(text) => { const num = parseInt(text, 10); if (!isNaN(num)) updateConfig('onlineOrdering', { preOrderMinAdvanceMinutes: num }); }}
+                          keyboardType="numeric"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.heading, fontSize: 13 }}
+                          placeholderTextColor={colors.muted}
+                        />
+                      </View>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ fontSize: 11, color: colors.label }}>Max Daily Orders</Text>
+                        <TextInput
+                          value={String(onlineConfig.preOrderMaxDaily)}
+                          onChangeText={(text) => { const num = parseInt(text, 10); if (!isNaN(num)) updateConfig('onlineOrdering', { preOrderMaxDaily: num }); }}
+                          keyboardType="numeric"
+                          style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.heading, fontSize: 13 }}
+                          placeholderTextColor={colors.muted}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                )}
               </View>
             </>
           )}

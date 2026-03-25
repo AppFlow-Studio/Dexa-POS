@@ -30,6 +30,80 @@ export interface ChecklistItem {
   detail?: string; // e.g., "2 tables still active"
 }
 
+export type EndOfDayStepId =
+  | "intro"
+  | "overview"
+  | "floor_orders"
+  | "cash_drawers"
+  | "tips"
+  | "staff"
+  | "payments"
+  | "report";
+
+export interface EndOfDayStepDefinition {
+  id: EndOfDayStepId;
+  title: string;
+  subtitle: string;
+  requiredChecklistItems: ChecklistItemId[];
+  canSkip?: boolean;
+}
+
+export type EodPhase = "wizard" | "summary" | "settlement_pending";
+
+export const EOD_STEPS: EndOfDayStepDefinition[] = [
+  {
+    id: "intro",
+    title: "End of Day Close Out",
+    subtitle: "Review required items and confirm your location is ready for the day to close.",
+    requiredChecklistItems: [],
+  },
+  {
+    id: "overview",
+    title: "Overview",
+    subtitle: "Re-check all required sections, review blockers, and jump to pending tasks.",
+    requiredChecklistItems: [],
+  },
+  {
+    id: "floor_orders",
+    title: "Floor & Orders",
+    subtitle: "Clear active tables and ensure unpaid orders are fully settled.",
+    requiredChecklistItems: ["tables_clear", "orders_closed"],
+  },
+  {
+    id: "cash_drawers",
+    title: "Cash Drawers",
+    subtitle: "Reconcile open cash drawers and close for the day.",
+    requiredChecklistItems: ["cash_drawer_closed"],
+  },
+  {
+    id: "tips",
+    title: "Tips",
+    subtitle: "Review tip distribution status and run the tip workflow.",
+    requiredChecklistItems: ["tips_distributed"],
+  },
+  {
+    id: "staff",
+    title: "Staff",
+    subtitle: "Verify every active shift is clocked out before closing.",
+    requiredChecklistItems: ["shifts_reviewed"],
+  },
+  {
+    id: "payments",
+    title: "Payments & Settlement Prep",
+    subtitle: "Review card/cash split and prepare settlement and batch capture.",
+    requiredChecklistItems: [],
+    canSkip: true,
+  },
+  {
+    id: "report",
+    title: "Report & Close",
+    subtitle: "Generate daily report and finalize close out.",
+    requiredChecklistItems: ["report_generated"],
+  },
+];
+
+export const DEFAULT_EOD_PHASE: EodPhase = "wizard";
+
 export interface DrawerBreakdownItem {
   drawerName: string;
   opening: number;
@@ -83,6 +157,9 @@ interface EndOfDayState {
   // Summary
   dailySummary: DailySummary | null;
   summaryLoading: boolean;
+  eodPhase: EodPhase;
+  completionOverrideReason: string | null;
+  completionOverrideAt: string | null;
 
   // Actions
   initChecklist: () => void;
@@ -91,11 +168,20 @@ interface EndOfDayState {
   setIsRunning: (running: boolean) => void;
   setDailySummary: (summary: DailySummary) => void;
   setSummaryLoading: (loading: boolean) => void;
+  setEodPhase: (phase: EodPhase) => void;
+  setCompletionOverride: (reason?: string | null) => void;
+  clearCompletionOverride: () => void;
   reset: () => void;
 
   // Computed
   isComplete: () => boolean;
   passedCount: () => number;
+  canAdvanceFromStep: (stepIndex: number) => boolean;
+  canAdvance: () => boolean;
+  getBlockingItems: (options?: {
+    stepIndex?: number;
+    includePending?: boolean;
+  }) => ChecklistItem[];
 }
 
 const DEFAULT_CHECKLIST: ChecklistItem[] = [
@@ -137,6 +223,9 @@ const DEFAULT_CHECKLIST: ChecklistItem[] = [
   },
 ];
 
+const isResolvedStatus = (status: ChecklistStatus) =>
+  status === "passed" || status === "skipped";
+
 // ============================================================================
 // STORE
 // ============================================================================
@@ -148,12 +237,18 @@ export const useEndOfDayStore = create<EndOfDayState>()(
     isRunning: false,
     dailySummary: null,
     summaryLoading: false,
+    eodPhase: DEFAULT_EOD_PHASE,
+    completionOverrideReason: null,
+    completionOverrideAt: null,
 
     initChecklist: () => {
       set({
         checklist: DEFAULT_CHECKLIST.map((item) => ({ ...item, status: "pending" as ChecklistStatus, detail: undefined })),
         currentStep: 0,
         isRunning: true,
+        eodPhase: "wizard",
+        completionOverrideReason: null,
+        completionOverrideAt: null,
       });
     },
 
@@ -171,6 +266,17 @@ export const useEndOfDayStore = create<EndOfDayState>()(
     setIsRunning: (running) => set({ isRunning: running }),
     setDailySummary: (summary) => set({ dailySummary: summary }),
     setSummaryLoading: (loading) => set({ summaryLoading: loading }),
+    setEodPhase: (phase) => set({ eodPhase: phase }),
+    setCompletionOverride: (reason) =>
+      set({
+        completionOverrideReason: reason || "Completed with unresolved blockers",
+        completionOverrideAt: new Date().toISOString(),
+      }),
+    clearCompletionOverride: () =>
+      set({
+        completionOverrideReason: null,
+        completionOverrideAt: null,
+      }),
 
     reset: () =>
       set({
@@ -178,6 +284,9 @@ export const useEndOfDayStore = create<EndOfDayState>()(
         currentStep: 0,
         isRunning: false,
         dailySummary: null,
+        eodPhase: DEFAULT_EOD_PHASE,
+        completionOverrideReason: null,
+        completionOverrideAt: null,
       }),
 
     isComplete: () => {
@@ -192,6 +301,62 @@ export const useEndOfDayStore = create<EndOfDayState>()(
       return checklist.filter(
         (item) => item.status === "passed" || item.status === "skipped"
       ).length;
+    },
+
+    canAdvanceFromStep: (stepIndex) => {
+      const step = EOD_STEPS[stepIndex];
+      if (!step) {
+        return false;
+      }
+
+      if (step.requiredChecklistItems.length === 0) {
+        return true;
+      }
+
+      const { checklist, completionOverrideReason } = get();
+      if (completionOverrideReason) {
+        // allow manual override from any step
+        return true;
+      }
+
+      return step.requiredChecklistItems.every((requiredId) => {
+        const item = checklist.find((it) => it.id === requiredId);
+        return !!item && isResolvedStatus(item.status);
+      });
+    },
+
+    canAdvance: () => {
+      const { currentStep } = get();
+      return get().canAdvanceFromStep(currentStep);
+    },
+
+    getBlockingItems: (options) => {
+      const { checklist, completionOverrideReason } = get();
+      if (completionOverrideReason) {
+        return [];
+      }
+
+      const step = options?.stepIndex !== undefined ? EOD_STEPS[options.stepIndex] : undefined;
+      const requiredIds = new Set(
+        step ? step.requiredChecklistItems : checklist.map((i) => i.id)
+      );
+      const allowPending = options?.includePending === true;
+
+      return checklist.filter((item) => {
+        if (!requiredIds.has(item.id)) {
+          return false;
+        }
+
+        if (isResolvedStatus(item.status)) {
+          return false;
+        }
+
+        if (item.status === "pending" && !allowPending) {
+          return false;
+        }
+
+        return true;
+      });
     },
   }))
 );

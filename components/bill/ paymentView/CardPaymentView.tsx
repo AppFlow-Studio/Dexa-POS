@@ -17,6 +17,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentTerminalStore } from "@/stores/usePaymentTerminalStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
 import { getSharedCastlesService } from "@/services/terminals/castles-service";
@@ -126,7 +127,7 @@ const CardPaymentView = () => {
     selectedStation?.payment_terminal,
   );
 
-  const tipPresetPercentages = useStoreSettingsStore((s) => s.tipPresetPercentages);
+  const tipPresetPercentages = useLocationConfigStore((s) => s.config.tips.presetPercentages);
   const TIP_PRESETS = tipPresetPercentages;
 
   // Get the active order for backend amount_due

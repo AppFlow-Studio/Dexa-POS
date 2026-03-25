@@ -8,6 +8,8 @@ import TableAlertDialogs from '@/components/tables/TableAlertDialogs'
 import TableDetailSkeleton from '@/components/tables/TableDetailSkeleton'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
+import { useSupabaseClient } from '@/hooks/useSupabaseClient'
+import { OrderService } from '@/services/orderService'
 import { useTableCoursing } from '@/hooks/useTableCoursing'
 import { useTableSeating } from '@/hooks/useTableSeating'
 import SeatSelector from '@/components/tables/SeatSelector'
@@ -23,7 +25,7 @@ import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
@@ -41,10 +43,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
-  const { defaultSittingTimeMinutes } = useSettingsStore()
+  const supabase = useSupabaseClient()
+  const defaultSittingTimeMinutes = useLocationConfigStore(s => s.config.dining.defaultSittingTimeMinutes)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const autoPrintKitchenTickets = useStoreSettingsStore(
-    s => s.autoPrintKitchenTickets
+  const autoPrintKitchenTickets = useLocationConfigStore(
+    s => s.config.printing.autoPrintKitchenTickets
   )
 
   // --- Extracted hooks ---
@@ -73,8 +76,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
 
-  const enablePerSeatOrdering = useSettingsStore(s => s.enablePerSeatOrdering)
-  const enableCoursing = useSettingsStore(s => s.enableCoursing)
+  const enablePerSeatOrdering = useLocationConfigStore(s => s.config.dining.enablePerSeatOrdering)
+  const enableCoursing = useLocationConfigStore(s => s.config.dining.enableCoursing)
   const partySize = session?.party_size ?? 2
   const seatingHook = useTableSeating(activeOrder, partySize, enablePerSeatOrdering)
 
@@ -572,6 +575,48 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     }
   }
 
+  const handleRushCourse = useCallback(async (course: number) => {
+    if (!activeOrder) return
+    const state = coursingHook.getForOrder(activeOrder.id)
+    const itemsInCourse = activeOrder.items.filter(
+      i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
+    )
+    const dbItemIds = itemsInCourse
+      .map(i => i.db_order_item_id)
+      .filter((id): id is string => !!id)
+    if (dbItemIds.length === 0) return
+
+    const { error } = await OrderService.toggleRushOnItems(supabase, dbItemIds, true)
+    if (error) {
+      show({ title: 'Rush Failed', message: 'Could not rush this course.', type: 'error' })
+    } else {
+      show({ title: 'Course Rushed', message: `Course ${course} marked as rush.`, type: 'success' })
+    }
+  }, [activeOrder, coursingHook, supabase, show])
+
+  const handlePrioritizeCourse = useCallback(async (course: number) => {
+    if (!activeOrder) return
+    const state = coursingHook.getForOrder(activeOrder.id)
+    const itemsInCourse = activeOrder.items.filter(
+      i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
+    )
+    const dbItemIds = itemsInCourse
+      .map(i => i.db_order_item_id)
+      .filter((id): id is string => !!id)
+    if (dbItemIds.length === 0) return
+
+    const { error } = await OrderService.togglePriorityOnItems(supabase, dbItemIds, true)
+    if (error) {
+      show({ title: 'Prioritize Failed', message: 'Could not prioritize this course.', type: 'error' })
+    } else {
+      show({ title: 'Course Prioritized', message: `Course ${course} marked as priority.`, type: 'success' })
+    }
+  }, [activeOrder, coursingHook, supabase, show])
+
+  const handleResendCourse = (course: number) => {
+    handleSendCourseToKitchen(course, true)
+  }
+
   const checkOrderClosedAndWarn = useCallback(() => {
     if (isFullyPaid || activeOrder?.check_status === 'Closed') {
       setOrderClosedWarningOpen(true)
@@ -806,6 +851,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               onSelectSeat={seatingHook.setActiveSeat}
               enablePerSeatOrdering={enablePerSeatOrdering}
               enableCoursing={enableCoursing}
+              onRushCourse={handleRushCourse}
+              onPrioritizeCourse={handlePrioritizeCourse}
+              onResendCourse={handleResendCourse}
             />
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}

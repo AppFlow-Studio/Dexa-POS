@@ -1,8 +1,7 @@
 import { Switch } from "@/components/ui/switch";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useSettingsStore, SyncableDiningSettings } from "@/stores/useSettingsStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useRouter } from "expo-router";
 import {
   ArrowRight,
@@ -14,7 +13,7 @@ import {
   Settings2,
 } from "lucide-react-native";
 import { colors } from "@/lib/theme";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { ScrollView, Text, TouchableOpacity, View, TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -26,83 +25,12 @@ const DiningRoomScreen = () => {
   const { floorPlans, createFloorPlan, tables, setActiveFloorPlan } =
     useFloorPlanStore();
   const settings = useSettingsStore();
-  const supabase = useSupabaseClient();
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
-  // Syncable dining settings
-  const enablePerSeatOrdering = useSettingsStore((s) => s.enablePerSeatOrdering);
-  const enableCoursing = useSettingsStore((s) => s.enableCoursing);
-  const allowTableMerging = useSettingsStore((s) => s.allowTableMerging);
-  const allowTableSplitting = useSettingsStore((s) => s.allowTableSplitting);
-  const autoUpdateTableStatus = useSettingsStore((s) => s.autoUpdateTableStatus);
-  const defaultSittingTimeMinutes = useSettingsStore((s) => s.defaultSittingTimeMinutes);
-  const defaultPartySize = useSettingsStore((s) => s.defaultPartySize);
+  // Synced dining settings from unified config store
+  const diningConfig = useLocationConfigStore((s) => s.config.dining);
+  const updateConfig = useLocationConfigStore((s) => s.updateConfig);
 
-  // Debounced save to backend + broadcast when syncable settings change
-  const isFirstRender = useRef(true);
-  useEffect(() => {
-    // Skip on initial mount (hydration from backend)
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-
-    const locationId = selectedStore?.id;
-    if (!locationId || !supabase) return;
-
-    const syncableValues: SyncableDiningSettings = {
-      enablePerSeatOrdering,
-      enableCoursing,
-      allowTableMerging,
-      allowTableSplitting,
-      autoUpdateTableStatus,
-      defaultSittingTimeMinutes,
-      defaultPartySize,
-    };
-
-    const timer = setTimeout(async () => {
-      try {
-        // Read current public_metadata, merge dining_settings, write back
-        const { data: loc } = await supabase
-          .from("locations")
-          .select("public_metadata")
-          .eq("id", locationId)
-          .single();
-
-        const existingMeta = (loc?.public_metadata as Record<string, any>) ?? {};
-        const newMeta = { ...existingMeta, dining_settings: syncableValues };
-
-        await supabase
-          .from("locations")
-          .update({ public_metadata: newMeta })
-          .eq("id", locationId);
-
-        // Broadcast to other stations
-        const channel = supabase.channel(`location:${locationId}:settings`);
-        channel.subscribe((status: string) => {
-          if (status === "SUBSCRIBED") {
-            channel.send({
-              type: "broadcast",
-              event: "SETTINGS_UPDATE",
-              payload: {
-                setting: "dining_settings",
-                value: syncableValues,
-                timestamp: Date.now(),
-                sender_station_id:
-                  useStoreSettingsStore.getState().selectedStation?.id ?? null,
-              },
-            });
-            // Unsubscribe after sending
-            setTimeout(() => supabase.removeChannel(channel), 1000);
-          }
-        });
-      } catch (err) {
-        console.error("[DiningRoom] Failed to sync dining settings:", err);
-      }
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [
+  const {
     enablePerSeatOrdering,
     enableCoursing,
     allowTableMerging,
@@ -110,9 +38,7 @@ const DiningRoomScreen = () => {
     autoUpdateTableStatus,
     defaultSittingTimeMinutes,
     defaultPartySize,
-    selectedStore?.id,
-    supabase,
-  ]);
+  } = diningConfig;
 
   const handleCreateFloorPlan = async () => {
     try {
@@ -353,9 +279,9 @@ const DiningRoomScreen = () => {
               <Text style={labelStyle}>Default Party</Text>
               <TextInput
                 style={inputStyle}
-                value={settings.defaultPartySize.toString()}
+                value={defaultPartySize.toString()}
                 onChangeText={(v) =>
-                  settings.updateDiningSettings({
+                  updateConfig('dining', {
                     defaultPartySize: parseInt(v) || 2,
                   })
                 }
@@ -376,14 +302,14 @@ const DiningRoomScreen = () => {
                 </Text>
               </View>
               <Switch
-                checked={settings.allowTableMerging}
+                checked={allowTableMerging}
                 onCheckedChange={(v) =>
-                  settings.updateDiningSettings({ allowTableMerging: v })
+                  updateConfig('dining', { allowTableMerging: v })
                 }
               />
             </View>
 
-            {settings.allowTableMerging && (
+            {allowTableMerging && (
               <View>
                 <Text style={labelStyle}>Merge Timeout (minutes)</Text>
                 <TextInput
@@ -413,9 +339,9 @@ const DiningRoomScreen = () => {
                 </Text>
               </View>
               <Switch
-                checked={settings.allowTableSplitting}
+                checked={allowTableSplitting}
                 onCheckedChange={(v) =>
-                  settings.updateDiningSettings({ allowTableSplitting: v })
+                  updateConfig('dining', { allowTableSplitting: v })
                 }
               />
             </View>
@@ -440,9 +366,9 @@ const DiningRoomScreen = () => {
                 </Text>
               </View>
               <Switch
-                checked={settings.enablePerSeatOrdering}
+                checked={enablePerSeatOrdering}
                 onCheckedChange={(v) =>
-                  settings.updateDiningSettings({ enablePerSeatOrdering: v })
+                  updateConfig('dining', { enablePerSeatOrdering: v })
                 }
               />
             </View>
@@ -455,9 +381,9 @@ const DiningRoomScreen = () => {
                 </Text>
               </View>
               <Switch
-                checked={settings.enableCoursing}
+                checked={enableCoursing}
                 onCheckedChange={(v) =>
-                  settings.updateDiningSettings({ enableCoursing: v })
+                  updateConfig('dining', { enableCoursing: v })
                 }
               />
             </View>
@@ -517,24 +443,24 @@ const DiningRoomScreen = () => {
                   </Text>
                 </View>
                 <Switch
-                  checked={settings.defaultSittingTimeMinutes > 0}
+                  checked={defaultSittingTimeMinutes > 0}
                   onCheckedChange={(v) =>
-                    settings.setDefaultSittingTimeMinutes(v ? 60 : 0)
+                    updateConfig('dining', { defaultSittingTimeMinutes: v ? 60 : 0 })
                   }
                 />
               </View>
 
-              {settings.defaultSittingTimeMinutes > 0 && (
+              {defaultSittingTimeMinutes > 0 && (
                 <View>
                   <Text style={labelStyle}>Duration (minutes)</Text>
                   <TextInput
                     style={inputStyle}
-                    value={settings.defaultSittingTimeMinutes.toString()}
+                    value={defaultSittingTimeMinutes.toString()}
                     onChangeText={(v) => {
                       const val = parseInt(v);
-                      settings.setDefaultSittingTimeMinutes(
-                        isNaN(val) ? 0 : val,
-                      );
+                      updateConfig('dining', {
+                        defaultSittingTimeMinutes: isNaN(val) ? 0 : val,
+                      });
                     }}
                     keyboardType="numeric"
                   />
@@ -550,11 +476,9 @@ const DiningRoomScreen = () => {
                 </Text>
               </View>
               <Switch
-                checked={settings.autoUpdateTableStatus}
+                checked={autoUpdateTableStatus}
                 onCheckedChange={(v) =>
-                  settings.updateDiningSettings({
-                    autoUpdateTableStatus: v,
-                  })
+                  updateConfig('dining', { autoUpdateTableStatus: v })
                 }
               />
             </View>

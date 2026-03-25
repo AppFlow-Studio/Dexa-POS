@@ -13,6 +13,7 @@ import { recordDrawerOperation } from "@/services/cashDrawerService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import React, { useCallback, useState } from "react";
@@ -43,7 +44,7 @@ const NoSaleModal: React.FC<NoSaleModalProps> = ({ isOpen, onClose }) => {
 
   const loggedInEmployee = useEmployeeStore((s) => s.loggedInEmployee);
 
-  const cashDrawerSettings = useStoreSettingsStore((s) => s.cashDrawerSettings);
+  const cashDrawerSettings = useLocationConfigStore((s) => s.config.cashDrawer);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
 

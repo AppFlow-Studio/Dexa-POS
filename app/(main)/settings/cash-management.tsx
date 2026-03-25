@@ -13,6 +13,7 @@ import { colors } from "@/lib/theme";
 import { hydrateDrawerSession } from "@/services/cashDrawerService";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { Station } from "@/types/station";
 import { formatCurrency } from "@/utils/currency";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,10 +52,10 @@ interface CashDrawerRow {
 
 export default function CashManagementScreen() {
   const supabase = useSupabaseClient();
-  const cashDrawerSettings = useStoreSettingsStore((s) => s.cashDrawerSettings);
-  const updateCashDrawerSettings = useStoreSettingsStore(
-    (s) => s.updateCashDrawerSettings
-  );
+  const cashDrawerSettings = useLocationConfigStore((s) => s.config.cashDrawer);
+  const _updateConfig = useLocationConfigStore((s) => s.updateConfig);
+  const updateCashDrawerSettings = (partial: Partial<typeof cashDrawerSettings>) =>
+    _updateConfig('cashDrawer', partial);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
 

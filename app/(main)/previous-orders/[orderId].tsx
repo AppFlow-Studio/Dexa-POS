@@ -16,20 +16,18 @@ import TipAdjustSheet, {
   TipAdjustSheetRef,
 } from "@/components/previous-orders/detail/TipAdjustSheet";
 import { useToast } from "@/contexts/ToastContext";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  useCloseCheck,
+  useReopenCheck,
+  useVoidOrder,
+} from "@/hooks/orders/useOrderActions";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { previousOrderToOrderProfile } from "@/utils/previousOrderMapper";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { colors } from "@/lib/theme";
 import { Clock, CreditCard, Receipt, RotateCcw } from "lucide-react-native";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   InteractionManager,
   Pressable,
@@ -53,25 +51,49 @@ const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
 const OrderDetailsScreen = () => {
   const router = useRouter();
   const { orderId } = useLocalSearchParams();
-  const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore();
-  const order = getOrderById(orderId as string);
-  const supabaseClient = useSupabaseClient();
+  const orderIdParam = String(orderId ?? "");
+  const order = usePreviousOrdersStore((s) => s.getOrderById(orderIdParam));
+  const refreshPreviousOrders = usePreviousOrdersStore(
+    (s) => s.refreshPreviousOrders,
+  );
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const { show } = useToast();
+  const closeCheckMutation = useCloseCheck();
+  const reopenCheckMutation = useReopenCheck();
+  const voidOrderMutation = useVoidOrder();
 
   const [activeTab, setActiveTab] = useState<TabType>("bill");
   const [isReady, setIsReady] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
 
   const refundModalRef = useRef<AdvancedRefundModalRef>(null);
   const tipAdjustRef = useRef<TipAdjustSheetRef>(null);
 
-  const mappedOrder = useMemo(
-    () => (order ? previousOrderToOrderProfile(order) : null),
-    [order],
-  );
+  // Ensure history is loaded (cold start / deep link) before not-found
+  useEffect(() => {
+    if (!orderIdParam) {
+      setHistoryHydrated(true);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!usePreviousOrdersStore.getState().getOrderById(orderIdParam)) {
+          await usePreviousOrdersStore
+            .getState()
+            .refreshPreviousOrders({ force: true });
+        }
+      } finally {
+        if (!cancelled) setHistoryHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orderIdParam]);
 
   // Deferred rendering for smooth navigation
   useEffect(() => {
@@ -84,19 +106,20 @@ const OrderDetailsScreen = () => {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await refreshPreviousOrders();
+      await refreshPreviousOrders({ force: true });
     } finally {
       setIsRefreshing(false);
     }
   }, [refreshPreviousOrders]);
 
   const handleReopen = useCallback(() => {
-    show({ title: "Info", message: "Re-open order is not yet implemented" });
-  }, [show]);
+    if (!order?.db_order_id) return;
+    reopenCheckMutation.mutate({ dbOrderId: order.db_order_id });
+  }, [order?.db_order_id, reopenCheckMutation]);
 
-  const handleAddToBill = useCallback(() => {
-    show({ title: "Info", message: "Add to current bill is not yet implemented" });
-  }, [show]);
+  if (!historyHydrated) {
+    return <OrderDetailSkeleton />;
+  }
 
   // Not-found state
   if (!order) {
@@ -106,7 +129,7 @@ const OrderDetailsScreen = () => {
           Order Not Found
         </Text>
         <Text className="text-xl text-gray-400 mb-1.5">
-          Looking for: {orderId}
+          Looking for: {orderIdParam}
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -122,6 +145,8 @@ const OrderDetailsScreen = () => {
   if (!isReady) {
     return <OrderDetailSkeleton />;
   }
+
+  const profileOrder = previousOrderToOrderProfile(order);
 
   return (
     <View className="flex-1 bg-screen">
@@ -175,7 +200,9 @@ const OrderDetailsScreen = () => {
               {activeTab === "bill" && <BillTab order={order} />}
               {activeTab === "payments" && <PaymentsTab order={order} />}
               {activeTab === "refunds" && <RefundsTab order={order} />}
-              {activeTab === "timeline" && <TimelineTab order={order} />}
+              {activeTab === "timeline" && (
+                <TimelineTab order={profileOrder} />
+              )}
             </Animated.View>
           </ScrollView>
         </View>
@@ -196,13 +223,25 @@ const OrderDetailsScreen = () => {
 
           <Animated.View entering={FadeIn.duration(300).delay(300)}>
             <ActionsPanel
-              order={order}
+              order={profileOrder}
               onRefund={() => refundModalRef.current?.open()}
               onTipAdjust={() => tipAdjustRef.current?.open()}
               onPrint={() => setShowPrintModal(true)}
               onReopen={handleReopen}
-              onAddToBill={handleAddToBill}
+              onCloseCheck={() => {
+                if (!profileOrder.db_order_id) return;
+                closeCheckMutation.mutate(profileOrder.db_order_id);
+              }}
+              onVoidOrder={() => {
+                if (!profileOrder.db_order_id) return;
+                voidOrderMutation.mutate({
+                  dbOrderId: profileOrder.db_order_id,
+                });
+              }}
               onNotes={() => setShowNotesModal(true)}
+              isClosingCheck={closeCheckMutation.isPending}
+              isReopeningCheck={reopenCheckMutation.isPending}
+              isVoiding={voidOrderMutation.isPending}
             />
           </Animated.View>
         </ScrollView>
@@ -212,26 +251,22 @@ const OrderDetailsScreen = () => {
       <AdvancedRefundModal
         ref={refundModalRef}
         onClose={() => {}}
-        order={order}
+        order={profileOrder}
       />
 
-      <TipAdjustSheet
-        ref={tipAdjustRef}
-        order={order}
-        supabaseClient={supabaseClient}
-      />
+      <TipAdjustSheet ref={tipAdjustRef} order={profileOrder} />
 
       <PrintReceiptModal
         isOpen={showPrintModal}
         onClose={() => setShowPrintModal(false)}
-        order={mappedOrder}
+        order={profileOrder}
         location={selectedStore}
       />
 
       <OrderNotesModal
         isOpen={showNotesModal}
         onClose={() => setShowNotesModal(false)}
-        order={mappedOrder}
+        order={profileOrder}
       />
     </View>
   );

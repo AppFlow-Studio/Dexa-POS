@@ -8,6 +8,7 @@ import { getCachedCapabilities } from "@/services/hardware/deviceDetection";
 import { CFDController } from "@/services/cfd/CFDController";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import type {
@@ -140,8 +141,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const organizationLogoUrl = useStoreSettingsStore(
     (s) => s.organizationLogoUrl
   );
-  const tipPresetPercentages = useStoreSettingsStore(
-    (s) => s.tipPresetPercentages
+  const tipPresetPercentages = useLocationConfigStore(
+    (s) => s.config.tips.presetPercentages
   );
 
   // Order store selectors - Individual selectors for stability

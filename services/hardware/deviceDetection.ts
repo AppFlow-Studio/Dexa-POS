@@ -698,10 +698,11 @@ export async function verifyDejavooPrinter(
 function findMatchingStarPrinter(
   printers: PrinterConfig[],
   locationId: string,
+  stationId: string,
   discovered: DiscoveredStarPrinter,
 ): PrinterConfig | null {
   const candidates = printers.filter(
-    (p) => p.printerType === "star_micronics" && p.locationId === locationId,
+    (p) => p.printerType === "star_micronics" && p.locationId === locationId && p.stationId === stationId,
   );
 
   // Tier 1: MAC address match (most reliable — identifies physical device regardless of IP)
@@ -740,7 +741,7 @@ export async function provisionStarPrinter(
 
   // 1. Local match — search the Zustand store (MMKV-persisted, already loaded)
   if (storePrinters.length > 0) {
-    const localMatch = findMatchingStarPrinter(storePrinters, locationId, discovered);
+    const localMatch = findMatchingStarPrinter(storePrinters, locationId, stationId, discovered);
     if (localMatch) {
       existingId = localMatch.id;
       console.log(`[DeviceDetection] Star printer matched locally: ${existingId}`);
@@ -761,6 +762,7 @@ export async function provisionStarPrinter(
       .from("printers")
       .select("id")
       .eq("location_id", locationId)
+      .eq("station_id", stationId)
       .eq("printer_type", "star_micronics")
       .or(orConditions)
       .limit(1);
