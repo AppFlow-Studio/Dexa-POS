@@ -74,8 +74,8 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                 {displayNumber || "New Order"}
               </Text>
               {paidStatus === "Paid" && (
-                <View className="ml-2 bg-green-600/30 px-1.5 py-0.5 rounded">
-                  <Text className="text-green-400 text-[10px] font-bold">PAID</Text>
+                <View className="ml-2 bg-teal-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-teal-400 text-[10px] font-bold">PAID</Text>
                 </View>
               )}
               {paidStatus === "Partial" && (
@@ -120,6 +120,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                               item={item}
                               isEditable={true}
                               isActive={shouldHighlight}
+                              showPaidBadge={paidStatus !== "Paid"}
                             />
                           </Animated.View>
                         );

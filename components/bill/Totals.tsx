@@ -108,8 +108,8 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       {/* Amount Paid (only show if partial payment made) */}
       {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
         <View className="flex-row justify-between items-center mt-1">
-          <Text className="text-xs text-green-400">Paid</Text>
-          <Text className="text-xs font-medium text-green-400">
+          <Text className="text-xs text-teal-400">Paid</Text>
+          <Text className="text-xs font-medium text-teal-400">
             -${paymentInfo.amountPaid.toFixed(2)}
           </Text>
         </View>
@@ -147,9 +147,9 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
 
       {/* Fully Paid indicator */}
       {paymentInfo.isPaid && (
-        <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-green-600/50">
-          <Text className="text-xs font-bold text-green-400">Fully Paid</Text>
-          <Text className="text-xs font-bold text-green-400">✓</Text>
+        <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-teal-600/50">
+          <Text className="text-xs font-bold text-teal-400">Fully Paid</Text>
+          <Text className="text-xs font-bold text-teal-400">✓</Text>
         </View>
       )}
     </View>

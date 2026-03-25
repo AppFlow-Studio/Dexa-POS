@@ -343,14 +343,9 @@ const OrderDetailsComponent: React.FC = () => {
       {/* Status Badge Row - skip for draft orders with no payments */}
       {(orderStatus !== "draft" || hasAnyPayments) && (
         <View className="flex-row flex-wrap gap-2 mt-2 mb-1 px-1">
-          {paidStatus === "Paid" && !hasRefunds && (
-            <View className="bg-green-600/30 px-2 py-0.5 rounded">
-              <Text className="text-green-400 text-xs font-bold">✓ PAID</Text>
-            </View>
-          )}
           {paidStatus === "Paid" && hasRefunds && (
             <View className="bg-amber-600/30 px-2 py-0.5 rounded">
-              <Text className="text-amber-400 text-xs font-bold">⚠ PAID (With Refunds)</Text>
+              <Text className="text-amber-400 text-xs font-bold">⚠ With Refunds</Text>
             </View>
           )}
           {paidStatus === "Partial" && (

@@ -3,7 +3,7 @@ import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { formatOrderStatus } from "@/utils/orderStatusHelpers";
-import { ArrowUpRight, Archive, RefreshCcw, Repeat2, CreditCard } from "lucide-react-native";
+import { ArrowUpRight, Archive, RefreshCcw, Repeat2, CreditCard, Globe } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -109,11 +109,18 @@ const OrderCard: React.FC<OrderCardProps> = ({
       };
     }, [order.total_amount, order.amount_due, order.cash_amount_due, order.payments]);
 
+  const isOnlineOrder = order.order_source === "online";
   const isUnpaid = order.paid_status !== "Paid";
   return (
-    <View className="p-3 rounded-2xl border w-72 mr-4" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+    <View
+      className="p-3 rounded-2xl border w-72 mr-4"
+      style={{
+        backgroundColor: colors.card,
+        borderColor: isOnlineOrder ? "rgba(59,130,246,0.5)" : colors.border,
+      }}
+    >
       {/* Status chips */}
-      <View className="flex-row items-center gap-2">
+      <View className="flex-row items-center gap-2 flex-wrap">
         <View className="flex-row items-center px-2.5 py-1 rounded-full bg-surface">
           <View className="w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: orderDotColor }} />
           <Text className="text-sm font-medium text-gray-300">
@@ -130,6 +137,12 @@ const OrderCard: React.FC<OrderCardProps> = ({
           <View className="flex-row items-center px-2.5 py-1 rounded-full bg-surface">
             <View className="w-2 h-2 rounded-full mr-1.5 bg-gray-500" />
             <Text className="text-sm font-medium text-gray-300">Closed</Text>
+          </View>
+        )}
+        {order.order_source === "online" && (
+          <View className="flex-row items-center px-2.5 py-1 rounded-full" style={{ backgroundColor: "rgba(59,130,246,0.15)", borderWidth: 1, borderColor: "rgba(59,130,246,0.4)" }}>
+            <Globe color="#60a5fa" size={11} />
+            <Text className="text-xs font-semibold ml-1" style={{ color: "#60a5fa" }}>Online</Text>
           </View>
         )}
       </View>
