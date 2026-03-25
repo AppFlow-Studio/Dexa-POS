@@ -397,7 +397,7 @@ export default function CashManagementScreen () {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 12 }}
         >
-          {/* ── Cash Register Assignment ── */}
+          {/* ── Stations & Devices ── */}
           <View
             style={{
               backgroundColor: colors.panel,
@@ -409,7 +409,7 @@ export default function CashManagementScreen () {
             }}
           >
             {renderSectionHeader(
-              'Cash Register Assignment',
+              'Stations & Devices',
               <Monitor size={14} color={colors.teal} />,
               'assignment'
             )}
@@ -461,11 +461,11 @@ export default function CashManagementScreen () {
                       <View
                         key={station.id}
                         style={{
-                          marginBottom: 6,
+                          marginBottom: 8,
                           borderRadius: 10,
                           borderWidth: 1,
                           borderColor: isCurrentStation
-                            ? colors.teal + '40'
+                            ? colors.teal + '50'
                             : colors.border,
                           overflow: 'hidden'
                         }}
@@ -476,13 +476,13 @@ export default function CashManagementScreen () {
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             paddingHorizontal: 12,
-                            paddingVertical: 9,
+                            paddingVertical: 8,
                             backgroundColor: isCurrentStation
                               ? colors.teal + '10'
                               : colors.screen
                           }}
                         >
-                          <View style={{ flex: 1 }}>
+                          <View style={{ flex: 1, paddingRight: 8 }}>
                             <View
                               style={{
                                 flexDirection: 'row',
@@ -493,7 +493,7 @@ export default function CashManagementScreen () {
                               <Text
                                 style={{
                                   fontSize: 13,
-                                  fontWeight: '600',
+                                  fontWeight: '700',
                                   color: colors.heading
                                 }}
                               >
@@ -503,16 +503,18 @@ export default function CashManagementScreen () {
                                 <View
                                   style={{
                                     backgroundColor: colors.teal + '20',
+                                    borderWidth: 1,
+                                    borderColor: colors.teal + '40',
                                     paddingHorizontal: 5,
                                     paddingVertical: 1,
-                                    borderRadius: 4
+                                    borderRadius: 20
                                   }}
                                 >
                                   <Text
                                     style={{
-                                      fontSize: 9,
+                                      fontSize: 10,
                                       color: colors.teal,
-                                      fontWeight: '700'
+                                      fontWeight: '600'
                                     }}
                                   >
                                     Active
@@ -523,7 +525,7 @@ export default function CashManagementScreen () {
                             <Text
                               style={{
                                 fontSize: 10,
-                                color: colors.muted,
+                                color: colors.label,
                                 marginTop: 0.5,
                                 textTransform: 'capitalize'
                               }}
@@ -540,9 +542,9 @@ export default function CashManagementScreen () {
                                 gap: 4,
                                 backgroundColor: colors.teal + '15',
                                 borderWidth: 1,
-                                borderColor: colors.teal + '40',
-                                paddingHorizontal: 8,
-                                paddingVertical: 5,
+                                borderColor: colors.teal + '50',
+                                paddingHorizontal: 10,
+                                paddingVertical: 4,
                                 borderRadius: 8
                               }}
                             >
@@ -569,8 +571,8 @@ export default function CashManagementScreen () {
                                 backgroundColor: colors.screen,
                                 borderWidth: 1,
                                 borderColor: colors.border,
-                                paddingHorizontal: 8,
-                                paddingVertical: 5,
+                                paddingHorizontal: 10,
+                                paddingVertical: 4,
                                 borderRadius: 8
                               }}
                             >
@@ -589,7 +591,7 @@ export default function CashManagementScreen () {
                             style={{
                               flexDirection: 'row',
                               alignItems: 'center',
-                              gap: 5,
+                              justifyContent: 'space-between',
                               paddingHorizontal: 12,
                               paddingVertical: 6,
                               backgroundColor: colors.screen,
@@ -597,12 +599,45 @@ export default function CashManagementScreen () {
                               borderTopColor: colors.border
                             }}
                           >
-                            <Banknote size={10} color={colors.teal} />
-                            <Text style={{ fontSize: 10, color: colors.label }}>
-                              {assignedDrawer.device_catalog
-                                ? `${assignedDrawer.device_catalog.manufacturer} ${assignedDrawer.device_catalog.model_name}`
-                                : 'No hardware'}
-                            </Text>
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 5,
+                                flex: 1
+                              }}
+                            >
+                              <Banknote size={10} color={colors.teal} />
+                              <Text
+                                style={{ fontSize: 10, color: colors.label }}
+                                numberOfLines={1}
+                              >
+                                {assignedDrawer.device_catalog
+                                  ? `${assignedDrawer.device_catalog.manufacturer} ${assignedDrawer.device_catalog.model_name}`
+                                  : 'No hardware'}
+                              </Text>
+                            </View>
+                            <View
+                              style={{
+                                backgroundColor: colors.teal + '15',
+                                borderWidth: 1,
+                                borderColor: colors.teal + '40',
+                                borderRadius: 20,
+                                paddingHorizontal: 7,
+                                paddingVertical: 2,
+                                marginLeft: 8
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  color: colors.teal,
+                                  fontWeight: '600'
+                                }}
+                              >
+                                Connected
+                              </Text>
+                            </View>
                           </View>
                         )}
                       </View>
@@ -1004,7 +1039,7 @@ export default function CashManagementScreen () {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 paddingHorizontal: 14,
-                paddingVertical: 11,
+                paddingVertical: 10,
                 borderBottomWidth: 1,
                 borderBottomColor: colors.border
               }}
@@ -1017,11 +1052,11 @@ export default function CashManagementScreen () {
                     color: colors.heading
                   }}
                 >
-                  Assign Cash Drawer
+                  Assign Device
                 </Text>
                 {assigningStation && (
                   <Text
-                    style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}
+                    style={{ fontSize: 10, color: colors.label, marginTop: 1 }}
                   >
                     {assigningStation.station_name}
                   </Text>
@@ -1071,13 +1106,13 @@ export default function CashManagementScreen () {
                       style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        marginBottom: 6,
+                        marginBottom: 8,
                         paddingHorizontal: 12,
-                        paddingVertical: 10,
+                        paddingVertical: 9,
                         borderRadius: 10,
                         borderWidth: 1,
                         borderColor: isAssignedHere
-                          ? colors.teal + '40'
+                          ? colors.teal + '50'
                           : colors.border,
                         backgroundColor: isAssignedHere
                           ? colors.teal + '10'
@@ -1100,7 +1135,7 @@ export default function CashManagementScreen () {
                         <Text
                           style={{
                             fontSize: 10,
-                            color: colors.muted,
+                            color: colors.label,
                             marginTop: 0.5
                           }}
                         >
