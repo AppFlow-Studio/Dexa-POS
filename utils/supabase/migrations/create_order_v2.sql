@@ -53,11 +53,15 @@ BEGIN
 
 
   
-  -- Generate order number
-  v_order_number := public.generate_order_number(p_location_id);
-  
-  -- Generate display number (just the sequence part)
-  v_display_number := '#' || SPLIT_PART(v_order_number, '-', 3);
+  -- Generate order number (per-station when station_id provided)
+  v_order_number := public.generate_order_number(p_location_id, p_station_id);
+
+  -- Generate display number (handles both 3-segment and 4-segment formats)
+  v_display_number := CASE
+    WHEN SPLIT_PART(v_order_number, '-', 4) <> ''
+    THEN '#' || SPLIT_PART(v_order_number, '-', 3) || '-' || SPLIT_PART(v_order_number, '-', 4)
+    ELSE '#' || SPLIT_PART(v_order_number, '-', 3)
+  END;
   
   -- Create the order
   INSERT INTO public.orders (

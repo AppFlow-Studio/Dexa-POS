@@ -59,8 +59,9 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
 
   useImperativeHandle(ref, () => ({
     open: () => {
-      usePreviousOrdersStore.getState().refreshPreviousOrders()
-      bottomSheetRef.current?.snapToIndex(0)
+      // Ensure the previous orders store has data for the refund lookup
+      usePreviousOrdersStore.getState().refreshPreviousOrders({ force: true });
+      bottomSheetRef.current?.snapToIndex(0);
     },
     close: () => bottomSheetRef.current?.close()
   }))

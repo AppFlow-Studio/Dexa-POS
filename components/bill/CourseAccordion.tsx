@@ -3,7 +3,7 @@ import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   FadeIn,
@@ -15,7 +15,7 @@ import Animated, {
   withSequence,
   withSpring,
 } from "react-native-reanimated";
-import { ChevronDown, ChevronRight, Plus, Send } from "lucide-react-native";
+import { ArrowUpToLine, ChevronDown, ChevronRight, Flame, Plus, Send } from "lucide-react-native";
 import { colors } from "@/lib/theme";
 import BillItem from "./BillItem";
 
@@ -29,6 +29,9 @@ interface CourseAccordionProps {
   onPressStartNewCourse: () => void;
   onDoubleTapCourse: (courseId: number) => void;
   onOpenServerSheet?: () => void;
+  onRushCourse?: (courseId: number) => void;
+  onPrioritizeCourse?: (courseId: number) => void;
+  onResendCourse?: (courseId: number) => void;
 }
 
 interface CourseGroupProps {
@@ -39,6 +42,9 @@ interface CourseGroupProps {
   isCurrent: boolean;
   onToggle: (id: number) => void;
   onDoubleTap: (id: number) => void;
+  onRushCourse?: (courseId: number) => void;
+  onPrioritizeCourse?: (courseId: number) => void;
+  onResendCourse?: (courseId: number) => void;
 }
 
 // --- Helpers ---
@@ -72,8 +78,12 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
   isCurrent,
   onToggle,
   onDoubleTap,
+  onRushCourse,
+  onPrioritizeCourse,
+  onResendCourse,
 }) => {
   const scale = useSharedValue(1);
+  const [showActions, setShowActions] = useState(false);
 
   // Header tap animation
   const animatedHeaderStyle = useAnimatedStyle(() => ({
@@ -100,8 +110,6 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
     runOnJS(onToggle)(courseId);
   });
 
-  const composedTap = Gesture.Exclusive(doubleTap, singleTap);
-
   const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   const aggregateStatus = useMemo(
@@ -109,10 +117,20 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
     [items],
   );
 
+  const longPress = Gesture.LongPress()
+    .minDuration(500)
+    .onStart(() => {
+      if (isSent && aggregateStatus && aggregateStatus !== 'served') {
+        runOnJS(setShowActions)(true);
+      }
+    });
+
+  const composedGesture = Gesture.Exclusive(longPress, doubleTap, singleTap);
+
   return (
     <Animated.View layout={LinearTransition.duration(200)} className="mb-1">
       {/* Header — clean minimal row */}
-      <GestureDetector gesture={composedTap}>
+      <GestureDetector gesture={composedGesture}>
         <Animated.View
           style={animatedHeaderStyle}
           className="flex-row items-center justify-between py-3 px-2"
@@ -182,10 +200,66 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
               layout={LinearTransition.duration(150)}
               className="overflow-hidden"
             >
-              <BillItem item={item} isEditable={!isSent && !aggregateStatus} />
+              <BillItem item={item} isEditable={true} />
             </Animated.View>
           ))}
         </Animated.View>
+      )}
+
+      {/* Long-press action menu for sent courses */}
+      {showActions && (
+        <Modal transparent animationType="fade" visible onRequestClose={() => setShowActions(false)}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
+            onPress={() => setShowActions(false)}
+          >
+            <View style={{
+              backgroundColor: colors.panel,
+              borderRadius: 12,
+              padding: 8,
+              width: 220,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 8,
+            }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.heading, paddingHorizontal: 12, paddingVertical: 6 }}>
+                Course {courseId} Actions
+              </Text>
+              {onRushCourse && (
+                <TouchableOpacity
+                  onPress={() => { setShowActions(false); onRushCourse(courseId); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Flame size={16} color={colors.danger} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>Rush Course</Text>
+                </TouchableOpacity>
+              )}
+              {onPrioritizeCourse && (
+                <TouchableOpacity
+                  onPress={() => { setShowActions(false); onPrioritizeCourse(courseId); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <ArrowUpToLine size={16} color="#f59e0b" />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#f59e0b' }}>Prioritize Course</Text>
+                </TouchableOpacity>
+              )}
+              {onResendCourse && (
+                <TouchableOpacity
+                  onPress={() => { setShowActions(false); onResendCourse(courseId); }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <Send size={16} color={colors.teal} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}>Resend Course</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </Pressable>
+        </Modal>
       )}
     </Animated.View>
   );
@@ -201,6 +275,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onPressStartNewCourse,
   onDoubleTapCourse,
   onOpenServerSheet,
+  onRushCourse,
+  onPrioritizeCourse,
+  onResendCourse,
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
   const prevItemCount = useRef<number>(0);
@@ -351,6 +428,9 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                 isCurrent={currentCourse === courseId}
                 onToggle={handleToggleCourse}
                 onDoubleTap={onDoubleTapCourse}
+                onRushCourse={onRushCourse}
+                onPrioritizeCourse={onPrioritizeCourse}
+                onResendCourse={onResendCourse}
               />
             ))
           ) : (

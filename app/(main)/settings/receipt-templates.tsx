@@ -1058,6 +1058,58 @@ function KitchenPreview({
     [config],
   );
 
+  // Sample data used for the preview
+  const grillItems = [
+    {
+      qty: 2,
+      name: "Cheeseburger",
+      mods: ["+ Extra Cheese", "- No Onions"],
+      allergy: "Dairy",
+      seat: 1,
+    },
+    { qty: 1, name: "Veggie Wrap", mods: ["+ Avocado"], allergy: null, seat: 3 },
+  ];
+  const saladItems = [
+    { qty: 1, name: "Caesar Salad", mods: ["+ Grilled Chicken"], allergy: null, seat: 2 },
+  ];
+
+  const renderItem = (
+    item: { qty: number; name: string; mods: string[]; allergy: string | null; seat: number },
+    idx: number,
+  ) => (
+    <View key={idx} className={idx > 0 ? "mt-2" : ""}>
+      <View className="flex-row items-baseline gap-1">
+        {config.groupBySeat && (
+          <Text className="text-zinc-400 text-[9px] font-semibold mr-0.5">
+            S{item.seat}
+          </Text>
+        )}
+        <Text className={itemTextClass}>
+          {item.qty}x {item.name}
+        </Text>
+      </View>
+      {config.showItemModifiers && item.mods.map((m, i) => (
+        <Text key={i} className={modTextClass}>{m}</Text>
+      ))}
+      {config.showAllergyAlert && item.allergy && (
+        <View className="flex-row items-center gap-1 ml-3 mt-0.5">
+          <TriangleAlert size={10} color="#dc2626" />
+          <Text className="text-red-600 font-bold text-[9px]">
+            ALLERGY: {item.allergy}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const StationBanner = ({ label }: { label: string }) => (
+    <View className="bg-gray-200 -mx-4 px-4 py-0.5 mb-1.5">
+      <Text className="text-center font-black text-[10px] uppercase tracking-widest text-black">
+        ▶ {label}
+      </Text>
+    </View>
+  );
+
   return (
     <ReceiptPaper>
       <DraggableFlatList

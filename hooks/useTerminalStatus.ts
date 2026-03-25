@@ -61,8 +61,25 @@ export function useTerminalStatus(
     setErrorMessage(null);
 
     try {
-      // --- Castles branch: lightweight TCP probe ---
+      // --- Castles branch: lightweight probe ---
       if (paymentTerminal.terminal_type === 'castles') {
+        const isUsb = paymentTerminal.connection_type === 'usb';
+
+        if (isUsb) {
+          // USB probe
+          const probe = await probeCastlesTerminal({ connectionType: 'usb' });
+          lastCheckTimeRef.current = now;
+          if (probe.online) {
+            setStatus('online');
+            setErrorMessage(null);
+          } else {
+            setStatus('offline');
+            setErrorMessage(probe.error || 'Castles USB terminal is unreachable');
+          }
+          return;
+        }
+
+        // TCP/WiFi probe
         const host = paymentTerminal.ip_address;
         if (!host) {
           setStatus('offline');

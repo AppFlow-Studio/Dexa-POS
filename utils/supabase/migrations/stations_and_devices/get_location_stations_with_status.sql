@@ -48,7 +48,10 @@ BEGIN
           'terminal_model', pt.terminal_model,
           'is_connected', pt.is_connected,
           'last_connection_status', pt.last_connection_status,
-          'last_connection_test_at', pt.last_connection_test_at
+          'last_connection_test_at', pt.last_connection_test_at,
+          'ip_address', pt.local_ip_address,
+          'port', pt.local_port,
+          'connection_type', pt.connection_type
         ) ELSE null END as payment_terminal
       FROM stations s
       LEFT JOIN station_sessions ss

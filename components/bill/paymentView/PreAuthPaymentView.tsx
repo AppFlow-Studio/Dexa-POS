@@ -8,6 +8,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useOrderPreAuth, useHasActivePreAuth } from "@/stores/selectors/orderSelectors";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { toastService } from "@/lib/toastService";
@@ -47,8 +48,7 @@ const PreAuthPaymentView: React.FC = () => {
   const hasPreAuth = useHasActivePreAuth(orderId);
 
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
-  const preAuthSettings = useStoreSettingsStore((s) => (s as any).preAuthSettings);
-  const defaultAmount = preAuthSettings?.defaultPreAuthAmount ?? 25;
+  const defaultAmount = useLocationConfigStore((s) => s.config.preAuth.defaultAmount);
 
   const supabase = useSupabaseClient();
 

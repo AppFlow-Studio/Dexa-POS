@@ -5,7 +5,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { prefetchMenuItemRemoteImages } from "@/lib/menuImagePrefetch";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -38,6 +39,7 @@ import React, {
 } from "react";
 import {
   FlatList,
+  ListRenderItemInfo,
   Pressable,
   Text,
   TouchableOpacity,
@@ -80,22 +82,8 @@ const imageSourceCache = new WeakMap<
   ReturnType<typeof getImageSourceInternal> | undefined
 >();
 
-const getImageSourceInternal = (item: MenuItemType) => {
-  if (item.image && item.image.length > 200) {
-    return { uri: `data:image/jpeg;base64,${item.image}` };
-  }
-
-  if (item.image) {
-    // Try to get image from assets
-    try {
-      return MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP];
-    } catch {
-      return undefined;
-    }
-  }
-
-  return undefined;
-};
+const getImageSourceInternal = (item: MenuItemType) =>
+  resolveMenuItemImageSource(item.image);
 
 // Get image source with caching
 const getImageSource = (item: MenuItemType) => {
@@ -372,6 +360,7 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
         currentCategoryId,
         activeMenuId,
       );
+      prefetchMenuItemRemoteImages(filteredMenuItems);
     });
     return () => cancelAnimationFrame(id);
   }, [filteredMenuItems, currentCategoryId, activeMenuId]);
@@ -382,21 +371,26 @@ const MenuSectionContent: React.FC<MenuSectionProps> = ({
 
   // OPTIMIZED: Memoized renderItem using hoisted category ID and SpacerItem
   const renderMenuItem = useCallback(
-    ({ item }: { item: MenuItemType }) => {
+    ({ item, index }: ListRenderItemInfo<MenuItemType>) => {
       if ((item as any).name === "spacer") {
         return <SpacerItem />;
       }
+      const highThrough = numColumns * 3;
+      const normalThrough = numColumns * 10;
+      const imagePriority =
+        index < highThrough ? "high" : index < normalThrough ? "normal" : "low";
       return (
         <MenuItem
           item={item}
           imageSource={getImageSource(item)}
+          imagePriority={imagePriority}
           onOrderClosedCheck={onOrderClosedCheck}
           categoryId={currentCategoryId}
           menuId={activeMenuId}
         />
       );
     },
-    [onOrderClosedCheck, currentCategoryId, activeMenuId],
+    [onOrderClosedCheck, currentCategoryId, activeMenuId, numColumns],
   );
 
   const formatTime = (d?: Date | null) =>

@@ -16,6 +16,11 @@ import TipAdjustSheet, {
   TipAdjustSheetRef
 } from '@/components/previous-orders/detail/TipAdjustSheet'
 import { useToast } from '@/contexts/ToastContext'
+import {
+  useCloseCheck,
+  useReopenCheck,
+  useVoidOrder,
+} from '@/hooks/orders/useOrderActions'
 import { colors } from '@/lib/theme'
 import type { PreviousOrder } from '@/lib/types'
 import { useOrderStore } from '@/stores/useOrderStore'
@@ -48,14 +53,19 @@ const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
 const OrderDetailsScreen = () => {
   const router = useRouter()
   const { orderId } = useLocalSearchParams()
+  const orderIdParam = String(orderId ?? '')
   const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore()
 
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const { show } = useToast()
+  const { show: _show } = useToast()
+  const closeCheckMutation = useCloseCheck()
+  const reopenCheckMutation = useReopenCheck()
+  const voidOrderMutation = useVoidOrder()
 
   const [activeTab, setActiveTab] = useState<TabType>('bill')
   const [isReady, setIsReady] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [historyHydrated, setHistoryHydrated] = useState(false)
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [showNotesModal, setShowNotesModal] = useState(false)
   const [order, setOrder] = useState<PreviousOrder | undefined>(undefined)
@@ -88,10 +98,28 @@ const OrderDetailsScreen = () => {
     loadOrder()
   }, [orderId])
 
-  const mappedOrder = useMemo(
-    () => (order ? previousOrderToOrderProfile(order) : null),
-    [order]
-  )
+  // Ensure history is loaded (cold start / deep link) before not-found
+  useEffect(() => {
+    if (!orderIdParam) {
+      setHistoryHydrated(true)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (!usePreviousOrdersStore.getState().getOrderById(orderIdParam)) {
+          await usePreviousOrdersStore
+            .getState()
+            .refreshPreviousOrders({ force: true })
+        }
+      } finally {
+        if (!cancelled) setHistoryHydrated(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [orderIdParam])
 
   // Deferred rendering for smooth navigation
   useEffect(() => {
@@ -104,15 +132,25 @@ const OrderDetailsScreen = () => {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
     try {
-      await refreshPreviousOrders()
+      await refreshPreviousOrders({ force: true })
     } finally {
       setIsRefreshing(false)
     }
   }, [refreshPreviousOrders])
 
   const handleReopen = useCallback(() => {
-    show({ title: 'Info', message: 'Re-open order is not yet implemented' })
-  }, [show])
+    if (!order?.db_order_id) return
+    reopenCheckMutation.mutate({ dbOrderId: order.db_order_id })
+  }, [order?.db_order_id, reopenCheckMutation])
+
+  const mappedOrder = useMemo(
+    () => (order ? previousOrderToOrderProfile(order) : null),
+    [order]
+  )
+
+  if (!historyHydrated) {
+    return <OrderDetailSkeleton />
+  }
 
   // Not-found state
   if (!order) {
@@ -299,6 +337,8 @@ const OrderDetailsScreen = () => {
     return <OrderDetailSkeleton />
   }
 
+  const profileOrder = previousOrderToOrderProfile(order)
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
       <OrderDetailHeader order={order} onBack={() => router.back()} />
@@ -406,28 +446,27 @@ const OrderDetailsScreen = () => {
           </Animated.View>
 
           <Animated.View entering={FadeIn.duration(300).delay(300)}>
-            {mappedOrder && (
-              <ActionsPanel
-                order={mappedOrder}
-                onRefund={() => refundModalRef.current?.open()}
-                onTipAdjust={() => tipAdjustRef.current?.open()}
-                onPrint={() => setShowPrintModal(true)}
-                onReopen={handleReopen}
-                onNotes={() => setShowNotesModal(true)}
-                onCloseCheck={() =>
-                  show({
-                    title: 'Info',
-                    message: 'Close check is not yet implemented'
-                  })
-                }
-                onVoidOrder={() =>
-                  show({
-                    title: 'Info',
-                    message: 'Void order is not yet implemented'
-                  })
-                }
-              />
-            )}
+            <ActionsPanel
+              order={profileOrder}
+              onRefund={() => refundModalRef.current?.open()}
+              onTipAdjust={() => tipAdjustRef.current?.open()}
+              onPrint={() => setShowPrintModal(true)}
+              onReopen={handleReopen}
+              onCloseCheck={() => {
+                if (!profileOrder.db_order_id) return
+                closeCheckMutation.mutate(profileOrder.db_order_id)
+              }}
+              onVoidOrder={() => {
+                if (!profileOrder.db_order_id) return
+                voidOrderMutation.mutate({
+                  dbOrderId: profileOrder.db_order_id,
+                })
+              }}
+              onNotes={() => setShowNotesModal(true)}
+              isClosingCheck={closeCheckMutation.isPending}
+              isReopeningCheck={reopenCheckMutation.isPending}
+              isVoiding={voidOrderMutation.isPending}
+            />
           </Animated.View>
         </ScrollView>
       </View>
@@ -436,22 +475,22 @@ const OrderDetailsScreen = () => {
       <AdvancedRefundModal
         ref={refundModalRef}
         onClose={() => {}}
-        order={mappedOrder}
+        order={profileOrder}
       />
 
-      <TipAdjustSheet ref={tipAdjustRef} order={mappedOrder} />
+      <TipAdjustSheet ref={tipAdjustRef} order={profileOrder} />
 
       <PrintReceiptModal
         isOpen={showPrintModal}
         onClose={() => setShowPrintModal(false)}
-        order={mappedOrder}
+        order={profileOrder}
         location={selectedStore}
       />
 
       <OrderNotesModal
         isOpen={showNotesModal}
         onClose={() => setShowNotesModal(false)}
-        order={mappedOrder}
+        order={profileOrder}
       />
     </View>
   )

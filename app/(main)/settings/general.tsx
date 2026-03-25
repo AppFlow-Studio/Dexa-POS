@@ -745,6 +745,63 @@ const GeneralSettingsScreen = () => {
                     {displayPhone}
                   </Text>
                 </View>
+                <Switch checked={showMenuImages} onCheckedChange={setShowMenuImages} />
+              </View>
+
+              {/* Theme: coming soon placeholder */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingVertical: 10,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text style={{ fontSize: 13, color: colors.heading, fontWeight: "500" }}>App Theme</Text>
+                    <View
+                      style={{
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        backgroundColor: colors.card,
+                        borderRadius: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, color: colors.muted }}>Coming Soon</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                    Choose between Dark and Light mode
+                  </Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "500" }}>Dark</Text>
+                  </View>
+                  <View
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor: "transparent",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      borderRadius: 8,
+                      opacity: 0.4,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.label }}>Light</Text>
+                  </View>
+                </View>
               </View>
             </View>
           )}

@@ -179,6 +179,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
   const isKitchenItem =
     item.kitchen_status === "sent" ||
+    item.kitchen_status === "preparing" ||
     item.kitchen_status === "ready" ||
     item.kitchen_status === "served";
 

@@ -70,6 +70,7 @@ interface TimeclockState {
   startBreak: () => void;
   endBreak: (employeeId: string) => void;
   clockOut: (employeeId: string) => void;
+  forceClockOutAll: () => void;
   getSession: (employeeId: string) => ShiftSession | undefined;
   checkEmployeeInShift: (employeeId: string) => boolean;
 
@@ -334,6 +335,92 @@ export const useTimeclockStore = create<TimeclockState>()(
         toastService.show({
           title: "Clocked Out",
           message: "You have been successfully clocked out.",
+          type: "success",
+        });
+      },
+
+      forceClockOutAll: () => {
+        const { sessions, activeEmployeeId } = get();
+        const allIds = Object.keys(sessions);
+        if (allIds.length === 0) return;
+
+        const clockOutTime = new Date();
+        const newHistoryEntries: ShiftHistoryEntry[] = [];
+
+        const { useEmployeeStore } = require("./useEmployeeStore") as {
+          useEmployeeStore: typeof import("./useEmployeeStore").useEmployeeStore;
+        };
+        const { usePtoStore } = require("./usePtoStore") as {
+          usePtoStore: typeof import("./usePtoStore").usePtoStore;
+        };
+        const ptoAccrualRate = useStoreSettingsStore.getState().ptoAccrualRate;
+
+        for (const employeeId of allIds) {
+          const session = sessions[employeeId];
+          if (!session) continue;
+
+          let totalDurationMs =
+            clockOutTime.getTime() - session.clockInTime.getTime();
+          if (session.breakStartTime && session.breakEndTime) {
+            totalDurationMs -=
+              session.breakEndTime.getTime() -
+              session.breakStartTime.getTime();
+          }
+          const totalPaidDurationHours = Math.max(
+            0,
+            totalDurationMs / (1000 * 60 * 60)
+          );
+
+          const employee = useEmployeeStore
+            .getState()
+            .employees.find((e) => e.id === employeeId);
+
+          const historyEntry: ShiftHistoryEntry = {
+            id: `shift_${Date.now()}_${employeeId}`,
+            employeeId,
+            date: session.clockInTime.toLocaleDateString(),
+            role: employee?.role || "employee",
+            clockIn: session.clockInTime.toISOString(),
+            breakInitiated: session.breakStartTime?.toISOString() ?? "N/A",
+            breakEnded: session.breakEndTime?.toISOString() ?? "N/A",
+            clockOut: clockOutTime.toISOString(),
+            duration: `${totalPaidDurationHours.toFixed(2)}h`,
+          };
+          newHistoryEntries.push(historyEntry);
+
+          try {
+            const ptoEarned = totalPaidDurationHours * ptoAccrualRate;
+            if (ptoEarned > 0) {
+              const ptoEntry: PTOAccrualEntry = {
+                date: historyEntry.date,
+                hoursWorked: totalPaidDurationHours,
+                ptoEarned,
+                accrualRateUsed: ptoAccrualRate,
+                shiftId: historyEntry.id,
+                employeeId,
+              };
+              usePtoStore.getState().recordPtoAccrual(ptoEntry);
+            }
+          } catch {}
+
+          useEmployeeStore.getState().clockOut(employeeId);
+          if (activeEmployeeId === employeeId) {
+            useEmployeeStore.getState().signOut();
+          }
+        }
+
+        set((state) => {
+          state.sessions = {};
+          state.activeEmployeeId = null;
+          state.shiftHistory = [
+            ...newHistoryEntries,
+            ...state.shiftHistory,
+          ];
+        });
+
+        toastService.show({
+          title: "All Shifts Ended",
+          message: `${allIds.length} staff member${allIds.length > 1 ? "s" : ""} clocked out.`,
           type: "success",
         });
       },

@@ -1,4 +1,4 @@
-import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useEffect, useState } from "react";
 
 /**
@@ -9,7 +9,7 @@ export function useTableDuration(
   openedAt: string | null | undefined,
   isActive: boolean,
 ): { duration: string; isOvertime: boolean } {
-  const { defaultSittingTimeMinutes } = useSettingsStore();
+  const defaultSittingTimeMinutes = useLocationConfigStore((s) => s.config.dining.defaultSittingTimeMinutes);
   const [duration, setDuration] = useState("");
   const [isOvertime, setIsOvertime] = useState(false);
 

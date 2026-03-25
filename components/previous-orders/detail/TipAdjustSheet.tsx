@@ -10,7 +10,7 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
 import { useQueryClient } from '@tanstack/react-query'
-import { CreditCard } from 'lucide-react-native'
+import { CreditCard, Lock } from 'lucide-react-native'
 import React, {
   forwardRef,
   useCallback,
@@ -330,36 +330,52 @@ const PaymentOption = ({
   payment: OrderProfilePayment
   index: number
   onSelect: () => void
-}) => (
-  <TouchableOpacity
-    onPress={onSelect}
-    activeOpacity={0.7}
-    style={{
-      backgroundColor: colors.panel,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'center'
-    }}
-  >
-    <CreditCard color={colors.label} size={20} />
-    <View style={{ flex: 1, marginLeft: 10 }}>
-      <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>
-        Payment #{index + 1} — {payment.cardBrand || 'Card'}{' '}
-        {payment.last4 ? `••${payment.last4}` : ''}
-      </Text>
-      <Text style={{ fontSize: 12, color: colors.label }}>
-        ${payment.amount.toFixed(2)} + ${payment.tip_amount.toFixed(2)} tip
-      </Text>
-    </View>
-    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: '600' }}>
-      Adjust
-    </Text>
-  </TouchableOpacity>
-)
+}) => {
+  const isSettled = payment.is_settled === true
+
+  return (
+    <TouchableOpacity
+      onPress={isSettled ? undefined : onSelect}
+      activeOpacity={isSettled ? 1 : 0.7}
+      style={{
+        backgroundColor: colors.panel,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: isSettled ? colors.border : colors.border,
+        flexDirection: 'row',
+        alignItems: 'center',
+        opacity: isSettled ? 0.6 : 1
+      }}
+    >
+      {isSettled ? (
+        <Lock color={colors.muted} size={20} />
+      ) : (
+        <CreditCard color={colors.label} size={20} />
+      )}
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: isSettled ? colors.muted : colors.heading }}>
+          Payment #{index + 1} — {payment.cardBrand || 'Card'}{' '}
+          {payment.last4 ? `••${payment.last4}` : ''}
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.label }}>
+          ${payment.amount.toFixed(2)} + ${payment.tip_amount.toFixed(2)} tip
+        </Text>
+        {isSettled && (
+          <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+            Settled — tip cannot be adjusted
+          </Text>
+        )}
+      </View>
+      {isSettled ? (
+        <Text style={{ fontSize: 12, color: colors.muted, fontWeight: '600' }}>Settled</Text>
+      ) : (
+        <Text style={{ fontSize: 12, color: colors.teal, fontWeight: '600' }}>Adjust</Text>
+      )}
+    </TouchableOpacity>
+  )
+}
 
 const AdvancedTipAdjustSheet = forwardRef(TipAdjustSheetComponent)
 AdvancedTipAdjustSheet.displayName = 'TipAdjustSheet'

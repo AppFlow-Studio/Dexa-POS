@@ -69,6 +69,9 @@ interface KDSState {
   // Priority tracking (local-only)
   prioritizedTicketIds: Set<string>;
 
+  // New order positioning
+  newOrderPosition: 'left' | 'right';
+
   // Actions
   fetchKDSDisplay: (stationId: string) => Promise<void>;
   fetchTickets: (locationId: string) => Promise<void>;
@@ -102,6 +105,9 @@ interface KDSState {
   selectAllVisible: (ids: string[]) => void;
   clearSelection: () => void;
   bulkAdvanceTickets: (ticketIds: string[], locationId: string) => void;
+
+  // Config
+  setNewOrderPosition: (pos: 'left' | 'right') => void;
 
   // Cleanup (for unmount)
   _cleanup: () => void;
@@ -191,36 +197,88 @@ interface PendingAction {
 const _pendingActions = new Map<string, PendingAction>();
 const PENDING_ACTION_TTL = 30_000;
 
+/** Track ticket IDs that have been recalled — survives server refetches */
+const _recalledTicketIds = new Set<string>();
+
 /** Overlay pending optimistic states onto server/broadcast tickets */
 function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
-  if (_pendingActions.size === 0) return tickets;
+  if (_pendingActions.size === 0 && _recalledTicketIds.size === 0) return tickets;
   const now = Date.now();
 
   return tickets.reduce<KDSTicket[]>((acc, ticket) => {
     const pending = _pendingActions.get(ticket.ticket_id);
     if (!pending) {
-      acc.push(ticket);
+      // Still overlay recalled flag even without pending action
+      if (_recalledTicketIds.has(ticket.ticket_id)) {
+        acc.push({
+          ...ticket,
+          items: ticket.items.map((item) => ({ ...item, recalled: true })),
+        });
+      } else {
+        acc.push(ticket);
+      }
       return acc;
     }
     if (now - pending.timestamp > PENDING_ACTION_TTL) {
       _pendingActions.delete(ticket.ticket_id);
-      acc.push(ticket);
+      if (_recalledTicketIds.has(ticket.ticket_id)) {
+        acc.push({
+          ...ticket,
+          items: ticket.items.map((item) => ({ ...item, recalled: true })),
+        });
+      } else {
+        acc.push(ticket);
+      }
       return acc;
     }
     // Ticket was optimistically served/removed — keep it out
     if (pending.targetStatus === "done") return acc;
-    // Overlay optimistic statuses (and preserve pending priority flag)
+    // Overlay optimistic statuses (and preserve pending priority flag + recalled)
+    const isRecalled = _recalledTicketIds.has(ticket.ticket_id);
     acc.push({
       ...ticket,
       status: pending.targetStatus as KDSTicket["status"],
       ...(pending.prioritized != null ? { prioritized: pending.prioritized } : {}),
       items: ticket.items.map((item) => {
         const optimistic = pending.itemStatuses.get(item.id);
-        return optimistic ? { ...item, kitchen_status: optimistic } : item;
+        return {
+          ...item,
+          ...(optimistic ? { kitchen_status: optimistic } : {}),
+          ...(isRecalled ? { recalled: true } : {}),
+        };
       }),
     });
     return acc;
   }, []);
+}
+
+/** Parse a timestamp string to epoch ms, treating timezone-naive strings as UTC.
+ *  Supabase stores timestamps in UTC; JSONB serialization of TIMESTAMP columns
+ *  may strip timezone info, causing local-time parse on the client. */
+function safeParseUtcTimestamp(s: string | null | undefined): number {
+  if (!s) return 0;
+  // If no timezone indicator, append 'Z' to force UTC parse
+  const hasTimezone = s.includes('+') || s.includes('Z') || /\d{2}:\d{2}$/.test(s.slice(-6));
+  const normalized = hasTimezone ? s : s + 'Z';
+  const ms = new Date(normalized).getTime();
+  return isNaN(ms) ? 0 : ms;
+}
+
+/** Ensure ticket.prioritized matches prioritizedTicketIds (the source of truth).
+ *  Reuses object refs for unchanged tickets to preserve reference stability. */
+function reconcilePriorityFlags(
+  tickets: KDSTicket[],
+  prioritizedIds: Set<string>,
+): KDSTicket[] {
+  if (prioritizedIds.size === 0) return tickets;
+  let changed = false;
+  const result = tickets.map(t => {
+    const shouldBe = prioritizedIds.has(t.ticket_id);
+    if (t.prioritized === shouldBe) return t;
+    changed = true;
+    return { ...t, prioritized: shouldBe };
+  });
+  return changed ? result : tickets;
 }
 
 /** KDS-relevant kitchen statuses */
@@ -295,7 +353,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
   for (const [key, roundItems] of byRound) {
     const courseNumber = roundItems[0].course_number ?? 1;
     const fireTime = roundItems[0].fire_time ?? null;
-    const fireTimeMs = fireTime ? new Date(fireTime).getTime() : 0;
+    const fireTimeMs = safeParseUtcTimestamp(fireTime);
     const fireTimeEpoch = fireTimeMs ? Math.floor(fireTimeMs / 1000) : 0;
 
     // Derive ticket status (same logic as SQL: all ready → ready, any sent → pending, else cooking)
@@ -324,6 +382,8 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       is_prioritized: item.is_prioritized,
       seat_number: item.seat_number ?? null,
     }));
+    // Stable sort by id so items never reorder on status change
+    ticketItems.sort((a, b) => a.id.localeCompare(b.id));
 
     tickets.push({
       ticket_id: `${order.id}_c${courseNumber}_f${fireTimeEpoch}`,
@@ -338,7 +398,7 @@ function buildTicketsFromBroadcast(order: BroadcastOrderData): KDSTicket[] {
       table_name: order.table_number,
       customer_name: null,
       start_time: fireTime ?? order.sent_to_kitchen_at,
-      start_time_epoch: fireTimeMs || (order.sent_to_kitchen_at ? new Date(order.sent_to_kitchen_at).getTime() : 0),
+      start_time_epoch: fireTimeMs || safeParseUtcTimestamp(order.sent_to_kitchen_at),
       item_count: ticketItems.reduce((sum, i) => sum + i.quantity, 0),
       items: ticketItems,
       prioritized: roundItems.some((i) => i.is_prioritized),
@@ -397,21 +457,45 @@ function mergeTickets(
   return { merged, mergedById, changed };
 }
 
-/** Stable sort: prioritized tickets float to front within each bucket */
+/** Stable sort: prioritized tickets float to front within each bucket.
+ *  Uses prevBucket to preserve existing priority ordering — new priorities append at end. */
 function prioritySortBucket(
   bucket: KDSTicket[],
   prioritizedIds: Set<string>,
+  prevBucket: KDSTicket[],
+  newestFirst?: boolean,
 ): KDSTicket[] {
-  if (prioritizedIds.size === 0) return bucket;
-  // Stable sort — prioritized first, then preserve existing order
-  const prioritized: KDSTicket[] = [];
-  const normal: KDSTicket[] = [];
-  for (const t of bucket) {
-    if (prioritizedIds.has(t.ticket_id)) prioritized.push(t);
-    else normal.push(t);
+  if (prioritizedIds.size === 0) {
+    return newestFirst ? [...bucket].reverse() : bucket;
   }
-  if (prioritized.length === 0) return bucket;
-  return [...prioritized, ...normal];
+
+  // Get previously-prioritized tickets in their existing order
+  const prevPrioritizedOrder: string[] = [];
+  for (const t of prevBucket) {
+    if (prioritizedIds.has(t.ticket_id)) prevPrioritizedOrder.push(t.ticket_id);
+  }
+
+  // Find newly prioritized tickets (not in previous priority section)
+  const prevPrioritySet = new Set(prevPrioritizedOrder);
+  const newlyPrioritized: string[] = [];
+  for (const t of bucket) {
+    if (prioritizedIds.has(t.ticket_id) && !prevPrioritySet.has(t.ticket_id)) {
+      newlyPrioritized.push(t.ticket_id);
+    }
+  }
+
+  // Build ordered priority list: existing order + new ones appended at end
+  const priorityOrder = [...prevPrioritizedOrder, ...newlyPrioritized];
+  const ticketMap = new Map(bucket.map(t => [t.ticket_id, t]));
+
+  const prioritized = priorityOrder
+    .map(id => ticketMap.get(id))
+    .filter((t): t is KDSTicket => t != null);
+
+  const normal = bucket.filter(t => !prioritizedIds.has(t.ticket_id));
+  const orderedNormal = newestFirst ? [...normal].reverse() : normal;
+
+  return [...prioritized, ...orderedNormal];
 }
 
 /** Bucket tickets into status groups, reusing unchanged array references */
@@ -419,6 +503,7 @@ function smartBucketTickets(
   tickets: KDSTicket[],
   prev: KDSState["ticketsByStatus"],
   prioritizedIds?: Set<string>,
+  newOrderPosition?: 'left' | 'right',
 ) {
   const pending: KDSTicket[] = [];
   const cooking: KDSTicket[] = [];
@@ -430,11 +515,12 @@ function smartBucketTickets(
     else if (t.status === "ready") ready.push(t);
   }
 
-  // Apply priority sorting if we have prioritized tickets
+  // Apply priority sorting (and newest-first if configured)
   const pIds = prioritizedIds ?? new Set<string>();
-  const sortedPending = prioritySortBucket(pending, pIds);
-  const sortedCooking = prioritySortBucket(cooking, pIds);
-  const sortedReady = prioritySortBucket(ready, pIds);
+  const newestFirst = newOrderPosition === 'left';
+  const sortedPending = prioritySortBucket(pending, pIds, prev.pending, newestFirst);
+  const sortedCooking = prioritySortBucket(cooking, pIds, prev.cooking, newestFirst);
+  const sortedReady = prioritySortBucket(ready, pIds, prev.ready, newestFirst);
 
   const finalPending = arraysShallowEqual(sortedPending, prev.pending)
     ? prev.pending
@@ -473,6 +559,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
   bulkMode: false,
   selectedTicketIds: new Set<string>(),
   prioritizedTicketIds: new Set<string>(),
+  newOrderPosition: 'right' as const,
 
   _ticketsById: {},
 
@@ -488,6 +575,14 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
   // New-order callback
   _onNewOrderCallback: null,
   setOnNewOrderCallback: (cb) => set({ _onNewOrderCallback: cb }),
+
+  setNewOrderPosition: (pos) => {
+    if (pos === get().newOrderPosition) return;
+    set({ newOrderPosition: pos });
+    // Re-bucket with new ordering
+    const bucketed = smartBucketTickets(get().tickets, get().ticketsByStatus, get().prioritizedTicketIds, pos);
+    set(bucketed);
+  },
 
   // ─── Fetch KDS Display Config ─────────────────────────────────
   fetchKDSDisplay: async (stationId: string) => {
@@ -625,7 +720,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
       const processed = overlayPendingActions(
         raw.map(t => ({
           ...t,
-          start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
+          start_time_epoch: safeParseUtcTimestamp(t.start_time),
         })),
       );
       // In 2-step mode, remap any "pending" tickets to "cooking" (Pending bucket is hidden)
@@ -639,19 +734,20 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
         return;
       }
 
-      // Hydrate prioritizedTicketIds from server data + preserve pending local priorities
+      // Hydrate prioritizedTicketIds from server data + preserve local priorities for existing tickets
       const nextPrioritized = new Set<string>();
       for (const t of merged) {
         if (t.prioritized) nextPrioritized.add(t.ticket_id);
       }
       for (const id of get().prioritizedTicketIds) {
-        if (_pendingActions.has(id) || _activeRetries.has(`priority_${id}`)) nextPrioritized.add(id);
+        if (mergedById[id]) nextPrioritized.add(id);
       }
 
-      const bucketed = smartBucketTickets(merged, get().ticketsByStatus, nextPrioritized);
+      const reconciled = reconcilePriorityFlags(merged, nextPrioritized);
+      const bucketed = smartBucketTickets(reconciled, get().ticketsByStatus, nextPrioritized, get().newOrderPosition);
 
       set({
-        tickets: merged,
+        tickets: reconciled,
         _ticketsById: mergedById,
         prioritizedTicketIds: nextPrioritized,
         ...bucketed,
@@ -707,33 +803,46 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
       const processed = overlayPendingActions(
         raw.map(t => ({
           ...t,
-          start_time_epoch: t.start_time ? new Date(t.start_time).getTime() : 0,
+          start_time_epoch: safeParseUtcTimestamp(t.start_time),
         })),
       );
       // In 2-step mode, remap any "pending" tickets to "cooking"
       const remapped = getKitchenSentStatus() === "preparing"
         ? processed.map(t => t.status === "pending" ? { ...t, status: "cooking" as KDSTicket["status"] } : t)
         : processed;
-      const { merged, mergedById, changed } = mergeTickets(remapped, get()._ticketsById);
+
+      // Preserve recalled/pending tickets not returned by server (terminal order exclusion)
+      const currentTickets = get().tickets;
+      const serverTicketIds = new Set(remapped.map((t) => t.ticket_id));
+      const protectedMissing = currentTickets.filter(
+        (t) => !serverTicketIds.has(t.ticket_id) &&
+          (_pendingActions.has(t.ticket_id) || _recalledTicketIds.has(t.ticket_id))
+      );
+      const withProtected = protectedMissing.length > 0
+        ? [...remapped, ...protectedMissing]
+        : remapped;
+
+      const { merged, mergedById, changed } = mergeTickets(withProtected, get()._ticketsById);
 
       if (!changed && get()._hasHydrated) {
         set({ isFetching: false });
         return;
       }
 
-      // Hydrate prioritizedTicketIds from server data + preserve pending local priorities
+      // Hydrate prioritizedTicketIds from server data + preserve local priorities for existing tickets
       const nextPrioritized = new Set<string>();
       for (const t of merged) {
         if (t.prioritized) nextPrioritized.add(t.ticket_id);
       }
       for (const id of get().prioritizedTicketIds) {
-        if (_pendingActions.has(id) || _activeRetries.has(`priority_${id}`)) nextPrioritized.add(id);
+        if (mergedById[id]) nextPrioritized.add(id);
       }
 
-      const bucketed = smartBucketTickets(merged, get().ticketsByStatus, nextPrioritized);
+      const reconciled = reconcilePriorityFlags(merged, nextPrioritized);
+      const bucketed = smartBucketTickets(reconciled, get().ticketsByStatus, nextPrioritized, get().newOrderPosition);
 
       set({
-        tickets: merged,
+        tickets: reconciled,
         _ticketsById: mergedById,
         prioritizedTicketIds: nextPrioritized,
         ...bucketed,
@@ -776,7 +885,8 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
 
     let updatedTickets: KDSTicket[];
     if (ticketStatus === null) {
-      // Served → remove from active, add to done
+      // Served → remove from active, add to done; clear recalled state
+      _recalledTicketIds.delete(ticketId);
       const servedTicket = tickets.find((t) => t.ticket_id === ticketId);
       updatedTickets = tickets.filter((t) => t.ticket_id !== ticketId);
 
@@ -804,7 +914,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
       );
     }
 
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
     set({ tickets: updatedTickets, ...bucketed });
 
     // Backend sync with cancellable retry (action-specific key to avoid cross-action cancellation)
@@ -877,14 +987,22 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
 
     const { tickets, kdsDisplayId, routingMode, cachedRules } = get();
 
-    // Terminal statuses: remove all tickets for this order
+    // Terminal statuses: remove all tickets for this order (unless protected by recall/pending)
     if (TERMINAL_ORDER_STATUSES.has(order.status)) {
-      const filtered = tickets.filter((t) => t.db_order_id !== order.id);
-      if (filtered.length !== tickets.length) {
-        const bucketed = smartBucketTickets(filtered, get().ticketsByStatus, get().prioritizedTicketIds);
-        set({ tickets: filtered, ...bucketed });
+      const hasProtected = tickets.some(
+        (t) => t.db_order_id === order.id &&
+          (_pendingActions.has(t.ticket_id) || _recalledTicketIds.has(t.ticket_id))
+      );
+      if (!hasProtected) {
+        const filtered = tickets.filter((t) => t.db_order_id !== order.id);
+        if (filtered.length !== tickets.length) {
+          const bucketed = smartBucketTickets(filtered, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
+          set({ tickets: filtered, ...bucketed });
+        }
+        return;
       }
-      return;
+      // Protected tickets exist — fall through to normal broadcast processing
+      // overlayPendingActions will preserve the recalled ticket's optimistic state
     }
 
     // Always schedule a background refetch for authoritative server state.
@@ -932,8 +1050,9 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     // Merge with existing tickets to reuse unchanged references
     const { merged, mergedById } = mergeTickets(overlaid, get()._ticketsById);
 
-    const bucketed = smartBucketTickets(merged, get().ticketsByStatus, get().prioritizedTicketIds);
-    set({ tickets: merged, _ticketsById: mergedById, ...bucketed });
+    const reconciled = reconcilePriorityFlags(merged, get().prioritizedTicketIds);
+    const bucketed = smartBucketTickets(reconciled, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
+    set({ tickets: reconciled, _ticketsById: mergedById, ...bucketed });
 
     // Fire new-order callback (for sound notifications)
     if (!hadExistingTickets && newTickets.length > 0) {
@@ -975,7 +1094,8 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     });
 
 
-    // Optimistic: reset all items, ticket to recall status
+    // Optimistic: reset all items, ticket to recall status, mark as recalled
+    _recalledTicketIds.add(ticketId);
     const updatedTickets = tickets.map((t) =>
       t.ticket_id === ticketId
         ? {
@@ -984,12 +1104,13 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
             items: t.items.map((item) => ({
               ...item,
               kitchen_status: recallStatus,
+              recalled: true,
             })),
           }
         : t,
     );
 
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
     set({ tickets: updatedTickets, ...bucketed });
 
     // Backend: recall via RPC with cancellable retry
@@ -1015,6 +1136,19 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     const ticket = tickets.find((t) => t.ticket_id === ticketId);
     if (!ticket) return;
 
+    const itemIds = ticket.items.map((i) => i.id);
+
+    // Register pending action to protect against broadcast clobber
+    const itemStatusMap = new Map<string, string>();
+    for (const item of ticket.items) itemStatusMap.set(item.id, item.kitchen_status);
+    _pendingActions.set(ticketId, {
+      ticketId,
+      targetStatus: ticket.status,
+      itemStatuses: itemStatusMap,
+      timestamp: Date.now(),
+      prioritized: true,
+    });
+
     // Add to prioritized set
     const nextPrioritized = new Set(prioritizedTicketIds);
     nextPrioritized.add(ticketId);
@@ -1026,19 +1160,23 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
         : t,
     );
 
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, nextPrioritized);
+    // Immediate reorder — prevBucket ordering ensures only the new ticket moves
+    // (appends to end of priority section), so LinearTransition animates smoothly.
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, nextPrioritized, get().newOrderPosition);
     set({ tickets: updatedTickets, prioritizedTicketIds: nextPrioritized, ...bucketed });
 
-    // Backend sync (fire-and-forget with retry)
+    // Backend sync — clear pending action on success
     const client = getClient();
-    const itemIds = ticket.items.map((i) => i.id);
     if (client && itemIds.length > 0) {
       scheduleRetry(
         `priority_${ticketId}`,
         () => OrderService.togglePriorityOnItems(client, itemIds, true),
         0,
-        undefined,
         () => {
+          _pendingActions.delete(ticketId);
+        },
+        () => {
+          _pendingActions.delete(ticketId);
           const loc = get()._lastLocationId;
           if (loc) get().scheduleRefetch(loc);
         },
@@ -1055,6 +1193,16 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     const newRush = !currentRush;
     const itemIds = ticket.items.map((i) => i.id);
 
+    // Register pending action to protect against broadcast clobber
+    const itemStatusMap = new Map<string, string>();
+    for (const item of ticket.items) itemStatusMap.set(item.id, item.kitchen_status);
+    _pendingActions.set(ticketId, {
+      ticketId,
+      targetStatus: ticket.status,
+      itemStatuses: itemStatusMap,
+      timestamp: Date.now(),
+    });
+
     // Optimistic: toggle rush on all items
     const updatedTickets = tickets.map((t) =>
       t.ticket_id === ticketId
@@ -1065,7 +1213,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
         : t,
     );
 
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
     set({ tickets: updatedTickets, ...bucketed });
 
     // Backend: toggle rush via RPC with cancellable retry
@@ -1075,8 +1223,9 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
         `rush_${ticketId}`,
         () => OrderService.toggleRushOnItems(client, itemIds, newRush),
         0,
-        undefined,
+        () => { _pendingActions.delete(ticketId); },
         () => {
+          _pendingActions.delete(ticketId);
           const lastLoc = get()._lastLocationId;
           if (lastLoc) get().scheduleRefetch(lastLoc);
         },
@@ -1125,7 +1274,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
         : t,
     );
 
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
     set({ tickets: updatedTickets, ...bucketed });
 
     // Backend: mark item ready with action-specific retry key to avoid cancelling ticket-level retries
@@ -1157,16 +1306,27 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     const recallStatus = getKitchenSentStatus();
     const recallTicketStatus: KDSTicket["status"] = recallStatus === "preparing" ? "cooking" : "pending";
 
+    // Register pending action to protect optimistic state from broadcast clobber
+    const itemStatusMap = new Map<string, string>();
+    for (const id of itemIds) itemStatusMap.set(id, recallStatus);
+    _pendingActions.set(ticketId, {
+      ticketId,
+      targetStatus: recallTicketStatus,
+      itemStatuses: itemStatusMap,
+      timestamp: Date.now(),
+    });
+
     // Move from done → active tickets with workflow-aware status
+    _recalledTicketIds.add(ticketId);
     const restoredTicket: KDSTicket = {
       ...ticket,
       status: recallTicketStatus,
-      items: ticket.items.map((item) => ({ ...item, kitchen_status: recallStatus })),
+      items: ticket.items.map((item) => ({ ...item, kitchen_status: recallStatus, recalled: true })),
     };
     const updatedDone = doneTickets.filter((t) => t.ticket_id !== ticketId);
     const updatedTickets = [...tickets, restoredTicket];
 
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
     set({
       tickets: updatedTickets,
       ...bucketed,
@@ -1174,14 +1334,21 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
       doneCount: updatedDone.length,
     });
 
-    // Backend: recall via existing RPC
+    // Backend: recall via RPC with cancellable retry
+    const retryKey = `recall_done_${ticketId}`;
     const client = getClient();
     if (client && itemIds.length > 0) {
-      OrderService.recallOrderItems(client, itemIds, recallStatus).catch((err) => {
-        console.error("[KDSStore] recallDoneTicket backend error:", err);
-        const lastLoc = get()._lastLocationId;
-        if (lastLoc) get().scheduleRefetch(lastLoc);
-      });
+      scheduleRetry(
+        retryKey,
+        () => OrderService.recallOrderItems(client, itemIds, recallStatus),
+        0,
+        () => { _pendingActions.delete(ticketId); },
+        () => {
+          _pendingActions.delete(ticketId);
+          const lastLoc = get()._lastLocationId;
+          if (lastLoc) get().scheduleRefetch(lastLoc);
+        },
+      );
     }
   },
 
@@ -1280,7 +1447,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     }
 
     // Single state update (including done tickets)
-    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds);
+    const bucketed = smartBucketTickets(updatedTickets, get().ticketsByStatus, get().prioritizedTicketIds, get().newOrderPosition);
     const updatedDone = servedTickets.length > 0
       ? [...servedTickets, ...get().doneTickets].slice(0, 50)
       : get().doneTickets;
@@ -1375,7 +1542,12 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
         state.selectedTicketIds = new Set<string>();
       }
       if (!(state.prioritizedTicketIds instanceof Set)) {
-        state.prioritizedTicketIds = new Set<string>();
+        // Derive from hydrated ticket data to avoid priority flash on first render
+        const derived = new Set<string>();
+        for (const t of state.tickets) {
+          if (t.prioritized) derived.add(t.ticket_id);
+        }
+        state.prioritizedTicketIds = derived;
       }
     }
   },

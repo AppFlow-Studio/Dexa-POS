@@ -235,6 +235,50 @@ const DiningRoomScreen = () => {
     marginVertical: 10
   }
 
+  const cardStyle = {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  };
+
+  const sectionTitleStyle = {
+    fontSize: 13,
+    fontWeight: "700" as const,
+    color: colors.heading,
+  };
+
+  const labelStyle = {
+    fontSize: 11,
+    color: colors.muted,
+    marginBottom: 5,
+  };
+
+  const rowStyle = {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
+  };
+
+  const inputStyle = {
+    backgroundColor: colors.screen,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 13,
+    color: colors.heading,
+  };
+
+  const dividerStyle = {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 12,
+  };
+
   return (
     <View
       style={{

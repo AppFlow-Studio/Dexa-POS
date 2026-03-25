@@ -2,7 +2,7 @@ import { colors } from "@/lib/theme";
 import { PaymentView, usePaymentStore } from "@/stores/usePaymentStore";
 import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useHasActivePreAuth, useOrderPreAuth } from "@/stores/selectors/orderSelectors";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { Banknote, CheckCircle2, Columns, CreditCard, Keyboard, Lock } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -63,7 +63,7 @@ const PaymentMethodSelectionView: React.FC = () => {
   const activeOrder = useActiveOrder();
   const hasPreAuth = useHasActivePreAuth(activeOrder?.id);
   const preAuth = useOrderPreAuth(activeOrder?.id);
-  const preAuthEnabled = (useStoreSettingsStore.getState() as any).preAuthSettings?.preAuthEnabled ?? false;
+  const preAuthEnabled = useLocationConfigStore((s) => s.config.preAuth.enabled);
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>(
     hasPreAuth ? "Close Tab" : "Card Reader"

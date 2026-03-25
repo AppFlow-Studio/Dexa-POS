@@ -21,8 +21,7 @@ import {
   useCashDrawerStore
 } from '@/stores/useCashDrawerStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { formatCurrency } from '@/utils/currency'
 import {
@@ -35,6 +34,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Banknote,
+  ExternalLink,
   Inbox,
   Lock,
   Receipt,
@@ -103,7 +103,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
 
   const loggedInEmployee = useEmployeeStore(s => s.loggedInEmployee)
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const cashDrawerSettings = useStoreSettingsStore(s => s.cashDrawerSettings)
+  const cashDrawerSettings = useLocationConfigStore((s) => s.config.cashDrawer)
 
   const [view, setView] = useState<DrawerView>(
     activeSession?.status === 'open' ? 'active' : 'open'
@@ -351,6 +351,42 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
               textAlign: 'center'
             }}
           />
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: 8,
+              marginTop: 12
+            }}
+          >
+            {[50, 100, 150, 200, 300, 500].map((preset) => {
+              const isSelected = quickStartAmount === String(preset)
+              return (
+                <TouchableOpacity
+                  key={preset}
+                  onPress={() => setQuickStartAmount(String(preset))}
+                  style={{
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderWidth: 1,
+                    backgroundColor: isSelected ? colors.teal + '26' : colors.panel,
+                    borderColor: isSelected ? colors.teal : colors.border
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: isSelected ? colors.teal : colors.label
+                    }}
+                  >
+                    ${preset}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
         </View>
       ) : (
         <DenominationCounter
@@ -733,27 +769,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
           const isDebit = isDebitOperation(op.operationType)
           const isNoEffect = isNoEffectOperation(op.operationType)
 
-          // Resolve order across both active and previous-orders stores.
-          // Drawer operations often persist DB order IDs, while in-memory orders can be local IDs.
-          const activeOrder = op.orderId
-            ? useOrderStore.getState().getOrder(op.orderId)
-            : null
-          const previousOrder = op.orderId
-            ? usePreviousOrdersStore.getState().getOrderById(op.orderId)
-            : null
-
-          const resolvedDisplayNumber =
-            activeOrder?.display_number ||
-            activeOrder?.order_number ||
-            previousOrder?.display_number ||
-            previousOrder?.order_number
-
-          const orderNumber = resolvedDisplayNumber
-            ? String(resolvedDisplayNumber)
-            : op.orderId
-            ? `ORD-${op.orderId.slice(0, 6)}`
-            : null
-
           const handleCardPress = () => {
             if (op.orderId) {
               router.push(`/previous-orders/${op.orderId}`)
@@ -785,16 +800,34 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                   marginBottom: 6
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '700',
-                    color: colors.heading
-                  }}
-                >
-                  {OP_LABELS[op.operationType] ??
-                    op.operationType.replace(/_/g, ' ')}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color: colors.heading
+                    }}
+                  >
+                    {OP_LABELS[op.operationType] ??
+                      op.operationType.replace(/_/g, ' ')}
+                  </Text>
+                  {op.orderId && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 2,
+                        backgroundColor: colors.panel,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 4
+                      }}
+                    >
+                      <ExternalLink size={9} color={colors.muted} />
+                      <Text style={{ fontSize: 10, color: colors.muted }}>Order</Text>
+                    </View>
+                  )}
+                </View>
                 {/* Amount */}
                 <Text
                   style={{
@@ -813,7 +846,7 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                 </Text>
               </View>
 
-              {/* Bottom row: Order number + reason + time */}
+              {/* Bottom row: reason + time */}
               <View
                 style={{
                   flexDirection: 'row',
@@ -822,26 +855,6 @@ const CashDrawerSheet: React.FC<CashDrawerSheetProps> = ({
                   flexWrap: 'wrap'
                 }}
               >
-                {orderNumber && (
-                  <View
-                    style={{
-                      backgroundColor: colors.teal + '15',
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 4
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: colors.teal,
-                        fontWeight: '600'
-                      }}
-                    >
-                      {orderNumber}
-                    </Text>
-                  </View>
-                )}
                 {op.reason && (
                   <Text style={{ fontSize: 10, color: colors.label }}>
                     {op.reason}

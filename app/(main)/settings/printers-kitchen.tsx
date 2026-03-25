@@ -23,6 +23,7 @@ import { usePrinterStore } from "@/stores/usePrinterStore";
 import { usePrintQueueStore } from "@/stores/usePrintQueueStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useReceiptTemplateStore } from "@/stores/useReceiptTemplateStore";
 import type { ModifierStyle } from "@/types/receipt-template";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -230,12 +231,27 @@ const PrintersKitchenScreen = () => {
   // Tab state
   const [activeTab, setActiveTab] = useState<PrinterTab>("printers");
 
-  // KDS settings from store
-  const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
-  const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
-  const autoPrintKitchenTickets = useStoreSettingsStore((s) => s.autoPrintKitchenTickets);
-  const autoPrintReceipt = useStoreSettingsStore((s) => s.autoPrintReceipt);
-  const updateField = useStoreSettingsStore((s) => s.updateField);
+  // KDS + Printing settings from unified config
+  const kdsConfig = useLocationConfigStore((s) => s.config.kds);
+  const printingConfig = useLocationConfigStore((s) => s.config.printing);
+  const _updateConfig = useLocationConfigStore((s) => s.updateConfig);
+  const kdsAutoFireEnabled = kdsConfig.autoFireEnabled;
+  const kdsAutoFireDelayMinutes = kdsConfig.autoFireDelayMinutes;
+  const autoPrintKitchenTickets = printingConfig.autoPrintKitchenTickets;
+  const autoPrintReceipt = printingConfig.autoPrintReceipt;
+  // Shim for existing updateField calls
+  const updateField = (field: string, value: any) => {
+    const KDS_MAP: Record<string, string> = {
+      kdsAutoFireEnabled: 'autoFireEnabled',
+      kdsAutoFireDelayMinutes: 'autoFireDelayMinutes',
+    };
+    const PRINT_MAP: Record<string, string> = {
+      autoPrintKitchenTickets: 'autoPrintKitchenTickets',
+      autoPrintReceipt: 'autoPrintReceipt',
+    };
+    if (KDS_MAP[field]) _updateConfig('kds', { [KDS_MAP[field]]: value });
+    else if (PRINT_MAP[field]) _updateConfig('printing', { [PRINT_MAP[field]]: value });
+  };
 
   // Location & station
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
@@ -531,7 +547,7 @@ const PrintersKitchenScreen = () => {
 
     // Check for duplicate
     const alreadyExists = storedPrinters.some(
-      (p) => p.printerType === "star_micronics" && p.networkAddress === ip,
+      (p) => p.printerType === "star_micronics" && p.networkAddress === ip && p.stationId === selectedStation?.id,
     );
     if (alreadyExists) {
       setManualIpError("A printer with this IP address is already configured.");
@@ -846,7 +862,7 @@ const PrintersKitchenScreen = () => {
 
         {discoveredStarPrinters.map((dp) => {
           const alreadyAdded = storedPrinters.some(
-            (p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress,
+            (p) => p.printerType === "star_micronics" && p.networkAddress === dp.ipAddress && p.stationId === selectedStation?.id,
           );
           const isProvisioningThis = provisioningStarIp === dp.ipAddress;
 
@@ -1751,18 +1767,21 @@ const PrintersKitchenScreen = () => {
                   { value: '3-step' as const, label: '3-Step', desc: 'Pending → Cooking → Served' },
                   { value: '2-step' as const, label: '2-Step', desc: 'Cooking → Served' },
                 ] as const).map((opt) => {
-                  const isSelected = (selectedStore?.kds_workflow_mode ?? '3-step') === opt.value;
+                  const currentMode = useLocationConfigStore.getState().config.kds.workflowMode ?? '3-step';
+                  const isSelected = currentMode === opt.value;
                   return (
                     <TouchableOpacity
                       key={opt.value}
                       onPress={async () => {
                         if (!selectedStore?.id) return;
-                        // Optimistic local update
+                        // Update via unified config (optimistic + backend + broadcast)
+                        _updateConfig('kds', { workflowMode: opt.value });
+                        // Also update selectedStore for backward compat
                         useStoreSettingsStore.getState().setSelectedStore({
                           ...selectedStore,
                           kds_workflow_mode: opt.value,
                         });
-                        // Persist to DB
+                        // Also persist to the legacy column
                         await supabase
                           .from('locations')
                           .update({ kds_workflow_mode: opt.value })
@@ -1773,23 +1792,6 @@ const PrintersKitchenScreen = () => {
                             p_location_id: selectedStore.id,
                           });
                         }
-                        // Broadcast to all devices in this location
-                        const channel = supabase.channel(`location:${selectedStore.id}:settings`);
-                        channel.subscribe((status: string) => {
-                          if (status === 'SUBSCRIBED') {
-                            channel.send({
-                              type: 'broadcast',
-                              event: 'SETTINGS_UPDATE',
-                              payload: {
-                                setting: 'kds_workflow_mode',
-                                value: opt.value,
-                                timestamp: Date.now(),
-                                sender_station_id: useStoreSettingsStore.getState().selectedStation?.id ?? null,
-                              },
-                            });
-                            setTimeout(() => supabase.removeChannel(channel), 1000);
-                          }
-                        });
                       }}
                       style={{
                         flex: 1,

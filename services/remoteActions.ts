@@ -1,7 +1,8 @@
 import { queryClient } from "@/contexts/TanstackProvider";
 import { getLogsAsText } from "@/lib/logCollector";
 import { clearCache } from "@/services/cacheService";
-import { useStoreSettingsStore, StoreSettings } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
+import type { ConfigNamespace } from "@/types/locationConfig";
 import {
   ActionStatus,
   ActionStatusPayload,
@@ -95,34 +96,46 @@ export async function handleRestartApp() {
   await Updates.reloadAsync();
 }
 
-// Allowlisted keys that can be updated remotely
-const ALLOWED_CONFIG_KEYS: (keyof StoreSettings)[] = [
-  "onlineOrderingEnabled",
-  "onlinePauseReason",
-  "autoAcceptOrders",
-  "dynamicPrepTimeEnabled",
-  "basePrepTime",
-  "preOrderingEnabled",
-  "preOrderMaxDays",
-  "preOrderMaxDaily",
-  "kdsAutoFireEnabled",
-  "kdsAutoFireDelayMinutes",
-];
+// Allowlisted flat keys → { namespace, field } mapping for remote config updates
+const ALLOWED_CONFIG_MAP: Record<string, { namespace: ConfigNamespace; field: string }> = {
+  onlineOrderingEnabled:    { namespace: "onlineOrdering", field: "enabled" },
+  onlinePauseReason:        { namespace: "onlineOrdering", field: "pauseReason" },
+  autoAcceptOrders:         { namespace: "onlineOrdering", field: "autoAcceptOrders" },
+  dynamicPrepTimeEnabled:   { namespace: "onlineOrdering", field: "dynamicPrepTimeEnabled" },
+  basePrepTime:             { namespace: "onlineOrdering", field: "basePrepTime" },
+  preOrderingEnabled:       { namespace: "onlineOrdering", field: "preOrderingEnabled" },
+  preOrderMaxDays:          { namespace: "onlineOrdering", field: "preOrderMaxDays" },
+  preOrderMaxDaily:         { namespace: "onlineOrdering", field: "preOrderMaxDaily" },
+  kdsAutoFireEnabled:       { namespace: "kds", field: "autoFireEnabled" },
+  kdsAutoFireDelayMinutes:  { namespace: "kds", field: "autoFireDelayMinutes" },
+};
 
 export function handleConfigUpdate(payload: ConfigUpdatePayload) {
   const { settings } = payload;
-  const store = useStoreSettingsStore.getState();
+  const store = useLocationConfigStore.getState();
 
   const applied: string[] = [];
   const skipped: string[] = [];
 
+  // Group by namespace for batched updates
+  const updates: Partial<Record<ConfigNamespace, Record<string, unknown>>> = {};
+
   for (const [key, value] of Object.entries(settings)) {
-    if (ALLOWED_CONFIG_KEYS.includes(key as keyof StoreSettings)) {
-      store.updateField(key as keyof StoreSettings, value as never);
+    const mapping = ALLOWED_CONFIG_MAP[key];
+    if (mapping) {
+      if (!updates[mapping.namespace]) {
+        updates[mapping.namespace] = {};
+      }
+      updates[mapping.namespace]![mapping.field] = value;
       applied.push(key);
     } else {
       skipped.push(key);
     }
+  }
+
+  // Apply batched updates per namespace
+  for (const [namespace, data] of Object.entries(updates)) {
+    store.applyRemoteConfig(namespace as ConfigNamespace, data);
   }
 
   console.log(

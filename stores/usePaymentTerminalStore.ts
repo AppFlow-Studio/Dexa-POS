@@ -25,6 +25,8 @@ interface PaymentTerminal {
   ipAddress?: string;
   /** Castles terminal port */
   port?: number;
+  /** Connection type: local_socket (TCP/WiFi) or usb */
+  connectionType?: 'local_socket' | 'usb';
   isActive: boolean;
   isConnected: boolean;
   stationId?: string | null;

@@ -16,7 +16,6 @@ export function useTablePaymentSync(
     (s) => s.syncOrderFromBackendComplete,
   );
   const wasOpenRef = useRef(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Use refs for callbacks to avoid stale closures without re-triggering the effect
   const onSyncStartRef = useRef(onSyncStart);
@@ -26,34 +25,24 @@ export function useTablePaymentSync(
 
   useEffect(() => {
     if (wasOpenRef.current && !isPaymentSheetOpen) {
-      // Payment sheet just closed
       console.log("[PaymentSync] Sheet closed. Syncing from database...");
       onSyncStartRef.current();
 
+      // Immediately dispatch table status from local state
+      // (syncPaymentToBackend already set authoritative paid_status)
+      onSyncEndRef.current();
+
+      // Background sync for data consistency (non-blocking)
       if (orderId) {
-        timeoutRef.current = setTimeout(async () => {
-          timeoutRef.current = null;
-          try {
-            await syncOrderFromBackendComplete(orderId);
-          } catch (error) {
+        syncOrderFromBackendComplete(orderId)
+          .catch((error) => {
             console.error("[PaymentSync] Failed to sync order:", error);
-          } finally {
-            onSyncEndRef.current();
-          }
-        }, 150);
-      } else {
-        onSyncEndRef.current();
+          })
+          .finally(() => {
+            onSyncEndRef.current(); // Safety net re-check
+          });
       }
     }
-
     wasOpenRef.current = isPaymentSheetOpen;
-
-    // Clean up timeout when effect re-runs or unmounts
-    return () => {
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    };
   }, [isPaymentSheetOpen, orderId, syncOrderFromBackendComplete]);
 }

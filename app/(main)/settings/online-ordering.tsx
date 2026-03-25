@@ -16,6 +16,7 @@ import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import {
   CheckCircle2,
   Clock,
+  Package,
   PauseCircle,
   PlayCircle,
   Utensils
@@ -189,6 +190,8 @@ const OnlineOrderingScreen = () => {
   const menusWithSchedules = menus.filter(
     m => m.schedules && m.schedules.length > 0
   )
+
+  const menusWithSchedules = menus.filter((m) => m.schedules && m.schedules.length > 0);
 
   return (
     <View

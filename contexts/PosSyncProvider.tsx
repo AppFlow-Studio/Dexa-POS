@@ -1,4 +1,5 @@
 import { useInventorySync } from "@/hooks/pos/useInventorySync";
+import { usePreviousOrdersBootstrap } from "@/hooks/pos/usePreviousOrdersBootstrap";
 import { useOrdersQuery, orderQueryKeys } from "@/hooks/pos/useOrdersQuery";
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
@@ -26,6 +27,7 @@ import {
 import { setPreviousOrdersSupabaseClient } from "@/stores/usePreviousOrdersStore";
 import { useSettingsStore, SyncableDiningSettings } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { initLocationConfigSync } from "@/services/locationConfigSync";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { setKDSSupabaseClient, useKDSStore } from "@/stores/useKDSStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
@@ -72,6 +74,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useOrdersQuery({
     locationId: selectedStore?.id ?? null,
     enabled: !!selectedStore?.id && !isKDS,
+  });
+
+  usePreviousOrdersBootstrap({
+    locationId: selectedStore?.id ?? null,
+    enabled: Boolean(supabase && selectedStore?.id && !isKDS),
   });
 
   // Register Supabase client with order store, floor plan store, coursing store, and offline sync
@@ -560,53 +567,23 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isKDS]);
 
-  // Hydrate dining settings from location public_metadata on startup / location change
+  // Unified location config sync — hydrates pos_config + subscribes to real-time updates
+  // Also handles legacy SETTINGS_UPDATE events for backward compat with older stations
   useEffect(() => {
+    const locationId = selectedStore?.id;
+    if (!locationId || !supabase) return;
+
+    const myStationId = useStoreSettingsStore.getState().selectedStation?.id ?? null;
+    const cleanup = initLocationConfigSync(supabase, locationId, myStationId);
+
+    // Backward compat: still hydrate dining settings into old store during migration
     if (selectedStore?.public_metadata?.dining_settings) {
       useSettingsStore.getState().updateDiningSettings(
         selectedStore.public_metadata.dining_settings as Partial<SyncableDiningSettings>
       );
     }
-  }, [selectedStore?.id]);
 
-  // Real-time settings sync (KDS workflow mode, etc.)
-  useEffect(() => {
-    const locationId = selectedStore?.id;
-    if (!locationId) return;
-
-    const myStationId = useStoreSettingsStore.getState().selectedStation?.id;
-    const channel = supabase.channel(`location:${locationId}:settings`);
-
-    channel.on('broadcast', { event: 'SETTINGS_UPDATE' }, (msg: any) => {
-      const payload = msg.payload;
-
-      // Skip if we sent this (already applied optimistic update)
-      if (payload.sender_station_id && payload.sender_station_id === myStationId) return;
-
-      if (payload.setting === 'kds_workflow_mode') {
-        // Update store setting
-        const current = useStoreSettingsStore.getState().selectedStore;
-        if (current) {
-          useStoreSettingsStore.getState().setSelectedStore({
-            ...current,
-            kds_workflow_mode: payload.value,
-          });
-        }
-        // Re-categorize KDS tickets
-        const kds = useKDSStore.getState();
-        if (kds._lastLocationId) {
-          kds._backgroundFetchTickets(kds._lastLocationId);
-        }
-      }
-
-      if (payload.setting === 'dining_settings') {
-        useSettingsStore.getState().updateDiningSettings(payload.value as Partial<SyncableDiningSettings>);
-      }
-    });
-
-    channel.subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    return cleanup;
   }, [selectedStore?.id, supabase]);
 
   return <>{children}</>;

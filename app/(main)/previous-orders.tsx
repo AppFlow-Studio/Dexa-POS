@@ -7,6 +7,7 @@ import {
   useReopenCheck,
   useVoidOrder,
 } from "@/hooks/orders/useOrderActions";
+import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
@@ -241,38 +242,11 @@ const PreviousOrdersScreen = () => {
   const [sortBy, setSortBy] = useState<"date" | "total" | "status">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync();
 
   // ─── Store-based data layer (mirrors PreviousOrdersSection pattern) ───
   const ordersById = useOrderStore((s) => s.ordersById);
-  const {
-    refreshPreviousOrders,
-    previousOrders,
-    newOrdersCount,
-    checkForNewOrders,
-    clearNewOrdersCount,
-  } = usePreviousOrdersStore();
-
-  // Initial load + 15s polling for new orders
-  useEffect(() => {
-    refreshPreviousOrders();
-
-    const intervalId = setInterval(() => {
-      checkForNewOrders();
-    }, 15000);
-
-    return () => {
-      clearInterval(intervalId);
-      clearNewOrdersCount();
-    };
-  }, []);
-
-  // Handle refresh (pull-to-refresh or banner tap)
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await refreshPreviousOrders();
-    setIsRefreshing(false);
-  }, [refreshPreviousOrders]);
+  const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
 
   // Combine active orders + history orders with dedup (same as PreviousOrdersSection)
   const allOrders: OrderProfile[] = useMemo(() => {

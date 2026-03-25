@@ -13,8 +13,10 @@ import { clearStationData } from "@/services/cacheService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import KDSSoundService, { DEFAULT_SOUND_CONFIG } from "@/services/kds/kdsSoundService";
 import KDSSettingsModal from "@/components/kds/KDSSettingsModal";
+import KDSFlyingTicket, { type FlyingTicketData } from "@/components/kds/KDSFlyingTicket";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import PinInputModal from "@/components/timeclock/PinInputModal";
 import { replaceRoute } from "@/lib/rootNavigation";
@@ -60,6 +62,7 @@ import {
   View,
 } from "react-native";
 import Animated, {
+  Easing,
   FadeOut,
   LinearTransition,
   useAnimatedStyle,
@@ -93,8 +96,8 @@ const URGENCY_BORDER_COLORS = URGENCY_COLORS;
 const MANAGER_ROLES = ["merchant.manager", "merchant.admin", "merchant.owner"];
 
 // ─── Memoized animation configs (avoid re-allocation per render) ─
-const EXIT_ANIM = FadeOut.duration(150);
-const LAYOUT_ANIM = LinearTransition.duration(300);
+const LAYOUT_ANIM = LinearTransition.springify().damping(18).stiffness(200);
+const CARD_EXIT_ANIM = FadeOut.duration(150);
 
 // ─── Skeleton ─────────────────────────────────────────────────────
 const SkeletonBar = ({
@@ -228,9 +231,16 @@ interface KDSTicketDisplaySettings {
 }
 
 // ─── Ticket Card ──────────────────────────────────────────────────
+export interface CardPosition {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface KDSTicketCardProps {
   ticket: KDSTicket;
-  onAdvance: (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served") => void;
+  onAdvance: (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served", cardPos?: CardPosition) => void;
   bulkMode: boolean;
   onToggleSelect: (id: string) => void;
   onLongPress?: (ticketId: string, ticket: KDSTicket, event: GestureResponderEvent) => void;
@@ -272,6 +282,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       ),
     );
 
+    // Card ref for position measurement
+    const cardRef = useRef<View>(null);
+
+    // Double-tap detection
+    const lastTapRef = useRef(0);
+    // Pre-measured card position (cached on first tap for instant double-tap)
+    const cachedPosRef = useRef<CardPosition | undefined>(undefined);
+
     // Animation (Reanimated — runs entirely on UI thread)
     const scaleValue = useSharedValue(1);
 
@@ -285,17 +303,41 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         return;
       }
 
-      // Single tap → advance immediately
-      const itemIds = ticket.items.map((i) => i.id);
-      if (ticket.status === "pending") onAdvance(ticket.ticket_id, itemIds, "preparing");
-      else if (ticket.status === "cooking") onAdvance(ticket.ticket_id, itemIds, "ready");
-      else if (ticket.status === "ready") onAdvance(ticket.ticket_id, itemIds, "served");
+      const now = Date.now();
+      const isDoubleTap = now - lastTapRef.current < 300;
 
-      // Brief scale pulse feedback
-      scaleValue.value = withSequence(
-        withTiming(0.95, { duration: 50 }),
-        withTiming(1, { duration: 70 }),
-      );
+      if (!isDoubleTap) {
+        // First tap — gentle pulse to signal acknowledgment
+        lastTapRef.current = now;
+        scaleValue.value = withSequence(
+          withTiming(0.97, { duration: 80, easing: Easing.out(Easing.cubic) }),
+          withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
+        );
+        // Pre-measure card position so double-tap fires instantly
+        if (cardRef.current) {
+          cardRef.current.measureInWindow((x, y, width, height) => {
+            if (x === 0 && y === 0 && width === 0 && height === 0) return;
+            cachedPosRef.current = { x, y, width, height };
+          });
+        }
+        return;
+      }
+
+      // Double tap — advance ticket immediately (no async measurement wait)
+      lastTapRef.current = 0;
+
+      // Determine next status
+      const itemIds = ticket.items.map((i) => i.id);
+      let newStatus: "preparing" | "ready" | "served" | undefined;
+      if (ticket.status === "pending") newStatus = "preparing";
+      else if (ticket.status === "cooking") newStatus = "ready";
+      else if (ticket.status === "ready") newStatus = "served";
+
+      if (!newStatus) return;
+
+      // Fire advance synchronously with pre-measured position — no frame delay
+      onAdvance(ticket.ticket_id, itemIds, newStatus, cachedPosRef.current);
+      cachedPosRef.current = undefined;
     };
 
     const handleLongPress = (e: GestureResponderEvent) => {
@@ -312,6 +354,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
     const hasRush = ticket.items.some((item) => item.rush);
+    const hasRefire = ticket.items.some((item) => item.recalled);
 
     // Filter/track done items + apply display settings
     const doneItemCount = ticket.items.filter((i) => i.kitchen_status === "ready").length;
@@ -338,9 +381,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       processedItems = aggregated;
     }
 
-    // Alphabetical sort
+    // Stable sort: alphabetical by name (then id tiebreaker), or just by id
     if (displaySettings.alphabeticalSort) {
-      processedItems = [...processedItems].sort((a, b) => a.name.localeCompare(b.name));
+      processedItems = [...processedItems].sort((a, b) => {
+        const cmp = a.name.localeCompare(b.name);
+        return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
+      });
+    } else {
+      processedItems = [...processedItems].sort((a, b) => a.id.localeCompare(b.id));
     }
 
     const visibleItems = processedItems;
@@ -348,6 +396,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
     return (
       <Pressable onPress={handlePress} onLongPress={handleLongPress} delayLongPress={400}>
+        <View ref={cardRef} collapsable={false}>
         <Animated.View
           style={[
             {
@@ -389,7 +438,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             <View
               style={{
                 position: "absolute",
-                top: hasRush ? 18 : 0,
+                top: (hasRush ? 18 : 0) + (hasRefire ? 18 : 0),
                 right: bulkMode ? 30 : 6,
                 zIndex: 10,
               }}
@@ -422,6 +471,30 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
+          {/* Refire badge */}
+          {hasRefire && (
+            <View
+              style={{
+                position: "absolute",
+                top: hasRush ? 18 : 0,
+                left: 0,
+                right: 0,
+                backgroundColor: "#2563eb",
+                paddingVertical: 2,
+                zIndex: 4,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+              }}
+            >
+              <RotateCcw size={10} color="#fff" />
+              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
+                REFIRE
+              </Text>
+            </View>
+          )}
+
           {/* Top bar with urgency color */}
           <View
             style={{
@@ -431,7 +504,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              marginTop: hasRush ? 16 : 0,
+              marginTop: (hasRush ? 16 : 0) + (hasRefire ? 16 : 0),
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -632,6 +705,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
         </Animated.View>
+        </View>
       </Pressable>
     );
   },
@@ -820,10 +894,12 @@ const KitchenDisplayScreen = () => {
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
   const stationSessionId = useStoreSettingsStore((s) => s.stationSessionId);
   const clearStationSession = useStoreSettingsStore((s) => s.clearStationSession);
-  const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
-  const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
-  const kdsHideDoneItems = useStoreSettingsStore((s) => s.kdsHideDoneItems);
-  const updateField = useStoreSettingsStore((s) => s.updateField);
+  const kdsConfig = useLocationConfigStore((s) => s.config.kds);
+  const kdsAutoFireEnabled = kdsConfig.autoFireEnabled;
+  const kdsAutoFireDelayMinutes = kdsConfig.autoFireDelayMinutes;
+  const kdsHideDoneItems = kdsConfig.hideDoneItems;
+  const kdsNewOrderPosition = kdsConfig.newOrderPosition ?? 'right';
+  const setNewOrderPosition = useKDSStore((s) => s.setNewOrderPosition);
 
   const tickets = useKDSStore((s) => s.tickets);
   const counts = useKDSStore((s) => s.counts);
@@ -859,6 +935,11 @@ const KitchenDisplayScreen = () => {
   // Cleanup retries + pending actions on unmount
   useEffect(() => () => kdsCleanup(), [kdsCleanup]);
 
+  // Sync new order position config into KDS store
+  useEffect(() => {
+    setNewOrderPosition(kdsNewOrderPosition);
+  }, [kdsNewOrderPosition, setNewOrderPosition]);
+
   // Realtime connection status for adaptive polling
   const { orders: ordersChannel } = useLocationRealtime();
   const isRealtimeConnected = ordersChannel.isConnected;
@@ -867,16 +948,16 @@ const KitchenDisplayScreen = () => {
   const findEmployeeByPin = useEmployeeStore((s) => s.findEmployeeByPin);
   const toast = useToast();
 
-  // KDS display settings
-  const kdsHighlightNotes = useStoreSettingsStore((s) => s.kdsHighlightNotes);
-  const kdsItemNameLines = useStoreSettingsStore((s) => s.kdsItemNameLines);
-  const kdsDisplayModifierGroupName = useStoreSettingsStore((s) => s.kdsDisplayModifierGroupName);
-  const kdsDisplayExclusionsAtTop = useStoreSettingsStore((s) => s.kdsDisplayExclusionsAtTop);
-  const kdsAlphabeticalSort = useStoreSettingsStore((s) => s.kdsAlphabeticalSort);
-  const kdsAggregateIdenticalItems = useStoreSettingsStore((s) => s.kdsAggregateIdenticalItems);
-  const kdsYellowThresholdMinutes = useStoreSettingsStore((s) => s.kdsYellowThresholdMinutes);
-  const kdsOrangeThresholdMinutes = useStoreSettingsStore((s) => s.kdsOrangeThresholdMinutes);
-  const kdsRedThresholdMinutes = useStoreSettingsStore((s) => s.kdsRedThresholdMinutes);
+  // KDS display settings (from unified config)
+  const kdsHighlightNotes = kdsConfig.highlightNotes;
+  const kdsItemNameLines = kdsConfig.itemNameLines;
+  const kdsDisplayModifierGroupName = kdsConfig.displayModifierGroupName;
+  const kdsDisplayExclusionsAtTop = kdsConfig.displayExclusionsAtTop;
+  const kdsAlphabeticalSort = kdsConfig.alphabeticalSort;
+  const kdsAggregateIdenticalItems = kdsConfig.aggregateIdenticalItems;
+  const kdsYellowThresholdMinutes = kdsConfig.yellowThresholdMinutes;
+  const kdsOrangeThresholdMinutes = kdsConfig.orangeThresholdMinutes;
+  const kdsRedThresholdMinutes = kdsConfig.redThresholdMinutes;
 
   const urgencyThresholds = useMemo<UrgencyThresholds>(
     () => ({
@@ -899,7 +980,7 @@ const KitchenDisplayScreen = () => {
     [kdsHighlightNotes, kdsItemNameLines, kdsDisplayModifierGroupName, kdsDisplayExclusionsAtTop, kdsAlphabeticalSort, kdsAggregateIdenticalItems],
   );
 
-  const workflowMode = useStoreSettingsStore((s) => s.selectedStore?.kds_workflow_mode) ?? '3-step';
+  const workflowMode = useLocationConfigStore((s) => s.config.kds.workflowMode) ?? '3-step';
 
   const visibleStatusTabs = useMemo(() =>
     workflowMode === '2-step' ? STATUS_TABS.filter((t) => t.key !== 'pending') : STATUS_TABS,
@@ -926,6 +1007,12 @@ const KitchenDisplayScreen = () => {
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingBulkAction, setPendingBulkAction] = useState<"selected" | "all" | null>(null);
+
+  // Flying ticket animation state
+  const [flyingTickets, setFlyingTickets] = useState<FlyingTicketData[]>([]);
+  const tabRefs = useRef<Record<string, View | null>>({}).current;
+  // Cached tab positions — tabs are static, no need to re-measure on every advance
+  const tabPosCache = useRef<Record<string, { x: number; y: number; width: number; height: number } | null>>({});
 
   // Action menu state (long-press)
   const [actionMenu, setActionMenu] = useState<{
@@ -1053,6 +1140,30 @@ const KitchenDisplayScreen = () => {
 
     return () => clearInterval(intervalId);
   }, [kdsAutoFireEnabled, kdsAutoFireDelayMinutes, pendingTickets, isReady, advanceTicketStatus]);
+
+  // Auto-bump: ready → served after configured delay
+  const autoBumpMinutes = kdsDisplayConfig?.autoBumpMinutes;
+  useEffect(() => {
+    if (!autoBumpMinutes || !isReady) return;
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const delayMs = autoBumpMinutes * 60 * 1000;
+
+      readyTickets.forEach((ticket) => {
+        if (ticket.start_time_epoch === 0) return;
+        if (now - ticket.start_time_epoch >= delayMs) {
+          advanceTicketStatus(
+            ticket.ticket_id,
+            ticket.items.map((i) => i.id),
+            "served",
+          );
+        }
+      });
+    }, 15_000);
+
+    return () => clearInterval(intervalId);
+  }, [autoBumpMinutes, readyTickets, isReady, advanceTicketStatus]);
 
   // ─── Sound notifications on new orders ────────────────────────
   const soundServiceRef = useRef<KDSSoundService | null>(null);
@@ -1268,9 +1379,94 @@ const KitchenDisplayScreen = () => {
     [markItemDone],
   );
 
+  // Remove completed flying ticket
+  const handleFlyingComplete = useCallback((id: string) => {
+    setFlyingTickets((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Wrap advanceTicketStatus with undo toast + flying animation
+  const advanceWithUndo = useCallback(
+    (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served", cardPos?: CardPosition) => {
+      // Read ticket data before advancing (advance mutates the store)
+      const ticket = useKDSStore.getState()._ticketsById[ticketId];
+      const displayNum = ticket?.display_number || ticket?.order_number?.slice(-4) || "----";
+      const statusLabel = newStatus === "preparing" ? "Cooking" : newStatus === "ready" ? "Served" : "Done";
+      const urgencyColor = ticket
+        ? URGENCY_BORDER_COLORS[getUrgencyLevel(ticket.start_time_epoch, urgencyThresholds)]
+        : colors.border;
+
+      // Fire store update FIRST — this is the critical path
+      advanceTicketStatus(ticketId, itemIds, newStatus);
+
+      // Trigger flying animation using cached tab positions (no async measureInWindow)
+      if (cardPos) {
+        const destTabKey = newStatus === "preparing" ? "cooking" : newStatus === "ready" ? "ready" : "done";
+        const cached = tabPosCache.current[destTabKey];
+        if (cached) {
+          // Synchronous — no frame delay
+          setFlyingTickets((prev) => [
+            ...prev,
+            {
+              id: `fly_${ticketId}_${Date.now()}`,
+              orderNumber: displayNum,
+              urgencyColor,
+              itemCount: ticket?.item_count ?? itemIds.length,
+              source: cardPos,
+              destination: cached,
+            },
+          ]);
+        } else {
+          // First time — measure and cache, then spawn flying ticket
+          const tabRef = tabRefs[destTabKey];
+          if (tabRef) {
+            tabRef.measureInWindow((tx, ty, tw, th) => {
+              if (tx === 0 && ty === 0 && tw === 0 && th === 0) return;
+              const pos = { x: tx, y: ty, width: tw, height: th };
+              tabPosCache.current[destTabKey] = pos;
+              setFlyingTickets((prev) => [
+                ...prev,
+                {
+                  id: `fly_${ticketId}_${Date.now()}`,
+                  orderNumber: displayNum,
+                  urgencyColor,
+                  itemCount: ticket?.item_count ?? itemIds.length,
+                  source: cardPos,
+                  destination: pos,
+                },
+              ]);
+            });
+          }
+        }
+      }
+
+      // Build rich context for undo toast subtitle
+      const tablePart = ticket?.table_name ? `Table ${ticket.table_name}` : '';
+      const typePart = getOrderTypeLabel(ticket?.order_type ?? null);
+      const itemPart = `${ticket?.item_count ?? itemIds.length} items`;
+      const parts = [tablePart, typePart, itemPart].filter(Boolean);
+      const message = parts.join(' · ');
+
+      toast.show({
+        title: `Ticket #${displayNum} → ${statusLabel}`,
+        message,
+        type: "success",
+        duration: 5000,
+        onUndo: () => {
+          if (newStatus === "served") {
+            recallDoneTicket(ticketId);
+          } else {
+            recallTicket(ticketId);
+          }
+        },
+      });
+    },
+    [advanceTicketStatus, recallTicket, recallDoneTicket, toast, urgencyThresholds, tabRefs],
+  );
+
+  const _updateKdsConfig = useLocationConfigStore((s) => s.updateConfig);
   const handleToggleHideDone = useCallback(() => {
-    updateField("kdsHideDoneItems", !kdsHideDoneItems);
-  }, [kdsHideDoneItems, updateField]);
+    _updateKdsConfig('kds', { hideDoneItems: !kdsHideDoneItems });
+  }, [kdsHideDoneItems, _updateKdsConfig]);
 
   // ─── Render Helpers ─────────────────────────────────────────────
   const columnWidthPct = `${100 / columnCount}%` as const;
@@ -1278,11 +1474,11 @@ const KitchenDisplayScreen = () => {
     ({ item }: { item: KDSTicket }) => (
       <Animated.View
         style={{ width: columnWidthPct, paddingHorizontal: 2 }}
-        exiting={EXIT_ANIM}
+        exiting={CARD_EXIT_ANIM}
       >
         <KDSTicketCard
           ticket={item}
-          onAdvance={advanceTicketStatus}
+          onAdvance={advanceWithUndo}
           bulkMode={bulkMode}
           onToggleSelect={toggleTicketSelection}
           onLongPress={handleTicketLongPress}
@@ -1293,7 +1489,7 @@ const KitchenDisplayScreen = () => {
         />
       </Animated.View>
     ),
-    [advanceTicketStatus, bulkMode, toggleTicketSelection, handleTicketLongPress, handleItemPress, kdsHideDoneItems, displaySettings, urgencyThresholds, columnWidthPct],
+    [advanceWithUndo, bulkMode, toggleTicketSelection, handleTicketLongPress, handleItemPress, kdsHideDoneItems, displaySettings, urgencyThresholds, columnWidthPct],
   );
 
   const renderDoneItem = useCallback(
@@ -1511,8 +1707,12 @@ const KitchenDisplayScreen = () => {
             {visibleStatusTabs.map((tab) => {
               const isActive = activeStatus === tab.key;
               return (
-                <TouchableOpacity
+                <View
                   key={tab.key}
+                  ref={(r) => { tabRefs[tab.key] = r; }}
+                  collapsable={false}
+                >
+                <TouchableOpacity
                   onPress={() => handleSetActiveStatus(tab.key)}
                   style={{
                     paddingHorizontal: 14,
@@ -1555,6 +1755,7 @@ const KitchenDisplayScreen = () => {
                     </Text>
                   </View>
                 </TouchableOpacity>
+                </View>
               );
             })}
           </View>
@@ -1766,6 +1967,11 @@ const KitchenDisplayScreen = () => {
           </View>
         </View>
       )}
+
+      {/* ─── Flying Ticket Overlays ─── */}
+      {flyingTickets.map((ft) => (
+        <KDSFlyingTicket key={ft.id} ticket={ft} onComplete={handleFlyingComplete} />
+      ))}
 
       {/* ─── Action Menu Overlay ─── */}
       {actionMenu && (

@@ -31,6 +31,11 @@ type PreWarmEntry = {
 
 const preWarmCache = new Map<string, PreWarmEntry>();
 
+/** Clear all cached precomputed modifier data. Call after menu sync to avoid stale modifiers. */
+export function clearModifierPreWarmCache() {
+  preWarmCache.clear();
+}
+
 function getOrEvictCache(itemId: string): PreWarmEntry | undefined {
   const entry = preWarmCache.get(itemId);
   if (!entry) return undefined;

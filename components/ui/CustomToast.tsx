@@ -56,6 +56,74 @@ const CustomToast: React.FC<CustomToastProps> = ({
     <CheckCircle2 size={24} color={colors.success} />
   );
 
+  // Compact layout when undo is present (e.g. KDS ticket advance)
+  if (onUndo) {
+    return (
+      <MotiView
+        from={{ opacity: 0, translateY: 12 }}
+        animate={{ opacity: 1, translateY: 0 }}
+        exit={{ opacity: 0, translateY: 12 }}
+        transition={{ type: "timing", duration: 200 }}
+        style={{
+          maxWidth: 300,
+          width: 300,
+          marginBottom: 6,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "#1f2937",
+            borderWidth: 1,
+            borderColor: isError ? "#ef4444" : isWarning ? "#eab308" : "#22c55e",
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+          }}
+        >
+          {React.cloneElement(Icon as React.ReactElement, { size: 14 })}
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <Text
+              style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            <Text
+              style={{ color: "#9ca3af", fontSize: 9, marginTop: 1 }}
+              numberOfLines={1}
+            >
+              {message} · {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={handleUndo}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(234,179,8,0.2)",
+              borderWidth: 1,
+              borderColor: "rgba(234,179,8,0.3)",
+              borderRadius: 6,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              marginLeft: 8,
+            }}
+          >
+            <Undo2 size={11} color={colors.warning} />
+            <Text style={{ color: "#facc15", fontSize: 10, fontWeight: "700", marginLeft: 3 }}>
+              UNDO
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDismiss} style={{ marginLeft: 6 }}>
+            <X size={14} color={colors.label} />
+          </TouchableOpacity>
+        </View>
+      </MotiView>
+    );
+  }
+
   return (
     <MotiView
       from={{ opacity: 0, translateY: 20 }}
@@ -73,34 +141,10 @@ const CustomToast: React.FC<CustomToastProps> = ({
         <View className="flex-1 ml-3">
           <Text className="text-white font-bold text-base">{title}</Text>
           <Text className="text-gray-300 text-sm mt-1">{message}</Text>
-          {onUndo && (
-            <View className="flex-row mt-4 gap-x-2">
-              <TouchableOpacity
-                onPress={handleUndo}
-                className="flex-row items-center bg-yellow-500/20 border border-yellow-500/30 rounded-md px-3 py-1.5"
-              >
-                <Undo2 size={14} color={colors.warning} />
-                <Text className="text-yellow-400 font-bold text-xs ml-1.5">
-                  UNDO
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleDismiss}
-                className="flex-row items-center bg-gray-600/50 border border-gray-500/50 rounded-md px-3 py-1.5"
-              >
-                <XCircle size={14} color={colors.label} />
-                <Text className="text-gray-400 font-semibold text-xs ml-1.5">
-                  Dismiss
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
-        {!onUndo && (
-          <TouchableOpacity onPress={handleDismiss} className="ml-2">
-            <X size={18} color={colors.label} />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={handleDismiss} className="ml-2">
+          <X size={18} color={colors.label} />
+        </TouchableOpacity>
       </View>
     </MotiView>
   );

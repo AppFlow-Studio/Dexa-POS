@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Clover,
   CreditCard,
   DollarSign,
   FileText,
@@ -58,6 +59,7 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
     items: [
       { id: "general", label: "General Settings", icon: Settings, route: "/settings/general" },
       { id: "payment-processing", label: "Payment Processing", icon: CreditCard, route: "/settings/payment-processing" },
+      { id: "end-of-day", label: "End of Day", icon: Clover, route: "/settings/end-of-day" },
     ],
   },
   {

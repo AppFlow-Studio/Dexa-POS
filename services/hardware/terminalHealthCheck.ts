@@ -49,6 +49,20 @@ async function performHealthCheck(): Promise<void> {
 }
 
 async function performCastlesHealthCheck(): Promise<void> {
+  const isUsb = currentPaymentTerminal?.connection_type === 'usb';
+
+  if (isUsb) {
+    // USB probe: just try to connect via USB transport
+    const result = await probeCastlesTerminal({ connectionType: 'usb' });
+    if (result.online) {
+      handleSuccess();
+    } else {
+      handleFailure(result.error || "USB terminal unreachable");
+    }
+    return;
+  }
+
+  // TCP/WiFi probe
   const host = currentPaymentTerminal?.ip_address;
   if (!host) {
     handleFailure("Castles terminal IP address not configured");
