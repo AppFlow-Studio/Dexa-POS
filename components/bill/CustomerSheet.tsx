@@ -154,7 +154,6 @@ const CustomerSheet: React.FC = () => {
 
     const displayAddress = formatAddress(customer.address);
 
-    console.log("[CustomerSheet] customer", customer);
     updateActiveOrderDetails({
       customer_name: customer.name || "",
       customer_phone: customer.phone ?? customer.phoneNumber ?? "",
@@ -163,13 +162,15 @@ const CustomerSheet: React.FC = () => {
       customer_id: customer.id,
     });
 
+    // Close immediately — optimistic update already applied
+    handleClose();
+
     const sanitizedDbOrderId =
       order?.db_order_id && isValidUUID(order.db_order_id)
         ? order.db_order_id
         : null;
 
     try {
-      console.log("[CustomerSheet] order", order?.db_order_id);
       await linkCustomerToOrder(supabase, {
         orderId: activeOrderId,
         dbOrderId: sanitizedDbOrderId,
@@ -184,7 +185,6 @@ const CustomerSheet: React.FC = () => {
           : `${customer.name || "Customer"} has been assigned to the order.`,
         type: customer.is_offline ? "warning" : "success",
       });
-      handleClose();
     } catch (error: any) {
       show({
         title: "Could Not Assign Customer",
@@ -331,14 +331,14 @@ const CustomerSheet: React.FC = () => {
               {viewMode === "search" ? (
                 <View style={{ flex: 1 }}>
                   <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 10, height: 36, borderWidth: 1, backgroundColor: colors.card, borderColor: colors.border }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, backgroundColor: colors.card, borderColor: colors.border }}>
                       <Search size={13} color={colors.muted} />
                       <TextInput
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         placeholder="Search name, phone, address..."
                         placeholderTextColor={colors.muted}
-                        style={{ flex: 1, marginLeft: 8, color: colors.heading, fontSize: 12 }}
+                        style={{ flex: 1, marginLeft: 8, color: colors.heading, fontSize: 12, padding: 0 }}
                       />
                       {searchQuery.length > 0 && (
                         <TouchableOpacity onPress={() => setSearchQuery("")}>

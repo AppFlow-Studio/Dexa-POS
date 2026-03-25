@@ -2,8 +2,8 @@ import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useRouter } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -88,8 +88,8 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 const PreviousOrdersSection = () => {
   // CRITICAL FIX: Use proper selector instead of destructuring entire store
   const ordersById = useOrderStore((s) => s.ordersById);
-  const { open: openPaymentDetailSheet } = usePaymentDetailSheetStore();
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabName>("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -241,10 +241,9 @@ const PreviousOrdersSection = () => {
     }
   };
 
-  // Handle row click - open payment detail bottom sheet
+  // Handle row click - navigate to order details screen
   const handleRowClick = (orderId: string) => {
-    // DEBUG: console.log(orderId);
-    openPaymentDetailSheet(orderId);
+    router.push(`/previous-orders/${orderId}`);
   };
 
   // Handle double-click - set order as active
@@ -267,7 +266,7 @@ const PreviousOrdersSection = () => {
   // Handle view details from menu
   const handleViewDetails = () => {
     if (menuOrderId) {
-      openPaymentDetailSheet(menuOrderId);
+      router.push(`/previous-orders/${menuOrderId}`);
     }
   };
 
@@ -280,14 +279,14 @@ const PreviousOrdersSection = () => {
         <View style={{ flex: 1 }} />
 
         {/* Search Bar */}
-        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, borderRadius: 8, height: 32, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, minWidth: 160 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, minWidth: 250 }}>
           <Search color={colors.muted} size={12} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search orders..."
             placeholderTextColor={colors.muted}
-            style={{ flex: 1, marginLeft: 7, color: colors.heading, fontSize: 12, height: 32 }}
+            style={{ flex: 1, marginLeft: 7, color: colors.heading, fontSize: 12, padding: 0 }}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -315,8 +314,6 @@ const PreviousOrdersSection = () => {
           sortColumn={sortColumn}
           sortDirection={sortDirection}
           onSort={handleSort}
-          onRowClick={handleRowClick}
-          onDoubleClick={handleDoubleClick}
           onMoreClick={handleMoreClick}
           refreshing={isRefreshing}
           onRefresh={handleRefresh}
