@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { ArrowDown, ArrowUp, MoreVertical } from "lucide-react-native";
+import { ArrowDown, ArrowUp, Lock, MoreVertical } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import Animated from "react-native-reanimated";
@@ -101,6 +101,14 @@ function getLeftBorderColor(order: OrderProfile): string {
     default:
       return colors.warning;
   }
+}
+
+/** True when every card payment on the order has been settled. */
+function isOrderFullySettled(order: OrderProfile): boolean {
+  const cardPayments = (order.payments || []).filter(
+    (p) => p.method !== "Cash" && !p.isVoided,
+  );
+  return cardPayments.length > 0 && cardPayments.every((p) => p.is_settled);
 }
 
 // Effective display status (accounts for refunds)
@@ -246,7 +254,7 @@ const OrderRow = memo<OrderRowProps>(
           </View>
 
           {/* STATUS cell */}
-          <View className="flex-[1.2] py-2.5 px-3 items-center">
+          <View className="flex-[1.2] py-2.5 px-3 items-center gap-1">
             <View
               style={{
                 backgroundColor: pill.bg,
@@ -259,6 +267,14 @@ const OrderRow = memo<OrderRowProps>(
                 {pill.label}
               </Text>
             </View>
+            {isOrderFullySettled(order) && (
+              <View className="flex-row items-center gap-0.5">
+                <Lock size={9} color={colors.muted} />
+                <Text style={{ color: colors.muted, fontSize: 9, fontWeight: "600" }}>
+                  Settled
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* ACTIONS cell */}

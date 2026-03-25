@@ -826,7 +826,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             tableId: finalOrder?.service_location_id ?? undefined,
           };
 
-          await eventBus.emit("order:paid", eventPayload);
+          eventBus.emit("order:paid", eventPayload);
         }
 
         // All configured splits are done — show success
@@ -865,18 +865,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         isCashPriced: isCashPayment,
       };
 
-      // Before payment: send items to kitchen if order is still in draft/pending
-      // Must happen BEFORE addPaymentToOrder so items are still kitchen_status "new"
-      // and sendNewItemsToKitchenForOrder actually executes (updates DB via update_order_status RPC)
-      if (
-        currentOrder &&
-        (currentOrder.order_status === "draft" || currentOrder.order_status === "pending")
-      ) {
-        await sendNewItemsToKitchenForOrder(activeOrderId);
-      }
-
-      // Await payment and check for success
-      const paymentSuccess = await addPaymentToOrder({
+      // Start payment RPC immediately — it doesn't depend on order_status
+      const paymentPromise = addPaymentToOrder({
         orderId: activeOrderId,
         amount: paymentAmount,
         method: method as any,
@@ -884,6 +874,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         transactionDetails: detailsWithCashFlag,
         dejavooTransaction,
       });
+
+      // Fire-and-forget kitchen send in parallel (catches errors internally)
+      if (
+        currentOrder &&
+        (currentOrder.order_status === "draft" || currentOrder.order_status === "pending")
+      ) {
+        sendNewItemsToKitchenForOrder(activeOrderId);
+      }
+
+      // Await payment and check for success
+      const paymentSuccess = await paymentPromise;
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
       if (!paymentSuccess) {
@@ -925,12 +926,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // ================================================================
       // NEW (Phase 4.2): Emit order:paid event
       // ================================================================
-      // Removed direct calls to:
-      // - sendNewItemsToKitchenForOrder (now handled by event subscriber)
-      // - archiveOrder (now handled by event subscriber)
-      //
-      // Subscribers will handle: sending to kitchen, archiving takeout orders,
-      // updating table status, analytics, inventory deduction, etc.
+      // Subscribers handle: archiving takeout orders, updating table status,
+      // analytics, inventory deduction, etc.
+      // Kitchen send is fire-and-forget inline (parallelized with payment RPC).
       const eventPayload: OrderPaidEvent = {
         orderId: activeOrderId,
         orderType: finalOrder?.order_type || "unknown",
@@ -943,7 +941,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         tableId: finalOrder?.service_location_id ?? undefined,
       };
 
-      await eventBus.emit("order:paid", eventPayload);
+      eventBus.emit("order:paid", eventPayload);
 
       set({
         completedPaymentInfo: {

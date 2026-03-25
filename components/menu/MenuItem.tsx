@@ -1,4 +1,8 @@
+import OptimizedListImage, {
+  type ImageLoadPriority,
+} from "@/components/ui/OptimizedListImage";
 import { useToast } from "@/contexts/ToastContext";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { colors } from "@/lib/theme";
 import { MenuItemType } from "@/lib/types";
 import {
@@ -11,14 +15,7 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Utensils } from "lucide-react-native";
 import React, { useCallback, useMemo } from "react";
-import {
-  Image,
-  ImageSourcePropType,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ImageSourcePropType, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 const styles = StyleSheet.create({
   container: {
@@ -135,6 +132,8 @@ PlaceholderIcon.displayName = "PlaceholderIcon";
 interface MenuItemProps {
   item: MenuItemType;
   imageSource?: ImageSourcePropType;
+  /** From FlatList index — viewport rows load first */
+  imagePriority?: ImageLoadPriority;
   onOrderClosedCheck?: () => boolean;
   categoryId?: string;
   menuId?: string;
@@ -143,6 +142,7 @@ interface MenuItemProps {
 const MenuItem: React.FC<MenuItemProps> = ({
   item,
   imageSource,
+  imagePriority = "normal",
   onOrderClosedCheck,
   categoryId,
   menuId,
@@ -211,6 +211,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
     useModifierSidebarStore.getState().openToAdd(item, activeOrderId, categoryId, menuId);
   }, [item, categoryId, menuId]);
 
+  const resolvedImageSource =
+    imageSource ?? resolveMenuItemImageSource(item.image);
+
   return (
     <TouchableOpacity
       disabled={isDisabled}
@@ -228,8 +231,14 @@ const MenuItem: React.FC<MenuItemProps> = ({
       {/* Image */}
       {showMenuImages && (
         <View style={styles.imageWrapper}>
-          {imageSource ? (
-            <Image source={imageSource} style={styles.image} resizeMode="cover" />
+          {resolvedImageSource ? (
+            <OptimizedListImage
+              source={resolvedImageSource}
+              style={styles.image}
+              contentFit="cover"
+              priority={imagePriority}
+              recyclingKey={`${item.id}:${item.image ?? ""}`}
+            />
           ) : (
             <View style={styles.placeholderContainer}>
               <PlaceholderIcon />
@@ -270,7 +279,9 @@ export default React.memo(MenuItem, (prevProps, nextProps) => {
     prevProps.item.availability === nextProps.item.availability &&
     prevProps.item.stockQuantity === nextProps.item.stockQuantity &&
     prevProps.item.name === nextProps.item.name &&
+    prevProps.item.image === nextProps.item.image &&
     prevProps.categoryId === nextProps.categoryId &&
-    prevProps.imageSource === nextProps.imageSource
+    prevProps.imageSource === nextProps.imageSource &&
+    prevProps.imagePriority === nextProps.imagePriority
   );
 });

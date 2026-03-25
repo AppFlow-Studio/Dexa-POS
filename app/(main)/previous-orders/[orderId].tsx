@@ -13,18 +13,23 @@ import RefundsTab from '@/components/previous-orders/detail/RefundsTab'
 import SummaryCards from '@/components/previous-orders/detail/SummaryCards'
 import TimelineTab from '@/components/previous-orders/detail/TimelineTab'
 import TipAdjustSheet, {
-  TipAdjustSheetRef
-} from '@/components/previous-orders/detail/TipAdjustSheet'
-import { useToast } from '@/contexts/ToastContext'
-import { colors } from '@/lib/theme'
-import type { PreviousOrder } from '@/lib/types'
-import { useOrderStore } from '@/stores/useOrderStore'
-import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import { previousOrderToOrderProfile } from '@/utils/previousOrderMapper'
-import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Clock, CreditCard, Receipt, RotateCcw } from 'lucide-react-native'
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+  TipAdjustSheetRef,
+} from "@/components/previous-orders/detail/TipAdjustSheet";
+import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { previousOrderToOrderProfile } from "@/utils/previousOrderMapper";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { colors } from "@/lib/theme";
+import { Clock, CreditCard, Receipt, RotateCcw } from "lucide-react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   InteractionManager,
   Pressable,
@@ -46,19 +51,19 @@ const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
 ]
 
 const OrderDetailsScreen = () => {
-  const router = useRouter()
-  const { orderId } = useLocalSearchParams()
-  const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore()
+  const router = useRouter();
+  const { orderId } = useLocalSearchParams();
+  const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore();
+  const order = getOrderById(orderId as string);
+  const supabaseClient = useSupabaseClient();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const { show } = useToast();
 
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
-  const { show } = useToast()
-
-  const [activeTab, setActiveTab] = useState<TabType>('bill')
-  const [isReady, setIsReady] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [showPrintModal, setShowPrintModal] = useState(false)
-  const [showNotesModal, setShowNotesModal] = useState(false)
-  const [order, setOrder] = useState<PreviousOrder | undefined>(undefined)
+  const [activeTab, setActiveTab] = useState<TabType>("bill");
+  const [isReady, setIsReady] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
 
   const refundModalRef = useRef<AdvancedRefundModalRef>(null)
   const tipAdjustRef = useRef<TipAdjustSheetRef>(null)
@@ -90,8 +95,8 @@ const OrderDetailsScreen = () => {
 
   const mappedOrder = useMemo(
     () => (order ? previousOrderToOrderProfile(order) : null),
-    [order]
-  )
+    [order],
+  );
 
   // Deferred rendering for smooth navigation
   useEffect(() => {
@@ -104,192 +109,36 @@ const OrderDetailsScreen = () => {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true)
     try {
-      await refreshPreviousOrders()
+      await refreshPreviousOrders();
     } finally {
       setIsRefreshing(false)
     }
   }, [refreshPreviousOrders])
 
   const handleReopen = useCallback(() => {
-    show({ title: 'Info', message: 'Re-open order is not yet implemented' })
-  }, [show])
+    show({ title: "Info", message: "Re-open order is not yet implemented" });
+  }, [show]);
+
+  const handleAddToBill = useCallback(() => {
+    show({ title: "Info", message: "Add to current bill is not yet implemented" });
+  }, [show]);
 
   // Not-found state
   if (!order) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.screen,
-          paddingHorizontal: 14,
-          paddingVertical: 12
-        }}
-      >
-        {/* Header */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 20
-          }}
+      <View className="flex-1 items-center justify-center p-4 bg-screen">
+        <Text className="text-2xl font-bold text-red-400 mb-3">
+          Order Not Found
+        </Text>
+        <Text className="text-xl text-gray-400 mb-1.5">
+          Looking for: {orderId}
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="mt-3 px-4 py-2 bg-blue-600 rounded-lg"
         >
-          <TouchableOpacity
-            onPress={() => {
-              const canGoBack = router.canGoBack?.()
-              if (canGoBack) {
-                router.back()
-              } else {
-                router.replace('/previous-orders')
-              }
-            }}
-            style={{
-              padding: 6,
-              backgroundColor: colors.teal + '10',
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: colors.teal + '30'
-            }}
-          >
-            <Text style={{ fontSize: 16, color: colors.teal }}>←</Text>
-          </TouchableOpacity>
-          <Text
-            style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
-          >
-            Order Details
-          </Text>
-          <View style={{ width: 28 }} />
-        </View>
-
-        {/* Center content */}
-        <View
-          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-        >
-          {/* Small icon box */}
-          <View
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 12,
-              backgroundColor: colors.danger + '15',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: colors.danger + '30'
-            }}
-          >
-            <Text style={{ fontSize: 24 }}>⚠</Text>
-          </View>
-
-          {/* Title */}
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: '700',
-              color: colors.heading,
-              textAlign: 'center',
-              marginBottom: 8
-            }}
-          >
-            Order Not Found
-          </Text>
-
-          {/* Description */}
-          <Text
-            style={{
-              fontSize: 12,
-              color: colors.label,
-              textAlign: 'center',
-              marginBottom: 20,
-              lineHeight: 18
-            }}
-          >
-            This order may have been archived or the link is invalid.
-          </Text>
-
-          {/* Order ID display */}
-          <View
-            style={{
-              backgroundColor: colors.panel,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              width: '100%',
-              marginBottom: 24
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 10,
-                fontWeight: '600',
-                color: colors.muted,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                marginBottom: 6
-              }}
-            >
-              Looking for
-            </Text>
-            <Text
-              style={{
-                fontSize: 13,
-                fontFamily: 'Courier',
-                color: colors.heading
-              }}
-            >
-              {orderId}
-            </Text>
-          </View>
-
-          {/* Primary action */}
-          <TouchableOpacity
-            onPress={() => router.replace('/previous-orders')}
-            style={{
-              width: '100%',
-              paddingVertical: 11,
-              backgroundColor: colors.teal,
-              borderRadius: 10,
-              alignItems: 'center',
-              marginBottom: 10
-            }}
-          >
-            <Text
-              style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}
-            >
-              View All Orders
-            </Text>
-          </TouchableOpacity>
-
-          {/* Secondary action */}
-          <TouchableOpacity
-            onPress={() => {
-              const canGoBack = router.canGoBack?.()
-              if (canGoBack) {
-                router.back()
-              } else {
-                router.replace('/previous-orders')
-              }
-            }}
-            style={{
-              width: '100%',
-              paddingVertical: 11,
-              backgroundColor: 'transparent',
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 10,
-              alignItems: 'center'
-            }}
-          >
-            <Text
-              style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
-            >
-              Go Back
-            </Text>
-          </TouchableOpacity>
-        </View>
+          <Text className="text-lg text-white font-bold">Go Back</Text>
+        </TouchableOpacity>
       </View>
     )
   }
@@ -298,6 +147,8 @@ const OrderDetailsScreen = () => {
   if (!isReady) {
     return <OrderDetailSkeleton />
   }
+
+  const profileOrder = previousOrderToOrderProfile(order);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.screen }}>
@@ -381,12 +232,10 @@ const OrderDetailsScreen = () => {
             showsVerticalScrollIndicator={false}
           >
             <Animated.View entering={FadeIn.duration(200)}>
-              {activeTab === 'bill' && <BillTab order={order} />}
-              {activeTab === 'payments' && <PaymentsTab order={order} />}
-              {activeTab === 'refunds' && <RefundsTab order={order} />}
-              {activeTab === 'timeline' && mappedOrder && (
-                <TimelineTab order={mappedOrder} />
-              )}
+              {activeTab === "bill" && <BillTab order={order} />}
+              {activeTab === "payments" && <PaymentsTab order={order} />}
+              {activeTab === "refunds" && <RefundsTab order={order} />}
+              {activeTab === "timeline" && <TimelineTab order={order} />}
             </Animated.View>
           </ScrollView>
         </View>
@@ -406,28 +255,15 @@ const OrderDetailsScreen = () => {
           </Animated.View>
 
           <Animated.View entering={FadeIn.duration(300).delay(300)}>
-            {mappedOrder && (
-              <ActionsPanel
-                order={mappedOrder}
-                onRefund={() => refundModalRef.current?.open()}
-                onTipAdjust={() => tipAdjustRef.current?.open()}
-                onPrint={() => setShowPrintModal(true)}
-                onReopen={handleReopen}
-                onNotes={() => setShowNotesModal(true)}
-                onCloseCheck={() =>
-                  show({
-                    title: 'Info',
-                    message: 'Close check is not yet implemented'
-                  })
-                }
-                onVoidOrder={() =>
-                  show({
-                    title: 'Info',
-                    message: 'Void order is not yet implemented'
-                  })
-                }
-              />
-            )}
+            <ActionsPanel
+              order={order}
+              onRefund={() => refundModalRef.current?.open()}
+              onTipAdjust={() => tipAdjustRef.current?.open()}
+              onPrint={() => setShowPrintModal(true)}
+              onReopen={handleReopen}
+              onAddToBill={handleAddToBill}
+              onNotes={() => setShowNotesModal(true)}
+            />
           </Animated.View>
         </ScrollView>
       </View>
@@ -436,22 +272,26 @@ const OrderDetailsScreen = () => {
       <AdvancedRefundModal
         ref={refundModalRef}
         onClose={() => {}}
-        order={mappedOrder}
+        order={order}
       />
 
-      <TipAdjustSheet ref={tipAdjustRef} order={mappedOrder} />
+      <TipAdjustSheet
+        ref={tipAdjustRef}
+        order={order}
+        supabaseClient={supabaseClient}
+      />
 
       <PrintReceiptModal
         isOpen={showPrintModal}
         onClose={() => setShowPrintModal(false)}
-        order={mappedOrder}
+        order={profileOrder}
         location={selectedStore}
       />
 
       <OrderNotesModal
         isOpen={showNotesModal}
         onClose={() => setShowNotesModal(false)}
-        order={mappedOrder}
+        order={profileOrder}
       />
     </View>
   )

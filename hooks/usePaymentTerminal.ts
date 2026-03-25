@@ -55,6 +55,7 @@ export function usePaymentTerminal() {
         terminalType: t.terminal_type,
         ipAddress: t.local_ip_address,
         port: t.local_port,
+        connectionType: t.connection_type === 'usb' ? 'usb' as const : 'local_socket' as const,
         isActive: t.is_active,
         isConnected: t.is_connected,
         stationId: t.station_id,
@@ -91,13 +92,15 @@ export function usePaymentTerminal() {
       // Castles: connect + getData to verify terminal is responsive
       if (terminal?.terminalType === 'castles') {
         const service = getCastlesService();
+        const isUsb = terminal.connectionType === 'usb';
         const host = terminal.ipAddress;
-        if (!host) throw new Error('Castles terminal IP address not configured');
+        if (!isUsb && !host) throw new Error('Castles terminal IP address not configured');
 
-        // 1. Establish / reuse TCP connection
+        // 1. Establish / reuse connection (TCP or USB)
         await service.connect({
-          host,
-          port: terminal.port ?? CASTLES_DEFAULT_PORT,
+          connectionType: isUsb ? 'usb' : 'local_socket',
+          host: isUsb ? undefined : host,
+          port: isUsb ? undefined : (terminal.port ?? CASTLES_DEFAULT_PORT),
           timeout: CASTLES_SOCKET_TIMEOUT_MS,
           terminalId: targetId,
         });
@@ -207,7 +210,7 @@ export function usePaymentTerminal() {
     orderId: string;
     amount: number;
     tipAmount?: number;
-    terminal: { id: string; ipAddress?: string; port?: number };
+    terminal: { id: string; ipAddress?: string; port?: number; connectionType?: 'local_socket' | 'usb' };
   }): Promise<{
     success: boolean;
     transactionId?: string;
@@ -217,9 +220,10 @@ export function usePaymentTerminal() {
     error?: string;
   }> => {
     const service = getCastlesService();
+    const isUsb = params.terminal.connectionType === 'usb';
     const host = params.terminal.ipAddress;
 
-    if (!host) {
+    if (!isUsb && !host) {
       return { success: false, error: 'Castles terminal IP address not configured' };
     }
 
@@ -227,8 +231,9 @@ export function usePaymentTerminal() {
     if (!service.isConnected()) {
       try {
         await service.connect({
-          host,
-          port: params.terminal.port ?? CASTLES_DEFAULT_PORT,
+          connectionType: isUsb ? 'usb' : 'local_socket',
+          host: isUsb ? undefined : host,
+          port: isUsb ? undefined : (params.terminal.port ?? CASTLES_DEFAULT_PORT),
           timeout: CASTLES_SOCKET_TIMEOUT_MS,
           terminalId: params.terminal.id,
         });
@@ -322,6 +327,7 @@ export function usePaymentTerminal() {
           id: activeTerminalId,
           ipAddress: terminal.ipAddress,
           port: terminal.port,
+          connectionType: terminal.connectionType,
         },
       });
     }

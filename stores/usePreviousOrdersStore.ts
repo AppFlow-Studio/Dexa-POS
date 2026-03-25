@@ -12,6 +12,26 @@ import {
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 
+/** Same source as useOrdersQuery / reconcile: selected store, then floor plan fallback */
+function resolveHistoryLocationId(): string | null {
+  const storeId = useStoreSettingsStore.getState().selectedStore?.id ?? null;
+  if (storeId) return storeId;
+  return useFloorPlanStore.getState().locationId;
+}
+
+/** DB row id and local order id may both appear in URLs / lookups */
+function buildOrderLookupMap(orders: PreviousOrder[]): Record<string, PreviousOrder> {
+  const lookup: Record<string, PreviousOrder> = {};
+  for (const o of orders) {
+    if (o.db_order_id) lookup[o.db_order_id] = o;
+    if (o.orderId) lookup[o.orderId] = o;
+  }
+  return lookup;
+}
+
+const HISTORY_REFRESH_COALESCE_MS = 4000;
+let refreshPreviousOrdersInFlight: Promise<void> | null = null;
+
 // Global client reference
 let _supabaseClient: SupabaseClient | null = null;
 export const setPreviousOrdersSupabaseClient = (
@@ -64,13 +84,17 @@ interface PreviousOrdersState {
   refunds: RefundRecord[];
   newOrdersCount: number; // Tracks how many new orders are available on server
   _orderLookup: Record<string, PreviousOrder>;
+  /** Successful refresh timestamp (for coalescing with bootstrap + tab mount) */
+  lastHistoryRefreshAt: number | null;
+  /** Location id used for last successful refresh (invalidates throttle on store switch) */
+  _lastRefreshLocationId: string | null;
 
   // Actions
   addOrderToHistory: (order: OrderProfile) => void;
   getOrderById: (orderId: string) => PreviousOrder | undefined;
   searchOrders: (query: string) => PreviousOrder[];
   getOrdersByDate: (date: Date) => PreviousOrder[];
-  refreshPreviousOrders: () => Promise<void>; // Full refresh from backend
+  refreshPreviousOrders: (opts?: { force?: boolean }) => Promise<void>; // Full refresh from backend
   checkForNewOrders: () => Promise<number>; // Check for new orders (lightweight)
   clearNewOrdersCount: () => void; // Reset new orders counter
 
@@ -97,6 +121,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     refunds: [],
     newOrdersCount: 0,
     _orderLookup: {},
+    lastHistoryRefreshAt: null,
+    _lastRefreshLocationId: null,
 
     addOrderToHistory: (order: OrderProfile) => {
       // An order should be added to history if it has reached a final state.
@@ -194,18 +220,22 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       };
 
       set((state) => {
-        const key = previousOrder.db_order_id || previousOrder.orderId;
+        const previousOrders = [...state.previousOrders, previousOrder];
         return {
-          previousOrders: [...state.previousOrders, previousOrder],
-          _orderLookup: { ...state._orderLookup, [key]: previousOrder },
+          previousOrders,
+          _orderLookup: buildOrderLookupMap(previousOrders),
         };
       });
     },
 
     getOrderById: (orderId: string) => {
       const lookup = get()._orderLookup;
-      // Try direct lookup first, then scan for orderId match
-      return lookup[orderId] ?? get().previousOrders.find((order) => order.orderId === orderId);
+      return (
+        lookup[orderId] ??
+        get().previousOrders.find(
+          (o) => o.orderId === orderId || o.db_order_id === orderId,
+        )
+      );
     },
 
     searchOrders: (query: string) => {
@@ -234,7 +264,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       return orders.filter((order) => order.orderDate === targetDate);
     },
 
-    refreshPreviousOrders: async () => {
+    refreshPreviousOrders: async (opts?: { force?: boolean }) => {
+      const force = opts?.force === true;
       const client = _supabaseClient;
       if (!client) {
         console.warn(
@@ -243,12 +274,29 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         return;
       }
 
-      const locationId = useFloorPlanStore.getState().locationId;
+      const locationId = resolveHistoryLocationId();
       if (!locationId) {
-        console.warn("Location ID not found in useFloorPlanStore");
+        console.warn(
+          "Location ID not found for history (selected store / floor plan)",
+        );
         return;
       }
 
+      const st = get();
+      if (
+        !force &&
+        st._lastRefreshLocationId === locationId &&
+        st.lastHistoryRefreshAt != null &&
+        Date.now() - st.lastHistoryRefreshAt < HISTORY_REFRESH_COALESCE_MS
+      ) {
+        return;
+      }
+
+      if (refreshPreviousOrdersInFlight) {
+        return refreshPreviousOrdersInFlight;
+      }
+
+      refreshPreviousOrdersInFlight = (async () => {
       if (__DEV__) console.log("Refreshing previous orders data from backend...");
 
       try {
@@ -363,17 +411,26 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        const newLookup: Record<string, PreviousOrder> = {};
-        for (const order of mergedPreviousOrders) {
-          newLookup[order.db_order_id || order.orderId] = order;
-        }
-        set({ previousOrders: mergedPreviousOrders, newOrdersCount: 0, _orderLookup: newLookup });
+        const newLookup = buildOrderLookupMap(mergedPreviousOrders);
+        const now = Date.now();
+        set({
+          previousOrders: mergedPreviousOrders,
+          newOrdersCount: 0,
+          _orderLookup: newLookup,
+          lastHistoryRefreshAt: now,
+          _lastRefreshLocationId: locationId,
+        });
         if (__DEV__) console.log(
           `Previous orders refreshed: ${mergedPreviousOrders.length} orders loaded.`,
         );
       } catch (err) {
         console.error("Error in refreshPreviousOrders:", err);
+      } finally {
+        refreshPreviousOrdersInFlight = null;
       }
+      })();
+
+      await refreshPreviousOrdersInFlight;
     },
 
     // Check for new orders by fetching latest 10 and comparing IDs
@@ -383,7 +440,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         return 0;
       }
 
-      const locationId = useFloorPlanStore.getState().locationId;
+      const locationId = resolveHistoryLocationId();
       if (!locationId) {
         return 0;
       }
@@ -397,15 +454,17 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           return 0;
         }
 
-        // Use O(1) lookup instead of building a Set
         const lookup = get()._orderLookup;
 
-        // Count how many fetched orders are NOT in local state
         let newCount = 0;
-        for (const order of latestOrders) {
-          if (!lookup[order.id]) {
-            newCount++;
-          }
+        for (const row of latestOrders) {
+          const id = row.id as string;
+          if (!id) continue;
+          if (lookup[id]) continue;
+          const known = get().previousOrders.some(
+            (po) => po.db_order_id === id || po.orderId === id,
+          );
+          if (!known) newCount++;
         }
 
         // Update state
@@ -629,14 +688,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           return o;
         });
 
-        const newLookup = { ...state._orderLookup };
-        if (updatedRefundOrder) {
-          newLookup[updatedRefundOrder.db_order_id || updatedRefundOrder.orderId] = updatedRefundOrder;
-        }
         return {
           previousOrders: updatedPreviousOrders,
           refunds: [...state.refunds, newRefundRecord],
-          _orderLookup: newLookup,
+          _orderLookup: buildOrderLookupMap(updatedPreviousOrders),
         };
       });
     },
@@ -653,7 +708,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           lookupKey = orderId;
         } else {
           for (const [key, order] of Object.entries(state._orderLookup)) {
-            if (order.orderId === orderId) {
+            if (
+              order.orderId === orderId ||
+              order.db_order_id === orderId
+            ) {
               lookupKey = key;
               break;
             }
@@ -663,11 +721,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
         const existing = state._orderLookup[lookupKey];
         const updated = { ...existing, ...patch };
+        const previousOrders = state.previousOrders.map((po) =>
+          po.orderId === existing.orderId ? updated : po,
+        );
         return {
-          previousOrders: state.previousOrders.map((po) =>
-            po.orderId === existing.orderId ? updated : po
-          ),
-          _orderLookup: { ...state._orderLookup, [lookupKey]: updated },
+          previousOrders,
+          _orderLookup: buildOrderLookupMap(previousOrders),
         };
       });
     },

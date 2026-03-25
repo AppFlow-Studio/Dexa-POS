@@ -192,7 +192,7 @@ const TableContextSheet: React.FC<TableContextSheetProps> = ({
   onTransferServer,
 }) => {
   const sheetRef = useRef<BottomSheetModal>(null)
-  const snapPoints = useMemo(() => ['55%'], [])
+  const snapPoints = useMemo(() => ['90%'], [])
 
   const clearTableSession = useFloorPlanStore(s => s.clearTableSession)
   const finishCleaning = useFloorPlanStore(s => s.finishCleaning)

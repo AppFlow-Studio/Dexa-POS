@@ -6,7 +6,7 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   ArrowLeft,
@@ -201,7 +201,7 @@ const SplitByItemView = () => {
       return;
     }
 
-    const enablePerSeatOrdering = useSettingsStore.getState().enablePerSeatOrdering;
+    const enablePerSeatOrdering = useLocationConfigStore.getState().config.dining.enablePerSeatOrdering;
 
     if (!enablePerSeatOrdering || !activeOrder?.service_location_id) {
       addSplit("Guest 1");

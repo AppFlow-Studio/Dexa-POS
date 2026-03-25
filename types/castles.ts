@@ -205,6 +205,71 @@ export interface CastlesRefundResult {
 }
 
 // ============================================================
+// SETTLEMENT REQUEST / RESPONSE / RESULT
+// ============================================================
+
+export interface CastlesSettlementRequest {
+  txnPosTxnId: string;
+  txnType: 'settlement';
+}
+
+export interface CastlesSettlementHostInfo {
+  txnAcquirerName?: string;
+  txnApprovalCode?: string;
+  txnDateTime?: string;
+  txnHostMsg?: string;
+  txnMid?: string;
+  txnPosTxnId?: string;
+  txnReturnCode?: string;
+  txnStan?: string;
+  txnTid?: string;
+  txnTotalRefundAmt?: string;
+  txnTotalRefundCnt?: string;
+  txnTotalSaleAmt?: string;
+  txnTotalSaleCnt?: string;
+  txnTotalSettleAmt?: string;
+  txnTotalSettleCnt?: string;
+  txnType?: string;
+  txnInvoiceNum?: string;
+  txnRrn?: string;
+  txnBatchNum?: string;
+}
+
+export interface CastlesSettlementRawResponse {
+  txnPosTxnId: string;
+  txnType: string;
+  txnReturnCode: string;
+  txnDateTime?: string;
+  txnStan?: string;
+  txnSettleInfo?: CastlesSettlementHostInfo[];
+}
+
+export interface CastlesSettlementHostResult {
+  acquirerName: string;
+  success: boolean;
+  returnCode: string;
+  hostMessage?: string;
+  saleTotalAmount: number;
+  saleTotalCount: number;
+  refundTotalAmount: number;
+  refundTotalCount: number;
+  settleTotalAmount: number;
+  settleTotalCount: number;
+  merchantId?: string;
+  terminalId?: string;
+  dateTime?: string;
+  batchNumber?: string;
+}
+
+export interface CastlesSettlementResult {
+  success: boolean;
+  partialSuccess: boolean;
+  raw?: CastlesSettlementRawResponse;
+  hosts: CastlesSettlementHostResult[];
+  error?: string;
+}
+
+// ============================================================
 // RETURN TO IDLE (recovery command)
 // ============================================================
 
@@ -224,6 +289,8 @@ export const CASTLES_RETURN2IDLE_TIMEOUT_MS = 8_000;
 export const CASTLES_CONNECT_TIMEOUT_MS = 10_000;
 export const CASTLES_CONNECT_RETRY_DELAY_MS = 2_000;
 export const CASTLES_CONNECT_MAX_RETRIES = 3;
+/** Settlement contacts multiple hosts — allow up to 5 min */
+export const CASTLES_SETTLEMENT_TIMEOUT_MS = 300_000;
 
 // ============================================================
 // RETURN CODES (8-character format per Castles Appendix B)

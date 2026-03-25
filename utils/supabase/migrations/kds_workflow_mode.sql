@@ -228,12 +228,21 @@ BEGIN
     updated_at = NOW()
   WHERE order_item_id = ANY(p_order_item_ids);
 
-  -- Touch parent order(s) to trigger broadcast
+  -- Touch parent order(s) to trigger broadcast + reopen terminal orders
+  -- so get_kds_tickets_v2 returns them and future broadcasts don't trigger terminal removal
   FOR v_order_id IN
     SELECT DISTINCT order_id FROM order_items WHERE id = ANY(p_order_item_ids)
   LOOP
     UPDATE orders
     SET
+      status = CASE
+        WHEN status IN ('completed', 'cancelled', 'void', 'refunded')
+          THEN CASE
+            WHEN p_target_status = 'preparing' THEN 'preparing'::order_status
+            ELSE 'sent_to_kitchen'::order_status
+          END
+        ELSE status
+      END,
       updated_at = NOW(),
       sync_version = COALESCE(sync_version, 0) + 1
     WHERE id = v_order_id;

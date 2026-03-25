@@ -10,10 +10,13 @@ import {
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { getOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 import { OrderService } from "@/services/orderService";
 
+import OptimizedListImage from "@/components/ui/OptimizedListImage";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { ArrowLeft, Check, CheckCircle2, Minus, Plus, X } from "lucide-react-native";
 import {
   memo,
@@ -305,8 +308,10 @@ const ModifierScreen = () => {
   const seatOverride = useModifierSidebarStore(selectSeatOverride);
   const setSeatOverride = useModifierSidebarStore(selectSetSeatOverride);
 
+  const showMenuImages = useSettingsStore((s) => s.showMenuImages);
+
   // Per-seat ordering context
-  const enablePerSeatOrdering = useSettingsStore(s => s.enablePerSeatOrdering);
+  const enablePerSeatOrdering = useLocationConfigStore(s => s.config.dining.enablePerSeatOrdering);
   const { activeOrderId: seatOrderId } = useOrderStore(
     useShallow(s => ({ activeOrderId: s.activeOrderId }))
   );
@@ -397,6 +402,11 @@ const ModifierScreen = () => {
   const baseMenuItem = useMemo(
     () => menuItem || (cartItem ? getMenuItemById(cartItem.menuItemId) : null),
     [menuItem, cartItem, getMenuItemById],
+  );
+
+  const resolvedImageSource = useMemo(
+    () => (showMenuImages && isOpen ? resolveMenuItemImageSource(currentItem?.image) : undefined),
+    [showMenuImages, isOpen, currentItem?.image],
   );
 
   type MenuItemWithModifiers = typeof baseMenuItem & { modifiers: ModifierCategory[] };
@@ -876,6 +886,13 @@ const ModifierScreen = () => {
           className="flex-row items-center gap-3 px-4 py-3 border-b"
           style={{ borderColor: "rgba(255,255,255,0.08)" }}
         >
+          {showMenuImages && resolvedImageSource ? (
+            <OptimizedListImage
+              source={resolvedImageSource}
+              style={{ width: 48, height: 48, borderRadius: 8 }}
+              contentFit="cover"
+            />
+          ) : null}
           <View className="flex-1">
             <Text className="text-base font-bold" style={{ color: "#e8edf3" }} numberOfLines={1}>
               {currentItem.name}

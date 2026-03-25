@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle,
   FileText,
+  Lock,
   MoreHorizontal,
   Printer,
   RefreshCw,
@@ -153,6 +154,13 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     return { label: "Partial Refund", color: colors.warning };
   }, [totalRefunded, isFullyRefunded]);
 
+  const isSettled = useMemo(() => {
+    const cardPayments = (order.payments || []).filter(
+      (p) => p.method !== "Cash" && !p.isVoided,
+    );
+    return cardPayments.length > 0 && cardPayments.every((p) => p.is_settled);
+  }, [order.payments]);
+
   return (
     <View
       style={{ marginBottom: 8, marginHorizontal: 8, borderRadius: 12, overflow: "hidden" }}
@@ -222,6 +230,24 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             }}>
               <Text style={{ fontSize: 11, fontWeight: "600", color: refundBadge.color }}>
                 {refundBadge.label}
+              </Text>
+            </View>
+          )}
+          {isSettled && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 3,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 20,
+              backgroundColor: colors.muted + "20",
+              borderWidth: 1,
+              borderColor: colors.muted + "40",
+            }}>
+              <Lock size={9} color={colors.muted} />
+              <Text style={{ fontSize: 10, fontWeight: "600", color: colors.muted }}>
+                Settled
               </Text>
             </View>
           )}

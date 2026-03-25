@@ -418,6 +418,9 @@ function transformBroadcastPaymentToProfile(
     returnReferenceId: payment.return_reference_id ?? undefined,
     returnNumber: payment.return_number ?? undefined,
     returnReason: payment.return_reason ?? undefined,
+    // Settlement tracking
+    is_settled: payment.is_settled ?? undefined,
+    settled_at: payment.settled_at ?? undefined,
     transactionDetails: {
       terminalType: payment.terminal_type ?? undefined,
       authorizationCode: payment.authorization_code ?? payment.auth_code ?? undefined,
@@ -785,6 +788,10 @@ export interface FetchedOrderPayment {
   return_number: string | null;
   return_reason: string | null;
 
+  // Settlement tracking
+  is_settled?: boolean | null;
+  settled_at?: string | null;
+
   // Staff tracking
   processed_by_staff_id: string | null;
 
@@ -934,6 +941,9 @@ function normalizeFetchedPayment(
     entry_mode: (payment.processor_response as any)?.dejavoo_transaction?.entryMode ?? null,
     result_code: payment.result_code ?? null,
     terminal_response: (payment as any).terminal_response ?? null,
+    // Settlement tracking
+    is_settled: payment.is_settled ?? false,
+    settled_at: payment.settled_at ?? null,
     // Return/refund tracking fields
     is_returned: payment.is_returned ?? false,
     returned_at: payment.returned_at,

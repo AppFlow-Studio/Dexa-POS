@@ -1,4 +1,5 @@
 import { colors } from "@/lib/theme";
+import type { KdsConfig } from "@/types/locationConfig";
 import KDSSoundService, {
   DEFAULT_SOUND_CONFIG,
   SOUND_PRESET_OPTIONS,
@@ -6,7 +7,8 @@ import KDSSoundService, {
   type SoundPreset,
 } from "@/services/kds/kdsSoundService";
 import { useKDSStore } from "@/stores/useKDSStore";
-import { useStoreSettingsStore, type StoreSettings } from "@/stores/useStoreSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
   ChevronDown,
@@ -362,7 +364,7 @@ const StepperRow = ({
 );
 
 // ─── Modifier group name options ─────────────────────────────────
-const MODIFIER_GROUP_OPTIONS: { value: StoreSettings["kdsDisplayModifierGroupName"]; label: string }[] = [
+const MODIFIER_GROUP_OPTIONS: { value: KdsConfig["displayModifierGroupName"]; label: string }[] = [
   { value: "for_group_priced", label: "FOR GROUP PRICED" },
   { value: "always", label: "ALWAYS" },
   { value: "never", label: "NEVER" },
@@ -385,24 +387,50 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
   const supabase = useSupabaseClient();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
 
-  // Store settings
-  const updateField = useStoreSettingsStore((s) => s.updateField);
-  const kdsDisplayModifierGroupName = useStoreSettingsStore((s) => s.kdsDisplayModifierGroupName);
-  const kdsItemNameLines = useStoreSettingsStore((s) => s.kdsItemNameLines);
-  const kdsDisplaySeatNumbers = useStoreSettingsStore((s) => s.kdsDisplaySeatNumbers);
-  const kdsDisplayGuestCount = useStoreSettingsStore((s) => s.kdsDisplayGuestCount);
-  const kdsAlphabeticalSort = useStoreSettingsStore((s) => s.kdsAlphabeticalSort);
-  const kdsHighlightNotes = useStoreSettingsStore((s) => s.kdsHighlightNotes);
-  const kdsDisplayExclusionsAtTop = useStoreSettingsStore((s) => s.kdsDisplayExclusionsAtTop);
-  const kdsAggregateIdenticalItems = useStoreSettingsStore((s) => s.kdsAggregateIdenticalItems);
-  const kdsHideDoneItems = useStoreSettingsStore((s) => s.kdsHideDoneItems);
-  const kdsAggregateToExistingTickets = useStoreSettingsStore((s) => s.kdsAggregateToExistingTickets);
-  const kdsAutoFireEnabled = useStoreSettingsStore((s) => s.kdsAutoFireEnabled);
-  const kdsAutoFireDelayMinutes = useStoreSettingsStore((s) => s.kdsAutoFireDelayMinutes);
-  const kdsYellowThresholdMinutes = useStoreSettingsStore((s) => s.kdsYellowThresholdMinutes);
-  const kdsOrangeThresholdMinutes = useStoreSettingsStore((s) => s.kdsOrangeThresholdMinutes);
-  const kdsRedThresholdMinutes = useStoreSettingsStore((s) => s.kdsRedThresholdMinutes);
+  // Store settings — unified config
+  const kdsConfig = useLocationConfigStore((s) => s.config.kds);
+  const _updateConfig = useLocationConfigStore((s) => s.updateConfig);
+  const {
+    displayModifierGroupName: kdsDisplayModifierGroupName,
+    itemNameLines: kdsItemNameLines,
+    displaySeatNumbers: kdsDisplaySeatNumbers,
+    displayGuestCount: kdsDisplayGuestCount,
+    alphabeticalSort: kdsAlphabeticalSort,
+    highlightNotes: kdsHighlightNotes,
+    displayExclusionsAtTop: kdsDisplayExclusionsAtTop,
+    aggregateIdenticalItems: kdsAggregateIdenticalItems,
+    hideDoneItems: kdsHideDoneItems,
+    aggregateToExistingTickets: kdsAggregateToExistingTickets,
+    autoFireEnabled: kdsAutoFireEnabled,
+    autoFireDelayMinutes: kdsAutoFireDelayMinutes,
+    yellowThresholdMinutes: kdsYellowThresholdMinutes,
+    orangeThresholdMinutes: kdsOrangeThresholdMinutes,
+    redThresholdMinutes: kdsRedThresholdMinutes,
+  } = kdsConfig;
   const selectedStation = useStoreSettingsStore((s) => s.selectedStation);
+
+  // Shim: maps old kds field names to new config namespace
+  const KDS_FIELD_MAP: Record<string, string> = {
+    kdsDisplayModifierGroupName: 'displayModifierGroupName',
+    kdsItemNameLines: 'itemNameLines',
+    kdsDisplaySeatNumbers: 'displaySeatNumbers',
+    kdsDisplayGuestCount: 'displayGuestCount',
+    kdsAlphabeticalSort: 'alphabeticalSort',
+    kdsHighlightNotes: 'highlightNotes',
+    kdsDisplayExclusionsAtTop: 'displayExclusionsAtTop',
+    kdsAggregateIdenticalItems: 'aggregateIdenticalItems',
+    kdsHideDoneItems: 'hideDoneItems',
+    kdsAggregateToExistingTickets: 'aggregateToExistingTickets',
+    kdsAutoFireEnabled: 'autoFireEnabled',
+    kdsAutoFireDelayMinutes: 'autoFireDelayMinutes',
+    kdsYellowThresholdMinutes: 'yellowThresholdMinutes',
+    kdsOrangeThresholdMinutes: 'orangeThresholdMinutes',
+    kdsRedThresholdMinutes: 'redThresholdMinutes',
+  };
+  const updateField = (field: string, value: any) => {
+    const configKey = KDS_FIELD_MAP[field] || field;
+    _updateConfig('kds', { [configKey]: value });
+  };
 
   // KDS display (sound config lives in Supabase per-display)
   const kdsDisplayId = useKDSStore((s) => s.kdsDisplayId);
@@ -697,6 +725,16 @@ export default function KDSSettingsModal({ visible, onClose }: KDSSettingsModalP
 
               {/* OTHER Section */}
               <SectionHeader title="Other" />
+
+              <DropdownRow
+                label="New Orders Appear"
+                value={kdsConfig.newOrderPosition ?? 'right'}
+                options={[
+                  { value: 'left', label: 'LEFT (Newest First)' },
+                  { value: 'right', label: 'RIGHT (Newest Last)' },
+                ]}
+                onChange={(val) => updateField('newOrderPosition', val)}
+              />
 
               <ToggleRow
                 label="Auto-Fire Pending Courses"

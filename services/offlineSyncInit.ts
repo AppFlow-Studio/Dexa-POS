@@ -31,6 +31,7 @@ import {
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { getKitchenSentStatus, getOrderSentStatus } from "@/lib/kitchenStatusUtils";
+import { forceSetLocalSequence, parseSequenceFromDisplayNumber } from "@/lib/localOrderSequence";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -39,6 +40,7 @@ import {
     useOrderStore,
 } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useSyncStatusStore } from "@/stores/useSyncStatusStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
 let _supabaseClient: any = null;
@@ -1029,6 +1031,18 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               cash_subtotal: orderData.cash_subtotal,
             });
 
+            // Re-seed local counter to match DB-assigned sequence
+            const dbSeq = parseSequenceFromDisplayNumber(
+              orderData.display_number || `#${orderData.order_number}`
+            );
+            if (dbSeq > 0) {
+              const stationNum = useStoreSettingsStore.getState().selectedStation?.station_number ?? null;
+              const selectedStore = useStoreSettingsStore.getState().selectedStore;
+              if (selectedStore?.id) {
+                forceSetLocalSequence(selectedStore.id, stationNum, dbSeq);
+              }
+            }
+
             console.log(`[OfflineSync:create_order] SUCCESS!`);
             console.log(
               `[OfflineSync:create_order] ${localOrderId} → ${backendId}`,
@@ -1254,7 +1268,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           const latestItem = latestOrder?.items.find(
             (i) => i.id === localItemId,
           );
-          if (latestItem?.kitchen_status === "sent" && data.order_item_id) {
+          if (latestItem?.kitchen_status === getKitchenSentStatus() && data.order_item_id) {
             console.log(
               `[OfflineSync:add_item] Item was fired during sync, retroactively sending to kitchen`,
             );
@@ -1683,6 +1697,11 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             );
           }
 
+          // Clear sync status for items that were successfully sent
+          if (localItemIds?.length) {
+            useSyncStatusStore.getState().clearAllForOrder(localItemIds);
+          }
+
           console.log(`[OfflineSync:send_to_kitchen] SUCCESS!`);
           return true;
         } catch (err) {
@@ -1729,14 +1748,22 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       }
 
       case "set_item_seat": {
-        const { dbItemId, seatNumber } = op.params;
-        if (!dbItemId) {
-          console.log("[OfflineSync] set_item_seat: No dbItemId, will retry later");
+        const { dbItemId, seatNumber, localOrderId, localItemId } = op.params;
+
+        // Resolve item ID: prefer dbItemId, fall back to resolving local IDs
+        let resolvedItemId = dbItemId;
+        if ((!resolvedItemId || !isValidUUID(resolvedItemId)) && localOrderId && localItemId) {
+          resolvedItemId = resolveItemId(localOrderId, localItemId);
+        }
+
+        if (!resolvedItemId || !isValidUUID(resolvedItemId)) {
+          console.log("[OfflineSync] set_item_seat: No valid item ID yet, will retry");
           return false;
         }
+
         try {
           const { error } = await _supabaseClient.rpc("set_item_seat", {
-            p_order_item_id: dbItemId,
+            p_order_item_id: resolvedItemId,
             p_seat_number: seatNumber,
           });
           if (error) {
@@ -1805,6 +1832,134 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             .from("cash_drawer_sessions")
             .update({ expected_cash: balance_after })
             .eq("id", session_id);
+        }
+
+        return true;
+      }
+
+      // ================================================================
+      // PRE-AUTH OPERATION HANDLERS
+      // ================================================================
+
+      case "process_preauth": {
+        const { localOrderId, amount, terminalResponse, terminalType } = op.params;
+
+        // Resolve order ID
+        let dbOrderId: string | undefined;
+        if (localOrderId) {
+          const order = useOrderStore.getState().ordersById[localOrderId];
+          dbOrderId = order?.db_order_id;
+          if (!dbOrderId) {
+            const resolved = resolveOrderId(localOrderId);
+            if (!resolved) {
+              console.log("[OfflineSync:process_preauth] Order not synced yet, will retry");
+              return false;
+            }
+            dbOrderId = resolved;
+          }
+        }
+
+        if (!dbOrderId) {
+          console.error("[OfflineSync:process_preauth] No order ID available");
+          return false;
+        }
+
+        const { data: preauthData, error: preauthErr } = await _supabaseClient.rpc("process_preauth_v1", {
+          p_order_id: dbOrderId,
+          p_amount: amount,
+          p_terminal_response: terminalResponse ?? null,
+          p_staff_id: null,
+          p_terminal_type: terminalType ?? "dejavoo",
+        });
+
+        if (preauthErr) {
+          console.error("[OfflineSync:process_preauth] Failed:", preauthErr.message);
+          return false;
+        }
+
+        // Update local payment with backend payment ID
+        const preauthResult = preauthData as { success: boolean; payment_id?: string } | null;
+        if (preauthResult?.success && preauthResult.payment_id && localOrderId) {
+          useOrderStore.setState((state) => {
+            const order = state.ordersById[localOrderId];
+            if (!order?.payments) return state;
+            const payments = order.payments.map((p) =>
+              p.isPreAuth && !p.db_payment_id
+                ? { ...p, db_payment_id: preauthResult.payment_id, sync_status: "synced" as const }
+                : p,
+            );
+            return {
+              ordersById: { ...state.ordersById, [localOrderId]: { ...order, payments } },
+            };
+          });
+        }
+
+        return true;
+      }
+
+      case "capture_preauth": {
+        const { dbPaymentId, captureAmount, tipAmount, terminalResponse } = op.params;
+
+        if (!dbPaymentId) {
+          console.error("[OfflineSync:capture_preauth] No dbPaymentId");
+          return false;
+        }
+
+        const { error: captureErr } = await _supabaseClient.rpc("capture_preauth_v1", {
+          p_payment_id: dbPaymentId,
+          p_capture_amount: captureAmount,
+          p_tip_amount: tipAmount ?? 0,
+          p_terminal_response: terminalResponse ?? null,
+          p_staff_id: null,
+        });
+
+        if (captureErr) {
+          console.error("[OfflineSync:capture_preauth] Failed:", captureErr.message);
+          return false;
+        }
+
+        return true;
+      }
+
+      case "increment_preauth": {
+        const { dbPaymentId, newAmount, terminalResponse } = op.params;
+
+        if (!dbPaymentId) {
+          console.error("[OfflineSync:increment_preauth] No dbPaymentId");
+          return false;
+        }
+
+        const { error: incErr } = await _supabaseClient.rpc("update_preauth_amount_v1", {
+          p_payment_id: dbPaymentId,
+          p_new_amount: newAmount,
+          p_terminal_response: terminalResponse ?? null,
+        });
+
+        if (incErr) {
+          console.error("[OfflineSync:increment_preauth] Failed:", incErr.message);
+          return false;
+        }
+
+        return true;
+      }
+
+      case "void_preauth": {
+        const { dbPaymentId, reason } = op.params;
+
+        if (!dbPaymentId) {
+          console.error("[OfflineSync:void_preauth] No dbPaymentId");
+          return false;
+        }
+
+        const { error: voidErr } = await _supabaseClient.rpc("void_preauth_v1", {
+          p_payment_id: dbPaymentId,
+          p_staff_id: null,
+          p_reason: reason ?? "Pre-auth released",
+        });
+
+        if (voidErr) {
+          console.error("[OfflineSync:void_preauth] Failed:", voidErr.message);
+          return false;
         }
 
         return true;

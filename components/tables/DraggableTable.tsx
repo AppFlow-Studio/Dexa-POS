@@ -9,7 +9,7 @@ import { colors, TABLE_STATUS_COLORS } from '@/lib/theme'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useOrderByAnyId } from '@/stores/selectors/orderSelectors'
-import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { FloorPlanObject } from '@/types/db-floor-plan-types'
 import { BrushCleaning } from 'lucide-react-native'
@@ -109,7 +109,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const tablesById = useFloorPlanStore(s => s.tablesById)
   const updateTablePosition = useFloorPlanStore(s => s.updateTablePosition)
   const saveSnapshot = useFloorPlanStore(s => s.saveSnapshot)
-  const { defaultSittingTimeMinutes } = useSettingsStore()
+  const defaultSittingTimeMinutes = useLocationConfigStore(s => s.config.dining.defaultSittingTimeMinutes)
   const tick = useTableTimerTick()
 
   // Subscribe directly to live session so table color/status updates without needing

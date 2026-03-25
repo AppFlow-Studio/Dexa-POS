@@ -6,6 +6,7 @@ import { useActiveOrder } from "@/stores/selectors/orderSelectors";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { Check, Mail, Printer } from "lucide-react-native";
 import { useEffect, useState } from "react";
@@ -20,7 +21,7 @@ const PaymentSuccessView = () => {
   const { show } = useToast();
 
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const autoPrintReceipt = useStoreSettingsStore((s) => s.autoPrintReceipt);
+  const autoPrintReceipt = useLocationConfigStore((s) => s.config.printing.autoPrintReceipt);
 
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
 

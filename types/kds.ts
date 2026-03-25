@@ -18,6 +18,7 @@ export interface KDSTicketItem {
   prep_station?: string | null;
   rush?: boolean;
   is_prioritized?: boolean;
+  recalled?: boolean;
   seat_number?: number | null;
 }
 

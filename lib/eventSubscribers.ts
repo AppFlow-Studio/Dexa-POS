@@ -29,42 +29,7 @@ export const initializeEventSubscribers = () => {
   console.log("[EventSubscribers] ====== INITIALIZING ======");
 
   // ================================================================
-  // SUBSCRIBER 1: Send items to kitchen after payment
-  // ================================================================
-  eventBus.on<OrderPaidEvent>("order:paid", async (event) => {
-    try {
-      const { useOrderStore } = await import("@/stores/useOrderStore");
-      const order = useOrderStore.getState().ordersById[event.orderId];
-
-      if (!order) {
-        console.log(
-          `[EventSubscribers:Kitchen] Order ${event.orderId} not found, skipping`
-        );
-        return;
-      }
-
-      // Only send to kitchen if order is draft/pending
-      if (order.order_status === "draft" || order.order_status === "pending") {
-        console.log(
-          `[EventSubscribers:Kitchen] Sending items to kitchen for order ${event.orderId}`
-        );
-        await useOrderStore.getState().sendNewItemsToKitchenForOrder(event.orderId);
-        console.log(
-          `[EventSubscribers:Kitchen] ✓ Items sent to kitchen for order ${event.orderId}`
-        );
-      } else {
-        console.log(
-          `[EventSubscribers:Kitchen] Order ${event.orderId} is ${order.order_status}, no need to send to kitchen`
-        );
-      }
-    } catch (error) {
-      console.error("[EventSubscribers:Kitchen] Failed:", error);
-      // Don't throw - let other subscribers continue
-    }
-  });
-
-  // ================================================================
-  // SUBSCRIBER 2: Auto-archive completed takeout orders
+  // SUBSCRIBER 1: Auto-archive completed takeout orders
   // ================================================================
   eventBus.on<OrderPaidEvent>("order:paid", async (event) => {
     try {
@@ -105,7 +70,7 @@ export const initializeEventSubscribers = () => {
   });
 
   // ================================================================
-  // SUBSCRIBER 3: Update table status after dine-in payment
+  // SUBSCRIBER 2: Update table status after dine-in payment
   // ================================================================
   eventBus.on<OrderPaidEvent>("order:paid", async (event) => {
     try {
@@ -136,7 +101,7 @@ export const initializeEventSubscribers = () => {
   });
 
   // ================================================================
-  // SUBSCRIBER 4: Record analytics (placeholder for future)
+  // SUBSCRIBER 3: Record analytics (placeholder for future)
   // ================================================================
   eventBus.on<OrderPaidEvent>("order:paid", async (event) => {
     try {
@@ -164,7 +129,7 @@ export const initializeEventSubscribers = () => {
   });
 
   // ================================================================
-  // SUBSCRIBER 5: Deduct inventory when order archived
+  // SUBSCRIBER 4: Deduct inventory when order archived
   // ================================================================
   eventBus.on<OrderArchivedEvent>("order:archived", async (event) => {
     try {
@@ -200,7 +165,7 @@ export const initializeEventSubscribers = () => {
   });
 
   // ================================================================
-  // SUBSCRIBER 6: Log session end (for reporting)
+  // SUBSCRIBER 5: Log session end (for reporting)
   // ================================================================
   eventBus.on<SessionEndedEvent>("session:ended", async (event) => {
     try {

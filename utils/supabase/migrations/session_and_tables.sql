@@ -268,8 +268,12 @@ BEGIN
   -- ──────────────────────────────────────────────────────────────
 
   IF p_create_order THEN
-    v_order_number := public.generate_order_number(v_location_id);
-    v_display_number := '#' || SPLIT_PART(v_order_number, '-', 3);
+    v_order_number := public.generate_order_number(v_location_id, p_station_id);
+    v_display_number := CASE
+      WHEN SPLIT_PART(v_order_number, '-', 4) <> ''
+      THEN '#' || SPLIT_PART(v_order_number, '-', 3) || '-' || SPLIT_PART(v_order_number, '-', 4)
+      ELSE '#' || SPLIT_PART(v_order_number, '-', 3)
+    END;
 
     INSERT INTO public.orders (
       merchant_id,

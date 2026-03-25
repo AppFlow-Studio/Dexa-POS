@@ -20,6 +20,11 @@ import type {
   CastlesReturn2IdleRequest,
   CastlesSaleRequest,
   CastlesSaleResult,
+  CastlesSettlementHostInfo,
+  CastlesSettlementHostResult,
+  CastlesSettlementRawResponse,
+  CastlesSettlementRequest,
+  CastlesSettlementResult,
   CastlesTipAdjustRequest,
   CastlesTipAdjustResult,
   CastlesVoidRequest,
@@ -37,6 +42,7 @@ import {
   CASTLES_CONNECT_TIMEOUT_MS,
   CASTLES_GET_DATA_TIMEOUT_MS,
   CASTLES_RETURN2IDLE_TIMEOUT_MS,
+  CASTLES_SETTLEMENT_TIMEOUT_MS,
   CASTLES_SOCKET_TIMEOUT_MS,
   CASTLES_SUCCESS_CODE,
 } from "@/types/castles";
@@ -610,6 +616,70 @@ export class CastlesService {
           return { success: false, error: message };
         }
       });
+    });
+  }
+
+  // ============================================================
+  // SETTLEMENT
+  // ============================================================
+
+  /**
+   * Initiate batch settlement on the terminal.
+   *
+   * Settlement is NOT idempotent — no _withRetry wrapper.
+   * Uses a long timeout (5 min) because the terminal contacts multiple hosts.
+   * Response may have per-host results in txnSettleInfo[].
+   * Top-level txnReturnCode may indicate partial success even when
+   * individual hosts succeeded — always check per-host results.
+   */
+  async processSettlement(params: {
+    referenceId: string;
+  }): Promise<CastlesSettlementResult> {
+    // No _withRetry — settlement is not idempotent
+    return this._mutex.runExclusive(async () => {
+      await this._ensureConnected();
+
+      try {
+        const request: CastlesSettlementRequest = {
+          txnPosTxnId: params.referenceId,
+          txnType: "settlement",
+        };
+
+        const raw = await this._sendAndReceive<CastlesSettlementRawResponse>(
+          request as unknown as Record<string, unknown>,
+          CASTLES_SETTLEMENT_TIMEOUT_MS,
+        );
+
+        // Parse per-host results
+        const hosts = (raw.txnSettleInfo ?? []).map(parseSettlementHostResult);
+
+        // Determine overall success
+        const topLevelOk = raw.txnReturnCode === CASTLES_SUCCESS_CODE;
+        const anyHostSucceeded = hosts.some((h) => h.success);
+        const allHostsSucceeded = hosts.length > 0 && hosts.every((h) => h.success);
+
+        const success = topLevelOk || allHostsSucceeded;
+        const partialSuccess = !success && anyHostSucceeded;
+
+        const error =
+          success || partialSuccess
+            ? undefined
+            : buildSettlementErrorMessage(raw, hosts);
+
+        await this._tryReturn2Idle();
+
+        return { success, partialSuccess, raw, hosts, error };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[CastlesService] processSettlement error:", message);
+        await this._forceReturn2Idle();
+        return {
+          success: false,
+          partialSuccess: false,
+          hosts: [],
+          error: message,
+        };
+      }
     });
   }
 
@@ -1245,6 +1315,59 @@ export class CastlesService {
   private _delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+// ============================================================
+// SETTLEMENT HELPERS
+// ============================================================
+
+/** Parse a single host's settlement info into a structured result. */
+function parseSettlementHostResult(
+  host: CastlesSettlementHostInfo,
+): CastlesSettlementHostResult {
+  const parseDollar = (v?: string): number => {
+    if (!v) return 0;
+    const n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+  };
+  const parseInt10 = (v?: string): number => {
+    if (!v) return 0;
+    const n = parseInt(v, 10);
+    return isNaN(n) ? 0 : n;
+  };
+
+  return {
+    acquirerName: host.txnAcquirerName ?? "Unknown",
+    success: host.txnReturnCode === CASTLES_SUCCESS_CODE,
+    returnCode: host.txnReturnCode ?? "",
+    hostMessage: host.txnHostMsg ?? undefined,
+    saleTotalAmount: parseDollar(host.txnTotalSaleAmt),
+    saleTotalCount: parseInt10(host.txnTotalSaleCnt),
+    refundTotalAmount: parseDollar(host.txnTotalRefundAmt),
+    refundTotalCount: parseInt10(host.txnTotalRefundCnt),
+    settleTotalAmount: parseDollar(host.txnTotalSettleAmt),
+    settleTotalCount: parseInt10(host.txnTotalSettleCnt),
+    merchantId: host.txnMid ?? undefined,
+    terminalId: host.txnTid ?? undefined,
+    dateTime: host.txnDateTime ?? undefined,
+    batchNumber: host.txnBatchNum ?? undefined,
+  };
+}
+
+/** Build a human-readable error message from settlement failures. */
+function buildSettlementErrorMessage(
+  raw: CastlesSettlementRawResponse,
+  hosts: CastlesSettlementHostResult[],
+): string {
+  const failedHosts = hosts.filter((h) => !h.success);
+  if (failedHosts.length > 0) {
+    const details = failedHosts
+      .map((h) => `${h.acquirerName}: ${h.hostMessage || parseCastlesReturnCode(h.returnCode).message}`)
+      .join("; ");
+    return `Settlement failed for: ${details}`;
+  }
+  const parsed = parseCastlesReturnCode(raw.txnReturnCode);
+  return parsed.message || `Settlement failed (code: ${raw.txnReturnCode})`;
 }
 
 // ============================================================

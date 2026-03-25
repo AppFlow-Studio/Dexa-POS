@@ -1,10 +1,11 @@
+import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync";
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { RefreshCw, Search, X } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Pressable,
   Text,
@@ -76,18 +77,12 @@ const PreviousOrdersSection = () => {
   // CRITICAL FIX: Use proper selector instead of destructuring entire store
   const ordersById = useOrderStore((s) => s.ordersById);
   const { open: openPaymentDetailSheet } = usePaymentDetailSheetStore();
-  const {
-    refreshPreviousOrders,
-    previousOrders,
-    newOrdersCount,
-    checkForNewOrders,
-    clearNewOrdersCount,
-  } = usePreviousOrdersStore();
+  const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const { refresh: handleRefresh, isRefreshing } = usePreviousOrdersListSync();
 
   // New state for table view
   const [sortColumn, setSortColumn] = useState<SortColumn>("time");
@@ -101,35 +96,6 @@ const PreviousOrdersSection = () => {
     width: number;
     height: number;
   } | null>(null);
-
-  // Initial load and background check for new orders every 15 seconds
-  useEffect(() => {
-    // Initial fetch when screen loads
-    refreshPreviousOrders();
-
-    // Set up interval to check for new orders every 15 seconds
-    const intervalId = setInterval(() => {
-      checkForNewOrders();
-    }, 15000); // 15 seconds
-
-    // Cleanup interval when component unmounts
-    return () => {
-      clearInterval(intervalId);
-      clearNewOrdersCount(); // Reset counter when leaving screen
-    };
-  }, []);
-
-  // Handle refresh (called from pull-to-refresh or banner tap)
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await refreshPreviousOrders(); // This also clears newOrdersCount
-    setIsRefreshing(false);
-  }, [refreshPreviousOrders]);
-
-  // Handle new orders banner tap
-  const handleNewOrdersBannerTap = useCallback(async () => {
-    await handleRefresh();
-  }, [handleRefresh]);
 
   // Get all orders - combine previous orders selector with local orders for compatibility
   const allOrders: OrderProfile[] = useMemo(() => {
@@ -371,7 +337,7 @@ const PreviousOrdersSection = () => {
             pointerEvents="box-none"
           >
             <TouchableOpacity
-              onPress={handleNewOrdersBannerTap}
+              onPress={() => void handleRefresh()}
               activeOpacity={0.8}
               className="flex-row items-center gap-2 px-4 py-2.5 rounded-full"
               style={{

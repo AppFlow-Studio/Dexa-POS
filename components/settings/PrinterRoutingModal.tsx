@@ -416,41 +416,24 @@ export function PrinterRoutingModal({
                 <TouchableOpacity
                   key={mode}
                   onPress={() => handleRoutingModeChange(mode)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    padding: 12,
-                    borderRadius: 8,
-                    marginBottom: 6,
-                    borderWidth: 1,
-                    backgroundColor: isSelected ? colors.teal + '20' : colors.card,
-                    borderColor: isSelected ? colors.teal + '50' : colors.border,
-                  }}
+                  className={`flex-row items-start p-4 rounded-xl mb-3 border ${
+                    isSelected ? "bg-blue-600/15 border-blue-500" : "bg-card border-gray-700"
+                  }`}
                 >
                   <View
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      borderWidth: 2,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginTop: 2,
-                      marginRight: 12,
-                      flexShrink: 0,
-                      borderColor: isSelected ? colors.teal : colors.muted,
-                      backgroundColor: isSelected ? colors.teal : 'transparent',
-                    }}
+                    className={`w-5 h-5 rounded-full border-2 items-center justify-center mt-0.5 mr-3 flex-shrink-0 ${
+                      isSelected ? "border-blue-400 bg-blue-500" : "border-gray-500"
+                    }`}
                   >
-                    {isSelected && <Check size={11} color="#0C0F1A" />}
+                    {isSelected && <Check size={11} color="white" />}
                   </View>
-                  <Icon size={14} color={isSelected ? colors.teal : colors.muted} />
-                  <View style={{ flex: 1, marginLeft: 8 }}>
-                    <Text style={{ fontWeight: '600', fontSize: 13, color: isSelected ? colors.teal : colors.heading }}>
+                  <Icon size={16} color={isSelected ? colors.info : colors.muted} />
+                  <View className="flex-1 ml-2">
+                    <Text className={`font-semibold text-sm ${isSelected ? "text-blue-300" : "text-white"}`}>
                       {label}
                     </Text>
-                    <Text style={{ color: colors.label, fontSize: 11, marginTop: 1, lineHeight: 15 }}>{desc}</Text>
-                    <Text style={{ color: colors.teal + 'B3', fontSize: 11, fontStyle: 'italic', marginTop: 4 }}>{example}</Text>
+                    <Text className="text-gray-400 text-xs mt-0.5 leading-4">{desc}</Text>
+                    <Text className="text-blue-400/70 text-xs italic mt-1.5">{example}</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -461,20 +444,10 @@ export function PrinterRoutingModal({
       case "orderTypes":
         return (
           <View>
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 8,
-              marginBottom: 6,
-              padding: 12,
-              backgroundColor: colors.warning + '12',
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.warning + '40',
-            }}>
-              <AlertTriangle size={13} color={colors.warning} style={{ marginTop: 1 }} />
-              <Text style={{ color: colors.warning, fontSize: 11, flex: 1, lineHeight: 15 }}>
-                At least one order type must be selected. This printer will only receive tickets for the selected types.
+            <View className="flex-row items-start gap-2 mb-4 p-3 bg-card rounded-xl border border-gray-700">
+              <Info size={14} color={colors.muted} style={{ marginTop: 1 }} />
+              <Text className="text-gray-400 text-xs flex-1 leading-4">
+                Leave all off to accept every order type. Toggle specific types to restrict which orders route here.
               </Text>
             </View>
             {ORDER_TYPES.map(({ value, label, Icon }) => {
@@ -482,37 +455,22 @@ export function PrinterRoutingModal({
               return (
                 <View
                   key={value}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 8,
-                    marginBottom: 6,
-                    borderWidth: 1,
-                    backgroundColor: isOn ? colors.teal + '1A' : colors.card,
-                    borderColor: isOn ? colors.teal + '66' : colors.border,
-                  }}
+                  className={`flex-row items-center justify-between py-3.5 px-4 rounded-xl mb-2.5 border ${
+                    isOn ? "bg-blue-600/10 border-blue-500/40" : "bg-card border-gray-700"
+                  }`}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Icon size={14} color={isOn ? colors.teal : colors.muted} />
-                    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>{label}</Text>
+                  <View className="flex-row items-center gap-3">
+                    <Icon size={16} color={isOn ? colors.info : colors.muted} />
+                    <Text className="text-white text-sm font-medium">{label}</Text>
                   </View>
                   <Switch checked={isOn} onCheckedChange={() => handleOrderTypeToggle(value)} />
                 </View>
               );
             })}
             {enabledOrderTypes.size === 0 && (
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8,
-                backgroundColor: colors.danger + '15', borderWidth: 1, borderColor: colors.danger + '40',
-                borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
-              }}>
-                <AlertTriangle size={13} color={colors.danger} />
-                <Text style={{ color: colors.danger, fontSize: 11, fontWeight: '600', flex: 1 }}>
-                  At least one order type must be selected
-                </Text>
+              <View className="flex-row items-center gap-2 mt-2 px-1">
+                <View className="w-2 h-2 rounded-full bg-green-500" />
+                <Text className="text-green-400 text-xs">All order types accepted (no filter)</Text>
               </View>
             )}
           </View>
@@ -521,74 +479,50 @@ export function PrinterRoutingModal({
       case "templates":
         return (
           <View>
-            {/* Info + Skip inline */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <View style={{
-                flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-                padding: 10, backgroundColor: colors.card, borderRadius: 8,
-                borderWidth: 1, borderColor: colors.border,
-              }}>
-                <Info size={13} color={colors.muted} style={{ marginTop: 1 }} />
-                <Text style={{ color: colors.label, fontSize: 11, flex: 1, lineHeight: 15 }}>
-                  Templates match menu categories by keyword. Adjust in the next step.
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setWizardStep((s) => s + 1)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 5,
-                  paddingHorizontal: 10, paddingVertical: 7,
-                  borderRadius: 8, borderWidth: 1, borderColor: colors.border,
-                  backgroundColor: 'transparent',
-                }}
-              >
-                <Text style={{ color: colors.label, fontSize: 12, fontWeight: '600' }}>Skip</Text>
-                <ArrowRight size={13} color={colors.label} />
-              </TouchableOpacity>
+            <View className="flex-row items-start gap-2 mb-4 p-3 bg-card rounded-xl border border-gray-700">
+              <Info size={14} color={colors.muted} style={{ marginTop: 1 }} />
+              <Text className="text-gray-400 text-xs flex-1 leading-4">
+                Templates match your menu categories by keyword. Applying one enables matching categories — you can adjust them in the next step.
+              </Text>
             </View>
             {PRESET_TEMPLATES.map((preset) => {
               const matchCount = categories.filter((cat) =>
                 preset.categoryKeywords.some((kw) => cat.name.toLowerCase().includes(kw)),
               ).length;
               return (
-                <View key={preset.id} style={{
-                  backgroundColor: colors.card,
-                  borderRadius: 8,
-                  marginBottom: 6,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  overflow: 'hidden',
-                }}>
-                  <View style={{ padding: 16 }}>
-                    <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '600', marginBottom: 2 }}>{preset.label}</Text>
-                    <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 15 }}>{preset.description}</Text>
+                <View key={preset.id} className="bg-card rounded-xl mb-2.5 border border-gray-700 overflow-hidden">
+                  <View className="p-4">
+                    <Text className="text-white text-sm font-semibold mb-0.5">{preset.label}</Text>
+                    <Text className="text-gray-500 text-xs leading-4">{preset.description}</Text>
                     {matchCount > 0 ? (
-                      <Text style={{ color: colors.teal, fontSize: 12, marginTop: 8 }}>
+                      <Text className="text-green-400 text-xs mt-2">
                         Matches {matchCount} categor{matchCount !== 1 ? "ies" : "y"} in your menu
                       </Text>
                     ) : (
-                      <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>No matching categories found</Text>
+                      <Text className="text-gray-600 text-xs mt-2">No matching categories found</Text>
                     )}
                   </View>
                   <TouchableOpacity
                     onPress={() => handleApplyPreset(preset)}
                     disabled={matchCount === 0}
-                    style={{
-                      paddingVertical: 10,
-                      alignItems: 'center',
-                      borderTopWidth: 1,
-                      borderTopColor: colors.border,
-                      backgroundColor: matchCount > 0 ? colors.teal + '33' : colors.card,
-                      opacity: matchCount > 0 ? 1 : 0.4,
-                    }}
+                    className={`py-2.5 items-center border-t border-gray-700 ${
+                      matchCount > 0 ? "bg-blue-600/20" : "bg-card opacity-40"
+                    }`}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: matchCount > 0 ? colors.teal : colors.muted }}>
+                    <Text className={`text-sm font-semibold ${matchCount > 0 ? "text-blue-300" : "text-gray-500"}`}>
                       Apply Template
                     </Text>
                   </TouchableOpacity>
                 </View>
               );
             })}
+            <TouchableOpacity
+              onPress={() => setWizardStep((s) => s + 1)}
+              className="flex-row items-center justify-center gap-2 mt-2 py-3"
+            >
+              <Text className="text-gray-500 text-sm">Skip — configure manually</Text>
+              <ArrowRight size={14} color={colors.muted} />
+            </TouchableOpacity>
           </View>
         );
 
@@ -621,24 +555,14 @@ export function PrinterRoutingModal({
         return (
           <View style={{ flex: 1 }}>
             {/* Search */}
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: colors.card,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              marginBottom: 6,
-            }}>
+            <View className="flex-row items-center bg-card border border-gray-700 rounded-xl px-3 py-2 mb-3">
               <Search size={14} color={colors.muted} />
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search categories or items…"
                 placeholderTextColor={colors.muted}
-                style={{ flex: 1, color: colors.heading, fontSize: 13, marginLeft: 8 }}
+                className="flex-1 text-white text-sm ml-2"
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={() => setSearchQuery("")}>
@@ -648,30 +572,14 @@ export function PrinterRoutingModal({
             </View>
 
             {/* Dual-list */}
-            <View style={{ flexDirection: 'row', gap: 12, height: 360 }}>
+            <View className="flex-row gap-3" style={{ height: 360 }}>
 
               {/* ── LEFT: Menu (categories + expandable items) ── */}
-              <View style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.border,
-                overflow: 'hidden',
-              }}>
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                  backgroundColor: colors.panel,
-                }}>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 }}>Menu</Text>
+              <View className="flex-1 bg-card rounded-xl border border-gray-700 overflow-hidden">
+                <View className="flex-row items-center justify-between px-3 py-2 border-b border-gray-700 bg-surface">
+                  <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider">Menu</Text>
                   <TouchableOpacity onPress={handleAllItemsToggle}>
-                    <Text style={{ color: colors.teal, fontSize: 12 }}>
+                    <Text className="text-blue-400 text-xs">
                       {enabledCategoryIds.size === categories.length ? "Remove all" : "Add all"}
                     </Text>
                   </TouchableOpacity>
@@ -679,8 +587,8 @@ export function PrinterRoutingModal({
 
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 6 }}>
                   {visibleCategories.length === 0 ? (
-                    <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-                      <Text style={{ color: colors.muted, fontSize: 12 }}>No results</Text>
+                    <View className="items-center py-8">
+                      <Text className="text-gray-600 text-xs">No results</Text>
                     </View>
                   ) : visibleCategories.map((cat) => {
                     const catAssigned = enabledCategoryIds.has(cat.id);
@@ -696,17 +604,9 @@ export function PrinterRoutingModal({
                     const availableItems = visibleItems.filter((i) => !enabledItemIds.has(i.id));
 
                     return (
-                      <View key={cat.id} style={{ marginBottom: 4 }}>
+                      <View key={cat.id} className="mb-1">
                         {/* Category row */}
-                        <View style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          backgroundColor: colors.panel,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          overflow: 'hidden',
-                        }}>
+                        <View className="flex-row items-center bg-panel rounded-lg border border-gray-700 overflow-hidden">
                           {/* Expand toggle */}
                           {catItems.length > 0 ? (
                             <TouchableOpacity
@@ -715,7 +615,7 @@ export function PrinterRoutingModal({
                                 next.has(cat.id) ? next.delete(cat.id) : next.add(cat.id);
                                 return next;
                               })}
-                              style={{ paddingHorizontal: 8, paddingVertical: 10 }}
+                              className="px-2 py-2.5"
                             >
                               {isExpanded
                                 ? <ChevronDown size={13} color={colors.muted} />
@@ -723,16 +623,16 @@ export function PrinterRoutingModal({
                               }
                             </TouchableOpacity>
                           ) : (
-                            <View style={{ width: 28 }} />
+                            <View className="w-7" />
                           )}
 
                           {/* Category name */}
                           <TouchableOpacity
                             onPress={() => handleCategoryToggle(cat.id)}
-                            style={{ flex: 1, paddingVertical: 10, paddingRight: 8 }}
+                            className="flex-1 py-2.5 pr-2"
                           >
-                            <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>{cat.name}</Text>
-                            <Text style={{ color: colors.muted, fontSize: 12 }}>
+                            <Text className="text-white text-sm font-medium" numberOfLines={1}>{cat.name}</Text>
+                            <Text className="text-gray-600 text-xs">
                               {catItems.length} item{catItems.length !== 1 ? "s" : ""}
                             </Text>
                           </TouchableOpacity>
@@ -740,9 +640,9 @@ export function PrinterRoutingModal({
                           {/* Assign whole category */}
                           <TouchableOpacity
                             onPress={() => handleCategoryToggle(cat.id)}
-                            style={{ paddingHorizontal: 12, paddingVertical: 10 }}
+                            className="px-3 py-2.5"
                           >
-                            <ChevronRight size={15} color={colors.teal} />
+                            <ChevronRight size={15} color={colors.info} />
                           </TouchableOpacity>
                         </View>
 
@@ -751,27 +651,16 @@ export function PrinterRoutingModal({
                           <TouchableOpacity
                             key={item.id}
                             onPress={() => handleItemToggle(item.id)}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              marginLeft: 20,
-                              marginTop: 2,
-                              backgroundColor: colors.panel,
-                              borderRadius: 8,
-                              borderWidth: 1,
-                              borderColor: colors.border,
-                              paddingHorizontal: 8,
-                              paddingVertical: 8,
-                            }}
+                            className="flex-row items-center ml-5 mt-0.5 bg-panel rounded-lg border border-gray-700 px-2 py-2"
                           >
-                            <Text style={{ color: colors.label, fontSize: 12, flex: 1 }} numberOfLines={1}>{item.name}</Text>
-                            <ChevronRight size={13} color={colors.teal} />
+                            <Text className="text-gray-300 text-xs flex-1" numberOfLines={1}>{item.name}</Text>
+                            <ChevronRight size={13} color={colors.info} />
                           </TouchableOpacity>
                         ))}
                         {/* If all items assigned individually, show hint */}
                         {isExpanded && availableItems.length === 0 && catItems.length > 0 && (
-                          <View style={{ marginLeft: 20, marginTop: 2, paddingHorizontal: 8, paddingVertical: 6 }}>
-                            <Text style={{ color: colors.muted, fontSize: 12, fontStyle: 'italic' }}>All items assigned individually</Text>
+                          <View className="ml-5 mt-0.5 px-2 py-1.5">
+                            <Text className="text-gray-600 text-xs italic">All items assigned individually</Text>
                           </View>
                         )}
                       </View>
@@ -781,42 +670,26 @@ export function PrinterRoutingModal({
               </View>
 
               {/* ── CENTRE: visual arrow column ── */}
-              <View style={{ alignItems: 'center', justifyContent: 'center', gap: 8, width: 24 }}>
-                <ChevronsRight size={14} color={colors.muted} />
+              <View className="items-center justify-center gap-2 w-6">
+                <ChevronsRight size={16} color={colors.muted} />
               </View>
 
               {/* ── RIGHT: Assigned to this printer ── */}
-              <View style={{
-                flex: 1,
-                backgroundColor: colors.card,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.teal + '4D',
-                overflow: 'hidden',
-              }}>
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
-                  backgroundColor: colors.teal + '15',
-                }}>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+              <View className="flex-1 bg-card rounded-xl border border-blue-500/30 overflow-hidden">
+                <View className="flex-row items-center justify-between px-3 py-2 border-b border-gray-700 bg-blue-600/10">
+                  <Text className="text-blue-300 text-xs font-semibold uppercase tracking-wider">
                     Prints here
                   </Text>
-                  <View style={{ backgroundColor: colors.teal + '4D', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
-                    <Text style={{ color: colors.teal, fontSize: 12, fontWeight: '700' }}>{totalAssigned}</Text>
+                  <View className="bg-blue-600/30 rounded px-1.5 py-0.5">
+                    <Text className="text-blue-200 text-xs font-bold">{totalAssigned}</Text>
                   </View>
                 </View>
 
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 6 }}>
                   {totalAssigned === 0 ? (
-                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                      <ChevronsRight size={16} color={colors.border} />
-                      <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8, textAlign: 'center', lineHeight: 16 }}>
+                    <View className="items-center py-10">
+                      <ChevronsRight size={22} color="#334155" />
+                      <Text className="text-gray-700 text-xs mt-2 text-center leading-4">
                         Tap a category or item{"\n"}on the left to assign it
                       </Text>
                     </View>
@@ -829,33 +702,23 @@ export function PrinterRoutingModal({
                           <TouchableOpacity
                             key={`cat-${cat.id}`}
                             onPress={() => handleCategoryToggle(cat.id)}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              paddingHorizontal: 8,
-                              paddingVertical: 10,
-                              borderRadius: 8,
-                              marginBottom: 4,
-                              backgroundColor: colors.teal + '15',
-                              borderWidth: 1,
-                              borderColor: colors.teal + '4D',
-                            }}
+                            className="flex-row items-center px-2 py-2.5 rounded-lg mb-1 bg-blue-600/10 border border-blue-500/30"
                           >
-                            <View style={{ flex: 1, marginRight: 8 }}>
-                              <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>{cat.name}</Text>
-                              <Text style={{ color: colors.teal + '99', fontSize: 12 }}>{itemCount} item{itemCount !== 1 ? "s" : ""}</Text>
+                            <View className="flex-1 mr-2">
+                              <Text className="text-white text-sm font-medium" numberOfLines={1}>{cat.name}</Text>
+                              <Text className="text-blue-400/60 text-xs">{itemCount} item{itemCount !== 1 ? "s" : ""}</Text>
                             </View>
-                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal, marginRight: 4 }} />
+                            <View className="w-2 h-2 rounded-full bg-green-400 mr-1" />
                           </TouchableOpacity>
                         );
                       })}
 
                       {/* Divider between categories and individual items */}
                       {assignedCategories.length > 0 && assignedIndividualItems.length > 0 && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 6, paddingHorizontal: 4 }}>
-                          <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-                          <Text style={{ color: colors.muted, fontSize: 12 }}>individual items</Text>
-                          <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                        <View className="flex-row items-center gap-2 my-1.5 px-1">
+                          <View className="flex-1 h-px bg-gray-700" />
+                          <Text className="text-gray-600 text-xs">individual items</Text>
+                          <View className="flex-1 h-px bg-gray-700" />
                         </View>
                       )}
 
@@ -866,25 +729,15 @@ export function PrinterRoutingModal({
                           <TouchableOpacity
                             key={`item-${item.id}`}
                             onPress={() => handleItemToggle(item.id)}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              paddingHorizontal: 8,
-                              paddingVertical: 10,
-                              borderRadius: 8,
-                              marginBottom: 4,
-                              backgroundColor: colors.teal + '15',
-                              borderWidth: 1,
-                              borderColor: colors.teal + '4D',
-                            }}
+                            className="flex-row items-center px-2 py-2.5 rounded-lg mb-1 bg-blue-600/10 border border-blue-500/30"
                           >
-                            <View style={{ flex: 1, marginRight: 8 }}>
-                              <Text style={{ color: colors.heading, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
+                            <View className="flex-1 mr-2">
+                              <Text className="text-white text-sm" numberOfLines={1}>{item.name}</Text>
                               {catName ? (
-                                <Text style={{ color: colors.teal + '99', fontSize: 12 }} numberOfLines={1}>{catName}</Text>
+                                <Text className="text-blue-400/60 text-xs" numberOfLines={1}>{catName}</Text>
                               ) : null}
                             </View>
-                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal, marginRight: 4 }} />
+                            <View className="w-2 h-2 rounded-full bg-green-400 mr-1" />
                           </TouchableOpacity>
                         );
                       })}
@@ -896,14 +749,14 @@ export function PrinterRoutingModal({
             </View>
 
             {/* Summary footer */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingHorizontal: 4 }}>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>
+            <View className="flex-row items-center justify-between mt-2 px-1">
+              <Text className="text-gray-500 text-xs">
                 {enabledCategoryIds.size} categor{enabledCategoryIds.size !== 1 ? "ies" : "y"} · {assignedIndividualItems.length} individual item{assignedIndividualItems.length !== 1 ? "s" : ""}
               </Text>
               {totalAssigned === 0 && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <AlertTriangle size={12} color={colors.warning} />
-                  <Text style={{ color: colors.warning, fontSize: 12 }}>Nothing assigned yet</Text>
+                <View className="flex-row items-center gap-1">
+                  <AlertTriangle size={12} color="#f59e0b" />
+                  <Text className="text-amber-400 text-xs">Nothing assigned yet</Text>
                 </View>
               )}
             </View>
@@ -914,21 +767,12 @@ export function PrinterRoutingModal({
       case "ticketOptions":
         return (
           <View>
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 8,
-              marginBottom: 6,
-              borderWidth: 1,
-              backgroundColor: routingConfig.printModifiers ? colors.teal + '1A' : colors.card,
-              borderColor: routingConfig.printModifiers ? colors.teal + '66' : colors.border,
-            }}>
-              <View style={{ flex: 1, paddingRight: 16 }}>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '600' }}>Print Modifiers</Text>
-                <Text style={{ color: colors.label, fontSize: 11, marginTop: 1, lineHeight: 15 }}>
+            <View className={`flex-row items-center justify-between py-4 px-4 rounded-xl mb-3 border ${
+              routingConfig.printModifiers ? "bg-blue-600/10 border-blue-500/40" : "bg-card border-gray-700"
+            }`}>
+              <View className="flex-1 pr-4">
+                <Text className="text-white text-sm font-semibold">Print Modifiers</Text>
+                <Text className="text-gray-400 text-xs mt-0.5 leading-4">
                   Show item modifiers and add-ons on kitchen tickets
                 </Text>
               </View>
@@ -937,22 +781,10 @@ export function PrinterRoutingModal({
                 onCheckedChange={(v) => setPrintModifiers(printer.id, v)}
               />
             </View>
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 8,
-              marginBottom: 6,
-              borderWidth: 1,
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              opacity: 0.6,
-            }}>
-              <View style={{ flex: 1, paddingRight: 16 }}>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '600' }}>Auto-Print Kitchen Tickets</Text>
-                <Text style={{ color: colors.label, fontSize: 11, marginTop: 1, lineHeight: 15 }}>
+            <View className="flex-row items-center justify-between py-4 px-4 rounded-xl mb-3 border bg-card border-gray-700 opacity-60">
+              <View className="flex-1 pr-4">
+                <Text className="text-white text-sm font-semibold">Auto-Print Kitchen Tickets</Text>
+                <Text className="text-gray-400 text-xs mt-0.5 leading-4">
                   Automatically print when orders are sent to kitchen
                 </Text>
               </View>
@@ -960,36 +792,29 @@ export function PrinterRoutingModal({
             </View>
 
             {/* Summary info */}
-            <View style={{
-              backgroundColor: colors.card,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: 12,
-              marginTop: 8,
-            }}>
-              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 12 }}>
+            <View className="bg-card rounded-xl border border-gray-700 p-4 mt-2">
+              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                 Configuration Summary
               </Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Routing Mode</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500', textTransform: 'capitalize' }}>{routingConfig.routingMode}</Text>
+              <View className="flex-row justify-between mb-2">
+                <Text className="text-gray-400 text-sm">Routing Mode</Text>
+                <Text className="text-white text-sm font-medium capitalize">{routingConfig.routingMode}</Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Category Rules</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>
+              <View className="flex-row justify-between mb-2">
+                <Text className="text-gray-400 text-sm">Category Rules</Text>
+                <Text className="text-white text-sm font-medium">
                   {routingConfig.rules.filter((r) => r.rule_type === "category" && r.is_enabled).length}
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Item Rules</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>
+              <View className="flex-row justify-between mb-2">
+                <Text className="text-gray-400 text-sm">Item Rules</Text>
+                <Text className="text-white text-sm font-medium">
                   {routingConfig.rules.filter((r) => r.rule_type === "menu_item" && r.is_enabled).length}
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: colors.label, fontSize: 13 }}>Order Type Filter</Text>
-                <Text style={{ color: colors.heading, fontSize: 13, fontWeight: '500' }}>
+              <View className="flex-row justify-between">
+                <Text className="text-gray-400 text-sm">Order Type Filter</Text>
+                <Text className="text-white text-sm font-medium">
                   {enabledOrderTypes.size === 0 ? "All types" : `${enabledOrderTypes.size} selected`}
                 </Text>
               </View>
@@ -1002,22 +827,12 @@ export function PrinterRoutingModal({
           <View>
             {/* Conflict warnings */}
             {conflictWarnings.length > 0 && (
-              <View style={{
-                marginBottom: 6,
-                padding: 12,
-                backgroundColor: colors.warning + '33',
-                borderWidth: 1,
-                borderColor: colors.warning + '66',
-                borderRadius: 8,
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}>
-                <AlertTriangle size={14} color={colors.warning} style={{ marginTop: 1 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.warning, fontSize: 11, fontWeight: '600', marginBottom: 3 }}>Routing Conflicts Detected</Text>
+              <View className="mb-4 p-3 bg-amber-900/30 border border-amber-600/50 rounded-xl flex-row items-start gap-2">
+                <AlertTriangle size={16} color="#f59e0b" style={{ marginTop: 1 }} />
+                <View className="flex-1">
+                  <Text className="text-amber-300 text-xs font-semibold mb-1">Routing Conflicts Detected</Text>
                   {conflictWarnings.map((w, i) => (
-                    <Text key={i} style={{ color: colors.warning, fontSize: 11, lineHeight: 15 }}>
+                    <Text key={i} className="text-amber-400 text-xs leading-4">
                       "{w.categoryName}" is also assigned to: {w.printerNames.filter((n) => n !== printer.printerName).join(", ")}
                     </Text>
                   ))}
@@ -1026,29 +841,20 @@ export function PrinterRoutingModal({
             )}
 
             {/* Order type picker */}
-            <Text style={{ fontSize: 10, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+            <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
               Simulate Order Type
             </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+            <View className="flex-row gap-2 mb-4">
               {ORDER_TYPES.map(({ value, label, Icon }) => (
                 <TouchableOpacity
                   key={value}
                   onPress={() => { setTestOrderType(value); setTestResults(null); }}
-                  style={{
-                    flex: 1,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    paddingVertical: 7,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    backgroundColor: testOrderType === value ? colors.teal + '33' : colors.card,
-                    borderColor: testOrderType === value ? colors.teal : colors.border,
-                  }}
+                  className={`flex-1 flex-row items-center justify-center gap-1.5 py-3 rounded-xl border ${
+                    testOrderType === value ? "bg-blue-600/20 border-blue-500" : "bg-card border-gray-700"
+                  }`}
                 >
-                  <Icon size={13} color={testOrderType === value ? colors.teal : colors.muted} />
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: testOrderType === value ? colors.teal : colors.label }}>
+                  <Icon size={13} color={testOrderType === value ? colors.info : colors.muted} />
+                  <Text className={`text-xs font-medium ${testOrderType === value ? "text-blue-300" : "text-gray-400"}`}>
                     {label}
                   </Text>
                 </TouchableOpacity>
@@ -1057,51 +863,36 @@ export function PrinterRoutingModal({
 
             <TouchableOpacity
               onPress={handleTestConfiguration}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                paddingVertical: 8,
-                backgroundColor: colors.teal,
-                borderRadius: 8,
-                marginBottom: 6,
-              }}
+              className="flex-row items-center justify-center gap-2 py-3.5 bg-blue-600 rounded-xl mb-4"
             >
-              <Zap size={14} color="#0C0F1A" />
-              <Text style={{ color: '#0C0F1A', fontWeight: '600', fontSize: 13 }}>Run Simulation</Text>
+              <Zap size={16} color="white" />
+              <Text className="text-white font-semibold text-sm">Run Simulation</Text>
             </TouchableOpacity>
 
             {/* Results */}
             {testResults !== null && (
-              <View style={{
-                backgroundColor: colors.card,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 12,
-              }}>
-                <Text style={{ color: colors.heading, fontWeight: '600', fontSize: 13, marginBottom: 12 }}>Simulation Results</Text>
+              <View className="bg-card rounded-xl border border-gray-700 p-4">
+                <Text className="text-white font-semibold text-sm mb-3">Simulation Results</Text>
                 {testResults.map((r, i) => (
                   <View key={i}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <View className="flex-row items-center gap-2 mb-2">
                       <Printer size={14} color={colors.warning} />
-                      <Text style={{ color: colors.label, fontSize: 12, fontWeight: '500', flex: 1 }}>{r.role}</Text>
+                      <Text className="text-gray-300 text-xs font-medium flex-1">{r.role}</Text>
                     </View>
                     {r.itemNames.length > 0 ? (
-                      <View style={{ marginLeft: 22, gap: 6, marginBottom: 8 }}>
+                      <View className="ml-6 gap-1.5 mb-2">
                         {r.itemNames.map((name, j) => (
-                          <View key={j} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.muted }} />
-                            <Text style={{ color: colors.label, fontSize: 12 }}>{name}</Text>
+                          <View key={j} className="flex-row items-center gap-2">
+                            <View className="w-1 h-1 rounded-full bg-gray-500" />
+                            <Text className="text-gray-400 text-xs">{name}</Text>
                           </View>
                         ))}
                         {r.itemNames.length >= 8 && (
-                          <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 12 }}>…and more</Text>
+                          <Text className="text-gray-600 text-xs ml-3">…and more</Text>
                         )}
                       </View>
                     ) : (
-                      <Text style={{ color: colors.warning, fontSize: 12, marginLeft: 22, marginBottom: 8 }}>
+                      <Text className="text-amber-400 text-xs ml-6 mb-2">
                         No items would print for this order type.
                       </Text>
                     )}
@@ -1128,114 +919,62 @@ export function PrinterRoutingModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, backgroundColor: colors.panel }}>
+      <View className="flex-1 bg-panel">
 
         {/* ── HEADER ── */}
-        <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          paddingTop: 14,
-          paddingBottom: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          backgroundColor: colors.panel,
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}>
-            <View style={{
-              width: 36, height: 36, borderRadius: 10,
-              backgroundColor: colors.teal + "18",
-              borderWidth: 1, borderColor: colors.teal + "40",
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Printer size={16} color={colors.teal} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.heading, fontWeight: '700', fontSize: 15 }} numberOfLines={1}>
+        <View className="flex-row items-center justify-between px-4 pt-4 pb-3 border-b border-gray-700">
+          <View className="flex-row items-center flex-1 gap-3">
+            <Printer size={20} color={printer.printerRole === "bar" ? "#a78bfa" : colors.warning} />
+            <View className="flex-1">
+              <Text className="text-white font-bold text-base" numberOfLines={1}>
                 {printer.printerName}
               </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                <View style={{
-                  backgroundColor: colors.teal + "18",
-                  borderWidth: 1, borderColor: colors.teal + "40",
-                  borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1,
-                }}>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.teal, textTransform: 'capitalize' }}>
-                    {printer.printerRole}
-                  </Text>
-                </View>
-                <Settings2 size={11} color={colors.muted} />
-                <Text style={{ color: colors.label, fontSize: 11 }}>Configure Routing</Text>
-              </View>
+              <Text className="text-gray-400 text-xs capitalize">
+                {printer.printerRole} · Configure Routing
+              </Text>
             </View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {isSaving && <ActivityIndicator size="small" color={colors.teal} />}
-            <TouchableOpacity
-              onPress={onClose}
-              style={{
-                padding: 8,
-                backgroundColor: colors.teal + "15",
-                borderWidth: 1, borderColor: colors.teal + "35",
-                borderRadius: 8,
-              }}
-            >
-              <X size={14} color={colors.teal} />
+          <View className="flex-row items-center gap-2">
+            {isSaving && <ActivityIndicator size="small" color={colors.info} />}
+            <TouchableOpacity onPress={onClose} className="p-2 bg-card rounded-lg">
+              <X size={20} color={colors.label} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* ── STEP INDICATOR ── */}
-        <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 12,
-          paddingVertical: 7,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}>
+        <View className="flex-row items-center px-4 py-3 border-b border-gray-700">
           {steps.map((stepId, i) => {
             const isCompleted = i < wizardStep;
             const isActive = i === wizardStep;
             return (
               <React.Fragment key={stepId}>
-                <View style={{ alignItems: 'center' }}>
+                <View className="items-center">
                   <TouchableOpacity
                     onPress={() => isCompleted && setWizardStep(i)}
                     disabled={!isCompleted}
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 2,
-                      backgroundColor: isCompleted ? colors.teal : isActive ? colors.teal + '33' : colors.card,
-                      borderColor: isCompleted ? colors.teal : isActive ? colors.teal : colors.border,
-                    }}
+                    className={`w-7 h-7 rounded-full items-center justify-center border-2 ${
+                      isCompleted
+                        ? "bg-green-600 border-green-600"
+                        : isActive
+                        ? "bg-blue-600 border-blue-500"
+                        : "bg-card border-gray-600"
+                    }`}
                   >
                     {isCompleted
-                      ? <Check size={13} color="#0C0F1A" />
-                      : <Text style={{ fontSize: 12, fontWeight: '700', color: isActive ? colors.teal : colors.muted }}>{i + 1}</Text>}
+                      ? <Check size={13} color="white" />
+                      : <Text className={`text-xs font-bold ${isActive ? "text-white" : "text-gray-500"}`}>{i + 1}</Text>}
                   </TouchableOpacity>
-                  <Text style={{
-                    fontSize: 12,
-                    marginTop: 4,
-                    color: isActive ? colors.teal : isCompleted ? colors.teal : colors.muted,
-                    fontWeight: isActive ? '600' : '400',
-                  }}>
+                  <Text className={`text-xs mt-1 ${
+                    isActive ? "text-blue-300 font-semibold"
+                    : isCompleted ? "text-green-400"
+                    : "text-gray-600"
+                  }`}>
                     {STEP_LABELS[stepId]}
                   </Text>
                 </View>
                 {i < steps.length - 1 && (
-                  <View style={{
-                    height: 2,
-                    flex: 1,
-                    marginHorizontal: 4,
-                    marginBottom: 6,
-                    backgroundColor: i < wizardStep ? colors.teal : colors.border,
-                  }} />
+                  <View className={`h-0.5 flex-1 mx-1 mb-4 ${i < wizardStep ? "bg-green-600" : "bg-gray-700"}`} />
                 )}
               </React.Fragment>
             );
@@ -1243,15 +982,15 @@ export function PrinterRoutingModal({
         </View>
 
         {/* ── STEP TITLE ── */}
-        <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8 }}>
-          <Text style={{ color: colors.heading, fontWeight: '700', fontSize: 13 }}>{STEP_TITLES[currentStepId]}</Text>
-          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>{STEP_SUBTITLES[currentStepId]}</Text>
+        <View className="px-4 pt-4 pb-2">
+          <Text className="text-white font-bold text-base">{STEP_TITLES[currentStepId]}</Text>
+          <Text className="text-gray-500 text-xs mt-0.5">{STEP_SUBTITLES[currentStepId]}</Text>
         </View>
 
         {/* ── SCROLLABLE CONTENT ── */}
         <ScrollView
           key={currentStepId}
-          style={{ flex: 1, paddingHorizontal: 12, paddingTop: 8 }}
+          className="flex-1 px-4 pt-2"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 24 }}
         >
@@ -1259,64 +998,29 @@ export function PrinterRoutingModal({
         </ScrollView>
 
         {/* ── FOOTER NAV ── */}
-        <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          paddingHorizontal: 12,
-          paddingBottom: 16,
-          paddingTop: 12,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-        }}>
+        <View className="flex-row items-center gap-3 px-4 pb-6 pt-3 border-t border-gray-700">
           <TouchableOpacity
             onPress={() => setWizardStep((s) => s - 1)}
             disabled={wizardStep === 0}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              paddingVertical: 8,
-              borderRadius: 8,
-              borderWidth: 1,
-              backgroundColor: 'transparent',
-              borderColor: colors.border,
-              opacity: wizardStep === 0 ? 0.3 : 1,
-            }}
+            className={`flex-1 items-center justify-center py-3.5 rounded-xl border ${
+              wizardStep === 0 ? "bg-card border-gray-700 opacity-30" : "bg-card border-gray-600"
+            }`}
           >
-            <Text style={{ color: colors.label, fontWeight: '600', fontSize: 13 }}>Back</Text>
+            <Text className="text-gray-300 font-semibold text-sm">Back</Text>
           </TouchableOpacity>
 
-          {(() => {
-            const isOrderTypesStep = currentStepId === 'orderTypes';
-            const isBlocked = isOrderTypesStep && enabledOrderTypes.size === 0;
-            const accentColor = isLastStep ? colors.teal : colors.teal;
-            return (
-              <TouchableOpacity
-                onPress={isBlocked ? undefined : isLastStep ? onClose : () => setWizardStep((s) => s + 1)}
-                disabled={isBlocked}
-                style={{
-                  flex: 2,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  backgroundColor: isBlocked ? colors.muted + '15' : accentColor + '33',
-                  borderWidth: 1,
-                  borderColor: isBlocked ? colors.muted + '40' : accentColor + '80',
-                  opacity: isBlocked ? 0.5 : 1,
-                }}
-              >
-                {isSaving && <ActivityIndicator size="small" color={accentColor} />}
-                {isLastStep
-                  ? <><Check size={14} color={colors.teal} /><Text style={{ color: colors.teal, fontWeight: '600', fontSize: 13 }}>Done</Text></>
-                  : <><Text style={{ color: isBlocked ? colors.muted : colors.teal, fontWeight: '600', fontSize: 13 }}>Next</Text><ArrowRight size={14} color={isBlocked ? colors.muted : colors.teal} /></>
-                }
-              </TouchableOpacity>
-            );
-          })()}
+          <TouchableOpacity
+            onPress={isLastStep ? onClose : () => setWizardStep((s) => s + 1)}
+            className={`flex-[2] flex-row items-center justify-center gap-2 py-3.5 rounded-xl ${
+              isLastStep ? "bg-green-700" : "bg-blue-600"
+            }`}
+          >
+            {isSaving && <ActivityIndicator size="small" color="white" />}
+            {isLastStep
+              ? <><Check size={16} color="white" /><Text className="text-white font-semibold text-sm">Done</Text></>
+              : <><Text className="text-white font-semibold text-sm">Next</Text><ArrowRight size={16} color="white" /></>
+            }
+          </TouchableOpacity>
         </View>
 
       </View>

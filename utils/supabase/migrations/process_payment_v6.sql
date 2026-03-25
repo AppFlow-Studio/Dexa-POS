@@ -198,12 +198,13 @@ BEGIN
     -- 3. Get Existing Payment Totals by Type
     -- ============================================
     SELECT
-        COALESCE(SUM(CASE WHEN is_cash_priced THEN total_amount ELSE 0 END), 0),
-        COALESCE(SUM(CASE WHEN NOT is_cash_priced THEN total_amount ELSE 0 END), 0)
+        COALESCE(SUM(CASE WHEN is_cash_priced THEN total_amount - COALESCE(refunded_amount, 0) ELSE 0 END), 0),
+        COALESCE(SUM(CASE WHEN NOT is_cash_priced THEN total_amount - COALESCE(refunded_amount, 0) ELSE 0 END), 0)
     INTO v_total_cash_paid, v_total_card_paid
     FROM public.order_payments
     WHERE order_id = p_order_id
-      AND status = 'captured';
+      AND status IN ('captured', 'partially_refunded')
+      AND is_voided = false;
 
 
     -- ============================================
@@ -814,7 +815,7 @@ BEGIN
         WHERE order_id = p_order_id
           AND split_portion_index IS NOT NULL
           AND split_count = p_split_count
-          AND status = 'captured';
+          AND status IN ('captured', 'partially_refunded');
 
         v_portions_remaining := p_split_count - v_portions_paid;
         v_order_fully_paid := (v_portions_remaining = 0);
@@ -833,22 +834,14 @@ BEGIN
     --     NOTE: Accounts for refunded_quantity when marking items as paid
     -- ============================================
     IF v_is_split_payment THEN
-        SELECT COUNT(*) INTO v_portions_paid
-        FROM public.order_payments
-        WHERE order_id = p_order_id
-          AND split_portion_index IS NOT NULL
-          AND split_count = p_split_count
-          AND status = 'captured';
-
-        v_portions_remaining := p_split_count - v_portions_paid;
-        v_order_fully_paid := (v_portions_remaining = 0);
+        -- v_order_fully_paid already computed in Section 11
 
         IF v_order_fully_paid AND v_unpaid_items_count > 0 THEN
             -- Set paid_quantity = quantity + refunded_quantity so effective_unpaid becomes 0
             UPDATE public.order_items
             SET
                 paid_quantity = quantity + COALESCE(refunded_quantity, 0),
-                price_paid = COALESCE(price_paid, unit_price),
+                price_paid = COALESCE(price_paid, CASE WHEN v_use_cash_pricing THEN cash_price ELSE unit_price END),
                 updated_at = now()
             WHERE order_id = p_order_id
               AND is_voided = false

@@ -79,7 +79,7 @@ BEGIN
         'prep_station', oi.prep_station,
         'rush', COALESCE(oi.rush, false),
         'is_prioritized', COALESCE(oi.is_prioritized, false),
-        'fire_time', oi.fire_time,
+        'fire_time', oi.fire_time::timestamptz,
         -- Phase 2.5: Include modifiers for this item
         'modifiers', (
           SELECT COALESCE(jsonb_agg(

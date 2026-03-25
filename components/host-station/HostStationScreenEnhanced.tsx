@@ -5,7 +5,7 @@ import { useWaitlistDragState } from '@/hooks/useWaitlistDragState'
 import { colors } from '@/lib/theme'
 import WaitTimeCalculator from '@/lib/waitlist/waitTimeCalculator'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useWaitlistStore } from '@/stores/useWaitlistStore'
 import { WaitlistEntry } from '@/types/db-floor-plan-types'
 import { Bell, Plus } from 'lucide-react-native'
@@ -34,7 +34,7 @@ export const HostStationScreenEnhanced: React.FC<HostStationScreenProps> = ({ lo
   const isLoading = useWaitlistStore(s => s.isLoading)
 
   const tables = useFloorPlanStore(s => s.tables)
-  const gracePeriodMinutes = useStoreSettingsStore(s => s.waitlistNotificationGracePeriodMinutes)
+  const gracePeriodMinutes = useLocationConfigStore(s => s.config.waitlist.notificationGracePeriodMinutes)
 
   const [showAddForm, setShowAddForm] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<WaitlistEntry | null>(null)

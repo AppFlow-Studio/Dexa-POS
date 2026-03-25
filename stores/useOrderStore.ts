@@ -44,6 +44,7 @@ import { useTableSessionStore } from "./useTableSessionStore";
 //   registerLocalId
 // } from "@/lib/offlineIdRegistry";
 // Import pure calculation functions from order-calculator module
+import { forceSetLocalSequence, generateLocalOrderNumbers, parseSequenceFromDisplayNumber, seedLocalSequence } from "@/lib/localOrderSequence";
 import { mapLocalToBackend, registerLocalId } from "@/lib/offlineIdRegistry";
 import {
   applyPaymentToItems,
@@ -264,6 +265,11 @@ function transformBackendModifiers(
   return Array.from(grouped.values());
 }
 
+/** Rank kitchen statuses for "who's further ahead" comparisons */
+const KITCHEN_STATUS_RANK: Record<string, number> = {
+  new: 0, sent: 1, preparing: 2, ready: 3, served: 4,
+};
+
 /**
  * Detect if item-level data has changed between local and backend.
  * Checks subtotals, tax amounts, quantities, modifiers (not just item counts).
@@ -305,12 +311,17 @@ function hasItemLevelChanges(
       localItem.subtotal !== backendItem.subtotal ||
       localItem.cashSubtotal !== backendItem.cash_subtotal ||
       localItem.taxAmount !== backendItem.tax_amount ||
-      localItem.cashTaxAmount !== backendItem.cash_tax_amount ||
-      localItem.kitchen_status !== (backendItem.kitchen_status ?? undefined) ||
-      localItem.item_status !== backendItem.item_status
+      localItem.cashTaxAmount !== backendItem.cash_tax_amount
     ) {
-      return true; // Financial data or kitchen/item status differs
+      return true; // Financial data differs
     }
+
+    // Only flag kitchen_status change if backend is AHEAD of local
+    // (avoids stale broadcast reverting optimistic kitchen_status)
+    const localKRank = KITCHEN_STATUS_RANK[localItem.kitchen_status ?? 'new'] ?? 0;
+    const backendKRank = KITCHEN_STATUS_RANK[backendItem.kitchen_status ?? 'new'] ?? 0;
+    if (backendKRank > localKRank) return true;
+    if (localItem.item_status !== backendItem.item_status && backendKRank >= localKRank) return true;
 
     // Check modifier structure (count comparison, not deep equality)
     const localModCount =
@@ -371,6 +382,9 @@ export const registerPendingOrderCreation = (
 const localIdToDbOrderId = new Map<string, string>();
 
 const LOCAL_ID_MAP_STORAGE_KEY = "local_id_to_db_order_id";
+
+// Post-payment sync timers per order — cancel stale timers on new split portions
+const _syncTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // Debounced persist for localIdToDbOrderId (secondary fallback, 200ms is fine)
 let _localIdMapFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -774,6 +788,13 @@ const ensureOrderCreated = async (
             orderData.sync_version, // Pass sync_version from backend response
           );
 
+          // Re-seed local counter to match DB-assigned sequence (prevents drift from abandoned drafts)
+          const dbSeq = parseSequenceFromDisplayNumber(orderData.display_number);
+          if (dbSeq > 0) {
+            const stationNum = useStoreSettingsStore.getState().selectedStation?.station_number ?? null;
+            forceSetLocalSequence(selectedStore.id, stationNum, dbSeq);
+          }
+
           // Register mapping in ID registry
           await mapLocalToBackend(order.id, backendId);
 
@@ -1127,8 +1148,9 @@ const addItemToBackend = async (
         const postSyncOrder =
           useOrderStore.getState().ordersById[resolveOrderKey()];
         const postSyncItem = postSyncOrder?.items.find((i) => i.id === item.id);
+        const kitchenSentStatus = getKitchenSentStatus();
         if (
-          postSyncItem?.kitchen_status === "sent" &&
+          postSyncItem?.kitchen_status === kitchenSentStatus &&
           addResult.order_item_id
         ) {
           console.log(
@@ -1138,7 +1160,7 @@ const addItemToBackend = async (
             await OrderService.bulkUpdateOrderItemStatus(
               supabase,
               [addResult.order_item_id],
-              "sent",
+              kitchenSentStatus,
             );
           } catch (err) {
             console.warn(
@@ -1395,7 +1417,8 @@ const addItemToBackend = async (
       const postSyncOrder =
         useOrderStore.getState().ordersById[resolveOrderKey()];
       const postSyncItem = postSyncOrder?.items.find((i) => i.id === item.id);
-      if (postSyncItem?.kitchen_status === "sent" && addResult.order_item_id) {
+      const kitchenSentStatus2 = getKitchenSentStatus();
+      if (postSyncItem?.kitchen_status === kitchenSentStatus2 && addResult.order_item_id) {
         if (__DEV__) console.log(
           `[addItemToBackend] Item ${item.id} was fired during sync, retroactively sending to kitchen`,
         );
@@ -1403,7 +1426,7 @@ const addItemToBackend = async (
           await OrderService.bulkUpdateOrderItemStatus(
             supabase,
             [addResult.order_item_id],
-            "sent",
+            kitchenSentStatus2,
           );
         } catch (err) {
           console.warn(
@@ -1858,6 +1881,7 @@ const syncPaymentToBackend = async (
           : currentOrder.check_status || "Opened";
         currentOrder.order_status =
           data.order_status || currentOrder.order_status;
+        currentOrder.sync_version = data.sync_version ?? currentOrder.sync_version;
 
         // Update outstanding totals if this is the active order
         if (order.id === activeOrderId) {
@@ -1935,8 +1959,13 @@ const syncPaymentToBackend = async (
       if (__DEV__) console.log("[OrderStore] Cache invalidated after payment sync");
 
       // Post-payment verification: schedule a full sync to catch concurrent changes from other stations
+      // Cancel any existing timer for this order (prevents stale timer from previous split portion)
       if (order.db_order_id) {
-        setTimeout(() => {
+        if (_syncTimers[order.id]) {
+          clearTimeout(_syncTimers[order.id]);
+        }
+        _syncTimers[order.id] = setTimeout(() => {
+          delete _syncTimers[order.id];
           useOrderStore.getState().syncOrderFromBackendComplete(order.id);
         }, 1000);
       }
@@ -2795,6 +2824,7 @@ export const useOrderStore = create<OrderState>()(
                     // Compare key fields that actually affect UI
                     const noMeaningfulChange =
                       localOrder.amount_paid === backendOrder.amount_paid &&
+                      localOrder.paid_status === mapPaymentStatus(backendOrder.payment_status) &&
                       localOrder.order_status === backendOrder.status &&
                       localOrder.total_amount === backendOrder.card_total &&
                       localOrder.check_status === backendOrder.check_status &&
@@ -2942,10 +2972,16 @@ export const useOrderStore = create<OrderState>()(
                             );
                             // Phase 7D: Check db_order_item_id instead of sync_status
                             if (localItem && localItem.db_order_item_id) {
-                              // Merge: keep local ID but update everything else from broadcast
+                              // Preserve locally-advanced kitchen_status (optimistic update ahead of broadcast)
+                              const localKRank = KITCHEN_STATUS_RANK[localItem.kitchen_status ?? 'new'] ?? 0;
+                              const broadcastKRank = KITCHEN_STATUS_RANK[broadcastItem.kitchen_status ?? 'new'] ?? 0;
                               return {
                                 ...broadcastItem,
                                 id: localItem.id, // Keep local ID
+                                ...(localKRank > broadcastKRank ? {
+                                  kitchen_status: localItem.kitchen_status,
+                                  item_status: localItem.item_status,
+                                } : {}),
                               };
                             }
                             return broadcastItem;
@@ -3811,6 +3847,11 @@ export const useOrderStore = create<OrderState>()(
               // STEP 3: Clean up stale remote orders
               await get()._cleanupStaleRemoteOrders(locationId);
 
+              // Keep history store aligned with workspace after reconnect / full reconcile
+              await usePreviousOrdersStore
+                .getState()
+                .refreshPreviousOrders({ force: true });
+
               // Update reconciliation timestamp
               set({ lastReconciliationAt: new Date().toISOString() });
 
@@ -3997,6 +4038,15 @@ export const useOrderStore = create<OrderState>()(
             // Phase 1 Foundation: Get station context for new orders
             const { currentStationId, currentStation } = get();
 
+            // Generate local order numbers (station-aware if station is set)
+            const selectedStore = useStoreSettingsStore.getState().selectedStore;
+            const localNumbers = selectedStore
+              ? generateLocalOrderNumbers(
+                  selectedStore.id,
+                  currentStation?.station_number ?? null,
+                )
+              : undefined;
+
             const newOrder: OrderProfile = {
               id: `order_${Date.now()}`,
               service_location_id: details?.tableId || null,
@@ -4011,6 +4061,10 @@ export const useOrderStore = create<OrderState>()(
               opened_at: new Date().toISOString(),
               guest_count: details?.guestCount || 1,
               server_name: activeEmployee?.fullName || "Unknown",
+
+              // Local order numbers (station-aware)
+              display_number: localNumbers?.displayNumber,
+              order_number: localNumbers?.orderNumber,
 
               // Financial fields - initialize to 0 for new orders
               total_amount: 0,
@@ -5287,6 +5341,7 @@ export const useOrderStore = create<OrderState>()(
             // Check if item is a kitchen item (sent/ready/served) - should mark as voided, not remove
             const isKitchenItem =
               itemToHandle.kitchen_status === "sent" ||
+              itemToHandle.kitchen_status === "preparing" ||
               itemToHandle.kitchen_status === "ready" ||
               itemToHandle.kitchen_status === "served";
 
@@ -7954,12 +8009,9 @@ export const useOrderStore = create<OrderState>()(
 
             // No need to manually update `orders` array - the subscription will handle it.
 
-            // Recalculate totals after merging (if not already handled by subscription/update)
-            // Actually, we should probably update totals in the object too if we want them consistent immediately
-            // But since we have a pure calculator now, we can do it here:
-            // const newTotals = calculateOrderTotals(...);
-            // For now, let's keep minimal changes to fix the state status.
-            // recalculateTotals(activeOrderId);
+            // Clear sync status for fired items — they're committed to local state now
+            const firedItemIds = newItems.map((item) => item.id);
+            useSyncStatusStore.getState().clearAllForOrder(firedItemIds);
 
             // ================================================================
             // OFFLINE-FIRST: Queue or sync backend operation
@@ -8163,6 +8215,12 @@ export const useOrderStore = create<OrderState>()(
             set((state) => {
               state.ordersById[orderId] = updatedOrder;
             });
+
+            // Clear sync status for fired items — they're committed to local state now
+            const firedItemIds = order.items
+              .filter((item) => !item.kitchen_status || item.kitchen_status === "new")
+              .map((item) => item.id);
+            useSyncStatusStore.getState().clearAllForOrder(firedItemIds);
 
             // ================================================================
             // OFFLINE-FIRST: Queue or sync backend operation
@@ -9963,6 +10021,42 @@ export const useOrderStore = create<OrderState>()(
               console.log(
                 `[initializeOrders] Loaded ${newOrderIds.length} orders`,
               );
+
+              // Seed local order sequence counters from backend data
+              try {
+                const { currentStation } = get();
+                const stationNumber = currentStation?.station_number ?? null;
+                const stationPrefix = stationNumber != null ? `S${stationNumber}` : null;
+                let highestSeq = 0;
+
+                for (const serverOrder of data) {
+                  const dn = serverOrder.display_number as string | null;
+                  if (!dn) continue;
+
+                  // Only count orders matching our station prefix
+                  if (stationPrefix) {
+                    if (!dn.startsWith(`#${stationPrefix}-`)) continue;
+                  } else {
+                    // Global counter — skip station-prefixed numbers
+                    if (dn.match(/^#S\d+-/)) continue;
+                  }
+
+                  const seqMatch = dn.match(/(\d+)$/);
+                  if (seqMatch) {
+                    const seq = parseInt(seqMatch[1], 10);
+                    if (seq > highestSeq) highestSeq = seq;
+                  }
+                }
+
+                if (highestSeq > 0) {
+                  seedLocalSequence(locationId, stationNumber, highestSeq);
+                  console.log(
+                    `[initializeOrders] Seeded local sequence: station=${stationPrefix ?? "global"}, seq=${highestSeq}`,
+                  );
+                }
+              } catch (seedError) {
+                console.warn("[initializeOrders] Failed to seed local sequence:", seedError);
+              }
             } catch (error) {
               console.error("[initializeOrders] Error:", error);
             } finally {
@@ -10566,6 +10660,15 @@ export const useOrderStore = create<OrderState>()(
                 const hasLocalPending = currentOrder.items.some(
                   (item) => item.sync_status === "pending" || (!item.db_order_item_id && !item.isDraft),
                 );
+                const hasLocalPendingPayments = (currentOrder.payments ?? []).some(
+                  (p) => !p.db_payment_id && p.sync_status === "pending",
+                );
+
+                // Rank-based upgrade: always accept server's paid_status if it's higher
+                const PAID_STATUS_RANK: Record<string, number> = { Unpaid: 0, Pending: 0, Partial: 1, Paid: 2 };
+                const localPaidRank = PAID_STATUS_RANK[currentOrder.paid_status ?? ""] ?? -1;
+                const serverPaidRank = PAID_STATUS_RANK[paidStatus] ?? -1;
+                const isServerPaidUpgrade = serverPaidRank > localPaidRank;
 
                 // Build the updated order once to avoid duplication
                 const updatedOrder: OrderProfile = {
@@ -10584,12 +10687,16 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: orderData.card_total ?? orderData.total_amount,
                   total_tax: orderData.tax_amount,
                   total_discount: orderData.discount_amount,
-                  amount_paid: hasLocalAdvancedPayments ? currentOrder.amount_paid : orderData.amount_paid,
-                  amount_due: hasLocalAdvancedPayments ? currentOrder.amount_due : orderData.amount_due,
+                  amount_paid: isServerPaidUpgrade ? orderData.amount_paid
+                    : ((hasLocalAdvancedPayments || hasLocalPendingPayments) ? currentOrder.amount_paid : orderData.amount_paid),
+                  amount_due: isServerPaidUpgrade ? orderData.amount_due
+                    : ((hasLocalAdvancedPayments || hasLocalPendingPayments) ? currentOrder.amount_due : orderData.amount_due),
                   cash_amount_due: orderData.cash_amount_due,
                   // Status fields — preserve local status when items are pending sync or payments are ahead
-                  paid_status: hasLocalAdvancedPayments ? currentOrder.paid_status
-                    : (hasLocalPending ? currentOrder.paid_status : paidStatus),
+                  // BUT always accept server upgrade (e.g. Partial → Paid)
+                  paid_status: isServerPaidUpgrade ? paidStatus
+                    : ((hasLocalAdvancedPayments || hasLocalPendingPayments) ? currentOrder.paid_status
+                      : (hasLocalPending ? currentOrder.paid_status : paidStatus)),
                   order_status: hasLocalPending ? currentOrder.order_status : orderData.status,
                   sync_version: orderData.sync_version,
                   check_status:
@@ -10610,6 +10717,21 @@ export const useOrderStore = create<OrderState>()(
                     (orderData as any).split_payment_path ?? currentOrder.split_payment_path ?? null,
                 };
 
+                // Self-healing: if amount_due ≈ 0 and all payments synced, ensure paid_status = "Paid"
+                if (
+                  updatedOrder.paid_status !== "Paid" &&
+                  (updatedOrder.amount_due ?? 0) <= 0.01 &&
+                  (updatedOrder.payments ?? []).length > 0 &&
+                  (updatedOrder.payments ?? []).every(p => !!p.db_payment_id)
+                ) {
+                  if (__DEV__) console.warn(
+                    "[syncOrderFromBackendComplete] Self-healing: paid_status was",
+                    updatedOrder.paid_status, "but amount_due is", updatedOrder.amount_due, "— correcting to Paid"
+                  );
+                  updatedOrder.paid_status = "Paid";
+                  updatedOrder.amount_due = 0;
+                }
+
                 state.ordersById[storeKey] = freeze(updatedOrder);
                 // Update active order derived state if this is the active order
                 if (storeKey === state.activeOrderId) {
@@ -10617,7 +10739,7 @@ export const useOrderStore = create<OrderState>()(
                     orderData.card_total ?? orderData.total_amount;
                   state.activeOrderTax = orderData.tax_amount;
                   state.activeOrderDiscount = orderData.discount_amount;
-                  state.activeOrderOutstandingTotal = hasLocalAdvancedPayments
+                  state.activeOrderOutstandingTotal = (hasLocalAdvancedPayments && !isServerPaidUpgrade)
                     ? (currentOrder.amount_due ?? orderData.amount_due)
                     : orderData.amount_due;
                   state.activeOrderOutstandingCash = orderData.cash_amount_due;
@@ -10971,10 +11093,12 @@ useStoreSettingsStore.subscribe((state) => {
 // LOCATION CONTEXT: Auto-sync currentLocationId from useStoreSettingsStore
 // ============================================================================
 
-// Initial sync
+// Initial sync — deferred to avoid crash if circular imports leave useOrderStore undefined during module init
 const initialStore = useStoreSettingsStore.getState().selectedStore;
 if (initialStore) {
-  useOrderStore.setState({ currentLocationId: initialStore.id });
+  setTimeout(() => {
+    useOrderStore.setState({ currentLocationId: initialStore.id });
+  }, 0);
 }
 
 // Subscribe to changes

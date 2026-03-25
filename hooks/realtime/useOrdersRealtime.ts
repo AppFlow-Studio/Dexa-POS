@@ -132,6 +132,10 @@ export interface BroadcastOrderPaymentData {
   captured_at: string | null;
   created_at: string;
 
+  // Settlement tracking
+  is_settled?: boolean;
+  settled_at?: string | null;
+
   // Terminal response JSONB (for pre-auth field extraction)
   terminal_response?: Record<string, unknown> | null;
 }

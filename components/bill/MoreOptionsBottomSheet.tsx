@@ -1,4 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { OrderService } from "@/services/orderService";
 import { PrinterService } from "@/services/printing/PrinterService";
 import { useNoPrinterModalStore } from "@/stores/useNoPrinterModalStore";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
@@ -13,7 +15,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { CheckCircle2, ChevronRight, Lock, Printer, Tag, Trash2, User, X } from "lucide-react-native";
+import { CheckCircle2, ChevronRight, Flame, Lock, Printer, Star, Tag, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { bottomSheetTheme, colors } from "@/lib/theme";
@@ -54,6 +56,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const { show } = useToast();
 
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const supabase = useSupabaseClient();
+  const [isTogglingRush, setIsTogglingRush] = useState(false);
+  const [isTogglingPriority, setIsTogglingPriority] = useState(false);
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -69,6 +74,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const activeOrder = useOrderStore(
     (state) => state.ordersById[state?.activeOrderId || ""]
   );
+
+  // Kitchen items for Rush/Prioritize (items already sent to kitchen)
+  const kitchenItems = useMemo(() => {
+    return (activeOrder?.items ?? []).filter(
+      (i) => i.db_order_item_id && ['sent', 'preparing', 'ready'].includes(i.kitchen_status ?? '')
+    );
+  }, [activeOrder?.items]);
+  const hasKitchenItems = kitchenItems.length > 0;
 
   // Calculate if balance is zero for Close Check option
   const hasItems = (activeOrder?.items?.length ?? 0) > 0;
@@ -245,6 +258,46 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }
     if (ref && "current" in ref && ref.current) {
       ref.current.close();
+    }
+  };
+
+  const handleRushOrder = async () => {
+    if (!hasKitchenItems) return;
+    setIsTogglingRush(true);
+    try {
+      const itemDbIds = kitchenItems.map((i) => i.db_order_item_id!);
+      const { error } = await OrderService.toggleRushOnItems(supabase, itemDbIds, true);
+      if (error) throw error;
+      show({
+        title: "Order Marked as RUSH",
+        message: "Kitchen has been alerted to rush this order.",
+        type: "success",
+      });
+      closeSheet();
+    } catch (e: any) {
+      show({ title: "Error", message: e?.message || "Failed to mark rush.", type: "error" });
+    } finally {
+      setIsTogglingRush(false);
+    }
+  };
+
+  const handlePrioritizeOrder = async () => {
+    if (!hasKitchenItems) return;
+    setIsTogglingPriority(true);
+    try {
+      const itemDbIds = kitchenItems.map((i) => i.db_order_item_id!);
+      const { error } = await OrderService.togglePriorityOnItems(supabase, itemDbIds, true);
+      if (error) throw error;
+      show({
+        title: "Order Prioritized",
+        message: "This order has been prioritized in the kitchen.",
+        type: "success",
+      });
+      closeSheet();
+    } catch (e: any) {
+      show({ title: "Error", message: e?.message || "Failed to prioritize.", type: "error" });
+    } finally {
+      setIsTogglingPriority(false);
     }
   };
 
@@ -451,6 +504,80 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             </Text>
             <ChevronRight size={14} color={colors.muted} />
           </TouchableOpacity>
+
+          {/* ── Section label: Kitchen ── */}
+          {hasKitchenItems && (
+            <>
+              <View style={{
+                paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+                borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4,
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.7 }}>
+                  Kitchen
+                </Text>
+              </View>
+
+              {/* Rush Order */}
+              <TouchableOpacity
+                onPress={handleRushOrder}
+                disabled={isTogglingRush}
+                style={{
+                  flexDirection: "row", alignItems: "center",
+                  paddingHorizontal: 16, paddingVertical: 10,
+                  opacity: isTogglingRush ? 0.5 : 1,
+                }}
+              >
+                <View style={{
+                  width: 30, height: 30, borderRadius: 8,
+                  backgroundColor: colors.danger + "15",
+                  alignItems: "center", justifyContent: "center", marginRight: 12,
+                }}>
+                  {isTogglingRush
+                    ? <ActivityIndicator size="small" color={colors.danger} />
+                    : <Flame size={14} color={colors.danger} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                    Rush Order
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                    Alert kitchen to prioritize speed
+                  </Text>
+                </View>
+                <ChevronRight size={14} color={colors.muted} />
+              </TouchableOpacity>
+
+              {/* Prioritize Order */}
+              <TouchableOpacity
+                onPress={handlePrioritizeOrder}
+                disabled={isTogglingPriority}
+                style={{
+                  flexDirection: "row", alignItems: "center",
+                  paddingHorizontal: 16, paddingVertical: 10,
+                  opacity: isTogglingPriority ? 0.5 : 1,
+                }}
+              >
+                <View style={{
+                  width: 30, height: 30, borderRadius: 8,
+                  backgroundColor: "#f59e0b15",
+                  alignItems: "center", justifyContent: "center", marginRight: 12,
+                }}>
+                  {isTogglingPriority
+                    ? <ActivityIndicator size="small" color="#f59e0b" />
+                    : <Star size={14} color="#f59e0b" />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                    Prioritize Order
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                    Move to front of kitchen queue
+                  </Text>
+                </View>
+                <ChevronRight size={14} color={colors.muted} />
+              </TouchableOpacity>
+            </>
+          )}
 
           {/* ── Section label: Order Notes ── */}
           <View style={{
