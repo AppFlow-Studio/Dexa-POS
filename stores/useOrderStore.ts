@@ -3749,6 +3749,9 @@ export const useOrderStore = create<OrderState>()(
               sync_status: "synced",
               sync_version: serverOrder.sync_version ?? 1,
 
+              // Order source
+              order_source: serverOrder.order_source ?? null,
+
               // Station tracking (for display)
               _sourceStationId: serverOrder.station_id ?? null,
               _sourceStationName: null,
@@ -9451,6 +9454,7 @@ export const useOrderStore = create<OrderState>()(
                   check_status: isPaid ? "Closed" : "Opened",
                   // Session tracking - sync from database
                   session_id: dbOrder.session_id,
+                  order_source: dbOrder.order_source ?? null,
                   sync_status: "synced",
                 };
 
