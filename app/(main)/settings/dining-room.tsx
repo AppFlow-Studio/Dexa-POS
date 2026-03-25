@@ -593,9 +593,9 @@ const DiningRoomScreen = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                backgroundColor: colors.success + '15',
+                backgroundColor: colors.teal + '15',
                 borderWidth: 1,
-                borderColor: colors.success + '50',
+                borderColor: colors.teal + '50',
                 paddingHorizontal: 8,
                 paddingVertical: 3,
                 borderRadius: 20
@@ -606,14 +606,14 @@ const DiningRoomScreen = () => {
                   width: 6,
                   height: 6,
                   borderRadius: 3,
-                  backgroundColor: colors.success
+                  backgroundColor: colors.teal
                 }}
               />
               <Text
                 style={{
                   fontSize: 10,
                   fontWeight: '600',
-                  color: colors.success
+                  color: colors.teal
                 }}
               >
                 {tableStats.available} Available
@@ -624,9 +624,9 @@ const DiningRoomScreen = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                backgroundColor: colors.info + '15',
+                backgroundColor: colors.teal + '15',
                 borderWidth: 1,
-                borderColor: colors.info + '50',
+                borderColor: colors.teal + '50',
                 paddingHorizontal: 8,
                 paddingVertical: 3,
                 borderRadius: 20
@@ -637,11 +637,11 @@ const DiningRoomScreen = () => {
                   width: 6,
                   height: 6,
                   borderRadius: 3,
-                  backgroundColor: colors.info
+                  backgroundColor: colors.teal
                 }}
               />
               <Text
-                style={{ fontSize: 10, fontWeight: '600', color: colors.info }}
+                style={{ fontSize: 10, fontWeight: '600', color: colors.teal }}
               >
                 {tableStats.inUse} Seated
               </Text>
@@ -651,9 +651,9 @@ const DiningRoomScreen = () => {
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                backgroundColor: colors.danger + '15',
+                backgroundColor: colors.teal + '15',
                 borderWidth: 1,
-                borderColor: colors.danger + '50',
+                borderColor: colors.teal + '50',
                 paddingHorizontal: 8,
                 paddingVertical: 3,
                 borderRadius: 20
@@ -664,14 +664,14 @@ const DiningRoomScreen = () => {
                   width: 6,
                   height: 6,
                   borderRadius: 3,
-                  backgroundColor: colors.danger
+                  backgroundColor: colors.teal
                 }}
               />
               <Text
                 style={{
                   fontSize: 10,
                   fontWeight: '600',
-                  color: colors.danger
+                  color: colors.teal
                 }}
               >
                 {tableStats.cleaning} Dirty

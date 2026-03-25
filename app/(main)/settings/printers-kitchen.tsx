@@ -1616,7 +1616,7 @@ const PrintersKitchenScreen = () => {
                 marginBottom: 4,
               }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ fontSize: 12, color: colors.label }}>Auto-fire delay</Text>
+                  <Text style={{ fontSize: 13, color: colors.heading }}>Auto-fire delay</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <TouchableOpacity
                       onPress={() =>
@@ -1695,9 +1695,9 @@ const PrintersKitchenScreen = () => {
                 <SectionHeader title="Modifier Style" />
                 <View style={{ flexDirection: "row", gap: 6, marginBottom: 6 }}>
                   {([
-                    { value: "inverted" as ModifierStyle, label: "Inverted", icon: "■" },
-                    { value: "red" as ModifierStyle, label: "Red Text", icon: "R" },
-                    { value: "bold" as ModifierStyle, label: "Bold Only", icon: "B" },
+                    { value: "inverted" as ModifierStyle, label: "Inverted" },
+                    { value: "red" as ModifierStyle, label: "Red Text" },
+                    { value: "bold" as ModifierStyle, label: "Bold Only" },
                   ]).map((opt) => {
                     const isSelected = kitchenSettings.modifierStyle === opt.value;
                     return (
@@ -1718,7 +1718,7 @@ const PrintersKitchenScreen = () => {
                         }}
                       >
                         <Text style={{ fontSize: 11, fontWeight: "700", color: isSelected ? colors.teal : colors.label }}>
-                          {opt.icon} {opt.label}
+                          {opt.label}
                         </Text>
                       </TouchableOpacity>
                     );
