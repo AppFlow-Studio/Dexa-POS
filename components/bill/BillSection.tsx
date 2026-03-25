@@ -330,9 +330,6 @@ const BillSectionContent = ({
       PrinterService.printKitchenTickets(currentOrder, newItems, selectedStore)
         .catch((e) => console.warn("[BillSection] Auto-print kitchen tickets failed:", e));
     }
-
-    const newOrder = startNewOrder();
-    setActiveOrder(newOrder.id);
   };
 
   // OPTIMIZED: Wrap callback with useCallback

@@ -582,6 +582,9 @@ export function useOrderLineFilteredOrders(daysToShow: number): OrderProfile[] {
           result.push(o);
         }
       }
+      result.sort((a, b) =>
+        new Date(b.opened_at || 0).getTime() - new Date(a.opened_at || 0).getTime()
+      );
       return result;
     })
   );
