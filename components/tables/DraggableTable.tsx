@@ -137,6 +137,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     TABLE_SHAPES['square-4']
   const TableComponent = shapeDef?.component
 
+  // Type check: only table/booth categories are interactive in normal view
+  const isTableType = table.category === 'table' || table.category === 'booth'
+
   // --- COMPUTE EFFECTIVE DIMENSIONS ---
   const effectiveWidth = table.width ?? shapeDef?.width ?? 100
   const effectiveHeight = table.height ?? shapeDef?.height ?? 100
@@ -341,12 +344,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Long-press enabled on all tables in normal mode
   const longPressGesture = Gesture.LongPress()
     .minDuration(300)
-    .enabled(!isEditMode && !disableLongPress)
+    .enabled(!isEditMode && !disableLongPress && isTableType)
     .onStart(() => {
       if (onLongPress) runOnJS(onLongPress)()
     })
 
-  const tapGesture = Gesture.Tap().onEnd(() => {
+  const tapGesture = Gesture.Tap().enabled(isEditMode || isTableType).onEnd(() => {
     if (isEditMode) runOnJS(onSelect)()
     else if (onPress) runOnJS(onPress)()
   })
@@ -429,9 +432,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       allColors: TABLE_STATUS_COLORS
     })
   }
-
-  // Type check for category is effective if we trust the object
-  const isTableType = table.category === 'table' || table.category === 'booth'
 
   return (
     <GestureDetector gesture={composedGesture}>
