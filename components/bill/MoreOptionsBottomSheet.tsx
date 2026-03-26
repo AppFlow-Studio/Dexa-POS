@@ -410,10 +410,10 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           >
             <View style={{
               width: 30, height: 30, borderRadius: 8,
-              backgroundColor: "#a855f715",
+              backgroundColor: colors.teal + "15",
               alignItems: "center", justifyContent: "center", marginRight: 12,
             }}>
-              <Tag size={14} color="#a855f7" />
+              <Tag size={14} color={colors.teal} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Apply Discount</Text>
@@ -467,12 +467,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           >
             <View style={{
               width: 30, height: 30, borderRadius: 8,
-              backgroundColor: colors.info + "15",
+              backgroundColor: colors.teal + "15",
               alignItems: "center", justifyContent: "center", marginRight: 12,
             }}>
               {isPrintingReceipt
-                ? <ActivityIndicator size="small" color={colors.info} />
-                : <Printer size={14} color={colors.info} />}
+                ? <ActivityIndicator size="small" color={colors.teal} />
+                : <Printer size={14} color={colors.teal} />}
             </View>
             <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}>
               Print Receipt
@@ -492,12 +492,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           >
             <View style={{
               width: 30, height: 30, borderRadius: 8,
-              backgroundColor: colors.warning + "15",
+              backgroundColor: colors.teal + "15",
               alignItems: "center", justifyContent: "center", marginRight: 12,
             }}>
               {isPrintingKitchen
-                ? <ActivityIndicator size="small" color={colors.warning} />
-                : <Printer size={14} color={colors.warning} />}
+                ? <ActivityIndicator size="small" color={colors.teal} />
+                : <Printer size={14} color={colors.teal} />}
             </View>
             <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}>
               Kitchen Ticket
@@ -559,12 +559,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               >
                 <View style={{
                   width: 30, height: 30, borderRadius: 8,
-                  backgroundColor: "#f59e0b15",
+                  backgroundColor: colors.teal + "15",
                   alignItems: "center", justifyContent: "center", marginRight: 12,
                 }}>
                   {isTogglingPriority
-                    ? <ActivityIndicator size="small" color="#f59e0b" />
-                    : <Star size={14} color="#f59e0b" />}
+                    ? <ActivityIndicator size="small" color={colors.teal} />
+                    : <Star size={14} color={colors.teal} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
@@ -675,7 +675,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             >
               <View style={{
                 width: 30, height: 30, borderRadius: 8,
-                backgroundColor: "rgba(255,255,255,0.05)",
+                backgroundColor: colors.card,
+                borderWidth: 1, borderColor: colors.border,
                 alignItems: "center", justifyContent: "center", marginRight: 12,
               }}>
                 <Lock size={14} color={colors.label} />

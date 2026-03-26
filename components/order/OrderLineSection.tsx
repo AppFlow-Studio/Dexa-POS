@@ -5,6 +5,7 @@ import {
     useStationOrders,
 } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { router } from "expo-router";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
@@ -200,6 +201,12 @@ const OrderLineSectionContent: React.FC = () => {
         isOpen={isItemsModalOpen}
         onClose={() => setItemsModalOpen(false)}
         orderId={selectedOrderId}
+        onMarkDone={selectedOrderId ? () => handleMarkDone(selectedOrderId) : undefined}
+        onRetrieve={selectedOrderId ? () => handleRetrieve(selectedOrderId) : undefined}
+        onRefund={selectedOrderId ? () => {
+          setItemsModalOpen(false);
+          router.push(`/previous-orders/${selectedOrderId}`);
+        } : undefined}
       />
     </View>
   );
