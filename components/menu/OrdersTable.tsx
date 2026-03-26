@@ -4,7 +4,6 @@ import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore"
 import { ArrowDown, ArrowUp, Lock, MoreVertical } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
-import Animated from "react-native-reanimated";
 
 export type SortColumn =
   | "order"
@@ -45,37 +44,43 @@ interface OrdersTableProps {
   onRefresh?: () => void;
 }
 
-// Status pill config
-const STATUS_PILL: Record<string, { bg: string; text: string; label: string }> = {
+// Status pill config — follows design_theme.md: bg=color+'20', border=color+'50'
+const STATUS_PILL: Record<string, { bg: string; border: string; text: string; label: string }> = {
   Paid: {
-    bg: "rgba(34,197,94,0.20)",
-    text: colors.paymentPaid,
+    bg: colors.success + "20",
+    border: colors.success + "50",
+    text: colors.success,
     label: "Paid",
   },
   Pending: {
-    bg: "rgba(251,191,36,0.20)",
+    bg: colors.warning + "20",
+    border: colors.warning + "50",
     text: colors.warning,
     label: "Pending",
   },
   Unpaid: {
-    bg: "rgba(251,191,36,0.20)",
+    bg: colors.warning + "20",
+    border: colors.warning + "50",
     text: colors.warning,
     label: "Pending",
   },
   Partial: {
-    bg: "rgba(249,115,22,0.20)",
+    bg: colors.paymentPartial + "20",
+    border: colors.paymentPartial + "50",
     text: colors.paymentPartial,
     label: "Partial",
   },
   Refunded: {
-    bg: "rgba(239,68,71,0.20)",
+    bg: colors.danger + "20",
+    border: colors.danger + "50",
     text: colors.danger,
     label: "Refunded",
   },
 };
 
 const DEFAULT_PILL = {
-  bg: "rgba(156,163,175,0.20)",
+  bg: colors.muted + "20",
+  border: colors.muted + "30",
   text: colors.label,
   label: "Unknown",
 };
@@ -199,96 +204,117 @@ const OrderRow = memo<OrderRowProps>(
     );
 
     return (
-      <TouchableOpacity onPress={handleRowPress} activeOpacity={0.75}>
-        <Animated.View
+      <TouchableOpacity onPress={handleRowPress} activeOpacity={0.7}>
+        <View
           style={{
-            minHeight: 48,
-            borderLeftWidth: 3,
-            borderLeftColor: leftBorderColor,
+            flexDirection: "row",
+            alignItems: "center",
+            minHeight: 52,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             backgroundColor: colors.panel,
           }}
-          className="flex-row items-center"
         >
+          {/* Left accent bar */}
+          <View style={{ width: 3, alignSelf: "stretch", backgroundColor: leftBorderColor }} />
+
           {/* ORDER cell */}
-          <View className="flex-[2] py-2.5 px-3">
-            <Text className="text-xs font-bold" style={{ color: colors.heading }}>
-              #{displayNumber}
-            </Text>
-            {customerName !== "" && (
-              <Text className="text-[11px] mt-0.5" style={{ color: colors.label }} numberOfLines={1}>
-                {customerName}
+          <View style={{ flex: 2, paddingVertical: 10, paddingHorizontal: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, letterSpacing: 0.2 }}>
+                #{displayNumber}
               </Text>
-            )}
+              {order.order_source?.toLowerCase() === "online" && (
+                <View style={{
+                  backgroundColor: colors.teal + "25",
+                  borderWidth: 1, borderColor: colors.teal + "60",
+                  borderRadius: 20, paddingHorizontal: 6, paddingVertical: 1,
+                  flexDirection: "row", alignItems: "center", gap: 3,
+                }}>
+                  <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.teal }} />
+                  <Text style={{ fontSize: 9, fontWeight: "700", color: colors.teal, letterSpacing: 0.3 }}>ONLINE</Text>
+                </View>
+              )}
+            </View>
+            <Text style={{ fontSize: 11, marginTop: 2, color: colors.muted }} numberOfLines={1}>
+              {customerName !== "" ? customerName : "Walk-in"}
+            </Text>
           </View>
 
-          {/* TIME cell */}
-          <View className="flex-[2.5] py-2.5 px-3">
-            <Text className="text-xs" style={{ color: colors.heading }} numberOfLines={1}>
-              {timeDisplay}{orderTypeLabel ? ` · ${orderTypeLabel}` : ""}
-              {order.order_source === "online" && (
-                <Text style={{ color: colors.info }}> · Online</Text>
+          {/* TIME + TYPE cell */}
+          <View style={{ flex: 2.5, paddingVertical: 10, paddingHorizontal: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>{timeDisplay}</Text>
+              {orderTypeLabel !== "" && (
+                <View style={{
+                  backgroundColor: colors.card,
+                  borderWidth: 1, borderColor: colors.border,
+                  borderRadius: 20, paddingHorizontal: 7, paddingVertical: 2,
+                }}>
+                  <Text style={{ fontSize: 10, fontWeight: "600", color: colors.label }}>{orderTypeLabel}</Text>
+                </View>
               )}
-            </Text>
-            <Text className="text-[11px] mt-0.5" style={{ color: colors.muted }}>{dateDisplay}</Text>
+            </View>
+            <Text style={{ fontSize: 11, marginTop: 2, color: colors.muted }}>{dateDisplay}</Text>
           </View>
 
           {/* STAFF cell */}
-          <View className="flex-[1.5] py-2.5 px-3">
-            <Text className="text-xs" style={{ color: colors.label }} numberOfLines={1}>
+          <View style={{ flex: 1.5, paddingVertical: 10, paddingHorizontal: 14 }}>
+            <Text style={{ fontSize: 12, color: colors.label }} numberOfLines={1}>
               {order.server_name || order._sourceStationName || "—"}
             </Text>
           </View>
 
           {/* TOTAL cell */}
-          <View className="flex-[1.5] py-2.5 px-3 items-end">
-            <Text className="text-xs font-bold" style={{ color: colors.heading }}>
+          <View style={{ flex: 1.5, paddingVertical: 10, paddingHorizontal: 14, alignItems: "flex-end" }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
               ${(order.total_amount || 0).toFixed(2)}
             </Text>
             {hasCashTotal && (
-              <Text className="text-[11px] mt-0.5" style={{ color: colors.success }}>
-                ${(order.total_cash_amount!).toFixed(2)}
+              <Text style={{ fontSize: 11, marginTop: 2, color: colors.success }}>
+                cash ${(order.total_cash_amount!).toFixed(2)}
               </Text>
             )}
           </View>
 
           {/* STATUS cell */}
-          <View className="flex-[1.2] py-2.5 px-3 items-center gap-1">
-            <View
-              style={{
-                backgroundColor: pill.bg,
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 8,
-              }}
-            >
+          <View style={{ flex: 1.2, paddingVertical: 10, paddingHorizontal: 14, alignItems: "center", gap: 4 }}>
+            <View style={{
+              backgroundColor: pill.bg,
+              borderWidth: 1,
+              borderColor: pill.border,
+              paddingHorizontal: 10,
+              paddingVertical: 3,
+              borderRadius: 20,
+            }}>
               <Text style={{ color: pill.text, fontSize: 11, fontWeight: "700" }}>
                 {pill.label}
               </Text>
             </View>
             {isOrderFullySettled(order) && (
-              <View className="flex-row items-center gap-0.5">
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
                 <Lock size={9} color={colors.muted} />
-                <Text style={{ color: colors.muted, fontSize: 9, fontWeight: "600" }}>
-                  Settled
-                </Text>
+                <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "600" }}>Settled</Text>
               </View>
             )}
           </View>
 
           {/* ACTIONS cell */}
-          <View className="w-[48px] py-2.5 px-2 items-center">
+          <View style={{ width: 48, paddingVertical: 10, paddingHorizontal: 8, alignItems: "center" }}>
             <TouchableOpacity
               ref={buttonRef}
               onPress={handleMorePress}
-              className="p-1.5 rounded-lg"
-              style={{ backgroundColor: colors.card }}
+              style={{
+                width: 30, height: 30, borderRadius: 8,
+                backgroundColor: colors.card,
+                borderWidth: 1, borderColor: colors.border,
+                alignItems: "center", justifyContent: "center",
+              }}
             >
-              <MoreVertical size={14} color={colors.label} />
+              <MoreVertical size={13} color={colors.label} />
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </TouchableOpacity>
     );
   },

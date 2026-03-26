@@ -30,6 +30,7 @@ interface BillItemProps {
   item: CartItem;
   isEditable?: boolean;
   isActive?: boolean; // Highlight when being edited in modifier panel
+  showPaidBadge?: boolean; // Hide per-item paid badges when order-level badge already shows paid
 }
 
 const DELETE_BUTTON_WIDTH = 90;
@@ -110,6 +111,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   item,
   isEditable = false,
   isActive = false,
+  showPaidBadge = true,
 }) => {
   // FIXED: Use selectors instead of destructuring to avoid subscribing to entire store
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
@@ -440,7 +442,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({
                         <Text style={{ fontSize: 9, fontWeight: "700" }} className="text-orange-400">{paymentCoverage.refundedQty} REFUNDED</Text>
                       </View>
                     )}
-                    {!isVoided && !paymentCoverage.isFullyRefunded && !(paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid) && paymentCoverage.isFullyPaid && (
+                    {showPaidBadge && !isVoided && !paymentCoverage.isFullyRefunded && !(paymentCoverage.isPartiallyRefunded && paymentCoverage.isFullyPaid) && paymentCoverage.isFullyPaid && (
                       <View className="flex-row items-center bg-green-900/40 px-1.5 py-px rounded gap-1">
                         {paymentCoverage.primaryMethod === "Cash" && !paymentCoverage.isSplitMethod && (
                           <Banknote size={9} color={colors.success} />

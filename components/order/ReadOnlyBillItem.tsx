@@ -8,90 +8,142 @@ interface ReadOnlyBillItemProps {
   isLast?: boolean;
 }
 
-const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
-  item,
-  isLast,
-}) => {
+const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => {
   const hasModifiers =
-    (item.customizations.modifiers &&
-      item.customizations.modifiers.length > 0) ||
+    (item.customizations.modifiers && item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
 
+  const isVoided = item.is_voided;
+  const nameColor = isVoided ? colors.muted : colors.heading;
+  const priceColor = isVoided ? colors.muted : colors.heading;
+
   return (
-    <View>
-      {/* Item header row: name ... xQty  $price */}
-      <View className="flex-row items-center py-2">
-        <Text
-          className="text-sm font-semibold"
-          numberOfLines={1}
-          style={{ color: colors.heading, flex: 1 }}
+    <View style={{ opacity: isVoided ? 0.55 : 1 }}>
+      {/* Item row */}
+      <View style={{ flexDirection: "row", alignItems: "flex-start", paddingVertical: 8 }}>
+        {/* Qty badge */}
+        <View
+          style={{
+            minWidth: 22,
+            height: 22,
+            borderRadius: 6,
+            backgroundColor: isVoided ? colors.border : colors.teal + "18",
+            borderWidth: 1,
+            borderColor: isVoided ? colors.border : colors.teal + "40",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 9,
+            marginTop: 1,
+          }}
         >
-          {item.name}
-        </Text>
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: "700",
+              color: isVoided ? colors.muted : colors.teal,
+            }}
+          >
+            {item.quantity}
+          </Text>
+        </View>
+
+        {/* Name + void badge */}
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: nameColor,
+                flex: 1,
+                textDecorationLine: isVoided ? "line-through" : "none",
+              }}
+            >
+              {item.name}
+            </Text>
+            {isVoided && (
+              <View
+                style={{
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 20,
+                  backgroundColor: colors.danger + "20",
+                  borderWidth: 1,
+                  borderColor: colors.danger + "40",
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: "600", color: colors.danger }}>
+                  Voided
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Modifiers */}
+          {hasModifiers && (
+            <View style={{ marginTop: 3, gap: 2 }}>
+              {item.customizations.modifiers?.map((modifier, index) =>
+                modifier.options.length > 0
+                  ? modifier.options.map((option, optIdx) => (
+                      <View
+                        key={`${index}-${optIdx}`}
+                        style={{ flexDirection: "row", alignItems: "center" }}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={{ fontSize: 11, color: colors.label, flex: 1 }}
+                        >
+                          {modifier.categoryName}: {option.name}
+                        </Text>
+                        {option.price > 0 && (
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: "500",
+                              color: colors.success,
+                              marginLeft: 6,
+                            }}
+                          >
+                            +${option.price.toFixed(2)}
+                          </Text>
+                        )}
+                      </View>
+                    ))
+                  : null,
+              )}
+              {item.customizations.notes && (
+                <Text style={{ fontSize: 11, fontStyle: "italic", color: colors.muted, marginTop: 1 }}>
+                  "{item.customizations.notes}"
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Price */}
         <Text
-          className="text-sm mx-2"
-          style={{ color: colors.muted }}
-        >
-          x{item.quantity}
-        </Text>
-        <Text
-          className="text-sm font-semibold"
-          style={{ color: colors.heading, fontFamily: "monospace", minWidth: 56, textAlign: "right" }}
+          style={{
+            fontSize: 13,
+            fontWeight: "600",
+            color: priceColor,
+            fontVariant: ["tabular-nums"],
+            marginLeft: 10,
+            minWidth: 56,
+            textAlign: "right",
+            marginTop: 1,
+          }}
         >
           ${(item.price * item.quantity).toFixed(2)}
         </Text>
       </View>
 
-      {/* Modifiers — always visible, indented */}
-      {hasModifiers && (
-        <View className="pl-3 pb-2 gap-y-0.5">
-          {item.customizations.modifiers?.map((modifier, index) =>
-            modifier.options.length > 0
-              ? modifier.options.map((option, optIdx) => (
-                  <View
-                    key={`${index}-${optIdx}`}
-                    className="flex-row items-center"
-                  >
-                    <Text
-                      className="text-sm"
-                      numberOfLines={1}
-                      style={{ color: colors.label, flex: 1 }}
-                    >
-                      {modifier.categoryName}: {option.name}
-                    </Text>
-                    {option.price > 0 && (
-                      <Text
-                        className="text-sm font-medium ml-2"
-                        style={{
-                          color: colors.success,
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        +${option.price.toFixed(2)}
-                      </Text>
-                    )}
-                  </View>
-                ))
-              : null,
-          )}
-
-          {/* Notes — italic */}
-          {item.customizations.notes && (
-            <Text
-              className="text-sm italic mt-0.5"
-              style={{ color: colors.muted }}
-            >
-              "{item.customizations.notes}"
-            </Text>
-          )}
-        </View>
-      )}
-
-      {/* Dashed separator (except after last item) */}
       {!isLast && (
         <View
-          className="border-b border-dashed my-1"
-          style={{ borderColor: colors.border }}
+          style={{
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }}
         />
       )}
     </View>

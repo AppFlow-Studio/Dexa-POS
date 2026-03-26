@@ -137,6 +137,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     TABLE_SHAPES['square-4']
   const TableComponent = shapeDef?.component
 
+  // Type check: only table/booth categories are interactive in normal view
+  const isTableType = table.category === 'table' || table.category === 'booth'
+
   // --- COMPUTE EFFECTIVE DIMENSIONS ---
   const effectiveWidth = table.width ?? shapeDef?.width ?? 100
   const effectiveHeight = table.height ?? shapeDef?.height ?? 100
@@ -292,6 +295,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return () => unregisterTablePosition(table.id)
   }, [table.id])
 
+  const GRID_SIZE = 20
+
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
     .activateAfterLongPress(DRAG_HOLD_MS)
@@ -303,12 +308,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       dragContext.value = { x: translateX.value, y: translateY.value }
     })
     .onUpdate(event => {
-      translateX.value =
-        dragContext.value.x + event.translationX / canvasScale.value
-      translateY.value =
-        dragContext.value.y + event.translationY / canvasScale.value
+      // Snap to grid while dragging — object locks to nearest cell as you move
+      const rawX = dragContext.value.x + event.translationX / canvasScale.value
+      const rawY = dragContext.value.y + event.translationY / canvasScale.value
+      translateX.value = Math.round(rawX / GRID_SIZE) * GRID_SIZE
+      translateY.value = Math.round(rawY / GRID_SIZE) * GRID_SIZE
     })
     .onEnd(() => {
+      // Already snapped — persist final position
       runOnJS(updateTablePosition)(
         table.id,
         translateX.value,
@@ -341,12 +348,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Long-press enabled on all tables in normal mode
   const longPressGesture = Gesture.LongPress()
     .minDuration(300)
-    .enabled(!isEditMode && !disableLongPress)
+    .enabled(!isEditMode && !disableLongPress && isTableType)
     .onStart(() => {
       if (onLongPress) runOnJS(onLongPress)()
     })
 
-  const tapGesture = Gesture.Tap().onEnd(() => {
+  const tapGesture = Gesture.Tap().enabled(isEditMode || isTableType).onEnd(() => {
     if (isEditMode) runOnJS(onSelect)()
     else if (onPress) runOnJS(onPress)()
   })
@@ -430,9 +437,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     })
   }
 
-  // Type check for category is effective if we trust the object
-  const isTableType = table.category === 'table' || table.category === 'booth'
-
   return (
     <GestureDetector gesture={composedGesture}>
       <Animated.View style={animatedStyle}>
@@ -475,17 +479,19 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             />
           )}
           <View className='absolute inset-0 items-center justify-center px-1'>
-            <Text
-              style={{
-                fontSize: 10,
-                fontWeight: '700',
-                textAlign: 'center',
-                color: isTableType ? tableColor : colors.label,
-              }}
-              numberOfLines={1}
-            >
-              {displayName ? displayName : table.name}
-            </Text>
+            {isTableType && (
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                  color: tableColor,
+                }}
+                numberOfLines={1}
+              >
+                {displayName ? displayName : table.name}
+              </Text>
+            )}
 
             {isTableType && tableStatus === 'available' && (
               <Text style={{ color: tableColor + 'AA', fontSize: 7, fontWeight: '600' }}>

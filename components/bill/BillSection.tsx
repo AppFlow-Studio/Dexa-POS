@@ -330,9 +330,6 @@ const BillSectionContent = ({
       PrinterService.printKitchenTickets(currentOrder, newItems, selectedStore)
         .catch((e) => console.warn("[BillSection] Auto-print kitchen tickets failed:", e));
     }
-
-    const newOrder = startNewOrder();
-    setActiveOrder(newOrder.id);
   };
 
   // OPTIMIZED: Wrap callback with useCallback
@@ -484,9 +481,11 @@ const BillSectionContent = ({
             <Text className="text-center text-xs font-semibold text-white">
               Send to Kitchen
             </Text>
-            <Text style={{ fontSize: 10, fontWeight: "700" }} className="rounded-full bg-teal-400 px-1.5 py-0.5">
-              {newItemsCount}
-            </Text>
+            <View className="rounded-full bg-teal-400 w-4 h-4 items-center justify-center">
+              <Text style={{ fontSize: 10, fontWeight: "700", color: colors.onSolid, lineHeight: 12 }}>
+                {newItemsCount}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>

@@ -1,100 +1,20 @@
 import {
   colors,
-  ORDER_STATUS_COLORS,
   PAYMENT_STATUS_COLORS,
 } from "@/lib/theme";
 import { useOrder } from "@/stores/selectors/orderSelectors";
 import { useMemo } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Banknote, CheckCircle2, CreditCard, X } from "lucide-react-native";
 import ReadOnlyBillItem from "./ReadOnlyBillItem";
 
 interface OrderLineItemsViewProps {
   onClose: () => void;
   orderId: string | null;
+  onMarkDone?: () => void;
+  onRetrieve?: () => void;
+  onRefund?: () => void;
 }
-
-// ── Helpers ────────────────────────────────────────────────────
-
-const SectionLabel = ({ label }: { label: string }) => (
-  <Text
-    style={{
-      fontSize: 10,
-      fontWeight: "600",
-      color: colors.muted,
-      textTransform: "uppercase",
-      letterSpacing: 0.8,
-      marginBottom: 6,
-    }}
-  >
-    {label}
-  </Text>
-);
-
-const StatusPill = ({ label, color }: { label: string; color: string }) => (
-  <View
-    style={{
-      backgroundColor: color + "20",
-      borderWidth: 1,
-      borderColor: color + "50",
-      borderRadius: 20,
-      paddingHorizontal: 9,
-      paddingVertical: 3,
-      marginRight: 5,
-      marginBottom: 5,
-    }}
-  >
-    <Text style={{ fontSize: 11, fontWeight: "600", color, textTransform: "capitalize" }}>
-      {label}
-    </Text>
-  </View>
-);
-
-const PriceRow = ({
-  label,
-  amount,
-  color,
-  bold,
-  large,
-}: {
-  label: string;
-  amount: number;
-  color?: string;
-  bold?: boolean;
-  large?: boolean;
-}) => (
-  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-    <Text
-      style={{
-        fontSize: large ? 13 : 12,
-        fontWeight: bold ? "700" : "400",
-        color: color || colors.label,
-      }}
-    >
-      {label}
-    </Text>
-    <Text
-      style={{
-        fontSize: large ? 13 : 12,
-        fontWeight: bold ? "700" : "500",
-        color: color || colors.heading,
-        fontVariant: ["tabular-nums"],
-      }}
-    >
-      {amount < 0 ? `-$${Math.abs(amount).toFixed(2)}` : `$${amount.toFixed(2)}`}
-    </Text>
-  </View>
-);
-
-const Divider = () => (
-  <View
-    style={{
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      borderStyle: "dashed",
-      marginVertical: 8,
-    }}
-  />
-);
 
 const formatTime = (iso: string | null | undefined) => {
   if (!iso) return "";
@@ -111,9 +31,7 @@ const formatOrderType = (type: string | undefined) => {
   return map[type] || type;
 };
 
-// ── Main component ─────────────────────────────────────────────
-
-const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
+const OrderLineItemsView = ({ onClose, orderId, onMarkDone, onRetrieve, onRefund }: OrderLineItemsViewProps) => {
   const orderToView = useOrder(orderId);
   const items = orderToView?.items || [];
 
@@ -139,18 +57,18 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
       };
     }, [orderToView]);
 
-  const validPayments = useMemo(() => orderToView?.payments?.filter((p) => !p.isVoided) || [], [orderToView?.payments]);
-  const totalRefunded = useMemo(() => validPayments.reduce((acc, p) => acc + (p.refundedAmount ?? 0), 0), [validPayments]);
-
   if (!orderToView) return null;
 
   const orderTypeLabel = formatOrderType(orderToView.order_type);
   const itemCount = items.length;
   const customerLabel = orderToView.customer_name || "Walk-In";
   const timeLabel = formatTime(orderToView.opened_at);
-  const orderStatusColor = ORDER_STATUS_COLORS[orderToView.order_status] || colors.info;
   const paidStatusColor = PAYMENT_STATUS_COLORS[orderToView.paid_status] || colors.muted;
   const isPaid = orderToView.paid_status === "Paid";
+  const displayId = orderToView.display_number || orderToView.order_number || "—";
+  const isPartiallyPaid = (orderToView.amount_paid ?? 0) > 0 && !isPaid;
+
+  const canRetrieve = !isPaid;
 
   return (
     <View
@@ -159,272 +77,257 @@ const OrderLineItemsView = ({ onClose, orderId }: OrderLineItemsViewProps) => {
         overflow: "hidden",
         borderWidth: 1,
         borderColor: colors.border,
-        backgroundColor: colors.panel,
+        backgroundColor: colors.screen,
         width: "100%",
+        maxWidth: 500,
+        alignSelf: "center",
+        flex: 1,
       }}
     >
       {/* ═══ HEADER ═══ */}
       <View
         style={{
           paddingHorizontal: 16,
-          paddingVertical: 11,
+          paddingVertical: 14,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
-          backgroundColor: colors.card,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
         }}
       >
-        <View style={{ flex: 1 }}>
-          {/* Row 1: order number + paid badge */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 3 }}>
-            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
-              Order #{orderToView.display_number || orderToView.order_number || "—"}
+        {/* Row 1: title + status + close */}
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 5 }}>
+          <Text style={{ fontSize: 17, fontWeight: "700", color: colors.heading, flex: 1 }}>
+            Order #{displayId}
+          </Text>
+          {/* Status pill */}
+          <View
+            style={{
+              backgroundColor: paidStatusColor + "25",
+              borderWidth: 1,
+              borderColor: paidStatusColor + "60",
+              borderRadius: 20,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+              marginRight: 10,
+            }}
+          >
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: paidStatusColor }} />
+            <Text style={{ fontSize: 12, fontWeight: "700", color: paidStatusColor }}>
+              {orderToView.paid_status?.toUpperCase()}
             </Text>
-            <View
-              style={{
-                backgroundColor: paidStatusColor + "20",
-                borderWidth: 1,
-                borderColor: paidStatusColor + "50",
-                borderRadius: 20,
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: "600", color: paidStatusColor }}>
-                {orderToView.paid_status}
-              </Text>
-            </View>
           </View>
-
-          {/* Row 2: meta */}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 12, color: colors.label }}>
-              {[orderTypeLabel, customerLabel, `${itemCount} item${itemCount !== 1 ? "s" : ""}`].filter(Boolean).join(" · ")}
-            </Text>
-            {timeLabel ? (
-              <Text style={{ fontSize: 11, color: colors.muted }}>{timeLabel}</Text>
-            ) : null}
-          </View>
+          <TouchableOpacity
+            onPress={onClose}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <X size={13} color={colors.label} />
+          </TouchableOpacity>
         </View>
+
+        {/* Row 2: meta */}
+        <Text style={{ fontSize: 12, color: colors.muted }}>
+          {[orderTypeLabel, customerLabel, `${itemCount} item${itemCount !== 1 ? "s" : ""}`].filter(Boolean).join(" · ")}
+          {timeLabel ? `  ${timeLabel}` : ""}
+        </Text>
       </View>
 
-      {/* ═══ BODY ═══ */}
-      <View style={{ flexDirection: "row", maxHeight: 420 }}>
+      {/* ═══ ITEMS ═══ */}
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}
+      >
+        {items.map((item, idx) => (
+          <ReadOnlyBillItem key={item.id} item={item} isLast={idx === items.length - 1} />
+        ))}
+      </ScrollView>
 
-        {/* ─── Left: Items list ─── */}
-        <ScrollView
-          style={{
-            flex: 1,
-            borderRightWidth: 1,
-            borderRightColor: colors.border,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-          }}
-          showsVerticalScrollIndicator={false}
-        >
-          <SectionLabel label="Items" />
-          {items.map((item, idx) => (
-            <ReadOnlyBillItem key={item.id} item={item} isLast={idx === items.length - 1} />
-          ))}
-        </ScrollView>
-
-        {/* ─── Right: Details ─── */}
-        <ScrollView
-          style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Status chips */}
-          <SectionLabel label="Status" />
-          <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 12 }}>
-            {orderTypeLabel ? <StatusPill label={orderTypeLabel} color={colors.teal} /> : null}
-            <StatusPill label={orderToView.order_status.replace(/_/g, " ")} color={orderStatusColor} />
-            <StatusPill
-              label={orderToView.check_status}
-              color={orderToView.check_status === "Opened" ? colors.success : colors.muted}
-            />
-          </View>
-
-          {/* Pricing breakdown */}
-          <SectionLabel label="Pricing" />
-          <PriceRow label="Subtotal" amount={subtotal} />
-          {discount > 0 && <PriceRow label="Discount" amount={-discount} color={colors.success} />}
-          <PriceRow label="Tax" amount={tax} />
-
-          <Divider />
-          <PriceRow label="Total" amount={total} color={colors.heading} bold large />
-
-          {cashSavings > 0 && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: colors.success + "15",
-                borderWidth: 1,
-                borderColor: colors.success + "30",
-                borderRadius: 8,
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                marginTop: 6,
-              }}
-            >
-              <Text style={{ fontSize: 11, color: colors.success }}>
-                Cash ${cashTotal.toFixed(2)}
-              </Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginHorizontal: 4 }}>·</Text>
-              <Text style={{ fontSize: 11, color: colors.success, fontWeight: "600" }}>
-                Save ${cashSavings.toFixed(2)}
-              </Text>
-            </View>
-          )}
-
-          {amountPaid > 0 && !isPaid && (
-            <PriceRow label="Paid" amount={amountPaid} color={colors.success} />
-          )}
-          {amountDue > 0.01 && !isPaid && (
-            <View style={{ marginTop: 2 }}>
-              <PriceRow label="Balance Due" amount={amountDue} color={colors.warning} bold />
-            </View>
-          )}
-          {isPaid && (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 5,
-                marginTop: 4,
-              }}
-            >
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: colors.success,
-                }}
-              />
-              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.success }}>
-                Fully Paid
-              </Text>
-            </View>
-          )}
-
-          {/* Payments */}
-          {validPayments.length > 0 && (
-            <View style={{ marginTop: 14 }}>
-              <SectionLabel label="Payments" />
-              <View style={{ gap: 8 }}>
-                {validPayments.map((p, i) => (
-                  <View
-                    key={p.id || i}
-                    style={{
-                      backgroundColor: colors.card,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 7,
-                    }}
-                  >
-                    {/* Method + amount */}
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
-                        {p.method === "Card"
-                          ? `${p.cardBrand || "Card"}${p.last4 ? ` ····${p.last4}` : ""}`
-                          : "Cash"}
-                      </Text>
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal, fontVariant: ["tabular-nums"] }}>
-                        ${p.amount.toFixed(2)}
-                      </Text>
-                    </View>
-
-                    {/* Meta row */}
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 }}>
-                      {p.timestamp && (
-                        <Text style={{ fontSize: 10, color: colors.muted }}>{formatTime(p.timestamp)}</Text>
-                      )}
-                      <View
-                        style={{
-                          backgroundColor: colors.success + "20",
-                          borderRadius: 20,
-                          paddingHorizontal: 6,
-                          paddingVertical: 1,
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, color: colors.success, fontWeight: "600" }}>
-                          {p.status === "captured" ? "Captured" : p.status}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Cash details */}
-                    {p.method === "Cash" && p.amountTendered != null && (
-                      <Text style={{ fontSize: 10, color: colors.label, marginTop: 3 }}>
-                        Tendered ${p.amountTendered.toFixed(2)}
-                        {p.changeGiven ? ` · Change $${p.changeGiven.toFixed(2)}` : ""}
-                      </Text>
-                    )}
-
-                    {/* Tip */}
-                    {p.tip_amount > 0 && (
-                      <Text style={{ fontSize: 10, color: colors.label, marginTop: 2 }}>
-                        Tip ${p.tip_amount.toFixed(2)}
-                      </Text>
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Refunds */}
-          {totalRefunded > 0 && (
-            <View
-              style={{
-                marginTop: 12,
-                backgroundColor: colors.danger + "15",
-                borderWidth: 1,
-                borderColor: colors.danger + "30",
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-              }}
-            >
-              <SectionLabel label="Refunds" />
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger, fontVariant: ["tabular-nums"] }}>
-                −${totalRefunded.toFixed(2)} refunded
-              </Text>
-            </View>
-          )}
-        </ScrollView>
-      </View>
-
-      {/* ═══ FOOTER ═══ */}
+      {/* ═══ TOTALS ═══ */}
       <View
         style={{
           paddingHorizontal: 16,
-          paddingVertical: 9,
+          paddingTop: 12,
+          paddingBottom: 14,
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          backgroundColor: colors.card,
-          flexDirection: "row",
-          justifyContent: "flex-end",
+          gap: 4,
         }}
       >
-        <TouchableOpacity
-          onPress={onClose}
+        {/* Subtotal */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 13, color: colors.muted }}>Subtotal</Text>
+          <Text style={{ fontSize: 13, color: colors.label, fontVariant: ["tabular-nums"] }}>
+            ${subtotal.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* Discount */}
+        {discount > 0 && (
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 13, color: colors.muted }}>Discount</Text>
+            <Text style={{ fontSize: 13, color: colors.success, fontVariant: ["tabular-nums"] }}>
+              -${discount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        {/* Tax */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 13, color: colors.muted }}>Tax</Text>
+          <Text style={{ fontSize: 13, color: colors.label, fontVariant: ["tabular-nums"] }}>
+            ${tax.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* Amount paid (partial) */}
+        {isPartiallyPaid && (
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 13, color: colors.muted }}>Paid</Text>
+            <Text style={{ fontSize: 13, color: colors.success, fontVariant: ["tabular-nums"] }}>
+              ${amountPaid.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        {/* Total */}
+        <View
           style={{
-            paddingHorizontal: 14,
-            paddingVertical: 6,
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: "transparent",
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 4,
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Close</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Total</Text>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "700",
+              color: colors.heading,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            ${total.toFixed(2)}
+          </Text>
+        </View>
+
+        {/* Cash savings badge */}
+        {cashSavings > 0 && (
+          <View style={{ alignItems: "flex-end", marginTop: 3 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                backgroundColor: colors.success + "15",
+                borderWidth: 1,
+                borderColor: colors.success + "30",
+                borderRadius: 20,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+              }}
+            >
+              <Banknote size={10} color={colors.success} />
+              <Text style={{ fontSize: 10, color: colors.success }}>
+                Cash ${cashTotal.toFixed(2)} · save ${cashSavings.toFixed(2)}
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* ═══ ACTIONS ═══ */}
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+          paddingHorizontal: 14,
+          paddingBottom: 14,
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+        }}
+      >
+        {/* Mark as Done */}
+        <TouchableOpacity
+          onPress={() => { onMarkDone?.(); onClose(); }}
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            paddingVertical: 13,
+            borderRadius: 10,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <CheckCircle2 size={15} color={colors.label} />
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
+            Mark as Done
+          </Text>
         </TouchableOpacity>
+
+        {/* Retrieve to Pay / Refund */}
+        {canRetrieve ? (
+          <TouchableOpacity
+            onPress={() => { onRetrieve?.(); onClose(); }}
+            style={{
+              flex: 2,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingVertical: 13,
+              paddingHorizontal: 16,
+              borderRadius: 10,
+              backgroundColor: colors.teal,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+              <CreditCard size={15} color="#000" />
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#000" }}>
+                {isPartiallyPaid ? "Pay Remaining" : "Retrieve to Pay"}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#000", fontVariant: ["tabular-nums"] }}>
+              ${amountDue.toFixed(2)}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={() => { onRefund?.(); onClose(); }}
+            style={{
+              flex: 2,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 7,
+              paddingVertical: 13,
+              borderRadius: 10,
+              backgroundColor: colors.danger + "15",
+              borderWidth: 1,
+              borderColor: colors.danger + "40",
+            }}
+          >
+            <CreditCard size={15} color={colors.danger} />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger }}>
+              Refund
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

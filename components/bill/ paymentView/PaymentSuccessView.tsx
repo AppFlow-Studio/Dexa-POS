@@ -148,29 +148,30 @@ const PaymentSuccessView = () => {
   };
 
   return (
-    <View className="flex-1 bg-panel justify-between">
+    <View className="flex-1 justify-between" style={{ backgroundColor: colors.screen }}>
       {/* Main Content - Centered vertically if possible */}
       <View className="flex-1 justify-center items-center px-6">
         {/* Success Icon */}
         <Animated.View
           entering={FadeIn.delay(100)}
           className="items-center mb-6"
+          style={{ marginTop: 20 }}
         >
-          <View className="w-24 h-24 bg-green-500 rounded-full items-center justify-center mb-4 shadow-lg shadow-green-900/20 border-4 border-panel">
-            <Check color="white" size={48} strokeWidth={4} />
+          <View style={{ width: 80, height: 80, backgroundColor: colors.success + "15", borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 20, borderWidth: 2, borderColor: colors.success + "40" }}>
+            <Check color={colors.success} size={44} strokeWidth={3.5} />
           </View>
-          <Text className="text-3xl font-bold text-white mb-1">
+          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.heading, marginBottom: 8 }}>
             Payment Successful
           </Text>
-          <Text className="text-gray-400 text-lg">
-            {paymentMethod || "Card"}
+          <Text style={{ fontSize: 14, color: colors.label, fontWeight: "600" }}>
+            {paymentMethod || "Card"} Payment
           </Text>
         </Animated.View>
 
         {/* Compact Receipt Card */}
         <Animated.View
           entering={FadeInUp.delay(200)}
-          className="w-full max-w-sm bg-surface rounded-2xl border border-border p-6 items-center"
+          style={{ width: "100%", maxWidth: 400, backgroundColor: colors.panel, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 24, alignItems: "center" }}
         >
           {/* Use captured payment info from store to prevent real-time sync overwrites */}
           {(() => {
@@ -212,32 +213,32 @@ const PaymentSuccessView = () => {
               <>
                 {totalTips > 0 ? (
                   <>
-                    <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
+                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 }}>
                       Bill Total
                     </Text>
-                    <Text className="text-3xl font-bold text-white mb-2">
+                    <Text style={{ fontSize: 26, fontWeight: "700", color: colors.heading, marginBottom: 10 }}>
                       ${totalPaid.toFixed(2)}
                     </Text>
-                    <View className="flex-row items-center mb-2">
-                      <Text className="text-gray-400 text-sm mr-2">Tip:</Text>
-                      <Text className="text-green-400 text-lg font-bold">
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                      <Text style={{ color: colors.muted, fontSize: 12, marginRight: 8 }}>Tip:</Text>
+                      <Text style={{ color: colors.success, fontSize: 17, fontWeight: "700" }}>
                         +${totalTips.toFixed(2)}
                       </Text>
                     </View>
-                    <View className="w-full h-[1px] bg-border mb-2" />
-                    <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
+                    <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: 12 }} />
+                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 }}>
                       Grand Total
                     </Text>
-                    <Text className="text-5xl font-bold text-white mb-4">
+                    <Text style={{ fontSize: 38, fontWeight: "800", color: colors.teal, marginBottom: 14 }}>
                       ${grandTotal.toFixed(2)}
                     </Text>
                   </>
                 ) : (
                   <>
-                    <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
+                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 4 }}>
                       Total Paid
                     </Text>
-                    <Text className="text-5xl font-bold text-white mb-4">
+                    <Text style={{ fontSize: 42, fontWeight: "800", color: colors.teal, marginBottom: 24 }}>
                       ${totalPaid.toFixed(2)}
                     </Text>
                   </>
@@ -246,17 +247,17 @@ const PaymentSuccessView = () => {
             );
           })()}
 
-          <View className="w-full h-[1px] bg-border mb-4" />
+          <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: 18 }} />
 
-          <View className="flex-row justify-between w-full mb-2">
-            <Text className="text-gray-400">Transaction ID</Text>
-            <Text className="text-gray-200 font-medium">
+          <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%", marginBottom: 12 }}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Transaction ID</Text>
+            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 13 }}>
               #{activeOrder?.id.slice(-6).toUpperCase()}
             </Text>
           </View>
-          <View className="flex-row justify-between w-full">
-            <Text className="text-gray-400">Date</Text>
-            <Text className="text-gray-200 font-medium">
+          <View style={{ flexDirection: "row", justifyContent: "space-between", width: "100%" }}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Date</Text>
+            <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 13 }}>
               {new Date().toLocaleDateString()}
             </Text>
           </View>
@@ -264,40 +265,40 @@ const PaymentSuccessView = () => {
       </View>
 
       {/* Footer Actions - Fixed at Bottom */}
-      <View className="w-full bg-panel pt-2 pb-4 border-t border-border">
-        <View className="px-4 gap-y-3">
+      <View style={{ width: "100%", backgroundColor: colors.panel, paddingTop: 8, paddingBottom: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ paddingHorizontal: 16, gap: 8 }}>
           {/* Secondary Actions Row */}
-          <View className="flex-row gap-3">
+          <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
               onPress={handlePrint}
               disabled={isPrinting}
-              className={`flex-1 py-3 bg-surface rounded-xl border border-border flex-row items-center justify-center active:bg-surface gap-2 ${isPrinting ? "opacity-60" : ""}`}
+              style={{ flex: 1, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, opacity: isPrinting ? 0.6 : 1 }}
             >
               {isPrinting ? (
                 <ActivityIndicator size="small" color={colors.label} />
               ) : (
-                <Printer size={18} color={colors.label} className="mr-2" />
+                <Printer size={13} color={colors.label} />
               )}
-              <Text className="text-gray-300 font-semibold">
-                {isPrinting ? "Printing..." : "Print Receipt"}
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 11 }}>
+                {isPrinting ? "Printing..." : "Print"}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={handleEmail}
-              className="flex-1 py-3 bg-surface rounded-xl border border-border flex-row items-center justify-center active:bg-surface gap-2"
+              style={{ flex: 1, paddingVertical: 8, backgroundColor: colors.card, borderRadius: 8, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 }}
             >
-              <Mail size={18} color={colors.label} className="mr-2" />
-              <Text className="text-gray-300 font-semibold">Email Receipt</Text>
+              <Mail size={13} color={colors.label} />
+              <Text style={{ color: colors.heading, fontWeight: "600", fontSize: 11 }}>Email</Text>
             </TouchableOpacity>
           </View>
 
           {/* Primary Action */}
           <TouchableOpacity
             onPress={handleDone}
-            className="w-full py-4 bg-teal rounded-xl items-center shadow-lg shadow-teal/20 active:bg-teal/80"
+            style={{ width: "100%", paddingVertical: 10, backgroundColor: colors.teal, borderRadius: 8, alignItems: "center", shadowColor: colors.teal, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 }}
           >
-            <Text className="text-white font-bold text-xl">
+            <Text style={{ color: colors.onSolid, fontWeight: "700", fontSize: 13 }}>
               {activeOrder?.order_type === "dine_in" || activeOrder?.order_type == 'Dine In'
                 ? "Finalize Payment"
                 : "Start New Order"}

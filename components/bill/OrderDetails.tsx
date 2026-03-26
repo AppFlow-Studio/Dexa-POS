@@ -291,34 +291,38 @@ const OrderDetailsComponent: React.FC = () => {
           <Label className="text-label font-small text-xs ml-2 mt-1">Customer</Label>
           <TouchableOpacity
             onPress={openSheet}
-            className={`flex-row w-full items-center p-2 rounded-xl h-10 ${
-              customerName
-                ? "bg-surface"
-                : "bg-surface"
-            }`}
+            className="flex-row w-full items-center px-2.5 rounded-lg h-10"
+            style={customerName ? {
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            } : {
+              backgroundColor: colors.teal + '20',
+              borderWidth: 1,
+              borderColor: colors.teal + '50',
+            }}
           >
             {customerName ? (
               <>
-                <User color={colors.label} size={16} />
+                <View style={{ width: 26, height: 26, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+                  <User color={colors.teal} size={14} />
+                </View>
                 <View className="ml-2 flex-1">
-                  <Text
-                    className="text-sm font-semibold text-white overflow-ellipsis"
-                    numberOfLines={1}
-                  >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }} numberOfLines={1}>
                     {customerName}
                   </Text>
                   {customerPhone && (
-                    <Text className="text-xs text-gray-400">
+                    <Text style={{ fontSize: 11, color: colors.label }}>
                       {customerPhone}
                     </Text>
                   )}
                 </View>
-                <Edit3 color={colors.info} size={14} />
+                <Edit3 color={colors.teal} size={13} />
               </>
             ) : (
               <>
-                <Plus color={colors.teal} size={24} />
-                <Text className="text-sm font-medium text-teal-400 ml-2">
+                <Plus color={colors.teal} size={15} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.teal, marginLeft: 6 }}>
                   Add Customer
                 </Text>
               </>
@@ -340,51 +344,6 @@ const OrderDetailsComponent: React.FC = () => {
         </View>
       </View>
 
-      {/* Status Badge Row - skip for draft orders with no payments */}
-      {(orderStatus !== "draft" || hasAnyPayments) && (
-        <View className="flex-row flex-wrap gap-2 mt-2 mb-1 px-1">
-          {paidStatus === "Paid" && !hasRefunds && (
-            <View className="bg-green-600/30 px-2 py-0.5 rounded">
-              <Text className="text-green-400 text-xs font-bold">✓ PAID</Text>
-            </View>
-          )}
-          {paidStatus === "Paid" && hasRefunds && (
-            <View className="bg-amber-600/30 px-2 py-0.5 rounded">
-              <Text className="text-amber-400 text-xs font-bold">⚠ PAID (With Refunds)</Text>
-            </View>
-          )}
-          {paidStatus === "Partial" && (
-            <View className="bg-yellow-600/30 px-2 py-0.5 rounded">
-              <Text className="text-yellow-400 text-xs font-bold">PARTIAL</Text>
-            </View>
-          )}
-          {paidStatus === "Unpaid" && orderStatus !== "draft" && (
-            <View className="bg-red-600/30 px-2 py-0.5 rounded">
-              <Text className="text-red-400 text-xs font-bold">UNPAID</Text>
-            </View>
-          )}
-          {checkStatus === "Closed" && (
-            <View className="bg-gray-600/30 px-2 py-0.5 rounded">
-              <Text className="text-gray-400 text-xs font-bold">CHECK CLOSED</Text>
-            </View>
-          )}
-          {isSplitPayment && (
-            <View className="bg-blue-600/30 px-2 py-0.5 rounded">
-              <Text className="text-blue-400 text-xs font-bold">SPLIT PAYMENT</Text>
-            </View>
-          )}
-          {orderStatus === "preparing" && (
-            <View className="bg-blue-600/30 px-2 py-0.5 rounded">
-              <Text className="text-blue-400 text-xs font-bold">PREPARING</Text>
-            </View>
-          )}
-          {orderStatus === "ready" && (
-            <View className="bg-green-600/30 px-2 py-0.5 rounded">
-              <Text className="text-green-400 text-xs font-bold">READY</Text>
-            </View>
-          )}
-        </View>
-      )}
 
       {/* Customer Name Modal */}
       <Dialog

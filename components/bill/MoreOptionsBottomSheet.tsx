@@ -584,18 +584,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               opacity: canApplyDiscount ? 1 : 0.45,
             }}
           >
-            <View
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                backgroundColor: "#a855f715",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              <Tag size={14} color="#a855f7" />
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.teal + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              <Tag size={14} color={colors.teal} />
             </View>
             <View style={{ flex: 1 }}>
               <Text
@@ -694,22 +688,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               opacity: hasItems ? 1 : 0.45,
             }}
           >
-            <View
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                backgroundColor: colors.info + "15",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              {isPrintingReceipt ? (
-                <ActivityIndicator size="small" color={colors.info} />
-              ) : (
-                <Printer size={14} color={colors.info} />
-              )}
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.teal + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              {isPrintingReceipt
+                ? <ActivityIndicator size="small" color={colors.teal} />
+                : <Printer size={14} color={colors.teal} />}
             </View>
             <Text
               style={{
@@ -736,22 +722,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               opacity: hasItems ? 1 : 0.45,
             }}
           >
-            <View
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                backgroundColor: colors.warning + "15",
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 12,
-              }}
-            >
-              {isPrintingKitchen ? (
-                <ActivityIndicator size="small" color={colors.warning} />
-              ) : (
-                <Printer size={14} color={colors.warning} />
-              )}
+            <View style={{
+              width: 30, height: 30, borderRadius: 8,
+              backgroundColor: colors.teal + "15",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
+            }}>
+              {isPrintingKitchen
+                ? <ActivityIndicator size="small" color={colors.teal} />
+                : <Printer size={14} color={colors.teal} />}
             </View>
             <Text
               style={{
@@ -852,22 +830,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                   opacity: isTogglingPriority ? 0.5 : 1,
                 }}
               >
-                <View
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 8,
-                    backgroundColor: "#f59e0b15",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginRight: 12,
-                  }}
-                >
-                  {isTogglingPriority ? (
-                    <ActivityIndicator size="small" color="#f59e0b" />
-                  ) : (
-                    <Star size={14} color="#f59e0b" />
-                  )}
+                <View style={{
+                  width: 30, height: 30, borderRadius: 8,
+                  backgroundColor: colors.teal + "15",
+                  alignItems: "center", justifyContent: "center", marginRight: 12,
+                }}>
+                  {isTogglingPriority
+                    ? <ActivityIndicator size="small" color={colors.teal} />
+                    : <Star size={14} color={colors.teal} />}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
@@ -1054,17 +1024,12 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 marginBottom: 8,
               }}
             >
-              <View
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 12,
-                }}
-              >
+              <View style={{
+                width: 30, height: 30, borderRadius: 8,
+                backgroundColor: colors.card,
+                borderWidth: 1, borderColor: colors.border,
+                alignItems: "center", justifyContent: "center", marginRight: 12,
+              }}>
                 <Lock size={14} color={colors.label} />
               </View>
               <Text
