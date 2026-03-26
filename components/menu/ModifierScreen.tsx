@@ -855,7 +855,7 @@ const ModifierScreen = () => {
   // RENDER
   // ============================================================================
 
-  if (cartItem?.kitchen_status === "sent" || cartItem?.kitchen_status === "ready" || cartItem?.kitchen_status === "served") {
+  if (cartItem?.kitchen_status === "sent" || cartItem?.kitchen_status === "preparing" || cartItem?.kitchen_status === "ready" || cartItem?.kitchen_status === "served") {
     return (
       <View className="flex-1" style={{ backgroundColor: "#0f1623" }}>
         {/* Header */}
@@ -1106,35 +1106,63 @@ const ModifierScreen = () => {
 
         {/* ── Quantity ─────────────────────────────────────────────────────── */}
         <View
-          className="px-4 py-3 border-t flex-row items-center justify-between"
+          className="px-4 py-3 border-t"
           style={{ borderColor: "rgba(255,255,255,0.08)" }}
         >
-          <Text className="text-sm font-semibold" style={{ color: "#e8edf3" }}>
-            Quantity
-          </Text>
-          <View className="flex-row items-center gap-3">
-            <TouchableOpacity
-              disabled={isReadOnly}
-              onPressIn={handleQuantityDecrement}
-              className="w-8 h-8 rounded-full items-center justify-center"
-              style={{ backgroundColor: "#1a2233", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}
-            >
-              <Minus color="#e8edf3" size={14} />
-            </TouchableOpacity>
-            <TouchableOpacity disabled={isReadOnly} onPressIn={handleQuantityPress}>
-              <Text className="text-xl font-bold w-8 text-center" style={{ color: "#e8edf3" }}>
-                {state.quantity}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              disabled={isReadOnly}
-              onPressIn={handleQuantityIncrement}
-              className="w-8 h-8 rounded-full items-center justify-center"
-              style={{ backgroundColor: colors.teal }}
-            >
-              <Plus color="#fff" size={14} />
-            </TouchableOpacity>
+          {/* Row 1: label + stepper */}
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm font-semibold" style={{ color: "#e8edf3" }}>
+              Quantity
+            </Text>
+            <View className="flex-row items-center gap-3">
+              <TouchableOpacity
+                disabled={isReadOnly}
+                onPressIn={handleQuantityDecrement}
+                className="w-8 h-8 rounded-full items-center justify-center"
+                style={{ backgroundColor: "#1a2233", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}
+              >
+                <Minus color="#e8edf3" size={14} />
+              </TouchableOpacity>
+              <TouchableOpacity disabled={isReadOnly} onPressIn={handleQuantityPress}>
+                <Text className="text-xl font-bold w-8 text-center" style={{ color: "#e8edf3" }}>
+                  {state.quantity}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={isReadOnly}
+                onPressIn={handleQuantityIncrement}
+                className="w-8 h-8 rounded-full items-center justify-center"
+                style={{ backgroundColor: colors.teal }}
+              >
+                <Plus color="#fff" size={14} />
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* Row 2: quick-add pills */}
+          {!isReadOnly && (
+            <View className="flex-row gap-2 mt-2">
+              {[3, 4, 5, 6, 7, 8].map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPressIn={() => {
+                    const { state: s } = latestStateRef.current;
+                    dispatch({ type: "SET_QUANTITY", payload: s.quantity + n });
+                  }}
+                  className="flex-1 h-8 rounded-full items-center justify-center"
+                  style={{
+                    backgroundColor: "#1a2233",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.12)",
+                  }}
+                >
+                  <Text className="text-xs font-semibold" style={{ color: "#e8edf3" }}>
+                    +{n}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* ── Special Instructions ─────────────────────────────────────────── */}

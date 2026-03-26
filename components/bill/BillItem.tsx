@@ -68,7 +68,7 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
             )}
             {modifier.options.map((option, optionIndex) => (
               <View key={`opt-${optionIndex}`} className="flex-row items-center gap-0.5">
-                <Text style={{ fontSize: 10, color: option.isNo ? colors.danger : undefined }} className={option.isNo ? "" : "text-gray-300"}>
+                <Text style={{ fontSize: 10, color: option.isNo ? colors.danger : '#E0E0E0' }} >
                   {option.isNo ? `NO ${option.name}` : option.name}{optionIndex < modifier.options.length - 1 ? "," : ""}
                 </Text>
                 {!option.isNo && option.price > 0 && (

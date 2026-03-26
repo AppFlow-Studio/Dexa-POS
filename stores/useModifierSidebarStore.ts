@@ -403,6 +403,25 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set, get) =
 
       if (cachedEntry) {
         precomputed = cachedEntry.data;
+
+        // Edit mode: cache was built without cartItem → initialSelections are defaults.
+        // Override with the actual cart item modifier selections.
+        if (cartItemParam) {
+          const cartItemSelections: ModifierSelection = {};
+          precomputed.modifiers.forEach((category) => {
+            cartItemSelections[category.id] = {};
+            const existingMod = cartItemParam.customizations.modifiers?.find(
+              (mod) => mod.categoryId === category.id
+            );
+            if (existingMod) {
+              existingMod.options.forEach((opt) => {
+                cartItemSelections[category.id][opt.id] = opt.isNo ? "no" : true;
+              });
+            }
+          });
+          precomputed = { ...precomputed, initialSelections: cartItemSelections };
+        }
+
         // PreWarm skipped setFn, so schedule deferred price lookup if menuId exists
         if (resolvedMenuId) {
           const { menusById } = useMenuStore.getState();

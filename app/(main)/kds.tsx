@@ -1448,7 +1448,7 @@ const KitchenDisplayScreen = () => {
       const message = parts.join(' · ');
 
       toast.show({
-        title: `Ticket #${displayNum} → ${statusLabel}`,
+        title: `Ticket ${displayNum} → ${statusLabel}`,
         message,
         type: "success",
         duration: 5000,
