@@ -23,7 +23,7 @@ const PinButton = ({
     onPress={onPress}
     activeOpacity={0.7}
     style={{
-      flex: 1,
+      width: 90,
       height: 56,
       backgroundColor: isAction ? colors.screen : colors.card,
       borderWidth: 1,
@@ -61,7 +61,7 @@ const PinNumpad: React.FC<PinNumpadProps> = ({ onKeyPress }) => {
   ];
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 10, alignSelf: "center" }}>
       {rows.map((row, rowIndex) => (
         <View key={rowIndex} style={{ flexDirection: "row", gap: 10 }}>
           {row.map((item, colIndex) => {
