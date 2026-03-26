@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import React from "react";
 import { Text, View } from "react-native";
 import EodChecklistRow from "../EodChecklistRow";
@@ -18,13 +19,23 @@ export default function EodSummaryScreen({
   const failed = blockingItems.filter((item) => item.status === "failed").length;
 
   return (
-    <View className="gap-4">
-      <View className="rounded-xl border border-gray-700 bg-panel p-4">
-        <Text className="text-lg font-semibold text-white">EOD Summary</Text>
-        <Text className="mt-1 text-sm text-zinc-300">
+    <View style={{ gap: 12 }}>
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          padding: 12,
+        }}
+      >
+        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.heading }}>
+          EOD Summary
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.label, marginTop: 4 }}>
           {checklist.length} checks · {passed} passed · {failed} blocking
         </Text>
-        <Text className="mt-2 text-xs text-zinc-300">
+        <Text style={{ fontSize: 11, color: colors.label, marginTop: 8 }}>
           {canComplete
             ? "All required items are complete or intentionally overridden."
             : "Resolve blockers or confirm override to complete close out."}

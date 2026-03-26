@@ -12,8 +12,10 @@ interface EodWizardLayoutProps {
   canGoNext: boolean;
   isNextLoading?: boolean;
   nextLabel?: string;
+  hasBlockingItems?: boolean;
   onBack: () => void;
   onNext: () => void;
+  onContinueWithIssues?: () => void;
 }
 
 export default function EodWizardLayout({
@@ -25,59 +27,134 @@ export default function EodWizardLayout({
   canGoNext,
   isNextLoading = false,
   nextLabel = "Next",
+  hasBlockingItems = false,
   onBack,
   onNext,
+  onContinueWithIssues,
   children,
 }: React.PropsWithChildren<EodWizardLayoutProps>) {
   return (
-    <View className="flex-1 rounded-2xl border border-gray-700 bg-card/30 p-4">
-      <View className="mb-4 rounded-xl border border-gray-700 bg-card p-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 gap-2 pr-3">
-            <Text className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-300">
+    <View
+      style={{
+        flex: 1,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.panel,
+        padding: 14,
+        gap: 12,
+      }}
+    >
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.card,
+          padding: 14,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flex: 1, gap: 6, paddingRight: 12 }}>
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: "600",
+                color: colors.teal,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
               Step {currentStep + 1} / {totalSteps}
             </Text>
-            <Text className="text-lg font-bold text-white">{title}</Text>
-            <Text className="text-sm text-zinc-300">{subtitle}</Text>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>{title}</Text>
+            <Text style={{ fontSize: 12, color: colors.label }}>{subtitle}</Text>
           </View>
-          <View className="h-12 w-12 items-center justify-center rounded-full bg-slate-900 border border-gray-700">
-            <Text className="text-xs font-semibold text-white">{currentStep + 1}</Text>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: colors.screen,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+              {currentStep + 1}
+            </Text>
           </View>
         </View>
       </View>
 
-      <View className="mb-4 flex-1">{children}</View>
+      <View style={{ flex: 1 }}>{children}</View>
 
-      <View className="flex-row items-center gap-3 border-t border-gray-700 pt-3">
-        <TouchableOpacity
-          onPress={onBack}
-          disabled={!canGoBack}
-          className="flex-1 items-center justify-center rounded-xl border border-gray-700 bg-card py-3.5"
-          style={{ opacity: canGoBack ? 1 : 0.4 }}
-        >
-          <View className="flex-row items-center gap-2">
-            <ArrowLeft size={16} color={colors.heading} />
-            <Text className="font-semibold text-sm text-white">Back</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={onNext}
-          disabled={!canGoNext || isNextLoading}
-          className="flex-[2] items-center justify-center rounded-xl py-3.5"
-          style={{
-            backgroundColor: canGoNext ? colors.teal : `${colors.teal}80`,
-            opacity: canGoNext ? 1 : 0.4,
-          }}
-        >
-          {isNextLoading ? (
-            <ActivityIndicator color={colors.screen} />
-          ) : (
-            <View className="flex-row items-center gap-2">
-              <Text className="font-semibold text-sm text-black">{nextLabel}</Text>
-              <ArrowRight size={16} color="#000000" />
+      <View style={{ gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity
+            onPress={onBack}
+            disabled={!canGoBack}
+            style={{
+              flex: 1,
+              paddingVertical: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: canGoBack ? 1 : 0.4,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <ArrowLeft size={16} color={colors.label} />
+              <Text style={{ fontWeight: "600", fontSize: 12, color: colors.label }}>Back</Text>
             </View>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onNext}
+            disabled={!canGoNext || isNextLoading}
+            style={{
+              flex: 2,
+              paddingVertical: 12,
+              borderRadius: 10,
+              backgroundColor: canGoNext ? colors.teal : colors.teal + "66",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: canGoNext ? 1 : 0.4,
+            }}
+          >
+            {isNextLoading ? (
+              <ActivityIndicator color={colors.onSolid} />
+            ) : (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={{ fontWeight: "600", fontSize: 12, color: colors.onSolid }}>
+                  {nextLabel}
+                </Text>
+                <ArrowRight size={16} color={colors.onSolid} />
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+        {!canGoNext && hasBlockingItems && onContinueWithIssues ? (
+          <TouchableOpacity
+            onPress={onContinueWithIssues}
+            style={{
+              paddingVertical: 10,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.warning + "50",
+              backgroundColor: colors.warning + "15",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.warning }}>
+              Continue with issues
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );

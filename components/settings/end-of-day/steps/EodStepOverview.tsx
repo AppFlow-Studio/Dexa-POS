@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { ChecklistItem } from "@/stores/useEndOfDayStore";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import EodChecklistRow from "../EodChecklistRow";
@@ -43,31 +44,49 @@ export default function EodStepOverview({
   );
 
   return (
-    <View className="gap-4">
-      <View className="rounded-xl border border-gray-700 bg-panel p-4">
-        <Text className="text-sm font-semibold text-white">
+    <View style={{ gap: 12 }}>
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          padding: 12,
+        }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
           {allItems.length} checks · {passed} passed
         </Text>
-        <Text className="mt-1 text-xs text-zinc-300">
+        <Text style={{ fontSize: 10, color: colors.label, marginTop: 4 }}>
           {failed > 0 ? `${failed} blocker(s)` : "No blockers"} · {pending > 0 ? `${pending} still pending` : "Ready to move forward"}
         </Text>
         <TouchableOpacity
           onPress={() => void onRefresh()}
-          className="mt-3 self-start rounded-lg bg-cyan-500/15 px-3 py-2"
+          style={{
+            marginTop: 10,
+            borderRadius: 8,
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "50",
+            paddingHorizontal: 10,
+            paddingVertical: 8,
+          }}
           disabled={isLoading}
         >
-          <View className="flex-row items-center gap-2">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             {isLoading ? (
-              <ActivityIndicator size="small" color="#67e8f9" />
+              <ActivityIndicator size="small" color={colors.teal} />
             ) : null}
-            <Text className="text-xs font-semibold text-cyan-200">Refresh status</Text>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
+              Refresh status
+            </Text>
           </View>
         </TouchableOpacity>
       </View>
 
       {blockingItems.length > 0 ? (
-        <View className="gap-2">
-          <Text className="text-sm font-semibold text-zinc-100">
+        <View style={{ gap: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
             Blockers to resolve
           </Text>
           {blockingItems.map((item) => (
@@ -81,53 +100,98 @@ export default function EodStepOverview({
           ))}
         </View>
       ) : (
-        <View className="rounded-xl border border-emerald-700 bg-emerald-900/30 p-3">
-          <Text className="text-sm font-semibold text-emerald-200">
+        <View
+          style={{
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.success + "50",
+            backgroundColor: colors.success + "15",
+            padding: 10,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.success }}>
             All critical checks are clear.
           </Text>
-          <Text className="mt-1 text-xs text-zinc-200">
+          <Text style={{ fontSize: 11, color: colors.label, marginTop: 4 }}>
             You can continue to Floor & Orders and confirm details as you complete each step.
           </Text>
         </View>
       )}
 
-      <View className="gap-2">
-        <Text className="text-sm font-semibold text-zinc-100">Quick actions</Text>
-        <View className="flex-row flex-wrap gap-2">
+      <View style={{ gap: 8 }}>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+          Quick actions
+        </Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           <TouchableOpacity
             onPress={onOpenTables}
-            className="rounded-lg border border-gray-700 bg-panel px-3 py-2"
+            style={{
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+            }}
           >
-            <Text className="text-xs text-zinc-100">Go to tables</Text>
+            <Text style={{ fontSize: 11, color: colors.label }}>Go to tables</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onOpenOrders}
-            className="rounded-lg border border-gray-700 bg-panel px-3 py-2"
+            style={{
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+            }}
           >
-            <Text className="text-xs text-zinc-100">Go to orders</Text>
+            <Text style={{ fontSize: 11, color: colors.label }}>Go to orders</Text>
           </TouchableOpacity>
           {hasDrawerBlockers ? (
             <TouchableOpacity
               onPress={onOpenCashDrawer}
-              className="rounded-lg border border-gray-700 bg-panel px-3 py-2"
+              style={{
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+              }}
             >
-              <Text className="text-xs text-zinc-100">Open drawer</Text>
+              <Text style={{ fontSize: 11, color: colors.label }}>Open drawer</Text>
             </TouchableOpacity>
           ) : null}
           {hasTipBlockers ? (
             <TouchableOpacity
               onPress={onOpenTips}
-              className="rounded-lg border border-gray-700 bg-panel px-3 py-2"
+              style={{
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+              }}
             >
-              <Text className="text-xs text-zinc-100">Open tips wizard</Text>
+              <Text style={{ fontSize: 11, color: colors.label }}>Open tips wizard</Text>
             </TouchableOpacity>
           ) : null}
           {hasShiftBlockers ? (
             <TouchableOpacity
               onPress={onOpenStaff}
-              className="rounded-lg border border-gray-700 bg-panel px-3 py-2"
+              style={{
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+              }}
             >
-              <Text className="text-xs text-zinc-100">Review staff</Text>
+              <Text style={{ fontSize: 11, color: colors.label }}>Review staff</Text>
             </TouchableOpacity>
           ) : null}
         </View>

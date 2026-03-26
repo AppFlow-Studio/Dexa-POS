@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -30,18 +31,34 @@ export default function EodStepFloorOrders({
     tablesItem?.status === "passed" && ordersItem?.status === "passed";
 
   return (
-    <View className="gap-4">
-      <View className="rounded-xl border border-gray-700 bg-panel p-4">
-        <Text className="text-sm text-zinc-200">
+    <View style={{ gap: 12 }}>
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          padding: 12,
+        }}
+      >
+        <Text style={{ fontSize: 13, color: colors.label }}>
           Confirm every occupied table is clear and every unpaid order has either
           been paid, voided, or closed in previous orders.
         </Text>
         <TouchableOpacity
           onPress={() => void onRefresh()}
-          className="mt-3 self-start rounded-lg bg-cyan-500/20 px-3 py-2"
+          style={{
+            marginTop: 10,
+            borderRadius: 8,
+            backgroundColor: colors.teal + "20",
+            borderWidth: 1,
+            borderColor: colors.teal + "50",
+            paddingHorizontal: 10,
+            paddingVertical: 8,
+          }}
           disabled={isRunning}
         >
-          <Text className="text-xs font-semibold text-cyan-200">
+          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
             Refresh status
           </Text>
         </TouchableOpacity>
@@ -65,9 +82,15 @@ export default function EodStepFloorOrders({
       />
 
       <View
-        className="rounded-xl border border-gray-700 bg-emerald-900/20 p-3"
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.success + "50",
+          backgroundColor: colors.success + "15",
+          padding: 10,
+        }}
       >
-        <Text className="text-sm font-semibold text-emerald-200">
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.success }}>
           {isPassed
             ? "Floor and orders checks are complete."
             : "This step resolves when both checks are passing."}

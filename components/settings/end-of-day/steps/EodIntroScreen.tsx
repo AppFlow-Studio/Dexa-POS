@@ -1,6 +1,7 @@
 import { CheckCircle2 } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { colors } from "@/lib/theme";
 
 interface EodIntroScreenProps {
   locationName: string | null;
@@ -18,52 +19,80 @@ export default function EodIntroScreen({
   onViewChecklist,
 }: EodIntroScreenProps) {
   return (
-    <View className="gap-6">
-      <View className="rounded-2xl border border-gray-700 bg-gradient-to-br from-teal-500/20 to-cyan-900/25 p-5">
-        <Text className="text-sm uppercase tracking-[0.12em] text-cyan-200">
+    <View style={{ gap: 24 }}>
+      <View
+        style={{
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.teal + "10",
+          padding: 16,
+          gap: 12,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "600",
+            color: colors.teal,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+          }}
+        >
           End of Day
         </Text>
-        <Text className="mt-2 text-3xl font-bold text-white">
+        <Text style={{ fontSize: 24, fontWeight: "700", color: colors.heading }}>
           {dateLabel}
         </Text>
-        <Text className="mt-1 text-sm text-zinc-200">
+        <Text style={{ fontSize: 12, color: colors.label }}>
           {locationName || "Active location"}
         </Text>
-        <View className="mt-4 gap-2">
-          <View className="flex-row items-center gap-2">
-            <CheckCircle2 size={16} color="#4ade80" />
-            <Text className="text-sm text-zinc-100">
+        <View style={{ marginTop: 8, gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <CheckCircle2 size={16} color={colors.success} />
+            <Text style={{ fontSize: 12, color: colors.label, flex: 1 }}>
               Reconcile tables, close active drawers, and review staff clocks
             </Text>
           </View>
-          <View className="flex-row items-center gap-2">
-            <CheckCircle2 size={16} color="#4ade80" />
-            <Text className="text-sm text-zinc-100">Finalize tips and payments</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <CheckCircle2 size={16} color={colors.success} />
+            <Text style={{ fontSize: 12, color: colors.label, flex: 1 }}>Finalize tips and payments</Text>
           </View>
-          <View className="flex-row items-center gap-2">
-            <CheckCircle2 size={16} color="#4ade80" />
-            <Text className="text-sm text-zinc-100">Generate end-of-day report and close</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <CheckCircle2 size={16} color={colors.success} />
+            <Text style={{ fontSize: 12, color: colors.label, flex: 1 }}>Generate end-of-day report and close</Text>
           </View>
         </View>
       </View>
 
-      <View className="gap-3">
+      <View style={{ gap: 10 }}>
         <TouchableOpacity
           onPress={onStart}
           disabled={!isStartEnabled}
-          className="items-center rounded-xl py-3.5"
           style={{
-            backgroundColor: isStartEnabled ? "#06b6d4" : "rgba(8,145,178,0.5)",
-            opacity: isStartEnabled ? 1 : 0.6,
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: "center",
+            backgroundColor: isStartEnabled ? colors.teal : colors.teal + "66",
+            opacity: isStartEnabled ? 1 : 0.5,
           }}
         >
-          <Text className="text-sm font-semibold text-black">Start Close Out</Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.onSolid }}>
+            Start Close Out
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onViewChecklist}
-          className="items-center rounded-xl border border-gray-600 bg-transparent py-3.5"
+          style={{
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.panel,
+          }}
         >
-          <Text className="text-sm font-semibold text-zinc-200">
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
             View checklist only
           </Text>
         </TouchableOpacity>

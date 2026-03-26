@@ -67,36 +67,50 @@ export default function EodChecklistRow({
     <TouchableOpacity
       onPress={onPress}
       disabled={!onPress}
-      className="rounded-xl border border-gray-700 bg-panel px-4 py-3"
       style={{
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
         borderLeftWidth: 3,
         borderLeftColor: statusInfo.color,
+        backgroundColor: colors.panel,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
         opacity: onPress ? 1 : 0.92,
       }}
     >
-      <View className="flex-row items-start gap-3">
-        <View
-          className="mt-1 rounded-full"
-          style={{ opacity: 0.95 }}
-        >
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+        <View style={{ marginTop: 4, opacity: 0.95 }}>
           {statusInfo.icon}
         </View>
-        <View className="flex-1 gap-1">
-          <View className="flex-row items-center gap-2">
-            <Text className="text-sm font-semibold text-white">{title}</Text>
-            <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: statusInfo.color + "1a" }}>
-              <Text className="text-[11px]" style={{ color: statusInfo.color }}>
+        <View style={{ flex: 1, gap: 6 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+              {title}
+            </Text>
+            <View
+              style={{
+                borderRadius: 20,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                backgroundColor: statusInfo.color + "1a",
+              }}
+            >
+              <Text style={{ fontSize: 10, fontWeight: "600", color: statusInfo.color }}>
                 {statusInfo.label}
               </Text>
             </View>
           </View>
           {description ? (
-            <Text className="text-xs text-zinc-400">{description}</Text>
+            <Text style={{ fontSize: 11, color: colors.label }}>
+              {description}
+            </Text>
           ) : null}
           {detail ? (
             <Text
-              className="text-[11px] font-medium"
               style={{
+                fontSize: 10,
+                fontWeight: "500",
                 color: status === "failed" ? colors.danger : colors.label,
               }}
             >
@@ -105,8 +119,19 @@ export default function EodChecklistRow({
           ) : null}
         </View>
         {actionLabel ? (
-          <View className="rounded-lg bg-zinc-800 px-2 py-1">
-            <Text className="text-xs text-white">{actionLabel}</Text>
+          <View
+            style={{
+              borderRadius: 8,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
+              {actionLabel}
+            </Text>
           </View>
         ) : null}
       </View>

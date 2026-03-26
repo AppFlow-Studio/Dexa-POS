@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { DailySummary } from "@/stores/useEndOfDayStore";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -14,55 +15,95 @@ export default function EodStepPaymentsPlaceholder({
   onGoToSettlement,
 }: EodStepPaymentsPlaceholderProps) {
   return (
-    <View className="gap-4">
-      <View className="rounded-xl border border-gray-700 bg-panel p-4">
-        <Text className="text-sm text-zinc-100">
+    <View style={{ gap: 12 }}>
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          padding: 12,
+        }}
+      >
+        <Text style={{ fontSize: 13, color: colors.label }}>
           Payment settlement is ready for a dedicated flow. For v1, show your card
           and cash snapshot before moving to the close-out report.
         </Text>
       </View>
 
-      <View className="rounded-xl border border-gray-700 bg-zinc-900/40 p-3">
-        <Text className="text-sm font-semibold text-white">Today's cash/card split</Text>
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.card,
+          padding: 10,
+        }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+          Today's cash/card split
+        </Text>
         {summaryLoading ? (
-          <Text className="mt-2 text-xs text-zinc-300">Loading summary…</Text>
+          <Text style={{ fontSize: 11, color: colors.label, marginTop: 8 }}>
+            Loading summary…
+          </Text>
         ) : null}
         {!summary && !summaryLoading ? (
-          <Text className="mt-2 text-xs text-zinc-400">
+          <Text style={{ fontSize: 11, color: colors.label, marginTop: 8 }}>
             Run report on the final step to populate this snapshot.
           </Text>
         ) : null}
         {!!summary ? (
-          <View className="mt-2 gap-2">
-            <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Card payments</Text>
-              <Text className="text-white">${summary.cardTotal.toFixed(2)}</Text>
+          <View style={{ marginTop: 8, gap: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Card payments</Text>
+              <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "600" }}>
+                ${summary.cardTotal.toFixed(2)}
+              </Text>
             </View>
-            <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Cash payments</Text>
-              <Text className="text-white">${summary.cashTotal.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Cash payments</Text>
+              <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "600" }}>
+                ${summary.cashTotal.toFixed(2)}
+              </Text>
             </View>
-            <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Other payments</Text>
-              <Text className="text-white">${summary.otherTotal.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Other payments</Text>
+              <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "600" }}>
+                ${summary.otherTotal.toFixed(2)}
+              </Text>
             </View>
           </View>
         ) : null}
       </View>
 
-      <View className="rounded-xl border border-purple-700 bg-purple-900/20 p-3">
-        <Text className="text-sm font-semibold text-purple-200">
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.teal + "50",
+          backgroundColor: colors.teal + "12",
+          padding: 12,
+        }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
           Terminal Settlement
         </Text>
-        <Text className="mt-1 text-xs text-zinc-200">
+        <Text style={{ fontSize: 11, color: colors.label, marginTop: 6 }}>
           Close the terminal batch and settle all captured payments with the acquiring
           banks. Tips cannot be adjusted after settlement.
         </Text>
         <TouchableOpacity
           onPress={onGoToSettlement}
-          className="mt-3 self-start rounded-lg bg-purple-600 px-4 py-2"
+          style={{
+            marginTop: 10,
+            borderRadius: 8,
+            backgroundColor: colors.teal,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+          }}
         >
-          <Text className="text-xs font-semibold text-white">
+          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.onSolid }}>
             Open Settlement
           </Text>
         </TouchableOpacity>

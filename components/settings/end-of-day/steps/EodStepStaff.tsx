@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import React from "react";
@@ -28,36 +29,65 @@ export default function EodStepStaff({
   );
 
   return (
-    <View className="gap-4">
-      <View className="rounded-xl border border-gray-700 bg-panel p-4">
-        <Text className="text-sm text-zinc-200">
+    <View style={{ gap: 12 }}>
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          padding: 12,
+        }}
+      >
+        <Text style={{ fontSize: 13, color: colors.label }}>
           Review all active shifts and confirm staff are clocked out. Open timeclock
           for final clock-out actions before close out.
         </Text>
-        <View className="mt-3 gap-2">
+        <View style={{ marginTop: 10, gap: 8 }}>
           <TouchableOpacity
             onPress={onOpenTimeclock}
-            className="rounded-lg bg-cyan-500/20 px-3 py-3"
+            style={{
+              borderRadius: 8,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              paddingHorizontal: 10,
+              paddingVertical: 10,
+            }}
           >
-            <Text className="text-sm font-semibold text-cyan-100">
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
               Open Timeclock
             </Text>
           </TouchableOpacity>
           {hasActiveSessions && (
             <TouchableOpacity
               onPress={onOpenBulkClockOut}
-              className="rounded-lg border border-red-700/40 bg-red-500/15 px-3 py-3"
+              style={{
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.danger + "50",
+                backgroundColor: colors.danger + "15",
+                paddingHorizontal: 10,
+                paddingVertical: 10,
+              }}
             >
-              <Text className="text-sm font-semibold text-red-300">
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.danger }}>
                 End All Shifts
               </Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             onPress={() => void onRefresh()}
-            className="rounded-lg border border-gray-700 bg-panel px-3 py-3"
+            style={{
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+              paddingHorizontal: 10,
+              paddingVertical: 10,
+            }}
           >
-            <Text className="text-sm text-zinc-100">Refresh status</Text>
+            <Text style={{ fontSize: 13, color: colors.label }}>Refresh status</Text>
           </TouchableOpacity>
         </View>
       </View>

@@ -318,17 +318,14 @@ export default function EndOfDayScreen() {
             onPress={handleFinalize}
             disabled={!canCompleteFinal}
             style={{
-              backgroundColor: canCompleteFinal ? colors.teal : `${colors.teal}66`,
-              opacity: canCompleteFinal ? 1 : 0.5,
-              paddingVertical: 14,
-              borderRadius: 12,
+              backgroundColor: canCompleteFinal ? colors.teal : colors.teal + "66",
+              paddingVertical: 12,
+              borderRadius: 10,
               alignItems: "center",
-              flexDirection: "row",
-              justifyContent: "center",
-              gap: 8,
+              opacity: canCompleteFinal ? 1 : 0.5,
             }}
           >
-            <Text style={{ fontSize: 14, fontWeight: "700", color: "#000" }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}>
               Complete Close Out
             </Text>
           </TouchableOpacity>
@@ -337,17 +334,17 @@ export default function EndOfDayScreen() {
             style={{
               borderWidth: 1,
               borderColor: colors.border,
-              backgroundColor: colors.panel,
+              backgroundColor: colors.card,
               paddingVertical: 12,
-              borderRadius: 12,
+              borderRadius: 10,
               alignItems: "center",
               flexDirection: "row",
               justifyContent: "center",
               gap: 8,
             }}
           >
-            <Printer size={16} color={colors.heading} />
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+            <Printer size={16} color={colors.label} />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
               Print EOD Report
             </Text>
           </TouchableOpacity>
@@ -474,8 +471,10 @@ export default function EndOfDayScreen() {
         totalSteps={WIZARD_COUNT}
         canGoBack={currentStep > 0}
         canGoNext={canAdvance}
+        hasBlockingItems={blockingItems.length > 0}
         onBack={handleBack}
         onNext={handleNext}
+        onContinueWithIssues={handleContinueWithIssues}
         nextLabel={isLastWizardStep ? "Finish" : "Next"}
       >
         <ScrollView

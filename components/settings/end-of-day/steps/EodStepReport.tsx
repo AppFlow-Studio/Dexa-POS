@@ -1,3 +1,4 @@
+import { colors } from "@/lib/theme";
 import { ChecklistItem, ChecklistItemId, DailySummary } from "@/stores/useEndOfDayStore";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -28,13 +29,22 @@ export default function EodStepReport({
   const reportItem = resolveItem(checklist, "report_generated");
 
   return (
-    <View className="gap-4">
+    <View style={{ gap: 12 }}>
       <TouchableOpacity
         onPress={onRunSummary}
-        className="rounded-lg bg-cyan-500/20 px-3 py-3"
+        style={{
+          borderRadius: 8,
+          backgroundColor: colors.teal + "20",
+          borderWidth: 1,
+          borderColor: colors.teal + "50",
+          paddingHorizontal: 10,
+          paddingVertical: 10,
+        }}
         disabled={summaryLoading}
       >
-        <Text className="text-sm font-semibold text-cyan-100">Run daily summary</Text>
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+          Run daily summary
+        </Text>
       </TouchableOpacity>
 
       <EodChecklistRow
@@ -44,31 +54,51 @@ export default function EodStepReport({
         detail={reportItem?.detail}
       />
 
-      <View className="rounded-xl border border-gray-700 bg-panel p-4">
-        <Text className="text-sm font-semibold text-white">Sales summary</Text>
+      <View
+        style={{
+          borderRadius: 10,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          padding: 12,
+        }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+          Sales summary
+        </Text>
         {summaryLoading ? (
-          <Text className="mt-1 text-xs text-zinc-300">Loading…</Text>
+          <Text style={{ fontSize: 11, color: colors.label, marginTop: 4 }}>
+            Loading…
+          </Text>
         ) : !summary ? (
-          <Text className="mt-1 text-xs text-zinc-400">
+          <Text style={{ fontSize: 11, color: colors.label, marginTop: 4 }}>
             Run summary to see totals and close your day.
           </Text>
         ) : (
-          <View className="mt-2 gap-2">
-            <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Gross sales</Text>
-              <Text className="text-white">${summary.totalSales.toFixed(2)}</Text>
+          <View style={{ marginTop: 8, gap: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Gross sales</Text>
+              <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "600" }}>
+                ${summary.totalSales.toFixed(2)}
+              </Text>
             </View>
-            <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Discounts</Text>
-              <Text className="text-white">${summary.totalDiscounts.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Discounts</Text>
+              <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "600" }}>
+                ${summary.totalDiscounts.toFixed(2)}
+              </Text>
             </View>
-            <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Tips</Text>
-              <Text className="text-white">${summary.totalTips.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Tips</Text>
+              <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "600" }}>
+                ${summary.totalTips.toFixed(2)}
+              </Text>
             </View>
-            <View className="flex-row justify-between">
-              <Text className="text-zinc-300">Labor</Text>
-              <Text className="text-white">${summary.totalLaborCost.toFixed(2)}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 12, color: colors.label }}>Labor</Text>
+              <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "600" }}>
+                ${summary.totalLaborCost.toFixed(2)}
+              </Text>
             </View>
           </View>
         )}
@@ -76,9 +106,16 @@ export default function EodStepReport({
       {!canComplete ? (
         <TouchableOpacity
           onPress={onContinueWithIssues}
-          className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-3"
+          style={{
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.warning + "50",
+            backgroundColor: colors.warning + "15",
+            paddingHorizontal: 10,
+            paddingVertical: 10,
+          }}
         >
-          <Text className="text-sm font-semibold text-amber-100">
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.warning }}>
             Continue with issues
           </Text>
         </TouchableOpacity>
