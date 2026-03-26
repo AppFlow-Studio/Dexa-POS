@@ -146,35 +146,34 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   disabled = false,
   flex = true
 }) => {
-  const getButtonStyles = () => {
-    if (disabled) return 'bg-gray-800/50 border-gray-700'
+  const getBg = () => {
+    if (disabled) return colors.card
     switch (variant) {
-      case 'danger':
-        return 'bg-red-500/10 border-red-500/50'
-      case 'success':
-        return 'bg-emerald-500/10 border-emerald-500/50'
-      case 'primary':
-        return 'bg-blue-500/10 border-blue-500/50'
-      case 'warning':
-        return 'bg-amber-500/10 border-amber-500/50'
-      default:
-        return 'bg-card border-gray-600 active:bg-gray-700'
+      case 'danger': return colors.danger + '15'
+      case 'success': return colors.success + '15'
+      case 'primary': return colors.info + '15'
+      case 'warning': return colors.warning + '15'
+      default: return colors.card
     }
   }
-
-  const getTextColor = () => {
-    if (disabled) return 'text-gray-600'
+  const getBorder = () => {
+    if (disabled) return colors.border
     switch (variant) {
-      case 'danger':
-        return 'text-red-400'
-      case 'success':
-        return 'text-emerald-400'
-      case 'primary':
-        return 'text-blue-400'
-      case 'warning':
-        return 'text-amber-400'
-      default:
-        return 'text-white'
+      case 'danger': return colors.danger + '40'
+      case 'success': return colors.success + '40'
+      case 'primary': return colors.info + '40'
+      case 'warning': return colors.warning + '40'
+      default: return colors.border
+    }
+  }
+  const getTextColor = () => {
+    if (disabled) return colors.muted
+    switch (variant) {
+      case 'danger': return colors.danger
+      case 'success': return colors.success
+      case 'primary': return colors.info
+      case 'warning': return colors.warning
+      default: return colors.heading
     }
   }
 
@@ -182,18 +181,23 @@ const ActionButton: React.FC<ActionButtonProps> = ({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
-      className={`
-        ${flex ? 'flex-1' : ''} min-w-[80px] py-3 px-3 rounded-xl border
-        items-center justify-center gap-1.5
-        ${getButtonStyles()}
-      `}
-      style={{ opacity: disabled ? 0.5 : 1 }}
+      style={{
+        flex: flex ? 1 : undefined,
+        minWidth: 80,
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+        borderRadius: 10,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 5,
+        backgroundColor: getBg(),
+        borderColor: getBorder(),
+        opacity: disabled ? 0.5 : 1,
+      }}
     >
       {icon}
-      <Text
-        className={`text-xs font-semibold text-center ${getTextColor()}`}
-        numberOfLines={1}
-      >
+      <Text style={{ fontSize: 11, fontWeight: '600', color: getTextColor(), textAlign: 'center' }} numberOfLines={1}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -219,29 +223,30 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   accentColor = colors.info
 }) => (
   <View
-    className='flex-1 bg-card rounded-xl p-3 border border-gray-800'
-    style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}
+    style={{
+      flex: 1,
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderLeftWidth: 3,
+      borderLeftColor: accentColor,
+    }}
   >
-    <View className='flex-row items-center justify-between mb-2'>
-      <View
-        className='w-8 h-8 rounded-full items-center justify-center'
-        style={{ backgroundColor: `${accentColor}15` }}
-      >
-        {icon}
-      </View>
+    <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '15', marginBottom: 8 }}>
+      {icon}
     </View>
-    <Text className='text-xl font-bold text-white' numberOfLines={1}>
+    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }} numberOfLines={1}>
       {isNegative && amount > 0 ? '−' : ''}${amount?.toFixed(2)}
     </Text>
     {cashAmount !== undefined && cashAmount > 0 && (
-      <View className='flex-row items-center mt-0.5'>
-        <Banknote color={colors.success} size={14} />
-        <Text className='text-sm font-medium text-gray-400 ml-1'>
-          ${cashAmount?.toFixed(2)}
-        </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+        <Banknote color={colors.success} size={12} />
+        <Text style={{ fontSize: 11, color: colors.label, marginLeft: 4 }}>${cashAmount?.toFixed(2)} cash</Text>
       </View>
     )}
-    <Text className='text-xs text-gray-500 mt-1 font-medium'>{label}</Text>
+    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4, fontWeight: '500' }}>{label}</Text>
   </View>
 )
 
@@ -299,11 +304,10 @@ const getCardBrandBadgeStyles = (brand?: string) => {
 const CardBrandBadge: React.FC<{ brand?: string }> = ({ brand }) => {
   const label = formatCardBrand(brand)
   if (!label) return null
-  const styles = getCardBrandBadgeStyles(brand)
 
   return (
-    <View className={`px-2 py-0.5 rounded border ${styles.container}`}>
-      <Text className={`text-[10px] font-semibold uppercase ${styles.text}`}>
+    <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, backgroundColor: colors.card, borderColor: colors.border }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', textTransform: 'uppercase', color: colors.label }}>
         {label}
       </Text>
     </View>
@@ -316,11 +320,9 @@ const CardInfoItem: React.FC<{ label: string; value?: string }> = ({
 }) => {
   if (!value) return null
   return (
-    <View className='w-1/2 pr-2 mb-2'>
-      <Text className='text-[10px] text-gray-500 uppercase'>{label}</Text>
-      <Text className='text-xs text-gray-200' numberOfLines={1}>
-        {value}
-      </Text>
+    <View style={{ width: '50%', paddingRight: 8, marginBottom: 8 }}>
+      <Text style={{ fontSize: 10, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 }}>{label}</Text>
+      <Text style={{ fontSize: 12, color: colors.heading }} numberOfLines={1}>{value}</Text>
     </View>
   )
 }
@@ -452,23 +454,15 @@ const LeftPane: React.FC<LeftPaneProps> = ({
       )
 
       return (
-        <View key={idx} className='flex-row items-start ml-4 mt-0.5'>
-          <Text className='text-xs text-gray-500'>• </Text>
-          <Text className='text-xs text-gray-400 flex-1'>
+        <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginLeft: 12, marginTop: 2 }}>
+          <Text style={{ fontSize: 11, color: colors.muted }}>• </Text>
+          <Text style={{ fontSize: 11, color: colors.label, flex: 1 }}>
             {mod.categoryName ? `${mod.categoryName}: ` : ''}
             {optionNames}
-            {'   '}
-            {priceAdjust && priceAdjust > 0 ? (
-              <Text className='text-emerald-500 text-xs'>
-                {' '}
-                +${priceAdjust?.toFixed(2)}
-              </Text>
-            ) : (
-              <Text className='text-gray-500 text-xs'>
-                {' '}
-                +${priceAdjust?.toFixed(2)}
-              </Text>
-            )}
+            {priceAdjust && priceAdjust > 0
+              ? <Text style={{ color: colors.success, fontSize: 11 }}> +${priceAdjust?.toFixed(2)}</Text>
+              : <Text style={{ color: colors.muted, fontSize: 11 }}> +${priceAdjust?.toFixed(2)}</Text>
+            }
           </Text>
         </View>
       )
@@ -476,11 +470,11 @@ const LeftPane: React.FC<LeftPaneProps> = ({
   }
 
   return (
-    <View className='flex-[4] bg-panel border-r border-gray-800'>
+    <View style={{ flex: 4, backgroundColor: colors.panel, borderRightWidth: 1, borderRightColor: colors.border }}>
       {/* Header */}
-      <View className='px-4 py-3 border-b border-gray-800'>
-        <Text className='text-lg font-bold text-white'>Order Receipt</Text>
-        <Text className='text-xs text-gray-500 mt-0.5'>
+      <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>Order Receipt</Text>
+        <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
           {order?.items?.length || 0} items
         </Text>
       </View>
@@ -557,62 +551,52 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                 onPress={() => setExpandedItemId(isExpanded ? null : itemKey)}
               >
                 <View
-                  style={{ borderLeftWidth: 3, borderLeftColor: borderColor }}
-                  className={`py-3 pl-3 ${
-                    index < (order?.items?.length || 0) - 1
-                      ? 'border-b border-gray-800/50'
-                      : ''
-                  } ${isVoided ? 'opacity-60' : ''}`}
+                  style={{
+                    borderLeftWidth: 3,
+                    borderLeftColor: borderColor,
+                    paddingVertical: 10,
+                    paddingLeft: 10,
+                    borderBottomWidth: index < (order?.items?.length || 0) - 1 ? 1 : 0,
+                    borderBottomColor: colors.border,
+                    opacity: isVoided ? 0.6 : 1,
+                  }}
                 >
-                  <View className='flex-row items-start justify-between'>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     {/* Item Info */}
-                    <View className='flex-1 pr-2'>
-                      <View className='flex-row items-center'>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 2 }}>
                         {isVoided && (
-                          <View className='bg-red-500/20 px-1.5 py-0.5 rounded mr-2'>
-                            <Text className='text-[10px] font-bold text-red-400'>
-                              VOID
-                            </Text>
+                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger }}>VOID</Text>
                           </View>
                         )}
                         {isFullyRefunded && !isVoided && (
-                          <View className='bg-red-500/20 px-1.5 py-0.5 rounded mr-2'>
-                            <Text className='text-[10px] font-bold text-red-400'>
-                              REFUNDED
-                            </Text>
+                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger }}>REFUNDED</Text>
                           </View>
                         )}
                         {isPartiallyRefunded && !isVoided && (
-                          <View className='bg-orange-500/20 px-1.5 py-0.5 rounded mr-2'>
-                            <Text className='text-[10px] font-bold text-orange-400'>
-                              {item.refundedQuantity} REFUND
-                            </Text>
+                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>{item.refundedQuantity} REFUND</Text>
                           </View>
                         )}
                         {isPaid && !isVoided && (
-                          <View className='bg-emerald-500/20 px-1.5 py-0.5 rounded mr-2'>
-                            <Text className='text-[10px] font-bold text-emerald-400'>
-                              PAID
-                            </Text>
+                          <View style={{ backgroundColor: colors.success + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.success }}>PAID</Text>
                           </View>
                         )}
                         {isPartialPaid && !isVoided && !hasRefundHistory && (
-                          <View className='bg-amber-500/20 px-1.5 py-0.5 rounded mr-2'>
-                            <Text className='text-[10px] font-bold text-amber-400'>
-                              {netCoveredQty}/{item.quantity}
-                            </Text>
+                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>{netCoveredQty}/{item.quantity}</Text>
                           </View>
                         )}
                         <Text
-                          className={`text-sm font-medium ${
-                            isVoided
-                              ? 'text-gray-500 line-through'
-                              : isFullyRefunded
-                              ? 'text-gray-500 line-through'
-                              : isUnpaid
-                              ? 'text-white font-bold'
-                              : 'text-white'
-                          }`}
+                          style={{
+                            fontSize: 13,
+                            fontWeight: isUnpaid ? '700' : '500',
+                            color: (isVoided || isFullyRefunded) ? colors.muted : colors.heading,
+                            textDecorationLine: (isVoided || isFullyRefunded) ? 'line-through' : 'none',
+                          }}
                           numberOfLines={2}
                         >
                           {item.name}
@@ -622,30 +606,23 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                       {getModifiersDisplay(item)}
                       {/* Notes */}
                       {item.customizations.notes && (
-                        <Text className='text-xs text-gray-500 italic mt-1 ml-4'>
+                        <Text style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic', marginTop: 3, marginLeft: 12 }}>
                           Note: {item.customizations.notes}
                         </Text>
                       )}
                     </View>
 
                     {/* Quantity & Price + Status Icon */}
-                    <View className='items-end flex-row'>
-                      <View className='items-end mr-1'>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+                      <View style={{ alignItems: 'flex-end', marginRight: 4 }}>
+                        <Text style={{ fontSize: 11, color: isVoided ? colors.muted : colors.label }}>{item.quantity}x</Text>
                         <Text
-                          className={`text-xs ${
-                            isVoided ? 'text-gray-600' : 'text-gray-400'
-                          }`}
-                        >
-                          {item.quantity}x
-                        </Text>
-                        <Text
-                          className={`text-sm font-semibold ${
-                            isVoided
-                              ? 'text-gray-600 line-through'
-                              : isFullyRefunded
-                              ? 'text-red-400 line-through'
-                              : 'text-white'
-                          }`}
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '600',
+                            color: isVoided ? colors.muted : isFullyRefunded ? colors.danger : colors.heading,
+                            textDecorationLine: (isVoided || isFullyRefunded) ? 'line-through' : 'none',
+                          }}
                         >
                           {isFullyRefunded && !isVoided ? '-' : ''}$
                           {((wasCashPaid
@@ -682,47 +659,17 @@ const LeftPane: React.FC<LeftPaneProps> = ({
 
                   {/* Collapsible Timeline */}
                   {isExpanded && timeline.length > 0 && (
-                    <View
-                      className='mt-2 ml-2'
-                      style={{
-                        paddingLeft: 12,
-                        borderLeftWidth: 1,
-                        borderLeftColor: colors.border
-                      }}
-                    >
+                    <View style={{ marginTop: 8, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: colors.border }}>
                       {timeline.map((entry, tIdx) => {
-                        const dotColor =
-                          entry.type === 'paid'
-                            ? colors.success
-                            : entry.type === 'refunded' ||
-                              entry.type === 'voided'
-                            ? colors.danger
-                            : colors.info
+                        const dotColor = entry.type === 'paid' ? colors.success : (entry.type === 'refunded' || entry.type === 'voided') ? colors.danger : colors.info
                         return (
-                          <View
-                            key={tIdx}
-                            className='flex-row items-start mb-1.5'
-                          >
-                            <View
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 4,
-                                backgroundColor: dotColor,
-                                marginTop: 3,
-                                marginLeft: -16
-                              }}
-                            />
-                            <View className='ml-2 flex-1'>
-                              <Text className='text-xs text-gray-300'>
-                                {entry.label}
-                              </Text>
+                          <View key={tIdx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
+                            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dotColor, marginTop: 3, marginLeft: -16 }} />
+                            <View style={{ marginLeft: 8, flex: 1 }}>
+                              <Text style={{ fontSize: 12, color: colors.label }}>{entry.label}</Text>
                               {entry.timestamp && (
-                                <Text className='text-[10px] text-gray-500'>
-                                  {formatDistanceToNow(
-                                    new Date(entry.timestamp),
-                                    { addSuffix: true }
-                                  )}
+                                <Text style={{ fontSize: 10, color: colors.muted }}>
+                                  {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
                                 </Text>
                               )}
                             </View>
@@ -732,10 +679,8 @@ const LeftPane: React.FC<LeftPaneProps> = ({
                     </View>
                   )}
                   {isExpanded && timeline.length === 0 && (
-                    <View className='mt-2 ml-2'>
-                      <Text className='text-[10px] text-gray-600 italic'>
-                        No history available
-                      </Text>
+                    <View style={{ marginTop: 6, marginLeft: 8 }}>
+                      <Text style={{ fontSize: 10, color: colors.muted, fontStyle: 'italic' }}>No history available</Text>
                     </View>
                   )}
                 </View>
@@ -745,37 +690,33 @@ const LeftPane: React.FC<LeftPaneProps> = ({
 
           {/* Empty State */}
           {(!order?.items || order.items.length === 0) && (
-            <View className='py-12 items-center'>
-              <Package size={32} color={colors.muted} />
-              <Text className='text-gray-500 text-sm mt-2'>No items</Text>
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <Package size={28} color={colors.muted} />
+              <Text style={{ fontSize: 13, color: colors.muted, marginTop: 8 }}>No items</Text>
             </View>
           )}
         </View>
       </ScrollView>
 
       {/* Pricing Footer */}
-      <View className='px-4 py-3 border-t border-gray-800 bg-screen'>
-        <View className='flex-row justify-between mb-1'>
-          <Text className='text-sm text-gray-400'>Subtotal</Text>
-          <Text className='text-sm text-gray-300'>${subtotal?.toFixed(2)}</Text>
+      <View style={{ paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.screen }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+          <Text style={{ fontSize: 13, color: colors.label }}>Subtotal</Text>
+          <Text style={{ fontSize: 13, color: colors.heading }}>${subtotal?.toFixed(2)}</Text>
         </View>
         {discount > 0 && (
-          <View className='flex-row justify-between mb-1'>
-            <Text className='text-sm text-emerald-400'>Discount</Text>
-            <Text className='text-sm text-emerald-400'>
-              -${discount?.toFixed(2)}
-            </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+            <Text style={{ fontSize: 13, color: colors.success }}>Discount</Text>
+            <Text style={{ fontSize: 13, color: colors.success }}>-${discount?.toFixed(2)}</Text>
           </View>
         )}
-        <View className='flex-row justify-between mb-2'>
-          <Text className='text-sm text-gray-400'>Tax</Text>
-          <Text className='text-sm text-gray-300'>${tax?.toFixed(2)}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: colors.label }}>Tax</Text>
+          <Text style={{ fontSize: 13, color: colors.heading }}>${tax?.toFixed(2)}</Text>
         </View>
-        <View className='flex-row justify-between pt-2 border-t border-gray-700'>
-          <Text className='text-base font-bold text-white'>Total</Text>
-          <Text className='text-base font-bold text-white'>
-            ${total?.toFixed(2)}
-          </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>Total</Text>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}>${total?.toFixed(2)}</Text>
         </View>
       </View>
     </View>
@@ -847,15 +788,15 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
     [order?.reversals]
   )
   return (
-    <View className='flex-[6] bg-screen'>
+    <View style={{ flex: 6, backgroundColor: colors.screen }}>
       <ScrollView
-        className='flex-1'
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
         {/* Summary Cards */}
-        <View className='px-4 py-4'>
-          <View className='flex-row gap-2'>
+        <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             <SummaryCard
               amount={paymentSummary.orderTotal}
               cashAmount={paymentSummary.orderCashTotal}
@@ -898,23 +839,21 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
         </View>
 
         {/* Transaction History */}
-        <View className='px-4'>
-          <View className='flex-row items-center mb-3'>
-            <Text className='text-xs font-bold text-gray-500 uppercase tracking-wider'>
+        <View style={{ paddingHorizontal: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 }}>
               Transaction History
             </Text>
-            <View className='flex-1 h-px bg-gray-800 ml-3' />
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border, marginLeft: 10 }} />
           </View>
 
           {/* Payment List */}
           {paymentSummary.payments.length === 0 ? (
-            <View className='py-8 items-center'>
-              <View className='w-12 h-12 rounded-full bg-gray-800/50 items-center justify-center mb-3'>
-                <CreditCard size={24} color={colors.muted} />
+            <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                <CreditCard size={20} color={colors.muted} />
               </View>
-              <Text className='text-gray-500 text-sm'>
-                No payments recorded
-              </Text>
+              <Text style={{ fontSize: 13, color: colors.muted }}>No payments recorded</Text>
             </View>
           ) : (
             paymentSummary.payments.map((payment, index) => {
@@ -940,125 +879,81 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   }`}
                 >
                   <TouchableOpacity
-                    onPress={() =>
-                      canExpand &&
-                      setExpandedPaymentIndex(isExpanded ? null : index)
-                    }
+                    onPress={() => canExpand && setExpandedPaymentIndex(isExpanded ? null : index)}
                     activeOpacity={canExpand ? 0.7 : 1}
-                    className='flex-row items-center py-3'
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}
                   >
                     {/* Payment Method Icon */}
-                    <View
-                      className={`w-10 h-10 rounded-lg items-center justify-center mr-3 ${
-                        payment.isVoided ? 'bg-red-500/10' : 'bg-gray-800'
-                      }`}
-                    >
+                    <View style={{
+                      width: 36, height: 36, borderRadius: 8,
+                      backgroundColor: payment.isVoided ? colors.danger + '15' : colors.card,
+                      borderWidth: 1, borderColor: colors.border,
+                      alignItems: 'center', justifyContent: 'center', marginRight: 10
+                    }}>
                       {payment.isVoided ? (
-                        <X size={18} color={colors.danger} />
+                        <X size={16} color={colors.danger} />
                       ) : payment.method === 'Card' ? (
-                        <CreditCard size={18} color={colors.label} />
+                        <CreditCard size={16} color={colors.label} />
                       ) : (
-                        <Banknote size={18} color={colors.success} />
+                        <Banknote size={16} color={colors.success} />
                       )}
                     </View>
 
                     {/* Payment Details */}
-                    <View className='flex-1'>
-                      <View className='flex-row items-center'>
-                        <Text
-                          className={`text-sm font-medium ${
-                            payment.isVoided ? 'text-gray-500' : 'text-white'
-                          }`}
-                        >
-                          {payment.method === 'Card' &&
-                          (cardLast4 || cardBrandLabel)
-                            ? `${cardBrandLabel || 'Card'}${
-                                cardLast4 ? ` •••• ${cardLast4}` : ''
-                              }`
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: payment.isVoided ? colors.muted : colors.heading }}>
+                          {payment.method === 'Card' && (cardLast4 || cardBrandLabel)
+                            ? `${cardBrandLabel || 'Card'}${cardLast4 ? ` •••• ${cardLast4}` : ''}`
                             : payment.method}
                         </Text>
-                        {payment.method === 'Card' && cardBrandLabel && (
-                          <View className='ml-2'>
-                            <CardBrandBadge brand={cardBrandLabel} />
-                          </View>
-                        )}
+                        {payment.method === 'Card' && cardBrandLabel && <CardBrandBadge brand={cardBrandLabel} />}
                         {payment.isVoided && (
-                          <View className='ml-2 px-1.5 py-0.5 bg-red-500/20 rounded'>
-                            <Text className='text-[10px] text-red-400 font-medium'>
-                              VOIDED
-                            </Text>
+                          <View style={{ backgroundColor: colors.danger + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.danger }}>VOIDED</Text>
                           </View>
                         )}
                         {payment.isPreAuth && !payment.isVoided && (
-                          <View className='ml-2 px-1.5 py-0.5 bg-amber-500/20 rounded'>
-                            <Text className='text-[10px] text-amber-400 font-medium'>
-                              AUTH HOLD
-                            </Text>
+                          <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>AUTH HOLD</Text>
                           </View>
                         )}
                       </View>
-                      <View className='flex-row items-center mt-0.5'>
-                        <Text className='text-xs text-gray-500'>
-                          {formatTimestamp(payment.timestamp)}
-                        </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 }}>
+                        <Text style={{ fontSize: 11, color: colors.muted }}>{formatTimestamp(payment.timestamp)}</Text>
                         {canExpand && (
-                          <View className='flex-row items-center ml-2'>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                             <Package size={10} color={colors.muted} />
-                            {hasItemsCovered && (
-                              <Text className='text-xs text-gray-500 ml-1'>
-                                {payment.itemsCovered!.length} items
-                              </Text>
-                            )}
-                            {isExpanded ? (
-                              <ChevronUp size={12} color={colors.muted} />
-                            ) : (
-                              <ChevronDown size={12} color={colors.muted} />
-                            )}
+                            {hasItemsCovered && <Text style={{ fontSize: 11, color: colors.muted }}>{payment.itemsCovered!.length} items</Text>}
+                            {isExpanded ? <ChevronUp size={11} color={colors.muted} /> : <ChevronDown size={11} color={colors.muted} />}
                           </View>
                         )}
                       </View>
                     </View>
 
                     {/* Amount */}
-                    <View className='items-end'>
+                    <View style={{ alignItems: 'flex-end' }}>
                       {payment.tipAmount > 0 && (
-                        <Text className='text-xs text-blue-400'>
-                          +${payment.tipAmount?.toFixed(2)} tip
-                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.info }}>+${payment.tipAmount?.toFixed(2)} tip</Text>
                       )}
-                      <Text
-                        className={`text-base font-bold ${
-                          payment.isVoided
-                            ? 'text-red-400'
-                            : payment.isPreAuth
-                            ? 'text-amber-400'
-                            : 'text-emerald-400'
-                        }`}
-                      >
-                        {payment.isVoided
-                          ? 'Voided'
-                          : payment.isPreAuth
-                          ? `$${payment.orderAmount?.toFixed(2)} held`
-                          : `$${payment.collected?.toFixed(2)}`}
+                      <Text style={{
+                        fontSize: 14, fontWeight: '700',
+                        color: payment.isVoided ? colors.danger : payment.isPreAuth ? colors.warning : colors.success
+                      }}>
+                        {payment.isVoided ? 'Voided' : payment.isPreAuth ? `$${payment.orderAmount?.toFixed(2)} held` : `$${payment.collected?.toFixed(2)}`}
                       </Text>
                     </View>
                   </TouchableOpacity>
 
                   {/* Expanded Details */}
                   {isExpanded && canExpand && (
-                    <View className='bg-panel rounded-lg mb-3 p-3 border border-gray-800'>
+                    <View style={{ backgroundColor: colors.panel, borderRadius: 10, marginBottom: 10, padding: 12, borderWidth: 1, borderColor: colors.border }}>
                       {hasCardInfo && (
-                        <View className={hasItemsCovered ? 'mb-3' : ''}>
-                          <View className='flex-row items-center mb-2 pb-2 border-b border-gray-800'>
-                            {payment.method === 'Cash' ? (
-                              <Banknote size={12} color={colors.muted} />
-                            ) : (
-                              <CreditCard size={12} color={colors.muted} />
-                            )}
-                            <Text className='text-xs font-semibold text-gray-400 ml-1.5 uppercase'>
-                              {payment.method === 'Cash'
-                                ? 'Cash Payment Details'
-                                : 'Card Details'}
+                        <View style={hasItemsCovered ? { marginBottom: 12 } : {}}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                            {payment.method === 'Cash' ? <Banknote size={12} color={colors.muted} /> : <CreditCard size={12} color={colors.muted} />}
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, marginLeft: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                              {payment.method === 'Cash' ? 'Cash Payment Details' : 'Card Details'}
                             </Text>
                           </View>
                           {/* Card brand/last4 — only for card payments */}
@@ -1071,13 +966,13 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                                   />
                                 )}
                                 {payment.cardInfo?.last4 && (
-                                  <Text className='text-sm text-gray-300 ml-2'>
+                                  <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
                                     •••• {payment.cardInfo.last4}
                                   </Text>
                                 )}
                               </View>
                               {payment.cardInfo?.entryMode && (
-                                <Text className='text-xs text-gray-500'>
+                                <Text style={{ fontSize: 11, color: colors.muted }}>
                                   Entry: {payment.cardInfo.entryMode}
                                 </Text>
                               )}
@@ -1141,9 +1036,9 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                           let totalTax = 0
                           return (
                             <View>
-                              <View className='flex-row items-center mb-2 pb-2 border-b border-gray-800'>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                                 <Package size={12} color={colors.muted} />
-                                <Text className='text-xs font-semibold text-gray-400 ml-1.5 uppercase'>
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.muted, marginLeft: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                                   Items Covered
                                 </Text>
                               </View>
@@ -1177,56 +1072,35 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                                   return (
                                     <View
                                       key={coveredItem.itemId || itemIndex}
-                                      className={`py-2 ${
-                                        itemIndex <
-                                        payment.itemsCovered!.length - 1
-                                          ? 'border-b border-gray-800/50'
-                                          : ''
-                                      }`}
+                                      style={{
+                                        paddingVertical: 8,
+                                        borderBottomWidth: itemIndex < payment.itemsCovered!.length - 1 ? 1 : 0,
+                                        borderBottomColor: colors.border,
+                                      }}
                                     >
-                                      <View className='flex-row items-center justify-between'>
-                                        <View className='flex-row items-center flex-1'>
-                                          <View className='w-6 h-6 rounded bg-gray-800 items-center justify-center mr-2'>
-                                            <Text className='text-xs font-bold text-gray-400'>
-                                              {coveredItem.quantity}x
-                                            </Text>
+                                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                          <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
+                                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.label }}>{coveredItem.quantity}x</Text>
                                           </View>
-                                          <Text
-                                            className='text-sm text-gray-300'
-                                            numberOfLines={1}
-                                          >
-                                            {coveredItem.itemName}
-                                          </Text>
+                                          <Text style={{ fontSize: 12, color: colors.heading }} numberOfLines={1}>{coveredItem.itemName}</Text>
                                         </View>
-                                        <View className='items-end'>
-                                          <Text className='text-sm font-medium text-white'>
-                                            ${displaySubtotal?.toFixed(2)}
-                                          </Text>
-                                          {isCash && (
-                                            <Text className='text-[10px] text-emerald-400'>
-                                              Cash Price
-                                            </Text>
-                                          )}
+                                        <View style={{ alignItems: 'flex-end' }}>
+                                          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}>${displaySubtotal?.toFixed(2)}</Text>
+                                          {isCash && <Text style={{ fontSize: 10, color: colors.success }}>Cash Price</Text>}
                                         </View>
                                       </View>
                                       {cartItem && cartItem.taxRate > 0 && (
-                                        <Text className='text-[11px] text-gray-500 ml-8 mt-0.5'>
-                                          Tax: ${itemTax.toFixed(2)} (
-                                          {cartItem.taxRate}%)
-                                        </Text>
+                                        <Text style={{ fontSize: 11, color: colors.muted, marginLeft: 32, marginTop: 2 }}>Tax: ${itemTax.toFixed(2)} ({cartItem.taxRate}%)</Text>
                                       )}
                                     </View>
                                   )
                                 }
                               )}
                               {totalTax > 0 && (
-                                <View className='flex-row items-center justify-between pt-2 mt-1 border-t border-gray-700'>
-                                  <Text className='text-xs font-semibold text-gray-400'>
-                                    Total Tax
-                                  </Text>
-                                  <Text className='text-xs font-semibold text-gray-300'>
-                                    ${totalTax.toFixed(2)}
-                                  </Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTopWidth: 1, borderTopColor: colors.border }}>
+                                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>Total Tax</Text>
+                                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>${totalTax.toFixed(2)}</Text>
                                 </View>
                               )}
                             </View>
@@ -1237,97 +1111,47 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
 
                   {/* Refund/Void History for this payment */}
                   {payment.dbPaymentId &&
-                    getReversalsForPayment(payment.dbPaymentId).map(
-                      (reversal, rIdx) => (
-                        <View
-                          key={`reversal-${reversal.id || rIdx}`}
-                          className='flex-row items-center py-2 pl-12 border-t border-gray-800/30'
-                        >
-                          <View className='w-8 h-8 rounded-lg bg-red-500/10 items-center justify-center mr-3'>
-                            <RotateCcw size={14} color={colors.danger} />
-                          </View>
-                          <View className='flex-1'>
-                            <View className='flex-row items-center'>
-                              <Text className='text-xs text-red-400 font-medium'>
-                                {reversal.reversal_type === 'void'
-                                  ? 'VOIDED'
-                                  : reversal.reversal_type === 'refund'
-                                  ? 'REFUNDED'
-                                  : reversal.reversal_type === 'partial_refund'
-                                  ? 'PARTIAL REFUND'
-                                  : 'ITEM RETURN'}
-                              </Text>
-                              {reversal.reason_description && (
-                                <Text
-                                  className='text-xs text-gray-500 ml-2'
-                                  numberOfLines={1}
-                                >
-                                  • {reversal.reason_description}
-                                </Text>
-                              )}
-                            </View>
-                            <Text className='text-xs text-gray-500'>
-                              {reversal.completed_at
-                                ? formatDistanceToNow(
-                                    new Date(reversal.completed_at),
-                                    { addSuffix: true }
-                                  )
-                                : reversal.requested_at
-                                ? formatDistanceToNow(
-                                    new Date(reversal.requested_at),
-                                    { addSuffix: true }
-                                  )
-                                : ''}
+                    getReversalsForPayment(payment.dbPaymentId).map((reversal, rIdx) => (
+                      <View key={`reversal-${reversal.id || rIdx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 46, borderTopWidth: 1, borderTopColor: colors.border }}>
+                        <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.danger + '15', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                          <RotateCcw size={13} color={colors.danger} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger }}>
+                              {reversal.reversal_type === 'void' ? 'VOIDED' : reversal.reversal_type === 'refund' ? 'REFUNDED' : reversal.reversal_type === 'partial_refund' ? 'PARTIAL REFUND' : 'ITEM RETURN'}
                             </Text>
+                            {reversal.reason_description && (
+                              <Text style={{ fontSize: 11, color: colors.muted }} numberOfLines={1}>• {reversal.reason_description}</Text>
+                            )}
                           </View>
-                          <Text className='text-sm font-medium text-red-400'>
-                            -${Number(reversal.amount || 0)?.toFixed(2)}
+                          <Text style={{ fontSize: 11, color: colors.muted }}>
+                            {reversal.completed_at ? formatDistanceToNow(new Date(reversal.completed_at), { addSuffix: true }) : reversal.requested_at ? formatDistanceToNow(new Date(reversal.requested_at), { addSuffix: true }) : ''}
                           </Text>
                         </View>
-                      )
-                    )}
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>-${Number(reversal.amount || 0)?.toFixed(2)}</Text>
+                      </View>
+                    ))}
 
                   {/* Tip Adjustment Log */}
                   {payment.tip_adjusted_at && (
-                    <View className='flex-row items-center py-2 pl-12 border-t border-gray-800/30'>
-                      <View className='w-8 h-8 rounded-lg bg-blue-500/10 items-center justify-center mr-3'>
-                        <CircleDollarSign size={14} color={colors.info} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 46, borderTopWidth: 1, borderTopColor: colors.border }}>
+                      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.info + '15', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                        <CircleDollarSign size={13} color={colors.info} />
                       </View>
-                      <View className='flex-1'>
-                        <View className='flex-row items-center'>
-                          <Text className='text-xs text-blue-400 font-medium'>
-                            TIP ADJUSTED
-                          </Text>
-                          <Text className='text-xs text-gray-500 ml-2'>
-                            • $
-                            {Number(payment.original_tip_amount || 0).toFixed(
-                              2
-                            )}{' '}
-                            → ${Number(payment.tipAmount).toFixed(2)}
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.info }}>TIP ADJUSTED</Text>
+                          <Text style={{ fontSize: 11, color: colors.muted }}>
+                            • ${Number(payment.original_tip_amount || 0).toFixed(2)} → ${Number(payment.tipAmount).toFixed(2)}
                           </Text>
                         </View>
-                        <Text className='text-xs text-gray-500'>
-                          {formatDistanceToNow(
-                            new Date(payment.tip_adjusted_at),
-                            { addSuffix: true }
-                          )}
+                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                          {formatDistanceToNow(new Date(payment.tip_adjusted_at), { addSuffix: true })}
                         </Text>
                       </View>
-                      <Text
-                        className={`text-sm font-medium ${
-                          payment.tipAmount >=
-                          (payment.original_tip_amount || 0)
-                            ? 'text-blue-400'
-                            : 'text-red-400'
-                        }`}
-                      >
-                        {payment.tipAmount >= (payment.original_tip_amount || 0)
-                          ? '+'
-                          : '-'}
-                        $
-                        {Math.abs(
-                          payment.tipAmount - (payment.original_tip_amount || 0)
-                        ).toFixed(2)}
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: payment.tipAmount >= (payment.original_tip_amount || 0) ? colors.info : colors.danger }}>
+                        {payment.tipAmount >= (payment.original_tip_amount || 0) ? '+' : '-'}${Math.abs(payment.tipAmount - (payment.original_tip_amount || 0)).toFixed(2)}
                       </Text>
                     </View>
                   )}
@@ -1339,8 +1163,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
       </ScrollView>
 
       {/* Action Buttons Footer */}
-      <View className='absolute bottom-0 left-0 right-0 px-4 py-4 bg-panel border-t border-gray-800'>
-        <View className='flex-row gap-2'>
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
           {!isOpen && (
             <ActionButton
               icon={<RotateCcw size={16} color={colors.warning} />}
@@ -2647,7 +2471,7 @@ const RightPaneRefund: React.FC<RightPaneRefundProps> = ({
   }
 
   return (
-    <View className='flex-[6] bg-screen' style={{ position: 'relative' }}>
+    <View style={{ flex: 6, backgroundColor: colors.screen, position: 'relative' }}>
       {/* Processing Overlay */}
       {refundProcessing && (
         <View
@@ -4418,59 +4242,39 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
           }}
         >
           {!order ? (
-            <View className='flex-1 items-center justify-center'>
-              <Text className='text-gray-500'>Loading order...</Text>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>Loading order...</Text>
             </View>
           ) : (
-            <View className='flex-1'>
+            <View style={{ flex: 1 }}>
               {/* Header */}
-              <View className='flex-row items-center justify-between px-4 py-3 border-b border-gray-800'>
-                <View className='flex-row items-center'>
-                  <Text className='text-xl font-bold text-white'>
-                    Payment Details
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}>Payment Details</Text>
+                  <Text style={{ fontSize: 14, color: colors.label }}>
+                    #{order.display_number || order.order_number?.slice(-6) || '—'}
                   </Text>
-                  <Text className='text-lg text-gray-500 ml-2'>
-                    Order{' '}
-                    {order.display_number ||
-                      order.order_number?.slice(-6) ||
-                      '—'}
-                  </Text>
-                  <Text className='text-sm text-gray-500 ml-2'>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
                     {order.opened_at ? formatTimestamp(order.opened_at) : '—'}
                   </Text>
                 </View>
-                <View className='flex-row items-center gap-3'>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   {/* Online Badge */}
                   {order.order_source === 'online' && (
-                    <View className='px-3 py-1.5 rounded-full flex-row items-center bg-blue-500/15 border border-blue-500/40'>
-                      <Globe color='#60a5fa' size={12} />
-                      <Text className='text-xs font-semibold uppercase text-blue-400 ml-1.5'>
-                        Online
-                      </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: colors.info + '20', borderWidth: 1, borderColor: colors.info + '50', gap: 5 }}>
+                      <Globe color={colors.info} size={11} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.info, textTransform: 'uppercase' }}>Online</Text>
                     </View>
                   )}
                   {/* Status Badge */}
-                  <View
-                    className={`px-3 py-1.5 rounded-full flex-row items-center ${
-                      order.check_status === 'Opened'
-                        ? 'bg-emerald-500/15 border border-emerald-500/40'
-                        : 'bg-gray-700/50 border border-gray-600'
-                    }`}
-                  >
-                    <View
-                      className={`w-2 h-2 rounded-full mr-2 ${
-                        order.check_status === 'Opened'
-                          ? 'bg-emerald-400'
-                          : 'bg-gray-500'
-                      }`}
-                    />
-                    <Text
-                      className={`text-xs font-semibold uppercase ${
-                        order.check_status === 'Opened'
-                          ? 'text-emerald-400'
-                          : 'text-gray-400'
-                      }`}
-                    >
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, gap: 6,
+                    backgroundColor: order.check_status === 'Opened' ? colors.success + '20' : colors.card,
+                    borderWidth: 1,
+                    borderColor: order.check_status === 'Opened' ? colors.success + '50' : colors.border,
+                  }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: order.check_status === 'Opened' ? colors.success : colors.muted }} />
+                    <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', color: order.check_status === 'Opened' ? colors.success : colors.muted }}>
                       {order.check_status === 'Opened' ? 'Open' : 'Closed'}
                     </Text>
                   </View>
@@ -4478,21 +4282,19 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
                   <TouchableOpacity
                     onPress={close}
                     disabled={refundMutation.isPending || tipProcessing}
-                    className='px-4 py-2 rounded-lg bg-gray-800 items-center justify-center'
                     style={{
-                      opacity:
-                        refundMutation.isPending || tipProcessing ? 0.3 : 1
+                      paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
+                      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+                      opacity: refundMutation.isPending || tipProcessing ? 0.3 : 1
                     }}
                   >
-                    <Text className='text-sm font-semibold text-gray-300'>
-                      CLOSE
-                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.label }}>CLOSE</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
               {/* Split Pane Content */}
-              <View className='flex-1 flex-row'>
+              <View style={{ flex: 1, flexDirection: 'row' }}>
                 {/* Left Pane - Order Receipt */}
                 <LeftPane
                   order={order}

@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CreditCard,
   Eye,
+  Globe,
   MoreHorizontal,
   Printer,
   RefreshCw,
@@ -552,6 +553,18 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
                 <RefreshCw color={colors.info} size={8} />
               </View>
             )}
+            {order.order_source === "online" && (
+              <View style={{
+                flexDirection: "row", alignItems: "center", gap: 3,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1, borderColor: colors.teal + "50",
+                borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2,
+                marginRight: 5,
+              }}>
+                <Globe size={9} color={colors.teal} />
+                <Text style={{ fontSize: 10, fontWeight: "700", color: colors.teal }}>Online</Text>
+              </View>
+            )}
             <View
               className="w-2 h-2 rounded-full mr-1.5"
               style={{ backgroundColor: dotColor }}
@@ -620,7 +633,8 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     getCachedRefunded(prev.order) === getCachedRefunded(next.order) &&
     // Station-related fields for display
     prev.order.station_id === next.order.station_id &&
-    prev.order._sourceStationName === next.order._sourceStationName
+    prev.order._sourceStationName === next.order._sourceStationName &&
+    prev.order.order_source === next.order.order_source
   );
 });
 

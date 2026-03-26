@@ -46,6 +46,23 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
     return order?.paid_status ?? null;
   });
+  const orderStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.order_status ?? null;
+  });
+  const checkStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.check_status ?? null;
+  });
+  const hasRefunds = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return (order?.payments ?? []).some((p: any) => (p.refundedAmount ?? 0) > 0);
+  });
+  const isSplitPayment = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    const payments = (order?.payments ?? []).filter((p: any) => !p.isVoided);
+    return payments.length > 1;
+  });
 
   // Track which item is being edited in modifier panel (for visual highlight)
   const activeEditingItemId = useModifierSidebarStore(selectActiveEditingItemId);
@@ -67,20 +84,50 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   return (
     <View className="flex-1 bg-background">
       <View className=" px-4 h-full">
-        <View className="mb-1">
+        <View className="mb-1 mt-2">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
+            <View className="flex-row items-center flex-wrap gap-1.5">
               <Text className="text-gray-400 text-sm font-medium">
                 {displayNumber || "New Order"}
               </Text>
               {paidStatus === "Paid" && (
-                <View className="ml-2 bg-green-600/30 px-1.5 py-0.5 rounded">
-                  <Text className="text-green-400 text-[10px] font-bold">PAID</Text>
+                <View className="bg-teal-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-teal-400 text-[10px] font-bold">PAID</Text>
                 </View>
               )}
               {paidStatus === "Partial" && (
-                <View className="ml-2 bg-yellow-600/30 px-1.5 py-0.5 rounded">
+                <View className="bg-yellow-600/30 px-1.5 py-0.5 rounded">
                   <Text className="text-yellow-400 text-[10px] font-bold">PARTIAL</Text>
+                </View>
+              )}
+              {paidStatus === "Unpaid" && orderStatus !== "draft" && (
+                <View className="bg-red-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-red-400 text-[10px] font-bold">UNPAID</Text>
+                </View>
+              )}
+              {checkStatus === "Closed" && (
+                <View className="bg-gray-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-gray-400 text-[10px] font-bold">CLOSED</Text>
+                </View>
+              )}
+              {isSplitPayment && (
+                <View className="bg-teal-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-teal-400 text-[10px] font-bold">SPLIT</Text>
+                </View>
+              )}
+              {paidStatus === "Paid" && hasRefunds && (
+                <View className="bg-amber-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-amber-400 text-[10px] font-bold">REFUNDS</Text>
+                </View>
+              )}
+              {orderStatus === "preparing" && (
+                <View className="bg-teal-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-teal-400 text-[10px] font-bold">PREPARING</Text>
+                </View>
+              )}
+              {orderStatus === "ready" && (
+                <View className="bg-green-600/30 px-1.5 py-0.5 rounded">
+                  <Text className="text-green-400 text-[10px] font-bold">READY</Text>
                 </View>
               )}
             </View>
@@ -120,6 +167,7 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                               item={item}
                               isEditable={true}
                               isActive={shouldHighlight}
+                              showPaidBadge={paidStatus !== "Paid"}
                             />
                           </Animated.View>
                         );

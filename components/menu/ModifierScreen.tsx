@@ -782,33 +782,33 @@ const ModifierScreen = () => {
 
   if (cartItem?.kitchen_status === "sent" || cartItem?.kitchen_status === "ready" || cartItem?.kitchen_status === "served") {
     return (
-      <View className="flex-1" style={{ backgroundColor: "#0f1623" }}>
+      <View className="flex-1" style={{ backgroundColor: colors.screen }}>
         {/* Header */}
         <View
           className="flex-row items-center px-4 py-3 border-b"
-          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+          style={{ borderColor: colors.border }}
         >
           <TouchableOpacity onPressIn={close} className="flex-row items-center gap-1.5">
-            <ArrowLeft color="#8899aa" size={16} />
-            <Text className="text-sm font-medium" style={{ color: "#8899aa" }}>
+            <ArrowLeft color={colors.label} size={16} />
+            <Text className="text-sm font-medium" style={{ color: colors.label }}>
               Back to Bill
             </Text>
           </TouchableOpacity>
         </View>
         <View className="flex-1 items-center justify-center p-5">
-          <Text className="text-lg font-bold text-center mb-1.5" style={{ color: "#e8edf3" }}>
+          <Text className="text-lg font-bold text-center mb-1.5" style={{ color: colors.heading }}>
             Item Already Sent
           </Text>
-          <Text className="text-sm text-center mb-4" style={{ color: "#8899aa" }}>
+          <Text className="text-sm text-center mb-4" style={{ color: colors.label }}>
             This item has been sent to the kitchen and cannot be modified.
           </Text>
           <View
             className="rounded-xl p-3 w-full border flex-row items-center gap-3"
-            style={{ backgroundColor: "#1a2233", borderColor: "rgba(255,255,255,0.08)" }}
+            style={{ backgroundColor: colors.panel, borderColor: colors.border }}
           >
             <View className="flex-1">
-              <Text className="text-sm font-semibold" style={{ color: "#e8edf3" }}>{cartItem.name}</Text>
-              <Text className="text-xs mt-0.5" style={{ color: "#8899aa" }}>Qty: {cartItem.quantity}</Text>
+              <Text className="text-sm font-semibold" style={{ color: colors.heading }}>{cartItem.name}</Text>
+              <Text className="text-xs mt-0.5" style={{ color: colors.label }}>Qty: {cartItem.quantity}</Text>
             </View>
           </View>
           <TouchableOpacity
@@ -816,7 +816,7 @@ const ModifierScreen = () => {
             className="mt-4 px-6 py-2.5 rounded-full"
             style={{ backgroundColor: colors.teal }}
           >
-            <Text className="text-sm font-semibold" style={{ color: "#fff" }}>Back to Bill</Text>
+            <Text className="text-sm font-semibold" style={{ color: colors.onSolid }}>Back to Bill</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -835,16 +835,16 @@ const ModifierScreen = () => {
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
-      style={{ backgroundColor: "#0f1623" }}
+      style={{ backgroundColor: colors.screen }}
     >
       {/* ── Top Bar ─────────────────────────────────────────────────────── */}
       <View
         className="flex-row items-center justify-between px-4 py-2.5 border-b"
-        style={{ borderColor: "rgba(255,255,255,0.08)" }}
+        style={{ borderColor: colors.border }}
       >
         <TouchableOpacity onPressIn={handleCancel} className="flex-row items-center gap-1.5">
-          <ArrowLeft color="#8899aa" size={16} />
-          <Text className="text-sm font-medium" style={{ color: "#8899aa" }}>
+          <ArrowLeft color={colors.label} size={16} />
+          <Text className="text-sm font-medium" style={{ color: colors.label }}>
             {mode === "edit" || (mode === "fullscreen" && cartItem) ? "Bill" : "Menu"}
           </Text>
         </TouchableOpacity>
@@ -867,15 +867,15 @@ const ModifierScreen = () => {
             </TouchableOpacity>
           )}
           <TouchableOpacity onPressIn={handleCancel} className="p-1.5">
-            <X color="#8899aa" size={16} />
+            <X color={colors.label} size={16} />
           </TouchableOpacity>
           <TouchableOpacity
             onPressIn={handleSave}
             className="flex-row items-center gap-1.5 px-4 py-2 rounded-full"
             style={{ backgroundColor: colors.teal }}
           >
-            <Check color="#fff" size={13} strokeWidth={2.5} />
-            <Text className="text-sm font-semibold" style={{ color: "#fff" }}>Done · ${total.toFixed(2)}</Text>
+            <Check color={colors.onSolid} size={13} strokeWidth={2.5} />
+            <Text className="text-sm font-semibold" style={{ color: colors.onSolid }}>Done · ${total.toFixed(2)}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -884,7 +884,7 @@ const ModifierScreen = () => {
         {/* ── Item Header ─────────────────────────────────────────────────── */}
         <View
           className="flex-row items-center gap-3 px-4 py-3 border-b"
-          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+          style={{ borderColor: colors.border }}
         >
           {showMenuImages && resolvedImageSource ? (
             <OptimizedListImage
@@ -894,24 +894,24 @@ const ModifierScreen = () => {
             />
           ) : null}
           <View className="flex-1">
-            <Text className="text-base font-bold" style={{ color: "#e8edf3" }} numberOfLines={1}>
+            <Text className="text-base font-bold" style={{ color: colors.heading }} numberOfLines={1}>
               {currentItem.name}
             </Text>
             {menuItemForModifiers?.description ? (
-              <Text className="text-xs mt-0.5" style={{ color: "#8899aa" }} numberOfLines={1}>
+              <Text className="text-xs mt-0.5" style={{ color: colors.label }} numberOfLines={1}>
                 {menuItemForModifiers.description}
               </Text>
             ) : null}
           </View>
-          <Text className="text-base font-bold" style={{ color: "#e8edf3" }}>
+          <Text className="text-base font-bold" style={{ color: colors.heading }}>
             ${getCurrentItemPrice(currentItem).toFixed(2)}
           </Text>
         </View>
 
         {/* ── Seat Picker ──────────────────────────────────────────────────── */}
         {state.isSeatPickerOpen && showSeatPicker && (
-          <View className="px-4 py-3 border-t" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-            <Text className="text-sm font-semibold mb-2" style={{ color: "#e8edf3" }}>Assign to Seat</Text>
+          <View className="px-4 py-3 border-t" style={{ borderColor: colors.border }}>
+            <Text className="text-sm font-semibold mb-2" style={{ color: colors.heading }}>Assign to Seat</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
               <TouchableOpacity
                 onPressIn={() => setSeatOverride(null)}
@@ -920,12 +920,12 @@ const ModifierScreen = () => {
                   borderRadius: 16,
                   borderWidth: 1,
                   backgroundColor: seatOverride === null ? colors.teal + "20" : "transparent",
-                  borderColor: seatOverride === null ? colors.teal : "rgba(255,255,255,0.15)",
+                  borderColor: seatOverride === null ? colors.teal : colors.border,
                 }}
               >
                 <Text style={{
                   fontSize: 12, fontWeight: "600",
-                  color: seatOverride === null ? colors.teal : "#8899aa",
+                  color: seatOverride === null ? colors.teal : colors.label,
                 }}>Shared</Text>
               </TouchableOpacity>
               {Array.from({ length: seatCount }, (_, i) => i + 1).map(seat => (
@@ -937,12 +937,12 @@ const ModifierScreen = () => {
                     borderRadius: 16,
                     borderWidth: 1,
                     backgroundColor: seatOverride === seat ? colors.teal + "20" : "transparent",
-                    borderColor: seatOverride === seat ? colors.teal : "rgba(255,255,255,0.15)",
+                    borderColor: seatOverride === seat ? colors.teal : colors.border,
                   }}
                 >
                   <Text style={{
                     fontSize: 12, fontWeight: "600",
-                    color: seatOverride === seat ? colors.teal : "#8899aa",
+                    color: seatOverride === seat ? colors.teal : colors.label,
                   }}>Seat {seat}</Text>
                 </TouchableOpacity>
               ))}
@@ -957,7 +957,7 @@ const ModifierScreen = () => {
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 6 }}
-              style={{ borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}
+              style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
             >
               {menuItemForModifiers!.modifiers.map((category) => {
                 const hasSelection = (state.selectionCounts[category.id] ?? 0) > 0;
@@ -979,20 +979,20 @@ const ModifierScreen = () => {
               <View className="px-4 pt-3 pb-2">
                 {/* Sub-header row */}
                 <View className="flex-row items-center justify-between mb-3">
-                  <Text className="text-sm font-bold" style={{ color: "#e8edf3" }}>
+                  <Text className="text-sm font-bold" style={{ color: colors.heading }}>
                     {currentCategory.name}
                   </Text>
                   <View className="flex-row items-center gap-1.5">
                     <Text
                       className="text-xs font-semibold"
                       style={{
-                        color: currentCategory.type === "required" ? "#f59e0b" : "#8899aa",
+                        color: currentCategory.type === "required" ? colors.warning : colors.label,
                       }}
                     >
                       {currentCategory.type === "required" ? "Required" : "Optional"}
                     </Text>
-                    <Text className="text-xs" style={{ color: "#4a5568" }}>·</Text>
-                    <Text className="text-xs" style={{ color: "#8899aa" }}>
+                    <Text className="text-xs" style={{ color: colors.muted }}>·</Text>
+                    <Text className="text-xs" style={{ color: colors.label }}>
                       {currentCategory.selectionType === "single"
                         ? "Single Select"
                         : currentCategory.maxSelections
@@ -1028,9 +1028,9 @@ const ModifierScreen = () => {
         {/* ── Quantity ─────────────────────────────────────────────────────── */}
         <View
           className="px-4 py-3 border-t flex-row items-center justify-between"
-          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+          style={{ borderColor: colors.border }}
         >
-          <Text className="text-sm font-semibold" style={{ color: "#e8edf3" }}>
+          <Text className="text-sm font-semibold" style={{ color: colors.heading }}>
             Quantity
           </Text>
           <View className="flex-row items-center gap-3">
@@ -1038,12 +1038,12 @@ const ModifierScreen = () => {
               disabled={isReadOnly}
               onPressIn={handleQuantityDecrement}
               className="w-8 h-8 rounded-full items-center justify-center"
-              style={{ backgroundColor: "#1a2233", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}
+              style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
             >
-              <Minus color="#e8edf3" size={14} />
+              <Minus color={colors.heading} size={14} />
             </TouchableOpacity>
             <TouchableOpacity disabled={isReadOnly} onPressIn={handleQuantityPress}>
-              <Text className="text-xl font-bold w-8 text-center" style={{ color: "#e8edf3" }}>
+              <Text className="text-xl font-bold w-8 text-center" style={{ color: colors.heading }}>
                 {state.quantity}
               </Text>
             </TouchableOpacity>
@@ -1053,7 +1053,7 @@ const ModifierScreen = () => {
               className="w-8 h-8 rounded-full items-center justify-center"
               style={{ backgroundColor: colors.teal }}
             >
-              <Plus color="#fff" size={14} />
+              <Plus color={colors.onSolid} size={14} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1061,17 +1061,17 @@ const ModifierScreen = () => {
         {/* ── Special Instructions ─────────────────────────────────────────── */}
         <View
           className="px-4 pb-3 border-t"
-          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+          style={{ borderColor: colors.border }}
         >
           <View className="flex-row items-center justify-between pt-3 mb-2">
-            <Text className="text-sm font-semibold" style={{ color: "#e8edf3" }}>
+            <Text className="text-sm font-semibold" style={{ color: colors.heading }}>
               Special Instructions
             </Text>
-            <Text className="text-xs" style={{ color: "#8899aa" }}>{state.notes.length}/80</Text>
+            <Text className="text-xs" style={{ color: colors.label }}>{state.notes.length}/80</Text>
           </View>
           <View
             className="rounded-lg overflow-hidden border"
-            style={{ borderColor: "rgba(255,255,255,0.1)", backgroundColor: "#1a2233" }}
+            style={{ borderColor: colors.border, backgroundColor: colors.inset }}
           >
             <TextInput
               editable={!isReadOnly}
@@ -1081,8 +1081,8 @@ const ModifierScreen = () => {
               numberOfLines={1}
               maxLength={80}
               className="px-3 py-2 text-sm min-h-[52px]"
-              style={{ color: "#e8edf3" }}
-              placeholderTextColor="#4a5568"
+              style={{ color: colors.heading }}
+              placeholderTextColor={colors.muted}
             />
           </View>
         </View>
@@ -1091,15 +1091,15 @@ const ModifierScreen = () => {
         {menuItemForModifiers?.allergens && menuItemForModifiers.allergens.length > 0 && (
           <View
             className="px-4 pb-3 border-t"
-            style={{ borderColor: "rgba(255,255,255,0.08)" }}
+            style={{ borderColor: colors.border }}
           >
-            <Text className="text-sm font-semibold mt-3 mb-2" style={{ color: "#e8edf3" }}>
+            <Text className="text-sm font-semibold mt-3 mb-2" style={{ color: colors.heading }}>
               Allergens
             </Text>
             <View className="flex-row flex-wrap gap-1.5">
               {menuItemForModifiers.allergens.map((allergen) => (
-                <View key={allergen} className="px-2.5 py-1 rounded-full" style={{ backgroundColor: "#3b1c1c" }}>
-                  <Text className="text-xs" style={{ color: "#f87171" }}>{allergen}</Text>
+                <View key={allergen} className="px-2.5 py-1 rounded-full" style={{ backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "30" }}>
+                  <Text className="text-xs" style={{ color: colors.danger }}>{allergen}</Text>
                 </View>
               ))}
             </View>
@@ -1117,9 +1117,9 @@ const ModifierScreen = () => {
         <View className="flex-1 justify-center items-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
           <View
             className="rounded-2xl p-5 w-72 border"
-            style={{ backgroundColor: "#1a2233", borderColor: "rgba(255,255,255,0.1)" }}
+            style={{ backgroundColor: colors.panel, borderColor: colors.border }}
           >
-            <Text className="text-lg font-semibold mb-4 text-center" style={{ color: "#e8edf3" }}>
+            <Text className="text-lg font-semibold mb-4 text-center" style={{ color: colors.heading }}>
               Enter Quantity
             </Text>
             <TextInput
@@ -1128,22 +1128,22 @@ const ModifierScreen = () => {
               keyboardType="numeric"
               autoFocus
               className="rounded-xl text-2xl font-bold text-center h-14 mb-5 border"
-              style={{ color: "#e8edf3", backgroundColor: "#0f1623", borderColor: "rgba(255,255,255,0.1)" }}
+              style={{ color: colors.heading, backgroundColor: colors.inset, borderColor: colors.border }}
             />
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPressIn={handleQuantityCancel}
                 className="flex-1 py-3 rounded-xl items-center border"
-                style={{ borderColor: "rgba(255,255,255,0.1)" }}
+                style={{ borderColor: colors.border }}
               >
-                <Text className="text-base font-semibold" style={{ color: "#8899aa" }}>Cancel</Text>
+                <Text className="text-base font-semibold" style={{ color: colors.label }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPressIn={handleQuantitySubmit}
                 className="flex-1 py-3 rounded-xl items-center"
                 style={{ backgroundColor: colors.teal }}
               >
-                <Text className="text-base font-semibold" style={{ color: "#fff" }}>Set</Text>
+                <Text className="text-base font-semibold" style={{ color: colors.onSolid }}>Set</Text>
               </TouchableOpacity>
             </View>
           </View>

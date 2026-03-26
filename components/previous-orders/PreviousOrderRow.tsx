@@ -38,25 +38,25 @@ interface PreviousOrderRowProps {
   onContinue?: (order: OrderProfile) => void;
 }
 
-// Status → semantic color mapping
-const statusColorMap: Record<string, string> = {
-  Paid: colors.success,
-  Partial: colors.warning,
-  Pending: colors.warning,
-  Unpaid: colors.danger,
-  "In Progress": colors.teal,
-  Refunded: colors.danger,
-  "Partially Refunded": colors.warning,
+// Status → color mapping with variety
+const statusColorMap: Record<string, { color: string; bgOpacity: string }> = {
+  Paid: { color: colors.teal, bgOpacity: "25" },
+  Partial: { color: colors.warning, bgOpacity: "25" },
+  Pending: { color: colors.warning, bgOpacity: "20" },
+  Unpaid: { color: colors.danger, bgOpacity: "20" },
+  "In Progress": { color: colors.teal, bgOpacity: "25" },
+  Refunded: { color: colors.danger, bgOpacity: "25" },
+  "Partially Refunded": { color: colors.warning, bgOpacity: "20" },
 };
 
 // Order type → semantic color + icon mapping
 const orderTypeColorMap: Record<string, { color: string; icon: React.ElementType }> = {
   "Dine In":  { color: colors.teal,    icon: Utensils },
   dine_in:    { color: colors.teal,    icon: Utensils },
-  Takeaway:   { color: colors.warning, icon: ShoppingBag },
-  takeout:    { color: colors.warning, icon: ShoppingBag },
-  Delivery:   { color: colors.info,    icon: Truck },
-  delivery:   { color: colors.info,    icon: Truck },
+  Takeaway:   { color: colors.teal,    icon: ShoppingBag },
+  takeout:    { color: colors.teal,    icon: ShoppingBag },
+  Delivery:   { color: colors.teal,    icon: Truck },
+  delivery:   { color: colors.teal,    icon: Truck },
 };
 
 const displayTypeLabels: Record<string, string> = {
@@ -120,7 +120,7 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     (totalRefunded > 0 && totalRefunded >= (order.total_amount || 0));
 
   const status = order.paid_status || "Unpaid";
-  const statusColor = statusColorMap[status] ?? colors.label;
+  const statusConfig = statusColorMap[status] ?? { color: colors.label, bgOpacity: "15" };
 
   const orderType = order.order_type || "Dine In";
   const typeConfig = orderTypeColorMap[orderType] ?? { color: colors.teal, icon: Utensils };
@@ -149,9 +149,9 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
   const refundBadge = useMemo(() => {
     if (totalRefunded <= 0) return null;
     if (isFullyRefunded) {
-      return { label: "Refunded", color: colors.danger };
+      return { label: "Refunded", color: colors.teal };
     }
-    return { label: "Partial Refund", color: colors.warning };
+    return { label: "Partial Refund", color: colors.teal };
   }, [totalRefunded, isFullyRefunded]);
 
   const isSettled = useMemo(() => {
@@ -185,6 +185,17 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
               {order.display_number || order.order_number || `#${order.id.slice(-4)}`}
             </Text>
             <Text style={{ fontSize: 11, color: colors.muted }}>{orderTime}</Text>
+            {order.order_source?.toLowerCase() === "online" && (
+              <View style={{
+                flexDirection: "row", alignItems: "center", gap: 3,
+                backgroundColor: colors.teal + "25",
+                borderWidth: 1, borderColor: colors.teal + "60",
+                borderRadius: 20, paddingHorizontal: 6, paddingVertical: 1,
+              }}>
+                <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.teal }} />
+                <Text style={{ fontSize: 9, fontWeight: "700", color: colors.teal, letterSpacing: 0.3 }}>ONLINE</Text>
+              </View>
+            )}
             {needsAttention && (
               <AlertTriangle size={12} color={colors.warning} />
             )}
@@ -211,11 +222,11 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             paddingHorizontal: 8,
             paddingVertical: 3,
             borderRadius: 20,
-            backgroundColor: statusColor + "20",
+            backgroundColor: statusConfig.color + statusConfig.bgOpacity,
             borderWidth: 1,
-            borderColor: statusColor + "50",
+            borderColor: statusConfig.color + "40",
           }}>
-            <Text style={{ fontSize: 11, fontWeight: "600", color: statusColor }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: statusConfig.color }}>
               {status}
             </Text>
           </View>

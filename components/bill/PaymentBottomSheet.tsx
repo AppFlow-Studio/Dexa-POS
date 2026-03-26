@@ -138,27 +138,37 @@ const PaymentBottomSheet: React.FC = () => {
         </View>
         {/* Inline confirmation overlay — cannot use Dialog/Portal here since it portals behind the native Modal */}
         {showConfirmation && (
-          <View style={StyleSheet.absoluteFill} className="bg-black/80 justify-center items-center p-4">
-            <View className="bg-panel border border-gray-700 rounded-2xl p-6 w-[480px] items-center">
-              <View className="w-16 h-16 bg-red-900/30 rounded-full items-center justify-center border-4 border-red-500/30 mb-4">
-                <AlertTriangle color="#ef4444" size={36} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }]}>
+            <View style={{ backgroundColor: colors.panel, borderRadius: 20, padding: 28, width: "100%", maxWidth: 400, borderWidth: 1, borderColor: colors.border, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10 }}>
+              <View style={{ alignItems: "center", marginBottom: 20 }}>
+                <View style={{ width: 60, height: 60, borderRadius: 14, backgroundColor: colors.danger + "20", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                  <AlertTriangle size={28} color={colors.danger} strokeWidth={2.5} />
+                </View>
+                <Text style={{ fontSize: 18, fontWeight: "800", color: colors.heading, marginBottom: 8, textAlign: "center" }}>
+                  Discard Changes?
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.label, textAlign: "center", lineHeight: 20 }}>
+                  You have unsaved payment changes. This action cannot be undone.
+                </Text>
               </View>
-              <Text className="text-2xl font-bold text-white text-center">Discard Changes?</Text>
-              <Text className="text-center text-gray-400 mt-2 text-lg">
-                You have unsaved changes. Are you sure you want to close without saving?
-              </Text>
-              <View className="pt-6 flex-row gap-4 w-full">
+
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
                 <TouchableOpacity
                   onPress={handleCancelClose}
-                  className="flex-1 py-3 border border-gray-600 rounded-lg bg-screen"
+                  style={{ flex: 1, backgroundColor: colors.teal + "15", borderRadius: 12, borderWidth: 1.5, borderColor: colors.teal + "50", paddingVertical: 13, alignItems: "center" }}
                 >
-                  <Text className="font-bold text-lg text-gray-300 text-center">Cancel</Text>
+                  <Text style={{ fontSize: 14, color: colors.teal, fontWeight: "700" }}>
+                    Keep Changes
+                  </Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   onPress={handleConfirmClose}
-                  className="flex-1 py-3 rounded-lg bg-red-600"
+                  style={{ flex: 1, backgroundColor: colors.danger + "15", borderRadius: 12, borderWidth: 1.5, borderColor: colors.danger + "50", paddingVertical: 13, alignItems: "center" }}
                 >
-                  <Text className="font-bold text-white text-lg text-center">Yes, Discard</Text>
+                  <Text style={{ fontSize: 14, color: colors.danger, fontWeight: "700" }}>
+                    Discard
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

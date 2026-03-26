@@ -217,6 +217,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         db_order_id: order.db_order_id,
         reversals: order.reversals,
         order_refund_items: order.order_refund_items,
+        order_source: order.order_source ?? null,
       };
 
       set((state) => {

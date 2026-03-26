@@ -2,8 +2,8 @@ import { usePreviousOrdersListSync } from "@/hooks/pos/usePreviousOrdersListSync
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useRouter } from "expo-router";
 import { RefreshCw, Search, X } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -19,7 +19,11 @@ import OrderActionsMenu from "./OrderActionsMenu";
 import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
 
 // Define types for props
-type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
+type TabName = "All" | "Dine In" | "Takeaway" | "Delivery" | "Online";
+
+const DINE_IN_VALUES = new Set(["Dine In", "dine_in"]);
+const TAKEAWAY_VALUES = new Set(["Takeaway", "takeout"]);
+const DELIVERY_VALUES = new Set(["Delivery", "delivery"]);
 
 // Remove old OrderRow and RetrieveButton components - replaced by table view
 
@@ -28,12 +32,13 @@ interface TabCounts {
   "Dine In": number;
   Takeaway: number;
   Delivery: number;
+  Online: number;
 }
 
 interface OrderTabsProps {
   onTabChange: (tab: TabName) => void;
   counts: TabCounts;
-  activeTab: string;
+  activeTab: TabName;
 }
 
 const OrderTabs: React.FC<OrderTabsProps> = ({
@@ -41,12 +46,12 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
   counts,
   activeTab,
 }) => {
-  const TAB_NAMES: TabName[] = ["All", "Takeaway", "Dine In", "Delivery"];
+  const TAB_NAMES: TabName[] = ["All", "Takeaway", "Dine In", "Delivery", "Online"];
 
   return (
     <View
       className="flex-row self-start rounded-lg p-0.5"
-      style={{ height: 36, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+      style={{ height: 36, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, gap: 2 }}
     >
       {TAB_NAMES.map((name) => {
         const isActive = activeTab === name;
@@ -55,12 +60,19 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
           <Pressable
             key={name}
             onPress={() => onTabChange(name)}
-            className="flex-row items-center px-3 rounded-md gap-x-1.5"
-            style={[{ flex: 1, alignSelf: "stretch", justifyContent: "center", borderRadius: 6, borderWidth: 1 }, isActive ? { backgroundColor: colors.teal + "20", borderColor: colors.teal + "40" } : { borderColor: "transparent" }]}
+            className="flex-row items-center rounded-md gap-x-1.5"
+            style={[
+              { paddingHorizontal: 14, alignSelf: "stretch", justifyContent: "center", borderRadius: 6, borderWidth: 1 },
+              isActive
+                ? name === "Online"
+                  ? { backgroundColor: colors.info + "20", borderColor: colors.info + "40" }
+                  : { backgroundColor: colors.teal + "20", borderColor: colors.teal + "40" }
+                : { borderColor: "transparent" },
+            ]}
           >
             <Text
               className="text-xs font-semibold"
-              style={{ color: isActive ? colors.teal : colors.label }}
+              style={{ color: isActive ? (name === "Online" ? colors.info : colors.teal) : colors.label }}
             >
               {name}{count > 0 ? ` (${count})` : ""}
             </Text>
@@ -76,9 +88,9 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 const PreviousOrdersSection = () => {
   // CRITICAL FIX: Use proper selector instead of destructuring entire store
   const ordersById = useOrderStore((s) => s.ordersById);
-  const { open: openPaymentDetailSheet } = usePaymentDetailSheetStore();
   const { previousOrders, newOrdersCount } = usePreviousOrdersStore();
-  const [activeTab, setActiveTab] = useState("All");
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabName>("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -179,25 +191,15 @@ const PreviousOrdersSection = () => {
     let dineIn = 0;
     let takeaway = 0;
     let delivery = 0;
+    let online = 0;
     for (const o of allOrders) {
-      switch (o.order_type) {
-        case "Dine In":
-          dineIn++;
-          break;
-        case "Takeaway":
-          takeaway++;
-          break;
-        case "Delivery":
-          delivery++;
-          break;
-      }
+      const t = o.order_type ?? "";
+      if (DINE_IN_VALUES.has(t)) dineIn++;
+      else if (TAKEAWAY_VALUES.has(t)) takeaway++;
+      else if (DELIVERY_VALUES.has(t)) delivery++;
+      if (o.order_source?.toLowerCase() === "online") online++;
     }
-    return {
-      All: allOrders.length,
-      "Dine In": dineIn,
-      Takeaway: takeaway,
-      Delivery: delivery,
-    };
+    return { All: allOrders.length, "Dine In": dineIn, Takeaway: takeaway, Delivery: delivery, Online: online };
   }, [allOrders]);
 
   // Filter orders based on active tab and search query
@@ -205,10 +207,11 @@ const PreviousOrdersSection = () => {
     let filtered = allOrders;
 
     // Filter by tab
-    if (activeTab !== "All") {
-      filtered = filtered.filter(
-        (o) => o.order_type === activeTab && o.items.length > 0,
-      );
+    if (activeTab === "Online") {
+      filtered = filtered.filter((o) => o.order_source?.toLowerCase() === "online");
+    } else if (activeTab !== "All") {
+      const tabSet = activeTab === "Dine In" ? DINE_IN_VALUES : activeTab === "Takeaway" ? TAKEAWAY_VALUES : DELIVERY_VALUES;
+      filtered = filtered.filter((o) => tabSet.has(o.order_type ?? ""));
     }
 
     // Filter by search query (customer name or display number)
@@ -224,9 +227,7 @@ const PreviousOrdersSection = () => {
     return filtered;
   }, [allOrders, activeTab, searchQuery]);
 
-  const handleTabChange = (tabName: TabName) => {
-    setActiveTab(tabName);
-  };
+  const handleTabChange = (tabName: TabName) => setActiveTab(tabName);
 
   // Handle sort
   const handleSort = (column: SortColumn) => {
@@ -240,10 +241,9 @@ const PreviousOrdersSection = () => {
     }
   };
 
-  // Handle row click - open payment detail bottom sheet
+  // Handle row click - navigate to order details screen
   const handleRowClick = (orderId: string) => {
-    // DEBUG: console.log(orderId);
-    openPaymentDetailSheet(orderId);
+    router.push(`/previous-orders/${orderId}`);
   };
 
   // Handle double-click - set order as active
@@ -266,40 +266,31 @@ const PreviousOrdersSection = () => {
   // Handle view details from menu
   const handleViewDetails = () => {
     if (menuOrderId) {
-      openPaymentDetailSheet(menuOrderId);
+      router.push(`/previous-orders/${menuOrderId}`);
     }
   };
 
   return (
     <View className="flex-1 px-3 pt-3">
       {/* Header: Tabs + Search + Refresh */}
-      <View className="flex-row items-center gap-x-2 mb-3">
-        <View style={{ flex: 2 }}>
-          <OrderTabs
-            onTabChange={handleTabChange}
-            counts={tabCounts}
-            activeTab={activeTab}
-          />
-        </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <OrderTabs onTabChange={handleTabChange} counts={tabCounts} activeTab={activeTab} />
 
         {/* Search Bar */}
-        <View
-          className="flex-row items-center px-3 rounded-lg"
-          style={{ flex: 1, height: 36, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
-        >
-          <Search color={colors.muted} size={13} />
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
+          <Search color={colors.muted} size={12} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search..."
+            placeholder="Search orders..."
             placeholderTextColor={colors.muted}
-            style={{ flex: 1, marginLeft: 8, color: colors.heading, fontSize: 12, height: 36 }}
+            style={{ flex: 1, marginLeft: 7, color: colors.heading, fontSize: 12, padding: 0 }}
             autoCapitalize="none"
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <X color={colors.muted} size={13} />
+              <X color={colors.muted} size={12} />
             </TouchableOpacity>
           )}
         </View>
@@ -307,7 +298,7 @@ const PreviousOrdersSection = () => {
         {/* Refresh button */}
         <TouchableOpacity
           onPress={handleRefresh}
-          style={{ width: 36, height: 36, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
+          style={{ width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}
         >
           <RefreshCw size={13} color={isRefreshing ? colors.teal : colors.label} />
         </TouchableOpacity>
@@ -321,8 +312,6 @@ const PreviousOrdersSection = () => {
           sortColumn={sortColumn}
           sortDirection={sortDirection}
           onSort={handleSort}
-          onRowClick={handleRowClick}
-          onDoubleClick={handleDoubleClick}
           onMoreClick={handleMoreClick}
           refreshing={isRefreshing}
           onRefresh={handleRefresh}

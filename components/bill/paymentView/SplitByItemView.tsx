@@ -402,8 +402,8 @@ const SplitByItemView = () => {
           <ArrowLeft size={16} color={colors.label} />
         </TouchableOpacity>
         <View>
-          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Split by Item</Text>
-          <Text style={{ fontSize: 11, color: colors.muted }}>Assign items to guests</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Split by Items</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>Assign items to each guest.</Text>
         </View>
       </View>
 
@@ -411,14 +411,14 @@ const SplitByItemView = () => {
       <View style={{ flex: 1, flexDirection: "row" }}>
 
         {/* LEFT PANEL — Guest List (30%) */}
-        <View style={{ width: "30%", borderRightWidth: 1, borderRightColor: colors.border }}>
+        <View style={{ width: "30%", backgroundColor: colors.screen, borderRightWidth: 1, borderRightColor: colors.border, paddingHorizontal: 10, paddingVertical: 10 }}>
           {/* Add Guest Button (pinned) */}
           <TouchableOpacity
             onPress={handleAddGuest}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", height: 44, marginHorizontal: 10, marginTop: 10, marginBottom: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.panel, gap: 6 }}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, marginBottom: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.teal + "40", backgroundColor: colors.teal + "15", gap: 6 }}
           >
-            <Plus size={16} color={colors.teal} />
-            <Text style={{ color: colors.teal, fontWeight: "600", fontSize: 13 }}>Add Guest</Text>
+            <Plus size={15} color={colors.teal} />
+            <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 12 }}>Add Guest</Text>
           </TouchableOpacity>
 
           {/* Guest Cards (scrollable) */}
@@ -432,38 +432,35 @@ const SplitByItemView = () => {
                   key={split.id}
                   onPress={() => setActiveSplitId(split.id)}
                   style={{
-                    flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
-                    backgroundColor: isActive ? `${colors.teal}15` : "transparent",
-                    borderLeftWidth: isActive ? 3 : 0, borderLeftColor: isActive ? colors.teal : "transparent",
+                    paddingVertical: 10, paddingHorizontal: 10, marginBottom: 8, borderRadius: 10, backgroundColor: isActive ? colors.teal + "20" : colors.panel,
+                    borderWidth: 1, borderColor: isActive ? colors.teal + "50" : colors.border,
                   }}
                 >
                   {/* Left: icon + name + item count */}
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <User size={14} color={isActive ? colors.teal : colors.label} />
-                      <Text style={{ fontWeight: "700", fontSize: 13, color: isActive ? colors.heading : colors.label }} numberOfLines={1}>
-                        {split.customerName}
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <User size={13} color={isActive ? colors.teal : colors.label} />
+                        <Text style={{ fontWeight: "700", fontSize: 12, color: colors.heading }} numberOfLines={1}>
+                          {split.customerName}
+                        </Text>
+                      </View>
+                      <Text style={{ color: colors.muted, fontSize: 10, marginLeft: 19 }}>
+                        {itemCount} {itemCount === 1 ? "item" : "items"}
                       </Text>
                     </View>
-                    <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2, marginLeft: 20 }}>
-                      {itemCount} {itemCount === 1 ? "item" : "items"}
-                    </Text>
-                  </View>
-
-                  {/* Right: total + delete */}
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.label }}>
-                      ${splitTotal.toFixed(2)}
-                    </Text>
                     {splits.length > 1 && (
                       <TouchableOpacity
                         onPress={() => removeSplit(split.id)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Trash2 size={16} color={colors.danger} />
+                        <Trash2 size={14} color={colors.danger} />
                       </TouchableOpacity>
                     )}
                   </View>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: isActive ? colors.teal : colors.heading, marginTop: 6 }}>
+                    ${splitTotal.toFixed(2)}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -475,8 +472,8 @@ const SplitByItemView = () => {
 
           {/* Paid summary banner */}
           {(activeOrder?.amount_paid ?? 0) > 0 && (
-            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, backgroundColor: `${colors.success}15`, borderBottomWidth: 1, borderBottomColor: `${colors.success}30` }}>
-              <Text style={{ fontSize: 12, color: colors.success, fontWeight: "600" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 9, backgroundColor: colors.success + "10", borderBottomWidth: 1, borderBottomColor: colors.success + "40" }}>
+              <Text style={{ fontSize: 11, color: colors.success, fontWeight: "600" }}>
                 ${(activeOrder?.amount_paid ?? 0).toFixed(2)} already paid. Showing remaining unpaid items.
               </Text>
             </View>
@@ -485,30 +482,30 @@ const SplitByItemView = () => {
           {/* Active Guest Header (pinned) */}
           {activeSplit && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <TextInput
-                  style={{ fontSize: 18, fontWeight: "700", color: colors.heading, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 4, minWidth: 150 }}
+                  style={{ fontSize: 14, fontWeight: "700", color: colors.heading, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 3, marginBottom: 4, minWidth: 150 }}
                   value={activeSplit.customerName}
                   onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
                   placeholderTextColor={colors.muted}
                 />
-                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Tap items to assign</Text>
+                <Text style={{ color: colors.muted, fontSize: 10 }}>Tap items to assign</Text>
               </View>
-              <View style={{ alignItems: "flex-end", gap: 2 }}>
+              <View style={{ alignItems: "flex-end", gap: 4 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Text style={{ color: colors.muted, fontSize: 11 }}>Subtotal:</Text>
-                  <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.subtotal.toFixed(2)}</Text>
+                  <Text style={{ color: colors.heading, fontSize: 12, fontWeight: "700" }}>${activeSplitTotals.subtotal.toFixed(2)}</Text>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Text style={{ color: colors.muted, fontSize: 11 }}>Tax:</Text>
-                  <Text style={{ color: colors.label, fontSize: 13 }}>${activeSplitTotals.tax.toFixed(2)}</Text>
+                  <Text style={{ color: colors.heading, fontSize: 12, fontWeight: "700" }}>${activeSplitTotals.tax.toFixed(2)}</Text>
                 </View>
               </View>
             </View>
           )}
 
           {/* Item List (scrollable) */}
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 8, paddingBottom: 16 }}>
             {itemData.map((item) => {
               const isSelected = item.qtyInCurrent > 0;
               const isFullyAssignedToOthers = item.qtyRemaining === 0 && item.qtyInCurrent === 0;
@@ -519,35 +516,36 @@ const SplitByItemView = () => {
                   key={item.id}
                   style={{
                     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-                    padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
-                    backgroundColor: isSelected ? `${colors.teal}15` : isFullyAssignedToOthers ? colors.screen : colors.panel,
-                    opacity: isFullyAssignedToOthers ? 0.4 : 1,
+                    paddingHorizontal: 12, paddingVertical: 10, marginHorizontal: 12, marginBottom: 8, borderRadius: 10, borderWidth: 1,
+                    backgroundColor: isSelected ? colors.teal + "10" : isFullyAssignedToOthers ? colors.screen : colors.panel,
+                    borderColor: isSelected ? colors.teal + "40" : colors.border,
+                    opacity: isFullyAssignedToOthers ? 0.5 : 1,
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: "600", color: isSelected ? colors.heading : isFullyAssignedToOthers ? colors.muted : colors.label }}>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: isSelected ? colors.teal : isFullyAssignedToOthers ? colors.muted : colors.heading }}>
                       {item.name}
                     </Text>
-                    <Text style={{ fontSize: 13, marginTop: 2, color: isSelected ? colors.teal : colors.muted }}>
+                    <Text style={{ fontSize: 11, marginTop: 2, color: colors.muted }}>
                       ${item.price.toFixed(2)}
                     </Text>
                   </View>
 
                   <View style={{ alignItems: "flex-end", gap: 4 }}>
                     {isFullyAssignedToOthers ? (
-                      <Text style={{ color: colors.muted, fontSize: 11, fontStyle: "italic" }}>Assigned to others</Text>
+                      <Text style={{ color: colors.muted, fontSize: 10 }}>Assigned</Text>
                     ) : (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                         <TouchableOpacity
                           onPress={() => handleRemoveFromGuest(item)}
                           disabled={!canRemove}
-                          style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canRemove ? colors.danger : colors.panel, opacity: canRemove ? 1 : 0.3 }}
+                          style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: canRemove ? colors.danger : colors.card, opacity: canRemove ? 1 : 0.5 }}
                         >
-                          <Minus size={14} color={canRemove ? "#fff" : colors.muted} />
+                          <Minus size={11} color={canRemove ? colors.onSolid : colors.muted} />
                         </TouchableOpacity>
 
-                        <View style={{ minWidth: 36, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.panel }}>
-                          <Text style={{ fontSize: 13, fontWeight: "700", color: isSelected ? "#000" : colors.muted }}>
+                        <View style={{ minWidth: 30, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.card }}>
+                          <Text style={{ fontSize: 10, fontWeight: "700", color: isSelected ? colors.onSolid : colors.label }}>
                             {item.qtyInCurrent}x
                           </Text>
                         </View>
@@ -555,18 +553,18 @@ const SplitByItemView = () => {
                         <TouchableOpacity
                           onPress={() => handleAddToGuest(item)}
                           disabled={!canAdd}
-                          style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: canAdd ? colors.success : colors.panel, opacity: canAdd ? 1 : 0.3 }}
+                          style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.teal, opacity: canAdd ? 1 : 0.4 }}
                         >
-                          <Plus size={14} color={canAdd ? "#fff" : colors.muted} />
+                          <Plus size={11} color={colors.onSolid} />
                         </TouchableOpacity>
                       </View>
                     )}
 
                     {item.qtyRemaining > 0 && !isFullyAssignedToOthers && (
-                      <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "600" }}>{item.qtyRemaining} left</Text>
+                      <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "600" }}>{item.qtyRemaining} left</Text>
                     )}
                     {item.qtyRemaining === 0 && isSelected && (
-                      <Text style={{ color: colors.success, fontSize: 11, fontWeight: "600" }}>✓ All assigned</Text>
+                      <Text style={{ color: colors.success, fontSize: 10, fontWeight: "600" }}>✓</Text>
                     )}
                   </View>
                 </View>
@@ -576,35 +574,35 @@ const SplitByItemView = () => {
 
           {/* Card/Cash Totals Strip */}
           {activeSplit && activeSplit.items.length > 0 && (
-            <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.panel }}>
-              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
+            <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.panel }}>
+              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.teal + "40" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <CreditCard size={15} color={colors.teal} />
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>Card</Text>
+                  <CreditCard size={14} color={colors.teal} />
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>Card</Text>
                 </View>
-                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.teal }}>${activeSplitTotals.total.toFixed(2)}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.teal }}>${activeSplitTotals.total.toFixed(2)}</Text>
               </View>
 
-              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, paddingHorizontal: 10, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: `${colors.success}40` }}>
+              <View style={{ flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.screen, borderRadius: 10, borderWidth: 1, borderColor: colors.success + "40" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Banknote size={15} color={colors.success} />
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>Cash</Text>
+                  <Banknote size={14} color={colors.success} />
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>Cash</Text>
                   {cashSavings > 0.01 && (
-                    <View style={{ marginLeft: 4, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: `${colors.success}20`, borderRadius: 10 }}>
-                      <Text style={{ color: colors.success, fontSize: 10, fontWeight: "700" }}>-${cashSavings.toFixed(2)}</Text>
+                    <View style={{ marginLeft: 4, paddingHorizontal: 5, paddingVertical: 2, backgroundColor: colors.success + "20", borderRadius: 8 }}>
+                      <Text style={{ color: colors.success, fontSize: 9, fontWeight: "700" }}>-${cashSavings.toFixed(2)}</Text>
                     </View>
                   )}
                 </View>
-                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.success }}>${activeSplitCashTotals.total.toFixed(2)}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.success }}>${activeSplitCashTotals.total.toFixed(2)}</Text>
               </View>
             </View>
           )}
 
           {/* Footer */}
           <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.border }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>Items Remaining</Text>
-              <Text style={{ fontWeight: "700", fontSize: 15, color: globalRemainingItems > 0 ? colors.danger : colors.success }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>Items Remaining</Text>
+              <Text style={{ fontWeight: "700", fontSize: 16, color: globalRemainingItems > 0 ? colors.danger : colors.success }}>
                 {globalRemainingItems}
               </Text>
             </View>
@@ -614,17 +612,17 @@ const SplitByItemView = () => {
               disabled={!isAllAssigned}
               style={{
                 flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 8, gap: 6,
-                backgroundColor: isAllAssigned ? colors.teal : colors.panel,
+                backgroundColor: isAllAssigned ? colors.teal : colors.screen,
                 borderWidth: isAllAssigned ? 0 : 1, borderColor: colors.border,
                 opacity: isAllAssigned ? 1 : 0.6,
               }}
             >
               {isAllAssigned
-                ? <Play size={15} color="#000" fill="#000" />
-                : <Circle size={15} color={colors.muted} />
+                ? <Play size={13} color={colors.onSolid} fill={colors.onSolid} />
+                : <Circle size={13} color={colors.muted} />
               }
-              <Text style={{ fontSize: 13, fontWeight: "700", color: isAllAssigned ? "#000" : colors.muted }}>
-                {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
+              <Text style={{ fontSize: 13, fontWeight: "700", color: isAllAssigned ? colors.onSolid : colors.muted }}>
+                {isAllAssigned ? "Start Payment" : "Assign All Items"}
               </Text>
             </TouchableOpacity>
           </View>

@@ -913,51 +913,57 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
       {/* Confirm Modal */}
       <Modal visible={showConfirmation} transparent animationType="fade" onRequestClose={() => setShowConfirmation(false)}>
-        <View style={{ flex: 1, backgroundColor: "#00000080", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 16, width: "100%", maxWidth: 380, borderWidth: 1, borderColor: colors.border }}>
-            <View style={{ alignItems: "center", marginBottom: 14 }}>
-              <View style={{ width: 44, height: 44, backgroundColor: colors.teal + "20", borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-                <Save size={20} color={colors.teal} />
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <View style={{ backgroundColor: colors.panel, borderRadius: 20, padding: 24, width: "100%", maxWidth: 400, borderWidth: 1, borderColor: colors.border, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10 }}>
+            {/* Header */}
+            <View style={{ alignItems: "center", marginBottom: 18 }}>
+              <View style={{ width: 56, height: 56, backgroundColor: colors.teal + "20", borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
+                <Save size={26} color={colors.teal} strokeWidth={2} />
               </View>
-              <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
-                {title.includes("Edit") ? "Save Changes?" : "Save Menu Item?"}
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.heading, marginBottom: 6 }}>
+                {title.includes("Edit") ? "Save Changes?" : "Add Menu Item?"}
               </Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, textAlign: "center" }}>
-                {title.includes("Edit") ? `Update "${formData.name}"?` : `Add "${formData.name || "this item"}" to the menu?`}
+              <Text style={{ fontSize: 13, color: colors.label, textAlign: "center", lineHeight: 19 }}>
+                {title.includes("Edit") ? `Update "${formData.name}"` : `Add "${formData.name || "this item"}"`} {title.includes("Edit") ? "with your changes" : "to the menu"}
               </Text>
             </View>
 
-            <View style={{ backgroundColor: colors.screen, borderRadius: 10, padding: 10, marginBottom: 14, flexDirection: "row", alignItems: "center", gap: 10 }}>
+            {/* Item Preview */}
+            <View style={{ backgroundColor: colors.screen, borderRadius: 12, padding: 12, marginBottom: 18, flexDirection: "row", alignItems: "center", gap: 12 }}>
               {getImageSource() ? (
-                <Image source={getImageSource()} style={{ width: 44, height: 44, borderRadius: 8 }} resizeMode="cover" />
+                <Image source={getImageSource()} style={{ width: 52, height: 52, borderRadius: 10 }} resizeMode="cover" />
               ) : (
-                <View style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: colors.panel, alignItems: "center", justifyContent: "center" }}>
-                  <Utensils size={18} color={colors.muted} />
+                <View style={{ width: 52, height: 52, borderRadius: 10, backgroundColor: colors.card, alignItems: "center", justifyContent: "center" }}>
+                  <Utensils size={20} color={colors.muted} />
                 </View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{formData.name || "Item Name"}</Text>
-                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-                  {formData.categories.length > 0 ? formData.categories.join(", ") : "No categories"} · ${formData.price || "0.00"}
+                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>{formData.name || "Item Name"}</Text>
+                <Text style={{ fontSize: 12, color: colors.label, marginTop: 4 }}>
+                  {formData.categories.length > 0 ? formData.categories.join(", ") : "No categories"}
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal, marginTop: 4 }}>
+                  ${formData.price || "0.00"}
                 </Text>
               </View>
             </View>
 
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TouchableOpacity
-                onPress={() => setShowConfirmation(false)}
-                style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
-              >
-                <Text style={{ fontSize: 13, color: colors.label, fontWeight: "500" }}>Cancel</Text>
-              </TouchableOpacity>
+            {/* Action Buttons */}
+            <View style={{ flexDirection: "column", gap: 10 }}>
               <TouchableOpacity
                 onPress={confirmSave}
                 disabled={isSaving}
-                style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
+                style={{ width: "100%", backgroundColor: colors.teal, borderRadius: 12, paddingVertical: 13, alignItems: "center", shadowColor: colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4, opacity: isSaving ? 0.7 : 1 }}
               >
-                <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>
+                <Text style={{ fontSize: 14, color: colors.onSolid, fontWeight: "700" }}>
                   {isSaving ? "Saving..." : submitButtonLabel}
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowConfirmation(false)}
+                style={{ width: "100%", backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 13, alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 14, color: colors.label, fontWeight: "700" }}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>

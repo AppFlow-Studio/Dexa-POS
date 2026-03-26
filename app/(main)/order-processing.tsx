@@ -257,7 +257,7 @@ const OrderProcessing = () => {
           />
         ) : (
           // BillSection skeleton: matches the 380px sidebar layout
-          <View className="w-[380px] bg-screen p-4">
+          <View className="w-[300px] bg-screen p-4">
             <View className="h-10 w-48 bg-panel rounded-lg mb-4" />
             <View className="h-6 w-32 bg-panel rounded-md mb-3" />
             <View className="h-6 w-64 bg-panel rounded-md mb-3" />

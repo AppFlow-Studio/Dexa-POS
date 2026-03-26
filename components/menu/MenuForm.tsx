@@ -724,79 +724,85 @@ const MenuForm: React.FC<MenuFormProps> = ({
         <View
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.6)",
+            backgroundColor: "rgba(0,0,0,0.5)",
             alignItems: "center",
             justifyContent: "center",
-            padding: 20,
+            padding: 24,
           }}
         >
           <View
             style={{
               backgroundColor: colors.panel,
-              borderRadius: 16,
-              padding: 20,
+              borderRadius: 20,
+              padding: 24,
               width: "100%",
-              maxWidth: 380,
+              maxWidth: 400,
               borderWidth: 1,
               borderColor: colors.border,
-              gap: 16,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.3,
+              shadowRadius: 16,
+              elevation: 10,
             }}
           >
-            <View style={{ alignItems: "center", gap: 10 }}>
+            <View style={{ alignItems: "center", marginBottom: 18 }}>
               <View
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
+                  width: 56,
+                  height: 56,
+                  borderRadius: 14,
                   backgroundColor: colors.teal + "20",
-                  borderWidth: 1,
-                  borderColor: colors.teal + "40",
                   alignItems: "center",
                   justifyContent: "center",
+                  marginBottom: 14,
                 }}
               >
-                <Save size={20} color={colors.teal} />
+                <Save size={26} color={colors.teal} strokeWidth={2} />
               </View>
-              <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading, textAlign: "center" }}>
-                {initialData ? "Update Menu?" : "Create Menu?"}
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.heading, marginBottom: 6, textAlign: "center" }}>
+                {initialData ? "Save Changes?" : "Create Menu?"}
               </Text>
-              <Text style={{ fontSize: 12, color: colors.label, textAlign: "center" }}>
-                {initialData ? "Save changes to" : "Create"} "{name}" with {selectedCategories.length} {selectedCategories.length === 1 ? "category" : "categories"}?
+              <Text style={{ fontSize: 13, color: colors.label, textAlign: "center", lineHeight: 19 }}>
+                {initialData ? "Save changes to" : "Create"} "{name}" with {selectedCategories.length} {selectedCategories.length === 1 ? "category" : "categories"}
               </Text>
             </View>
 
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity
-                onPress={() => setShowConfirmation(false)}
-                style={{
-                  flex: 1,
-                  backgroundColor: "transparent",
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 8,
-                  paddingVertical: 10,
-                  alignItems: "center",
-                }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>Cancel</Text>
-              </TouchableOpacity>
+            <View style={{ flexDirection: "column", gap: 10 }}>
               <TouchableOpacity
                 onPress={confirmSave}
                 disabled={isSaving}
                 style={{
-                  flex: 1,
-                  backgroundColor: colors.teal + "20",
-                  borderWidth: 1,
-                  borderColor: colors.teal + "50",
-                  borderRadius: 8,
-                  paddingVertical: 10,
+                  width: "100%",
+                  backgroundColor: colors.teal,
+                  borderRadius: 12,
+                  paddingVertical: 13,
                   alignItems: "center",
+                  shadowColor: colors.teal,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 8,
+                  elevation: 4,
                   opacity: isSaving ? 0.7 : 1,
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
+                <Text style={{ fontSize: 14, color: colors.onSolid, fontWeight: "700" }}>
                   {isSaving ? "Saving..." : initialData ? "Save" : "Create"}
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowConfirmation(false)}
+                style={{
+                  width: "100%",
+                  backgroundColor: colors.card,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  paddingVertical: 13,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ fontSize: 14, color: colors.label, fontWeight: "700" }}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
