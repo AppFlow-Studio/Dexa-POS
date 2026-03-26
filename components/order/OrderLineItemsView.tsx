@@ -77,7 +77,7 @@ const OrderLineItemsView = ({ onClose, orderId, onMarkDone, onRetrieve, onRefund
         overflow: "hidden",
         borderWidth: 1,
         borderColor: colors.border,
-        backgroundColor: colors.panel,
+        backgroundColor: colors.screen,
         width: "100%",
         maxWidth: 500,
         alignSelf: "center",

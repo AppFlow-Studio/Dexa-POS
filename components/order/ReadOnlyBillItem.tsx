@@ -143,7 +143,6 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({ item, isLast }) => 
           style={{
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
-            borderStyle: "dashed",
           }}
         />
       )}
