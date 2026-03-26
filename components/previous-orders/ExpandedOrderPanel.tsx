@@ -1,6 +1,7 @@
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import {
+  Banknote,
   Clock,
   CreditCard,
   DollarSign,
@@ -73,24 +74,26 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
 
   return (
     <View
-      className="bg-screen border-t border-border px-4 py-3"
-      style={{ borderLeftWidth: 3, borderLeftColor: colors.teal }}
+      className="border-t px-4 py-3"
+      style={{ backgroundColor: colors.teal + "05", borderTopColor: colors.border, borderLeftWidth: 4, borderLeftColor: colors.teal }}
     >
       <View className="flex-row gap-6">
         {/* Column 1: Items (~50%) */}
         <View style={{ flex: 5 }}>
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: "600",
-              color: colors.muted,
-              marginBottom: 8,
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-            }}
-          >
-            Items
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <View style={{ width: 3, height: 16, backgroundColor: colors.teal, borderRadius: 1.5 }} />
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: colors.teal,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Items
+            </Text>
+          </View>
           {order.items.slice(0, 3).map((item, idx) => (
             <View
               key={item.id || idx}
@@ -120,18 +123,20 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
 
         {/* Column 2: Payment (~28%) */}
         <View style={{ flex: 2.8 }}>
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: "600",
-              color: colors.muted,
-              marginBottom: 8,
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-            }}
-          >
-            Payment
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <View style={{ width: 3, height: 16, backgroundColor: colors.teal, borderRadius: 1.5 }} />
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: colors.teal,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Payment
+            </Text>
+          </View>
           <PaymentLine label="Subtotal" amount={paymentSummary.subtotal} />
           <PaymentLine label="Tax" amount={paymentSummary.tax} />
           {paymentSummary.tip > 0 && (
@@ -156,11 +161,13 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
             </Text>
           </View>
           {paymentSummary.paymentMethodLabel ? (
-            <View className="flex-row items-center gap-1.5 mt-2">
-              {!paymentSummary.isCashPayment && (
-                <CreditCard color={colors.muted} size={13} />
+            <View className="flex-row items-center gap-2 mt-3">
+              {paymentSummary.isCashPayment ? (
+                <Banknote color={colors.teal} size={14} />
+              ) : (
+                <CreditCard color={colors.teal} size={14} />
               )}
-              <Text style={{ fontSize: 12, color: colors.muted }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
                 {paymentSummary.paymentMethodLabel}
               </Text>
             </View>
@@ -172,18 +179,20 @@ const ExpandedOrderPanel: React.FC<ExpandedOrderPanelProps> = ({
 
         {/* Column 3: Actions (~22%) */}
         <View style={{ flex: 2.2 }}>
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: "600",
-              color: colors.muted,
-              marginBottom: 8,
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-            }}
-          >
-            Actions
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+            <View style={{ width: 3, height: 16, backgroundColor: colors.teal, borderRadius: 1.5 }} />
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: "700",
+                color: colors.teal,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Actions
+            </Text>
+          </View>
           <View className="gap-2">
             {onContinue && (
               <QuickActionButton
@@ -255,22 +264,22 @@ const QuickActionButton = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    activeOpacity={0.7}
+    activeOpacity={0.8}
     style={{
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 8,
+      gap: 6,
       borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: colors.teal + "15",
-      borderWidth: 1,
-      borderColor: colors.teal + "30",
+      paddingHorizontal: 10,
+      paddingVertical: 9,
+      backgroundColor: colors.teal + "20",
+      borderWidth: 1.5,
+      borderColor: colors.teal + "40",
     }}
   >
     {icon}
-    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>{label}</Text>
+    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>{label}</Text>
   </TouchableOpacity>
 );
 
