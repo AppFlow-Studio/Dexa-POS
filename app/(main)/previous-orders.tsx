@@ -132,13 +132,11 @@ const FilterPill = ({
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: 999,
-      borderWidth: 1,
-      backgroundColor: isActive ? colors.teal : colors.screen,
-      borderColor: isActive ? colors.teal : colors.border,
+      backgroundColor: isActive ? colors.teal + "20" : "transparent",
     }}
   >
-    {icon}
-    <Text style={{ fontSize: 12, fontWeight: "600", color: isActive ? colors.onSolid : colors.label }}>
+    {icon && typeof icon === "string" ? icon : <View>{icon}</View>}
+    <Text style={{ fontSize: 12, fontWeight: isActive ? "700" : "600", color: isActive ? colors.heading : colors.label }}>
       {label}
     </Text>
     {count != null && count > 0 && (
@@ -148,10 +146,10 @@ const FilterPill = ({
           paddingHorizontal: 6,
           minWidth: 20,
           alignItems: "center",
-          backgroundColor: isActive ? colors.onSolid + "30" : colors.card,
+          backgroundColor: isActive ? colors.teal + "30" : colors.teal + "15",
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: "700", color: isActive ? colors.onSolid : colors.label }}>
+        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
           {count}
         </Text>
       </View>
@@ -609,43 +607,43 @@ const PreviousOrdersScreen = () => {
               label="Needs Attention"
               isActive={activeFilters.has("needs-attention")}
               onPress={() => toggleFilter("needs-attention")}
-              icon={<AlertTriangle color={activeFilters.has("needs-attention") ? colors.onSolid : colors.warning} size={13} />}
+              icon={<AlertTriangle color={colors.teal} size={13} />}
               count={filterCounts.needsAttention}
             />
             <FilterPill
               label="Refunded"
               isActive={activeFilters.has("refunded")}
               onPress={() => toggleFilter("refunded")}
-              icon={<RotateCcw color={activeFilters.has("refunded") ? colors.onSolid : colors.danger} size={13} />}
+              icon={<RotateCcw color={colors.teal} size={13} />}
               count={filterCounts.refunded}
+            />
+            <FilterPill
+              label="Online"
+              isActive={activeFilters.has("online")}
+              onPress={() => toggleFilter("online")}
+              icon={<Globe color={colors.teal} size={13} />}
+              count={filterCounts.online}
             />
             <FilterPill
               label="Dine-In"
               isActive={activeFilters.has("dine-in")}
               onPress={() => toggleFilter("dine-in")}
-              icon={<Utensils color={activeFilters.has("dine-in") ? colors.onSolid : colors.teal} size={13} />}
+              icon={<Utensils color={colors.teal} size={13} />}
               count={filterCounts.dineIn}
             />
             <FilterPill
               label="Takeaway"
               isActive={activeFilters.has("takeaway")}
               onPress={() => toggleFilter("takeaway")}
-              icon={<ShoppingBag color={activeFilters.has("takeaway") ? colors.onSolid : colors.warning} size={13} />}
+              icon={<ShoppingBag color={colors.teal} size={13} />}
               count={filterCounts.takeaway}
             />
             <FilterPill
               label="Delivery"
               isActive={activeFilters.has("delivery")}
               onPress={() => toggleFilter("delivery")}
-              icon={<Truck color={activeFilters.has("delivery") ? colors.onSolid : colors.info} size={13} />}
+              icon={<Truck color={colors.teal} size={13} />}
               count={filterCounts.delivery}
-            />
-            <FilterPill
-              label="Online"
-              isActive={activeFilters.has("online")}
-              onPress={() => toggleFilter("online")}
-              icon={<Globe color={activeFilters.has("online") ? colors.onSolid : colors.teal} size={13} />}
-              count={filterCounts.online}
             />
           </ScrollView>
 
