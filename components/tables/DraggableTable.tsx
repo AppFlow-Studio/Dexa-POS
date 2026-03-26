@@ -295,6 +295,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     return () => unregisterTablePosition(table.id)
   }, [table.id])
 
+  const GRID_SIZE = 20
+
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
     .activateAfterLongPress(DRAG_HOLD_MS)
@@ -306,12 +308,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       dragContext.value = { x: translateX.value, y: translateY.value }
     })
     .onUpdate(event => {
-      translateX.value =
-        dragContext.value.x + event.translationX / canvasScale.value
-      translateY.value =
-        dragContext.value.y + event.translationY / canvasScale.value
+      // Snap to grid while dragging — object locks to nearest cell as you move
+      const rawX = dragContext.value.x + event.translationX / canvasScale.value
+      const rawY = dragContext.value.y + event.translationY / canvasScale.value
+      translateX.value = Math.round(rawX / GRID_SIZE) * GRID_SIZE
+      translateY.value = Math.round(rawY / GRID_SIZE) * GRID_SIZE
     })
     .onEnd(() => {
+      // Already snapped — persist final position
       runOnJS(updateTablePosition)(
         table.id,
         translateX.value,

@@ -22,7 +22,7 @@ import Animated, {
   useSharedValue,
   withTiming
 } from 'react-native-reanimated'
-import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg'
+import Svg, { Defs, Line as SvgLine, Pattern, Rect } from 'react-native-svg'
 
 const SHAPE_SIZE = 100
 const FINGER_Y_OFFSET = 0
@@ -30,11 +30,17 @@ const FINGER_Y_OFFSET = 0
 const GridPattern = () => (
   <Svg style={StyleSheet.absoluteFill} pointerEvents='none'>
     <Defs>
-      <Pattern id='grid' width='40' height='40' patternUnits='userSpaceOnUse'>
-        <Circle cx='1' cy='1' r='1.5' fill={colors.border} />
+      <Pattern id='grid' width='20' height='20' patternUnits='userSpaceOnUse'>
+        <SvgLine x1='20' y1='0' x2='20' y2='20' stroke={colors.border} strokeWidth='0.5' opacity='0.5' />
+        <SvgLine x1='0' y1='20' x2='20' y2='20' stroke={colors.border} strokeWidth='0.5' opacity='0.5' />
+      </Pattern>
+      <Pattern id='grid-major' width='100' height='100' patternUnits='userSpaceOnUse'>
+        <SvgLine x1='100' y1='0' x2='100' y2='100' stroke={colors.border} strokeWidth='1' opacity='0.9' />
+        <SvgLine x1='0' y1='100' x2='100' y2='100' stroke={colors.border} strokeWidth='1' opacity='0.9' />
       </Pattern>
     </Defs>
     <Rect width='100%' height='100%' fill='url(#grid)' />
+    <Rect width='100%' height='100%' fill='url(#grid-major)' />
   </Svg>
 )
 

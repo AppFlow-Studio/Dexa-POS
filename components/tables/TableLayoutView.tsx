@@ -20,9 +20,27 @@ import Animated, {
   withSpring,
   withTiming
 } from 'react-native-reanimated'
-import Svg, { Line, Rect as SvgRect, Text as SvgText } from 'react-native-svg'
+import Svg, { Line, Path as SvgPath, Rect as SvgRect, Text as SvgText } from 'react-native-svg'
 import DraggableTable from './DraggableTable'
 import TableLayoutSkeleton from './TableLayoutSkeleton'
+
+// Precomputed grid paths — built once at module load, not on every render
+const GRID_W = 4000
+const GRID_H = 3000
+const GRID_MINOR = 20
+const GRID_MAJOR = 100
+const GRID_MINOR_PATH = (() => {
+  let d = ''
+  for (let x = GRID_MINOR; x < GRID_W; x += GRID_MINOR) d += `M${x},0 L${x},${GRID_H} `
+  for (let y = GRID_MINOR; y < GRID_H; y += GRID_MINOR) d += `M0,${y} L${GRID_W},${y} `
+  return d
+})()
+const GRID_MAJOR_PATH = (() => {
+  let d = ''
+  for (let x = 0; x <= GRID_W; x += GRID_MAJOR) d += `M${x},0 L${x},${GRID_H} `
+  for (let y = 0; y <= GRID_H; y += GRID_MAJOR) d += `M0,${y} L${GRID_W},${y} `
+  return d
+})()
 
 interface TableLayoutViewProps {
   tables: FloorPlanObject[]
@@ -318,6 +336,16 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
               }
             ]}
           >
+            {/* Grid overlay — only in edit mode */}
+            {isEditMode && (
+              <View style={{ position: 'absolute', top: 0, left: 0, width: GRID_W, height: GRID_H }} pointerEvents='none'>
+                <Svg width={GRID_W} height={GRID_H}>
+                  <SvgPath d={GRID_MINOR_PATH} stroke={colors.border} strokeWidth={0.5} strokeLinecap='square' opacity={0.5} fill='none' />
+                  <SvgPath d={GRID_MAJOR_PATH} stroke={colors.border} strokeWidth={1} strokeLinecap='square' opacity={0.9} fill='none' />
+                </Svg>
+              </View>
+            )}
+
             {/* Section overlay wash + merge connection lines */}
             {(sectionOverlays.length > 0 || showConnections) && (
               <Svg style={StyleSheet.absoluteFill} pointerEvents='none'>
