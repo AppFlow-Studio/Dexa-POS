@@ -1,71 +1,117 @@
-import { PreviousOrder } from "@/lib/types";
-import { colors } from "@/lib/theme";
-import React, { useMemo } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { PreviousOrder } from '@/lib/types'
+import React, { useMemo } from 'react'
+import { ScrollView, Text, View } from 'react-native'
 
 interface RefundsTabProps {
-  order: PreviousOrder;
+  order: PreviousOrder
 }
 
-const reversalTypeLabels: Record<string, { label: string; color: string; bg: string }> = {
-  void: { label: "VOIDED", color: "text-red-400", bg: "bg-red-900/50" },
-  refund: { label: "REFUNDED", color: "text-orange-400", bg: "bg-orange-900/50" },
-  partial_refund: { label: "PARTIAL REFUND", color: "text-yellow-400", bg: "bg-yellow-900/50" },
-  item_return: { label: "ITEM RETURN", color: "text-blue-400", bg: "bg-blue-900/50" },
-};
+const reversalTypeLabels: Record<
+  string,
+  { label: string; color: string; backgroundColor: string }
+> = {
+  void: {
+    label: 'VOIDED',
+    color: colors.danger,
+    backgroundColor: colors.teal + '20'
+  },
+  refund: {
+    label: 'REFUNDED',
+    color: colors.danger,
+    backgroundColor: colors.teal + '20'
+  },
+  partial_refund: {
+    label: 'PARTIAL REFUND',
+    color: colors.teal,
+    backgroundColor: colors.teal + '20'
+  },
+  item_return: {
+    label: 'ITEM RETURN',
+    color: colors.teal,
+    backgroundColor: colors.teal + '20'
+  }
+}
 
-const statusColors: Record<string, { text: string; bg: string }> = {
-  pending: { text: "text-yellow-400", bg: "bg-yellow-900/40" },
-  completed: { text: "text-green-400", bg: "bg-green-900/40" },
-  failed: { text: "text-red-400", bg: "bg-red-900/40" },
-};
+const statusStyles: Record<string, { color: string; backgroundColor: string }> =
+  {
+    pending: { color: colors.teal, backgroundColor: colors.teal + '15' },
+    completed: { color: colors.teal, backgroundColor: colors.teal + '20' },
+    failed: { color: colors.teal, backgroundColor: colors.teal + '20' }
+  }
 
 const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
-  const reversals = order.reversals || [];
-  const refundItems = order.order_refund_items || [];
+  const reversals = order.reversals || []
+  const refundItems = order.order_refund_items || []
 
   const refundSummary = useMemo(() => {
-    const originalTotal = order.total;
-    const totalRefunded = order.refundedAmount || 0;
-    const remaining = Math.max(0, originalTotal - totalRefunded);
-    return { originalTotal, totalRefunded, remaining };
-  }, [order]);
+    const originalTotal = order.total
+    const totalRefunded = order.refundedAmount || 0
+    const remaining = Math.max(0, originalTotal - totalRefunded)
+    return { originalTotal, totalRefunded, remaining }
+  }, [order])
 
-  const hasNoRefunds = reversals.length === 0 && refundItems.length === 0;
+  const hasNoRefunds = reversals.length === 0 && refundItems.length === 0
 
   if (hasNoRefunds) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
-        <Text className="text-gray-500 text-lg">No refunds</Text>
-        <Text className="text-gray-600 text-sm mt-1">
+      <View className='flex-1 items-center justify-center py-12'>
+        <Text style={{ fontSize: 18, color: colors.muted }}>No refunds</Text>
+        <Text style={{ fontSize: 14, color: colors.muted, marginTop: 4 }}>
           This order has no refund history
         </Text>
       </View>
-    );
+    )
   }
 
   return (
     <ScrollView
-      className="flex-1"
+      className='flex-1'
       contentContainerStyle={{ padding: 16 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Refund Summary Card */}
-      <View className="rounded-xl p-4 mb-4 border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-        <Text className="text-base font-bold text-white mb-3">
+      <View
+        style={{
+          backgroundColor: colors.panel,
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 16,
+          borderWidth: 1,
+          borderColor: colors.teal + '30'
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 15,
+            fontWeight: '700',
+            color: colors.heading,
+            marginBottom: 12
+          }}
+        >
           Refund Summary
         </Text>
-        <SummaryRow label="Original Total" value={refundSummary.originalTotal} />
         <SummaryRow
-          label="Total Refunded"
-          value={refundSummary.totalRefunded}
-          color="text-red-400"
+          label='Original Total'
+          value={refundSummary.originalTotal}
         />
-        <View className="border-t border-gray-700 mt-2 pt-2">
+        <SummaryRow
+          label='Total Refunded'
+          value={refundSummary.totalRefunded}
+          color={colors.danger}
+        />
+        <View
+          style={{
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            marginTop: 8,
+            paddingTop: 8
+          }}
+        >
           <SummaryRow
-            label="Remaining Refundable"
+            label='Remaining Refundable'
             value={refundSummary.remaining}
-            color="text-green-400"
+            color={colors.teal}
             bold
           />
         </View>
@@ -73,135 +119,211 @@ const RefundsTab: React.FC<RefundsTabProps> = ({ order }) => {
 
       {/* Reversal History */}
       {reversals.length > 0 && (
-        <View className="mb-4">
-          <Text className="text-base font-bold text-white mb-3">
+        <View style={{ marginBottom: 16 }}>
+          <Text
+            style={{
+              fontSize: 15,
+              fontWeight: '700',
+              color: colors.heading,
+              marginBottom: 12
+            }}
+          >
             Reversal History
           </Text>
-          {reversals.map((reversal) => {
+          {reversals.map(reversal => {
             const typeConfig =
               reversalTypeLabels[reversal.reversal_type] ||
-              reversalTypeLabels.refund;
+              reversalTypeLabels.refund
             const statusStyle =
-              statusColors[reversal.status] || statusColors.pending;
+              statusStyles[reversal.status] || statusStyles.pending
 
             return (
               <View
                 key={reversal.id}
-                className="rounded-xl p-4 mb-2.5 border" style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                style={{
+                  backgroundColor: colors.panel,
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 10,
+                  borderWidth: 1,
+                  borderColor: colors.teal + '30'
+                }}
               >
-                <View className="flex-row items-center justify-between mb-2">
+                <View className='flex-row items-center justify-between mb-2'>
                   {/* Type badge */}
-                  <View className={`px-2 py-0.5 rounded ${typeConfig.bg}`}>
+                  <View
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 4,
+                      backgroundColor: typeConfig.backgroundColor
+                    }}
+                  >
                     <Text
-                      className={`text-xs font-bold ${typeConfig.color}`}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: typeConfig.color
+                      }}
                     >
                       {typeConfig.label}
                     </Text>
                   </View>
 
                   {/* Amount */}
-                  <Text className="text-base font-bold text-red-400">
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      fontWeight: '700',
+                      color: colors.teal
+                    }}
+                  >
                     -${reversal.amount.toFixed(2)}
                   </Text>
                 </View>
 
                 {/* Reason */}
                 {reversal.reason_description && (
-                  <Text className="text-sm text-gray-400 mb-2">
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      color: colors.label,
+                      marginBottom: 8
+                    }}
+                  >
                     {reversal.reason_description}
                   </Text>
                 )}
 
                 {/* Timestamps */}
-                <View className="flex-row items-center gap-3 mb-1.5">
-                  <Text className="text-xs text-gray-500">
-                    Requested:{" "}
+                <View className='flex-row items-center gap-3 mb-1.5'>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                    Requested:{' '}
                     {new Date(reversal.requested_at).toLocaleString()}
                   </Text>
                 </View>
                 {reversal.completed_at && (
-                  <Text className="text-xs text-gray-500">
-                    Completed:{" "}
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                    Completed:{' '}
                     {new Date(reversal.completed_at).toLocaleString()}
                   </Text>
                 )}
 
                 {/* Status badge */}
-                <View className="flex-row justify-end mt-2">
+                <View className='flex-row justify-end mt-2'>
                   <View
-                    className={`px-2 py-0.5 rounded-full ${statusStyle.bg}`}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 999,
+                      backgroundColor: statusStyle.backgroundColor
+                    }}
                   >
                     <Text
-                      className={`text-xs font-semibold capitalize ${statusStyle.text}`}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '600',
+                        textTransform: 'capitalize',
+                        color: statusStyle.color
+                      }}
                     >
                       {reversal.status}
                     </Text>
                   </View>
                 </View>
               </View>
-            );
+            )
           })}
         </View>
       )}
 
       {/* Per-Item Refund Status */}
       {refundItems.length > 0 && (
-        <View className="mb-4">
-          <Text className="text-base font-bold text-white mb-3">
+        <View style={{ marginBottom: 16 }}>
+          <Text
+            style={{
+              fontSize: 15,
+              fontWeight: '700',
+              color: colors.heading,
+              marginBottom: 12
+            }}
+          >
             Per-Item Refund Status
           </Text>
-          {refundItems.map((refundItem) => {
+          {refundItems.map(refundItem => {
             const matchedItem = order.items.find(
-              (i) => i.db_order_item_id === refundItem.order_item_id,
-            );
+              i => i.db_order_item_id === refundItem.order_item_id
+            )
             return (
               <View
                 key={refundItem.id}
-                className="rounded-xl p-3 mb-2 border flex-row items-center justify-between" style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                style={{
+                  backgroundColor: colors.panel,
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 8,
+                  borderWidth: 1,
+                  borderColor: colors.teal + '30',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
               >
-                <View className="flex-1 mr-3">
-                  <Text className="text-sm font-semibold text-white">
-                    {matchedItem?.name || "Unknown Item"}
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: '600',
+                      color: colors.heading
+                    }}
+                  >
+                    {matchedItem?.name || 'Unknown Item'}
                   </Text>
-                  <Text className="text-xs text-gray-400 mt-0.5">
+                  <Text
+                    style={{ fontSize: 12, color: colors.label, marginTop: 2 }}
+                  >
                     Qty Refunded: {refundItem.quantity_refunded}
                   </Text>
                 </View>
-                <Text className="text-sm font-semibold text-red-400">
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: colors.danger
+                  }}
+                >
                   -${refundItem.total_refunded.toFixed(2)}
                 </Text>
               </View>
-            );
+            )
           })}
         </View>
       )}
 
-      <View className="h-4" />
+      <View className='h-4' />
     </ScrollView>
-  );
-};
+  )
+}
 
 const SummaryRow = ({
   label,
   value,
-  color = "text-gray-300",
-  bold = false,
+  color = colors.label,
+  bold = false
 }: {
-  label: string;
-  value: number;
-  color?: string;
-  bold?: boolean;
+  label: string
+  value: number
+  color?: string
+  bold?: boolean
 }) => (
-  <View className="flex-row justify-between py-1">
-    <Text className={`text-sm ${color} ${bold ? "font-bold" : ""}`}>
+  <View className='flex-row justify-between py-1'>
+    <Text style={{ fontSize: 14, color, fontWeight: bold ? '700' : '400' }}>
       {label}
     </Text>
-    <Text
-      className={`text-sm font-semibold ${color} ${bold ? "font-bold" : ""}`}
-    >
+    <Text style={{ fontSize: 14, color, fontWeight: bold ? '700' : '600' }}>
       ${value.toFixed(2)}
     </Text>
   </View>
-);
+)
 
-export default React.memo(RefundsTab);
+export default React.memo(RefundsTab)

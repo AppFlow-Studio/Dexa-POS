@@ -1,105 +1,188 @@
-import { colors } from "@/lib/theme";
-import { OrderProfile } from "@/lib/types";
-import { Check, CreditCard, DollarSign, X } from "lucide-react-native";
-import React, { useMemo } from "react";
-import { Text, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { OrderProfile } from '@/lib/types'
+import { CreditCard, DollarSign, X } from 'lucide-react-native'
+import React, { useMemo } from 'react'
+import { Text, View } from 'react-native'
 
 interface PaymentTimelineSectionProps {
-  order: OrderProfile;
+  order: OrderProfile
 }
 
 interface Payment {
-  id?: string;
-  amount: number;
-  method: string;
-  cardBrand?: string;
-  last4?: string;
-  tip_amount?: number;
-  timestamp?: string;
-  isVoided?: boolean;
-  voidReason?: string;
+  id?: string
+  amount: number
+  method: string
+  cardBrand?: string
+  last4?: string
+  tip_amount?: number
+  timestamp?: string
+  isVoided?: boolean
+  voidReason?: string
 }
 
-const PaymentCard: React.FC<{ payment: Payment; index: number; isLast: boolean }> = React.memo(({
-  payment,
-  index,
-  isLast,
-}) => {
-  const isVoided = payment.isVoided || false;
-  const paymentMethod = payment.method || "Cash";
-  const totalAmount = (payment.amount || 0) + (payment.tip_amount || 0);
+const PaymentCard: React.FC<{
+  payment: Payment
+  index: number
+  isLast: boolean
+}> = React.memo(({ payment, index, isLast }) => {
+  const isVoided = payment.isVoided || false
+  const paymentMethod = payment.method || 'Cash'
+  const totalAmount = (payment.amount || 0) + (payment.tip_amount || 0)
 
   // Format timestamp
   const formattedTime = payment.timestamp
-    ? new Date(payment.timestamp).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+    ? new Date(payment.timestamp).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       })
-    : "Unknown time";
+    : 'Unknown time'
 
   return (
-    <View className="flex-row">
+    <View style={{ flexDirection: 'row' }}>
       {/* Timeline indicator */}
-      <View className="items-center mr-4">
+      <View style={{ alignItems: 'center', marginRight: 12 }}>
         <View
-          className={`w-10 h-10 rounded-full items-center justify-center ${
-            isVoided ? "bg-red-600/20 border-2 border-red-500" : "bg-green-600/20 border-2 border-green-500"
-          }`}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isVoided
+              ? colors.danger + '20'
+              : colors.teal + '15',
+            borderWidth: 1,
+            borderColor: isVoided ? colors.danger + '50' : colors.teal + '40'
+          }}
         >
-          <Text>
+          <View>
             {isVoided ? (
-              <X color={colors.danger} size={20} />
-            ) : paymentMethod.toLowerCase().includes("card") ? (
-              <CreditCard color={colors.success} size={20} />
+              <X color={colors.danger} size={16} />
+            ) : paymentMethod.toLowerCase().includes('card') ? (
+              <CreditCard color={colors.teal} size={16} />
             ) : (
-              <DollarSign color={colors.success} size={20} />
+              <DollarSign color={colors.teal} size={16} />
             )}
-          </Text>
+          </View>
         </View>
-        {!isLast && <View className="w-0.5 h-full bg-gray-600 mt-2" />}
+        {!isLast && (
+          <View
+            style={{
+              width: 2,
+              height: '100%',
+              backgroundColor: colors.border,
+              marginTop: 6
+            }}
+          />
+        )}
       </View>
 
       {/* Payment details */}
-      <View className="flex-1 mb-6">
+      <View style={{ flex: 1, marginBottom: 10 }}>
         <View
-          className={`bg-panel rounded-lg border p-4 ${
-            isVoided ? "border-red-700 opacity-60" : "border-border"
-          }`}
+          style={{
+            backgroundColor: colors.panel,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.teal + '30',
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            opacity: 1
+          }}
         >
           {/* Header */}
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-row items-center gap-2">
-              <Text className={`text-lg font-bold ${isVoided ? "line-through text-gray-500" : "text-white"}`}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8
+            }}
+          >
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: '700',
+                  color: isVoided ? colors.muted : colors.heading,
+                  textDecorationLine: isVoided ? 'line-through' : 'none'
+                }}
+              >
                 Payment #{index + 1}
               </Text>
               {isVoided && (
-                <View className="bg-red-600/20 border border-red-500 px-2 py-0.5 rounded">
-                  <Text className="text-red-400 font-bold text-xs">VOIDED</Text>
+                <View
+                  style={{
+                    backgroundColor: colors.danger + '20',
+                    borderWidth: 1,
+                    borderColor: colors.danger + '50',
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    borderRadius: 20
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.danger,
+                      fontWeight: '600',
+                      fontSize: 11
+                    }}
+                  >
+                    VOIDED
+                  </Text>
                 </View>
               )}
             </View>
           </View>
 
           {/* Payment method and amount */}
-          <View className="flex-row items-center justify-between mb-2">
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8
+            }}
+          >
             <View>
-              <Text className={`text-sm ${isVoided ? "text-gray-600" : "text-gray-400"}`}>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: isVoided ? colors.muted : colors.label
+                }}
+              >
                 {paymentMethod}
-                {payment.cardBrand && payment.last4 && ` - ${payment.cardBrand} ****${payment.last4}`}
+                {payment.cardBrand &&
+                  payment.last4 &&
+                  ` - ${payment.cardBrand} ****${payment.last4}`}
               </Text>
-              <Text className={`text-xs ${isVoided ? "text-gray-700" : "text-gray-500"} mt-1`}>
+              <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
                 {formattedTime}
               </Text>
             </View>
-            <View className="items-end">
-              <Text className={`text-xl font-bold ${isVoided ? "line-through text-gray-600" : "text-white"}`}>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: '700',
+                  color: isVoided ? colors.muted : colors.heading,
+                  textDecorationLine: isVoided ? 'line-through' : 'none'
+                }}
+              >
                 ${totalAmount.toFixed(2)}
               </Text>
               {payment.tip_amount && payment.tip_amount > 0 && (
-                <Text className={`text-sm ${isVoided ? "text-gray-700" : "text-gray-400"}`}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: isVoided ? colors.muted : colors.teal
+                  }}
+                >
                   Tip: ${payment.tip_amount.toFixed(2)}
                 </Text>
               )}
@@ -108,41 +191,72 @@ const PaymentCard: React.FC<{ payment: Payment; index: number; isLast: boolean }
 
           {/* Void reason */}
           {isVoided && payment.voidReason && (
-            <View className="mt-2 bg-red-900/20 border border-red-700 rounded p-2">
-              <Text className="text-red-400 text-sm">Void Reason: {payment.voidReason}</Text>
+            <View
+              style={{
+                marginTop: 6,
+                backgroundColor: colors.danger + '15',
+                borderWidth: 1,
+                borderColor: colors.danger + '40',
+                borderRadius: 8,
+                paddingHorizontal: 8,
+                paddingVertical: 6
+              }}
+            >
+              <Text style={{ color: colors.danger, fontSize: 11 }}>
+                Void Reason: {payment.voidReason}
+              </Text>
             </View>
           )}
         </View>
       </View>
     </View>
-  );
-});
+  )
+})
 
-const PaymentTimelineSection: React.FC<PaymentTimelineSectionProps> = ({ order }) => {
+const PaymentTimelineSection: React.FC<PaymentTimelineSectionProps> = ({
+  order
+}) => {
   // Sort payments by timestamp (most recent first)
   const sortedPayments = useMemo(() => {
-    const payments = (order.payments || []) as Payment[];
+    const payments = (order.payments || []) as Payment[]
     return [...payments].sort((a, b) => {
-      const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return bTime - aTime;
-    });
-  }, [order.payments]);
+      const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0
+      const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0
+      return bTime - aTime
+    })
+  }, [order.payments])
 
   if (!order.payments || order.payments.length === 0) {
     return (
-      <View className="py-8 items-center justify-center">
-        <Text className="text-gray-400 text-center">
+      <View
+        style={{
+          paddingVertical: 24,
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Text
+          style={{ fontSize: 12, color: colors.label, textAlign: 'center' }}
+        >
           No payment history available for this order
         </Text>
       </View>
-    );
+    )
   }
 
   return (
-    <View className="py-4">
-      <Text className="text-xl font-bold text-white mb-4">Payment History</Text>
-      <View className="pl-2">
+    <View style={{ paddingVertical: 6 }}>
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: '700',
+          color: colors.heading,
+          marginBottom: 10
+        }}
+      >
+        Payment History
+      </Text>
+      <View style={{ paddingLeft: 2 }}>
         {sortedPayments.map((payment, index) => (
           <PaymentCard
             key={payment.id || index}
@@ -153,7 +267,7 @@ const PaymentTimelineSection: React.FC<PaymentTimelineSectionProps> = ({ order }
         ))}
       </View>
     </View>
-  );
-};
+  )
+}
 
-export default PaymentTimelineSection;
+export default PaymentTimelineSection

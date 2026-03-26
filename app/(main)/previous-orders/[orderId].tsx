@@ -1,33 +1,35 @@
 import AdvancedRefundModal, {
-  AdvancedRefundModalRef,
-} from "@/components/previous-orders/AdvancedRefundModal";
-import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
-import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
-import ActionsPanel from "@/components/previous-orders/detail/ActionsPanel";
-import BillTab from "@/components/previous-orders/detail/BillTab";
-import OrderDetailHeader from "@/components/previous-orders/detail/OrderDetailHeader";
-import OrderDetailSkeleton from "@/components/previous-orders/detail/OrderDetailSkeleton";
-import OrderMetadata from "@/components/previous-orders/detail/OrderMetadata";
-import PaymentsTab from "@/components/previous-orders/detail/PaymentsTab";
-import RefundsTab from "@/components/previous-orders/detail/RefundsTab";
-import SummaryCards from "@/components/previous-orders/detail/SummaryCards";
-import TimelineTab from "@/components/previous-orders/detail/TimelineTab";
+  AdvancedRefundModalRef
+} from '@/components/previous-orders/AdvancedRefundModal'
+import OrderNotesModal from '@/components/previous-orders/OrderNotesModal'
+import PrintReceiptModal from '@/components/previous-orders/PrintReceiptModal'
+import ActionsPanel from '@/components/previous-orders/detail/ActionsPanel'
+import BillTab from '@/components/previous-orders/detail/BillTab'
+import OrderDetailHeader from '@/components/previous-orders/detail/OrderDetailHeader'
+import OrderDetailSkeleton from '@/components/previous-orders/detail/OrderDetailSkeleton'
+import OrderMetadata from '@/components/previous-orders/detail/OrderMetadata'
+import PaymentsTab from '@/components/previous-orders/detail/PaymentsTab'
+import RefundsTab from '@/components/previous-orders/detail/RefundsTab'
+import SummaryCards from '@/components/previous-orders/detail/SummaryCards'
+import TimelineTab from '@/components/previous-orders/detail/TimelineTab'
 import TipAdjustSheet, {
-  TipAdjustSheetRef,
-} from "@/components/previous-orders/detail/TipAdjustSheet";
-import { useToast } from "@/contexts/ToastContext";
+  TipAdjustSheetRef
+} from '@/components/previous-orders/detail/TipAdjustSheet'
+import { useToast } from '@/contexts/ToastContext'
 import {
   useCloseCheck,
   useReopenCheck,
   useVoidOrder,
-} from "@/hooks/orders/useOrderActions";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { previousOrderToOrderProfile } from "@/utils/previousOrderMapper";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { colors } from "@/lib/theme";
-import { Clock, CreditCard, Receipt, RotateCcw } from "lucide-react-native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+} from '@/hooks/orders/useOrderActions'
+import { colors } from '@/lib/theme'
+import type { PreviousOrder } from '@/lib/types'
+import { useOrderStore } from '@/stores/useOrderStore'
+import { usePreviousOrdersStore } from '@/stores/usePreviousOrdersStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { previousOrderToOrderProfile } from '@/utils/previousOrderMapper'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { Clock, CreditCard, Receipt, RotateCcw } from 'lucide-react-native'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   InteractionManager,
   Pressable,
@@ -35,173 +37,395 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  View,
-} from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
+  View
+} from 'react-native'
+import Animated, { FadeIn } from 'react-native-reanimated'
 
-type TabType = "bill" | "payments" | "refunds" | "timeline";
+type TabType = 'bill' | 'payments' | 'refunds' | 'timeline'
 
 const TABS: { key: TabType; label: string; icon: React.ElementType }[] = [
-  { key: "bill", label: "Bill", icon: Receipt },
-  { key: "payments", label: "Payments", icon: CreditCard },
-  { key: "refunds", label: "Refunds", icon: RotateCcw },
-  { key: "timeline", label: "Timeline", icon: Clock },
-];
+  { key: 'bill', label: 'Bill', icon: Receipt },
+  { key: 'payments', label: 'Payments', icon: CreditCard },
+  { key: 'refunds', label: 'Refunds', icon: RotateCcw },
+  { key: 'timeline', label: 'Timeline', icon: Clock }
+]
 
 const OrderDetailsScreen = () => {
-  const router = useRouter();
-  const { orderId } = useLocalSearchParams();
-  const orderIdParam = String(orderId ?? "");
-  const order = usePreviousOrdersStore((s) => s.getOrderById(orderIdParam));
-  const refreshPreviousOrders = usePreviousOrdersStore(
-    (s) => s.refreshPreviousOrders,
-  );
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
-  const { show } = useToast();
-  const closeCheckMutation = useCloseCheck();
-  const reopenCheckMutation = useReopenCheck();
-  const voidOrderMutation = useVoidOrder();
+  const router = useRouter()
+  const { orderId } = useLocalSearchParams()
+  const orderIdParam = String(orderId ?? '')
+  const { getOrderById, refreshPreviousOrders } = usePreviousOrdersStore()
 
-  const [activeTab, setActiveTab] = useState<TabType>("bill");
-  const [isReady, setIsReady] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [historyHydrated, setHistoryHydrated] = useState(false);
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [showNotesModal, setShowNotesModal] = useState(false);
+  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
+  const { show: _show } = useToast()
+  const closeCheckMutation = useCloseCheck()
+  const reopenCheckMutation = useReopenCheck()
+  const voidOrderMutation = useVoidOrder()
 
-  const refundModalRef = useRef<AdvancedRefundModalRef>(null);
-  const tipAdjustRef = useRef<TipAdjustSheetRef>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('bill')
+  const [isReady, setIsReady] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [historyHydrated, setHistoryHydrated] = useState(false)
+  const [showPrintModal, setShowPrintModal] = useState(false)
+  const [showNotesModal, setShowNotesModal] = useState(false)
+  const [order, setOrder] = useState<PreviousOrder | undefined>(undefined)
+
+  const refundModalRef = useRef<AdvancedRefundModalRef>(null)
+  const tipAdjustRef = useRef<TipAdjustSheetRef>(null)
+
+  // Load order on mount or when orderId changes
+  useEffect(() => {
+    if (!orderId) return
+
+    const loadOrder = () => {
+      const { getOrderById } = usePreviousOrdersStore.getState()
+      let foundOrder = getOrderById(orderId as string)
+
+      // If order not found in previous orders, try current orders
+      if (!foundOrder) {
+        const currentOrder =
+          useOrderStore.getState().ordersById[orderId as string]
+        if (currentOrder) {
+          // Add to history
+          usePreviousOrdersStore.getState().addOrderToHistory(currentOrder)
+          foundOrder = getOrderById(orderId as string)
+        }
+      }
+
+      setOrder(foundOrder)
+    }
+
+    loadOrder()
+  }, [orderId])
 
   // Ensure history is loaded (cold start / deep link) before not-found
   useEffect(() => {
     if (!orderIdParam) {
-      setHistoryHydrated(true);
-      return;
+      setHistoryHydrated(true)
+      return
     }
-    let cancelled = false;
-    (async () => {
+    let cancelled = false
+    ;(async () => {
       try {
         if (!usePreviousOrdersStore.getState().getOrderById(orderIdParam)) {
           await usePreviousOrdersStore
             .getState()
-            .refreshPreviousOrders({ force: true });
+            .refreshPreviousOrders({ force: true })
         }
       } finally {
-        if (!cancelled) setHistoryHydrated(true);
+        if (!cancelled) setHistoryHydrated(true)
       }
-    })();
+    })()
     return () => {
-      cancelled = true;
-    };
-  }, [orderIdParam]);
+      cancelled = true
+    }
+  }, [orderIdParam])
 
   // Deferred rendering for smooth navigation
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
-      setIsReady(true);
-    });
-    return () => task.cancel();
-  }, []);
+      setIsReady(true)
+    })
+    return () => task.cancel()
+  }, [])
 
   const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
+    setIsRefreshing(true)
     try {
-      await refreshPreviousOrders({ force: true });
+      await refreshPreviousOrders({ force: true })
     } finally {
-      setIsRefreshing(false);
+      setIsRefreshing(false)
     }
-  }, [refreshPreviousOrders]);
+  }, [refreshPreviousOrders])
 
   const handleReopen = useCallback(() => {
-    if (!order?.db_order_id) return;
-    reopenCheckMutation.mutate({ dbOrderId: order.db_order_id });
-  }, [order?.db_order_id, reopenCheckMutation]);
+    if (!order?.db_order_id) return
+    reopenCheckMutation.mutate({ dbOrderId: order.db_order_id })
+  }, [order?.db_order_id, reopenCheckMutation])
+
+  const mappedOrder = useMemo(
+    () => (order ? previousOrderToOrderProfile(order) : null),
+    [order]
+  )
 
   if (!historyHydrated) {
-    return <OrderDetailSkeleton />;
+    return <OrderDetailSkeleton />
   }
 
   // Not-found state
   if (!order) {
     return (
-      <View className="flex-1 items-center justify-center p-4 bg-screen">
-        <Text className="text-2xl font-bold text-red-400 mb-3">
-          Order Not Found
-        </Text>
-        <Text className="text-xl text-gray-400 mb-1.5">
-          Looking for: {orderIdParam}
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="mt-3 px-4 py-2 bg-blue-600 rounded-lg"
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.screen,
+          paddingHorizontal: 14,
+          paddingVertical: 12
+        }}
+      >
+        {/* Header */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 20
+          }}
         >
-          <Text className="text-lg text-white font-bold">Go Back</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              const canGoBack = router.canGoBack?.()
+              if (canGoBack) {
+                router.back()
+              } else {
+                router.replace('/previous-orders')
+              }
+            }}
+            style={{
+              padding: 6,
+              backgroundColor: colors.teal + '10',
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.teal + '30'
+            }}
+          >
+            <Text style={{ fontSize: 16, color: colors.teal }}>←</Text>
+          </TouchableOpacity>
+          <Text
+            style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}
+          >
+            Order Details
+          </Text>
+          <View style={{ width: 28 }} />
+        </View>
+
+        {/* Center content */}
+        <View
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+        >
+          {/* Small icon box */}
+          <View
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 12,
+              backgroundColor: colors.danger + '15',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: colors.danger + '30'
+            }}
+          >
+            <Text style={{ fontSize: 24 }}>⚠</Text>
+          </View>
+
+          {/* Title */}
+          <Text
+            style={{
+              fontSize: 16,
+              fontWeight: '700',
+              color: colors.heading,
+              textAlign: 'center',
+              marginBottom: 8
+            }}
+          >
+            Order Not Found
+          </Text>
+
+          {/* Description */}
+          <Text
+            style={{
+              fontSize: 12,
+              color: colors.label,
+              textAlign: 'center',
+              marginBottom: 20,
+              lineHeight: 18
+            }}
+          >
+            This order may have been archived or the link is invalid.
+          </Text>
+
+          {/* Order ID display */}
+          <View
+            style={{
+              backgroundColor: colors.panel,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              width: '100%',
+              marginBottom: 24
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '600',
+                color: colors.muted,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                marginBottom: 6
+              }}
+            >
+              Looking for
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                fontFamily: 'Courier',
+                color: colors.heading
+              }}
+            >
+              {orderId}
+            </Text>
+          </View>
+
+          {/* Primary action */}
+          <TouchableOpacity
+            onPress={() => router.replace('/previous-orders')}
+            style={{
+              width: '100%',
+              paddingVertical: 11,
+              backgroundColor: colors.teal,
+              borderRadius: 10,
+              alignItems: 'center',
+              marginBottom: 10
+            }}
+          >
+            <Text
+              style={{ fontSize: 13, fontWeight: '700', color: colors.onSolid }}
+            >
+              View All Orders
+            </Text>
+          </TouchableOpacity>
+
+          {/* Secondary action */}
+          <TouchableOpacity
+            onPress={() => {
+              const canGoBack = router.canGoBack?.()
+              if (canGoBack) {
+                router.back()
+              } else {
+                router.replace('/previous-orders')
+              }
+            }}
+            style={{
+              width: '100%',
+              paddingVertical: 11,
+              backgroundColor: 'transparent',
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              alignItems: 'center'
+            }}
+          >
+            <Text
+              style={{ fontSize: 13, fontWeight: '600', color: colors.label }}
+            >
+              Go Back
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    );
+    )
   }
 
   // Skeleton while waiting for interaction manager
   if (!isReady) {
-    return <OrderDetailSkeleton />;
+    return <OrderDetailSkeleton />
   }
 
-  const profileOrder = previousOrderToOrderProfile(order);
+  const profileOrder = previousOrderToOrderProfile(order)
 
   return (
-    <View className="flex-1 bg-screen">
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       <OrderDetailHeader order={order} onBack={() => router.back()} />
 
-      <View className="flex-1 flex-row">
+      <View style={{ flex: 1, flexDirection: 'row' }}>
         {/* Left Pane */}
-        <View className="flex-[3] border-r border-border">
+        <View
+          style={{
+            flex: 3,
+            borderRightWidth: 1,
+            borderRightColor: colors.border,
+            backgroundColor: colors.screen
+          }}
+        >
           {/* Tab Bar */}
-          <View className="flex-row border-b border-border px-4">
-            {TABS.map((tab) => {
-              const isActive = activeTab === tab.key;
-              const TabIcon = tab.icon;
+          <View
+            style={{
+              flexDirection: 'row',
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              paddingHorizontal: 10,
+              paddingTop: 4,
+              backgroundColor: colors.panel
+            }}
+          >
+            {TABS.map(tab => {
+              const isActive = activeTab === tab.key
+              const TabIcon = tab.icon
               return (
                 <Pressable
                   key={tab.key}
                   onPress={() => setActiveTab(tab.key)}
-                  className={`flex-row items-center gap-1.5 py-3 px-3 border-b-2 ${
-                    isActive ? "border-blue-500" : "border-transparent"
-                  }`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingVertical: 8,
+                    paddingHorizontal: 10,
+                    borderBottomWidth: 2,
+                    borderBottomColor: isActive ? colors.teal : 'transparent',
+                    backgroundColor: isActive
+                      ? colors.teal + '10'
+                      : 'transparent',
+                    borderTopLeftRadius: 8,
+                    borderTopRightRadius: 8
+                  }}
                 >
                   <TabIcon
-                    color={isActive ? colors.info : colors.label}
-                    size={18}
+                    color={isActive ? colors.teal : colors.label}
+                    size={16}
                   />
                   <Text
-                    className={`text-sm font-semibold ${
-                      isActive ? "text-blue-500" : "text-gray-400"
-                    }`}
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '600',
+                      color: isActive ? colors.teal : colors.label
+                    }}
                   >
                     {tab.label}
                   </Text>
                 </Pressable>
-              );
+              )
             })}
           </View>
 
           {/* Tab Content */}
           <ScrollView
-            className="flex-1"
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              paddingHorizontal: 10,
+              paddingVertical: 8
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
                 onRefresh={handleRefresh}
-                tintColor={colors.info}
+                tintColor={colors.teal}
               />
             }
             showsVerticalScrollIndicator={false}
           >
             <Animated.View entering={FadeIn.duration(200)}>
-              {activeTab === "bill" && <BillTab order={order} />}
-              {activeTab === "payments" && <PaymentsTab order={order} />}
-              {activeTab === "refunds" && <RefundsTab order={order} />}
-              {activeTab === "timeline" && (
-                <TimelineTab order={profileOrder} />
+              {activeTab === 'bill' && <BillTab order={order} />}
+              {activeTab === 'payments' && <PaymentsTab order={order} />}
+              {activeTab === 'refunds' && <RefundsTab order={order} />}
+              {activeTab === 'timeline' && mappedOrder && (
+                <TimelineTab order={mappedOrder} />
               )}
             </Animated.View>
           </ScrollView>
@@ -209,8 +433,8 @@ const OrderDetailsScreen = () => {
 
         {/* Right Pane */}
         <ScrollView
-          className="flex-[2]"
-          contentContainerStyle={{ padding: 16 }}
+          style={{ flex: 2, backgroundColor: colors.panel }}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View entering={FadeIn.duration(300).delay(100)}>
@@ -229,14 +453,14 @@ const OrderDetailsScreen = () => {
               onPrint={() => setShowPrintModal(true)}
               onReopen={handleReopen}
               onCloseCheck={() => {
-                if (!profileOrder.db_order_id) return;
-                closeCheckMutation.mutate(profileOrder.db_order_id);
+                if (!profileOrder.db_order_id) return
+                closeCheckMutation.mutate(profileOrder.db_order_id)
               }}
               onVoidOrder={() => {
-                if (!profileOrder.db_order_id) return;
+                if (!profileOrder.db_order_id) return
                 voidOrderMutation.mutate({
                   dbOrderId: profileOrder.db_order_id,
-                });
+                })
               }}
               onNotes={() => setShowNotesModal(true)}
               isClosingCheck={closeCheckMutation.isPending}
@@ -269,7 +493,7 @@ const OrderDetailsScreen = () => {
         order={profileOrder}
       />
     </View>
-  );
-};
+  )
+}
 
-export default OrderDetailsScreen;
+export default OrderDetailsScreen

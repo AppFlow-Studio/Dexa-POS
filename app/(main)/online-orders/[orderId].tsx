@@ -1,5 +1,6 @@
 import OrderDetailItem from "@/components/online-orders/OrderDetailItem";
 import { MOCK_ONLINE_ORDERS } from "@/lib/mockData";
+import { colors } from "@/lib/theme";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -9,16 +10,16 @@ const DetailRow = ({ children }: { children: React.ReactNode }) => (
 );
 
 const DetailItem = ({ label, value, isTag = false, tagColor = "" }: any) => (
-  <View className="flex-1">
-    <Text className="text-base text-gray-400 mb-1">{label}</Text>
+  <View style={{ flex: 1 }}>
+    <Text style={{ fontSize: 16, color: colors.muted, marginBottom: 4 }}>{label}</Text>
     {isTag ? (
-      <View className={`px-2.5 py-1 self-start rounded-md ${tagColor}`}>
-        <Text className={`text-base font-semibold capitalize ${tagColor}`}>
+      <View style={{ paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start", borderRadius: 6, backgroundColor: colors.teal + "20" }}>
+        <Text style={{ fontSize: 16, fontWeight: "600", textTransform: "capitalize", color: colors.teal }}>
           {value}
         </Text>
       </View>
     ) : (
-      <Text className="text-lg font-semibold text-white">{value}</Text>
+      <Text style={{ fontSize: 18, fontWeight: "600", color: colors.heading }}>{value}</Text>
     )}
   </View>
 );
@@ -30,32 +31,32 @@ const OnlineOrderDetailsScreen = () => {
 
   if (!order) {
     return (
-      <View className="flex-1 bg-screen items-center justify-center">
-        <Text className="text-xl text-red-400">Order not found!</Text>
+      <View style={{ flex: 1, backgroundColor: colors.screen, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 20, color: colors.danger }}>Order not found!</Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-4 px-4 py-2 bg-blue-600 rounded-lg"
+          style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.teal, borderRadius: 8 }}
         >
-          <Text className="text-white text-lg">Go Back</Text>
+          <Text style={{ color: colors.onSolid, fontSize: 18 }}>Go Back</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-screen">
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 120 }}>
-        <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-3xl font-bold text-white">
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <Text style={{ fontSize: 30, fontWeight: "bold", color: colors.heading }}>
             Order Details {order.id}
           </Text>
-          <Text className="text-lg text-gray-400">{order.timestamp}</Text>
+          <Text style={{ fontSize: 18, color: colors.muted }}>{order.timestamp}</Text>
         </View>
 
         <View className="gap-y-4">
           {/* Basic Info */}
-          <View className="bg-panel p-4 rounded-xl border border-border">
-            <Text className="text-xl font-bold text-white mb-3">
+          <View style={{ backgroundColor: colors.panel, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontSize: 20, fontWeight: "bold", color: colors.heading, marginBottom: 12 }}>
               Basic Info
             </Text>
             <View className="gap-y-4">
@@ -77,8 +78,8 @@ const OnlineOrderDetailsScreen = () => {
           </View>
 
           {/* Order Info */}
-          <View className="bg-panel p-4 rounded-xl border border-border">
-            <Text className="text-xl font-bold text-white mb-3">
+          <View style={{ backgroundColor: colors.panel, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontSize: 20, fontWeight: "bold", color: colors.heading, marginBottom: 12 }}>
               Order Info
             </Text>
             <View className="gap-y-4">
@@ -107,8 +108,8 @@ const OnlineOrderDetailsScreen = () => {
           </View>
 
           {/* Items List */}
-          <View className="bg-panel p-4 rounded-xl border border-border">
-            <Text className="text-xl font-bold text-white mb-3">
+          <View style={{ backgroundColor: colors.panel, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontSize: 20, fontWeight: "bold", color: colors.heading, marginBottom: 12 }}>
               Items ({order.itemCount})
             </Text>
             <View className="gap-y-2">

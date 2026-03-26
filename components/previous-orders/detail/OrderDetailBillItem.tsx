@@ -1,61 +1,114 @@
-import { CartItem } from "@/lib/types";
-import React from "react";
-import { Text, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { CartItem } from '@/lib/types'
+import React from 'react'
+import { Text, View } from 'react-native'
 
 interface OrderDetailBillItemProps {
-  item: CartItem;
-  showCashPricing: boolean;
+  item: CartItem
+  showCashPricing: boolean
 }
 
-function getStatusBorderColor(item: CartItem): string {
-  if (item.is_voided) return "#EF4444"; // red
-  if ((item.refundedQuantity || 0) >= item.quantity) return "#EF4444"; // fully refunded - red
-  if ((item.refundedQuantity || 0) > 0) return "#F59E0B"; // partially refunded - yellow
-  if (item.paidQuantity >= item.quantity) return "#22C55E"; // fully paid - green
-  return "#525252"; // default gray
+function getStatusBorderColor (item: CartItem): string {
+  if (item.is_voided) return colors.danger
+  if ((item.refundedQuantity || 0) >= item.quantity) return colors.danger
+  if ((item.refundedQuantity || 0) > 0) return colors.warning
+  if (item.paidQuantity >= item.quantity) return colors.teal
+  return colors.teal + '40'
 }
 
 const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
   item,
-  showCashPricing,
+  showCashPricing
 }) => {
-  const borderColor = getStatusBorderColor(item);
-  const displayPrice = showCashPricing ? item.cashPrice : item.price;
-  const displaySubtotal = showCashPricing ? item.cashSubtotal : item.subtotal;
+  const borderColor = getStatusBorderColor(item)
+  const displayPrice = showCashPricing ? item.cashPrice : item.price
+  const displaySubtotal = showCashPricing ? item.cashSubtotal : item.subtotal
   const hasModifiers =
-    item.customizations.modifiers && item.customizations.modifiers.length > 0;
+    item.customizations.modifiers && item.customizations.modifiers.length > 0
   const hasAddOns =
-    item.customizations.addOns && item.customizations.addOns.length > 0;
-  const hasNotes = !!item.customizations.notes;
+    item.customizations.addOns && item.customizations.addOns.length > 0
+  const hasNotes = !!item.customizations.notes
 
   return (
     <View
-      className="bg-panel rounded-xl overflow-hidden"
-      style={{ borderLeftWidth: 3, borderLeftColor: borderColor }}
+      style={{
+        backgroundColor: colors.panel,
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: colors.teal + '28',
+        borderLeftWidth: 3,
+        borderLeftColor: borderColor
+      }}
     >
-      <View className="p-3">
+      <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
         {/* Main row: name, qty x price, total */}
-        <View className="flex-row items-start justify-between">
-          <View className="flex-1 mr-3">
-            <Text className="text-base font-semibold text-white" numberOfLines={2}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between'
+          }}
+        >
+          <View style={{ flex: 1, marginRight: 10 }}>
+            <Text
+              style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
+              numberOfLines={2}
+            >
               {item.name}
             </Text>
 
             {/* Size badge */}
             {item.customizations.size && (
-              <View className="bg-card self-start px-2 py-0.5 rounded mt-1">
-                <Text className="text-xs text-gray-300">
+              <View
+                style={{
+                  backgroundColor: colors.teal + '15',
+                  alignSelf: 'flex-start',
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  borderRadius: 8,
+                  marginTop: 4,
+                  borderWidth: 1,
+                  borderColor: colors.teal + '40'
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.teal,
+                    fontWeight: '600'
+                  }}
+                >
                   {item.customizations.size.name}
                 </Text>
               </View>
             )}
           </View>
 
-          <View className="items-end">
-            <Text className="text-sm text-gray-400">
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.teal,
+                backgroundColor: colors.teal + '15',
+                borderWidth: 1,
+                borderColor: colors.teal + '35',
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 8,
+                overflow: 'hidden'
+              }}
+            >
               {item.quantity} x ${displayPrice.toFixed(2)}
             </Text>
-            <Text className="text-base font-semibold text-white">
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '700',
+                color: colors.teal,
+                marginTop: 2
+              }}
+            >
               ${displaySubtotal.toFixed(2)}
             </Text>
           </View>
@@ -63,17 +116,45 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
         {/* Modifiers */}
         {hasModifiers && (
-          <View className="mt-2">
+          <View
+            style={{
+              marginTop: 6,
+              backgroundColor: colors.teal + '10',
+              borderRadius: 8,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: colors.teal + '30'
+            }}
+          >
             {item.customizations.modifiers!.map((mod, idx) => (
-              <View key={idx} className="flex-row flex-wrap items-center mt-0.5">
-                <Text className="text-xs text-gray-500 mr-1">
+              <View
+                key={idx}
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  marginTop: 2
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.teal,
+                    marginRight: 4,
+                    fontWeight: '600'
+                  }}
+                >
                   {mod.categoryName}:
                 </Text>
                 {mod.options.map((opt, optIdx) => (
-                  <Text key={optIdx} className="text-xs text-gray-400">
+                  <Text
+                    key={optIdx}
+                    style={{ fontSize: 11, color: colors.heading }}
+                  >
                     {opt.name}
-                    {opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""}
-                    {optIdx < mod.options.length - 1 ? ", " : ""}
+                    {opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ''}
+                    {optIdx < mod.options.length - 1 ? ', ' : ''}
                   </Text>
                 ))}
               </View>
@@ -83,12 +164,29 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
         {/* Add-ons */}
         {hasAddOns && (
-          <View className="mt-1.5">
-            <Text className="text-xs text-gray-500">Add-ons:</Text>
+          <View
+            style={{
+              marginTop: 6,
+              backgroundColor: colors.teal + '10',
+              borderRadius: 8,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: colors.teal + '30'
+            }}
+          >
+            <Text
+              style={{ fontSize: 11, color: colors.teal, fontWeight: '600' }}
+            >
+              Add-ons:
+            </Text>
             {item.customizations.addOns!.map((addon, idx) => (
-              <Text key={idx} className="text-xs text-gray-400 ml-2">
+              <Text
+                key={idx}
+                style={{ fontSize: 11, color: colors.heading, marginLeft: 8 }}
+              >
                 + {addon.name}
-                {addon.price > 0 ? ` ($${addon.price.toFixed(2)})` : ""}
+                {addon.price > 0 ? ` ($${addon.price.toFixed(2)})` : ''}
               </Text>
             ))}
           </View>
@@ -96,8 +194,24 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
         {/* Notes */}
         {hasNotes && (
-          <View className="mt-2 bg-yellow-900/20 rounded-lg p-2 border-l-2 border-yellow-500">
-            <Text className="text-xs text-yellow-400 italic">
+          <View
+            style={{
+              marginTop: 8,
+              backgroundColor: colors.warning + '15',
+              borderRadius: 8,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              borderLeftWidth: 2,
+              borderLeftColor: colors.warning
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                color: colors.warning,
+                fontStyle: 'italic'
+              }}
+            >
               {item.customizations.notes}
             </Text>
           </View>
@@ -105,12 +219,39 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
         {/* Voided indicator */}
         {item.is_voided && (
-          <View className="mt-2 flex-row items-center gap-2">
-            <View className="bg-red-900/50 px-2 py-0.5 rounded">
-              <Text className="text-xs font-bold text-red-400">VOIDED</Text>
+          <View
+            style={{
+              marginTop: 8,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: colors.danger + '20',
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.danger + '50'
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: colors.danger
+                }}
+              >
+                VOIDED
+              </Text>
             </View>
             {item.void_reason && (
-              <Text className="text-xs text-red-400/70 flex-1" numberOfLines={1}>
+              <Text
+                style={{ fontSize: 11, color: colors.danger, flex: 1 }}
+                numberOfLines={1}
+              >
                 {item.void_reason}
               </Text>
             )}
@@ -119,18 +260,18 @@ const OrderDetailBillItem: React.FC<OrderDetailBillItemProps> = ({
 
         {/* Refund indicator */}
         {!item.is_voided && (item.refundedQuantity || 0) > 0 && (
-          <View className="mt-2">
-            <Text className="text-xs text-red-400">
+          <View style={{ marginTop: 8 }}>
+            <Text style={{ fontSize: 11, color: colors.danger }}>
               Refunded: {item.refundedQuantity} of {item.quantity}
               {item.refundedAmount
                 ? ` ($${item.refundedAmount.toFixed(2)})`
-                : ""}
+                : ''}
             </Text>
           </View>
         )}
       </View>
     </View>
-  );
-};
+  )
+}
 
-export default React.memo(OrderDetailBillItem);
+export default React.memo(OrderDetailBillItem)
