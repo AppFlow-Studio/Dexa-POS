@@ -187,38 +187,38 @@ const PaymentRow: React.FC<PaymentRowProps> = React.memo(({
                 : payment.method;
 
     return (
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 12, paddingHorizontal: 10, backgroundColor: colors.panel, borderRadius: 10, marginBottom: 8 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                <View style={{ backgroundColor: `${colors.success}20`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginRight: 10, borderWidth: 1, borderColor: `${colors.success}40` }}>
-                    <Text style={{ color: colors.success, fontSize: 11, fontWeight: "700" }}>Paid</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: colors.panel, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: colors.border }}>
+            <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 8 }}>
+                <View style={{ backgroundColor: colors.success + "20", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.success + "40" }}>
+                    <Text style={{ color: colors.success, fontSize: 10, fontWeight: "700" }}>Paid</Text>
                 </View>
                 <View>
-                    <Text style={{ color: colors.heading, fontWeight: "600" }}>{methodDisplay}</Text>
+                    <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 12 }}>{methodDisplay}</Text>
                     {payment.timestamp && (
-                        <Text style={{ color: colors.muted, fontSize: 11 }}>
+                        <Text style={{ color: colors.muted, fontSize: 10 }}>
                             {new Date(payment.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
                         </Text>
                     )}
                 </View>
             </View>
 
-            <View style={{ alignItems: "flex-end", marginRight: 12 }}>
-                <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 16 }}>${payment.amount.toFixed(2)}</Text>
+            <View style={{ alignItems: "flex-end", marginHorizontal: 8 }}>
+                <Text style={{ color: colors.heading, fontWeight: "700", fontSize: 13 }}>${payment.amount.toFixed(2)}</Text>
                 {payment.tip_amount && payment.tip_amount > 0 && (
-                    <Text style={{ color: colors.success, fontSize: 11 }}>+${payment.tip_amount.toFixed(2)} tip</Text>
+                    <Text style={{ color: colors.success, fontSize: 10 }}>+${payment.tip_amount.toFixed(2)}</Text>
                 )}
             </View>
 
-            <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flexDirection: "row", gap: 6 }}>
                 {onPrint && (
-                    <TouchableOpacity onPress={onPrint} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: `${colors.teal}15`, borderRadius: 8 }}>
-                        <FileText size={15} color={colors.teal} />
+                    <TouchableOpacity onPress={onPrint} style={{ paddingHorizontal: 8, paddingVertical: 7, backgroundColor: colors.teal + "15", borderRadius: 7 }}>
+                        <FileText size={13} color={colors.teal} />
                     </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={onVoid} disabled={isVoiding} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: `${colors.danger}15`, borderRadius: 8 }}>
+                <TouchableOpacity onPress={onVoid} disabled={isVoiding} style={{ paddingHorizontal: 8, paddingVertical: 7, backgroundColor: colors.danger + "15", borderRadius: 7 }}>
                     {isVoiding
                         ? <ActivityIndicator size="small" color={colors.danger} />
-                        : <RotateCcw size={15} color={colors.danger} />
+                        : <RotateCcw size={13} color={colors.danger} />
                     }
                 </TouchableOpacity>
             </View>
@@ -504,22 +504,22 @@ const PayForItemsView: React.FC = () => {
                 {/* LEFT PANEL */}
                 <View style={{ width: "45%", borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.screen }}>
                     <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                        <Text style={{ color: "#F97316", fontWeight: "700", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8 }}>Remaining Items</Text>
-                        <View style={{ flexDirection: "row", gap: 8 }}>
-                            <TouchableOpacity onPress={handleSelectAll} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: `${colors.teal}15`, borderRadius: 6 }}>
-                                <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700" }}>ALL</Text>
+                        <Text style={{ color: colors.muted, fontWeight: "700", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Remaining Items</Text>
+                        <View style={{ flexDirection: "row", gap: 6 }}>
+                            <TouchableOpacity onPress={handleSelectAll} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.teal + "15", borderRadius: 6, borderWidth: 1, borderColor: colors.teal + "40" }}>
+                                <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700" }}>All</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={handleClearSelection} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.panel, borderRadius: 6 }}>
-                                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700" }}>CLEAR</Text>
+                            <TouchableOpacity onPress={handleClearSelection} style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.screen, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}>
+                                <Text style={{ color: colors.label, fontSize: 11, fontWeight: "700" }}>Clear</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
 
-                    <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+                    <ScrollView contentContainerStyle={{ paddingTop: 8, paddingBottom: 100 }}>
                         {unpaidItems.length === 0 ? (
                             <View style={{ padding: 20, alignItems: "center" }}>
                                 <CheckCircle size={40} color={colors.success} />
-                                <Text style={{ color: colors.success, fontWeight: "700", marginTop: 8 }}>All Items Paid!</Text>
+                                <Text style={{ color: colors.success, fontWeight: "700", marginTop: 8, fontSize: 13 }}>All Items Paid!</Text>
                             </View>
                         ) : (
                             unpaidItems.map((item) => {
@@ -531,31 +531,32 @@ const PayForItemsView: React.FC = () => {
                                     <View
                                         key={item.id}
                                         style={{
-                                            flexDirection: "row", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
-                                            backgroundColor: isSelected ? `${colors.teal}15` : "transparent",
+                                            flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, marginHorizontal: 10, marginBottom: 8, borderRadius: 10, borderWidth: 1,
+                                            backgroundColor: isSelected ? colors.teal + "10" : colors.panel,
+                                            borderColor: isSelected ? colors.teal + "40" : colors.border,
                                         }}
                                     >
                                         <View style={{ flex: 1 }}>
-                                            <Text style={{ fontWeight: "600", color: isSelected ? colors.heading : colors.label }}>{item.name}</Text>
-                                            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>${item.price.toFixed(2)} × {unpaidQty} unpaid</Text>
+                                            <Text style={{ fontWeight: "700", fontSize: 13, color: isSelected ? colors.teal : colors.heading }}>{item.name}</Text>
+                                            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>${item.price.toFixed(2)} × {unpaidQty} unpaid</Text>
                                         </View>
                                         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                                             <TouchableOpacity
                                                 onPress={() => handleRemoveItem(item.id)}
                                                 disabled={selectedQty === 0}
-                                                style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: selectedQty > 0 ? colors.danger : colors.panel, opacity: selectedQty > 0 ? 1 : 0.3 }}
+                                                style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: selectedQty > 0 ? colors.danger : colors.card, opacity: selectedQty > 0 ? 1 : 0.4 }}
                                             >
-                                                <Minus size={13} color="#fff" />
+                                                <Minus size={11} color={colors.onSolid} />
                                             </TouchableOpacity>
-                                            <View style={{ minWidth: 32, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 6, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.panel }}>
-                                                <Text style={{ fontWeight: "700", fontSize: 12, color: isSelected ? "#000" : colors.muted }}>{selectedQty}</Text>
+                                            <View style={{ minWidth: 30, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, alignItems: "center", backgroundColor: isSelected ? colors.teal : colors.card }}>
+                                                <Text style={{ fontWeight: "700", fontSize: 10, color: isSelected ? colors.onSolid : colors.label }}>{selectedQty}</Text>
                                             </View>
                                             <TouchableOpacity
                                                 onPress={() => handleAddItem(item)}
                                                 disabled={selectedQty >= unpaidQty}
-                                                style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: selectedQty < unpaidQty ? colors.success : colors.panel, opacity: selectedQty < unpaidQty ? 1 : 0.3 }}
+                                                style={{ width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.teal, opacity: selectedQty < unpaidQty ? 1 : 0.4 }}
                                             >
-                                                <Plus size={13} color="#fff" />
+                                                <Plus size={11} color={colors.onSolid} />
                                             </TouchableOpacity>
                                         </View>
                                     </View>
@@ -568,39 +569,39 @@ const PayForItemsView: React.FC = () => {
                 {/* RIGHT PANEL */}
                 <View style={{ width: "55%", backgroundColor: colors.screen }}>
                     {/* Totals Header */}
-                    <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                            <View style={{ alignItems: "center" }}>
-                                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>${activeOrderTotal.toFixed(2)}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 10, textTransform: "uppercase" }}>Order Total</Text>
+                    <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                            <View style={{ alignItems: "center", flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>${activeOrderTotal.toFixed(2)}</Text>
+                                <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Order Total</Text>
                             </View>
-                            <View style={{ alignItems: "center" }}>
+                            <View style={{ alignItems: "center", flex: 1 }}>
                                 <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#F97316" }}>${remainingAmount.toFixed(2)}</Text>
+                                    <Text style={{ fontSize: 14, fontWeight: "700", color: colors.warning }}>${remainingAmount.toFixed(2)}</Text>
                                     {remainingCashSavings > 0.01 && (
-                                        <Text style={{ fontSize: 11, fontWeight: "500", color: colors.success }}>(${remainingCashAmount.toFixed(2)} cash)</Text>
+                                        <Text style={{ fontSize: 10, fontWeight: "500", color: colors.success }}>(${remainingCashAmount.toFixed(2)})</Text>
                                     )}
                                 </View>
-                                <Text style={{ color: colors.muted, fontSize: 10, textTransform: "uppercase" }}>
-                                    Remaining{remainingCashSavings > 0.01 ? " (Card / Cash)" : ""}
+                                <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>
+                                    Remaining
                                 </Text>
                             </View>
-                            <View style={{ alignItems: "center" }}>
-                                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.success }}>${collectedAmount.toFixed(2)}</Text>
-                                <Text style={{ color: colors.muted, fontSize: 10, textTransform: "uppercase" }}>Collected • {collectedPercent}%</Text>
+                            <View style={{ alignItems: "center", flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.success }}>${collectedAmount.toFixed(2)}</Text>
+                                <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Collected</Text>
                             </View>
                         </View>
                     </View>
 
                     {/* Payments */}
                     <View style={{ flex: 1, padding: 16 }}>
-                        <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
+                        <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>
                             Payments ({payments.length})
                         </Text>
                         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                             {payments.length === 0 ? (
                                 <View style={{ alignItems: "center", paddingVertical: 24 }}>
-                                    <Text style={{ color: colors.muted }}>No payments yet</Text>
+                                    <Text style={{ color: colors.muted, fontSize: 12 }}>No payments yet</Text>
                                 </View>
                             ) : (
                                 payments.map((payment, index) => (
@@ -616,36 +617,36 @@ const PayForItemsView: React.FC = () => {
                         </ScrollView>
 
                         {selectedItems.size > 0 && (
-                            <View style={{ marginTop: 14, padding: 14, backgroundColor: colors.panel, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}>
-                                <Text style={{ color: colors.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Selected for Payment</Text>
-                                <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
+                            <View style={{ marginTop: 14, marginHorizontal: 16, padding: 12, backgroundColor: colors.panel, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
+                                <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Selected for Payment</Text>
+                                <View style={{ flexDirection: "row", gap: 10 }}>
                                     <TouchableOpacity
                                         onPress={() => setPaymentMethod("card")}
-                                        style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, backgroundColor: paymentMethod === "card" ? `${colors.teal}15` : colors.screen, borderColor: paymentMethod === "card" ? colors.teal : colors.border }}
+                                        style={{ flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, backgroundColor: paymentMethod === "card" ? colors.teal + "15" : colors.screen, borderColor: paymentMethod === "card" ? colors.teal + "40" : colors.border }}
                                     >
                                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                <CreditCard size={15} color={colors.teal} />
-                                                <Text style={{ color: colors.muted, fontSize: 12 }}>Card</Text>
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                                <CreditCard size={14} color={colors.teal} />
+                                                <Text style={{ color: colors.muted, fontSize: 11 }}>Card</Text>
                                             </View>
-                                            <Text style={{ color: colors.teal, fontWeight: "700" }}>${selectedCardTotals.total.toFixed(2)}</Text>
+                                            <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 13 }}>${selectedCardTotals.total.toFixed(2)}</Text>
                                         </View>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         onPress={() => setPaymentMethod("cash")}
-                                        style={{ flex: 1, padding: 12, borderRadius: 10, borderWidth: 1, backgroundColor: paymentMethod === "cash" ? `${colors.success}15` : colors.screen, borderColor: paymentMethod === "cash" ? colors.success : colors.border }}
+                                        style={{ flex: 1, padding: 10, borderRadius: 10, borderWidth: 1, backgroundColor: paymentMethod === "cash" ? colors.teal + "15" : colors.screen, borderColor: paymentMethod === "cash" ? colors.teal + "40" : colors.border }}
                                     >
                                         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                                <Banknote size={15} color={colors.success} />
-                                                <Text style={{ color: colors.muted, fontSize: 12 }}>Cash</Text>
+                                            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                                <Banknote size={14} color={colors.teal} />
+                                                <Text style={{ color: colors.muted, fontSize: 11 }}>Cash</Text>
                                                 {cashSavings > 0.01 && (
-                                                    <View style={{ paddingHorizontal: 5, paddingVertical: 2, backgroundColor: `${colors.success}20`, borderRadius: 8 }}>
-                                                        <Text style={{ color: colors.success, fontSize: 10, fontWeight: "700" }}>-${cashSavings.toFixed(2)}</Text>
+                                                    <View style={{ paddingHorizontal: 4, paddingVertical: 1, backgroundColor: colors.teal + "20", borderRadius: 6 }}>
+                                                        <Text style={{ color: colors.teal, fontSize: 9, fontWeight: "700" }}>-${cashSavings.toFixed(2)}</Text>
                                                     </View>
                                                 )}
                                             </View>
-                                            <Text style={{ color: colors.success, fontWeight: "700" }}>${selectedCashTotals.total.toFixed(2)}</Text>
+                                            <Text style={{ color: colors.teal, fontWeight: "700", fontSize: 13 }}>${selectedCashTotals.total.toFixed(2)}</Text>
                                         </View>
                                     </TouchableOpacity>
                                 </View>
@@ -654,25 +655,25 @@ const PayForItemsView: React.FC = () => {
                     </View>
 
                     {/* Footer */}
-                    <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
-                        <View style={{ flexDirection: "row", gap: 8 }}>
+                    <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.panel }}>
+                        <View style={{ flexDirection: "row", gap: 10 }}>
                             <TouchableOpacity
                                 onPress={handleBackToOrder}
-                                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.panel }}
+                                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: "center", backgroundColor: colors.screen }}
                             >
-                                <Text style={{ color: colors.label, fontWeight: "700", fontSize: 13 }}>BACK TO ORDER</Text>
+                                <Text style={{ color: colors.label, fontWeight: "700", fontSize: 12 }}>Back to Order</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleContinueCharging}
                                 disabled={selectedItems.size === 0 || isProcessing}
-                                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", backgroundColor: selectedItems.size > 0 ? colors.teal : colors.panel, borderWidth: selectedItems.size > 0 ? 0 : 1, borderColor: colors.border, opacity: selectedItems.size === 0 ? 0.5 : 1 }}
+                                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", backgroundColor: selectedItems.size > 0 ? colors.teal : colors.screen, borderWidth: selectedItems.size > 0 ? 0 : 1, borderColor: colors.border, opacity: selectedItems.size === 0 ? 0.6 : 1 }}
                             >
                                 {isProcessing
-                                    ? <ActivityIndicator color="#000" />
-                                    : <Text style={{ fontWeight: "700", fontSize: 13, color: selectedItems.size > 0 ? "#000" : colors.muted }}>
+                                    ? <ActivityIndicator color={colors.onSolid} />
+                                    : <Text style={{ fontWeight: "700", fontSize: 12, color: selectedItems.size > 0 ? colors.onSolid : colors.muted }}>
                                         {selectedItems.size > 0
-                                            ? `PAY $${paymentMethod === "cash" ? selectedCashTotals.total.toFixed(2) : selectedCardTotals.total.toFixed(2)}`
-                                            : "SELECT ITEMS"}
+                                            ? `Pay $${paymentMethod === "cash" ? selectedCashTotals.total.toFixed(2) : selectedCardTotals.total.toFixed(2)}`
+                                            : "Select Items"}
                                     </Text>
                                 }
                             </TouchableOpacity>
