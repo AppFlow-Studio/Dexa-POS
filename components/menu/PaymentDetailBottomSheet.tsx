@@ -147,13 +147,13 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   flex = true
 }) => {
   const getBg = () => {
-    if (disabled) return colors.card
+    if (disabled) return colors.screen
     switch (variant) {
       case 'danger': return colors.danger + '15'
       case 'success': return colors.success + '15'
-      case 'primary': return colors.info + '15'
+      case 'primary': return colors.teal + '15'
       case 'warning': return colors.warning + '15'
-      default: return colors.card
+      default: return colors.screen
     }
   }
   const getBorder = () => {
@@ -161,7 +161,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
     switch (variant) {
       case 'danger': return colors.danger + '40'
       case 'success': return colors.success + '40'
-      case 'primary': return colors.info + '40'
+      case 'primary': return colors.teal + '40'
       case 'warning': return colors.warning + '40'
       default: return colors.border
     }
@@ -171,7 +171,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
     switch (variant) {
       case 'danger': return colors.danger
       case 'success': return colors.success
-      case 'primary': return colors.info
+      case 'primary': return colors.teal
       case 'warning': return colors.warning
       default: return colors.heading
     }
@@ -187,7 +187,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
         paddingVertical: 10,
         paddingHorizontal: 10,
         borderRadius: 10,
-        borderWidth: 1,
+        borderWidth: 1.5,
         alignItems: 'center',
         justifyContent: 'center',
         gap: 5,
@@ -197,7 +197,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       }}
     >
       {icon}
-      <Text style={{ fontSize: 11, fontWeight: '600', color: getTextColor(), textAlign: 'center' }} numberOfLines={1}>
+      <Text style={{ fontSize: 11, fontWeight: '700', color: getTextColor(), textAlign: 'center' }} numberOfLines={1}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -220,33 +220,31 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   label,
   icon,
   isNegative = false,
-  accentColor = colors.info
+  accentColor = colors.teal
 }) => (
   <View
     style={{
       flex: 1,
-      backgroundColor: colors.card,
+      backgroundColor: accentColor + '10',
       borderRadius: 12,
-      padding: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderLeftWidth: 3,
-      borderLeftColor: accentColor,
+      padding: 14,
+      borderWidth: 1.5,
+      borderColor: accentColor + '40',
     }}
   >
-    <View style={{ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '15', marginBottom: 8 }}>
+    <View style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: accentColor + '20', marginBottom: 10 }}>
       {icon}
     </View>
-    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading }} numberOfLines={1}>
+    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.heading, marginBottom: 4 }} numberOfLines={1}>
       {isNegative && amount > 0 ? '−' : ''}${amount?.toFixed(2)}
     </Text>
     {cashAmount !== undefined && cashAmount > 0 && (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-        <Banknote color={colors.success} size={12} />
-        <Text style={{ fontSize: 11, color: colors.label, marginLeft: 4 }}>${cashAmount?.toFixed(2)} cash</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+        <Banknote color={colors.teal} size={12} />
+        <Text style={{ fontSize: 11, color: colors.teal, marginLeft: 4, fontWeight: '600' }}>${cashAmount?.toFixed(2)} cash</Text>
       </View>
     )}
-    <Text style={{ fontSize: 11, color: colors.muted, marginTop: 4, fontWeight: '500' }}>{label}</Text>
+    <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '500' }}>{label}</Text>
   </View>
 )
 
@@ -801,8 +799,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
               amount={paymentSummary.orderTotal}
               cashAmount={paymentSummary.orderCashTotal}
               label='Order Total'
-              icon={<DollarSign size={16} color={colors.info} />}
-              accentColor={colors.info}
+              icon={<DollarSign size={18} color={colors.teal} />}
+              accentColor={colors.teal}
             />
             <SummaryCard
               amount={paymentSummary.refunds}
@@ -824,8 +822,8 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
             <SummaryCard
               amount={paymentSummary.collected - paymentSummary.refunds}
               label='Net Collected'
-              icon={<CircleDollarSign size={16} color={colors.success} />}
-              accentColor={colors.success}
+              icon={<CircleDollarSign size={18} color={colors.teal} />}
+              accentColor={colors.teal}
             />
             {(paymentSummary.held ?? 0) > 0 && (
               <SummaryCard
@@ -840,11 +838,11 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
 
         {/* Transaction History */}
         <View style={{ paddingHorizontal: 14 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+            <View style={{ width: 3, height: 18, backgroundColor: colors.teal, borderRadius: 1.5 }} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.teal, textTransform: 'uppercase', letterSpacing: 0.6 }}>
               Transaction History
             </Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border, marginLeft: 10 }} />
           </View>
 
           {/* Payment List */}
@@ -885,17 +883,17 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                   >
                     {/* Payment Method Icon */}
                     <View style={{
-                      width: 36, height: 36, borderRadius: 8,
-                      backgroundColor: payment.isVoided ? colors.danger + '15' : colors.card,
-                      borderWidth: 1, borderColor: colors.border,
+                      width: 40, height: 40, borderRadius: 10,
+                      backgroundColor: payment.isVoided ? colors.danger + '15' : colors.teal + '15',
+                      borderWidth: 1.5, borderColor: payment.isVoided ? colors.danger + '40' : colors.teal + '40',
                       alignItems: 'center', justifyContent: 'center', marginRight: 10
                     }}>
                       {payment.isVoided ? (
-                        <X size={16} color={colors.danger} />
+                        <X size={18} color={colors.danger} />
                       ) : payment.method === 'Card' ? (
-                        <CreditCard size={16} color={colors.label} />
+                        <CreditCard size={18} color={colors.teal} />
                       ) : (
-                        <Banknote size={16} color={colors.success} />
+                        <Banknote size={18} color={colors.teal} />
                       )}
                     </View>
 
@@ -1163,7 +1161,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
       </ScrollView>
 
       {/* Action Buttons Footer */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.border }}>
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.panel, borderTopWidth: 1.5, borderTopColor: colors.teal + '30' }}>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {!isOpen && (
             <ActionButton
