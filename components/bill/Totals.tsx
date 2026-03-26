@@ -110,7 +110,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         <View className="flex-row justify-between items-center mt-1">
           <Text className="text-xs text-teal-400">Paid</Text>
           <Text className="text-xs font-medium text-teal-400">
-            -${paymentInfo.amountPaid.toFixed(2)}
+            ${paymentInfo.amountPaid.toFixed(2)}
           </Text>
         </View>
       )}

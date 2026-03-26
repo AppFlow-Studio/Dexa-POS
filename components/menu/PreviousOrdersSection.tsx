@@ -276,10 +276,8 @@ const PreviousOrdersSection = () => {
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
         <OrderTabs onTabChange={handleTabChange} counts={tabCounts} activeTab={activeTab} />
 
-        <View style={{ flex: 1 }} />
-
         {/* Search Bar */}
-        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 0, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, minWidth: 250 }}>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border }}>
           <Search color={colors.muted} size={12} />
           <TextInput
             value={searchQuery}
