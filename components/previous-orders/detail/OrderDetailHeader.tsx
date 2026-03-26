@@ -1,112 +1,185 @@
-import { colors } from "@/lib/theme";
-import { PreviousOrder } from "@/lib/types";
-import { ArrowLeft, ShoppingBag, Truck, Utensils } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { colors } from '@/lib/theme'
+import { PreviousOrder } from '@/lib/types'
+import { ArrowLeft, ShoppingBag, Truck, Utensils } from 'lucide-react-native'
+import React from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
 
 interface OrderDetailHeaderProps {
-  order: PreviousOrder;
-  onBack: () => void;
+  order: PreviousOrder
+  onBack: () => void
 }
 
-const statusConfig: Record<
-  string,
-  { bg: string; text: string; label?: string }
-> = {
-  Paid: { bg: "bg-green-900/50", text: "text-green-400" },
-  Refunded: { bg: "bg-red-900/50", text: "text-red-400" },
-  "Partially Refunded": { bg: "bg-yellow-900/50", text: "text-yellow-400" },
-  Unpaid: { bg: "bg-gray-700/50", text: "text-gray-400" },
-  "In Progress": { bg: "bg-blue-900/50", text: "text-blue-400" },
-};
+const statusConfig: Record<string, { bg: string; text: string }> = {
+  Paid: { bg: colors.teal + '20', text: colors.teal },
+  Refunded: { bg: colors.danger + '20', text: colors.danger },
+  'Partially Refunded': { bg: colors.warning + '20', text: colors.warning },
+  Unpaid: { bg: colors.muted + '20', text: colors.muted },
+  'In Progress': { bg: colors.teal + '20', text: colors.teal }
+}
 
 const checkStatusConfig: Record<string, { bg: string; text: string }> = {
-  Opened: { bg: "bg-blue-900/50", text: "text-blue-400" },
-  Closed: { bg: "bg-gray-700/50", text: "text-gray-400" },
-};
+  Opened: { bg: colors.teal + '20', text: colors.teal },
+  Closed: { bg: colors.muted + '20', text: colors.muted }
+}
 
 const orderTypeConfig: Record<
   string,
   { icon: React.ElementType; bg: string; text: string; iconColor: string }
 > = {
-  "Dine In": {
+  'Dine In': {
     icon: Utensils,
-    bg: "bg-purple-900/50",
-    text: "text-purple-400",
-    iconColor: "#C084FC",
+    bg: colors.teal + '20',
+    text: colors.teal,
+    iconColor: colors.teal
   },
   Takeaway: {
     icon: ShoppingBag,
-    bg: "bg-orange-900/50",
-    text: "text-orange-400",
-    iconColor: "#FB923C",
+    bg: colors.warning + '20',
+    text: colors.warning,
+    iconColor: colors.warning
   },
   Delivery: {
     icon: Truck,
-    bg: "bg-cyan-900/50",
-    text: "text-cyan-400",
-    iconColor: "#22D3EE",
-  },
-};
+    bg: colors.info + '20',
+    text: colors.info,
+    iconColor: colors.info
+  }
+}
 
 const OrderDetailHeader: React.FC<OrderDetailHeaderProps> = ({
   order,
-  onBack,
+  onBack
 }) => {
-  const paymentStyle = statusConfig[order.paymentStatus] || statusConfig.Unpaid;
+  const paymentStyle = statusConfig[order.paymentStatus] || statusConfig.Unpaid
   const checkStyle =
-    checkStatusConfig[order.checkStatus || "Opened"] ||
-    checkStatusConfig.Opened;
-  const typeStyle = orderTypeConfig[order.type] || orderTypeConfig["Dine In"];
-  const TypeIcon = typeStyle.icon;
+    checkStatusConfig[order.checkStatus || 'Opened'] || checkStatusConfig.Opened
+  const typeStyle = orderTypeConfig[order.type] || orderTypeConfig['Dine In']
+  const TypeIcon = typeStyle.icon
 
   return (
-    <View className="bg-screen px-4 py-3 border-b border-border">
-      <View className="flex-row items-center">
+    <View
+      style={{
+        backgroundColor: colors.screen,
+        paddingHorizontal: 12,
+        paddingTop: 8,
+        paddingBottom: 6,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          paddingHorizontal: 10,
+          paddingVertical: 8
+        }}
+      >
+        {/* Back button */}
         <TouchableOpacity
           onPress={onBack}
-          className="p-2 rounded-lg bg-panel mr-3"
           activeOpacity={0.7}
+          style={{
+            padding: 6,
+            backgroundColor: colors.teal + '15',
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.teal + '40',
+            marginRight: 8
+          }}
         >
-          <ArrowLeft color={colors.label} size={22} />
+          <ArrowLeft color={colors.teal} size={16} />
         </TouchableOpacity>
 
-        <Text className="text-2xl font-bold text-white flex-1" numberOfLines={1}>
+        {/* Title */}
+        <Text
+          style={{
+            fontSize: 15,
+            fontWeight: '700',
+            color: colors.heading,
+            flex: 1,
+            marginRight: 8
+          }}
+          numberOfLines={1}
+        >
           Order {order.display_number || `#${order.orderId.slice(-6)}`}
         </Text>
 
-        <View className="flex-row gap-2 ml-2">
-          {/* Payment Status Badge */}
+        {/* Badges */}
+        <View style={{ flexDirection: 'row', gap: 5 }}>
+          {/* Payment status */}
           <View
-            className={`px-2.5 py-1 rounded-full ${paymentStyle.bg} border border-gray-600/30`}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+              borderRadius: 20,
+              backgroundColor: paymentStyle.bg,
+              borderWidth: 1,
+              borderColor: paymentStyle.text + '50'
+            }}
           >
-            <Text className={`text-xs font-semibold ${paymentStyle.text}`}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '600',
+                color: paymentStyle.text
+              }}
+            >
               {order.paymentStatus}
             </Text>
           </View>
 
-          {/* Check Status Badge */}
+          {/* Check status */}
           <View
-            className={`px-2.5 py-1 rounded-full ${checkStyle.bg} border border-gray-600/30`}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+              borderRadius: 20,
+              backgroundColor: checkStyle.bg,
+              borderWidth: 1,
+              borderColor: checkStyle.text + '50'
+            }}
           >
-            <Text className={`text-xs font-semibold ${checkStyle.text}`}>
-              {order.checkStatus || "Opened"}
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '600',
+                color: checkStyle.text
+              }}
+            >
+              {order.checkStatus || 'Opened'}
             </Text>
           </View>
 
-          {/* Order Type Badge */}
+          {/* Order type */}
           <View
-            className={`px-2.5 py-1 rounded-full flex-row items-center gap-1 ${typeStyle.bg} border border-gray-600/30`}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+              borderRadius: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: typeStyle.bg,
+              borderWidth: 1,
+              borderColor: typeStyle.text + '50'
+            }}
           >
-            <TypeIcon color={typeStyle.iconColor} size={12} />
-            <Text className={`text-xs font-semibold ${typeStyle.text}`}>
+            <TypeIcon color={typeStyle.iconColor} size={11} />
+            <Text
+              style={{ fontSize: 11, fontWeight: '600', color: typeStyle.text }}
+            >
               {order.type}
             </Text>
           </View>
         </View>
       </View>
     </View>
-  );
-};
+  )
+}
 
-export default React.memo(OrderDetailHeader);
+export default React.memo(OrderDetailHeader)

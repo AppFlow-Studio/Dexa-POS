@@ -767,9 +767,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (isCashPayment) {
         try {
           const staffProfileId = useEmployeeStore.getState().loggedInEmployee?.profileId || "";
+          const order = useOrderStore.getState().getOrder(activeOrderId);
+          const dbOrderId = order?.db_order_id ?? activeOrderId;
           trackCashPaymentInDrawer(
             { amount_charged: paymentAmount, payment_id: "", change_given: 0 } as any,
-            activeOrderId,
+            dbOrderId,
             staffProfileId,
           );
         } catch (e) {
@@ -892,9 +894,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (isCashPayment) {
         try {
           const staffProfileId = useEmployeeStore.getState().loggedInEmployee?.profileId || "";
+          const order = useOrderStore.getState().getOrder(activeOrderId);
+          const dbOrderId = order?.db_order_id ?? activeOrderId;
           trackCashPaymentInDrawer(
             { amount_charged: paymentAmount, payment_id: "", change_given: 0 } as any,
-            activeOrderId,
+            dbOrderId,
             staffProfileId,
           );
         } catch (e) {

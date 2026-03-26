@@ -131,7 +131,7 @@ const WaitlistScreen = () => {
               </Text>
               <Switch
                 checked={enableWaitlist}
-                onCheckedChange={(val) => updateConfig('waitlist', { enabled: val })}
+                onCheckedChange={setEnableWaitlist}
               />
             </View>
 
@@ -311,7 +311,7 @@ const WaitlistScreen = () => {
                     </Text>
                     <Switch
                       checked={autoSmsEnabled}
-                      onCheckedChange={(val) => updateConfig('waitlist', { autoSmsEnabled: val })}
+                      onCheckedChange={setAutoSmsEnabled}
                     />
                   </View>
                   {autoSmsEnabled && (
@@ -334,7 +334,7 @@ const WaitlistScreen = () => {
                           textAlignVertical: 'top',
                         }}
                         value={smsTemplate}
-                        onChangeText={(text) => updateConfig('waitlist', { smsTemplate: text })}
+                        onChangeText={setSmsTemplate}
                         textAlignVertical="top"
                         placeholderTextColor={colors.muted}
                       />
@@ -353,9 +353,10 @@ const WaitlistScreen = () => {
                       value={String(waitlistNotificationGracePeriodMinutes ?? 10)}
                       onChangeText={value => {
                         const parsed = parseInt(value || '10', 10)
-                        updateConfig('waitlist', {
-                          notificationGracePeriodMinutes: Number.isFinite(parsed) && parsed > 0 ? parsed : 10,
-                        })
+                        updateStoreSetting(
+                          'waitlistNotificationGracePeriodMinutes',
+                          Number.isFinite(parsed) && parsed > 0 ? parsed : 10
+                        )
                       }}
                       keyboardType="numeric"
                     />
@@ -422,7 +423,7 @@ const WaitlistScreen = () => {
               </Text>
               <Switch
                 checked={enableReservations}
-                onCheckedChange={(val) => updateConfig('waitlist', { reservationsEnabled: val })}
+                onCheckedChange={setEnableReservations}
               />
             </View>
 
@@ -449,7 +450,7 @@ const WaitlistScreen = () => {
                       <Input
                         className="bg-screen border-gray-600 text-white h-10"
                         value={daysAhead}
-                        onChangeText={(text) => { const num = parseInt(text, 10); if (!isNaN(num)) updateConfig('waitlist', { reservationDaysAhead: num }); }}
+                        onChangeText={setDaysAhead}
                         keyboardType="numeric"
                       />
                     </View>
@@ -458,7 +459,7 @@ const WaitlistScreen = () => {
                       <Input
                         className="bg-screen border-gray-600 text-white h-10"
                         value={maxGuestsPerSlot}
-                        onChangeText={(text) => { const num = parseInt(text, 10); if (!isNaN(num)) updateConfig('waitlist', { maxGuestsPerSlot: num }); }}
+                        onChangeText={setMaxGuestsPerSlot}
                         keyboardType="numeric"
                       />
                     </View>
@@ -467,7 +468,7 @@ const WaitlistScreen = () => {
                       <Input
                         className="bg-screen border-gray-600 text-white h-10"
                         value={slotDuration}
-                        onChangeText={(text) => { const num = parseInt(text, 10); if (!isNaN(num)) updateConfig('waitlist', { slotDurationMinutes: num }); }}
+                        onChangeText={setSlotDuration}
                         keyboardType="numeric"
                       />
                     </View>
@@ -488,7 +489,7 @@ const WaitlistScreen = () => {
                     </Text>
                     <Switch
                       checked={requireDeposit}
-                      onCheckedChange={(val) => updateConfig('waitlist', { requireDeposit: val })}
+                      onCheckedChange={setRequireDeposit}
                     />
                   </View>
                   {requireDeposit && (
@@ -500,7 +501,7 @@ const WaitlistScreen = () => {
                         <Input
                           className="bg-screen border-gray-600 text-white h-10"
                           value={depositAmount}
-                          onChangeText={(text) => { const num = parseFloat(text); if (!isNaN(num)) updateConfig('waitlist', { depositAmount: num }); }}
+                          onChangeText={setDepositAmount}
                           keyboardType="numeric"
                         />
                       </View>
@@ -522,7 +523,7 @@ const WaitlistScreen = () => {
                             textAlignVertical: 'top',
                           }}
                           value={cancellationPolicy}
-                          onChangeText={(text) => updateConfig('waitlist', { cancellationPolicy: text })}
+                          onChangeText={setCancellationPolicy}
                           textAlignVertical="top"
                           placeholderTextColor={colors.muted}
                         />
