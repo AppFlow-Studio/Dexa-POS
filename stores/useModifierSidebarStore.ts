@@ -49,7 +49,7 @@ function getOrEvictCache(itemId: string): PreWarmEntry | undefined {
 // Pre-computed modifier selections for instant UI
 interface ModifierSelection {
   [categoryId: string]: {
-    [optionId: string]: boolean;
+    [optionId: string]: boolean | "no";
   };
 }
 
@@ -193,7 +193,7 @@ function precomputeModifierData(
 
       if (existingModifier) {
         existingModifier.options.forEach((selectedOption) => {
-          initialSelections[category.id][selectedOption.id] = true;
+          initialSelections[category.id][selectedOption.id] = selectedOption.isNo ? "no" : true;
         });
       }
       // OPTIMIZATION: Skip setting false values - component uses ?? false

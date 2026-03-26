@@ -863,17 +863,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         isCashPriced: isCashPayment,
       };
 
-      // Start payment RPC immediately — it doesn't depend on order_status
-      const paymentPromise = addPaymentToOrder({
-        orderId: activeOrderId,
-        amount: paymentAmount,
-        method: method as any,
-        tipAmount,
-        transactionDetails: detailsWithCashFlag,
-        dejavooTransaction,
-      });
-
-      // Fire-and-forget kitchen send in parallel (catches errors internally)
+      // Must happen BEFORE addPaymentToOrder so items are still kitchen_status "new"
+      // and sendNewItemsToKitchenForOrder actually finds items to send to KDS
       if (
         currentOrder &&
         (currentOrder.order_status === "draft" || currentOrder.order_status === "pending")
@@ -881,8 +872,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         sendNewItemsToKitchenForOrder(activeOrderId);
       }
 
-      // Await payment and check for success
-      const paymentSuccess = await paymentPromise;
+      // Now add the payment — this synchronously marks items kitchen_status "sent"
+      const paymentSuccess = await addPaymentToOrder({
+        orderId: activeOrderId,
+        amount: paymentAmount,
+        method: method as any,
+        tipAmount,
+        transactionDetails: detailsWithCashFlag,
+        dejavooTransaction,
+      });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
       if (!paymentSuccess) {

@@ -3,8 +3,10 @@ import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   TipDistributionRulesOverview,
+  TodayTipSummary,
   fetchTipDistributionRulesOverview,
-  fetchTodayTipSummary,
+  fetchUnsettledTipSummary,
+  computeLocalUnsettledTips,
 } from "@/services/endOfDayService";
 import { colors } from "@/lib/theme";
 import { useQuery } from "@tanstack/react-query";
@@ -49,11 +51,16 @@ export default function EodStepTips({
 
   const locationId = selectedStore?.id || "";
 
-  const { data: tipSummary, isLoading: summaryLoading } = useQuery({
+  const { data: tipSummary, isLoading: summaryLoading, isFetching: summaryFetching, refetch: refetchTipSummary } = useQuery({
     queryKey: ["eod-tip-summary", locationId],
     enabled: Boolean(locationId),
     staleTime: 30_000,
-    queryFn: () => fetchTodayTipSummary(supabase, locationId),
+    placeholderData: (): TodayTipSummary => ({
+      ...computeLocalUnsettledTips(),
+      periodStart: null,
+      pendingPriorDaySessions: [],
+    }),
+    queryFn: () => fetchUnsettledTipSummary(supabase, locationId),
   });
 
   const { data: rulesData, isLoading: rulesLoading, error: rulesError, isFetching: rulesFetching } = useQuery({
@@ -65,13 +72,34 @@ export default function EodStepTips({
 
   const tipItem = resolveItem(checklist, "tips_distributed");
 
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const periodStart = tipSummary?.periodStart ?? null;
+  const isMultiDay = periodStart !== null && periodStart < todayStr;
+
   return (
     <View className="gap-4">
-      {/* Today's tip totals */}
+      {/* Tip totals (today or multi-day period) */}
       <View className="rounded-xl border border-gray-700 bg-panel p-4">
-        <Text className="mb-3 text-sm font-semibold text-white">
-          Tips collected today
-        </Text>
+        <View className="mb-3 flex-row items-center justify-between">
+          <View>
+            <Text className="text-sm font-semibold text-white">
+              {isMultiDay ? "Tips to distribute" : "Tips collected today"}
+            </Text>
+            {isMultiDay && (
+              <Text className="text-xs text-zinc-400">{periodStart} – today</Text>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={() => refetchTipSummary()}
+            disabled={summaryFetching}
+            className="rounded-md px-2 py-1"
+          >
+            <Text className="text-xs text-cyan-400">
+              {summaryFetching ? "Refreshing…" : "Refresh"}
+            </Text>
+          </TouchableOpacity>
+        </View>
         {summaryLoading ? (
           <ActivityIndicator size="small" color={colors.teal} />
         ) : (
@@ -107,7 +135,7 @@ export default function EodStepTips({
             Unresolved prior-day sessions
           </Text>
           <Text className="mt-1 text-xs text-amber-200/80">
-            The following recent sessions were never approved or exported. Tips from those days may not have been distributed.
+            The following recent sessions were never approved or exported. These days are included in the totals above.
           </Text>
           <View className="mt-2 gap-1">
             {tipSummary!.pendingPriorDaySessions.map((s) => (

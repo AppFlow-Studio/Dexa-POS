@@ -59,14 +59,14 @@ export default function EodIntroScreen({
         >
           <Text className="text-sm font-semibold text-black">Start Close Out</Text>
         </TouchableOpacity>
-        <TouchableOpacity
+        {/* <TouchableOpacity
           onPress={onViewChecklist}
           className="items-center rounded-xl border border-gray-600 bg-transparent py-3.5"
         >
           <Text className="text-sm font-semibold text-zinc-200">
             View checklist only
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
     </View>
   );

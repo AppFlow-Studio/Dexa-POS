@@ -40,7 +40,7 @@ function transformBroadcastModifiers(
     {
       categoryId: string;
       categoryName: string;
-      options: { id: string; name: string; price: number }[];
+      options: { id: string; name: string; price: number; isNo?: boolean }[];
     }
   >();
 
@@ -63,6 +63,7 @@ function transformBroadcastModifiers(
         id: mod.modifier_item_id || mod.modifier_name,
         name: mod.modifier_name,
         price: mod.price_modifier,
+        isNo: mod.is_no || undefined,
       });
     }
   }
@@ -712,6 +713,7 @@ export interface FetchedOrderItemModifier {
   modifier_name: string;
   price_modifier: number;
   quantity?: number | null;
+  is_no?: boolean;
 }
 
 /**
@@ -823,6 +825,7 @@ function normalizeFetchedModifiers(
     modifier_name: mod.modifier_name,
     price_modifier: mod.price_modifier,
     quantity: mod.quantity ?? 1,
+    is_no: mod.is_no || undefined,
   }));
 }
 

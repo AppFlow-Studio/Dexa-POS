@@ -249,7 +249,7 @@ export interface ReceiptItemData {
   price: number;
   cashPrice?: number;
   isVoided: boolean;
-  modifiers: { name: string; price: number }[];
+  modifiers: { name: string; price: number; isNo?: boolean }[];
   notes?: string;
 }
 

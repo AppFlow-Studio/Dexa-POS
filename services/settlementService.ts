@@ -178,9 +178,10 @@ export async function getUnsettledPaymentStats(
     .from("order_payments")
     .select("amount, tip_amount")
     .eq("terminal_id", terminalId)
+    .eq('is_settled', false)
     .in("status", ["captured", "refunded", "partially_refunded"])
-    .or("is_settled.is.null,is_settled.eq.false");
-
+    
+    console.log(data)
   if (error) {
     console.error("[SettlementService] getUnsettledPaymentStats failed:", error);
     return { count: 0, totalAmount: 0 };

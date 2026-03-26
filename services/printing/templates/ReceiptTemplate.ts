@@ -109,9 +109,13 @@ export function buildReceiptCommands(data: ReceiptTemplateData): Uint8Array {
     // Modifiers (conditional)
     if (cfg?.showItemModifiers !== false) {
       for (const mod of item.modifiers) {
-        const modLine = mod.price > 0
-          ? `  + ${mod.name} (${formatCurrency(mod.price)})`
-          : `  + ${mod.name}`;
+        const isNo = !!mod.isNo;
+        const prefix = isNo ? "-" : "+";
+        const modLine = isNo
+          ? `  ${prefix} NO ${mod.name}`
+          : mod.price > 0
+            ? `  ${prefix} ${mod.name} (${formatCurrency(mod.price)})`
+            : `  ${prefix} ${mod.name}`;
         b.bold(true);
         b.textLine(modLine);
         b.bold(false);

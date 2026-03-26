@@ -21,10 +21,13 @@ import TipDistributionWizard from "@/components/tip-distribution/TipDistribution
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { colors } from "@/lib/theme";
 import {
+  bulkCloseOpenOrders,
   fetchDailySummary,
+  loadOrderForPaymentSheet,
   runChecklistValidations,
 } from "@/services/endOfDayService";
 import { EOD_STEPS, useEndOfDayStore } from "@/stores/useEndOfDayStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useRouter } from "expo-router";
 import { Printer, RotateCcw } from "lucide-react-native";
@@ -67,11 +70,15 @@ export default function EndOfDayScreen() {
   const setEodPhase = useEndOfDayStore((s) => s.setEodPhase);
   const completionOverrideReason = useEndOfDayStore((s) => s.completionOverrideReason);
 
+  // ── Store selectors (open orders for floor step) ─────────────────────
+  const openOrders = useEndOfDayStore((s) => s.openOrders);
+
   // ── Local state ──────────────────────────────────────────────────────
   const [isCashDrawerOpen, setCashDrawerOpen] = useState(false);
   const [isTipWizardOpen, setTipWizardOpen] = useState(false);
   const [isBulkClockOutOpen, setBulkClockOutOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isBulkClosing, setIsBulkClosing] = useState(false);
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
 
   // ── Navigation helpers ───────────────────────────────────────────────
@@ -127,6 +134,32 @@ export default function EndOfDayScreen() {
   const onOpenCashDrawer = useCallback(() => setCashDrawerOpen(true), []);
   const onOpenTipWizard = useCallback(() => setTipWizardOpen(true), []);
   const onOpenBulkClockOut = useCallback(() => setBulkClockOutOpen(true), []);
+
+  // ── Floor & Orders: bulk close ────────────────────────────────────────
+  const handleBulkClose = useCallback(
+    async (orderIds: string[]) => {
+      if (!locationId) return;
+      setIsBulkClosing(true);
+      await bulkCloseOpenOrders(supabase, locationId, orderIds);
+      // Re-run validations so the list and checklist item refresh
+      await runChecklistValidations(supabase, locationId);
+      setIsBulkClosing(false);
+    },
+    [supabase, locationId]
+  );
+
+  const handleNavigateToOrder = useCallback(
+    (_orderId: string) => onSafeNavigate("/(main)/previous-orders"),
+    [onSafeNavigate]
+  );
+
+  const handlePayOrder = useCallback(
+    async (orderId: string) => {
+      await loadOrderForPaymentSheet(supabase, orderId);
+      usePaymentDetailSheetStore.getState().open(orderId, "summary");
+    },
+    [supabase]
+  );
 
   // ── Refresh validations ──────────────────────────────────────────────
   const handleRefresh = useCallback(async () => {
@@ -414,6 +447,11 @@ export default function EndOfDayScreen() {
             onRefresh={handleRefresh}
             onOpenTables={onOpenTables}
             onOpenOrders={onOpenOrders}
+            openOrders={openOrders}
+            isBulkClosing={isBulkClosing}
+            onBulkClose={handleBulkClose}
+            onNavigateToOrder={handleNavigateToOrder}
+            onPayOrder={handlePayOrder}
           />
         );
       case 3:

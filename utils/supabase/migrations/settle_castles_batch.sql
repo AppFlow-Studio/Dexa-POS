@@ -28,6 +28,7 @@ DECLARE
 BEGIN
   -- 1) Insert settlement_batches record
   INSERT INTO settlement_batches (
+    batch_id,
     location_id,
     terminal_id,
     business_date,
@@ -43,6 +44,7 @@ BEGIN
     net_deposit,
     raw_response
   ) VALUES (
+    gen_random_uuid(),
     p_location_id,
     p_terminal_id,
     p_business_date,

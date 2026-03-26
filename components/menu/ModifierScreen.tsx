@@ -40,7 +40,7 @@ import { useShallow } from "zustand/react/shallow";
 
 interface ModifierSelection {
   [categoryId: string]: {
-    [optionId: string]: boolean;
+    [optionId: string]: boolean | "no";
   };
 }
 
@@ -103,30 +103,46 @@ const ModifierOption = memo(
     option,
     categoryId,
     isSelected,
+    isNo,
     isUnavailable,
     isReadOnly,
     onToggle,
+    onLongPress,
   }: {
     option: any;
     categoryId: string;
     isSelected: boolean;
+    isNo: boolean;
     isUnavailable: boolean;
     isReadOnly: boolean;
     onToggle: (categoryId: string, optionId: string) => void;
+    onLongPress: (categoryId: string, optionId: string) => void;
   }) => (
     <TouchableOpacity
       disabled={isReadOnly || isUnavailable}
       onPressIn={() => onToggle(categoryId, option.id)}
+      onLongPress={() => onLongPress(categoryId, option.id)}
+      delayLongPress={400}
       className="flex-1 min-w-[110px] max-w-[180px] rounded-lg border py-3 px-2.5 items-center justify-center"
       style={
-        isSelected
-          ? { backgroundColor: colors.teal + "20", borderColor: colors.teal }
-          : isUnavailable
-            ? { backgroundColor: colors.panel, borderColor: colors.border, opacity: 0.45 }
-            : { backgroundColor: colors.card, borderColor: colors.border }
+        isNo
+          ? { backgroundColor: colors.danger + "20", borderColor: colors.danger }
+          : isSelected
+            ? { backgroundColor: colors.teal + "20", borderColor: colors.teal }
+            : isUnavailable
+              ? { backgroundColor: colors.panel, borderColor: colors.border, opacity: 0.45 }
+              : { backgroundColor: colors.card, borderColor: colors.border }
       }
     >
-      {isSelected && (
+      {isNo && (
+        <View
+          className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full items-center justify-center"
+          style={{ backgroundColor: colors.danger }}
+        >
+          <X color={colors.onSolid} size={9} strokeWidth={3} />
+        </View>
+      )}
+      {isSelected && !isNo && (
         <View
           className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full items-center justify-center"
           style={{ backgroundColor: colors.teal }}
@@ -135,13 +151,13 @@ const ModifierOption = memo(
         </View>
       )}
       <Text
-        className={`text-xs font-semibold text-center ${isUnavailable ? "line-through" : ""}`}
-        style={{ color: isUnavailable ? colors.muted : isSelected ? colors.teal : colors.heading }}
+        className={`text-xs font-semibold text-center ${isUnavailable ? "line-through" : ""} ${isNo ? "line-through" : ""}`}
+        style={{ color: isUnavailable ? colors.muted : isNo ? colors.danger : isSelected ? colors.teal : colors.heading }}
       >
-        {option.name}
+        {isNo ? `NO ${option.name}` : option.name}
         {isUnavailable && " (86'd)"}
       </Text>
-      {option.price > 0 && (
+      {!isNo && option.price > 0 && (
         <Text className="text-[10px] text-center mt-0.5" style={{ color: colors.warning }}>
           +${option.price.toFixed(2)}
         </Text>
@@ -182,6 +198,14 @@ type Action =
         optionId: string;
         category: ModifierCategory;
       };
+    }
+  | {
+      type: "TOGGLE_NO_MODIFIER";
+      payload: {
+        categoryId: string;
+        optionId: string;
+        category: ModifierCategory;
+      };
     };
 
 const computeSelectionCounts = (selections: ModifierSelection): Record<string, number> => {
@@ -190,7 +214,7 @@ const computeSelectionCounts = (selections: ModifierSelection): Record<string, n
     let count = 0;
     const catSelections = selections[catId];
     for (const key in catSelections) {
-      if (catSelections[key]) count++;
+      if (catSelections[key] === true || catSelections[key] === "no") count++;
     }
     counts[catId] = count;
   }
@@ -238,15 +262,22 @@ const immerReducer = (state: State, action: Action): void => {
         state.modifierSelections[categoryId] = {};
       }
       const currentCount = state.selectionCounts[categoryId] ?? 0;
+      const currentVal = state.modifierSelections[categoryId][optionId];
+      // Tapping a "NO" modifier deselects it entirely
+      if (currentVal === "no") {
+        state.modifierSelections[categoryId][optionId] = false;
+        state.selectionCounts[categoryId] = currentCount - 1;
+        return;
+      }
       if (category.selectionType === "single") {
-        const wasSelected = !!state.modifierSelections[categoryId][optionId];
+        const wasSelected = !!currentVal;
         Object.keys(state.modifierSelections[categoryId]).forEach((key) => {
           state.modifierSelections[categoryId][key] = false;
         });
         state.modifierSelections[categoryId][optionId] = !wasSelected;
         state.selectionCounts[categoryId] = wasSelected ? 0 : 1;
       } else {
-        const isCurrentlySelected = state.modifierSelections[categoryId][optionId];
+        const isCurrentlySelected = currentVal;
         if (
           !isCurrentlySelected &&
           category.maxSelections &&
@@ -258,6 +289,37 @@ const immerReducer = (state: State, action: Action): void => {
         state.selectionCounts[categoryId] = isCurrentlySelected
           ? currentCount - 1
           : currentCount + 1;
+      }
+      return;
+    }
+    case "TOGGLE_NO_MODIFIER": {
+      const { categoryId, optionId, category } = action.payload;
+      if (!state.modifierSelections[categoryId]) {
+        state.modifierSelections[categoryId] = {};
+      }
+      const currentCount = state.selectionCounts[categoryId] ?? 0;
+      const currentVal = state.modifierSelections[categoryId][optionId];
+      if (currentVal === "no") {
+        // Already NO → deselect
+        state.modifierSelections[categoryId][optionId] = false;
+        state.selectionCounts[categoryId] = currentCount - 1;
+      } else {
+        // Unselected or true → set to NO
+        if (category.selectionType === "single") {
+          // Clear other selections first
+          Object.keys(state.modifierSelections[categoryId]).forEach((key) => {
+            state.modifierSelections[categoryId][key] = false;
+          });
+          state.modifierSelections[categoryId][optionId] = "no";
+          state.selectionCounts[categoryId] = 1;
+        } else {
+          const wasSelected = currentVal === true;
+          if (!wasSelected && category.maxSelections && currentCount >= category.maxSelections) {
+            return;
+          }
+          state.modifierSelections[categoryId][optionId] = "no";
+          state.selectionCounts[categoryId] = wasSelected ? currentCount : currentCount + 1;
+        }
       }
       return;
     }
@@ -451,7 +513,7 @@ const ModifierScreen = () => {
     let baseTotal = getCurrentItemPrice(currentItem);
     Object.values(state.modifierSelections).forEach((categorySelections) => {
       Object.entries(categorySelections).forEach(([optionId, isSelected]) => {
-        if (isSelected) {
+        if (isSelected && isSelected !== "no") {
           const optionData = optionsById.get(optionId);
           if (optionData) baseTotal += optionData.option.price;
         }
@@ -563,6 +625,14 @@ const ModifierScreen = () => {
     const category = modifierCategoriesById.get(catId);
     if (!category) return;
     dispatch({ type: "TOGGLE_MODIFIER", payload: { categoryId: catId, optionId, category } });
+  }, []);
+
+  const handleNoModifierToggle = useCallback((catId: string, optionId: string) => {
+    const { isReadOnly, modifierCategoriesById } = latestStateRef.current;
+    if (isReadOnly) return;
+    const category = modifierCategoriesById.get(catId);
+    if (!category) return;
+    dispatch({ type: "TOGGLE_NO_MODIFIER", payload: { categoryId: catId, optionId, category } });
   }, []);
 
   const handleQuantityPress = useCallback(() => {
@@ -695,10 +765,15 @@ const ModifierScreen = () => {
         ? Object.entries(currentState.modifierSelections).map(([cId, selections]) => {
             const category = categoriesMap.get(cId);
             const selectedOptions = Object.entries(selections)
-              .filter(([_, isSelected]) => isSelected)
-              .map(([optionId]) => {
+              .filter(([_, val]) => val === true || val === "no")
+              .map(([optionId, val]) => {
                 const optionData = optsMap.get(optionId);
-                return { id: optionId, name: optionData?.option.name || "", price: optionData?.option.price || 0 };
+                return {
+                  id: optionId,
+                  name: optionData?.option.name || "",
+                  price: val === "no" ? 0 : (optionData?.option.price || 0),
+                  isNo: val === "no" ? true : undefined,
+                };
               });
             return { categoryId: cId, categoryName: category?.name || "", options: selectedOptions };
           }).filter((mod) => mod.options.length > 0)
@@ -1005,7 +1080,9 @@ const ModifierScreen = () => {
                 {/* Options grid */}
                 <View className="flex-row flex-wrap gap-2">
                   {currentCategory.options.map((option) => {
-                    const isSelected = state.modifierSelections[currentCategory.id]?.[option.id] || false;
+                    const selVal = state.modifierSelections[currentCategory.id]?.[option.id];
+                    const isSelected = selVal === true || selVal === "no";
+                    const isNo = selVal === "no";
                     const isUnavailable = option.isAvailable === false;
                     return (
                       <ModifierOption
@@ -1013,9 +1090,11 @@ const ModifierScreen = () => {
                         option={option}
                         categoryId={currentCategory.id}
                         isSelected={isSelected}
+                        isNo={isNo}
                         isUnavailable={isUnavailable}
                         isReadOnly={isReadOnly}
                         onToggle={handleModifierToggle}
+                        onLongPress={handleNoModifierToggle}
                       />
                     );
                   })}

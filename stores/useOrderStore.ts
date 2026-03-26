@@ -1312,8 +1312,9 @@ const addItemToBackend = async (
           modifier_item_id: opt.id,
           modifier_group_name: mod.categoryName,
           modifier_name: opt.name,
-          price_modifier: opt.price,
+          price_modifier: opt.isNo ? 0 : opt.price,
           quantity: 1,
+          is_no: opt.isNo || false,
         })),
       ),
 
@@ -1581,6 +1582,11 @@ const syncPaymentToBackend = async (
 
     return hasData ? combined : null;
   };
+  // Resolve terminal ID for card payments
+  const terminalId = paymentDetails.method !== "Cash"
+    ? useStoreSettingsStore.getState().selectedStation?.payment_terminal?.id ?? null
+    : null;
+
   // ========================================================================
   // OFFLINE-FIRST: Queue payment for later sync if order not in DB yet
   // ========================================================================
@@ -1607,7 +1613,7 @@ const syncPaymentToBackend = async (
       !paymentDetails.splitCount &&
       !paymentDetails.forceCardPricing;
 
-    // Build payment params for process_payment_v2 (will be resolved when order syncs)
+    // Build payment params for process_payment_v7 (will be resolved when order syncs)
     const paymentParams = {
       p_order_id: order.id, // Will be resolved to db_order_id at sync time
       p_payment_method: isCash ? "cash" : "card",
@@ -1622,6 +1628,7 @@ const syncPaymentToBackend = async (
       p_split_count: paymentDetails.splitCount || null,
       p_split_portion_index: paymentDetails.splitPortionIndex || null,
       p_force_card_pricing: paymentDetails.forceCardPricing || false,
+      p_terminal_id: terminalId,
     };
 
     // Queue unified payment operation (will execute after order syncs)
@@ -1689,6 +1696,7 @@ const syncPaymentToBackend = async (
       p_split_count: paymentDetails.splitCount || null,
       p_split_portion_index: paymentDetails.splitPortionIndex || null,
       p_force_card_pricing: paymentDetails.forceCardPricing || false,
+      p_terminal_id: terminalId,
     });
 
     if (error) {
@@ -1751,6 +1759,7 @@ const syncPaymentToBackend = async (
         p_split_count: paymentDetails.splitCount || null,
         p_split_portion_index: paymentDetails.splitPortionIndex || null,
         p_force_card_pricing: paymentDetails.forceCardPricing || false,
+        p_terminal_id: terminalId,
       };
 
       if (__DEV__) console.log(
@@ -2563,7 +2572,7 @@ export const useOrderStore = create<OrderState>()(
               .map(
                 (mod) =>
                   `${mod.categoryId}:${mod.options
-                    .map((opt) => opt.id)
+                    .map((opt) => `${opt.id}${opt.isNo ? ":no" : ""}`)
                     .sort()
                     .join(",")}`,
               )

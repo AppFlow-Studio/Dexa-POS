@@ -34,18 +34,26 @@ export default function EodBulkClockOutModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const sessions = useTimeclockStore((s) => s.sessions);
-  const forceClockOutAll = useTimeclockStore((s) => s.forceClockOutAll);
+  const forceClockOutAllExcept = useTimeclockStore((s) => s.forceClockOutAllExcept);
   const employees = useEmployeeStore((s) => s.employees);
+  const activeEmployeeId = useEmployeeStore((s) => s.activeEmployeeId);
   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
   const locationId = selectedStore?.id;
 
+  const currentProfileId = useMemo(
+    () => employees.find((e) => e.id === activeEmployeeId)?.profileId ?? null,
+    [employees, activeEmployeeId]
+  );
+
   const activeStaff = useMemo(
     () =>
-      Object.values(sessions).map((session) => {
-        const employee = employees.find((e) => e.id === session.employeeId);
-        return { session, employee };
-      }),
-    [sessions, employees]
+      Object.values(sessions)
+        .filter((session) => session.employeeId !== activeEmployeeId)
+        .map((session) => {
+          const employee = employees.find((e) => e.id === session.employeeId);
+          return { session, employee };
+        }),
+    [sessions, employees, activeEmployeeId]
   );
 
   useEffect(() => {
@@ -60,7 +68,7 @@ export default function EodBulkClockOutModal({
     if (!locationId || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await supabase
+      let query = supabase
         .from("staff_shifts")
         .update({
           status: "completed",
@@ -68,13 +76,17 @@ export default function EodBulkClockOutModal({
         })
         .eq("location_id", locationId)
         .in("status", ["active", "on_break"]);
+      if (currentProfileId) {
+        query = query.neq("staff_profile_id", currentProfileId);
+      }
+      await query;
     } catch (err) {
       console.warn("[EodBulkClockOut] Supabase update error:", err);
     }
-    forceClockOutAll();
+    forceClockOutAllExcept(activeEmployeeId ?? "");
     setIsSubmitting(false);
     onClose();
-  }, [locationId, isSubmitting, supabase, forceClockOutAll, onClose]);
+  }, [locationId, isSubmitting, supabase, forceClockOutAllExcept, activeEmployeeId, currentProfileId, onClose]);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -108,8 +120,8 @@ export default function EodBulkClockOutModal({
           </Text>
           <Text style={{ fontSize: 13, color: colors.label, marginTop: 4 }}>
             {activeStaff.length > 0
-              ? `${activeStaff.length} staff member${activeStaff.length > 1 ? "s" : ""} currently clocked in`
-              : "All staff are clocked out"}
+              ? `${activeStaff.length} other staff member${activeStaff.length > 1 ? "s" : ""} currently clocked in`
+              : "Only you are clocked in"}
           </Text>
         </View>
 
@@ -126,7 +138,7 @@ export default function EodBulkClockOutModal({
             }}
           >
             <Text style={{ fontSize: 14, color: colors.label }}>
-              No active shifts — all staff are clocked out.
+              Only you are clocked in — clock yourself out via the Timeclock when you're done.
             </Text>
           </View>
         ) : (
@@ -208,7 +220,7 @@ export default function EodBulkClockOutModal({
           >
             {isSubmitting && <ActivityIndicator size="small" color="#fff" />}
             <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
-              End All Shifts
+              End All Other Shifts
             </Text>
           </TouchableOpacity>
         )}

@@ -88,7 +88,8 @@ BEGIN
                 jsonb_build_object(
                   'modifier_name', oim.modifier_name,
                   'modifier_group_name', oim.modifier_group_name,
-                  'price_modifier', oim.price_modifier
+                  'price_modifier', oim.price_modifier,
+                  'is_no', COALESCE(oim.is_no, false)
                 )
               ), '[]'::jsonb)
               FROM order_item_modifiers oim

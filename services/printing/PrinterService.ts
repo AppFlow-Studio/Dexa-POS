@@ -647,7 +647,7 @@ function buildReceiptTemplateData(
 
   // Map items
   const items: ReceiptItemData[] = nonVoidedItems.map((item) => {
-    const modifiers: { name: string; price: number }[] = [];
+    const modifiers: { name: string; price: number; isNo?: boolean }[] = [];
 
     if (item.customizations?.size) {
       modifiers.push({
@@ -658,7 +658,11 @@ function buildReceiptTemplateData(
 
     item.customizations?.modifiers?.forEach((modGroup) => {
       modGroup.options.forEach((opt) => {
-        modifiers.push({ name: opt.name, price: opt.price ?? 0 });
+        modifiers.push({
+          name: opt.name,
+          price: opt.isNo ? 0 : (opt.price ?? 0),
+          isNo: opt.isNo,
+        });
       });
     });
 
@@ -796,7 +800,7 @@ function buildKitchenTicketData(
 
       item.customizations?.modifiers?.forEach((modGroup) => {
         modGroup.options.forEach((opt) => {
-          modifiers.push(opt.name);
+          modifiers.push(opt.isNo ? `NO ${opt.name}` : opt.name);
         });
       });
 

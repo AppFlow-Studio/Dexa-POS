@@ -93,7 +93,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     const payments = activeOrder?.payments || [];
     return payments.some((p) => (p.refundedAmount ?? 0) > 0);
   }, [activeOrder?.payments]);
-  const canApplyDiscount = !hasRefunds;
+  const isCheckClosed = isBalanceZero || activeOrder?.paid_status === "Paid";
+  const canApplyDiscount = !hasRefunds && !isCheckClosed;
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true);
@@ -418,7 +419,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>Apply Discount</Text>
               {!canApplyDiscount && (
-                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>Unavailable for refunded orders</Text>
+                <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                  {isCheckClosed ? "Check is closed" : "Unavailable for refunded orders"}
+                </Text>
               )}
             </View>
             <ChevronRight size={14} color={colors.muted} />
@@ -427,9 +430,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           {/* Add Customer row */}
           <TouchableOpacity
             onPress={handleAddCustomer}
+            disabled={isCheckClosed}
             style={{
               flexDirection: "row", alignItems: "center",
               paddingHorizontal: 16, paddingVertical: 10,
+              opacity: isCheckClosed ? 0.45 : 1,
             }}
           >
             <View style={{
@@ -594,6 +599,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               onChangeText={setOrderNotes}
               placeholder="Add special instructions..."
               numberOfLines={1}
+              editable={!isCheckClosed}
               style={{
                 padding: 10,
                 backgroundColor: colors.screen,
@@ -603,6 +609,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 fontSize: 13,
                 minHeight: 72,
                 textAlignVertical: "top",
+                opacity: isCheckClosed ? 0.45 : 1,
               }}
               placeholderTextColor={colors.muted}
             />
@@ -621,9 +628,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
           {/* Clear Cart row */}
           <TouchableOpacity
             onPress={handleClearCart}
+            disabled={isCheckClosed}
             style={{
               flexDirection: "row", alignItems: "center",
               paddingHorizontal: 16, paddingVertical: 10,
+              opacity: isCheckClosed ? 0.45 : 1,
             }}
           >
             <View style={{
