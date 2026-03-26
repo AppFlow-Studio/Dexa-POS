@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Globe,
   RefreshCw,
   RotateCcw,
   Search,
@@ -313,12 +314,14 @@ const PreviousOrdersScreen = () => {
     let dineIn = 0;
     let takeaway = 0;
     let delivery = 0;
+    let online = 0;
 
     for (const o of allOrders) {
       if (o.paid_status === "Pending") needsAttention++;
       if (o.order_status === "refunded" || (o.payments || []).some((p) => (p.refundedAmount ?? 0) > 0)) {
         refunded++;
       }
+      if (o.order_source?.toLowerCase() === "online") online++;
       switch (o.order_type) {
         case "Dine In":
           dineIn++;
@@ -332,7 +335,7 @@ const PreviousOrdersScreen = () => {
       }
     }
 
-    return { needsAttention, refunded, dineIn, takeaway, delivery };
+    return { needsAttention, refunded, dineIn, takeaway, delivery, online };
   }, [allOrders]);
 
   // ─── Client-side filtering + sorting ───────────────────
@@ -370,6 +373,9 @@ const PreviousOrdersScreen = () => {
     }
     if (activeFilters.has("delivery")) {
       filtered = filtered.filter((o) => o.order_type === "delivery");
+    }
+    if (activeFilters.has("online")) {
+      filtered = filtered.filter((o) => o.order_source?.toLowerCase() === "online");
     }
 
     // Sorting
@@ -633,6 +639,13 @@ const PreviousOrdersScreen = () => {
               onPress={() => toggleFilter("delivery")}
               icon={<Truck color={activeFilters.has("delivery") ? colors.onSolid : colors.info} size={13} />}
               count={filterCounts.delivery}
+            />
+            <FilterPill
+              label="Online"
+              isActive={activeFilters.has("online")}
+              onPress={() => toggleFilter("online")}
+              icon={<Globe color={activeFilters.has("online") ? colors.onSolid : colors.teal} size={13} />}
+              count={filterCounts.online}
             />
           </ScrollView>
 

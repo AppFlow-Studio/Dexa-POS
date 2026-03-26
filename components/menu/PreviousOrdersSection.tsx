@@ -197,7 +197,7 @@ const PreviousOrdersSection = () => {
       if (DINE_IN_VALUES.has(t)) dineIn++;
       else if (TAKEAWAY_VALUES.has(t)) takeaway++;
       else if (DELIVERY_VALUES.has(t)) delivery++;
-      if (o.order_source === "online") online++;
+      if (o.order_source?.toLowerCase() === "online") online++;
     }
     return { All: allOrders.length, "Dine In": dineIn, Takeaway: takeaway, Delivery: delivery, Online: online };
   }, [allOrders]);
@@ -208,7 +208,7 @@ const PreviousOrdersSection = () => {
 
     // Filter by tab
     if (activeTab === "Online") {
-      filtered = filtered.filter((o) => o.order_source === "online");
+      filtered = filtered.filter((o) => o.order_source?.toLowerCase() === "online");
     } else if (activeTab !== "All") {
       const tabSet = activeTab === "Dine In" ? DINE_IN_VALUES : activeTab === "Takeaway" ? TAKEAWAY_VALUES : DELIVERY_VALUES;
       filtered = filtered.filter((o) => tabSet.has(o.order_type ?? ""));
