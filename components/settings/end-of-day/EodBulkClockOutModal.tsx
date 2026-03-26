@@ -113,6 +113,23 @@ export default function EodBulkClockOutModal({
           </Text>
         </View>
 
+        {activeStaff.length > 0 && (
+          <View
+            style={{
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.danger + "40",
+              backgroundColor: colors.danger + "12",
+              padding: 12,
+              marginBottom: 16,
+            }}
+          >
+            <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>
+              This will immediately clock out all active staff. This action cannot be undone.
+            </Text>
+          </View>
+        )}
+
         {activeStaff.length === 0 ? (
           <View
             style={{
@@ -141,7 +158,7 @@ export default function EodBulkClockOutModal({
                   borderRadius: 10,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  backgroundColor: colors.screen,
+                  backgroundColor: colors.card,
                   paddingHorizontal: 14,
                   paddingVertical: 12,
                 }}
@@ -168,8 +185,8 @@ export default function EodBulkClockOutModal({
                     borderRadius: 6,
                     backgroundColor:
                       session.status === "onBreak"
-                        ? "rgba(239,68,68,0.15)"
-                        : "rgba(34,197,94,0.15)",
+                        ? colors.warning + "25"
+                        : colors.teal + "25",
                   }}
                 >
                   <Text
@@ -177,7 +194,7 @@ export default function EodBulkClockOutModal({
                       fontSize: 11,
                       fontWeight: "600",
                       color:
-                        session.status === "onBreak" ? "#f87171" : "#4ade80",
+                        session.status === "onBreak" ? colors.warning : colors.teal,
                     }}
                   >
                     {session.status === "onBreak" ? "On Break" : "Clocked In"}
@@ -194,9 +211,7 @@ export default function EodBulkClockOutModal({
             onPress={handleConfirm}
             disabled={isSubmitting}
             style={{
-              backgroundColor: isSubmitting
-                ? "rgba(239,68,68,0.4)"
-                : "rgba(239,68,68,0.85)",
+              backgroundColor: colors.danger,
               paddingVertical: 14,
               borderRadius: 12,
               alignItems: "center",
@@ -204,10 +219,11 @@ export default function EodBulkClockOutModal({
               justifyContent: "center",
               gap: 8,
               marginBottom: 10,
+              opacity: isSubmitting ? 0.5 : 1,
             }}
           >
-            {isSubmitting && <ActivityIndicator size="small" color="#fff" />}
-            <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
+            {isSubmitting && <ActivityIndicator size="small" color={colors.onSolid} />}
+            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.onSolid }}>
               End All Shifts
             </Text>
           </TouchableOpacity>

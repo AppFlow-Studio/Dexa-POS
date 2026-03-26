@@ -63,14 +63,14 @@ const StationSelectItem = ({
               backgroundColor: isSelected
                 ? colors.teal + "20"
                 : isAvailable
-                  ? colors.success + "15"
-                  : colors.warning + "15",
+                  ? colors.teal + "15"
+                  : colors.teal + "10",
               marginRight: 12,
             }}
           >
             <Monitor
               size={16}
-              color={isSelected ? colors.teal : isAvailable ? colors.success : colors.warning}
+              color={isSelected ? colors.teal : isAvailable ? colors.teal : colors.muted}
             />
           </View>
 
@@ -80,7 +80,7 @@ const StationSelectItem = ({
                 style={{
                   fontSize: 13,
                   fontWeight: "600",
-                  color: isSelected ? colors.teal : isAvailable ? colors.heading : colors.label,
+                  color: isSelected ? colors.teal : colors.heading,
                 }}
               >
                 {station.station_name}
@@ -127,16 +127,16 @@ const StationSelectItem = ({
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 4,
-                backgroundColor: colors.success + "15",
+                backgroundColor: colors.teal + "15",
                 borderRadius: 20,
                 paddingHorizontal: 9,
                 paddingVertical: 3,
                 borderWidth: 1,
-                borderColor: colors.success + "40",
+                borderColor: colors.teal + "40",
               }}
             >
-              <Wifi size={11} color={colors.success} />
-              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.success }}>
+              <Wifi size={11} color={colors.teal} />
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
                 Available
               </Text>
             </View>
@@ -147,31 +147,31 @@ const StationSelectItem = ({
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 4,
-                  backgroundColor: colors.warning + "15",
+                  backgroundColor: colors.border,
                   borderRadius: 20,
                   paddingHorizontal: 9,
                   paddingVertical: 3,
                   borderWidth: 1,
-                  borderColor: colors.warning + "40",
+                  borderColor: colors.border,
                 }}
               >
-                <WifiOff size={11} color={colors.warning} />
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.warning }}>
+                <WifiOff size={11} color={colors.muted} />
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted }}>
                   In Use
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={onTakeOver}
                 style={{
-                  backgroundColor: colors.warning + "15",
+                  backgroundColor: colors.teal + "15",
                   borderWidth: 1,
-                  borderColor: colors.warning + "40",
+                  borderColor: colors.teal + "40",
                   borderRadius: 8,
                   paddingHorizontal: 10,
                   paddingVertical: 4,
                 }}
               >
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.warning }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>
                   Take Over
                 </Text>
               </TouchableOpacity>

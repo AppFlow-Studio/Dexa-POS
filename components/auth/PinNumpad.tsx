@@ -23,7 +23,7 @@ const PinButton = ({
     onPress={onPress}
     activeOpacity={0.7}
     style={{
-      width: 112,
+      flex: 1,
       height: 56,
       backgroundColor: isAction ? colors.screen : colors.card,
       borderWidth: 1,
@@ -53,27 +53,39 @@ const PinNumpad: React.FC<PinNumpadProps> = ({ onKeyPress }) => {
     { icon: <Delete color={colors.label} size={18} />, action: "backspace" },
   ];
 
+  const rows = [
+    numpadLayout.slice(0, 3),
+    numpadLayout.slice(3, 6),
+    numpadLayout.slice(6, 9),
+    numpadLayout.slice(9, 12),
+  ];
+
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 10, maxWidth: 370, alignSelf: "center" }}>
-      {numpadLayout.map((item, index) => {
-        if (typeof item === "string") {
-          return (
-            <PinButton
-              key={index}
-              value={item}
-              onPress={() => onKeyPress(parseInt(item, 10))}
-            />
-          );
-        }
-        return (
-          <PinButton
-            key={index}
-            value={item.icon}
-            isAction
-            onPress={() => onKeyPress(item.action as NumpadAction)}
-          />
-        );
-      })}
+    <View style={{ gap: 10 }}>
+      {rows.map((row, rowIndex) => (
+        <View key={rowIndex} style={{ flexDirection: "row", gap: 10 }}>
+          {row.map((item, colIndex) => {
+            const index = rowIndex * 3 + colIndex;
+            if (typeof item === "string") {
+              return (
+                <PinButton
+                  key={index}
+                  value={item}
+                  onPress={() => onKeyPress(parseInt(item, 10))}
+                />
+              );
+            }
+            return (
+              <PinButton
+                key={index}
+                value={item.icon}
+                isAction
+                onPress={() => onKeyPress(item.action as NumpadAction)}
+              />
+            );
+          })}
+        </View>
+      ))}
     </View>
   );
 };
