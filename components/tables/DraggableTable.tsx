@@ -475,17 +475,19 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             />
           )}
           <View className='absolute inset-0 items-center justify-center px-1'>
-            <Text
-              style={{
-                fontSize: 10,
-                fontWeight: '700',
-                textAlign: 'center',
-                color: isTableType ? tableColor : colors.label,
-              }}
-              numberOfLines={1}
-            >
-              {displayName ? displayName : table.name}
-            </Text>
+            {isTableType && (
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                  color: tableColor,
+                }}
+                numberOfLines={1}
+              >
+                {displayName ? displayName : table.name}
+              </Text>
+            )}
 
             {isTableType && tableStatus === 'available' && (
               <Text style={{ color: tableColor + 'AA', fontSize: 7, fontWeight: '600' }}>

@@ -206,9 +206,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       const initialScale = Math.min(scaleX, scaleY)
 
       const initialTranslateX =
-        ((containerDims.width - contentDims.width) * initialScale) / 2
+        (containerDims.width - contentDims.width * initialScale) / 2
       const initialTranslateY =
-        ((containerDims.height - contentDims.height) * initialScale) / 2
+        (containerDims.height - contentDims.height * initialScale) / 2
 
       scale.value = initialScale
       savedScale.value = initialScale
