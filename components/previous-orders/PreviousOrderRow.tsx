@@ -40,13 +40,13 @@ interface PreviousOrderRowProps {
 
 // Status → color mapping with variety
 const statusColorMap: Record<string, { color: string; bgOpacity: string }> = {
-  Paid: { color: colors.teal, bgOpacity: "30" },
-  Partial: { color: colors.teal, bgOpacity: "20" },
-  Pending: { color: colors.teal, bgOpacity: "15" },
-  Unpaid: { color: colors.teal, bgOpacity: "10" },
+  Paid: { color: colors.teal, bgOpacity: "25" },
+  Partial: { color: colors.warning, bgOpacity: "25" },
+  Pending: { color: colors.warning, bgOpacity: "20" },
+  Unpaid: { color: colors.danger, bgOpacity: "20" },
   "In Progress": { color: colors.teal, bgOpacity: "25" },
-  Refunded: { color: colors.teal, bgOpacity: "20" },
-  "Partially Refunded": { color: colors.teal, bgOpacity: "15" },
+  Refunded: { color: colors.danger, bgOpacity: "25" },
+  "Partially Refunded": { color: colors.warning, bgOpacity: "20" },
 };
 
 // Order type → semantic color + icon mapping
