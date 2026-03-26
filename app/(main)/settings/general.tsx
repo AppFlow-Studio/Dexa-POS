@@ -745,7 +745,6 @@ const GeneralSettingsScreen = () => {
                     {displayPhone}
                   </Text>
                 </View>
-                <Switch checked={showMenuImages} onCheckedChange={setShowMenuImages} />
               </View>
 
               {/* Theme: coming soon placeholder */}
