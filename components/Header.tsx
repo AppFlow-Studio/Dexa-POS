@@ -1,5 +1,11 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import {
+  getActiveVendorSidebarId,
+  requestVendorSidebarClose,
+  subscribeActiveVendorSidebarId,
+} from "@/lib/vendorSidebarControl";
 import {
   Href,
   useGlobalSearchParams,
@@ -8,7 +14,7 @@ import {
 } from "expo-router";
 import { colors } from "@/lib/theme";
 import { ArrowLeft } from "lucide-react-native";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useSyncExternalStore } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { NetworkStatusBadge } from "./NetworkStatusBadge";
 import SessionDock from "./SessionDock";
@@ -17,7 +23,18 @@ const Header = () => {
   const pathname = usePathname();
   const router = useRouter();
   const tablesById = useFloorPlanStore((s) => s.tablesById);
+  const vendors = useInventoryStore((s) => s.vendors);
   const globalParams = useGlobalSearchParams();
+  const instantVendorId = useSyncExternalStore(
+    subscribeActiveVendorSidebarId,
+    getActiveVendorSidebarId,
+  );
+  const activeVendorId = useMemo(() => {
+    if (instantVendorId) return instantVendorId;
+    const raw = globalParams.vendorId;
+    if (Array.isArray(raw)) return raw[0];
+    return typeof raw === "string" ? raw : undefined;
+  }, [globalParams.vendorId, instantVendorId]);
 
   const showBackButton =
     pathname === "/open-shifts" ||
@@ -70,6 +87,15 @@ const Header = () => {
     if (pathname === "/order-processing") return "Back to Menu";
     if (pathname === "/kds") return "Kitchen Display";
     if (pathname.startsWith("/previous-orders")) return "Back to Menu";
+    if (pathname === "/inventory/vendors" && activeVendorId) {
+      const vendor = vendors.find((v) => v.id === activeVendorId);
+      return `Vendors / ${vendor?.name ?? "Vendor"}`;
+    }
+    if (pathname.startsWith("/inventory/vendors/")) {
+      const vendorId = pathname.split("/").filter(Boolean)[2];
+      const vendor = vendors.find((v) => v.id === vendorId);
+      return `Vendors / ${vendor?.name ?? "Vendor"}`;
+    }
     if (pathname.startsWith("/inventory/vendors")) return "Vendors";
     if (pathname.startsWith("/inventory/purchase-orders"))
       return "Purchase Orders";
@@ -123,9 +149,22 @@ const Header = () => {
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
     return title;
-  }, [pathname, tablesById]);
+  }, [pathname, activeVendorId, tablesById, vendors]);
 
   const handleBackPress = useCallback(() => {
+    if (pathname === "/inventory/vendors" && activeVendorId) {
+      requestVendorSidebarClose();
+      return;
+    }
+
+    if (
+      pathname.startsWith("/inventory/vendors/") &&
+      pathname.split("/").filter(Boolean).length >= 3
+    ) {
+      router.replace("/inventory/vendors" as Href);
+      return;
+    }
+
     // Check for explicit returnTo parameter first
     if (globalParams.returnTo && typeof globalParams.returnTo === "string") {
       router.push(globalParams.returnTo as Href);
@@ -180,7 +219,7 @@ const Header = () => {
     }
 
     router.back();
-  }, [globalParams.returnTo, cancelAndRemoveDraft, closeModifierSidebar, pathname, router]);
+  }, [activeVendorId, globalParams.returnTo, cancelAndRemoveDraft, closeModifierSidebar, pathname, router]);
 
   return (
     <View className="flex-row justify-between items-center py-1">

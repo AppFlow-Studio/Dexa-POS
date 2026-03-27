@@ -1,3 +1,4 @@
+import { setHeaderHeight } from "@/lib/headerHeight";
 import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Header from "@/components/Header";
 import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
@@ -194,7 +195,10 @@ export default function MainLayout() {
           {/* <Sidebar /> */}
           {/* <ModifierSidebar /> */}
           <View className="flex-1 flex-col">
-            <View className="px-4 z-50">
+            <View
+              className="px-4 z-50"
+              onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}
+            >
               <Header />
             </View>
             <Slot />

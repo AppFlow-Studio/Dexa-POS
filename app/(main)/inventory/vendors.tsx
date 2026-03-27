@@ -6,14 +6,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Portal } from "@rn-primitives/portal";
+import { getHeaderHeight } from "@/lib/headerHeight";
+import {
+  registerVendorSidebarCloseHandler,
+  setActiveVendorSidebarId,
+} from "@/lib/vendorSidebarControl";
 import { bottomSheetTheme, colors } from "@/lib/theme";
-import { Vendor } from "@/lib/types";
+import { PurchaseOrder, Vendor } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetSectionList,
 } from "@gorhom/bottom-sheet";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import {
   Building2,
   Edit,
@@ -25,8 +32,9 @@ import {
   Trash2,
   User,
 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -35,6 +43,313 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+const STATUS_COLORS: Record<string, string> = {
+  Draft: "#6B7280",
+  "Pending Delivery": "#F59E0B",
+  "Awaiting Payment": "#3B82F6",
+  Paid: "#10B981",
+  Cancelled: "#EF4444",
+};
+
+const VendorSidebar: React.FC<{
+  vendor: Vendor;
+  itemsSupplied: number;
+  vendorPOs: PurchaseOrder[];
+  vendorItems: { id: string; name: string; stockQuantity: number; unit: string; cost: number }[];
+  closeSignal: number;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onCreatePO: () => void;
+}> = ({ vendor, itemsSupplied, vendorPOs, vendorItems, closeSignal, onClose, onEdit, onDelete, onCreatePO }) => {
+  const [activeTab, setActiveTab] = useState<"po" | "items">("po");
+  const initial = (vendor.name || "?")[0].toUpperCase();
+  const slideAnim = useRef(new Animated.Value(-600)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const isClosingRef = useRef(false);
+  const lastCloseSignalRef = useRef(closeSignal);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const handleClose = () => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -600,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      isClosingRef.current = false;
+      onClose();
+    });
+  };
+
+  useEffect(() => {
+    // Only react to new close requests, not the initial prop value on mount.
+    if (closeSignal !== lastCloseSignalRef.current) {
+      lastCloseSignalRef.current = closeSignal;
+      handleClose();
+    }
+  }, [closeSignal]);
+
+  const handleEdit = () => {
+    Animated.parallel([
+      Animated.timing(slideAnim, { toValue: -600, duration: 220, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(() => onEdit());
+  };
+
+  const handleDelete = () => {
+    Animated.parallel([
+      Animated.timing(slideAnim, { toValue: -600, duration: 220, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(() => onDelete());
+  };
+
+  const totalSpend = vendorPOs
+    .filter((po) => po.status === "Paid")
+    .reduce((sum, po) => sum + po.items.reduce((s, i) => s + i.cost * i.quantity, 0), 0);
+  const avgOrder = vendorPOs.length > 0
+    ? vendorPOs.reduce((sum, po) => sum + po.items.reduce((s, i) => s + i.cost * i.quantity, 0), 0) / vendorPOs.length
+    : 0;
+
+
+  const headerHeight = Math.max(getHeaderHeight(), 56);
+  return (
+    <Portal name="vendor-sidebar">
+      <Animated.View
+        style={{ position: "absolute", top: headerHeight, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.45)", opacity: fadeAnim }}
+        pointerEvents="box-none"
+      >
+        <TouchableOpacity activeOpacity={1} onPress={handleClose} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+        <Animated.View
+          style={{ position: "absolute", left: 0, top: 0, bottom: 0, right: 0, flexDirection: "row", transform: [{ translateX: slideAnim }] }}
+        >
+        {/* ── LEFT PANEL ── */}
+        <View style={{ width: "30%", backgroundColor: colors.panel, borderRightWidth: 1, borderRightColor: colors.border }}>
+          <View style={{ paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontSize: 11, color: colors.muted, letterSpacing: 0.8 }}>VENDOR PROFILE</Text>
+          </View>
+
+          <View style={{ flex: 1, padding: 14 }}>
+            {/* Avatar + Name */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <View style={{ width: 48, height: 48, borderRadius: 13, backgroundColor: colors.teal + "25", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: colors.teal + "40" }}>
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.teal }}>{initial}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={2} style={{ fontSize: 15, fontWeight: "800", color: colors.heading, lineHeight: 19, marginBottom: 4 }}>{vendor.name}</Text>
+                <View style={{ alignSelf: "flex-start", backgroundColor: colors.teal + "20", borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 9, fontWeight: "700", color: colors.teal }}>Active</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 14 }} />
+
+            {/* Contact Fields */}
+            <View style={{ gap: 12, marginBottom: 16 }}>
+              {vendor.contactName ? (
+                <View>
+                  <Text style={{ fontSize: 8, fontWeight: "700", color: colors.muted, letterSpacing: 1, marginBottom: 3 }}>CONTACT PERSON</Text>
+                  <Text style={{ fontSize: 12, color: colors.label }}>{vendor.contactName}</Text>
+                </View>
+              ) : null}
+              {vendor.email ? (
+                <View>
+                  <Text style={{ fontSize: 8, fontWeight: "700", color: colors.muted, letterSpacing: 1, marginBottom: 3 }}>EMAIL</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 12, color: colors.teal }}>{vendor.email}</Text>
+                </View>
+              ) : null}
+              {vendor.phone ? (
+                <View>
+                  <Text style={{ fontSize: 8, fontWeight: "700", color: colors.muted, letterSpacing: 1, marginBottom: 3 }}>PHONE</Text>
+                  <Text style={{ fontSize: 12, color: colors.label }}>{vendor.phone}</Text>
+                </View>
+              ) : null}
+              {vendor.address ? (
+                <View>
+                  <Text style={{ fontSize: 8, fontWeight: "700", color: colors.muted, letterSpacing: 1, marginBottom: 3 }}>ADDRESS</Text>
+                  <Text numberOfLines={3} style={{ fontSize: 12, color: colors.label, lineHeight: 17 }}>{vendor.address}</Text>
+                </View>
+              ) : null}
+              {vendor.website ? (
+                <View>
+                  <Text style={{ fontSize: 8, fontWeight: "700", color: colors.muted, letterSpacing: 1, marginBottom: 3 }}>WEBSITE</Text>
+                  <Text numberOfLines={1} style={{ fontSize: 12, color: colors.teal }}>{vendor.website}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 14 }} />
+
+            {/* Stats 2x2 */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+              {[
+                { label: "TOTAL POS", value: String(vendorPOs.length) },
+                { label: "ITEMS SUPPLIED", value: String(itemsSupplied) },
+                { label: "TOTAL SPEND", value: `$${totalSpend.toFixed(0)}`, highlight: true },
+                { label: "AVG ORDER", value: `$${avgOrder.toFixed(0)}` },
+              ].map((stat) => (
+                <View key={stat.label} style={{ width: "47%", backgroundColor: colors.screen, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border }}>
+                  <Text style={{ fontSize: 8, fontWeight: "700", color: colors.muted, marginBottom: 6, letterSpacing: 0.5 }}>{stat.label}</Text>
+                  <Text style={{ fontSize: 17, fontWeight: "800", color: stat.highlight ? colors.teal : colors.heading }}>{stat.value}</Text>
+                </View>
+              ))}
+            </View>
+
+            {vendor.description ? (
+              <View>
+                <Text style={{ fontSize: 8, fontWeight: "700", color: colors.muted, letterSpacing: 1, marginBottom: 6 }}>NOTES</Text>
+                <Text style={{ fontSize: 11, color: colors.label, lineHeight: 16 }}>{vendor.description}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Bottom Buttons */}
+          <View style={{ padding: 14, gap: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <TouchableOpacity
+              onPress={handleEdit}
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 10, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 9 }}
+            >
+              <Edit size={14} color={colors.teal} />
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>Edit Vendor</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 10, backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "40", borderRadius: 9 }}
+            >
+              <Trash2 size={14} color={colors.danger} />
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── RIGHT PANEL ── */}
+        <View style={{ flex: 1, backgroundColor: colors.screen }}>
+          {/* Right Header */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            {/* Tabs */}
+            <View style={{ flexDirection: "row", gap: 4, backgroundColor: colors.panel, borderRadius: 9, padding: 3 }}>
+              {(["po", "items"] as const).map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setActiveTab(tab)}
+                  style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 7, backgroundColor: activeTab === tab ? colors.teal : "transparent" }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: activeTab === tab ? colors.onSolid : colors.muted }}>
+                    {tab === "po" ? "Purchase Orders" : "Associated Items"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              onPress={onCreatePO}
+              style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8 }}
+            >
+              <Plus size={13} color={colors.teal} />
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>Create PO</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* PO Tab */}
+          {activeTab === "po" && (
+            <View style={{ flex: 1 }}>
+              {/* Table Header */}
+              <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                {["PO #", "DATE", "STATUS", "ITEMS", "TOTAL"].map((h, i) => (
+                  <Text key={h} style={{ flex: i === 0 ? 1.2 : 1, fontSize: 9, fontWeight: "700", color: colors.muted, letterSpacing: 0.8 }}>{h}</Text>
+                ))}
+                <View style={{ width: 30 }} />
+              </View>
+
+              <FlatList
+                data={vendorPOs}
+                keyExtractor={(po) => po.id}
+                renderItem={({ item: po }) => {
+                  const poTotal = po.items.reduce((s, i) => s + i.cost * i.quantity, 0);
+                  const statusColor = STATUS_COLORS[po.status] ?? colors.muted;
+                  const dateStr = new Date(po.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                  return (
+                    <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                      <Text style={{ flex: 1.2, fontSize: 12, fontWeight: "700", color: colors.teal }}>{po.poNumber}</Text>
+                      <Text style={{ flex: 1, fontSize: 12, color: colors.label }}>{dateStr}</Text>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ alignSelf: "flex-start", backgroundColor: statusColor + "25", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                          <Text style={{ fontSize: 10, fontWeight: "700", color: statusColor }}>{po.status}</Text>
+                        </View>
+                      </View>
+                      <Text style={{ flex: 1, fontSize: 12, color: colors.label }}>{po.items.length} items</Text>
+                      <Text style={{ flex: 1, fontSize: 12, fontWeight: "700", color: colors.heading }}>${poTotal.toFixed(2)}</Text>
+                      <View style={{ width: 30 }} />
+                    </View>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={{ alignItems: "center", paddingVertical: 48 }}>
+                    <Text style={{ fontSize: 13, color: colors.muted }}>No purchase orders yet</Text>
+                  </View>
+                }
+              />
+            </View>
+          )}
+
+          {/* Items Tab */}
+          {activeTab === "items" && (
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                {["ITEM NAME", "STOCK", "UNIT", "COST"].map((h) => (
+                  <Text key={h} style={{ flex: 1, fontSize: 9, fontWeight: "700", color: colors.muted, letterSpacing: 0.8 }}>{h}</Text>
+                ))}
+              </View>
+              <FlatList
+                data={vendorItems}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>{item.name}</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: colors.label }}>{item.stockQuantity}</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: colors.label }}>{item.unit}</Text>
+                    <Text style={{ flex: 1, fontSize: 12, color: colors.label }}>${item.cost.toFixed(2)}</Text>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <View style={{ alignItems: "center", paddingVertical: 48 }}>
+                    <Text style={{ fontSize: 13, color: colors.muted }}>No items associated</Text>
+                  </View>
+                }
+              />
+            </View>
+          )}
+        </View>
+        </Animated.View>
+      </Animated.View>
+    </Portal>
+  );
+};
 
 const VendorCard: React.FC<{
   item: Vendor;
@@ -125,13 +440,13 @@ const VendorCard: React.FC<{
 
       {/* Contact Info with Better Spacing */}
       <View style={{ gap: 5 }}>
-        {item.contactPerson && (
+        {item.contactName && (
           <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-start" }}>
             <View style={{ marginTop: 2 }}>
               <User size={10} color={colors.muted} />
             </View>
             <Text numberOfLines={1} style={{ fontSize: 10, color: colors.label, flex: 1 }}>
-              {item.contactPerson}
+              {item.contactName}
             </Text>
           </View>
         )}
@@ -163,23 +478,55 @@ const VendorCard: React.FC<{
 };
 
 const VendorScreen = () => {
-  const { vendors, addVendor, updateVendor, deleteVendor } = useInventoryStore();
+  const { vendors, addVendor, updateVendor, deleteVendor, inventoryItems, purchaseOrders, createPurchaseOrder } = useInventoryStore();
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+  const merchantId = selectedStore?.merchant_id ?? "";
   const router = useRouter();
 
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarVendor, setSidebarVendor] = useState<Vendor | null>(null);
+  const [isSidebarClosing, setIsSidebarClosing] = useState(false);
+  const [closeSignal, setCloseSignal] = useState(0);
 
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ["70%", "95%"], []);
+
+  const openSidebar = (vendor: Vendor) => {
+    setIsSidebarClosing(false);
+    setSidebarVendor(vendor);
+    setActiveVendorSidebarId(vendor.id);
+  };
+
+  const closeSidebar = () => {
+    if (sidebarVendor && !isSidebarClosing) {
+      setIsSidebarClosing(true);
+      setCloseSignal((s) => s + 1);
+    }
+  };
+
+  useEffect(() => {
+    registerVendorSidebarCloseHandler(() => {
+      if (sidebarVendor && !isSidebarClosing) {
+        setIsSidebarClosing(true);
+        setCloseSignal((s) => s + 1);
+      }
+    });
+
+    return () => registerVendorSidebarCloseHandler(null);
+  }, [sidebarVendor, isSidebarClosing]);
+
+  useEffect(() => {
+    return () => setActiveVendorSidebarId(null);
+  }, []);
 
   const filteredVendors = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return vendors;
     return vendors.filter((v) =>
-      [v.name, v.contactPerson, v.email, v.phone]
+      [v.name, v.contactName, v.email, v.phone]
         .filter(Boolean)
         .some((f) => String(f).toLowerCase().includes(q))
     );
@@ -220,7 +567,7 @@ const VendorScreen = () => {
     if (id) {
       updateVendor(id, data);
     } else {
-      addVendor(data);
+      addVendor(data, merchantId);
     }
   };
 
@@ -251,7 +598,6 @@ const VendorScreen = () => {
       >
         <TouchableOpacity
           onPress={() => {
-            setIsSearchOpen(true);
             setTimeout(() => sheetRef.current?.expand(), 0);
           }}
           style={{
@@ -297,7 +643,7 @@ const VendorScreen = () => {
         renderItem={({ item }) => (
           <VendorCard
             item={item}
-            onTap={() => router.push(`/inventory/vendors/${item.id}`)}
+            onTap={() => openSidebar(item)}
             onEdit={() => handleOpenEditModal(item)}
             onDelete={() => handleOpenDeleteConfirm(item)}
           />
@@ -404,7 +750,6 @@ const VendorScreen = () => {
             <TouchableOpacity
               onPress={() => {
                 sheetRef.current?.close();
-                setIsSearchOpen(false);
                 router.push(`/inventory/vendors/${item.id}`);
               }}
               style={{
@@ -434,7 +779,7 @@ const VendorScreen = () => {
                   {item.name}
                 </Text>
                 <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
-                  {item.contactPerson} · {item.phone}
+                  {item.contactName} · {item.phone}
                 </Text>
               </View>
               <Text style={{ fontSize: 11, color: colors.muted }}>{item.email}</Text>
@@ -448,6 +793,37 @@ const VendorScreen = () => {
           }
         />
       </BottomSheet>
+
+      {/* Vendor Sidebar */}
+      {sidebarVendor && (
+        <VendorSidebar
+          vendor={sidebarVendor}
+          itemsSupplied={inventoryItems.filter((i) => i.vendorId === sidebarVendor.id).length}
+          vendorPOs={purchaseOrders.filter((po) => po.vendorId === sidebarVendor.id)}
+          vendorItems={inventoryItems
+            .filter((i) => i.vendorId === sidebarVendor.id)
+            .map((i) => ({ id: i.id, name: i.name, stockQuantity: i.stockQuantity, unit: i.unit, cost: i.cost }))}
+          closeSignal={closeSignal}
+          onClose={() => {
+            setSidebarVendor(null);
+            setIsSidebarClosing(false);
+            setActiveVendorSidebarId(null);
+          }}
+          onEdit={() => {
+            setSidebarVendor(null);
+            setIsSidebarClosing(false);
+            setActiveVendorSidebarId(null);
+            handleOpenEditModal(sidebarVendor);
+          }}
+          onDelete={() => {
+            setSidebarVendor(null);
+            setIsSidebarClosing(false);
+            setActiveVendorSidebarId(null);
+            handleOpenDeleteConfirm(sidebarVendor);
+          }}
+          onCreatePO={() => createPurchaseOrder({ vendorId: sidebarVendor.id, status: "Draft", items: [] })}
+        />
+      )}
     </View>
   );
 };

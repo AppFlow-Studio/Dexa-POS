@@ -473,7 +473,7 @@ const VendorDetailsScreen = () => {
           This vendor does not exist or may have been removed.
         </Text>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.push("/inventory/vendors")}
           style={{
             flexDirection: "row",
             alignItems: "center",
