@@ -1,8 +1,6 @@
 import AddInventoryItemSheet from "@/components/inventory/AddInventoryItemSheet";
 import InventoryItemFormModal from "@/components/inventory/InventoryItemFormModal";
 import InventorySearchSheet from "@/components/inventory/InventorySearchSheet";
-import MenuCatalogRow from "@/components/inventory/MenuCatalogRow";
-import MenuSearchSheet from "@/components/inventory/MenuSearchSheet";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import {
   DropdownMenu,
@@ -11,19 +9,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { colors } from "@/lib/theme";
-import { InventoryItem, MenuItemType } from "@/lib/types";
+import { InventoryItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
-  BottomSheetBackdrop,
   BottomSheetModal,
   BottomSheetModalProvider,
 } from "@gorhom/bottom-sheet";
 import { Link, useRouter } from "expo-router";
 import {
   AlertTriangle,
-  Check,
   ChevronDown,
   ChevronRight,
   Edit,
@@ -33,7 +28,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -163,8 +158,6 @@ const InventoryScreen = () => {
     vendors,
   } = useInventoryStore();
   const lowStockItems = getLowStockItems();
-  const { menuItems, toggleItemAvailability, updateMenuItem } = useMenuStore();
-  const [activeTab, setActiveTab] = useState<"inventory" | "menu">("menu");
   const router = useRouter();
   const addItemSheetRef = React.useRef<BottomSheet>(null);
 
@@ -172,24 +165,11 @@ const InventoryScreen = () => {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItemType | null>(null);
-  const [isStockModalOpen, setStockModalOpen] = useState(false);
-  const [stockQuantity, setStockQuantity] = useState("");
-  const [reorderThreshold, setReorderThreshold] = useState("");
-  const [selectedMenuIds, setSelectedMenuIds] = useState<string[]>([]);
-  const [isBulkStockModalOpen, setBulkStockModalOpen] = useState(false);
-  const [bulkStockQuantity, setBulkStockQuantity] = useState("");
-  const [bulkReorderThreshold, setBulkReorderThreshold] = useState("");
   const [selectedInventoryIds, setSelectedInventoryIds] = useState<string[]>([]);
   const [isBulkInventoryStockModalOpen, setBulkInventoryStockModalOpen] = useState(false);
   const [bulkInventoryStockQuantity, setBulkInventoryStockQuantity] = useState("");
   const [bulkInventoryReorderThreshold, setBulkInventoryReorderThreshold] = useState("");
   const [alertExpanded, setAlertExpanded] = useState(false);
-
-  const handleOpenAddModal = () => {
-    setSelectedItem(null);
-    setModalMode("add");
-  };
 
   const handleOpenEditModal = (item: InventoryItem) => {
     setSelectedItem(item);
@@ -233,118 +213,13 @@ const InventoryScreen = () => {
     setSelectedItem(null);
   };
 
-  const handleToggleAvailability = (item: MenuItemType) => {
-    toggleItemAvailability(item.id);
-  };
-
-  const handleOpenStockModal = (item: MenuItemType) => {
-    setSelectedMenuItem(item);
-    setStockQuantity(item.stockQuantity?.toString() || "");
-    setReorderThreshold(item.reorderThreshold?.toString() || "");
-    setStockModalOpen(true);
-  };
-
-  const handleSaveStock = () => {
-    if (!selectedMenuItem) return;
-    const stockQty = stockQuantity ? parseInt(stockQuantity) : undefined;
-    const threshold = reorderThreshold ? parseInt(reorderThreshold) : undefined;
-    updateMenuItem(selectedMenuItem.id, { stockQuantity: stockQty, reorderThreshold: threshold });
-    setStockModalOpen(false);
-    setSelectedMenuItem(null);
-    setStockQuantity("");
-    setReorderThreshold("");
-  };
-
-  const handleCloseStockModal = () => {
-    setStockModalOpen(false);
-    setSelectedMenuItem(null);
-    setStockQuantity("");
-    setReorderThreshold("");
-  };
-
-  const isAllSelected =
-    selectedMenuIds.length > 0 && selectedMenuIds.length === menuItems.length;
-  const toggleSelectMenuItem = (id: string) => {
-    setSelectedMenuIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
-  const toggleSelectAllMenu = () => {
-    if (isAllSelected) {
-      setSelectedMenuIds([]);
-    } else {
-      setSelectedMenuIds(menuItems.map((m) => m.id));
-    }
-  };
-  const clearSelection = () => setSelectedMenuIds([]);
-
-  const handleBulkSetAvailability = (available: boolean) => {
-    if (selectedMenuIds.length === 0) return;
-    selectedMenuIds.forEach((id) => {
-      updateMenuItem(id, { availability: available });
-    });
-    clearSelection();
-  };
-  const handleOpenBulkStockModal = () => {
-    setBulkStockQuantity("");
-    setBulkReorderThreshold("");
-    setBulkStockModalOpen(true);
-  };
-  const handleSaveBulkStock = () => {
-    if (selectedMenuIds.length === 0) return;
-    const stockQty = bulkStockQuantity ? parseInt(bulkStockQuantity) : undefined;
-    const threshold = bulkReorderThreshold ? parseInt(bulkReorderThreshold) : undefined;
-    selectedMenuIds.forEach((id) => {
-      updateMenuItem(id, { stockQuantity: stockQty, reorderThreshold: threshold });
-    });
-    setBulkStockModalOpen(false);
-    setBulkStockQuantity("");
-    setBulkReorderThreshold("");
-    clearSelection();
-  };
-  const handleCloseBulkStockModal = () => {
-    setBulkStockModalOpen(false);
-    setBulkStockQuantity("");
-    setBulkReorderThreshold("");
-  };
-
   const TABLE_HEADERS_INVENTORY = ["Name", "In Stock", "Reorder Point", "Cost", "Vendor", ""];
-  const TABLE_HEADERS_MENU = ["Select", "Name", "Price", "Stock", "Reorder Point", "Availability", ""];
 
-  const menuSearchSheetRef = React.useRef<BottomSheetModal>(null);
   const invSearchSheetRef = React.useRef<BottomSheetModal>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const snapPoints = useMemo(() => ["80%"], []);
   const openSearchSheet = () => {
-    setSearchQuery("");
-    if (activeTab === "menu") {
-      menuSearchSheetRef.current?.expand();
-    } else {
-      invSearchSheetRef.current?.expand();
-    }
+    invSearchSheetRef.current?.expand();
   };
 
-  const filteredMenu = React.useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return menuItems;
-    return menuItems.filter((m) =>
-      [m.name, ...(Array.isArray(m.category) ? m.category : [])]
-        .filter(Boolean)
-        .some((s) => String(s).toLowerCase().includes(q))
-    );
-  }, [searchQuery, menuItems]);
-
-  const filteredInventory = React.useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return inventoryItems;
-    return inventoryItems.filter((i) =>
-      [i.name, i.category].some((s) => String(s).toLowerCase().includes(q))
-    );
-  }, [searchQuery, inventoryItems]);
-
-  const isAllInventorySelected =
-    selectedInventoryIds.length > 0 &&
-    selectedInventoryIds.length === filteredInventory.length;
   const toggleSelectInventoryItem = (id: string) => {
     setSelectedInventoryIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -352,13 +227,6 @@ const InventoryScreen = () => {
   };
   const handleToggleAllInventory = (ids: string[]) => {
     setSelectedInventoryIds(ids);
-  };
-  const toggleSelectAllInventory = () => {
-    if (isAllInventorySelected) {
-      setSelectedInventoryIds([]);
-    } else {
-      setSelectedInventoryIds(filteredInventory.map((i) => i.id));
-    }
   };
   const clearInventorySelection = () => setSelectedInventoryIds([]);
   const handleOpenBulkInventoryStockModal = () => {
@@ -393,18 +261,6 @@ const InventoryScreen = () => {
     setBulkInventoryStockQuantity("");
     setBulkInventoryReorderThreshold("");
   };
-
-  const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
-    []
-  );
 
   return (
     <BottomSheetModalProvider>
@@ -509,31 +365,6 @@ const InventoryScreen = () => {
           </View>
         )}
 
-        {/* Tab Switcher */}
-        <View style={{ flexDirection: "row", gap: 0, marginBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          {(["menu", "inventory"] as const).map((tab) => {
-            const isActive = activeTab === tab;
-            const label = tab === "menu" ? "Menu Items" : "Inventory Items";
-            return (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 9,
-                  borderBottomWidth: 2,
-                  borderBottomColor: isActive ? colors.teal : "transparent",
-                  marginBottom: -1,
-                }}
-              >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.label }}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         {/* Table */}
         <View
           style={{
@@ -558,71 +389,35 @@ const InventoryScreen = () => {
               alignItems: "center",
             }}
           >
-            {(activeTab === "inventory" ? TABLE_HEADERS_INVENTORY : TABLE_HEADERS_MENU).map(
-              (header) => {
-                let widthStyle: any = {};
-
-                if (activeTab === "inventory") {
-                  switch (header) {
-                    case "Name": widthStyle = { width: "25%" }; break;
-                    case "In Stock": widthStyle = { width: "15%", textAlign: "center" }; break;
-                    case "Reorder Point": widthStyle = { width: "15%", textAlign: "center" }; break;
-                    case "Cost": widthStyle = { width: "15%" }; break;
-                    case "Vendor": widthStyle = { width: "20%" }; break;
-                    default: widthStyle = { width: "10%" };
-                  }
-                } else {
-                  switch (header) {
-                    case "Select": widthStyle = { width: "6%" }; break;
-                    case "Name": widthStyle = { width: "24%" }; break;
-                    case "Price": widthStyle = { width: "15%" }; break;
-                    case "Stock": widthStyle = { width: "15%", textAlign: "center" }; break;
-                    case "Reorder Point": widthStyle = { width: "15%", textAlign: "center" }; break;
-                    case "Availability": widthStyle = { width: "15%", textAlign: "center" }; break;
-                    default: widthStyle = { width: "10%" };
-                  }
-                }
-
-                if (header === "Select") {
-                  return (
-                    <View key="select" style={{ width: "6%" }}>
-                      <TouchableOpacity
-                        onPress={toggleSelectAllMenu}
-                        style={{
-                          height: 16,
-                          width: 16,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          borderWidth: 1,
-                          borderRadius: 3,
-                          borderColor: colors.border,
-                        }}
-                      >
-                        {isAllSelected && <Check color={colors.teal} size={10} />}
-                      </TouchableOpacity>
-                    </View>
-                  );
-                }
-
-                return (
-                  <Text
-                    key={header}
-                    style={[
-                      {
-                        fontSize: 11,
-                        fontWeight: "600",
-                        color: colors.muted,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                      },
-                      widthStyle,
-                    ]}
-                  >
-                    {header}
-                  </Text>
-                );
+            {TABLE_HEADERS_INVENTORY.map((header) => {
+              let widthStyle: any = {};
+              switch (header) {
+                case "Name": widthStyle = { width: "25%" }; break;
+                case "In Stock": widthStyle = { width: "15%", textAlign: "center" }; break;
+                case "Reorder Point": widthStyle = { width: "15%", textAlign: "center" }; break;
+                case "Cost": widthStyle = { width: "15%" }; break;
+                case "Vendor": widthStyle = { width: "20%" }; break;
+                default: widthStyle = { width: "10%" };
               }
-            )}
+
+              return (
+                <Text
+                  key={header}
+                  style={[
+                    {
+                      fontSize: 11,
+                      fontWeight: "600",
+                      color: colors.muted,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                    },
+                    widthStyle,
+                  ]}
+                >
+                  {header}
+                </Text>
+              );
+            })}
 
             {/* Header Actions */}
             <View style={{ position: "absolute", right: 12, top: 0, bottom: 0, flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -636,143 +431,39 @@ const InventoryScreen = () => {
               >
                 <Search color={colors.teal} size={16} />
               </TouchableOpacity>
-              {activeTab === "inventory" && (
-                <TouchableOpacity
-                  onPress={() => addItemSheetRef.current?.expand()}
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 7,
-                    backgroundColor: colors.teal + "20",
-                    borderWidth: 1,
-                    borderColor: colors.teal + "50",
-                    borderRadius: 8,
-                    flexDirection: "row",
-                    alignItems: "center",
-                  }}
-                >
-                  <Plus color={colors.teal} size={16} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* Lists */}
-          {activeTab === "inventory" ? (
-            <FlatList
-              data={inventoryItems}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <InventoryCatalogRow
-                  item={item}
-                  onEdit={() => handleOpenEditModal(item)}
-                  onDelete={() => handleOpenDeleteConfirm(item)}
-                />
-              )}
-            />
-          ) : (
-            <FlatList
-              data={menuItems}
-              keyExtractor={(item) => item.id}
-              initialNumToRender={10}
-              windowSize={5}
-              renderItem={({ item }) => (
-                <MenuCatalogRow
-                  item={item}
-                  initialIsSelected={selectedMenuIds.includes(item.id)}
-                  onToggle={toggleSelectMenuItem}
-                  onToggleAvailability={handleToggleAvailability}
-                  onOpenStockModal={handleOpenStockModal}
-                />
-              )}
-            />
-          )}
-        </View>
-
-        {/* Bulk Action Bar */}
-        {activeTab === "menu" && selectedMenuIds.length > 0 && (
-          <View
-            style={{
-              marginTop: 8,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              backgroundColor: colors.panel,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 10,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text style={{ fontSize: 12, color: colors.label }}>
-              Selected: {selectedMenuIds.length}
-            </Text>
-            <View style={{ flexDirection: "row", gap: 6 }}>
               <TouchableOpacity
-                onPress={() => handleBulkSetAvailability(true)}
+                onPress={() => addItemSheetRef.current?.expand()}
                 style={{
                   paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  backgroundColor: colors.success + "20",
-                  borderWidth: 1,
-                  borderColor: colors.success + "30",
-                  borderRadius: 8,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.success }}>
-                  Set On
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleBulkSetAvailability(false)}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  backgroundColor: colors.warning + "20",
-                  borderWidth: 1,
-                  borderColor: colors.warning + "30",
-                  borderRadius: 8,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.warning }}>
-                  Set Off
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleOpenBulkStockModal}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
+                  paddingVertical: 7,
                   backgroundColor: colors.teal + "20",
                   borderWidth: 1,
                   borderColor: colors.teal + "50",
                   borderRadius: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
-                  Update Stock
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={clearSelection}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  backgroundColor: "transparent",
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 8,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
-                  Clear
-                </Text>
+                <Plus color={colors.teal} size={16} />
               </TouchableOpacity>
             </View>
           </View>
-        )}
 
-        <InventoryItemFormModal
+          {/* Inventory List */}
+          <FlatList
+            data={inventoryItems}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <InventoryCatalogRow
+                item={item}
+                onEdit={() => handleOpenEditModal(item)}
+                onDelete={() => handleOpenDeleteConfirm(item)}
+              />
+            )}
+          />
+        </View>
+
+<InventoryItemFormModal
           isOpen={modalMode === "add" || modalMode === "edit"}
           onClose={handleCloseModal}
           onSave={handleSaveItem}
@@ -789,100 +480,7 @@ const InventoryScreen = () => {
           variant="destructive"
         />
 
-        {/* Stock Update Modal */}
-        <Modal
-          visible={isStockModalOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={handleCloseStockModal}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ flex: 1 }}
-          >
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "rgba(0,0,0,0.6)",
-                justifyContent: "center",
-                alignItems: "center",
-                paddingHorizontal: 16,
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: 12,
-                  padding: 14,
-                  width: "100%",
-                  maxWidth: 400,
-                }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading, marginBottom: 12 }}>
-                  Update Stock — {selectedMenuItem?.name}
-                </Text>
-                <View style={{ marginBottom: 10 }}>
-                  <Text style={fieldLabel}>Stock Quantity</Text>
-                  <TextInput
-                    value={stockQuantity}
-                    onChangeText={setStockQuantity}
-                    placeholder="Enter quantity"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="numeric"
-                    style={inputStyle}
-                  />
-                </View>
-                <View style={{ marginBottom: 14 }}>
-                  <Text style={fieldLabel}>Reorder Threshold</Text>
-                  <TextInput
-                    value={reorderThreshold}
-                    onChangeText={setReorderThreshold}
-                    placeholder="Enter threshold"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="numeric"
-                    style={inputStyle}
-                  />
-                </View>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <TouchableOpacity
-                    onPress={handleCloseStockModal}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      backgroundColor: "transparent",
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleSaveStock}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      backgroundColor: colors.teal + "20",
-                      borderWidth: 1,
-                      borderColor: colors.teal + "50",
-                      borderRadius: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
-                      Save
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-
-        {/* Bulk Inventory Stock Update Modal */}
+{/* Bulk Inventory Stock Update Modal */}
         <Modal
           visible={isBulkInventoryStockModalOpen}
           transparent
@@ -975,109 +573,8 @@ const InventoryScreen = () => {
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* Bulk Menu Stock Update Modal */}
-        <Modal
-          visible={isBulkStockModalOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={handleCloseBulkStockModal}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ flex: 1 }}
-          >
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: "rgba(0,0,0,0.6)",
-                justifyContent: "center",
-                alignItems: "center",
-                paddingHorizontal: 16,
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: 12,
-                  padding: 14,
-                  width: "100%",
-                  maxWidth: 400,
-                }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading, marginBottom: 12 }}>
-                  Update Stock ({selectedMenuIds.length} items)
-                </Text>
-                <View style={{ marginBottom: 10 }}>
-                  <Text style={fieldLabel}>Stock Quantity</Text>
-                  <TextInput
-                    value={bulkStockQuantity}
-                    onChangeText={setBulkStockQuantity}
-                    placeholder="(Optional)"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="numeric"
-                    style={inputStyle}
-                  />
-                </View>
-                <View style={{ marginBottom: 14 }}>
-                  <Text style={fieldLabel}>Reorder Threshold</Text>
-                  <TextInput
-                    value={bulkReorderThreshold}
-                    onChangeText={setBulkReorderThreshold}
-                    placeholder="(Optional)"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="numeric"
-                    style={inputStyle}
-                  />
-                </View>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <TouchableOpacity
-                    onPress={handleCloseBulkStockModal}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      backgroundColor: "transparent",
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
-                      Cancel
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleSaveBulkStock}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      backgroundColor: colors.teal + "20",
-                      borderWidth: 1,
-                      borderColor: colors.teal + "50",
-                      borderRadius: 8,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.teal }}>
-                      Save
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-
-        <AddInventoryItemSheet ref={addItemSheetRef} />
+<AddInventoryItemSheet ref={addItemSheetRef} />
       </View>
-      <MenuSearchSheet
-        ref={menuSearchSheetRef}
-        menuItems={menuItems}
-        selectedIds={selectedMenuIds}
-        onToggle={(itemId) => {
-          toggleSelectMenuItem(itemId);
-        }}
-      />
       <InventorySearchSheet
         ref={invSearchSheetRef}
         inventoryItems={inventoryItems}
