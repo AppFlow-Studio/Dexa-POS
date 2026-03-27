@@ -1,5 +1,6 @@
 import AddInventoryItemSheet from "@/components/inventory/AddInventoryItemSheet";
 import InventoryItemFormModal from "@/components/inventory/InventoryItemFormModal";
+import InventoryItemDetailModal from "@/components/inventory/InventoryItemDetailModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import {
   DropdownMenu,
@@ -12,7 +13,6 @@ import { InventoryItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet from "@gorhom/bottom-sheet";
-import { Link } from "expo-router";
 import {
   AlertTriangle,
   ChevronDown,
@@ -34,29 +34,30 @@ const InventoryCatalogRow: React.FC<{
   item: InventoryItem;
   onEdit: () => void;
   onDelete: () => void;
-}> = ({ item, onEdit, onDelete }) => {
+  onTap: () => void;
+}> = ({ item, onEdit, onDelete, onTap }) => {
   const isLowStock = item.stockQuantity <= item.reorderThreshold;
   const vendors = useInventoryStore((state) => state.vendors);
   const vendor = vendors.find((v) => v.id === item.vendorId);
 
   return (
-    <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        style={{
-          backgroundColor: colors.panel,
-          marginHorizontal: 10,
-          marginBottom: 8,
-          borderRadius: 10,
-          paddingVertical: 10,
-          paddingHorizontal: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
+    <TouchableOpacity
+      onPress={onTap}
+      activeOpacity={0.7}
+      style={{
+        backgroundColor: colors.panel,
+        marginHorizontal: 10,
+        marginBottom: 8,
+        borderRadius: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+      }}
+    >
         {/* Icon */}
         <View
           style={{
@@ -140,7 +141,7 @@ const InventoryCatalogRow: React.FC<{
           >
             <DropdownMenuItem onPress={onEdit}>
               <Edit size={13} color={colors.label} />
-              <Text style={{ marginLeft: 6, fontSize: 12 }}>Edit</Text>
+              <Text style={{ marginLeft: 6, fontSize: 12, color: colors.label }}>Edit</Text>
             </DropdownMenuItem>
 
             <DropdownMenuItem onPress={onDelete}>
@@ -152,7 +153,6 @@ const InventoryCatalogRow: React.FC<{
           </DropdownMenuContent>
         </DropdownMenu>
       </TouchableOpacity>
-    </Link>
   );
 };
 
@@ -179,6 +179,7 @@ const InventoryScreen = () => {
   const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [alertExpanded, setAlertExpanded] = useState(false);
+  const [detailItemId, setDetailItemId] = useState<string | null>(null);
 
   const filteredInventory = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -294,10 +295,8 @@ const InventoryScreen = () => {
         renderItem={({ item }) => (
           <InventoryCatalogRow
             item={item}
-            onEdit={() => {
-              setSelectedItem(item);
-              setModalMode("edit");
-            }}
+            onTap={() => setDetailItemId(item.id)}
+            onEdit={() => setDetailItemId(item.id)}
             onDelete={() => {
               setSelectedItem(item);
               setDeleteConfirmOpen(true);
@@ -332,6 +331,18 @@ const InventoryScreen = () => {
       />
 
       <AddInventoryItemSheet ref={addItemSheetRef} />
+
+      <InventoryItemDetailModal
+        isOpen={detailItemId !== null}
+        itemId={detailItemId}
+        onClose={() => setDetailItemId(null)}
+        onUpdate={(id, data) => {
+          if (selectedStore?.id) {
+            return updateInventoryItem(id, data, selectedStore.id);
+          }
+          return Promise.resolve();
+        }}
+      />
     </View>
   );
 };
