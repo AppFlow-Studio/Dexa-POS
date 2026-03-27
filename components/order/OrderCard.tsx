@@ -3,7 +3,7 @@ import { colors } from "@/lib/theme";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { formatOrderStatus } from "@/utils/orderStatusHelpers";
-import { ArrowUpRight, Archive, RefreshCcw, Repeat2, CreditCard } from "lucide-react-native";
+import { ArrowUpRight, Archive, RefreshCcw, Repeat2, CreditCard, XCircle } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -110,6 +110,8 @@ const OrderCard: React.FC<OrderCardProps> = ({
     }, [order.total_amount, order.amount_due, order.cash_amount_due, order.payments]);
 
   const isUnpaid = order.paid_status !== "Paid";
+  const isVoided = order.order_status === "void";
+
   return (
     <View className="p-3 rounded-2xl border w-72 mr-4" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
       {/* Status chips */}
@@ -126,6 +128,14 @@ const OrderCard: React.FC<OrderCardProps> = ({
             {paidLabel}
           </Text>
         </View>
+        {isVoided && (
+          <View className="flex-row items-center px-2.5 py-1 rounded-full" style={{ backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "40" }}>
+            <XCircle size={12} color={colors.danger} />
+            <Text className="text-sm font-medium ml-1" style={{ color: colors.danger }}>
+              Voided
+            </Text>
+          </View>
+        )}
         {isClosedWithBalance && (
           <View className="flex-row items-center px-2.5 py-1 rounded-full bg-surface">
             <View className="w-2 h-2 rounded-full mr-1.5 bg-gray-500" />

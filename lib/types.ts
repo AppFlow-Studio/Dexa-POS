@@ -497,6 +497,7 @@ export interface PreviousOrder {
   payments?: OrderProfile["payments"]; // Add payments array
   // Refund tracking fields
   refunded?: boolean;
+  voided?: boolean;
   refundedAmount?: number;
   originalTotal?: number;
   service_location_id?: string;

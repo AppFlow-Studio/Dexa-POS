@@ -161,6 +161,8 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
     return cardPayments.length > 0 && cardPayments.every((p) => p.is_settled);
   }, [order.payments]);
 
+  const isVoided = order.order_status === "void";
+
   return (
     <View
       style={{ marginBottom: 8, marginHorizontal: 8, borderRadius: 12, overflow: "hidden" }}
@@ -241,6 +243,24 @@ const PreviousOrderRowContent: React.FC<PreviousOrderRowProps> = ({
             }}>
               <Text style={{ fontSize: 11, fontWeight: "600", color: refundBadge.color }}>
                 {refundBadge.label}
+              </Text>
+            </View>
+          )}
+          {isVoided && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 3,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 20,
+              backgroundColor: colors.danger + "20",
+              borderWidth: 1,
+              borderColor: colors.danger + "40",
+            }}>
+              <XCircle size={9} color={colors.danger} />
+              <Text style={{ fontSize: 10, fontWeight: "600", color: colors.danger }}>
+                Voided
               </Text>
             </View>
           )}

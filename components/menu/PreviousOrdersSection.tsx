@@ -145,11 +145,13 @@ const PreviousOrdersSection = () => {
             server_name: po.server,
 
             // Status mapping
-            order_status: po.refunded
-              ? "refunded"
-              : po.closed_at
-                ? "completed"
-                : "pending", // Best guess mapping
+            order_status: po.voided
+              ? "void"
+              : po.refunded
+                ? "refunded"
+                : po.closed_at
+                  ? "completed"
+                  : "pending", // Best guess mapping
             check_status: po.checkStatus || "Opened",
             paid_status: po.paymentStatus,
 

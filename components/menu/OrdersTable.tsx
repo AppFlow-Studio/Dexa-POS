@@ -1,7 +1,7 @@
 import { colors } from "@/lib/theme";
 import { OrderProfile } from "@/lib/types";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
-import { ArrowDown, ArrowUp, Lock, MoreVertical } from "lucide-react-native";
+import { ArrowDown, ArrowUp, Lock, MoreVertical, XCircle } from "lucide-react-native";
 import React, { memo, useCallback, useMemo } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 
@@ -187,6 +187,8 @@ const OrderRow = memo<OrderRowProps>(
       order.total_cash_amount != null &&
       order.total_cash_amount !== order.total_amount;
 
+    const isVoided = order.order_status === "void";
+
     const handleRowPress = useCallback(() => {
       usePaymentDetailSheetStore.getState().open(order.id);
     }, [order.id]);
@@ -291,6 +293,12 @@ const OrderRow = memo<OrderRowProps>(
                 {pill.label}
               </Text>
             </View>
+            {isVoided && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                <XCircle size={9} color={colors.danger} />
+                <Text style={{ color: colors.danger, fontSize: 10, fontWeight: "600" }}>Voided</Text>
+              </View>
+            )}
             {isOrderFullySettled(order) && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
                 <Lock size={9} color={colors.muted} />

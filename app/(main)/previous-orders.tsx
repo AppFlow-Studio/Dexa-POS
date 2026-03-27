@@ -275,11 +275,13 @@ const PreviousOrdersScreen = () => {
             order_number: po.display_number,
             customer_name: po.customer,
             server_name: po.server,
-            order_status: po.refunded
-              ? "refunded"
-              : po.closed_at
-                ? "completed"
-                : "pending",
+            order_status: po.voided
+              ? "void"
+              : po.refunded
+                ? "refunded"
+                : po.closed_at
+                  ? "completed"
+                  : "pending",
             check_status: po.checkStatus || "Opened",
             paid_status: po.paymentStatus,
             order_type: po.type,

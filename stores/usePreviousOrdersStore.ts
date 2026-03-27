@@ -369,6 +369,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               items: profile.items,
               notes: profile.notes,
               refunded: profile.order_status === "refunded",
+              voided: profile.order_status === "void",
               refundedAmount: 0, // Backend might calculate this, but defaulting to 0 for now
               originalTotal: profile.total_amount || 0,
               payments: profile.payments,
