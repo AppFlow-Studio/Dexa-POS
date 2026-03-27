@@ -28,9 +28,9 @@ import React, { useMemo, useState } from "react";
 import { FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 /* =========================
-   Compact Row
+   Grid Box
 ========================= */
-const InventoryCatalogRow: React.FC<{
+const InventoryItemBox: React.FC<{
   item: InventoryItem;
   onEdit: () => void;
   onDelete: () => void;
@@ -43,95 +43,50 @@ const InventoryCatalogRow: React.FC<{
   return (
     <TouchableOpacity
       onPress={onTap}
-      activeOpacity={0.7}
+      activeOpacity={0.6}
       style={{
         backgroundColor: colors.panel,
-        marginHorizontal: 10,
-        marginBottom: 8,
-        borderRadius: 10,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        margin: 5,
+        borderRadius: 14,
+        padding: 10,
         borderWidth: 1,
         borderColor: colors.border,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
+        flex: 1,
+        justifyContent: "space-between",
+        overflow: "hidden",
       }}
     >
-        {/* Icon */}
+      {/* Gradient Accent Top */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          backgroundColor: isLowStock ? colors.danger : colors.teal,
+        }}
+      />
+
+      {/* Top Section: Icon & Menu */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <View
           style={{
             width: 32,
             height: 32,
-            borderRadius: 8,
-            backgroundColor: colors.teal + "18",
+            borderRadius: 10,
+            backgroundColor: (isLowStock ? colors.danger : colors.teal) + "15",
             alignItems: "center",
             justifyContent: "center",
-            flexShrink: 0,
           }}
         >
-          <Package size={14} color={colors.teal} />
+          <Package size={15} color={isLowStock ? colors.danger : colors.teal} />
         </View>
 
-        {/* Name & Category */}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            numberOfLines={1}
-            style={{
-              fontSize: 13,
-              fontWeight: "600",
-              color: colors.heading,
-            }}
-          >
-            {item.name}
-          </Text>
-          <Text
-            numberOfLines={1}
-            style={{
-              fontSize: 10,
-              color: colors.muted,
-              marginTop: 1,
-            }}
-          >
-            {item.category || "—"}
-          </Text>
-        </View>
-
-        {/* Stock Status */}
-        <View style={{ alignItems: "center", minWidth: 45 }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: isLowStock ? colors.danger : colors.teal }}>
-            {item.stockQuantity.toFixed(0)}
-          </Text>
-          <Text style={{ fontSize: 9, color: colors.muted }}>Stock</Text>
-        </View>
-
-        {/* Cost */}
-        <View style={{ alignItems: "center", minWidth: 48 }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
-            ${item.cost.toFixed(2)}
-          </Text>
-          <Text style={{ fontSize: 9, color: colors.muted }}>Cost</Text>
-        </View>
-
-        {/* Vendor (compact) */}
-        <View style={{ maxWidth: 65, alignItems: "flex-end" }}>
-          <Text
-            numberOfLines={1}
-            style={{
-              fontSize: 11,
-              fontWeight: "500",
-              color: colors.label,
-            }}
-          >
-            {vendor?.name || "—"}
-          </Text>
-        </View>
-
-        {/* Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <TouchableOpacity style={{ padding: 4, flexShrink: 0 }}>
-              <MoreHorizontal size={14} color={colors.muted} />
+            <TouchableOpacity style={{ padding: 3 }}>
+              <MoreHorizontal size={12} color={colors.muted} />
             </TouchableOpacity>
           </DropdownMenuTrigger>
 
@@ -146,13 +101,69 @@ const InventoryCatalogRow: React.FC<{
 
             <DropdownMenuItem onPress={onDelete}>
               <Trash2 size={13} color={colors.danger} />
-              <Text style={{ marginLeft: 6, fontSize: 12, color: colors.danger }}>
-                Delete
-              </Text>
+              <Text style={{ marginLeft: 6, fontSize: 12, color: colors.danger }}>Delete</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </TouchableOpacity>
+      </View>
+
+      {/* Name & Category */}
+      <View style={{ marginBottom: 8 }}>
+        <Text
+          numberOfLines={2}
+          style={{
+            fontSize: 11,
+            fontWeight: "700",
+            color: colors.heading,
+            marginBottom: 2,
+            lineHeight: 14,
+          }}
+        >
+          {item.name}
+        </Text>
+
+        <Text
+          numberOfLines={1}
+          style={{
+            fontSize: 8.5,
+            color: colors.muted,
+          }}
+        >
+          {item.category || "—"}
+        </Text>
+      </View>
+
+      {/* Stock Highlight */}
+      <View style={{ backgroundColor: (isLowStock ? colors.danger : colors.teal) + "10", borderRadius: 8, padding: 6, marginBottom: 6 }}>
+        <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 2 }}>Stock</Text>
+        <Text style={{ fontSize: 12, fontWeight: "700", color: isLowStock ? colors.danger : colors.teal }}>
+          {item.stockQuantity.toFixed(0)} {item.unit}
+        </Text>
+      </View>
+
+      {/* Cost & Vendor */}
+      <View style={{ flexDirection: "row", gap: 4 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 1 }}>Cost</Text>
+          <Text style={{ fontSize: 10, fontWeight: "600", color: colors.label }}>
+            ${item.cost.toFixed(2)}
+          </Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 1 }}>Vendor</Text>
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: 9,
+              fontWeight: "500",
+              color: colors.label,
+            }}
+          >
+            {vendor?.name || "—"}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 };
 
@@ -287,13 +298,14 @@ const InventoryScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* List */}
+      {/* Grid */}
       <FlatList
         data={filteredInventory}
         keyExtractor={(item) => item.id}
+        numColumns={5}
         contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => (
-          <InventoryCatalogRow
+          <InventoryItemBox
             item={item}
             onTap={() => setDetailItemId(item.id)}
             onEdit={() => setDetailItemId(item.id)}

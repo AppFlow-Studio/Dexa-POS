@@ -24,19 +24,20 @@ const inputStyle = {
   backgroundColor: colors.screen,
   borderWidth: 1,
   borderColor: colors.border,
-  borderRadius: 8,
+  borderRadius: 10,
   color: colors.heading,
-  fontSize: 14,
-  height: 40,
+  fontSize: 13,
+  height: 38,
   paddingHorizontal: 12,
+  paddingVertical: 8,
 };
 
 const fieldLabel = {
-  fontSize: 11,
-  fontWeight: "600" as const,
+  fontSize: 10,
+  fontWeight: "700" as const,
   color: colors.muted,
   textTransform: "uppercase" as const,
-  letterSpacing: 0.5,
+  letterSpacing: 0.4,
   marginBottom: 6,
 };
 
@@ -122,17 +123,34 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
           {/* Header */}
           <View
             style={{
-              padding: 14,
-              borderBottomWidth: 1,
+              padding: 12,
+              borderBottomWidth: 0.5,
               borderBottomColor: colors.border,
+              backgroundColor: colors.panel,
             }}
           >
-            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
-              Add New Item
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-              Step {step} of 3
-            </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+                  Add Item
+                </Text>
+                <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+                  Step {step} of 3
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: colors.teal + "15",
+                  paddingHorizontal: 12,
+                  paddingVertical: 5,
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+                  {step}/3
+                </Text>
+              </View>
+            </View>
           </View>
 
           <KeyboardAvoidingView
@@ -158,31 +176,19 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                   <TouchableOpacity
                     disabled={!canNextFromStep1}
                     onPress={() => setStep(2)}
-                    style={
-                      canNextFromStep1
-                        ? {
-                            backgroundColor: colors.teal + "20",
-                            borderWidth: 1,
-                            borderColor: colors.teal + "50",
-                            borderRadius: 8,
-                            paddingVertical: 9,
-                            alignItems: "center",
-                          }
-                        : {
-                            backgroundColor: colors.muted + "20",
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            borderRadius: 8,
-                            paddingVertical: 9,
-                            alignItems: "center",
-                          }
-                    }
+                    style={{
+                      backgroundColor: canNextFromStep1 ? colors.teal : colors.muted + "20",
+                      borderRadius: 10,
+                      paddingVertical: 10,
+                      alignItems: "center",
+                      opacity: canNextFromStep1 ? 1 : 0.5,
+                    }}
                   >
                     <Text
                       style={{
                         fontSize: 13,
-                        fontWeight: "600",
-                        color: canNextFromStep1 ? colors.teal : colors.muted,
+                        fontWeight: "700",
+                        color: colors.onSolid,
                       }}
                     >
                       Next →
@@ -208,32 +214,19 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                         renderItem={({ item }) => (
                           <TouchableOpacity
                             onPress={() => setUnit(item.value as InventoryUnit)}
-                            style={
-                              unit === item.value
-                                ? {
-                                    paddingHorizontal: 8,
-                                    paddingVertical: 5,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    borderRadius: 8,
-                                    borderWidth: 1,
-                                    backgroundColor: colors.teal + "20",
-                                    borderColor: colors.teal + "50",
-                                  }
-                                : {
-                                    paddingHorizontal: 8,
-                                    paddingVertical: 5,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    borderRadius: 8,
-                                    borderWidth: 1,
-                                    borderColor: colors.border,
-                                  }
-                            }
+                            style={{
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderRadius: 8,
+                              backgroundColor: unit === item.value ? colors.teal + "15" : colors.muted + "05",
+                            }}
                           >
                             <Text
                               style={{
-                                fontSize: 12,
+                                fontSize: 11,
+                                fontWeight: unit === item.value ? "700" : "500",
                                 color: unit === item.value ? colors.teal : colors.label,
                                 textAlign: "center",
                               }}
@@ -263,28 +256,17 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       <View style={{ flexDirection: "row", gap: 6 }}>
                         <TouchableOpacity
                           onPress={() => setVendorId("")}
-                          style={
-                            vendorId === ""
-                              ? {
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 5,
-                                  borderRadius: 8,
-                                  borderWidth: 1,
-                                  backgroundColor: colors.teal + "20",
-                                  borderColor: colors.teal + "50",
-                                }
-                              : {
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 5,
-                                  borderRadius: 8,
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                }
-                          }
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 6,
+                            borderRadius: 8,
+                            backgroundColor: vendorId === "" ? colors.teal + "15" : colors.muted + "05",
+                          }}
                         >
                           <Text
                             style={{
-                              fontSize: 12,
+                              fontSize: 11,
+                              fontWeight: vendorId === "" ? "700" : "500",
                               color: vendorId === "" ? colors.teal : colors.label,
                             }}
                           >
@@ -295,28 +277,17 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                           <TouchableOpacity
                             key={v.id}
                             onPress={() => setVendorId(v.id)}
-                            style={
-                              vendorId === v.id
-                                ? {
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 5,
-                                    borderRadius: 8,
-                                    borderWidth: 1,
-                                    backgroundColor: colors.teal + "20",
-                                    borderColor: colors.teal + "50",
-                                  }
-                                : {
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 5,
-                                    borderRadius: 8,
-                                    borderWidth: 1,
-                                    borderColor: colors.border,
-                                  }
-                            }
+                            style={{
+                              paddingHorizontal: 12,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              backgroundColor: vendorId === v.id ? colors.teal + "15" : colors.muted + "05",
+                            }}
                           >
                             <Text
                               style={{
-                                fontSize: 12,
+                                fontSize: 11,
+                                fontWeight: vendorId === v.id ? "700" : "500",
                                 color: vendorId === v.id ? colors.teal : colors.label,
                               }}
                             >
@@ -333,48 +304,33 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       onPress={() => setStep(1)}
                       style={{
                         flex: 1,
-                        paddingVertical: 9,
-                        backgroundColor: "transparent",
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 8,
+                        paddingVertical: 10,
+                        backgroundColor: colors.muted + "08",
+                        borderRadius: 10,
                         alignItems: "center",
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.label }}>
                         ← Back
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       disabled={!canNextFromStep2}
                       onPress={() => setStep(3)}
-                      style={
-                        canNextFromStep2
-                          ? {
-                              flex: 1,
-                              paddingVertical: 9,
-                              backgroundColor: colors.teal + "20",
-                              borderWidth: 1,
-                              borderColor: colors.teal + "50",
-                              borderRadius: 8,
-                              alignItems: "center",
-                            }
-                          : {
-                              flex: 1,
-                              paddingVertical: 9,
-                              backgroundColor: colors.muted + "20",
-                              borderWidth: 1,
-                              borderColor: colors.border,
-                              borderRadius: 8,
-                              alignItems: "center",
-                            }
-                      }
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        backgroundColor: canNextFromStep2 ? colors.teal : colors.muted + "20",
+                        borderRadius: 10,
+                        alignItems: "center",
+                        opacity: canNextFromStep2 ? 1 : 0.5,
+                      }}
                     >
                       <Text
                         style={{
                           fontSize: 13,
-                          fontWeight: "600",
-                          color: canNextFromStep2 ? colors.teal : colors.muted,
+                          fontWeight: "700",
+                          color: colors.onSolid,
                         }}
                       >
                         Next →
@@ -400,33 +356,19 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                           <TouchableOpacity
                             key={mode}
                             onPress={() => setStockTrackingMode(mode)}
-                            style={
-                              isActive
-                                ? {
-                                    flex: 1,
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 8,
-                                    borderRadius: 8,
-                                    borderWidth: 1,
-                                    backgroundColor: colors.teal + "20",
-                                    borderColor: colors.teal + "50",
-                                    alignItems: "center",
-                                  }
-                                : {
-                                    flex: 1,
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 8,
-                                    borderRadius: 8,
-                                    borderWidth: 1,
-                                    borderColor: colors.border,
-                                    alignItems: "center",
-                                  }
-                            }
+                            style={{
+                              flex: 1,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              backgroundColor: isActive ? colors.teal + "15" : colors.muted + "05",
+                              alignItems: "center",
+                            }}
                           >
                             <Text
                               style={{
-                                fontSize: 13,
-                                fontWeight: "600",
+                                fontSize: 12,
+                                fontWeight: isActive ? "700" : "500",
                                 color: isActive ? colors.teal : colors.label,
                               }}
                             >
@@ -474,15 +416,13 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       onPress={() => setStep(2)}
                       style={{
                         flex: 1,
-                        paddingVertical: 9,
-                        backgroundColor: "transparent",
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 8,
+                        paddingVertical: 10,
+                        backgroundColor: colors.muted + "08",
+                        borderRadius: 10,
                         alignItems: "center",
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.label }}>
                         ← Back
                       </Text>
                     </TouchableOpacity>
@@ -490,16 +430,16 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
                       onPress={handleSave}
                       style={{
                         flex: 1,
-                        paddingVertical: 9,
+                        paddingVertical: 10,
                         backgroundColor: colors.teal,
-                        borderRadius: 8,
+                        borderRadius: 10,
                         alignItems: "center",
                       }}
                     >
                       <Text
-                        style={{ fontSize: 13, fontWeight: "600", color: colors.onSolid }}
+                        style={{ fontSize: 13, fontWeight: "700", color: colors.onSolid }}
                       >
-                        ✓ Save
+                        ✓ Save Item
                       </Text>
                     </TouchableOpacity>
                   </View>
