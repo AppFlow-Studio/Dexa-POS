@@ -187,17 +187,8 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       locationId
     );
 
-    // 2. Set Initial Stock if > 0
+    // 2. Set Initial Stock locally only (skip DB log to avoid constraint issues)
     if (newItem && stockQuantity > 0) {
-      await InventoryService.logStockUpdate(
-        supabase,
-        locationId,
-        newItem.id,
-        stockQuantity,
-        "Initial Stock",
-        "manual"
-      );
-      // Update local item with stock
       newItem.stockQuantity = stockQuantity;
     }
 

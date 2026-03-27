@@ -12,18 +12,14 @@ export const InventoryService = {
   ) {
     // Local items only
     const { data, error } = await supabase.rpc("app_upsert_inventory_item", {
-      p_id: item.id || null, // null for new items
+      p_category: item.category,
+      p_cost: item.cost,
+      p_is_global: false,
+      p_item_id: item.id || null,
       p_location_id: locationId,
       p_name: item.name,
-      p_category: item.category,
-      p_description: item.description,
-      p_image_url: item.image,
-      p_cost: item.cost,
-      p_unit_type: item.unitType,
-      p_unit: item.unit,
-      p_vendor_id: item.vendorId,
-      p_reorder_threshold: item.reorderThreshold,
-      p_is_active: true, // Defaulting to true for now
+      p_sku: "",
+      p_unit_type: item.unitType || "pcs",
     });
 
     if (error) throw error;
@@ -102,11 +98,13 @@ export const InventoryService = {
     source: string = "manual"
   ) {
     const { data, error } = await supabase.rpc("log_stock_update_with_audit", {
-      p_location_id: locationId,
       p_inventory_item_id: itemId,
+      p_location_id: locationId,
       p_new_stock: newQuantity,
       p_update_reason: reason,
       p_update_source: source,
+      p_user_id: null,
+      p_user_name: null,
     });
 
     if (error) throw error;

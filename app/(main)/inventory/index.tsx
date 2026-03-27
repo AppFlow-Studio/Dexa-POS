@@ -36,7 +36,7 @@ const InventoryItemBox: React.FC<{
   onDelete: () => void;
   onTap: () => void;
 }> = ({ item, onEdit, onDelete, onTap }) => {
-  const isLowStock = item.stockQuantity <= item.reorderThreshold;
+  const isLowStock = (item.stockQuantity ?? 0) <= (item.reorderThreshold ?? 0);
   const vendors = useInventoryStore((state) => state.vendors);
   const vendor = vendors.find((v) => v.id === item.vendorId);
 
@@ -137,7 +137,7 @@ const InventoryItemBox: React.FC<{
       <View style={{ backgroundColor: (isLowStock ? colors.danger : colors.teal) + "10", borderRadius: 8, padding: 6, marginBottom: 6 }}>
         <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 2 }}>Stock</Text>
         <Text style={{ fontSize: 12, fontWeight: "700", color: isLowStock ? colors.danger : colors.teal }}>
-          {item.stockQuantity.toFixed(0)} {item.unit}
+          {(item.stockQuantity ?? 0).toFixed(0)} {item.unit}
         </Text>
       </View>
 
@@ -146,7 +146,7 @@ const InventoryItemBox: React.FC<{
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 8, color: colors.muted, marginBottom: 1 }}>Cost</Text>
           <Text style={{ fontSize: 10, fontWeight: "600", color: colors.label }}>
-            ${item.cost.toFixed(2)}
+            ${(item.cost ?? 0).toFixed(2)}
           </Text>
         </View>
         <View style={{ flex: 1 }}>

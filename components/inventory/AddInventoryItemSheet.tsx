@@ -1,6 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
 import { InventoryUnit } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -58,6 +59,7 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
 
     const { vendors, addInventoryItem } = useInventoryStore();
     const { show } = useToast();
+    const { selectedStore } = useStoreSettingsStore();
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [name, setName] = useState("");
@@ -76,38 +78,56 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
     const canNextFromStep1 = name.trim().length > 0;
     const canNextFromStep2 = !!unit && cost.trim().length > 0;
 
-    const handleSave = () => {
+    const handleSave = async () => {
+      if (!selectedStore?.id) {
+        show({
+          title: "Error",
+          message: "No store selected. Please select a store first.",
+          type: "error",
+        });
+        return;
+      }
+
       const costNum = parseFloat(cost || "0");
       const stockQty = parseFloat(initialStock || "0");
       const thresholdNum = reorderThreshold ? parseInt(reorderThreshold) : 0;
 
-      addInventoryItem({
-        name: name.trim(),
-        category: category.trim() || "Uncategorized",
-        stockQuantity: isNaN(stockQty) ? 0 : Number(stockQty.toFixed(2)),
-        unit,
-        reorderThreshold: isNaN(thresholdNum) ? 0 : thresholdNum,
-        cost: isNaN(costNum) ? 0 : Number(costNum.toFixed(2)),
-        vendorId: vendorId || null,
-        stockTrackingMode,
-      });
+      try {
+        await addInventoryItem({
+          name: name.trim(),
+          category: category.trim() || "Uncategorized",
+          stockQuantity: isNaN(stockQty) ? 0 : Number(stockQty.toFixed(2)),
+          unit,
+          reorderThreshold: isNaN(thresholdNum) ? 0 : thresholdNum,
+          cost: isNaN(costNum) ? 0 : Number(costNum.toFixed(2)),
+          vendorId: vendorId || null,
+          stockTrackingMode,
+        }, selectedStore.id);
 
-      show({
-        title: "Item Added",
-        message: `"${name.trim()}" has been successfully added to your inventory.`,
-        type: "success",
-      });
+        show({
+          title: "Item Added",
+          message: `"${name.trim()}" has been successfully added to your inventory.`,
+          type: "success",
+        });
 
-      setStep(1);
-      setName("");
-      setCategory("Uncategorized");
-      setUnit("pcs");
-      setCost("");
-      setVendorId("");
-      setReorderThreshold("");
-      setInitialStock("");
-      setStockTrackingMode("quantity");
-      (ref as any)?.current?.close?.();
+        setStep(1);
+        setName("");
+        setCategory("Uncategorized");
+        setUnit("pcs");
+        setCost("");
+        setVendorId("");
+        setReorderThreshold("");
+        setInitialStock("");
+        setStockTrackingMode("quantity");
+        (ref as any)?.current?.close?.();
+      } catch (error) {
+        console.error("Error adding item:", error);
+        show({
+          title: "Error",
+          message: "Failed to add item. Please try again.",
+          type: "error",
+        });
+      }
     };
 
     return (
