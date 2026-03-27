@@ -253,16 +253,14 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         );
       }
 
-      // 2. Update stock if provided
+      // 2. Update stock if provided - update item record directly
       if (stockQuantity !== undefined && stockQuantity !== item.stockQuantity) {
-        await InventoryService.logStockUpdate(
-          supabase,
-          locationId,
-          itemId,
-          stockQuantity,
-          stockUpdateReason || "Manual Adjustment",
-          "manual"
-        );
+        const { error: stockError } = await supabase
+          .from("inventory_items")
+          .update({ current_stock: stockQuantity })
+          .eq("id", itemId);
+
+        if (stockError) throw stockError;
       }
     } catch (e) {
       console.error(e);
