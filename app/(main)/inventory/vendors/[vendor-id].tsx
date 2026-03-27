@@ -1,6 +1,6 @@
+import VendorCreatePOModule from '@/components/inventory/VendorCreatePOModule'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { bottomSheetTheme, colors } from '@/lib/theme'
-import { POLineItem } from '@/lib/types'
 import { useInventoryStore } from '@/stores/useInventoryStore'
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -14,25 +14,15 @@ import {
   ArrowLeft,
   Box,
   Building2,
-  Edit3,
   Mail,
   Package,
   Phone,
   Plus,
   Search,
-  Trash2,
   User
 } from 'lucide-react-native'
-import { useMemo, useRef, useState } from 'react'
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native'
 
 const StatCard = ({
   label,
@@ -112,6 +102,8 @@ const VendorDetailsScreen = () => {
   const router = useRouter()
   const rawId = (params as any).vendorId || (params as any)['vendor-id']
   const vendorId = Array.isArray(rawId) ? rawId[0] : rawId
+  const rawCreatePO = (params as any).createPO
+  const createPOFlag = Array.isArray(rawCreatePO) ? rawCreatePO[0] : rawCreatePO
   const [activeTab, setActiveTab] = useState<
     'purchase-orders' | 'associated-items'
   >('purchase-orders')
@@ -156,18 +148,20 @@ const VendorDetailsScreen = () => {
 
   const poSearchRef = useRef<BottomSheetMethods>(null)
   const itemSearchRef = useRef<BottomSheetMethods>(null)
-  const createPOSheetRef = useRef<BottomSheetMethods>(null)
-  const poBuilderSheetRef = useRef<BottomSheetMethods>(null)
 
-  const [poLineItems, setPoLineItems] = useState<POLineItem[]>([])
-  const [selectedTemplatePo, setSelectedTemplatePo] = useState<any>(null)
-  const [isEditingItem, setIsEditingItem] = useState<string | null>(null)
-  const [editingQuantity, setEditingQuantity] = useState<string>('')
   const [poSearchText, setPoSearchText] = useState('')
   const [itemSearchText, setItemSearchText] = useState('')
   const [poStartDate, setPoStartDate] = useState('')
   const [poEndDate, setPoEndDate] = useState('')
+  const [poModuleOpenSignal, setPoModuleOpenSignal] = useState(0)
   const snapPoints = useMemo(() => ['70%', '95%'], [])
+
+  useEffect(() => {
+    if (createPOFlag === '1' && vendorId) {
+      setPoModuleOpenSignal(s => s + 1)
+      router.replace(`/inventory/vendors/${vendorId}`)
+    }
+  }, [createPOFlag, vendorId, router])
 
   const filteredPOs = useMemo(() => {
     const q = poSearchText.trim().toLowerCase()
@@ -201,433 +195,6 @@ const VendorDetailsScreen = () => {
       return name.includes(q) || category.includes(q)
     })
   }, [itemSearchText, associatedItems])
-
-  const openPOBuilder = (templatePo?: any) => {
-    setSelectedTemplatePo(templatePo)
-    setPoLineItems(templatePo ? templatePo.items : [])
-    createPOSheetRef.current?.close()
-    poBuilderSheetRef.current?.snapToIndex?.(0)
-  }
-
-  const addItemToPO = (item: any) => {
-    const existingIndex = poLineItems.findIndex(
-      li => li.inventoryItemId === item.id
-    )
-    if (existingIndex >= 0) {
-      const updated = [...poLineItems]
-      updated[existingIndex] = {
-        ...updated[existingIndex],
-        quantity: updated[existingIndex].quantity + 1
-      }
-      setPoLineItems(updated)
-    } else {
-      setPoLineItems([
-        ...poLineItems,
-        { inventoryItemId: item.id, quantity: 1, cost: item.cost }
-      ])
-    }
-  }
-
-  const removeItemFromPO = (inventoryItemId: string) => {
-    setPoLineItems(prev =>
-      prev.filter(li => li.inventoryItemId !== inventoryItemId)
-    )
-  }
-
-  const startEditItem = (inventoryItemId: string, currentQuantity: number) => {
-    setIsEditingItem(inventoryItemId)
-    setEditingQuantity(currentQuantity.toString())
-  }
-
-  const saveEditItem = () => {
-    if (!isEditingItem) return
-    const newQuantity = parseInt(editingQuantity) || 0
-    if (newQuantity <= 0) {
-      removeItemFromPO(isEditingItem)
-    } else {
-      setPoLineItems(prev =>
-        prev.map(li =>
-          li.inventoryItemId === isEditingItem
-            ? { ...li, quantity: newQuantity }
-            : li
-        )
-      )
-    }
-    setIsEditingItem(null)
-    setEditingQuantity('')
-  }
-
-  const cancelEditItem = () => {
-    setIsEditingItem(null)
-    setEditingQuantity('')
-  }
-
-  const createPurchaseOrder = async (status: 'Draft' | 'Pending Delivery') => {
-    if (poLineItems.length === 0) {
-      Alert.alert(
-        'No Items',
-        'Please add at least one item to the purchase order.'
-      )
-      return
-    }
-    try {
-      const { createPurchaseOrder } = useInventoryStore.getState()
-      await createPurchaseOrder({
-        vendorId: vendorId!,
-        status,
-        items: poLineItems
-      })
-      Alert.alert(
-        'Success',
-        `Purchase order ${
-          status === 'Draft' ? 'saved as draft' : 'submitted'
-        } successfully!`
-      )
-      setPoLineItems([])
-      setSelectedTemplatePo(null)
-      poBuilderSheetRef.current?.close()
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create purchase order. Please try again.')
-    }
-  }
-
-  const renderPOBuilderHeader = () => (
-    <View>
-      <View
-        style={{
-          paddingHorizontal: 14,
-          paddingVertical: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          marginBottom: 10,
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}
-      >
-        <View style={{ gap: 2 }}>
-          <Text
-            style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
-          >
-            Build PO
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.label }}>
-            Vendor:{' '}
-            <Text style={{ color: colors.heading, fontWeight: '600' }}>
-              {vendor?.name}
-            </Text>
-          </Text>
-          {selectedTemplatePo && (
-            <Text style={{ fontSize: 11, color: colors.teal }}>
-              Template: {selectedTemplatePo.poNumber}
-            </Text>
-          )}
-        </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity
-            onPress={() => createPurchaseOrder('Draft')}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              backgroundColor: 'transparent',
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 8
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.label }}
-            >
-              Save Draft
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => createPurchaseOrder('Pending Delivery')}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              backgroundColor: colors.teal + '20',
-              borderWidth: 1,
-              borderColor: colors.teal + '50',
-              borderRadius: 8
-            }}
-          >
-            <Text
-              style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}
-            >
-              Submit
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      <View style={{ paddingHorizontal: 14, marginBottom: 6 }}>
-        <Text
-          style={{
-            fontSize: 12,
-            fontWeight: '600',
-            color: colors.muted,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5
-          }}
-        >
-          Items ({poLineItems.length})
-        </Text>
-        {poLineItems.length === 0 && (
-          <View
-            style={{
-              backgroundColor: colors.screen,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 8,
-              padding: 14,
-              alignItems: 'center',
-              marginTop: 8
-            }}
-          >
-            <Text style={{ fontSize: 12, color: colors.muted }}>
-              No items added yet
-            </Text>
-          </View>
-        )}
-      </View>
-    </View>
-  )
-
-  const renderPOBuilderFooter = () => (
-    <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-      <Text
-        style={{
-          fontSize: 12,
-          fontWeight: '600',
-          color: colors.muted,
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
-          marginBottom: 8
-        }}
-      >
-        Add Items
-      </Text>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          backgroundColor: colors.screen,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 8,
-          paddingHorizontal: 10,
-          height: 38,
-          gap: 8,
-          marginBottom: 10
-        }}
-      >
-        <Search size={14} color={colors.muted} />
-        <BottomSheetTextInput
-          value={itemSearchText}
-          onChangeText={setItemSearchText}
-          placeholder='Search items...'
-          placeholderTextColor={colors.muted}
-          style={{ flex: 1, fontSize: 13, color: colors.heading }}
-        />
-      </View>
-      <View style={{ gap: 6 }}>
-        {filteredItems.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-            <Text style={{ fontSize: 12, color: colors.muted }}>
-              No items found
-            </Text>
-          </View>
-        ) : (
-          filteredItems.map((item, index) => (
-            <TouchableOpacity
-              key={`${item.id}-${index}`}
-              onPress={() => addItemToPO(item)}
-              style={{
-                backgroundColor: colors.screen,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 9,
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}
-            >
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: '600',
-                    color: colors.heading
-                  }}
-                >
-                  {item.name}
-                </Text>
-                <Text
-                  style={{ fontSize: 11, color: colors.label, marginTop: 2 }}
-                >
-                  {item.category} · ${item.cost.toFixed(2)} per {item.unit}
-                </Text>
-              </View>
-              <View
-                style={{
-                  backgroundColor: colors.teal + '20',
-                  borderWidth: 1,
-                  borderColor: colors.teal + '50',
-                  borderRadius: 6,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    fontWeight: '600',
-                    color: colors.teal
-                  }}
-                >
-                  + Add
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-      </View>
-    </View>
-  )
-
-  const renderPOLineItem = ({ item: lineItem }: { item: POLineItem }) => {
-    const item = inventoryItems.find(i => i.id === lineItem.inventoryItemId)
-    const isEditing = isEditingItem === lineItem.inventoryItemId
-    return (
-      <View
-        style={{
-          backgroundColor: colors.screen,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 8,
-          padding: 12,
-          marginHorizontal: 14,
-          marginBottom: 6
-        }}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text
-              style={{ fontSize: 13, fontWeight: '600', color: colors.heading }}
-            >
-              {item?.name || 'Unknown'}
-            </Text>
-            <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
-              ${lineItem.cost.toFixed(2)} per {item?.unit}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {isEditing ? (
-              <>
-                <BottomSheetTextInput
-                  value={editingQuantity}
-                  onChangeText={setEditingQuantity}
-                  keyboardType='number-pad'
-                  style={{
-                    backgroundColor: colors.panel,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 6,
-                    paddingHorizontal: 8,
-                    color: colors.heading,
-                    fontSize: 13,
-                    textAlign: 'center',
-                    width: 52,
-                    height: 32
-                  }}
-                />
-                <TouchableOpacity
-                  onPress={saveEditItem}
-                  style={{
-                    backgroundColor: colors.success + '20',
-                    borderWidth: 1,
-                    borderColor: colors.success + '50',
-                    borderRadius: 6,
-                    paddingHorizontal: 8,
-                    paddingVertical: 4
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: '600',
-                      color: colors.success
-                    }}
-                  >
-                    Save
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={cancelEditItem}
-                  style={{
-                    backgroundColor: 'transparent',
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 6,
-                    paddingHorizontal: 8,
-                    paddingVertical: 4
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: '600',
-                      color: colors.label
-                    }}
-                  >
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={{ fontSize: 13, color: colors.heading }}>
-                  Qty: {lineItem.quantity}
-                </Text>
-                <TouchableOpacity
-                  onPress={() =>
-                    startEditItem(lineItem.inventoryItemId, lineItem.quantity)
-                  }
-                  style={{ padding: 5 }}
-                >
-                  <Edit3 size={13} color={colors.label} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => removeItemFromPO(lineItem.inventoryItemId)}
-                  style={{ padding: 5 }}
-                >
-                  <Trash2 size={13} color={colors.danger} />
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-        <Text
-          style={{
-            fontSize: 11,
-            color: colors.teal,
-            textAlign: 'right',
-            marginTop: 6
-          }}
-        >
-          Total: ${(lineItem.quantity * lineItem.cost).toFixed(2)}
-        </Text>
-      </View>
-    )
-  }
 
   if (!vendor) {
     return (
@@ -900,7 +467,7 @@ const VendorDetailsScreen = () => {
                     <Search size={14} color={colors.teal} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => createPOSheetRef.current?.snapToIndex?.(0)}
+                    onPress={() => setPoModuleOpenSignal(s => s + 1)}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -1470,217 +1037,14 @@ const VendorDetailsScreen = () => {
         />
       </BottomSheet>
 
-      {/* Create PO Sheet */}
-      <BottomSheet
-        ref={createPOSheetRef as any}
-        index={-1}
-        snapPoints={['60%', '90%']}
-        enablePanDownToClose
-        {...bottomSheetTheme}
-        backdropComponent={props => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
-        )}
-      >
-        <View
-          style={{
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border
-          }}
-        >
-          <Text
-            style={{ fontSize: 14, fontWeight: '700', color: colors.heading }}
-          >
-            Create Purchase
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
-            Vendor:{' '}
-            <Text style={{ color: colors.heading, fontWeight: '600' }}>
-              {vendor?.name}
-            </Text>
-          </Text>
-        </View>
-        <View style={{ paddingHorizontal: 14, paddingVertical: 12, gap: 10 }}>
-          <TouchableOpacity
-            onPress={() => openPOBuilder()}
-            style={{
-              backgroundColor: colors.teal + '20',
-              borderWidth: 1,
-              borderColor: colors.teal + '50',
-              borderRadius: 8,
-              paddingVertical: 10,
-              alignItems: 'center'
-            }}
-          >
-            <Text
-              style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}
-            >
-              Start New Purchase
-            </Text>
-          </TouchableOpacity>
-
-          <View style={{ marginTop: 4 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 8
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '600',
-                  color: colors.muted,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5
-                }}
-              >
-                Use Past Order as Template
-              </Text>
-              <Text style={{ fontSize: 11, color: colors.muted }}>
-                {vendorPOs.length} available
-              </Text>
-            </View>
-            <BottomSheetFlatList
-              data={vendorPOs}
-              keyExtractor={(po, index) => `${po.id}-${index}`}
-              renderItem={({ item: po }) => (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 8,
-                    marginBottom: 8,
-                    padding: 10,
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
-                >
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: '600',
-                        color: colors.heading
-                      }}
-                    >
-                      {po.poNumber}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        color: colors.muted,
-                        marginTop: 2
-                      }}
-                    >
-                      {po.status} ·{' '}
-                      {new Date(po.createdAt).toLocaleDateString()}
-                    </Text>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        gap: 4,
-                        marginTop: 6
-                      }}
-                    >
-                      {po.items.map((li, idx) => (
-                        <View
-                          key={`${po.id}_${idx}`}
-                          style={{
-                            backgroundColor: colors.screen,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            borderRadius: 20,
-                            paddingHorizontal: 7,
-                            paddingVertical: 2
-                          }}
-                        >
-                          <Text style={{ fontSize: 10, color: colors.label }}>
-                            {getItemName(li.inventoryItemId)} x{li.quantity}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => openPOBuilder(po)}
-                    style={{
-                      backgroundColor: colors.teal + '20',
-                      borderWidth: 1,
-                      borderColor: colors.teal + '50',
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '600',
-                        color: colors.teal
-                      }}
-                    >
-                      Use
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              ListEmptyComponent={
-                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
-                    No past orders for this vendor.
-                  </Text>
-                </View>
-              }
-              contentContainerStyle={{ paddingBottom: 20 }}
-            />
-          </View>
-        </View>
-      </BottomSheet>
-
-      {/* PO Builder Sheet */}
-      <BottomSheet
-        ref={poBuilderSheetRef as any}
-        index={-1}
-        snapPoints={['70%', '95%']}
-        enablePanDownToClose
-        {...bottomSheetTheme}
-        backdropComponent={props => (
-          <BottomSheetBackdrop
-            {...props}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
-        )}
-        keyboardBehavior='interactive'
-        keyboardBlurBehavior='restore'
-        android_keyboardInputMode='adjustResize'
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          <BottomSheetFlatList
-            data={poLineItems}
-            keyExtractor={(item, index) => `${item.inventoryItemId}-${index}`}
-            renderItem={renderPOLineItem}
-            ListHeaderComponent={renderPOBuilderHeader}
-            ListFooterComponent={renderPOBuilderFooter}
-            contentContainerStyle={{ paddingBottom: 30 }}
-          />
-        </KeyboardAvoidingView>
-      </BottomSheet>
+      <VendorCreatePOModule
+        vendorId={vendorId!}
+        vendorName={vendor.name}
+        vendorPOs={vendorPOs}
+        items={inventoryItems}
+        resolveItemName={getItemName}
+        openSignal={poModuleOpenSignal}
+      />
     </>
   )
 }

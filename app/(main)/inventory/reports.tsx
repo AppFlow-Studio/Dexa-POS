@@ -4,13 +4,13 @@ import {
   AlertTriangle,
   BarChart2,
   Box,
-  ClipboardList,
   DollarSign,
+  Search,
   TrendingUp,
   Truck,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 type ReportTab =
   | "On Hand"
@@ -37,10 +37,31 @@ const tableHeaderStyle = {
   letterSpacing: 0.5,
 };
 
+const sectionTitleStyle = {
+  fontSize: 12,
+  fontWeight: "700" as const,
+  color: colors.heading,
+  textTransform: "uppercase" as const,
+  letterSpacing: 0.5,
+};
+
 // --- On Hand ---
 const OnHandReport = () => {
   const items = useInventoryStore((s) => s.inventoryItems);
+  const [query, setQuery] = useState("");
   const totalValue = items.reduce((a, i) => a + i.stockQuantity * i.cost, 0);
+
+  const filteredItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => {
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.category.toLowerCase().includes(q) ||
+        item.unit.toLowerCase().includes(q)
+      );
+    });
+  }, [items, query]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: "hidden" }}>
@@ -48,7 +69,7 @@ const OnHandReport = () => {
       <View style={{ flexDirection: "row", gap: 0, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         {[
           { label: "Total Items", value: items.length, color: colors.teal },
-          { label: "Total Value", value: `$${totalValue.toFixed(2)}`, color: colors.success },
+          { label: "Total Value", value: `$${totalValue.toFixed(2)}`, color: colors.teal },
           { label: "Out of Stock", value: items.filter((i) => i.stockQuantity === 0).length, color: colors.danger },
         ].map((s, idx) => (
           <View key={idx} style={{ flex: 1, padding: 12, borderRightWidth: idx < 2 ? 1 : 0, borderRightColor: colors.border }}>
@@ -56,6 +77,24 @@ const OnHandReport = () => {
             <Text style={{ fontSize: 18, fontWeight: "700", color: s.color, marginTop: 2 }}>{s.value}</Text>
           </View>
         ))}
+      </View>
+
+      {/* Header + Search */}
+      <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <Text style={sectionTitleStyle}>On Hand Table</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{filteredItems.length} results</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: query ? colors.teal + "55" : colors.border, borderRadius: 8, paddingHorizontal: 10, height: 38, gap: 8 }}>
+          <Search size={13} color={query ? colors.teal : colors.muted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search item, category, unit..."
+            placeholderTextColor={colors.muted}
+            style={{ flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 0 }}
+          />
+        </View>
       </View>
 
       {/* Table header */}
@@ -69,11 +108,11 @@ const OnHandReport = () => {
       </View>
 
       <FlatList
-        data={items}
+        data={filteredItems}
         keyExtractor={(item, idx) => `${item.id}-${idx}`}
         contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => (
-          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.screen }}>
             <Text numberOfLines={1} style={{ flex: 2, fontSize: 13, fontWeight: "600", color: colors.heading }}>{item.name}</Text>
             <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: colors.label }}>{item.category}</Text>
             <Text style={{ width: "12%", fontSize: 13, fontWeight: "600", color: item.stockQuantity === 0 ? colors.danger : colors.heading, textAlign: "right" }}>{item.stockQuantity}</Text>
@@ -96,11 +135,25 @@ const OnHandReport = () => {
 const LowStockReport = () => {
   const inventoryItems = useInventoryStore((s) => s.inventoryItems);
   const vendors = useInventoryStore((s) => s.vendors);
+  const [query, setQuery] = useState("");
 
   const lowStockItems = useMemo(
     () => inventoryItems.filter((i) => i.stockQuantity <= i.reorderThreshold),
     [inventoryItems]
   );
+
+  const filteredLowStockItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return lowStockItems;
+    return lowStockItems.filter((item) => {
+      const vendorName = getVendorName(item.vendorId).toLowerCase();
+      return (
+        item.name.toLowerCase().includes(q) ||
+        item.category.toLowerCase().includes(q) ||
+        vendorName.includes(q)
+      );
+    });
+  }, [lowStockItems, query, vendors]);
 
   const getVendorName = (vendorId: string) => vendors.find((v) => v.id === vendorId)?.name || "—";
 
@@ -120,6 +173,24 @@ const LowStockReport = () => {
         ))}
       </View>
 
+      {/* Header + Search */}
+      <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <Text style={sectionTitleStyle}>Low Stock Table</Text>
+          <Text style={{ fontSize: 11, color: colors.muted }}>{filteredLowStockItems.length} results</Text>
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: query ? colors.teal + "55" : colors.border, borderRadius: 8, paddingHorizontal: 10, height: 38, gap: 8 }}>
+          <Search size={13} color={query ? colors.teal : colors.muted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search item, category, vendor..."
+            placeholderTextColor={colors.muted}
+            style={{ flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 0 }}
+          />
+        </View>
+      </View>
+
       {/* Table header */}
       <View style={{ flexDirection: "row", paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.screen, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <Text style={[tableHeaderStyle, { flex: 2 }]}>Name</Text>
@@ -130,13 +201,13 @@ const LowStockReport = () => {
       </View>
 
       <FlatList
-        data={lowStockItems}
+        data={filteredLowStockItems}
         keyExtractor={(item, idx) => `${item.id}-${idx}`}
         contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => {
           const isCritical = item.stockQuantity === 0;
           return (
-            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.screen }}>
               <View style={{ flex: 2, flexDirection: "row", alignItems: "center", gap: 6 }}>
                 {isCritical
                   ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger }} />

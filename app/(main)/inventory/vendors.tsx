@@ -1,3 +1,4 @@
+import VendorCreatePOModule from '@/components/inventory/VendorCreatePOModule'
 import VendorFormModal from '@/components/inventory/VendorFormModal'
 import ConfirmationModal from '@/components/settings/reset-application/ConfirmationModal'
 import {
@@ -175,7 +176,8 @@ const VendorSidebar: React.FC<{
         ) / vendorPOs.length
       : 0
 
-  const headerHeight = Math.max(getHeaderHeight(), 56)
+  const measuredHeaderHeight = getHeaderHeight()
+  const headerHeight = measuredHeaderHeight > 0 ? measuredHeaderHeight : 56
   return (
     <Portal name='vendor-sidebar'>
       <Animated.View
@@ -1013,8 +1015,7 @@ const VendorScreen = () => {
     updateVendor,
     deleteVendor,
     inventoryItems,
-    purchaseOrders,
-    createPurchaseOrder
+    purchaseOrders
   } = useInventoryStore()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const merchantId = selectedStore?.merchant_id ?? ''
@@ -1027,6 +1028,8 @@ const VendorScreen = () => {
   const [sidebarVendor, setSidebarVendor] = useState<Vendor | null>(null)
   const [isSidebarClosing, setIsSidebarClosing] = useState(false)
   const [closeSignal, setCloseSignal] = useState(0)
+  const [poModuleVendor, setPoModuleVendor] = useState<Vendor | null>(null)
+  const [poModuleOpenSignal, setPoModuleOpenSignal] = useState(0)
 
   const sheetRef = useRef<BottomSheet>(null)
   const snapPoints = useMemo(() => ['70%', '95%'], [])
@@ -1415,13 +1418,29 @@ const VendorScreen = () => {
             setActiveVendorSidebarId(null)
             handleOpenDeleteConfirm(sidebarVendor)
           }}
-          onCreatePO={() =>
-            createPurchaseOrder({
-              vendorId: sidebarVendor.id,
-              status: 'Draft',
-              items: []
-            })
-          }
+          onCreatePO={() => {
+            setPoModuleVendor(sidebarVendor)
+            setPoModuleOpenSignal(s => s + 1)
+            setSidebarVendor(null)
+            setIsSidebarClosing(false)
+            setActiveVendorSidebarId(null)
+          }}
+        />
+      )}
+
+      {poModuleVendor && (
+        <VendorCreatePOModule
+          vendorId={poModuleVendor.id}
+          vendorName={poModuleVendor.name}
+          vendorPOs={purchaseOrders.filter(
+            po => po.vendorId === poModuleVendor.id
+          )}
+          items={inventoryItems}
+          resolveItemName={(id: string) => {
+            const item = inventoryItems.find(i => i.id === id)
+            return item?.name || 'Item'
+          }}
+          openSignal={poModuleOpenSignal}
         />
       )}
     </View>

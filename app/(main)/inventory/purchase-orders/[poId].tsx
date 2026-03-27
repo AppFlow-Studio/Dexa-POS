@@ -14,7 +14,6 @@ import {
 import React, { useState } from "react";
 import {
   Alert,
-  FlatList,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -82,11 +81,11 @@ const PurchaseOrderDetailScreen = () => {
   );
 
   const statusColors = {
-    Draft: "bg-gray-600",
-    "Pending Delivery": "bg-yellow-600",
-    "Awaiting Payment": "bg-blue-600",
-    Paid: "bg-green-600",
-    Cancelled: "bg-red-600",
+    Draft: { bg: colors.teal + "1A", border: colors.teal + "55", text: colors.teal },
+    "Pending Delivery": { bg: colors.teal + "1A", border: colors.teal + "55", text: colors.teal },
+    "Awaiting Payment": { bg: colors.teal + "1F", border: colors.teal + "65", text: colors.teal },
+    Paid: { bg: colors.teal + "25", border: colors.teal + "70", text: colors.teal },
+    Cancelled: { bg: colors.danger + "1A", border: colors.danger + "60", text: colors.danger },
   };
 
   const handleLogDelivery = () => {
@@ -262,118 +261,123 @@ const PurchaseOrderDetailScreen = () => {
     setDeliveryPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const inputStyle = {
+    backgroundColor: colors.screen,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    color: colors.heading,
+    fontSize: 12,
+    height: 36,
+    paddingHorizontal: 10,
+    paddingVertical: 0,
+  } as const;
+
+  const sectionTitleStyle = {
+    fontSize: 13,
+    fontWeight: "700" as const,
+    color: colors.heading,
+  } as const;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-screen"
+      style={{ flex: 1, backgroundColor: colors.screen }}
     >
-      <ScrollView className="flex-1">
-        <View className="p-6">
-          {/* Section A: Order Summary */}
-          <View className="bg-panel border border-border rounded-xl p-4 mb-4">
-            <View className="flex-row justify-between items-center mb-3">
-              <Text className="text-xl font-bold text-white">
-                PO Details: {po.poNumber}
-              </Text>
-              <View
-                className={`px-2 py-0.5 rounded-full ${
-                  statusColors[po.status]
-                }`}
-              >
-                <Text className="text-white font-semibold text-sm">
-                  {po.status}
-                </Text>
-              </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 18 }}>
+        <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <Text style={sectionTitleStyle}>PO Details: {po.poNumber}</Text>
+            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, borderWidth: 1, backgroundColor: statusColors[po.status].bg, borderColor: statusColors[po.status].border }}>
+              <Text style={{ fontSize: 10, fontWeight: "700", color: statusColors[po.status].text }}>{po.status}</Text>
             </View>
-
-            <View className="flex-row justify-between mb-3">
-              <View>
-                <Text className="text-base text-gray-400">Vendor</Text>
-                <Text className="text-lg font-semibold text-white">
-                  {vendor?.name || "Unknown"}
-                </Text>
-              </View>
-              <View>
-                <Text className="text-base text-gray-400">Created</Text>
-                <Text className="text-lg font-semibold text-white">
-                  {new Date(po.createdAt).toLocaleDateString()}
-                </Text>
-              </View>
-              <View>
-                <Text className="text-base text-gray-400">Total Cost</Text>
-                <Text className="text-lg font-semibold text-white">
-                  ${totalCost.toFixed(2)}
-                </Text>
-              </View>
-            </View>
-
-            <View className="flex-row justify-between mb-3">
-              <View>
-                <Text className="text-base text-gray-400">Created By</Text>
-                <Text className="text-lg font-semibold text-white">
-                  {po.createdByEmployeeName || "Unknown Employee"}
-                </Text>
-              </View>
-              <View>
-                <Text className="text-base text-gray-400">PO Number</Text>
-                <Text className="text-lg font-semibold text-white">
-                  {po.poNumber}
-                </Text>
-              </View>
-              <View>
-                <Text className="text-base text-gray-400">Items Count</Text>
-                <Text className="text-lg font-semibold text-white">
-                  {po.items.length}
-                </Text>
-              </View>
-            </View>
-
-            <Text className="text-lg font-semibold text-white mb-2">Items</Text>
-            <FlatList
-              data={po.items}
-              className="max-h-150"
-              keyExtractor={(item) => item.inventoryItemId}
-              renderItem={({ item }) => {
-                const invItem = inventoryItems.find(
-                  (i) => i.id === item.inventoryItemId
-                );
-                return (
-                  <View className="flex-row justify-between p-2 border-b border-border">
-                    <Text className="text-base text-white flex-1">
-                      {invItem?.name}
-                    </Text>
-                    <Text className="text-sm text-gray-300 w-28">
-                      {item.quantity} {invItem?.unit}
-                    </Text>
-                    <Text className="text-sm text-gray-300 w-28">
-                      ${(item.cost * item.quantity).toFixed(2)}
-                    </Text>
-                  </View>
-                );
-              }}
-            />
           </View>
+
+          <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: "hidden", marginBottom: 10 }}>
+            <View style={{ flexDirection: "row", backgroundColor: colors.screen, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <View style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center" }}>Vendor</Text>
+              </View>
+              <View style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center" }}>Created</Text>
+              </View>
+              <View style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8 }}>
+                <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center" }}>Total Cost</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", backgroundColor: colors.panel, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <View style={{ flex: 1, minHeight: 34, justifyContent: "center", paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "600", color: colors.heading, textAlign: "center" }}>{vendor?.name || "Unknown"}</Text>
+              </View>
+              <View style={{ flex: 1, minHeight: 34, justifyContent: "center", paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "600", color: colors.heading, textAlign: "center" }}>{new Date(po.createdAt).toLocaleDateString()}</Text>
+              </View>
+              <View style={{ flex: 1, minHeight: 34, justifyContent: "center", paddingHorizontal: 8 }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: colors.teal, textAlign: "center" }}>${totalCost.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", backgroundColor: colors.screen, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <View style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center" }}>Created By</Text>
+              </View>
+              <View style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center" }}>PO Number</Text>
+              </View>
+              <View style={{ flex: 1, paddingVertical: 6, paddingHorizontal: 8 }}>
+                <Text style={{ fontSize: 10, color: colors.muted, textAlign: "center" }}>Items Count</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", backgroundColor: colors.panel }}>
+              <View style={{ flex: 1, minHeight: 34, justifyContent: "center", paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "600", color: colors.heading, textAlign: "center" }}>{po.createdByEmployeeName || "Unknown"}</Text>
+              </View>
+              <View style={{ flex: 1, minHeight: 34, justifyContent: "center", paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: colors.border }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: colors.teal, textAlign: "center" }}>{po.poNumber}</Text>
+              </View>
+              <View style={{ flex: 1, minHeight: 34, justifyContent: "center", paddingHorizontal: 8 }}>
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "600", color: colors.heading, textAlign: "center" }}>{po.items.length}</Text>
+              </View>
+            </View>
+          </View>
+
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.heading, marginBottom: 6 }}>Items</Text>
+          <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, overflow: "hidden" }}>
+            {po.items.map((item) => {
+              const invItem = inventoryItems.find((i) => i.id === item.inventoryItemId);
+              return (
+                <View key={item.inventoryItemId} style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.screen }}>
+                  <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: colors.heading }}>{invItem?.name || "Item"}</Text>
+                  <Text style={{ width: 90, fontSize: 11, color: colors.label, textAlign: "right" }}>{item.quantity} {invItem?.unit}</Text>
+                  <Text style={{ width: 90, fontSize: 11, fontWeight: "600", color: colors.teal, textAlign: "right" }}>${(item.cost * item.quantity).toFixed(2)}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
 
           {/* Draft Actions */}
           {po.status === "Draft" && (
-            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
-              <Text className="text-lg font-bold text-white mb-2">
+            <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
                 Draft Actions
               </Text>
-              <View className="flex-row gap-2">
+              <View style={{ flexDirection: "row", gap: 8 }}>
                 <TouchableOpacity
                   onPress={handleSubmitDraft}
-                  className="flex-1 bg-blue-600 rounded-lg p-3 items-center"
+                  style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                 >
-                  <Text className="text-white font-semibold text-base">
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
                     Submit to Pending
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setShowDeleteDraftDialog(true)}
-                  className="flex-1 bg-red-600 rounded-lg p-3 items-center"
+                  style={{ flex: 1, backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                 >
-                  <Text className="text-white font-semibold text-base">
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}>
                     Delete Draft
                   </Text>
                 </TouchableOpacity>
@@ -382,10 +386,10 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {po.status === "Pending Delivery" && (
-            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
-              <View className="flex-row items-center mb-3 gap-x-1.5">
-                <Calendar size={20} color={colors.label} />
-                <Text className="text-lg font-bold text-white">
+            <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                <Calendar size={15} color={colors.label} />
+                <Text style={sectionTitleStyle}>
                   Log Delivery
                 </Text>
               </View>
@@ -393,27 +397,27 @@ const PurchaseOrderDetailScreen = () => {
               {!showDeliveryForm ? (
                 <TouchableOpacity
                   onPress={() => setShowDeliveryForm(true)}
-                  className="bg-blue-600 rounded-lg p-3 items-center"
+                  style={{ backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                 >
-                  <Text className="text-white font-semibold text-base">
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
                     Log Goods Received
                   </Text>
                 </TouchableOpacity>
               ) : (
-                <View>
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                <View style={{ gap: 10 }}>
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                       Date & Time of Delivery
                     </Text>
                     <TextInput
                       value={new Date(deliveryDate).toLocaleString()}
                       editable={false}
-                      className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
+                      style={inputStyle}
                     />
                   </View>
 
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                       Received Items
                     </Text>
                     {po.items.map((li) => {
@@ -423,9 +427,9 @@ const PurchaseOrderDetailScreen = () => {
                       return (
                         <View
                           key={li.inventoryItemId}
-                          className="flex-row items-center gap-1.5 py-1.5 border-b border-border"
+                          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}
                         >
-                          <Text className="flex-1 text-white text-sm">
+                          <Text style={{ flex: 1, fontSize: 12, color: colors.heading }}>
                             {invItem?.name}
                           </Text>
                           <TouchableOpacity
@@ -439,9 +443,9 @@ const PurchaseOrderDetailScreen = () => {
                                 )
                               )
                             }
-                            className="w-7 h-7 rounded-lg bg-screen border border-border items-center justify-center"
+                            style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}
                           >
-                            <Text className="text-white text-lg">-</Text>
+                            <Text style={{ fontSize: 14, color: colors.heading }}>-</Text>
                           </TouchableOpacity>
                           <TextInput
                             value={String(
@@ -454,7 +458,7 @@ const PurchaseOrderDetailScreen = () => {
                               )
                             }
                             keyboardType="numeric"
-                            className="w-14 text-center bg-screen border border-border rounded-lg p-1.5 text-white h-16 text-sm"
+                            style={{ width: 52, textAlign: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 6, color: colors.heading, fontSize: 12, height: 30, paddingVertical: 0 }}
                           />
                           <TouchableOpacity
                             onPress={() =>
@@ -464,17 +468,17 @@ const PurchaseOrderDetailScreen = () => {
                                   li.quantity) + 1
                               )
                             }
-                            className="w-7 h-7 rounded-lg bg-screen border border-border items-center justify-center"
+                            style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}
                           >
-                            <Text className="text-white text-lg">+</Text>
+                            <Text style={{ fontSize: 14, color: colors.heading }}>+</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() =>
                               adjustReceivedQty(li.inventoryItemId, 0)
                             }
-                            className="ml-1 px-1.5 py-0.5 rounded-lg bg-red-600"
+                            style={{ marginLeft: 4, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "50" }}
                           >
-                            <Text className="text-white text-[10px]">
+                            <Text style={{ fontSize: 10, fontWeight: "600", color: colors.danger }}>
                               Remove
                             </Text>
                           </TouchableOpacity>
@@ -483,33 +487,33 @@ const PurchaseOrderDetailScreen = () => {
                     })}
                   </View>
 
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                       Photos
                     </Text>
                     <TouchableOpacity
                       onPress={handleAddPhoto}
-                      className="bg-screen border border-border rounded-lg gap-x-1.5 p-3 items-center flex-row"
+                      style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 6 }}
                     >
                       <Camera size={18} color={colors.label} />
-                      <Text className="text-gray-400 text-sm">Add Photos</Text>
+                      <Text style={{ fontSize: 12, color: colors.label }}>Add Photos</Text>
                     </TouchableOpacity>
                     {deliveryPhotos.length > 0 && (
-                      <View className="mt-2">
-                        <Text className="text-gray-400 text-xs mb-1.5">
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={{ fontSize: 10, color: colors.muted, marginBottom: 6 }}>
                           {deliveryPhotos.length} photo(s)
                         </Text>
-                        <View className="flex-row flex-wrap gap-1.5">
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                           {deliveryPhotos.map((photo, index) => (
-                            <View key={index} className="relative">
+                            <View key={index} style={{ position: "relative" }}>
                               <Image
                                 source={{ uri: photo }}
-                                className="w-16 h-16 rounded-lg"
+                                style={{ width: 64, height: 64, borderRadius: 8 }}
                                 resizeMode="cover"
                               />
                               <TouchableOpacity
                                 onPress={() => removePhoto(index)}
-                                className="absolute -top-1.5 -right-1.5 bg-red-500 rounded-full w-5 h-5 items-center justify-center"
+                                style={{ position: "absolute", top: -6, right: -6, backgroundColor: colors.danger, borderRadius: 999, width: 20, height: 20, alignItems: "center", justifyContent: "center" }}
                               >
                                 <X size={12} color="white" />
                               </TouchableOpacity>
@@ -520,33 +524,34 @@ const PurchaseOrderDetailScreen = () => {
                     )}
                   </View>
 
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                       Notes
                     </Text>
                     <TextInput
                       value={deliveryNotes}
                       onChangeText={setDeliveryNotes}
                       placeholder="e.g., Box damaged"
+                      placeholderTextColor={colors.muted}
                       multiline
-                      className="bg-screen border border-border rounded-lg p-2 text-white min-h-[60px] text-sm"
+                      style={{ ...inputStyle, minHeight: 56, height: 56, textAlignVertical: "top", paddingTop: 8 }}
                     />
                   </View>
 
-                  <View className="flex-row gap-2">
+                  <View style={{ flexDirection: "row", gap: 8 }}>
                     <TouchableOpacity
                       onPress={() => setShowDeliveryForm(false)}
-                      className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                      style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                     >
-                      <Text className="text-white font-semibold text-sm">
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
                         Cancel
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleSubmitDelivery}
-                      className="flex-1 bg-green-600 rounded-lg p-2.5 items-center"
+                      style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                     >
-                      <Text className="text-white font-semibold text-sm">
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
                         Submit Log
                       </Text>
                     </TouchableOpacity>
@@ -557,10 +562,10 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {po.status === "Awaiting Payment" && (
-            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
-              <View className="flex-row items-center mb-3">
-                <DollarSign size={20} color={colors.label} className="mr-1.5" />
-                <Text className="text-lg font-bold text-white">
+            <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                <DollarSign size={15} color={colors.label} />
+                <Text style={sectionTitleStyle}>
                   Log Payment
                 </Text>
               </View>
@@ -568,69 +573,47 @@ const PurchaseOrderDetailScreen = () => {
               {!showPaymentForm ? (
                 <TouchableOpacity
                   onPress={() => setShowPaymentForm(true)}
-                  className="bg-green-600 rounded-lg p-3 items-center"
+                  style={{ backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                 >
-                  <Text className="text-white font-semibold text-base">
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
                     Log Payment
                   </Text>
                 </TouchableOpacity>
               ) : (
-                <View>
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-2 text-sm">
+                <View style={{ gap: 10 }}>
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 6 }}>
                       Method
                     </Text>
-                    <View className="flex-row gap-2">
+                    <View style={{ flexDirection: "row", gap: 8 }}>
                       <TouchableOpacity
                         onPress={() => setPaymentMethod("Card")}
-                        className={`flex-1 p-2.5 rounded-lg border ${
-                          paymentMethod === "Card"
-                            ? "border-blue-500 bg-blue-500/20"
-                            : "border-border"
-                        }`}
+                        style={{ flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: paymentMethod === "Card" ? colors.teal + "60" : colors.border, backgroundColor: paymentMethod === "Card" ? colors.teal + "20" : colors.screen }}
                       >
-                        <View className="flex-row items-center justify-center">
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
                           <CreditCard
-                            size={18}
+                            size={16}
                             color={
-                              paymentMethod === "Card" ? colors.info : colors.label
+                              paymentMethod === "Card" ? colors.teal : colors.label
                             }
-                            className="mr-1.5"
                           />
-                          <Text
-                            className={`font-semibold text-sm ${
-                              paymentMethod === "Card"
-                                ? "text-blue-400"
-                                : "text-gray-400"
-                            }`}
-                          >
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: paymentMethod === "Card" ? colors.teal : colors.label }}>
                             Card
                           </Text>
                         </View>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => setPaymentMethod("Cash")}
-                        className={`flex-1 p-2.5 rounded-lg border ${
-                          paymentMethod === "Cash"
-                            ? "border-green-500 bg-green-500/20"
-                            : "border-border"
-                        }`}
+                        style={{ flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: paymentMethod === "Cash" ? colors.teal + "60" : colors.border, backgroundColor: paymentMethod === "Cash" ? colors.teal + "20" : colors.screen }}
                       >
-                        <View className="flex-row items-center justify-center">
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
                           <DollarSign
-                            size={18}
+                            size={16}
                             color={
-                              paymentMethod === "Cash" ? colors.success : colors.label
+                              paymentMethod === "Cash" ? colors.teal : colors.label
                             }
-                            className="mr-1.5"
                           />
-                          <Text
-                            className={`font-semibold text-sm ${
-                              paymentMethod === "Cash"
-                                ? "text-green-400"
-                                : "text-gray-400"
-                            }`}
-                          >
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: paymentMethod === "Cash" ? colors.teal : colors.label }}>
                             Cash
                           </Text>
                         </View>
@@ -639,69 +622,72 @@ const PurchaseOrderDetailScreen = () => {
                   </View>
 
                   {paymentMethod === "Card" && (
-                    <View className="mb-3">
-                      <Text className="text-white font-semibold mb-1.5 text-sm">
+                    <View>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                         Card Last 4
                       </Text>
                       <TextInput
                         value={cardLast4}
                         onChangeText={setCardLast4}
                         placeholder="1234"
+                        placeholderTextColor={colors.muted}
                         keyboardType="numeric"
                         maxLength={4}
-                        className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
+                        style={inputStyle}
                       />
                     </View>
                   )}
 
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                       Amount
                     </Text>
                     <TextInput
                       value={paymentAmount}
                       onChangeText={setPaymentAmount}
                       placeholder="0.00"
+                      placeholderTextColor={colors.muted}
                       keyboardType="numeric"
-                      className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
+                      style={inputStyle}
                     />
                   </View>
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                       Vendor
                     </Text>
                     <TextInput
                       value={vendor?.name || ""}
                       editable={false}
-                      className="bg-card border border-border rounded-lg p-2 text-gray-300 h-16 text-sm"
+                      style={{ ...inputStyle, color: colors.label, backgroundColor: colors.panel }}
                     />
                   </View>
-                  <View className="mb-3">
-                    <Text className="text-white font-semibold mb-1.5 text-sm">
+                  <View>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.label, marginBottom: 4 }}>
                       Paid To
                     </Text>
                     <TextInput
                       value={paidToEmployee}
                       onChangeText={setPaidToEmployee}
                       placeholder="Employee name"
-                      className="bg-screen border border-border rounded-lg p-2 text-white h-16 text-sm"
+                      placeholderTextColor={colors.muted}
+                      style={inputStyle}
                     />
                   </View>
 
-                  <View className="flex-row gap-2">
+                  <View style={{ flexDirection: "row", gap: 8 }}>
                     <TouchableOpacity
                       onPress={() => setShowPaymentForm(false)}
-                      className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                      style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                     >
-                      <Text className="text-white font-semibold text-sm">
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
                         Cancel
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={handleLogPayment}
-                      className="flex-1 bg-green-600 rounded-lg p-2.5 items-center"
+                      style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                     >
-                      <Text className="text-white font-semibold text-sm">
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal }}>
                         Confirm
                       </Text>
                     </TouchableOpacity>
@@ -713,29 +699,29 @@ const PurchaseOrderDetailScreen = () => {
 
           {/* Delivery History */}
           {po.deliveryLoggedAt && (
-            <View className="bg-panel border border-border rounded-xl p-6 mb-6">
-              <Text className="text-xl font-bold text-white mb-3">
+            <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
                 Delivery History
               </Text>
-              <View className="bg-screen border border-border rounded-lg p-4">
-                <View className="flex-row justify-between mb-2">
-                  <Text className="text-white font-semibold">Delivered At</Text>
-                  <Text className="text-white">
+              <View style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading }}>Delivered At</Text>
+                  <Text style={{ fontSize: 11, color: colors.heading }}>
                     {new Date(po.deliveryLoggedAt).toLocaleString()}
                   </Text>
                 </View>
                 {po.discrepancyNotes && (
-                  <View className="mb-2">
-                    <Text className="text-white font-semibold mb-1">Notes</Text>
-                    <Text className="text-gray-300">{po.discrepancyNotes}</Text>
+                  <View style={{ marginBottom: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading, marginBottom: 4 }}>Notes</Text>
+                    <Text style={{ fontSize: 11, color: colors.label }}>{po.discrepancyNotes}</Text>
                   </View>
                 )}
                 {po.deliveryPhotos && po.deliveryPhotos.length > 0 && (
                   <View>
-                    <Text className="text-white font-semibold mb-2">
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading, marginBottom: 6 }}>
                       Photos ({po.deliveryPhotos.length})
                     </Text>
-                    <View className="flex-row flex-wrap gap-2">
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                       {po.deliveryPhotos.map((photo, index) => (
                         <TouchableOpacity
                           key={index}
@@ -746,7 +732,7 @@ const PurchaseOrderDetailScreen = () => {
                         >
                           <Image
                             source={{ uri: photo }}
-                            className="w-16 h-16 rounded-lg"
+                            style={{ width: 64, height: 64, borderRadius: 8 }}
                             resizeMode="cover"
                           />
                         </TouchableOpacity>
@@ -781,20 +767,20 @@ const PurchaseOrderDetailScreen = () => {
             const hasDiscrepancy = rows.some((r) => r.reqQty !== r.recQty);
             if (!hasDiscrepancy) return null;
             return (
-              <View className="bg-panel border border-border rounded-xl p-4 mb-4">
-                <Text className="text-lg font-bold text-white mb-2">
+              <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
                   Discrepancy Report
                 </Text>
-                <View className="bg-screen border border-border rounded-lg">
-                  <View className="flex-row px-3 py-2 border-b border-border">
-                    <Text className="text-gray-400 flex-1 text-sm">Item</Text>
-                    <Text className="text-gray-400 w-16 text-right text-sm">
+                <View style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}>
+                  <View style={{ flexDirection: "row", paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                    <Text style={{ flex: 1, fontSize: 11, color: colors.muted }}>Item</Text>
+                    <Text style={{ width: 52, textAlign: "right", fontSize: 11, color: colors.muted }}>
                       Req
                     </Text>
-                    <Text className="text-gray-400 w-16 text-right text-sm">
+                    <Text style={{ width: 52, textAlign: "right", fontSize: 11, color: colors.muted }}>
                       Rec
                     </Text>
-                    <Text className="text-gray-400 w-20 text-right text-sm">
+                    <Text style={{ width: 64, textAlign: "right", fontSize: 11, color: colors.muted }}>
                       Status
                     </Text>
                   </View>
@@ -802,29 +788,29 @@ const PurchaseOrderDetailScreen = () => {
                     if (r.reqQty === r.recQty) return null;
                     const invItem = inventoryItems.find((i) => i.id === r.id);
                     let status = "Modified";
-                    let badge = "bg-yellow-600 text-yellow-50";
+                    let badge = "bg-teal-600 text-teal-50";
                     if (r.recQty === 0 && r.reqQty > 0) {
                       status = "Missing";
                       badge = "bg-red-600 text-red-50";
                     } else if (r.recQty > r.reqQty) {
                       status = "+ Added";
-                      badge = "bg-green-600 text-green-50";
+                      badge = "bg-teal-500 text-teal-50";
                     }
                     return (
                       <View
                         key={r.id}
-                        className="flex-row items-center px-3 py-2 border-b border-gray-800 last:border-b-0"
+                        style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}
                       >
-                        <Text className="text-white flex-1 text-sm">
+                        <Text style={{ flex: 1, fontSize: 11, color: colors.heading }}>
                           {invItem?.name || r.id}
                         </Text>
-                        <Text className="text-gray-300 w-16 text-right text-sm">
+                        <Text style={{ width: 52, textAlign: "right", fontSize: 11, color: colors.label }}>
                           {r.reqQty}
                         </Text>
-                        <Text className="text-gray-300 w-16 text-right text-sm">
+                        <Text style={{ width: 52, textAlign: "right", fontSize: 11, color: colors.label }}>
                           {r.recQty}
                         </Text>
-                        <View className="w-20 items-end">
+                        <View style={{ width: 64, alignItems: "flex-end" }}>
                           <Text
                             className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${badge}`}
                           >
@@ -840,52 +826,52 @@ const PurchaseOrderDetailScreen = () => {
           })()}
 
           {po.payment && (
-            <View className="bg-panel border border-border rounded-xl p-4 mb-4">
-              <Text className="text-lg font-bold text-white mb-2">
+            <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+              <Text style={{ ...sectionTitleStyle, marginBottom: 8 }}>
                 Payment History
               </Text>
-              <View className="bg-screen border border-border rounded-lg p-3">
-                <View className="flex-row justify-between mb-1.5">
-                  <Text className="text-white font-semibold text-sm">
+              <View style={{ backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading }}>
                     Method
                   </Text>
-                  <Text className="text-white text-sm">
+                  <Text style={{ fontSize: 11, color: colors.heading }}>
                     {po.payment.method}
                   </Text>
                 </View>
-                <View className="flex-row justify-between mb-1.5">
-                  <Text className="text-white font-semibold text-sm">
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading }}>
                     Amount
                   </Text>
-                  <Text className="text-white text-sm">
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
                     ${po.payment.amount.toFixed(2)}
                   </Text>
                 </View>
                 {po.payment.cardLast4 && (
-                  <View className="flex-row justify-between mb-1.5">
-                    <Text className="text-white font-semibold text-sm">
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading }}>
                       Card Last 4
                     </Text>
-                    <Text className="text-white text-sm">
+                    <Text style={{ fontSize: 11, color: colors.heading }}>
                       ****{po.payment.cardLast4}
                     </Text>
                   </View>
                 )}
                 {po.payment.paidToEmployee && (
-                  <View className="flex-row justify-between mb-1.5">
-                    <Text className="text-white font-semibold text-sm">
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading }}>
                       Paid To
                     </Text>
-                    <Text className="text-white text-sm">
+                    <Text style={{ fontSize: 11, color: colors.heading }}>
                       {po.payment.paidToEmployee}
                     </Text>
                   </View>
                 )}
-                <View className="flex-row justify-between">
-                  <Text className="text-white font-semibold text-sm">
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading }}>
                     Paid At
                   </Text>
-                  <Text className="text-white text-sm">
+                  <Text style={{ fontSize: 11, color: colors.heading }}>
                     {new Date(po.payment.paidAt).toLocaleString()}
                   </Text>
                 </View>
@@ -894,12 +880,12 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {po.status !== "Cancelled" && po.status !== "Paid" && (
-            <View className="bg-panel border border-border rounded-xl p-4 w-fit">
+            <View style={{ backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12 }}>
               <TouchableOpacity
                 onPress={() => setShowCancelDialog(true)}
-                className="bg-red-600 rounded-lg p-3 items-center w-fit"
+                style={{ backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "50", borderRadius: 8, paddingVertical: 9, paddingHorizontal: 14, alignItems: "center" }}
               >
-                <Text className="text-white font-semibold text-base">
+                <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}>
                   Cancel Purchase Order
                 </Text>
               </TouchableOpacity>
@@ -907,28 +893,28 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {showCancelDialog && (
-            <View className="absolute inset-0 bg-black/50 items-center justify-center">
-              <View className="bg-panel border border-border rounded-xl p-4 mx-4 w-full max-w-sm">
-                <Text className="text-lg font-bold text-white mb-2">
+            <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }}>
+              <View style={{ width: "100%", maxWidth: 360, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14 }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginBottom: 8 }}>
                   Cancel PO
                 </Text>
-                <Text className="text-gray-300 mb-4 text-sm">
+                <Text style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}>
                   Cancel PO #{po.poNumber}? This cannot be undone.
                 </Text>
-                <View className="flex-row gap-2">
+                <View style={{ flexDirection: "row", gap: 8 }}>
                   <TouchableOpacity
                     onPress={() => setShowCancelDialog(false)}
-                    className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                    style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
                       Keep PO
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleCancelPO}
-                    className="flex-1 bg-red-600 rounded-lg p-2.5 items-center"
+                    style={{ flex: 1, backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}>
                       Cancel PO
                     </Text>
                   </TouchableOpacity>
@@ -938,28 +924,28 @@ const PurchaseOrderDetailScreen = () => {
           )}
 
           {showDeleteDraftDialog && (
-            <View className="absolute inset-0 bg-black/50 items-center justify-center">
-              <View className="bg-panel border border-border rounded-xl p-4 mx-4 w-full max-w-sm">
-                <Text className="text-lg font-bold text-white mb-2">
+            <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }}>
+              <View style={{ width: "100%", maxWidth: 360, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14 }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, marginBottom: 8 }}>
                   Delete Draft
                 </Text>
-                <Text className="text-gray-300 mb-4 text-sm">
+                <Text style={{ fontSize: 12, color: colors.label, marginBottom: 12 }}>
                   Delete draft {po.poNumber}? This cannot be undone.
                 </Text>
-                <View className="flex-row gap-2">
+                <View style={{ flexDirection: "row", gap: 8 }}>
                   <TouchableOpacity
                     onPress={() => setShowDeleteDraftDialog(false)}
-                    className="flex-1 bg-gray-600 rounded-lg p-2.5 items-center"
+                    style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
                       Keep Draft
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleDeleteDraft}
-                    className="flex-1 bg-red-600 rounded-lg p-2.5 items-center"
+                    style={{ flex: 1, backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
                   >
-                    <Text className="text-white font-semibold text-sm">
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.danger }}>
                       Delete
                     </Text>
                   </TouchableOpacity>
@@ -992,7 +978,6 @@ const PurchaseOrderDetailScreen = () => {
               </View>
             </DialogContent>
           </Dialog>
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
