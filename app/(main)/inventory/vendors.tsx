@@ -36,98 +36,129 @@ import {
   View,
 } from "react-native";
 
-const VendorRow: React.FC<{
+const VendorCard: React.FC<{
   item: Vendor;
   onEdit: () => void;
   onDelete: () => void;
-}> = ({ item, onEdit, onDelete }) => {
+  onTap: () => void;
+}> = ({ item, onEdit, onDelete, onTap }) => {
   return (
-    <Link href={`/inventory/vendors/${item.id}`} asChild>
-      <TouchableOpacity
+    <TouchableOpacity
+      onPress={onTap}
+      activeOpacity={0.6}
+      style={{
+        backgroundColor: colors.panel,
+        margin: 5,
+        borderRadius: 14,
+        padding: 11,
+        borderWidth: 1,
+        borderColor: colors.border,
+        flex: 1,
+        justifyContent: "space-between",
+        overflow: "hidden",
+      }}
+    >
+      {/* Gradient Accent Top */}
+      <View
         style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          backgroundColor: colors.teal,
+        }}
+      />
+
+      {/* Icon & Menu */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: colors.teal + "15",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Building2 size={15} color={colors.teal} />
+        </View>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TouchableOpacity style={{ padding: 3 }}>
+              <MoreHorizontal size={12} color={colors.muted} />
+            </TouchableOpacity>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent
+            className="w-44"
+            style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+          >
+            <DropdownMenuItem onPress={onEdit}>
+              <Edit size={14} color={colors.label} />
+              <Text style={{ fontSize: 13, color: colors.label, marginLeft: 8 }}>Edit</Text>
+            </DropdownMenuItem>
+
+            <DropdownMenuItem onPress={onDelete}>
+              <Trash2 size={14} color={colors.danger} />
+              <Text style={{ fontSize: 13, color: colors.danger, marginLeft: 8 }}>Delete</Text>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </View>
+
+      {/* Name */}
+      <Text
+        numberOfLines={2}
+        style={{
+          fontSize: 11,
+          fontWeight: "700",
+          color: colors.heading,
+          marginBottom: 8,
+          lineHeight: 14,
         }}
       >
-        {/* Name */}
-        <View style={{ width: "22%", flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <View
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              backgroundColor: colors.teal + "15",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Building2 size={14} color={colors.teal} />
+        {item.name}
+      </Text>
+
+      {/* Contact Info with Better Spacing */}
+      <View style={{ gap: 5 }}>
+        {item.contactPerson && (
+          <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-start" }}>
+            <View style={{ marginTop: 2 }}>
+              <User size={10} color={colors.muted} />
+            </View>
+            <Text numberOfLines={1} style={{ fontSize: 10, color: colors.label, flex: 1 }}>
+              {item.contactPerson}
+            </Text>
           </View>
-          <Text
-            numberOfLines={1}
-            style={{ fontSize: 13, fontWeight: "600", color: colors.heading, flex: 1 }}
-          >
-            {item.name}
-          </Text>
-        </View>
+        )}
 
-        {/* Contact */}
-        <View style={{ width: "18%", flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <User size={12} color={colors.muted} />
-          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.label }}>
-            {item.contactPerson || "—"}
-          </Text>
-        </View>
+        {item.email && (
+          <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-start" }}>
+            <View style={{ marginTop: 2 }}>
+              <Mail size={10} color={colors.muted} />
+            </View>
+            <Text numberOfLines={1} style={{ fontSize: 10, color: colors.label, flex: 1 }}>
+              {item.email}
+            </Text>
+          </View>
+        )}
 
-        {/* Email */}
-        <View style={{ width: "30%", flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Mail size={12} color={colors.muted} />
-          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.label }}>
-            {item.email || "—"}
-          </Text>
-        </View>
-
-        {/* Phone */}
-        <View style={{ width: "20%", flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Phone size={12} color={colors.muted} />
-          <Text numberOfLines={1} style={{ fontSize: 12, color: colors.label }}>
-            {item.phone || "—"}
-          </Text>
-        </View>
-
-        {/* Actions */}
-        <View style={{ width: "10%", alignItems: "flex-end" }}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <TouchableOpacity style={{ padding: 6 }}>
-                <MoreHorizontal size={16} color={colors.muted} />
-              </TouchableOpacity>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className="w-44"
-              style={{ backgroundColor: colors.panel, borderColor: colors.border }}
-            >
-              <DropdownMenuItem onPress={onEdit}>
-                <Edit size={14} color={colors.label} />
-                <Text style={{ fontSize: 13, color: colors.heading, marginLeft: 8 }}>
-                  Edit Vendor
-                </Text>
-              </DropdownMenuItem>
-              <DropdownMenuItem onPress={onDelete}>
-                <Trash2 size={14} color={colors.danger} />
-                <Text style={{ fontSize: 13, color: colors.danger, marginLeft: 8 }}>
-                  Delete Vendor
-                </Text>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </View>
-      </TouchableOpacity>
-    </Link>
+        {item.phone && (
+          <View style={{ flexDirection: "row", gap: 4, alignItems: "flex-start" }}>
+            <View style={{ marginTop: 2 }}>
+              <Phone size={10} color={colors.muted} />
+            </View>
+            <Text numberOfLines={1} style={{ fontSize: 10, color: colors.label, flex: 1 }}>
+              {item.phone}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 };
 
@@ -206,144 +237,95 @@ const VendorScreen = () => {
     setSelectedVendor(null);
   };
 
-  const TABLE_HEADERS = ["Vendor Name", "Contact", "Email", "Phone", ""];
-
   return (
     <View style={{ flex: 1 }}>
+      {/* Header with Search & Add */}
       <View
         style={{
-          flex: 1,
-          backgroundColor: colors.panel,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 12,
+          flexDirection: "row",
+          marginHorizontal: 10,
+          marginBottom: 8,
+          marginTop: 10,
+          gap: 8,
         }}
       >
-        {/* Table Header */}
-        <View
+        <TouchableOpacity
+          onPress={() => {
+            setIsSearchOpen(true);
+            setTimeout(() => sheetRef.current?.expand(), 0);
+          }}
           style={{
+            flex: 1,
             flexDirection: "row",
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            backgroundColor: colors.screen,
-            borderTopLeftRadius: 12,
-            borderTopRightRadius: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.panel,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            height: 40,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Search size={14} color={colors.muted} />
+          <Text style={{ marginLeft: 6, fontSize: 13, color: colors.muted, flex: 1 }}>
+            Search vendors...
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleOpenAddModal}
+          style={{
+            height: 40,
+            width: 40,
+            borderRadius: 8,
+            backgroundColor: colors.teal + "20",
+            justifyContent: "center",
             alignItems: "center",
           }}
         >
-          {TABLE_HEADERS.map((header) => {
-            let widthStyle: any = {};
-            switch (header) {
-              case "Vendor Name": widthStyle = { width: "22%" }; break;
-              case "Contact":     widthStyle = { width: "18%" }; break;
-              case "Email":       widthStyle = { width: "30%" }; break;
-              case "Phone":       widthStyle = { width: "20%" }; break;
-              default:            widthStyle = { width: "10%" }; break;
-            }
-            return (
-              <Text
-                key={header}
-                style={[
-                  {
-                    fontSize: 11,
-                    fontWeight: "600",
-                    color: colors.muted,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                  },
-                  widthStyle,
-                ]}
-              >
-                {header}
-              </Text>
-            );
-          })}
-
-          {/* Actions */}
-          <View
-            style={{
-              position: "absolute",
-              right: 12,
-              top: 0,
-              bottom: 0,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() => {
-                setIsSearchOpen(true);
-                setTimeout(() => sheetRef.current?.expand(), 0);
-              }}
-              style={{
-                backgroundColor: colors.teal + "15",
-                borderRadius: 8,
-                padding: 7,
-              }}
-            >
-              <Search size={16} color={colors.teal} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleOpenAddModal}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                paddingHorizontal: 10,
-                paddingVertical: 7,
-                backgroundColor: colors.teal + "20",
-                borderWidth: 1,
-                borderColor: colors.teal + "50",
-                borderRadius: 8,
-              }}
-            >
-              <Plus size={14} color={colors.teal} />
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
-                Add Vendor
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* List */}
-        <FlatList
-          data={vendors}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <VendorRow
-              item={item}
-              onEdit={() => handleOpenEditModal(item)}
-              onDelete={() => handleOpenDeleteConfirm(item)}
-            />
-          )}
-          ListEmptyComponent={
-            <View style={{ alignItems: "center", paddingVertical: 48, gap: 8 }}>
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  backgroundColor: colors.teal + "15",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: 4,
-                }}
-              >
-                <Building2 size={20} color={colors.teal} />
-              </View>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.heading }}>
-                No vendors yet
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.muted }}>
-                Add your first vendor to get started
-              </Text>
-            </View>
-          }
-        />
+          <Plus size={18} color={colors.teal} />
+        </TouchableOpacity>
       </View>
+
+      {/* Grid */}
+      <FlatList
+        data={vendors}
+        keyExtractor={(item) => item.id}
+        numColumns={5}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        renderItem={({ item }) => (
+          <VendorCard
+            item={item}
+            onTap={() => router.push(`/inventory/vendors/${item.id}`)}
+            onEdit={() => handleOpenEditModal(item)}
+            onDelete={() => handleOpenDeleteConfirm(item)}
+          />
+        )}
+        ListEmptyComponent={
+          <View style={{ alignItems: "center", paddingVertical: 48, gap: 8, width: "100%" }}>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                backgroundColor: colors.teal + "15",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 4,
+              }}
+            >
+              <Building2 size={20} color={colors.teal} />
+            </View>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.heading }}>
+              No vendors yet
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.muted }}>
+              Add your first vendor to get started
+            </Text>
+          </View>
+        }
+      />
 
       <VendorFormModal
         isOpen={modalMode === "add" || modalMode === "edit"}
