@@ -193,42 +193,50 @@ const AddModifierScreen: React.FC = () => {
     });
   };
 
-  const sectionLabel = { fontSize: 10, fontWeight: "600" as const, color: colors.muted, textTransform: "uppercase" as const, letterSpacing: 0.8, marginBottom: 8 };
-  const card = { backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12, marginBottom: 12 };
-  const inputStyle = { backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: colors.heading };
+  const sectionLabel = { fontSize: 11, fontWeight: "600" as const, color: colors.muted, textTransform: "uppercase" as const, letterSpacing: 0.5 };
+  const card = { backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 };
+  const inputStyle = { backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: colors.heading };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.panel }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+    <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
-        >
-          <ArrowLeft size={14} color={colors.label} />
-          <Text style={{ fontSize: 13, color: colors.label, fontWeight: "500" }}>Back</Text>
-        </TouchableOpacity>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Add Modifier Group</Text>
 
-        <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>Add Modifier Group</Text>
-
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={isSaving}
-          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50" }}
-        >
-          {isSaving ? <ActivityIndicator size="small" color={colors.teal} /> : <Save size={14} color={colors.teal} />}
-          <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>{isSaving ? "Saving..." : "Save Modifier"}</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving}
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.teal, opacity: isSaving ? 0.7 : 1 }}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color={colors.onSolid} />
+            ) : (
+              <Check size={14} color={colors.onSolid} />
+            )}
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.onSolid }}>
+              {isSaving ? "Saving..." : "Save Changes"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14 }} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, flexDirection: "row" }}>
+        {/* Left: Form */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16 }} showsVerticalScrollIndicator={false}>
 
         {/* Basic Info */}
         <View style={card}>
           <Text style={sectionLabel}>Basic Information</Text>
 
-          <View style={{ marginBottom: 10 }}>
-            <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Modifier Name *</Text>
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Modifier Name *</Text>
             <TextInput
               style={[inputStyle, errors.name ? { borderColor: colors.danger } : {}]}
               placeholder="e.g., Size, Toppings, Sauce"
@@ -239,15 +247,19 @@ const AddModifierScreen: React.FC = () => {
             {errors.name && <Text style={{ fontSize: 11, color: colors.danger, marginTop: 3 }}>{errors.name}</Text>}
           </View>
 
-          <View>
-            <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Description (Optional)</Text>
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+              Description <Text style={{ color: colors.muted }}>(Optional)</Text>
+            </Text>
             <TextInput
-              style={[inputStyle, { height: 60, textAlignVertical: "top" }]}
+              style={[inputStyle, { height: 72, textAlignVertical: "top" }]}
               placeholder="e.g., Choose up to 3 toppings"
               placeholderTextColor={colors.muted}
               value={formData.description}
               onChangeText={(text) => setFormData((prev) => ({ ...prev, description: text }))}
               multiline
+              numberOfLines={3}
+              textAlignVertical="top"
             />
           </View>
         </View>
@@ -256,8 +268,8 @@ const AddModifierScreen: React.FC = () => {
         <View style={card}>
           <Text style={sectionLabel}>Type & Selection</Text>
 
-          <View style={{ marginBottom: 12 }}>
-            <Text style={{ fontSize: 11, color: colors.label, marginBottom: 6 }}>Requirement</Text>
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Requirement</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               {(["optional", "required"] as const).map((t) => {
                 const active = formData.type === t;
@@ -285,8 +297,8 @@ const AddModifierScreen: React.FC = () => {
             </View>
           </View>
 
-          <View>
-            <Text style={{ fontSize: 11, color: colors.label, marginBottom: 6 }}>Selection Type</Text>
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Selection Type</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               {(["single", "multiple"] as const).map((s) => {
                 const active = formData.selectionType === s;
@@ -314,8 +326,8 @@ const AddModifierScreen: React.FC = () => {
           </View>
 
           {formData.selectionType === "multiple" && (
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Max Selections (Optional)</Text>
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Max Selections (Optional)</Text>
               <TextInput
                 style={[inputStyle, errors.maxSelections ? { borderColor: colors.danger } : {}]}
                 placeholder="Leave empty for unlimited"
@@ -331,25 +343,25 @@ const AddModifierScreen: React.FC = () => {
 
         {/* Options */}
         <View style={card}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <View>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flex: 1 }}>
               <Text style={sectionLabel}>Options</Text>
-              <Text style={{ fontSize: 11, color: colors.muted, marginTop: -4 }}>
+              <Text style={{ fontSize: 11, color: colors.muted }}>
                 {formData.selectionType === "single" ? "Set one as default" : "Set multiple as default"}
               </Text>
             </View>
             <TouchableOpacity
               onPress={addOption}
-              style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40" }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.teal + "15", borderWidth: 1, borderColor: colors.teal + "40", marginTop: -8 }}
             >
               <Plus size={13} color={colors.teal} />
-              <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>Add Option</Text>
+              <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>Add</Text>
             </TouchableOpacity>
           </View>
 
           {formData.options.length === 0 ? (
-            <View style={{ backgroundColor: colors.screen, borderRadius: 8, padding: 16, alignItems: "center" }}>
-              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 10 }}>No options added yet</Text>
+            <View style={{ backgroundColor: colors.screen, borderRadius: 8, padding: 16, alignItems: "center", gap: 10 }}>
+              <Text style={{ fontSize: 12, color: colors.muted }}>No options added yet</Text>
               <TouchableOpacity
                 onPress={addOption}
                 style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50" }}
@@ -447,7 +459,85 @@ const AddModifierScreen: React.FC = () => {
             <Text style={{ fontSize: 11, color: colors.danger, marginTop: 8 }}>{errors.options}</Text>
           )}
         </View>
-      </ScrollView>
+        </ScrollView>
+
+        {/* Right: Summary Panel */}
+        <View style={{ width: 300, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.card, padding: 16, gap: 16, overflow: "hidden" }}>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>Summary</Text>
+
+          {/* Modifier Name */}
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Modifier Name
+            </Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+              {formData.name.trim() || "Untitled"}
+            </Text>
+          </View>
+
+          {/* Divider */}
+          <View style={{ height: 1, backgroundColor: colors.border }} />
+
+          {/* Type & Selection Badges */}
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Configuration
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: formData.type === "required" ? colors.danger + "15" : colors.teal + "15", borderWidth: 1, borderColor: formData.type === "required" ? colors.danger + "40" : colors.teal + "40" }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: formData.type === "required" ? colors.danger : colors.teal }}>
+                  {formData.type === "required" ? "Required" : "Optional"}
+                </Text>
+              </View>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: colors.border, borderWidth: 1, borderColor: colors.border }}>
+                <Text style={{ fontSize: 11, color: colors.label, fontWeight: "500" }}>
+                  {formData.selectionType === "single" ? "Single" : "Multiple"}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Max Selections */}
+          {formData.selectionType === "multiple" && formData.maxSelections && (
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>Max Selections:</Text>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>{formData.maxSelections}</Text>
+            </View>
+          )}
+
+          {/* Divider */}
+          <View style={{ height: 1, backgroundColor: colors.border }} />
+
+          {/* Options Stats */}
+          <View style={{ gap: 12 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>Options:</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}>{formData.options.length}</Text>
+            </View>
+
+            {formData.options.length > 0 && (
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Options List
+                </Text>
+                <ScrollView style={{ maxHeight: 180 }} contentContainerStyle={{ gap: 4 }} showsVerticalScrollIndicator={false}>
+                  {formData.options.map((option, idx) => (
+                    <View key={option.id} style={{ backgroundColor: colors.panel, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: colors.label, fontWeight: "500" }}>{option.name || `Option ${idx + 1}`}</Text>
+                          {option.isDefault && <Text style={{ fontSize: 10, color: colors.success, marginTop: 2 }}>Default</Text>}
+                        </View>
+                        {option.price > 0 && <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>+${option.price.toFixed(2)}</Text>}
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
 
       {/* Confirm Modal */}
       <Modal visible={showConfirmation} transparent animationType="fade" onRequestClose={() => setShowConfirmation(false)}>
@@ -505,7 +595,7 @@ const AddModifierScreen: React.FC = () => {
       </Modal>
 
       <UnsavedChangesDialog isOpen={isDialogVisible} onCancel={handleCancel} onDiscard={handleDiscard} />
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 

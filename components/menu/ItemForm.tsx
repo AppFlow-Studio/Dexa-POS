@@ -10,7 +10,7 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
+  BottomSheetSectionList,
 } from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -31,6 +31,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -119,6 +120,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
     hasChanges && !hasSavedRef.current
   );
+
+  useEffect(() => {
+    Keyboard.dismiss();
+  }, []);
 
   useEffect(() => {
     if (initialData) {
@@ -337,6 +342,22 @@ const ItemForm: React.FC<ItemFormProps> = ({
     );
   }, [inventorySearchQuery, inventoryItems]);
 
+  const groupedInventoryItems = useMemo(() => {
+    const map: Record<string, typeof inventoryItems> = {};
+    for (const item of filteredInventoryItems) {
+      const first = (item.name || "?")[0].toUpperCase();
+      const key = /[A-Z]/.test(first) ? first : "#";
+      if (!map[key]) map[key] = [];
+      map[key].push(item);
+    }
+    const letters = Object.keys(map).sort((a, b) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    });
+    return letters.map((letter) => ({ title: letter, data: map[letter] }));
+  }, [filteredInventoryItems]);
+
   const filteredModifierGroups = useMemo(() => {
     if (!modifierSearch.trim()) return modifierGroups;
     const query = modifierSearch.toLowerCase();
@@ -404,31 +425,31 @@ const ItemForm: React.FC<ItemFormProps> = ({
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border }}
-        >
-          <ArrowLeft size={14} color={colors.label} />
-          <Text style={{ fontSize: 13, color: colors.label, fontWeight: "500" }}>Back</Text>
-        </TouchableOpacity>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>{title}</Text>
 
-        <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>{title}</Text>
-
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={isSaving}
-          style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50" }}
-        >
-          {isSaving ? (
-            <ActivityIndicator size="small" color={colors.teal} />
-          ) : (
-            <Save size={14} color={colors.teal} />
-          )}
-          <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>
-            {isSaving ? "Saving..." : submitButtonLabel}
-          </Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving}
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.teal, opacity: isSaving ? 0.7 : 1 }}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color={colors.onSolid} />
+            ) : (
+              <Check size={14} color={colors.onSolid} />
+            )}
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.onSolid }}>
+              {isSaving ? "Saving..." : submitButtonLabel}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, flexDirection: "row" }}>
@@ -443,6 +464,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
             <View style={{ marginBottom: 10 }}>
               <Text style={{ fontSize: 11, color: colors.label, marginBottom: 4 }}>Name *</Text>
               <TextInput
+                autoFocus={false}
                 style={[inputStyle, errors.name ? { borderColor: colors.danger } : {}]}
                 placeholder="Enter item name"
                 placeholderTextColor={colors.muted}
@@ -543,34 +565,34 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </View>
           </View>
 
-          {/* Availability */}
+          {/* Availability Toggle */}
           <View style={card}>
-            <Text style={sectionLabel}>Availability</Text>
-            <TouchableOpacity
-              onPress={() => setFormData((prev) => ({ ...prev, availability: !prev.availability }))}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: 10,
-                borderRadius: 8,
-                borderWidth: 1,
-                backgroundColor: formData.availability ? colors.success + "12" : colors.danger + "10",
-                borderColor: formData.availability ? colors.success + "40" : colors.danger + "30",
-              }}
-            >
-              <Text style={{ fontSize: 13, color: formData.availability ? colors.success : colors.danger, fontWeight: "600" }}>
-                {formData.availability ? "Available" : "Unavailable"}
-              </Text>
-              <View style={{
-                width: 20, height: 20, borderRadius: 10, borderWidth: 2,
-                borderColor: formData.availability ? colors.success : colors.danger,
-                backgroundColor: formData.availability ? colors.success : "transparent",
-                alignItems: "center", justifyContent: "center",
-              }}>
-                {formData.availability && <Check size={11} color="#fff" />}
-              </View>
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={sectionLabel}>Availability</Text>
+              <TouchableOpacity
+                onPress={() => setFormData((prev) => ({ ...prev, availability: !prev.availability }))}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: formData.availability ? colors.teal : colors.card,
+                  borderWidth: 1,
+                  borderColor: formData.availability ? colors.teal : colors.border,
+                  justifyContent: "center",
+                  paddingHorizontal: 2,
+                }}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: colors.onSolid,
+                    alignSelf: formData.availability ? "flex-end" : "flex-start",
+                  }}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Meal Types */}
@@ -664,14 +686,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
               <Text style={sectionLabel}>Modifier Groups</Text>
               <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 8, gap: 4, height: 30 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, gap: 4 }}>
                   <Search size={11} color={colors.muted} />
                   <TextInput
                     value={modifierSearch}
                     onChangeText={setModifierSearch}
                     placeholder="Search..."
                     placeholderTextColor={colors.muted}
-                    style={{ fontSize: 12, color: colors.heading, width: 80 }}
+                    style={{ fontSize: 12, color: colors.heading, width: 80, paddingVertical: 2 }}
                   />
                   {modifierSearch.length > 0 && (
                     <TouchableOpacity onPress={() => setModifierSearch("")}>
@@ -821,12 +843,12 @@ const ItemForm: React.FC<ItemFormProps> = ({
         </ScrollView>
 
         {/* Right: Preview */}
-        <View style={{ width: 220, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.card, padding: 12 }}>
+        <View style={{ width: 300, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.card, padding: 16 }}>
           <Text style={[sectionLabel, { marginBottom: 12 }]}>Preview</Text>
 
           {/* Item card preview */}
           <View style={{ backgroundColor: colors.screen, borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 12 }}>
-            <View style={{ height: 110, backgroundColor: colors.panel, alignItems: "center", justifyContent: "center" }}>
+            <View style={{ width: "100%", aspectRatio: 1, backgroundColor: colors.panel, alignItems: "center", justifyContent: "center" }}>
               {getImageSource() ? (
                 <Image source={getImageSource()} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
               ) : (
@@ -878,8 +900,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
             <View style={{ backgroundColor: colors.screen, borderRadius: 8, padding: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Text style={{ fontSize: 10, color: colors.muted, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Status</Text>
-              <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20, backgroundColor: formData.availability ? colors.success + "20" : colors.danger + "15", borderWidth: 1, borderColor: formData.availability ? colors.success + "50" : colors.danger + "40" }}>
-                <Text style={{ fontSize: 10, fontWeight: "700", color: formData.availability ? colors.success : colors.danger }}>
+              <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20, backgroundColor: formData.availability ? colors.teal + "20" : colors.danger + "15", borderWidth: 1, borderColor: formData.availability ? colors.teal + "50" : colors.danger + "40" }}>
+                <Text style={{ fontSize: 10, fontWeight: "700", color: formData.availability ? colors.teal : colors.danger }}>
                   {formData.availability ? "Available" : "Unavailable"}
                 </Text>
               </View>
@@ -993,37 +1015,60 @@ const ItemForm: React.FC<ItemFormProps> = ({
         {...bottomSheetTheme}
         backdropComponent={renderInventoryBackdrop}
       >
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
-              {editingRecipeItemIndex !== null ? "Replace Item" : "Select Item"}
-            </Text>
-            <TouchableOpacity onPress={() => { setEditingRecipeItemIndex(null); inventorySelectionSheetRef.current?.close(); }}>
-              <X size={16} color={colors.label} />
+        <View style={{ flex: 1, backgroundColor: colors.screen }}>
+          {/* Header */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}>
+                {editingRecipeItemIndex !== null ? "Replace Item" : "Add Recipe Item"}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
+                Select an inventory item
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => { setEditingRecipeItemIndex(null); inventorySelectionSheetRef.current?.close(); }}
+              style={{ padding: 6, borderRadius: 8, backgroundColor: colors.panel }}
+            >
+              <X size={18} color={colors.label} />
             </TouchableOpacity>
           </View>
 
-          <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, gap: 6 }}>
-              <Search size={13} color={colors.muted} />
+          {/* Search Bar */}
+          <View style={{ paddingHorizontal: 20, paddingVertical: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, gap: 8 }}>
+              <Search size={16} color={colors.label} />
               <TextInput
                 value={inventorySearchQuery}
                 onChangeText={(text) => setInventorySearchQuery(text.trim())}
-                placeholder="Search inventory..."
-                placeholderTextColor={colors.muted}
-                style={{ flex: 1, fontSize: 13, color: colors.heading, height: 36 }}
+                placeholder="Search by name..."
+                placeholderTextColor={colors.label}
+                style={{ flex: 1, fontSize: 13, color: colors.heading, paddingVertical: 2 }}
               />
+              {inventorySearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setInventorySearchQuery("")}>
+                  <X size={14} color={colors.label} />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
           {filteredInventoryItems.length === 0 ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ fontSize: 13, color: colors.muted }}>{inventorySearchQuery ? "No items found" : "No inventory items available"}</Text>
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
+              <Text style={{ fontSize: 14, color: colors.label, textAlign: "center" }}>
+                {inventorySearchQuery ? "No items found" : "No inventory items available"}
+              </Text>
             </View>
           ) : (
-            <BottomSheetFlatList
-              data={filteredInventoryItems}
+            <BottomSheetSectionList
+              sections={groupedInventoryItems}
               keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40 }}
+              renderSectionHeader={({ section }) => (
+                <View style={{ paddingVertical: 4, paddingHorizontal: 4, marginBottom: 4, marginTop: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
+                </View>
+              )}
               renderItem={({ item: inventoryItem }) => {
                 const isAlreadyInRecipe = formData.recipe.some((r) => r.inventoryItemId === inventoryItem.id);
                 const isCurrentlyEditing = editingRecipeItemIndex !== null && formData.recipe[editingRecipeItemIndex]?.inventoryItemId === inventoryItem.id;
@@ -1032,36 +1077,40 @@ const ItemForm: React.FC<ItemFormProps> = ({
                     onPress={() => selectInventoryItem(inventoryItem.id)}
                     disabled={isAlreadyInRecipe && !isCurrentlyEditing}
                     style={{
-                      padding: 12,
-                      borderBottomWidth: 1,
-                      borderBottomColor: colors.border,
+                      marginBottom: 6,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      borderRadius: 8,
+                      borderWidth: 1,
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      backgroundColor: isCurrentlyEditing ? colors.teal + "12" : "transparent",
-                      opacity: isAlreadyInRecipe && !isCurrentlyEditing ? 0.4 : 1,
+                      backgroundColor: isCurrentlyEditing ? colors.teal + "10" : colors.card,
+                      borderColor: isCurrentlyEditing ? colors.teal : colors.border,
+                      opacity: isAlreadyInRecipe && !isCurrentlyEditing ? 0.6 : 1,
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{inventoryItem.name}</Text>
-                      <Text style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.heading }}>
+                        {inventoryItem.name}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.label, marginTop: 2 }}>
                         {inventoryItem.stockQuantity} {inventoryItem.unit} · ${inventoryItem.cost.toFixed(2)}
                       </Text>
                     </View>
                     {isCurrentlyEditing && (
-                      <View style={{ backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
+                      <View style={{ backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginLeft: 8 }}>
                         <Text style={{ fontSize: 10, color: colors.teal, fontWeight: "600" }}>Current</Text>
                       </View>
                     )}
                     {isAlreadyInRecipe && !isCurrentlyEditing && (
-                      <View style={{ backgroundColor: colors.border, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
-                        <Text style={{ fontSize: 10, color: colors.muted }}>Added</Text>
+                      <View style={{ backgroundColor: colors.warning + "20", borderWidth: 1, borderColor: colors.warning + "40", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginLeft: 8 }}>
+                        <Text style={{ fontSize: 10, color: colors.warning, fontWeight: "600" }}>Added</Text>
                       </View>
                     )}
                   </TouchableOpacity>
                 );
               }}
-              contentContainerStyle={{ paddingBottom: 20 }}
             />
           )}
         </View>

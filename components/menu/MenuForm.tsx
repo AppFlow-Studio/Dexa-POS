@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -96,6 +97,10 @@ const MenuForm: React.FC<MenuFormProps> = ({
   const scheduleSheetRef = useRef<BottomSheet>(null);
   const [editingRule, setEditingRule] = useState<Schedule | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    Keyboard.dismiss();
+  }, []);
 
   useEffect(() => {
     const nameChanged = (initialData?.name || "") !== name;

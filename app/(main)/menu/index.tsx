@@ -1031,36 +1031,42 @@ const MenuPage: React.FC = () => {
                       </Text>
                     ) : (
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                        {categoryItems.map((item, itemIndex) => {
-                          const category = storeCategories.find(
-                            (c) => c.name === categoryName.name
-                          );
-
+                        {categoryItems.map((item) => {
                           return (
-                            <DraggableMenuItem
+                            <View
                               key={item.id}
-                              item={item}
-                              index={itemIndex}
-                              categoryId={category?.id || ""}
-                              menuId=""
-                              onReorder={() => {}}
-                              onItemPriceEdit={(editItem) => {
-                                priceEditRef.current?.open(
-                                  {
-                                    id: editItem.id,
-                                    name: editItem.name,
-                                    currentPrice: editItem.price,
-                                    currentCashPrice: editItem.cashPrice,
-                                    currentAvailability: editItem.availability,
-                                  },
-                                  {
-                                    categoryId: category?.id || null,
-                                    menuId: null,
-                                  }
-                                );
+                              style={{
+                                width: 130,
+                                height: 160,
+                                borderRadius: 10,
+                                backgroundColor: colors.card,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                overflow: "hidden",
                               }}
-                              isEditable={editable}
-                            />
+                            >
+                              <View style={{ height: 100, width: "100%" }}>
+                                {item.image ? (
+                                  <Image
+                                    source={{ uri: item.image.length > 200 ? `data:image/jpeg;base64,${item.image}` : item.image }}
+                                    style={{ width: "100%", height: "100%" }}
+                                    resizeMode="cover"
+                                  />
+                                ) : (
+                                  <View style={{ flex: 1, backgroundColor: `${colors.teal}08`, alignItems: "center", justifyContent: "center" }}>
+                                    <Utensils color={`${colors.label}60`} size={18} />
+                                  </View>
+                                )}
+                              </View>
+                              <View style={{ paddingHorizontal: 8, paddingVertical: 6, gap: 2 }}>
+                                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading, lineHeight: 14 }} numberOfLines={2}>
+                                  {item.name}
+                                </Text>
+                                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+                                  ${item.price.toFixed(2)}
+                                </Text>
+                              </View>
+                            </View>
                           );
                         })}
                       </View>

@@ -2,7 +2,7 @@ import ScheduleFormSheet from "@/components/menu/ScheduleFormSheet";
 import ScheduleManager from "@/components/menu/ScheduleManager";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
 import { bottomSheetTheme, colors } from "@/lib/theme";
 import { Category, MenuItemType, Schedule } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -28,6 +28,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -55,11 +56,6 @@ export interface CategoryFormProps {
   onDelete?: () => void;
 }
 
-const getImageSource = (image: string | undefined) => {
-  if (image && image.length > 200) return { uri: `data:image/jpeg;base64,${image}` };
-  if (image) return image;
-  return undefined;
-};
 
 const CategoryForm: React.FC<CategoryFormProps> = ({
   initialData,
@@ -95,6 +91,10 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const isEditMode = !!initialData;
+
+  useEffect(() => {
+    Keyboard.dismiss();
+  }, []);
 
   useEffect(() => {
     const nameChanged = (initialData?.name || "") !== name;
@@ -189,46 +189,33 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
+          backgroundColor: colors.panel,
         }}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            backgroundColor: colors.teal + "10",
-            borderRadius: 10,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-          }}
-        >
-          <ArrowLeft size={16} color={colors.teal} />
-          <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>Back</Text>
-        </TouchableOpacity>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
+          {title}
+        </Text>
 
-        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>{title}</Text>
-
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          {onDelete && (
-            <TouchableOpacity
-              onPress={onDelete}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 8,
-                backgroundColor: colors.danger + "15",
-                borderWidth: 1,
-                borderColor: colors.danger + "30",
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}>Delete</Text>
-            </TouchableOpacity>
-          )}
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 8,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
@@ -239,18 +226,16 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               paddingHorizontal: 14,
               paddingVertical: 6,
               borderRadius: 8,
-              backgroundColor: colors.teal + "20",
-              borderWidth: 1,
-              borderColor: colors.teal + "50",
+              backgroundColor: colors.teal,
               opacity: isSaving ? 0.7 : 1,
             }}
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color={colors.teal} />
+              <ActivityIndicator size="small" color={colors.onSolid} />
             ) : (
-              <Save size={14} color={colors.teal} />
+              <Check size={14} color={colors.onSolid} />
             )}
-            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.onSolid }}>
               {isSaving ? "Saving..." : submitButtonLabel}
             </Text>
           </TouchableOpacity>
@@ -258,34 +243,20 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 16 }} showsVerticalScrollIndicator={false}>
+        <View style={{ flex: 1, flexDirection: "row" }}>
+          {/* Left: Form */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16 }} showsVerticalScrollIndicator={false}>
 
           {/* Basic Info */}
-          <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Basic Info
-              </Text>
-              <TouchableOpacity
-                onPress={() => setIsActive(!isActive)}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 20,
-                  backgroundColor: isActive ? colors.success + "20" : colors.danger + "15",
-                  borderWidth: 1,
-                  borderColor: isActive ? colors.success + "50" : colors.danger + "30",
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? colors.success : colors.danger }}>
-                  {isActive ? "Active" : "Inactive"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+          <View style={{ backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Basic Info
+            </Text>
 
             <View style={{ gap: 6 }}>
               <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Category Name *</Text>
               <TextInput
+                autoFocus={false}
                 style={{
                   backgroundColor: colors.screen,
                   borderWidth: 1,
@@ -304,10 +275,42 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             </View>
           </View>
 
-          {/* Availability */}
-          <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
+          {/* Availability Toggle */}
+          <View style={{ backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Availability
+              </Text>
+              <TouchableOpacity
+                onPress={() => setIsActive(!isActive)}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: isActive ? colors.teal : colors.card,
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.teal : colors.border,
+                  justifyContent: "center",
+                  paddingHorizontal: 2,
+                }}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: colors.onSolid,
+                    alignSelf: isActive ? "flex-end" : "flex-start",
+                  }}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Availability Schedule */}
+          <View style={{ backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-              Availability Schedule
+              Schedule
             </Text>
             <ScheduleManager
               value={schedules}
@@ -319,7 +322,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
 
           {/* Selected items summary chips */}
           {selectedItemIds.length > 0 && (
-            <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10 }}>
+            <View style={{ backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 10 }}>
               <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
                 Selected · {selectedItemIds.length}
               </Text>
@@ -353,7 +356,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           )}
 
           {/* Item Selection */}
-          <View style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
+          <View style={{ backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
                 Items · {selectedItemIds.length}/{allItems.length}
@@ -396,7 +399,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                     activeCustomPrice = pendingCustomPrices[item.id];
                   }
 
-                  const imgSrc = getImageSource(item.image);
+                  const imgSrc = resolveMenuItemImageSource(item.image);
 
                   return (
                     <TouchableOpacity
@@ -415,7 +418,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                       <View style={{ height: 72, backgroundColor: colors.screen }}>
                         {imgSrc ? (
                           <Image
-                            source={typeof imgSrc === "string" ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP] : imgSrc}
+                            source={imgSrc}
                             style={{ width: "100%", height: "100%" }}
                             resizeMode="cover"
                           />
@@ -495,6 +498,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                                     <Minus size={11} color={colors.label} />
                                   </TouchableOpacity>
                                   <TextInput
+                                    autoFocus={false}
                                     style={{
                                       flex: 1,
                                       backgroundColor: colors.screen,
@@ -565,7 +569,82 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               </View>
             )}
           </View>
-        </ScrollView>
+          </ScrollView>
+
+          {/* Right: Summary Panel */}
+          <View
+            style={{
+              width: 300,
+              borderLeftWidth: 1,
+              borderLeftColor: colors.border,
+              backgroundColor: colors.card,
+              padding: 16,
+              gap: 16,
+              overflow: "hidden",
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+              Summary
+            </Text>
+
+            {/* Category Name */}
+            {name.trim() && (
+              <View style={{ gap: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Category Name
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                  {name}
+                </Text>
+              </View>
+            )}
+
+            {/* Divider */}
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+
+            {/* Stats */}
+            <View style={{ gap: 12 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Items Selected:
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}>
+                  {selectedItemIds.length}
+                </Text>
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Total Available:
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.teal }}>
+                  {allItems.length}
+                </Text>
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Schedules:
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.label }}>
+                  {schedules.length}
+                </Text>
+              </View>
+            </View>
+
+            {/* Availability Status */}
+            {name.trim() && (
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Category Status:
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.danger }}>
+                  {isActive ? "Active" : "Inactive"}
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
       </KeyboardAvoidingView>
 
       <UnsavedChangesDialog isOpen={isDialogVisible} onCancel={handleCancel} onDiscard={handleDiscard} />
@@ -587,7 +666,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             flexDirection: "row",
             alignItems: "center",
             paddingHorizontal: 14,
-            paddingVertical: 10,
+            paddingVertical: 14,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             gap: 10,
@@ -601,11 +680,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
             placeholderTextColor={colors.muted}
             style={{
               flex: 1,
-              height: 36,
+              height: 40,
               fontSize: 13,
               color: colors.heading,
+              paddingVertical: 8,
             }}
-            autoFocus
           />
           {quickSearchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setQuickSearchQuery("")}>
@@ -620,7 +699,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 8, paddingBottom: 32 }}
           renderItem={({ item }) => {
             const isSelected = selectedItemIds.includes(item.id);
-            const imgSrc = getImageSource(item.image);
+            const imgSrc = resolveMenuItemImageSource(item.image);
             return (
               <TouchableOpacity
                 onPress={() => toggleItem(item)}
@@ -641,7 +720,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                   <View style={{ width: 34, height: 34, borderRadius: 6, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
                     {imgSrc ? (
                       <Image
-                        source={typeof imgSrc === "string" ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP] : imgSrc}
+                        source={imgSrc}
                         style={{ width: "100%", height: "100%" }}
                         resizeMode="cover"
                       />
