@@ -970,12 +970,12 @@ const MenuPage: React.FC = () => {
                         paddingHorizontal: 7,
                         paddingVertical: 2,
                         borderRadius: 20,
-                        backgroundColor: categoryName.isActive ? colors.success + "20" : colors.danger + "15",
+                        backgroundColor: categoryName.isActive ? colors.teal + "20" : colors.danger + "15",
                         borderWidth: 1,
-                        borderColor: categoryName.isActive ? colors.success + "50" : colors.danger + "30",
+                        borderColor: categoryName.isActive ? colors.teal + "50" : colors.danger + "30",
                       }}
                     >
-                      <Text style={{ fontSize: 10, fontWeight: "600", color: categoryName.isActive ? colors.success : colors.danger }}>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: categoryName.isActive ? colors.teal : colors.danger }}>
                         {categoryName.isActive ? "Active" : "Inactive"}
                       </Text>
                     </View>
@@ -1031,28 +1031,27 @@ const MenuPage: React.FC = () => {
                       </Text>
                     ) : (
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                        {categoryItems.map((item) => {
+                        {categoryItems.map((item, itemIndex) => {
                           const category = storeCategories.find(
                             (c) => c.name === categoryName.name
                           );
-                          const categoryPrice = item.price;
-                          const hasCustomPricing =
-                            item.customPricing &&
-                            item.customPricing.some(
-                              (p) => p.categoryId === category?.id && p.isActive
-                            );
 
                           return (
-                            <TouchableOpacity
+                            <DraggableMenuItem
                               key={item.id}
-                              onPress={() => {
+                              item={item}
+                              index={itemIndex}
+                              categoryId={category?.id || ""}
+                              menuId=""
+                              onReorder={() => {}}
+                              onItemPriceEdit={(editItem) => {
                                 priceEditRef.current?.open(
                                   {
-                                    id: item.id,
-                                    name: item.name,
-                                    currentPrice: categoryPrice,
-                                    currentCashPrice: item.cashPrice,
-                                    currentAvailability: item.availability,
+                                    id: editItem.id,
+                                    name: editItem.name,
+                                    currentPrice: editItem.price,
+                                    currentCashPrice: editItem.cashPrice,
+                                    currentAvailability: editItem.availability,
                                   },
                                   {
                                     categoryId: category?.id || null,
@@ -1060,28 +1059,8 @@ const MenuPage: React.FC = () => {
                                   }
                                 );
                               }}
-                              style={{
-                                width: 110,
-                                backgroundColor: colors.panel,
-                                borderWidth: 1,
-                                borderColor: colors.border,
-                                borderRadius: 8,
-                                padding: 8,
-                              }}
-                            >
-                              <Text
-                                style={{ fontSize: 11, fontWeight: "600", color: colors.heading, marginBottom: 3 }}
-                                numberOfLines={2}
-                              >
-                                {item.name}
-                              </Text>
-                              <Text style={{ fontSize: 11, fontWeight: "600", color: hasCustomPricing ? colors.warning : colors.teal }}>
-                                ${categoryPrice.toFixed(2)}
-                                {hasCustomPricing && (
-                                  <Text style={{ fontSize: 10, color: colors.warning }}> Custom</Text>
-                                )}
-                              </Text>
-                            </TouchableOpacity>
+                              isEditable={editable}
+                            />
                           );
                         })}
                       </View>
@@ -1124,122 +1103,53 @@ const MenuPage: React.FC = () => {
                 <Text style={{ fontSize: 12, fontWeight: "700", color: colors.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, paddingHorizontal: 4 }}>
                   {letter}
                 </Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {items.map((item) => {
-              const editable = isEntityEditable(item.location_id, item.name);
-              const isAvailable = item.availability !== false;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  activeOpacity={0.75}
-                  disabled={!editable}
-                  onPress={() => {
-                    if (!editable) return;
-                    priceEditRef.current?.open(
-                      {
-                        id: item.id,
-                        name: item.name,
-                        currentPrice: item.price,
-                        currentCashPrice: item.cashPrice,
-                        currentAvailability: item.availability,
-                      },
-                      { categoryId: null, menuId: null }
-                    );
-                  }}
-                  style={{
-                    width: 225,
-                    height: 80,
-                    backgroundColor: colors.card,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    overflow: "hidden",
-                    flexDirection: "row",
-                    alignItems: "center",
-                  }}
-                >
-                  {/* Thumbnail */}
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      backgroundColor: colors.teal + "12",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      margin: 8,
-                      borderRadius: 8,
-                      overflow: "hidden",
-                    }}
-                  >
-                    {getImageSource(item.image) ? (
-                      <Image
-                        source={getImageSource(item.image) as any}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <Utensils size={20} color={colors.teal + "90"} />
-                    )}
-                  </View>
-
-                  {/* Name + price + status */}
-                  <View style={{ flex: 1, paddingVertical: 10, gap: 3 }}>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>
-                      ${item.price.toFixed(2)}
-                    </Text>
-                    {!isAvailable && (
-                      <View
-                        style={{
-                          alignSelf: "flex-start",
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 20,
-                          backgroundColor: colors.danger + "15",
-                          borderWidth: 1,
-                          borderColor: colors.danger + "40",
-                        }}
-                      >
-                        <Text style={{ fontSize: 9, fontWeight: "700", color: colors.danger }}>
-                          Unavailable
-                        </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                  {items.map((item, itemIndex) => {
+                    const editable = isEntityEditable(item.location_id, item.name);
+                    const isAvailable = item.availability !== false;
+                    return (
+                      <View key={item.id} style={{ position: "relative" }}>
+                        <DraggableMenuItem
+                          item={item}
+                          index={itemIndex}
+                          categoryId=""
+                          menuId=""
+                          onReorder={() => {}}
+                          onItemPriceEdit={() => {
+                            priceEditRef.current?.open(
+                              {
+                                id: item.id,
+                                name: item.name,
+                                currentPrice: item.price,
+                                currentCashPrice: item.cashPrice,
+                                currentAvailability: item.availability,
+                              },
+                              { categoryId: null, menuId: null }
+                            );
+                          }}
+                          isEditable={editable}
+                        />
+                        {/* Action overlay */}
+                        <View style={{ position: "absolute", bottom: 4, right: 4, flexDirection: "row", gap: 4, zIndex: 20 }}>
+                          <TouchableOpacity
+                            onPress={() => handleToggleAvailability(item.id)}
+                            disabled={!editable}
+                            style={{ padding: 6, backgroundColor: colors.card, borderRadius: 6, borderWidth: 1, borderColor: colors.border, opacity: editable ? 1 : 0.4 }}
+                          >
+                            {isAvailable
+                              ? <Eye size={12} color={colors.success} />
+                              : <EyeOff size={12} color={colors.danger} />}
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleEditItem(item)}
+                            disabled={!editable}
+                            style={{ padding: 6, backgroundColor: colors.card, borderRadius: 6, borderWidth: 1, borderColor: colors.border, opacity: editable ? 1 : 0.4 }}
+                          >
+                            <Pencil size={12} color={editable ? colors.teal : colors.muted} />
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                    )}
-                  </View>
-
-                  {/* Right: vertical action strip */}
-                  <View
-                    style={{
-                      width: 38,
-                      alignSelf: "stretch",
-                      borderLeftWidth: 1,
-                      borderLeftColor: colors.border,
-                      justifyContent: "space-evenly",
-                      alignItems: "center",
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => handleToggleAvailability(item.id)}
-                      disabled={!editable}
-                      style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
-                    >
-                      {isAvailable
-                        ? <Eye size={14} color={colors.success} />
-                        : <EyeOff size={14} color={colors.danger} />}
-                    </TouchableOpacity>
-                    <View style={{ height: 1, width: 20, backgroundColor: colors.border }} />
-                    <TouchableOpacity
-                      onPress={() => handleEditItem(item)}
-                      disabled={!editable}
-                      style={{ padding: 8, opacity: editable ? 1 : 0.4 }}
-                    >
-                      <Pencil size={13} color={colors.teal} />
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              );
+                    );
                   })}
                 </View>
               </View>
