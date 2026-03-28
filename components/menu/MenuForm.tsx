@@ -219,50 +219,49 @@ const MenuForm: React.FC<MenuFormProps> = ({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingHorizontal: 14,
-          paddingVertical: 10,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
           backgroundColor: colors.panel,
         }}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            backgroundColor: colors.teal + "10",
-            borderRadius: 10,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-          }}
-        >
-          <ArrowLeft size={16} color={colors.teal} />
-          <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>
-            Back
-          </Text>
-        </TouchableOpacity>
-
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>
           {title}
         </Text>
 
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          {onDelete && (
+        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 8,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          {initialData && (
             <TouchableOpacity
-              onPress={onDelete}
+              onPress={handleSave}
+              disabled={isSaving}
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
                 borderRadius: 8,
-                backgroundColor: colors.danger + "15",
+                backgroundColor: colors.card,
                 borderWidth: 1,
-                borderColor: colors.danger + "30",
+                borderColor: colors.border,
+                opacity: isSaving ? 0.7 : 1,
               }}
             >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.danger }}>
-                Delete
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+                {isSaving ? "Saving..." : "Save"}
               </Text>
             </TouchableOpacity>
           )}
@@ -276,18 +275,16 @@ const MenuForm: React.FC<MenuFormProps> = ({
               paddingHorizontal: 14,
               paddingVertical: 6,
               borderRadius: 8,
-              backgroundColor: colors.teal + "20",
-              borderWidth: 1,
-              borderColor: colors.teal + "50",
+              backgroundColor: colors.teal,
               opacity: isSaving ? 0.7 : 1,
             }}
           >
             {isSaving ? (
-              <ActivityIndicator size="small" color={colors.teal} />
+              <ActivityIndicator size="small" color={colors.onSolid} />
             ) : (
-              <Save size={14} color={colors.teal} />
+              <Check size={14} color={colors.onSolid} />
             )}
-            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.onSolid }}>
               {isSaving ? "Saving..." : submitButtonLabel}
             </Text>
           </TouchableOpacity>
@@ -298,11 +295,13 @@ const MenuForm: React.FC<MenuFormProps> = ({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 14, gap: 16 }}
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1, flexDirection: "row" }}>
+          {/* Left: Form */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 16, gap: 16 }}
+            showsVerticalScrollIndicator={false}
+          >
           {/* Name & Description */}
           <View
             style={{
@@ -369,6 +368,46 @@ const MenuForm: React.FC<MenuFormProps> = ({
             </View>
           </View>
 
+          {/* Availability Toggle */}
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 14,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Availability
+              </Text>
+              <TouchableOpacity
+                onPress={() => setIsActive(!isActive)}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: isActive ? colors.teal : colors.card,
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.teal : colors.border,
+                  justifyContent: "center",
+                  paddingHorizontal: 2,
+                }}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: colors.onSolid,
+                    alignSelf: isActive ? "flex-end" : "flex-start",
+                  }}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Schedules */}
           <View
             style={{
@@ -380,26 +419,9 @@ const MenuForm: React.FC<MenuFormProps> = ({
               gap: 12,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Availability
-              </Text>
-              <TouchableOpacity
-                onPress={() => setIsActive(!isActive)}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 20,
-                  backgroundColor: isActive ? colors.success + "20" : colors.danger + "15",
-                  borderWidth: 1,
-                  borderColor: isActive ? colors.success + "50" : colors.danger + "30",
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? colors.success : colors.danger }}>
-                  {isActive ? "Master: On" : "Master: Off"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Schedules
+            </Text>
             <ScheduleManager
               value={schedules}
               onChange={setSchedules}
@@ -502,152 +524,83 @@ const MenuForm: React.FC<MenuFormProps> = ({
                             </View>
 
                             {!isExpanded && categoryItems.length > 0 && (
-                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
-                                {categoryItems.slice(0, 3).map((item, index) => (
+                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                                {categoryItems.map((item, index) => (
                                   <View
                                     key={index}
                                     style={{
                                       backgroundColor: colors.card,
                                       borderWidth: 1,
                                       borderColor: colors.border,
-                                      paddingHorizontal: 7,
-                                      paddingVertical: 3,
-                                      borderRadius: 6,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 6,
+                                      borderRadius: 8,
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      width: "48%",
                                     }}
                                   >
-                                    <Text style={{ fontSize: 11, color: colors.label }}>{item.name}</Text>
+                                    <View
+                                      style={{
+                                        width: 26,
+                                        height: 26,
+                                        borderRadius: 6,
+                                        borderWidth: 1,
+                                        borderColor: colors.border,
+                                        overflow: "hidden",
+                                      }}
+                                    >
+                                      {getImageSource(item.image) ? (
+                                        <Image
+                                          source={getImageSource(item.image)}
+                                          style={{ width: "100%", height: "100%" }}
+                                          resizeMode="cover"
+                                        />
+                                      ) : (
+                                        <View
+                                          style={{
+                                            flex: 1,
+                                            backgroundColor: colors.panel,
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                          }}
+                                        >
+                                          <Utensils color={colors.muted} size={12} />
+                                        </View>
+                                      )}
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={{ fontSize: 11, color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
+                                        {item.name}
+                                      </Text>
+                                      <Text style={{ fontSize: 10, color: colors.label }}>
+                                        ${item.price.toFixed(2)}
+                                      </Text>
+                                    </View>
                                   </View>
                                 ))}
-                                {categoryItems.length > 3 && (
-                                  <TouchableOpacity
-                                    onPress={(e) => {
-                                      e.stopPropagation();
-                                      toggleCategoryExpansion(category.name);
-                                    }}
-                                    style={{
-                                      backgroundColor: colors.teal + "15",
-                                      borderWidth: 1,
-                                      borderColor: colors.teal + "30",
-                                      paddingHorizontal: 7,
-                                      paddingVertical: 3,
-                                      borderRadius: 6,
-                                    }}
-                                  >
-                                    <Text style={{ fontSize: 11, color: colors.teal }}>
-                                      +{categoryItems.length - 3} more
-                                    </Text>
-                                  </TouchableOpacity>
-                                )}
                               </View>
                             )}
                           </View>
 
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 10 }}>
-                            {categoryItems.length > 3 && (
-                              <TouchableOpacity
-                                onPress={(e) => {
-                                  e.stopPropagation();
-                                  toggleCategoryExpansion(category.name);
-                                }}
-                                style={{ padding: 4 }}
-                              >
-                                {isExpanded ? (
-                                  <ChevronUp size={14} color={colors.label} />
-                                ) : (
-                                  <ChevronDown size={14} color={colors.label} />
-                                )}
-                              </TouchableOpacity>
-                            )}
-
-                            <View
-                              style={{
-                                width: 22,
-                                height: 22,
-                                borderRadius: 11,
-                                borderWidth: 2,
-                                borderColor: isSelected ? colors.teal : colors.border,
-                                backgroundColor: isSelected ? colors.teal : "transparent",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              {isSelected && <Check size={12} color={colors.onSolid} />}
-                            </View>
+                          <View
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 11,
+                              borderWidth: 2,
+                              borderColor: isSelected ? colors.teal : colors.border,
+                              backgroundColor: isSelected ? colors.teal : "transparent",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            {isSelected && <Check size={12} color={colors.onSolid} />}
                           </View>
                         </View>
                       </TouchableOpacity>
 
-                      {isExpanded && categoryItems.length > 0 && (
-                        <View
-                          style={{
-                            borderTopWidth: 1,
-                            borderTopColor: colors.border,
-                            padding: 12,
-                            gap: 8,
-                          }}
-                        >
-                          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                            All items in {category.name}
-                          </Text>
-                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                            {categoryItems.map((item, index) => (
-                              <View
-                                key={index}
-                                style={{
-                                  backgroundColor: colors.card,
-                                  borderWidth: 1,
-                                  borderColor: colors.border,
-                                  paddingHorizontal: 8,
-                                  paddingVertical: 6,
-                                  borderRadius: 8,
-                                  flexDirection: "row",
-                                  alignItems: "center",
-                                  gap: 6,
-                                  width: "48%",
-                                }}
-                              >
-                                <View
-                                  style={{
-                                    width: 26,
-                                    height: 26,
-                                    borderRadius: 6,
-                                    borderWidth: 1,
-                                    borderColor: colors.border,
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  {getImageSource(item.image) ? (
-                                    <Image
-                                      source={getImageSource(item.image)}
-                                      style={{ width: "100%", height: "100%" }}
-                                      resizeMode="cover"
-                                    />
-                                  ) : (
-                                    <View
-                                      style={{
-                                        flex: 1,
-                                        backgroundColor: colors.panel,
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                      }}
-                                    >
-                                      <Utensils color={colors.muted} size={12} />
-                                    </View>
-                                  )}
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={{ fontSize: 11, color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
-                                    {item.name}
-                                  </Text>
-                                  <Text style={{ fontSize: 10, color: colors.label }}>
-                                    ${item.price.toFixed(2)}
-                                  </Text>
-                                </View>
-                              </View>
-                            ))}
-                          </View>
-                        </View>
-                      )}
                     </View>
                   );
                 })}
@@ -676,34 +629,54 @@ const MenuForm: React.FC<MenuFormProps> = ({
                     {categoryName}
                     <Text style={{ color: colors.muted, fontWeight: "400" }}> ({items.length})</Text>
                   </Text>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
                     {items.slice(0, 6).map((item, index) => (
                       <View
                         key={index}
                         style={{
-                          backgroundColor: colors.panel,
+                          width: 70,
+                          height: 70,
+                          backgroundColor: colors.card,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 6,
+                          borderRadius: 8,
+                          overflow: "hidden",
                         }}
                       >
-                        <Text style={{ fontSize: 11, color: colors.label }}>{item.name}</Text>
+                        {getImageSource(item.image) ? (
+                          <Image
+                            source={getImageSource(item.image)}
+                            style={{ width: "100%", height: "100%" }}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View
+                            style={{
+                              flex: 1,
+                              backgroundColor: colors.panel,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Utensils size={16} color={colors.muted} />
+                          </View>
+                        )}
                       </View>
                     ))}
                     {items.length > 6 && (
                       <View
                         style={{
+                          width: 70,
+                          height: 70,
                           backgroundColor: colors.panel,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 6,
+                          borderRadius: 8,
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: 11, color: colors.muted }}>+{items.length - 6} more</Text>
+                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>+{items.length - 6}</Text>
                       </View>
                     )}
                   </View>
@@ -711,7 +684,119 @@ const MenuForm: React.FC<MenuFormProps> = ({
               ))}
             </View>
           )}
-        </ScrollView>
+          </ScrollView>
+
+          {/* Right: Summary Panel */}
+          <View
+            style={{
+              width: 320,
+              borderLeftWidth: 1,
+              borderLeftColor: colors.border,
+              backgroundColor: colors.card,
+              padding: 16,
+              gap: 16,
+              overflow: "hidden",
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading }}>
+              Summary
+            </Text>
+
+            {/* Selected Categories */}
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Selected Categories
+              </Text>
+              <ScrollView
+                style={{ maxHeight: 120 }}
+                contentContainerStyle={{ gap: 4 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {selectedCategories.length === 0 ? (
+                  <Text style={{ fontSize: 12, color: colors.muted }}>No categories selected</Text>
+                ) : (
+                  selectedCategories.map((catName) => (
+                    <View
+                      key={catName}
+                      style={{
+                        backgroundColor: colors.panel,
+                        borderRadius: 6,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, color: colors.label }}>{catName}</Text>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+
+            {/* Divider */}
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+
+            {/* Stats */}
+            <View style={{ gap: 12 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Categories Selected:
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading }}>
+                  {selectedCategories.length}
+                </Text>
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Total Items:
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.teal }}>
+                  {totalItems}
+                </Text>
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Schedules:
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.label }}>
+                  {schedules.length}
+                </Text>
+              </View>
+            </View>
+
+            {/* Menu Status */}
+            {name.trim() && (
+              <View
+                style={{
+                  backgroundColor: colors.panel,
+                  borderRadius: 8,
+                  padding: 10,
+                  gap: 6,
+                  marginTop: 8,
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase" }}>
+                  Menu Status
+                </Text>
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 20,
+                    backgroundColor: isActive ? colors.teal + "20" : colors.danger + "15",
+                    borderWidth: 1,
+                    borderColor: isActive ? colors.teal + "50" : colors.danger + "30",
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? colors.teal : colors.danger }}>
+                    {isActive ? "Active" : "Inactive"}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Confirm Modal */}
