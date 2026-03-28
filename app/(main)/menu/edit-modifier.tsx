@@ -13,6 +13,7 @@ import { ArrowLeft, Check, ChefHat, Plus, Save, Trash2, X } from "lucide-react-n
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -60,7 +61,6 @@ const EditModifierScreen: React.FC = () => {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [showConfirm, setShowConfirm] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [originalFormData, setOriginalFormData] = useState<ModifierFormData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -196,19 +196,30 @@ const EditModifierScreen: React.FC = () => {
     }
   };
 
-  const handleDelete = () => { if (!existing) return; setShowDeleteConfirm(true); };
-
-  const confirmDelete = async () => {
+  const handleDelete = () => {
     if (!existing) return;
-    const { error } = await MenuService.deleteModifierGroup(supabase, existing.id);
-    if (error) {
-      show({ title: "Error", message: error.message || "Failed to delete modifier group.", type: "error" });
-      setShowDeleteConfirm(false);
-      return;
-    }
-    deleteModifierGroup(existing.id);
-    show({ title: "Modifier Deleted", message: `"${existing.name}" has been deleted.`, type: "success" });
-    router.back();
+    Alert.alert("Delete Modifier Group", "Are you sure you want to delete this modifier group?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          setIsSaving(true);
+          try {
+            const { error } = await MenuService.deleteModifierGroup(supabase, existing.id);
+            if (error) {
+              show({ title: "Error", message: error.message || "Failed to delete modifier group.", type: "error" });
+              return;
+            }
+            deleteModifierGroup(existing.id);
+            show({ title: "Modifier Deleted", message: `"${existing.name}" has been deleted.`, type: "success" });
+            router.back();
+          } finally {
+            setIsSaving(false);
+          }
+        },
+      },
+    ]);
   };
 
   const addOption = () => {
@@ -275,11 +286,16 @@ const EditModifierScreen: React.FC = () => {
 
         <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
           <TouchableOpacity
-            onPress={handleDelete}
-            style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "40" }}
+            onPress={() => router.back()}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}
           >
-            <Trash2 size={13} color={colors.danger} />
-            <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>Delete</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleDelete}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: colors.danger + "15", borderWidth: 1, borderColor: colors.danger + "30" }}
+          >
+            <Trash2 size={14} color={colors.danger} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
@@ -633,37 +649,6 @@ const EditModifierScreen: React.FC = () => {
                 style={{ flex: 1, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
               >
                 <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>{isSaving ? "Saving..." : "Save"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete Confirm Modal */}
-      <Modal visible={showDeleteConfirm} transparent animationType="fade" onRequestClose={() => setShowDeleteConfirm(false)}>
-        <View style={{ flex: 1, backgroundColor: "#00000080", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 16, width: "100%", maxWidth: 380, borderWidth: 1, borderColor: colors.border }}>
-            <View style={{ alignItems: "center", marginBottom: 14 }}>
-              <View style={{ width: 44, height: 44, backgroundColor: colors.danger + "15", borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-                <Trash2 size={20} color={colors.danger} />
-              </View>
-              <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Delete Modifier?</Text>
-              <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, textAlign: "center" }}>
-                Delete "{existing.name}"? This cannot be undone.
-              </Text>
-            </View>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TouchableOpacity
-                onPress={() => setShowDeleteConfirm(false)}
-                style={{ flex: 1, backgroundColor: colors.screen, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
-              >
-                <Text style={{ fontSize: 13, color: colors.label, fontWeight: "500" }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmDelete}
-                style={{ flex: 1, backgroundColor: colors.danger + "20", borderWidth: 1, borderColor: colors.danger + "50", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
-              >
-                <Text style={{ fontSize: 13, color: colors.danger, fontWeight: "600" }}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>

@@ -172,6 +172,38 @@ const EditMenuItemScreen: React.FC = () => {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      setIsSaving(true);
+      const { error } = await MenuService.deleteMenuItem(supabase, itemId);
+
+      if (error) {
+        show({
+          title: "Error",
+          message: error.message || "Failed to delete item. Please try again.",
+          type: "error",
+        });
+        return;
+      }
+
+      show({
+        title: "Item Deleted",
+        message: `Successfully deleted "${itemToEdit.name}".`,
+        type: "success",
+      });
+      router.back();
+    } catch (error) {
+      console.error(error);
+      show({
+        title: "Delete Error",
+        message: "Failed to delete the menu item. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <View className="flex-1 bg-panel">
       <ItemForm
@@ -180,6 +212,7 @@ const EditMenuItemScreen: React.FC = () => {
         isSaving={isSaving}
         title="Edit Menu Item"
         submitButtonLabel="Save Changes"
+        onDelete={handleDelete}
       />
     </View>
   );

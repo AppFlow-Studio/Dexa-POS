@@ -20,6 +20,7 @@ import {
   Plus,
   Save,
   Search,
+  Trash2,
   Utensils,
   X,
 } from "lucide-react-native";
@@ -216,6 +217,30 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
               Cancel
             </Text>
           </TouchableOpacity>
+          {initialData && onDelete && (
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert("Delete Category", "Are you sure you want to delete this category?", [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: onDelete,
+                  },
+                ])
+              }
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                backgroundColor: colors.danger + "15",
+                borderWidth: 1,
+                borderColor: colors.danger + "30",
+              }}
+            >
+              <Trash2 size={14} color={colors.danger} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}

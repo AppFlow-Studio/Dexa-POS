@@ -1208,15 +1208,15 @@ const MenuPage: React.FC = () => {
                   </Text>
 
                   {modifierGroup.location_id ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#7C3AED20", borderWidth: 1, borderColor: "#7C3AED50", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
-                      <MapPin size={10} color="#A78BFA" />
-                      <Text style={{ fontSize: 10, fontWeight: "600", color: "#A78BFA" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
+                      <MapPin size={10} color={colors.teal} />
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>
                         {modifierGroup.location_name || "Local"}
                       </Text>
                     </View>
                   ) : (
-                    <View style={{ backgroundColor: colors.success + "20", borderWidth: 1, borderColor: colors.success + "50", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
-                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.success }}>Global</Text>
+                    <View style={{ backgroundColor: colors.teal + "20", borderWidth: 1, borderColor: colors.teal + "50", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "600", color: colors.teal }}>Global</Text>
                     </View>
                   )}
 
@@ -1279,7 +1279,7 @@ const MenuPage: React.FC = () => {
                       <Text style={{ fontSize: 11, color: colors.heading }}>
                         {option.name}
                         {option.price > 0 && (
-                          <Text style={{ color: colors.success }}> (+${option.price.toFixed(2)})</Text>
+                          <Text style={{ color: colors.teal }}> (+${option.price.toFixed(2)})</Text>
                         )}
                       </Text>
                     </View>
@@ -1315,21 +1315,32 @@ const MenuPage: React.FC = () => {
                         }}
                       >
                         <View style={{ width: 26, height: 26, borderRadius: 6, overflow: "hidden", backgroundColor: colors.card }}>
-                          {getImageSource(item.image) ? (
-                            <Image
-                              source={
-                                typeof getImageSource(item.image) === "string"
-                                  ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-                                  : getImageSource(item.image)
-                              }
-                              style={{ width: "100%", height: "100%" }}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                              <Utensils color={colors.muted} size={12} />
-                            </View>
-                          )}
+                          {(() => {
+                            console.log("Item image:", item.image);
+                            const imageSource = getImageSource(item.image);
+                            console.log("Image source result:", imageSource);
+                            if (!imageSource) {
+                              return (
+                                <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                                  <Utensils color={colors.muted} size={12} />
+                                </View>
+                              );
+                            }
+
+                            const source =
+                              typeof imageSource === "string"
+                                ? MENU_IMAGE_MAP[imageSource as keyof typeof MENU_IMAGE_MAP]
+                                : imageSource;
+
+                            console.log("Final source:", source);
+                            return (
+                              <Image
+                                source={source}
+                                style={{ width: "100%", height: "100%" }}
+                                resizeMode="cover"
+                              />
+                            );
+                          })()}
                         </View>
                         <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
                           {item.name}

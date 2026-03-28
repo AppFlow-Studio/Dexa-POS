@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Save,
+  Trash2,
   Utensils,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -251,6 +252,30 @@ const MenuForm: React.FC<MenuFormProps> = ({
               Cancel
             </Text>
           </TouchableOpacity>
+          {initialData && onDelete && (
+            <TouchableOpacity
+              onPress={() =>
+                Alert.alert("Delete Menu", "Are you sure you want to delete this menu?", [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: onDelete,
+                  },
+                ])
+              }
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                backgroundColor: colors.danger + "15",
+                borderWidth: 1,
+                borderColor: colors.danger + "30",
+              }}
+            >
+              <Trash2 size={14} color={colors.danger} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
