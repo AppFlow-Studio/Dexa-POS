@@ -8,6 +8,7 @@ import { hydrateDrawerSession } from "@/services/cashDrawerService";
 import { useKDSStore } from "@/stores/useKDSStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useOrderStore, getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { OrderPayload, PaymentPayload } from "@/types/real-time";
@@ -126,6 +127,7 @@ export default function MainLayout() {
 
     useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
     useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
+    usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
   }, []);
 
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {

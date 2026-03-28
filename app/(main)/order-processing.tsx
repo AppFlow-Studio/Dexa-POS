@@ -102,14 +102,18 @@ const OrderProcessing = () => {
     setItemsModalOpen(true);
   }, []);
 
-  const handleMarkReady = useCallback((order: OrderProfile) => {
-    markAllItemsAsReady(order.id);
-    // Don't auto-archive paid orders — cashier must explicitly mark done
-  }, [markAllItemsAsReady]);
-
   const handleMarkDone = useCallback((orderId: string) => {
-    archiveOrder(orderId);
-  }, [archiveOrder]);
+    const order = useOrderStore.getState().ordersById[orderId];
+    if (!order) return;
+
+    markAllItemsAsReady(orderId);
+
+    if (order.paid_status === "Paid") {
+      archiveOrder(orderId);
+      // Toast fires from inside archiveOrder
+    }
+    // If not paid: items are now "ready", awaiting payment
+  }, [markAllItemsAsReady, archiveOrder]);
 
   const handleRetrieve = useCallback((orderId: string) => {
     setActiveOrder(orderId);
@@ -215,7 +219,6 @@ const OrderProcessing = () => {
     ({ item }: { item: OrderProfile }) => (
       <OrderBadge
         order={item}
-        onMarkReady={() => handleMarkReady(item)}
         onMarkDone={() => handleMarkDone(item.id)}
         onViewItems={() => handleViewItems(item.id)}
         onRetrieve={() => handleRetrieve(item.id)}
@@ -223,7 +226,7 @@ const OrderProcessing = () => {
         onPrintReceipt={() => handlePrintReceipt(item)}
       />
     ),
-    [handleMarkReady, handleMarkDone, handleViewItems, handleRetrieve, handleReopenCheck, handlePrintReceipt],
+    [handleMarkDone, handleViewItems, handleRetrieve, handleReopenCheck, handlePrintReceipt],
   );
 
   const badgeKeyExtractor = useCallback((item: OrderProfile) => item.id, []);

@@ -108,21 +108,20 @@ const OrderLineSectionContent: React.FC = () => {
     setItemsModalOpen(true);
   };
 
-  const handleCompleteOrder = (orderId: string) => {
-    // Sync order status based on item statuses
-    // updateOrderStatus(orderId, "Ready");
+  const handleCompleteOrder = useCallback((orderId: string) => {
     markAllItemsAsReady(orderId);
     archiveOrder(orderId);
-  };
+  }, [markAllItemsAsReady, archiveOrder]);
 
   const handleRetrieve = (orderId: string) => {
     setActiveOrder(orderId);
   };
 
-  // Handler for Mark Done - archives the order
+  // Handler for Mark Done - marks items ready then archives the order
   const handleMarkDone = useCallback((orderId: string) => {
+    markAllItemsAsReady(orderId);
     archiveOrder(orderId);
-  }, [archiveOrder]);
+  }, [markAllItemsAsReady, archiveOrder]);
 
   // Handler for Reopen Check - reopens the check and sets as active order
   const handleReopenCheck = useCallback((orderId: string) => {

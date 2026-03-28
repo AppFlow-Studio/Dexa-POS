@@ -227,6 +227,7 @@ function transformBackendModifiers(
         modifier_group_name: string;
         price_modifier: number;
         quantity: number;
+        is_no?: boolean;
       }>
     | undefined,
 ): CartItem["customizations"]["modifiers"] {
@@ -237,7 +238,7 @@ function transformBackendModifiers(
     {
       categoryId: string;
       categoryName: string;
-      options: { id: string; name: string; price: number }[];
+      options: { id: string; name: string; price: number; isNo?: boolean }[];
     }
   >();
 
@@ -258,6 +259,7 @@ function transformBackendModifiers(
         id: mod.modifier_item_id || mod.modifier_name, // Fallback to name if no ID
         name: mod.modifier_name,
         price: mod.price_modifier,
+        isNo: mod.is_no || undefined,
       });
     }
   }
@@ -1965,6 +1967,16 @@ const syncPaymentToBackend = async (
         }
       }
 
+      // Auto-archive ready+paid orders (Path A: marked ready first, then paid)
+      if (isFullyPaid) {
+        const postPayOrder = useOrderStore.getState().ordersById[order.id];
+        if (postPayOrder && postPayOrder.order_status === "ready") {
+          queueMicrotask(() => {
+            useOrderStore.getState().archiveOrder(order.id);
+          });
+        }
+      }
+
       if (__DEV__) console.log("[OrderStore] Cache invalidated after payment sync");
 
       // Post-payment verification: schedule a full sync to catch concurrent changes from other stations
@@ -2852,66 +2864,71 @@ export const useOrderStore = create<OrderState>()(
 
                     // ═══════════════════════════════════════════════════════════
                     // Phase 6: Conflict Detection
-                    // Skip if this order is being voided locally (race window guard)
+                    // Only run for OTHER stations' changes — own-station broadcasts
+                    // are echoes of our own mutations (sync_version drift causes
+                    // false positives). Broadcast merge at Phase 7+ still runs
+                    // for own-station orders and updates sync_version correctly.
                     // ═══════════════════════════════════════════════════════════
-                    if (isOrderPendingVoid(localOrderId)) {
-                      if (__DEV__) console.log(
-                        "[OrderBroadcast] Skipping conflict detection — order pending void:",
-                        localOrderId,
-                      );
-                      clearOrderPendingVoid(localOrderId);
-                    } else {
-                      const serverOrderForConflict = {
-                        ...backendOrder,
-                        sync_version: backendOrder.sync_version ?? 0,
-                        total_amount: backendOrder.card_total,
-                        amount_paid: backendOrder.amount_paid,
-                        order_status: backendOrder.status,
-                        paid_status: mapPaymentStatus(
-                          backendOrder.payment_status,
-                        ),
-                        total_discount: backendOrder.discount_amount,
-                        items: backendOrder.order_items
-                          ? transformBroadcastItems(backendOrder.order_items)
-                          : [],
-                        _sourceStationName: backendOrder.station_name,
-                      };
+                    if (!isOwnStationOrder) {
+                      if (isOrderPendingVoid(localOrderId)) {
+                        if (__DEV__) console.log(
+                          "[OrderBroadcast] Skipping conflict detection — order pending void:",
+                          localOrderId,
+                        );
+                        clearOrderPendingVoid(localOrderId);
+                      } else {
+                        const serverOrderForConflict = {
+                          ...backendOrder,
+                          sync_version: backendOrder.sync_version ?? 0,
+                          total_amount: backendOrder.card_total,
+                          amount_paid: backendOrder.amount_paid,
+                          order_status: backendOrder.status,
+                          paid_status: mapPaymentStatus(
+                            backendOrder.payment_status,
+                          ),
+                          total_discount: backendOrder.discount_amount,
+                          items: backendOrder.order_items
+                            ? transformBroadcastItems(backendOrder.order_items)
+                            : [],
+                          _sourceStationName: backendOrder.station_name,
+                        };
 
-                      const conflict = detectConflict(
-                        localOrder,
-                        serverOrderForConflict as any,
-                      );
+                        const conflict = detectConflict(
+                          localOrder,
+                          serverOrderForConflict as any,
+                        );
 
-                      if (conflict) {
-                        // Add source station info
-                        conflict.sourceStationName =
-                          backendOrder.station_name ?? undefined;
-                        conflict.sourceStationId =
-                          backendOrder.station_id ?? undefined;
+                        if (conflict) {
+                          // Add source station info
+                          conflict.sourceStationName =
+                            backendOrder.station_name ?? undefined;
+                          conflict.sourceStationId =
+                            backendOrder.station_id ?? undefined;
 
-                        if (isConflictCritical(conflict)) {
-                          // Payment conflict - needs modal
-                          useConflictStore
-                            .getState()
-                            .addPaymentConflict(conflict);
-                          if (__DEV__) console.log(
-                            "[OrderBroadcast] Payment conflict detected:",
-                            conflict.conflictType,
-                          );
-                        } else {
-                          // Non-critical - record and show toast
-                          useConflictStore.getState().recordConflict(conflict);
+                          if (isConflictCritical(conflict)) {
+                            // Payment conflict - needs modal
+                            useConflictStore
+                              .getState()
+                              .addPaymentConflict(conflict);
+                            if (__DEV__) console.log(
+                              "[OrderBroadcast] Payment conflict detected:",
+                              conflict.conflictType,
+                            );
+                          } else {
+                            // Non-critical - record and show toast
+                            useConflictStore.getState().recordConflict(conflict);
 
-                          // Show toast notification for significant conflicts
-                          const toastData = generateConflictToast(conflict);
-                          if (conflict.severity !== "info") {
-                            toastService.show({
-                              title: "Order Update Conflict",
-                              type:
-                                toastData.type === "error" ? "error" : "warning",
-                              message: toastData.message,
-                              duration: toastData.duration ?? 5000,
-                            });
+                            // Show toast notification for significant conflicts
+                            const toastData = generateConflictToast(conflict);
+                            if (conflict.severity !== "info") {
+                              toastService.show({
+                                title: "Order Update Conflict",
+                                type:
+                                  toastData.type === "error" ? "error" : "warning",
+                                message: toastData.message,
+                                duration: toastData.duration ?? 5000,
+                              });
+                            }
                           }
                         }
                       }
@@ -3447,6 +3464,22 @@ export const useOrderStore = create<OrderState>()(
               backendOrder,
               sourceStationName,
             );
+
+            // Broadcasts carry discount_amount (number) but NOT order_discounts metadata.
+            // Preserve checkDiscount / applied_discounts so the calculator keeps applying the discount.
+            if (backendOrder.discount_amount && backendOrder.discount_amount > 0) {
+              if (existing?.checkDiscount) {
+                // Already have discount locally — carry it forward unchanged
+                orderProfile.checkDiscount = existing.checkDiscount;
+                orderProfile.applied_discounts = existing.applied_discounts;
+              } else {
+                // Discount exists on backend but not in local state
+                // (e.g. applied from another station). Queue a full fetch to restore it.
+                queueMicrotask(() => {
+                  get().syncOrderFromBackendComplete(dbOrderId);
+                });
+              }
+            }
 
             // Upsert to single index (pre-freeze so Immer skips recursive scan)
             set((state) => {
@@ -4818,8 +4851,9 @@ export const useOrderStore = create<OrderState>()(
                         modifier_item_id: opt.id,
                         modifier_group_name: group.categoryName,
                         modifier_name: opt.name,
-                        price_modifier: opt.price,
+                        price_modifier: opt.isNo ? 0 : opt.price,
                         quantity: 1,
+                        is_no: opt.isNo ?? false,
                       });
                     });
                   });
@@ -6624,45 +6658,6 @@ export const useOrderStore = create<OrderState>()(
             // Determine if this is a cash-priced payment (cash method without forceCardPricing)
             const isCashPayment = method === "Cash" && !forceCardPricing;
 
-            // Build itemsCovered from itemAllocations for payment tracking (with quantities)
-            // For full payments without explicit allocations, auto-generate from all unpaid items
-            const effectiveAllocations =
-              itemAllocations ||
-              order.items
-                .filter(
-                  (item) =>
-                    !item.is_voided && item.quantity > (item.paidQuantity || 0),
-                )
-                .map((item) => {
-                  const unitPrice = isCashPayment
-                    ? (item.cashPrice ?? item.baseCashPrice ?? item.price ?? 0)
-                    : (item.price || 0);
-                  return {
-                    itemId: item.db_order_item_id || item.id,
-                    quantity: item.quantity - (item.paidQuantity || 0),
-                    amount:
-                      unitPrice *
-                      (item.quantity - (item.paidQuantity || 0)),
-                  };
-                });
-
-            const itemsCovered = effectiveAllocations.map((alloc) => {
-              const item = order.items.find(
-                (i) =>
-                  i.db_order_item_id === alloc.itemId || i.id === alloc.itemId,
-              );
-              const unitPrice = isCashPayment
-                ? (item?.cashPrice ?? item?.baseCashPrice ?? item?.price ?? 0)
-                : (item?.price || 0);
-              return {
-                itemId: alloc.itemId,
-                itemName: item?.name || "Unknown Item",
-                quantity: alloc.quantity,
-                unitPrice,
-                subtotal: unitPrice * alloc.quantity,
-              };
-            });
-
             // Compute cashSavings for cash-priced payments (matches backend original_amount - amount)
             // cashSavings = card-equivalent amount - cash amount paid
             // This tells calculateOrderTotals to treat the cash amount as covering the full card equivalent
@@ -6686,43 +6681,9 @@ export const useOrderStore = create<OrderState>()(
               }
             }
 
-            const newPayment: OrderProfilePayment = {
-              id: localPaymentId, // Use local ID as temporary main ID
-              localId: localPaymentId, // Unique local identifier for sync matching
-              amount,
-              method,
-              timestamp: paymentTimestamp,
-              sync_status: "pending",
-              sync_attempt_count: 0,
-              tip_amount: tipAmount || 0,
-              total_collected: amount + (tipAmount || 0),
-              itemsCovered,
-              status: "captured", // Locally deemed captured until sync says otherwise
-              isVoided: false,
-              ...(cardBrand && { cardBrand }),
-              ...(last4 && { last4 }),
-              ...(transactionDetails && { transactionDetails }),
-              // Cash pricing fields — mirrors backend is_cash_priced / original_amount mapping
-              ...(isCashPayment && {
-                isCashPriced: true,
-                ...(cashSavingsValue != null && cashSavingsValue > 0 && {
-                  cashSavings: cashSavingsValue,
-                }),
-              }),
-              // Track split info for reconciliation
-              ...(splitCount &&
-                splitPortionIndex && {
-                  splitInfo: {
-                    portionIndex: splitPortionIndex,
-                    totalPortions: splitCount,
-                    isLastPortion: splitPortionIndex === splitCount,
-                  },
-                }),
-            };
+            // --- Mark items as paid FIRST, then derive itemsCovered from actual deltas ---
+            // This ensures itemsCovered reflects what was actually covered (esp. FIFO partial)
 
-            const newPayments = [...(order.payments || []), newPayment];
-
-            // Mark items as paid based on itemAllocations (per-item with quantities) or FIFO order (default)
             let updatedItems: typeof order.items;
 
             // SPLIT PAYMENT FIX: Always mark PAID items as preparing, not just when order is draft/pending
@@ -6796,6 +6757,62 @@ export const useOrderStore = create<OrderState>()(
                 };
               });
             }
+
+            // Rebuild itemsCovered from actual paidQuantity deltas (source of truth)
+            // This prevents the bug where FIFO covers 2/4 but itemsCovered said 4/4
+            const itemsCovered: OrderPaymentItemCoverage[] = updatedItems
+              .map((updatedItem) => {
+                const originalItem = order.items.find(i => i.id === updatedItem.id);
+                const delta = (updatedItem.paidQuantity || 0) - (originalItem?.paidQuantity || 0);
+                if (delta <= 0) return null;
+                const unitPrice = isCashPayment
+                  ? (updatedItem.cashPrice ?? updatedItem.baseCashPrice ?? updatedItem.price ?? 0)
+                  : (updatedItem.price || 0);
+                return {
+                  itemId: updatedItem.db_order_item_id || updatedItem.id,
+                  itemName: updatedItem.name || "Unknown Item",
+                  quantity: delta,
+                  unitPrice,
+                  subtotal: unitPrice * delta,
+                };
+              })
+              .filter((c): c is OrderPaymentItemCoverage => c !== null);
+
+            const newPayment: OrderProfilePayment = {
+              id: localPaymentId, // Use local ID as temporary main ID
+              localId: localPaymentId, // Unique local identifier for sync matching
+              amount,
+              method,
+              timestamp: paymentTimestamp,
+              sync_status: "pending",
+              sync_attempt_count: 0,
+              tip_amount: tipAmount || 0,
+              total_collected: amount + (tipAmount || 0),
+              itemsCovered,
+              status: "captured", // Locally deemed captured until sync says otherwise
+              isVoided: false,
+              ...(cardBrand && { cardBrand }),
+              ...(last4 && { last4 }),
+              ...(transactionDetails && { transactionDetails }),
+              // Cash pricing fields — mirrors backend is_cash_priced / original_amount mapping
+              ...(isCashPayment && {
+                isCashPriced: true,
+                ...(cashSavingsValue != null && cashSavingsValue > 0 && {
+                  cashSavings: cashSavingsValue,
+                }),
+              }),
+              // Track split info for reconciliation
+              ...(splitCount &&
+                splitPortionIndex && {
+                  splitInfo: {
+                    portionIndex: splitPortionIndex,
+                    totalPortions: splitCount,
+                    isLastPortion: splitPortionIndex === splitCount,
+                  },
+                }),
+            };
+
+            const newPayments = [...(order.payments || []), newPayment];
 
             // Calculate totals
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -6871,8 +6888,8 @@ export const useOrderStore = create<OrderState>()(
               currentOrder.order_status = newOrderStatus;
               // Set opened_at timestamp when transitioning
               currentOrder.opened_at = newOpenedAt;
-              // Optimistic update based on calculated outstanding
-              currentOrder.paid_status = isFullyPaid ? "Paid" : "Pending";
+              // Optimistic update — derive from actual payments (handles Partial)
+              currentOrder.paid_status = calculatePaidStatus(newPayments, totals.total_amount);
               currentOrder.check_status = currentOrder.check_status || "Opened";
               // Sync amount_paid/amount_due to prevent stale values
               currentOrder.amount_paid =
@@ -6986,7 +7003,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Validate order is in archivable state
             const isArchivable =
-              ["void", "completed", "cancelled"].includes(
+              ["void", "completed", "cancelled", "ready"].includes(
                 order.order_status as string,
               ) ||
               order.check_status === "Closed" ||
@@ -7049,13 +7066,22 @@ export const useOrderStore = create<OrderState>()(
             const tableId = order.service_location_id;
 
             // Ensure the order has a final status. If not "Voided", set it to "Closed".
+            const now = new Date().toISOString();
             const finalOrder = {
               ...order,
               order_status:
                 order.order_status === "void"
                   ? ("void" as const)
                   : ("completed" as const),
-              closed_at: order.closed_at || new Date().toISOString(),
+              closed_at: order.closed_at || now,
+              items: order.items.map(item => ({
+                ...item,
+                completed_at: item.completed_at || now,
+                kitchen_status: (item.kitchen_status === "new" || item.kitchen_status === "sent" || item.kitchen_status === "preparing")
+                  ? "ready" as const : (item.kitchen_status || "ready" as const),
+                item_status: (item.item_status === "Preparing" || item.item_status === "preparing" || !item.item_status)
+                  ? "ready" as const : item.item_status,
+              })),
               total_amount:
                 order.total_amount ||
                 order.items.reduce(
@@ -7120,6 +7146,16 @@ export const useOrderStore = create<OrderState>()(
                 state.activeOrderOutstandingCash = 0;
               }
             });
+
+            // Show completion toast
+            if (finalOrder.order_status === "completed") {
+              toastService.show({
+                title: "Order Completed",
+                message: `Order ${order.display_number || order.order_number || ""} completed and closed`,
+                type: "success",
+                duration: 3000,
+              });
+            }
 
             // Sync order_status = 'completed' to backend
             if (order.db_order_id && finalOrder.order_status === "completed") {
@@ -10497,17 +10533,24 @@ export const useOrderStore = create<OrderState>()(
                       : undefined,
 
                   // Item coverage — derive from covers_items with order items context
+                  // Use paidQuantity (from backend paid_quantity) as the authoritative coverage quantity.
+                  // TODO: For multi-payment scenarios where the same item appears in multiple payments'
+                  // covers_items, this overcounts per-payment. Pre-existing limitation of flat UUID schema.
                   itemsCovered: (payment.covers_items || []).map(
                     (itemId: string) => {
                       const item = transformedItems.find(
                         (i) => i.db_order_item_id === itemId || i.id === itemId,
                       );
+                      const coveredQty = item?.paidQuantity || item?.quantity || 1;
+                      const unitPrice = payment.is_cash_priced
+                        ? ((item?.cashPrice ?? item?.price) || 0)
+                        : (item?.price || 0);
                       return {
                         itemId,
                         itemName: item?.name || "Unknown Item",
-                        quantity: item?.quantity || 1,
-                        unitPrice: item?.price || 0,
-                        subtotal: (item?.price || 0) * (item?.quantity || 1),
+                        quantity: coveredQty,
+                        unitPrice,
+                        subtotal: unitPrice * coveredQty,
                       };
                     },
                   ),

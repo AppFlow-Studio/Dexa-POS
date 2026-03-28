@@ -9,6 +9,7 @@ import {
   normalizeFetchedOrder,
   transformBroadcastToOrder,
 } from "@/utils/orderTransformers";
+import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 
@@ -27,6 +28,24 @@ function buildOrderLookupMap(orders: PreviousOrder[]): Record<string, PreviousOr
     if (o.orderId) lookup[o.orderId] = o;
   }
   return lookup;
+}
+
+function _derivePaymentStatus(profile: OrderProfile): PreviousOrder["paymentStatus"] {
+  if (profile.paid_status === "Paid") return "Paid";
+  if (profile.paid_status === "Partial") return "In Progress";
+  if (profile.paid_status === "Refunded") return "Refunded";
+  return "Unpaid";
+}
+
+function _isFinalState(profile: OrderProfile): boolean {
+  return (
+    profile.check_status === "Closed" ||
+    profile.paid_status === "Paid" ||
+    profile.paid_status === "Refunded" ||
+    profile.order_status === "completed" ||
+    profile.order_status === "void" ||
+    profile.order_status === "cancelled"
+  );
 }
 
 const HISTORY_REFRESH_COALESCE_MS = 4000;
@@ -113,6 +132,7 @@ interface PreviousOrdersState {
   ) => Promise<void>;
   getRefundsForOrder: (orderId: string) => RefundRecord[];
   patchPreviousOrder: (orderId: string, patch: Partial<PreviousOrder>) => void;
+  _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
 }
 
 export const usePreviousOrdersStore = create<PreviousOrdersState>(
@@ -187,7 +207,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         }),
         orderId: order.id,
         display_number: order.display_number || `#${serialNo}`,
-        paymentStatus: order.paid_status === "Paid" ? "Paid" : "Unpaid",
+        paymentStatus: _derivePaymentStatus(order),
         customer: order.customer_name || "Walk-In Customer",
         server: order.server_name || "Unknown",
         opened_at: order.opened_at || orderTimestamp,
@@ -353,7 +373,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               }),
               orderId: profile.id,
               display_number: profile.display_number || `#${serialNo}`,
-              paymentStatus: profile.paid_status === "Paid" ? "Paid" : "Unpaid",
+              paymentStatus: _derivePaymentStatus(profile),
               customer: profile.customer_name || "Walk-In Customer",
               server: profile.server_name || "Unknown",
               opened_at: profile.opened_at || orderTimestamp,
@@ -366,9 +386,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
               cash_amount_due: profile.cash_amount_due || 0,
               type: (profile.order_type || "Dine In") as any,
               total: profile.total_amount || 0,
+              tax: profile.total_tax || 0,
               items: profile.items,
               notes: profile.notes,
-              refunded: profile.order_status === "refunded",
+              refunded:
+                profile.order_status === "refunded" ||
+                (
+                  (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
+                  !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")
+                ),
               refundedAmount: 0, // Backend might calculate this, but defaulting to 0 for now
               originalTotal: profile.total_amount || 0,
               payments: profile.payments,
@@ -461,11 +487,30 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         for (const row of latestOrders) {
           const id = row.id as string;
           if (!id) continue;
-          if (lookup[id]) continue;
-          const known = get().previousOrders.some(
-            (po) => po.db_order_id === id || po.orderId === id,
-          );
-          if (!known) newCount++;
+
+          const normalized = normalizeFetchedOrder(row as FetchedOrderData);
+          const profile = transformBroadcastToOrder(normalized, undefined);
+          const existing = lookup[id];
+
+          if (!existing) {
+            const known = get().previousOrders.some(
+              (po) => po.db_order_id === id || po.orderId === id,
+            );
+            if (!known) newCount++;
+          } else {
+            // Patch if payment status or check status changed
+            const newPaymentStatus = _derivePaymentStatus(profile);
+            if (
+              existing.paymentStatus !== newPaymentStatus ||
+              existing.checkStatus !== profile.check_status
+            ) {
+              get()._handleOrderBroadcast({
+                operation: "UPDATE",
+                data: { order: normalized },
+                timestamp: new Date().toISOString(),
+              });
+            }
+          }
         }
 
         // Update state
@@ -699,6 +744,45 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
     getRefundsForOrder: (orderId: string) => {
       return get().refunds.filter((refund) => refund.orderId === orderId);
+    },
+
+    _handleOrderBroadcast: (payload: OrderBroadcastPayload) => {
+      const { operation, data } = payload;
+      if (!data?.order) return;
+
+      const broadcastOrder = data.order;
+      const dbOrderId = broadcastOrder.id;
+      if (!dbOrderId) return;
+
+      const lookup = get()._orderLookup;
+      const existing = lookup[dbOrderId];
+
+      if (operation === "DELETE") {
+        // Not removing from history on soft delete — orders stay for audit trail
+        return;
+      }
+
+      const normalized = normalizeFetchedOrder(broadcastOrder as unknown as FetchedOrderData);
+      const profile = transformBroadcastToOrder(normalized, undefined);
+
+      if (existing) {
+        get().patchPreviousOrder(existing.db_order_id || existing.orderId, {
+          paymentStatus: _derivePaymentStatus(profile),
+          refunded:
+            profile.order_status === "refunded" ||
+            (
+              (profile.payments || []).some((p) => p.isVoided === true || p.status === "voided") &&
+              !(profile.payments || []).some((p) => !p.isVoided && p.status === "captured")
+            ),
+          amount_paid: profile.amount_paid ?? existing.amount_paid,
+          amount_due: profile.amount_due ?? existing.amount_due,
+          cash_amount_due: profile.cash_amount_due ?? existing.cash_amount_due,
+          payments: profile.payments || existing.payments,
+          checkStatus: profile.check_status || existing.checkStatus,
+        });
+      } else if (_isFinalState(profile)) {
+        get().addOrderToHistory(profile);
+      }
     },
 
     patchPreviousOrder: (orderId: string, patch: Partial<PreviousOrder>) => {

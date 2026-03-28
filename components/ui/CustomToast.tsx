@@ -126,12 +126,12 @@ const CustomToast: React.FC<CustomToastProps> = ({
 
   return (
     <MotiView
-      from={{ opacity: 0, translateY: 20 }}
+      from={{ opacity: 0, translateY: -20 }}
       animate={{ opacity: 1, translateY: 0 }}
-      exit={{ opacity: 0, translateY: 20 }}
+      exit={{ opacity: 0, translateY: -20 }}
       transition={{ type: "timing", duration: 300 }}
       style={{
-        width: "90%",
+        width: 380,
         maxWidth: 400,
         marginBottom: 10,
       }}

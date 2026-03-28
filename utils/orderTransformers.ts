@@ -485,6 +485,8 @@ export function mapPaymentStatus(
       return "Partial";
     case "pending":
       return "Pending";
+    case "refunded":
+      return "Refunded";
     default:
       return "Unpaid";
   }
@@ -1082,4 +1084,78 @@ export function normalizeFetchedOrder(
         }`.trim()
       : null,
   };
+}
+
+// ============================================================================
+// SHARED COVERAGE UTILITIES
+// ============================================================================
+
+/**
+ * Derive itemsCovered from paidQuantity deltas between original and updated items.
+ * Used by addPaymentToOrder after FIFO/per-item processing to build accurate coverage.
+ *
+ * @param originalItems - Items before payment processing
+ * @param updatedItems - Items after paidQuantity has been incremented
+ * @param isCashPriced - Whether the payment used cash pricing
+ * @returns Array of item coverage reflecting actual quantities covered
+ */
+export function deriveItemCoverageFromPaidDelta(
+  originalItems: CartItem[],
+  updatedItems: CartItem[],
+  isCashPriced: boolean,
+): OrderPaymentItemCoverage[] {
+  return updatedItems
+    .map((updatedItem) => {
+      const originalItem = originalItems.find(i => i.id === updatedItem.id);
+      const delta = (updatedItem.paidQuantity || 0) - (originalItem?.paidQuantity || 0);
+      if (delta <= 0) return null;
+      const unitPrice = isCashPriced
+        ? (updatedItem.cashPrice ?? updatedItem.baseCashPrice ?? updatedItem.price ?? 0)
+        : (updatedItem.price || 0);
+      return {
+        itemId: updatedItem.db_order_item_id || updatedItem.id,
+        itemName: updatedItem.name || "Unknown Item",
+        quantity: delta,
+        unitPrice,
+        subtotal: unitPrice * delta,
+      };
+    })
+    .filter((c): c is OrderPaymentItemCoverage => c !== null);
+}
+
+/**
+ * Derive itemsCovered from backend covers_items UUIDs and cart items.
+ * Uses paidQuantity as the authoritative coverage quantity.
+ *
+ * NOTE: For multi-payment scenarios where the same item appears in multiple payments'
+ * covers_items, this overcounts per-payment. Pre-existing limitation of flat UUID schema.
+ *
+ * @param coversItems - Array of item UUIDs covered by a payment
+ * @param cartItems - Cart items array to derive quantities from
+ * @param isCashPriced - Whether the payment used cash pricing
+ * @returns Array of item coverage details
+ */
+export function deriveItemCoverageFromBackend(
+  coversItems: string[],
+  cartItems: CartItem[],
+  isCashPriced: boolean,
+): OrderPaymentItemCoverage[] {
+  if (!coversItems || coversItems.length === 0) return [];
+
+  return coversItems.map((itemId) => {
+    const item = cartItems.find(
+      (i) => i.db_order_item_id === itemId || i.id === itemId,
+    );
+    const coveredQty = item?.paidQuantity || item?.quantity || 1;
+    const unitPrice = isCashPriced
+      ? ((item?.cashPrice ?? item?.price) || 0)
+      : (item?.price || 0);
+    return {
+      itemId,
+      itemName: item?.name || "Unknown Item",
+      quantity: coveredQty,
+      unitPrice,
+      subtotal: unitPrice * coveredQty,
+    };
+  });
 }

@@ -13,10 +13,9 @@ const ToastContainer: React.FC<ToastContainerProps> = ({ toasts }) => {
     <View
       style={{
         position: "absolute",
-        bottom: 50,
-        left: 0,
-        right: 0,
-        alignItems: "center",
+        top: 50,
+        right: 16,
+        alignItems: "flex-end",
         zIndex: 9999,
       }}
       pointerEvents="box-none"

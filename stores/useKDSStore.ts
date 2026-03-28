@@ -193,6 +193,7 @@ interface PendingAction {
   itemStatuses: Map<string, string>;
   timestamp: number;
   prioritized?: boolean;
+  rushOverride?: boolean;
 }
 const _pendingActions = new Map<string, PendingAction>();
 const PENDING_ACTION_TTL = 30_000;
@@ -244,6 +245,7 @@ function overlayPendingActions(tickets: KDSTicket[]): KDSTicket[] {
         return {
           ...item,
           ...(optimistic ? { kitchen_status: optimistic } : {}),
+          ...(pending.rushOverride != null ? { rush: pending.rushOverride } : {}),
           ...(isRecalled ? { recalled: true } : {}),
         };
       }),
@@ -1037,9 +1039,34 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     // Build new tickets from broadcast
     const newTickets = buildTicketsFromBroadcast(filteredOrder);
 
-    // Remove old tickets for this order, add new ones
+    // Stabilize ticket_id and start_time_epoch for existing orders so that:
+    // (a) mergeTickets reuses the same reference (no FlatList re-mount animation)
+    // (b) prioritizedTicketIds still matches the old ticket_id → priority preserved
+    // (c) sort order is unchanged → position preserved
+    const existingForOrder = tickets.filter((t) => t.db_order_id === order.id);
+    let stabilizedNewTickets = newTickets;
+    if (existingForOrder.length > 0) {
+      const existingByCourse = new Map<number, KDSTicket>();
+      for (const t of existingForOrder) {
+        if (!existingByCourse.has(t.course_number)) {
+          existingByCourse.set(t.course_number, t);
+        }
+      }
+      stabilizedNewTickets = newTickets.map((newT) => {
+        const existing = existingByCourse.get(newT.course_number);
+        if (!existing) return newT; // New course — keep computed ID
+        return {
+          ...newT,
+          ticket_id: existing.ticket_id,
+          start_time_epoch: existing.start_time_epoch,
+          start_time: existing.start_time,
+        };
+      });
+    }
+
+    // Remove old tickets for this order, add stabilized new ones
     const otherTickets = tickets.filter((t) => t.db_order_id !== order.id);
-    const rawMerged = [...otherTickets, ...newTickets];
+    const rawMerged = [...otherTickets, ...stabilizedNewTickets];
 
     // Sort by start_time ascending (match SQL ordering)
     rawMerged.sort((a, b) => a.start_time_epoch - b.start_time_epoch);
@@ -1201,6 +1228,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
       targetStatus: ticket.status,
       itemStatuses: itemStatusMap,
       timestamp: Date.now(),
+      rushOverride: newRush,
     });
 
     // Optimistic: toggle rush on all items

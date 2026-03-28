@@ -3699,7 +3699,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       items: previousOrder.items || [],
       total_amount: previousOrder.total,
       total_cash_amount: previousOrder.total, // Fallback
-      total_tax: 0, // Will be calculated if available
+      total_tax: previousOrder.tax || 0,
       total_discount: 0,
       amount_paid: previousOrder.amount_paid,
       amount_due: previousOrder.amount_due,

@@ -40,10 +40,12 @@ BEGIN
   -- Reopen the check
   UPDATE orders
   SET check_status = 'Opened',
-      payment_status = CASE WHEN amount_paid > 0 THEN 'partial'::payment_status ELSE 'pending'::payment_status END,
       updated_at = NOW(),
       sync_version = sync_version + 1
   WHERE id = p_order_id;
+
+  -- Recalculate amount_due so re-payment is possible
+  PERFORM calculate_order_totals_fast(p_order_id);
 
   -- Log the action with reason (audit_logs table expected to exist)
   INSERT INTO audit_logs (

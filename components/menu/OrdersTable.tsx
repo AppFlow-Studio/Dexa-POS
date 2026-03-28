@@ -76,6 +76,12 @@ const STATUS_PILL: Record<string, { bg: string; border: string; text: string; la
     text: colors.danger,
     label: "Refunded",
   },
+  Voided: {
+    bg: colors.danger + "20",
+    border: colors.danger + "50",
+    text: colors.danger,
+    label: "Voided",
+  }
 };
 
 const DEFAULT_PILL = {
@@ -119,6 +125,7 @@ function isOrderFullySettled(order: OrderProfile): boolean {
 // Effective display status (accounts for refunds)
 function getEffectiveStatus(order: OrderProfile): string {
   if (order.order_status === "refunded") return "Refunded";
+  if (order.order_status === "void") return "Voided";
   const totalRefunded = (order.payments || []).reduce(
     (sum, p) => sum + (p.refundedAmount ?? 0),
     0,
@@ -222,7 +229,7 @@ const OrderRow = memo<OrderRowProps>(
           <View style={{ flex: 2, paddingVertical: 10, paddingHorizontal: 14 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Text style={{ fontSize: 13, fontWeight: "700", color: colors.heading, letterSpacing: 0.2 }}>
-                #{displayNumber}
+                {displayNumber}
               </Text>
               {order.order_source?.toLowerCase() === "online" && (
                 <View style={{
@@ -261,7 +268,7 @@ const OrderRow = memo<OrderRowProps>(
           {/* STAFF cell */}
           <View style={{ flex: 1.5, paddingVertical: 10, paddingHorizontal: 14 }}>
             <Text style={{ fontSize: 12, color: colors.label }} numberOfLines={1}>
-              {order.server_name || order._sourceStationName || "—"}
+              {order?.order_source == 'online' ? 'Online' : order.server_name || order._sourceStationName || "—"}
             </Text>
           </View>
 
