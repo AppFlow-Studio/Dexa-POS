@@ -18,6 +18,8 @@ import {
   ChevronDown,
   ChevronRight,
   Edit,
+  LayoutGrid,
+  List,
   MoreHorizontal,
   Package,
   Plus,
@@ -168,6 +170,127 @@ const InventoryItemBox: React.FC<{
 };
 
 /* =========================
+   Row Item
+========================= */
+const InventoryItemRow: React.FC<{
+  item: InventoryItem;
+  onEdit: () => void;
+  onDelete: () => void;
+  onTap: () => void;
+}> = ({ item, onEdit, onDelete, onTap }) => {
+  const isLowStock = (item.stockQuantity ?? 0) <= (item.reorderThreshold ?? 0);
+  const vendors = useInventoryStore((state) => state.vendors);
+  const vendor = vendors.find((v) => v.id === item.vendorId);
+
+  return (
+    <TouchableOpacity
+      onPress={onTap}
+      activeOpacity={0.6}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: colors.panel,
+        marginHorizontal: 10,
+        marginBottom: 4,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderLeftWidth: 3,
+        borderLeftColor: isLowStock ? colors.danger : colors.teal,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        gap: 8,
+      }}
+    >
+      {/* Icon */}
+      <View
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 8,
+          backgroundColor: (isLowStock ? colors.danger : colors.teal) + "15",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Package size={13} color={isLowStock ? colors.danger : colors.teal} />
+      </View>
+
+      {/* Name + Category */}
+      <View style={{ flex: 3 }}>
+        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: colors.heading }}>
+          {item.name}
+        </Text>
+        <Text numberOfLines={1} style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>
+          {item.category || "—"}
+        </Text>
+      </View>
+
+      {/* Stock */}
+      <View style={{ flex: 2, alignItems: "flex-start" }}>
+        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>Stock</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: isLowStock ? colors.danger : colors.teal }}>
+            {(item.stockQuantity ?? 0).toFixed(0)}
+          </Text>
+          <Text style={{ fontSize: 9, color: colors.muted }}>{item.unit}</Text>
+          {isLowStock && (
+            <AlertTriangle size={10} color={colors.danger} />
+          )}
+        </View>
+      </View>
+
+      {/* Reorder Threshold */}
+      <View style={{ flex: 1.5, alignItems: "flex-start" }}>
+        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>Reorder</Text>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+          {item.reorderThreshold ?? 0}
+        </Text>
+      </View>
+
+      {/* Cost */}
+      <View style={{ flex: 1.5, alignItems: "flex-start" }}>
+        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>Cost</Text>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
+          ${(item.cost ?? 0).toFixed(2)}
+        </Text>
+      </View>
+
+      {/* Vendor */}
+      <View style={{ flex: 2, alignItems: "flex-start" }}>
+        <Text style={{ fontSize: 9, color: colors.muted, marginBottom: 1 }}>Vendor</Text>
+        <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: "500", color: colors.label }}>
+          {vendor?.name || "—"}
+        </Text>
+      </View>
+
+      {/* Actions */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <TouchableOpacity style={{ padding: 6 }}>
+            <MoreHorizontal size={14} color={colors.muted} />
+          </TouchableOpacity>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          className="w-40"
+          style={{ backgroundColor: colors.panel, borderColor: colors.border }}
+        >
+          <DropdownMenuItem onPress={onEdit}>
+            <Edit size={13} color={colors.label} />
+            <Text style={{ marginLeft: 6, fontSize: 12, color: colors.label }}>Edit</Text>
+          </DropdownMenuItem>
+          <DropdownMenuItem onPress={onDelete}>
+            <Trash2 size={13} color={colors.danger} />
+            <Text style={{ marginLeft: 6, fontSize: 12, color: colors.danger }}>Delete</Text>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </TouchableOpacity>
+  );
+};
+
+/* =========================
    Screen
 ========================= */
 const InventoryScreen = () => {
@@ -191,6 +314,7 @@ const InventoryScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [alertExpanded, setAlertExpanded] = useState(false);
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"card" | "row">("card");
 
   const filteredInventory = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -257,7 +381,7 @@ const InventoryScreen = () => {
         </View>
       )}
 
-      {/* Search + Add */}
+      {/* Search + View Toggle + Add */}
       <View style={{ flexDirection: "row", marginHorizontal: 10, marginBottom: 8, gap: 8 }}>
         <View
           style={{
@@ -283,6 +407,27 @@ const InventoryScreen = () => {
           />
         </View>
 
+        {/* View toggle */}
+        <TouchableOpacity
+          onPress={() => setViewMode((m) => (m === "card" ? "row" : "card"))}
+          style={{
+            height: 40,
+            width: 40,
+            borderRadius: 8,
+            backgroundColor: colors.panel,
+            justifyContent: "center",
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          {viewMode === "card" ? (
+            <List size={16} color={colors.label} />
+          ) : (
+            <LayoutGrid size={16} color={colors.label} />
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity
           onPress={() => addItemSheetRef.current?.expand()}
           style={{
@@ -298,23 +443,59 @@ const InventoryScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Grid */}
+      {/* Row header (row view only) */}
+      {viewMode === "row" && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginHorizontal: 10,
+            marginBottom: 4,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            gap: 8,
+          }}
+        >
+          <View style={{ width: 30, flexShrink: 0 }} />
+          <Text style={{ flex: 3, fontSize: 9, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Name</Text>
+          <Text style={{ flex: 2, fontSize: 9, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Stock</Text>
+          <Text style={{ flex: 1.5, fontSize: 9, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Reorder</Text>
+          <Text style={{ flex: 1.5, fontSize: 9, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Cost</Text>
+          <Text style={{ flex: 2, fontSize: 9, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Vendor</Text>
+          <View style={{ width: 26 }} />
+        </View>
+      )}
+
+      {/* Card / Row List */}
       <FlatList
+        key={viewMode}
         data={filteredInventory}
         keyExtractor={(item) => item.id}
-        numColumns={5}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        renderItem={({ item }) => (
-          <InventoryItemBox
-            item={item}
-            onTap={() => setDetailItemId(item.id)}
-            onEdit={() => setDetailItemId(item.id)}
-            onDelete={() => {
-              setSelectedItem(item);
-              setDeleteConfirmOpen(true);
-            }}
-          />
-        )}
+        numColumns={viewMode === "card" ? 5 : 1}
+        contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: viewMode === "card" ? 0 : 0 }}
+        renderItem={({ item }) =>
+          viewMode === "card" ? (
+            <InventoryItemBox
+              item={item}
+              onTap={() => setDetailItemId(item.id)}
+              onEdit={() => setDetailItemId(item.id)}
+              onDelete={() => {
+                setSelectedItem(item);
+                setDeleteConfirmOpen(true);
+              }}
+            />
+          ) : (
+            <InventoryItemRow
+              item={item}
+              onTap={() => setDetailItemId(item.id)}
+              onEdit={() => setDetailItemId(item.id)}
+              onDelete={() => {
+                setSelectedItem(item);
+                setDeleteConfirmOpen(true);
+              }}
+            />
+          )
+        }
       />
 
       {/* Modals */}
