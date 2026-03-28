@@ -8,6 +8,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import React, { useState } from "react";
+import { View } from "react-native";
 
 const EditMenuItemScreen: React.FC = () => {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
