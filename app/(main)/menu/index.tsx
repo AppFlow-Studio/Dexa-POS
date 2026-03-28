@@ -1366,9 +1366,9 @@ const MenuPage: React.FC = () => {
   );
 
   const renderSchedulesContent = () => (
-    <View style={{ flex: 1, padding: 14, backgroundColor: colors.panel }}>
+    <View style={{ flex: 1, padding: 16, backgroundColor: colors.panel }}>
       {/* Header */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.heading }}>Schedules</Text>
         <View style={{ flexDirection: "row", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 2, gap: 2 }}>
           <TouchableOpacity
@@ -1405,101 +1405,95 @@ const MenuPage: React.FC = () => {
       </View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: 12 }}>
           {scheduleViewType === "menus"
-            ? menus.map((menu) => {
-                const statusActive = menu.isActive && menu.isAvailableNow;
-                return (
-                  <View
-                    key={menu.id}
-                    style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{menu.name}</Text>
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 20,
-                          backgroundColor: statusActive ? colors.success + "20" : colors.danger + "15",
-                          borderWidth: 1,
-                          borderColor: statusActive ? colors.success + "50" : colors.danger + "30",
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: statusActive ? colors.success : colors.danger }}>
-                          {menu.isActive ? (menu.isAvailableNow ? "Available" : "Unavailable") : "Inactive"}
-                        </Text>
-                      </View>
-                    </View>
-                    {(menu.schedules ?? []).length === 0 ? (
-                      <Text style={{ fontSize: 12, color: colors.muted }}>Always available (no schedule rules)</Text>
-                    ) : (
-                      <View style={{ gap: 4 }}>
-                        {menu.schedules!.map((r) => (
-                          <View
-                            key={r.id}
-                            style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: colors.panel, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
-                          >
-                            <Text style={{ fontSize: 12, color: colors.heading }}>{r.name || r.id}</Text>
-                            <Text style={{ fontSize: 12, color: colors.label }}>
-                              {(r.days || []).join(", ")} · {formatTimeDisplay(r.startTime)} – {formatTimeDisplay(r.endTime)}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                    <TouchableOpacity
-                      onPress={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+            ? menus.map((menu) => (
+                <View
+                  key={menu.id}
+                  style={{ backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{menu.name}</Text>
+                    <View
                       style={{
-                        alignSelf: "flex-start",
-                        marginTop: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 5,
-                        borderRadius: 8,
-                        backgroundColor: colors.teal + "20",
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                        backgroundColor: menu.isAvailableNow ? colors.teal + "20" : colors.danger + "15",
                         borderWidth: 1,
-                        borderColor: colors.teal + "50",
+                        borderColor: menu.isAvailableNow ? colors.teal + "40" : colors.danger + "30",
                       }}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit Schedules</Text>
-                    </TouchableOpacity>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: menu.isAvailableNow ? colors.teal : colors.danger }}>
+                        {menu.isAvailableNow ? "Available" : "Unavailable"}
+                      </Text>
+                    </View>
                   </View>
-                );
-              })
-            : storeCategories.map((category) => {
-                const catAvailable = category.isActive && isCategoryAvailableNow(category.name);
-                return (
+                  {(menu.schedules ?? []).length === 0 ? (
+                    <Text style={{ fontSize: 12, color: colors.muted }}>Always available (no schedule rules)</Text>
+                  ) : (
+                    <View style={{ gap: 6 }}>
+                      {menu.schedules!.map((r) => (
+                        <View
+                          key={r.id}
+                          style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: colors.screen, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: "500", color: colors.heading }}>{r.name || r.id}</Text>
+                          <Text style={{ fontSize: 12, color: colors.label }}>
+                            {(r.days || []).join(", ")} · {formatTimeDisplay(r.startTime)} – {formatTimeDisplay(r.endTime)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+                    style={{
+                      alignSelf: "flex-start",
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      backgroundColor: colors.teal + "20",
+                      borderWidth: 1,
+                      borderColor: colors.teal + "50",
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit Schedules</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            : storeCategories.map((category) => (
                   <View
                     key={category.id}
-                    style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 }}
+                    style={{ backgroundColor: colors.card + "cc", borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 12 }}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                       <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>{category.name}</Text>
                       <View
                         style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          borderRadius: 20,
-                          backgroundColor: catAvailable ? colors.success + "20" : colors.danger + "15",
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                          borderRadius: 6,
+                          backgroundColor: isCategoryAvailableNow(category.name) ? colors.teal + "20" : colors.danger + "15",
                           borderWidth: 1,
-                          borderColor: catAvailable ? colors.success + "50" : colors.danger + "30",
+                          borderColor: isCategoryAvailableNow(category.name) ? colors.teal + "40" : colors.danger + "30",
                         }}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: "600", color: catAvailable ? colors.success : colors.danger }}>
-                          {category.isActive ? (isCategoryAvailableNow(category.name) ? "Available" : "Unavailable") : "Inactive"}
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: isCategoryAvailableNow(category.name) ? colors.teal : colors.danger }}>
+                          {isCategoryAvailableNow(category.name) ? "Available" : "Unavailable"}
                         </Text>
                       </View>
                     </View>
                     {(category.schedules ?? []).length === 0 ? (
                       <Text style={{ fontSize: 12, color: colors.muted }}>Always available (no schedule rules)</Text>
                     ) : (
-                      <View style={{ gap: 4 }}>
+                      <View style={{ gap: 6 }}>
                         {category.schedules!.map((r) => (
                           <View
                             key={r.id}
-                            style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: colors.panel, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                            style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: colors.screen, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
                           >
-                            <Text style={{ fontSize: 12, color: colors.heading }}>{r.name || r.id}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: "500", color: colors.heading }}>{r.name || r.id}</Text>
                             <Text style={{ fontSize: 12, color: colors.label }}>
                               {(r.days || []).join(", ")} · {formatTimeDisplay(r.startTime)} – {formatTimeDisplay(r.endTime)}
                             </Text>
@@ -1511,9 +1505,8 @@ const MenuPage: React.FC = () => {
                       onPress={() => router.push(`/menu/edit-category?id=${category.id}`)}
                       style={{
                         alignSelf: "flex-start",
-                        marginTop: 8,
                         paddingHorizontal: 12,
-                        paddingVertical: 5,
+                        paddingVertical: 6,
                         borderRadius: 8,
                         backgroundColor: colors.teal + "20",
                         borderWidth: 1,
@@ -1523,8 +1516,7 @@ const MenuPage: React.FC = () => {
                       <Text style={{ fontSize: 12, fontWeight: "600", color: colors.teal }}>Edit Schedules</Text>
                     </TouchableOpacity>
                   </View>
-                );
-              })}
+                ))}
         </View>
       </ScrollView>
     </View>
