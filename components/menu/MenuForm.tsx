@@ -305,7 +305,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
           {/* Name & Description */}
           <View
             style={{
-              backgroundColor: colors.card,
+              backgroundColor: colors.card + "cc",
               borderRadius: 12,
               borderWidth: 1,
               borderColor: colors.border,
@@ -411,7 +411,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
           {/* Schedules */}
           <View
             style={{
-              backgroundColor: colors.card,
+              backgroundColor: colors.card + "cc",
               borderRadius: 12,
               borderWidth: 1,
               borderColor: colors.border,
@@ -433,7 +433,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
           {/* Categories */}
           <View
             style={{
-              backgroundColor: colors.card,
+              backgroundColor: colors.card + "cc",
               borderRadius: 12,
               borderWidth: 1,
               borderColor: colors.border,
