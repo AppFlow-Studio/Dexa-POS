@@ -1,5 +1,6 @@
 import AddIngredientModal from "@/components/inventory/AddIngredientModal";
 import RecipeIngredientSheet from "@/components/inventory/RecipeIngredientSheet";
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
@@ -119,6 +120,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
   const [recipeQuantities, setRecipeQuantities] = useState<Record<string, string>>({});
   const [modifierSearch, setModifierSearch] = useState("");
   const [expandedModifiers, setExpandedModifiers] = useState<Record<string, boolean>>({});
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
     hasChanges && !hasSavedRef.current
@@ -440,16 +442,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
           </TouchableOpacity>
           {initialData && onDelete && (
             <TouchableOpacity
-              onPress={() =>
-                Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: onDelete,
-                  },
-                ])
-              }
+              onPress={() => setShowDeleteDialog(true)}
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
@@ -1144,6 +1137,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
       </BottomSheet>
 
       <UnsavedChangesDialog isOpen={isDialogVisible} onCancel={handleCancel} onDiscard={handleDiscard} />
+
+      <DeleteConfirmDialog
+        isOpen={showDeleteDialog}
+        title="Delete Item"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={() => {
+          setShowDeleteDialog(false);
+          onDelete?.();
+        }}
+      />
     </View>
   );
 };

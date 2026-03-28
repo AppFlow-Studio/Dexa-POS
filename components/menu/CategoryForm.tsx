@@ -1,5 +1,6 @@
 import ScheduleFormSheet from "@/components/menu/ScheduleFormSheet";
 import ScheduleManager from "@/components/menu/ScheduleManager";
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { resolveMenuItemImageSource } from "@/lib/menuItemImageSource";
@@ -80,6 +81,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
   const [newPricingText, setNewPricingText] = useState("");
 
   const [hasChanges, setHasChanges] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const hasSavedRef = useRef(false);
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
     hasChanges && !hasSavedRef.current
@@ -219,16 +221,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           </TouchableOpacity>
           {initialData && onDelete && (
             <TouchableOpacity
-              onPress={() =>
-                Alert.alert("Delete Category", "Are you sure you want to delete this category?", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: onDelete,
-                  },
-                ])
-              }
+              onPress={() => setShowDeleteDialog(true)}
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
@@ -781,6 +774,17 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           }}
         />
       </BottomSheet>
+
+      <DeleteConfirmDialog
+        isOpen={showDeleteDialog}
+        title="Delete Category"
+        message="Are you sure you want to delete this category? This action cannot be undone."
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={() => {
+          setShowDeleteDialog(false);
+          onDelete?.();
+        }}
+      />
     </View>
   );
 };

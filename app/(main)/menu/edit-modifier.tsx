@@ -1,4 +1,5 @@
 import RecipeManager from "@/components/inventory/RecipeManager";
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
@@ -61,6 +62,7 @@ const EditModifierScreen: React.FC = () => {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [originalFormData, setOriginalFormData] = useState<ModifierFormData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -197,29 +199,24 @@ const EditModifierScreen: React.FC = () => {
   };
 
   const handleDelete = () => {
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
     if (!existing) return;
-    Alert.alert("Delete Modifier Group", "Are you sure you want to delete this modifier group?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          setIsSaving(true);
-          try {
-            const { error } = await MenuService.deleteModifierGroup(supabase, existing.id);
-            if (error) {
-              show({ title: "Error", message: error.message || "Failed to delete modifier group.", type: "error" });
-              return;
-            }
-            deleteModifierGroup(existing.id);
-            show({ title: "Modifier Deleted", message: `"${existing.name}" has been deleted.`, type: "success" });
-            router.back();
-          } finally {
-            setIsSaving(false);
-          }
-        },
-      },
-    ]);
+    setIsSaving(true);
+    try {
+      const { error } = await MenuService.deleteModifierGroup(supabase, existing.id);
+      if (error) {
+        show({ title: "Error", message: error.message || "Failed to delete modifier group.", type: "error" });
+        return;
+      }
+      deleteModifierGroup(existing.id);
+      show({ title: "Modifier Deleted", message: `"${existing.name}" has been deleted.`, type: "success" });
+      router.back();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const addOption = () => {
@@ -698,6 +695,17 @@ const EditModifierScreen: React.FC = () => {
       </Modal>
 
       <UnsavedChangesDialog isOpen={isDialogVisible} onCancel={handleCancel} onDiscard={handleDiscard} />
+
+      <DeleteConfirmDialog
+        isOpen={showDeleteDialog}
+        title="Delete Modifier Group"
+        message="Are you sure you want to delete this modifier group? This action cannot be undone."
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={() => {
+          setShowDeleteDialog(false);
+          confirmDelete();
+        }}
+      />
     </View>
   );
 };

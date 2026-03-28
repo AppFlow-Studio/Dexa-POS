@@ -1,5 +1,6 @@
 import ScheduleFormSheet from "@/components/menu/ScheduleFormSheet";
 import ScheduleManager from "@/components/menu/ScheduleManager";
+import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
@@ -88,6 +89,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const [hasChanges, setHasChanges] = useState(false);
   const hasSavedRef = useRef(false);
@@ -254,16 +256,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
           </TouchableOpacity>
           {initialData && onDelete && (
             <TouchableOpacity
-              onPress={() =>
-                Alert.alert("Delete Menu", "Are you sure you want to delete this menu?", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: onDelete,
-                  },
-                ])
-              }
+              onPress={() => setShowDeleteDialog(true)}
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
@@ -904,6 +897,17 @@ const MenuForm: React.FC<MenuFormProps> = ({
         isOpen={isDialogVisible}
         onCancel={handleCancel}
         onDiscard={handleDiscard}
+      />
+
+      <DeleteConfirmDialog
+        isOpen={showDeleteDialog}
+        title="Delete Menu"
+        message="Are you sure you want to delete this menu? This action cannot be undone."
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={() => {
+          setShowDeleteDialog(false);
+          onDelete?.();
+        }}
       />
 
       <ScheduleFormSheet
