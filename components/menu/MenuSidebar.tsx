@@ -3,14 +3,22 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { router, usePathname } from "expo-router";
 import {
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   Layers,
   ListOrdered,
   Plus,
   Settings2,
   Sliders,
 } from "lucide-react-native";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 // Sidebar Tab Types
 type SidebarTab = "menus" | "categories" | "items" | "modifiers" | "schedules";
@@ -19,6 +27,9 @@ interface MenuSidebarProps {
   activeTab?: SidebarTab;
   onTabChange?: (tab: SidebarTab) => void;
 }
+
+const EXPANDED_WIDTH = 220;
+const COLLAPSED_WIDTH = 72;
 
 const TAB_CONFIG: {
   id: SidebarTab;
@@ -33,15 +44,19 @@ const TAB_CONFIG: {
 ];
 
 const MenuSidebar = React.memo(
-  ({
+  function MenuSidebarComponent({
     activeTab: externalActiveTab,
     onTabChange,
-  }: MenuSidebarProps) => {
+  }: MenuSidebarProps) {
     const menuItems = useMenuStore((s) => s.menuItems);
     const storeCategories = useMenuStore((s) => s.categories);
     const storeMenus = useMenuStore((s) => s.menus);
     const modifierGroups = useMenuStore((s) => s.modifierGroups);
     const pathname = usePathname();
+
+    const [isExpanded, setIsExpanded] = useState(true);
+    const widthSV = useSharedValue(EXPANDED_WIDTH);
+    const opacitySV = useSharedValue(1);
 
     const getActiveTab = (): SidebarTab => {
       if (
@@ -132,29 +147,89 @@ const MenuSidebar = React.memo(
       }
     };
 
+    const toggleSidebar = () => {
+      setIsExpanded((prev) => !prev);
+    };
+
+    useEffect(() => {
+      const config = {
+        duration: 200,
+        easing: Easing.out(Easing.quad),
+      };
+
+      widthSV.value = withTiming(
+        isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
+        config
+      );
+      opacitySV.value = withTiming(isExpanded ? 1 : 0, { duration: 150 });
+    }, [isExpanded]);
+
+    const containerStyle = useAnimatedStyle(() => ({
+      width: widthSV.value,
+    }));
+
+    const textStyle = useAnimatedStyle(() => ({
+      opacity: opacitySV.value,
+      display: opacitySV.value === 0 ? "none" : "flex",
+    }));
+
     const showAdd = activeTab !== "schedules";
 
     return (
-      <View
-        style={{
-          width: 220,
-          backgroundColor: colors.panel,
-          borderRightWidth: 1,
-          borderRightColor: colors.border,
-          height: "100%",
-        }}
+      <Animated.View
+        style={[
+          containerStyle,
+          {
+            backgroundColor: colors.panel,
+            borderRightWidth: 1,
+            borderRightColor: colors.border,
+            height: "100%",
+            position: "relative",
+          },
+        ]}
       >
-        {/* Header */}
-        <View
+        {/* Floating Toggle Button */}
+        <TouchableOpacity
+          onPress={toggleSidebar}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          activeOpacity={0.7}
           style={{
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
-            flexDirection: "row",
+            position: "absolute",
+            right: -14,
+            top: "50%",
+            marginTop: -16,
+            zIndex: 50,
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            borderWidth: 1,
+            borderColor: colors.border,
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "center",
           }}
+        >
+          {isExpanded ? (
+            <ChevronLeft size={16} color={colors.label} />
+          ) : (
+            <ChevronRight size={16} color={colors.label} />
+          )}
+        </TouchableOpacity>
+
+        {/* Header */}
+        <Animated.View
+          style={[
+            textStyle,
+            {
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            },
+          ]}
         >
           <Text
             style={{
@@ -179,7 +254,7 @@ const MenuSidebar = React.memo(
               <Plus size={14} color={colors.teal} />
             </TouchableOpacity>
           )}
-        </View>
+        </Animated.View>
 
         {/* Tabs */}
         <View style={{ flex: 1 }}>
@@ -195,7 +270,8 @@ const MenuSidebar = React.memo(
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 14,
+                  justifyContent: isExpanded ? "flex-start" : "center",
+                  paddingHorizontal: isExpanded ? 14 : 8,
                   paddingVertical: 10,
                   borderBottomWidth: 1,
                   borderBottomColor: colors.border,
@@ -208,44 +284,50 @@ const MenuSidebar = React.memo(
               >
                 <View
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 8,
+                    width: 32,
+                    height: 32,
+                    borderRadius: 9,
                     backgroundColor: isActive
                       ? colors.teal + "20"
                       : colors.card,
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 10,
+                    marginRight: isExpanded ? 10 : 0,
+                    flexShrink: 0,
                   }}
                 >
                   <Icon
-                    size={14}
+                    size={16}
                     color={isActive ? colors.teal : colors.label}
                   />
                 </View>
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: 13,
-                    fontWeight: isActive ? "600" : "400",
-                    color: isActive ? colors.teal : colors.label,
-                  }}
-                >
-                  {tab.label}
-                </Text>
-                {count !== null && (
-                  <View
+                <Animated.View style={[textStyle, { flex: 1 }]}>
+                  <Text
                     style={{
-                      backgroundColor: isActive
-                        ? colors.teal + "20"
-                        : colors.card,
-                      borderRadius: 10,
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      minWidth: 20,
-                      alignItems: "center",
+                      fontSize: 13,
+                      fontWeight: isActive ? "600" : "400",
+                      color: isActive ? colors.teal : colors.label,
                     }}
+                  >
+                    {tab.label}
+                  </Text>
+                </Animated.View>
+                {count !== null && (
+                  <Animated.View
+                    style={[
+                      textStyle,
+                      {
+                        backgroundColor: isActive
+                          ? colors.teal + "20"
+                          : colors.card,
+                        borderRadius: 10,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        minWidth: 20,
+                        alignItems: "center",
+                        flexShrink: 0,
+                      },
+                    ]}
                   >
                     <Text
                       style={{
@@ -256,15 +338,17 @@ const MenuSidebar = React.memo(
                     >
                       {count}
                     </Text>
-                  </View>
+                  </Animated.View>
                 )}
               </TouchableOpacity>
             );
           })}
         </View>
-      </View>
+      </Animated.View>
     );
   }
 );
+
+MenuSidebar.displayName = "MenuSidebar";
 
 export default MenuSidebar;
