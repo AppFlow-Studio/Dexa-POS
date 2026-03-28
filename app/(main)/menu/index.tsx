@@ -259,12 +259,12 @@ const DraggableMenu = React.memo(({
               paddingHorizontal: 8,
               paddingVertical: 3,
               borderRadius: 20,
-              backgroundColor: statusActive ? colors.success + "20" : colors.danger + "15",
+              backgroundColor: statusActive ? colors.teal + "20" : colors.danger + "15",
               borderWidth: 1,
-              borderColor: statusActive ? colors.success + "50" : colors.danger + "30",
+              borderColor: statusActive ? colors.teal + "50" : colors.danger + "30",
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: "600", color: statusActive ? colors.success : colors.danger }}>
+            <Text style={{ fontSize: 10, fontWeight: "600", color: statusActive ? colors.teal : colors.danger }}>
               {menu.isActive ? (isAvailable ? "Available" : "Unavailable") : "Inactive"}
             </Text>
           </View>
@@ -449,12 +449,12 @@ const DraggableMenuCategory = React.memo(({
               paddingHorizontal: 7,
               paddingVertical: 2,
               borderRadius: 20,
-              backgroundColor: category.isActive ? colors.success + "20" : colors.danger + "15",
+              backgroundColor: category.isActive ? colors.teal + "20" : colors.danger + "15",
               borderWidth: 1,
-              borderColor: category.isActive ? colors.success + "50" : colors.danger + "30",
+              borderColor: category.isActive ? colors.teal + "50" : colors.danger + "30",
             }}
           >
-            <Text style={{ fontSize: 10, fontWeight: "600", color: category.isActive ? colors.success : colors.danger }}>
+            <Text style={{ fontSize: 10, fontWeight: "600", color: category.isActive ? colors.teal : colors.danger }}>
               {category.isActive ? "Active" : "Inactive"}
             </Text>
           </View>
