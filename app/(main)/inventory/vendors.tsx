@@ -1421,9 +1421,6 @@ const VendorScreen = () => {
           onCreatePO={() => {
             setPoModuleVendor(sidebarVendor)
             setPoModuleOpenSignal(s => s + 1)
-            setSidebarVendor(null)
-            setIsSidebarClosing(false)
-            setActiveVendorSidebarId(null)
           }}
         />
       )}
