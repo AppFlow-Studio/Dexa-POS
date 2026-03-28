@@ -1,5 +1,6 @@
 import PaymentBottomSheet from '@/components/bill/PaymentBottomSheet'
 import Header from '@/components/Header'
+import MenuSearchSheet from '@/components/menu/MenuSearchSheet'
 import PaymentDetailBottomSheet from '@/components/menu/PaymentDetailBottomSheet'
 import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
 import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
@@ -10,6 +11,7 @@ import { setHeaderHeight } from '@/lib/headerHeight'
 import { colors, spinnerColor } from '@/lib/theme'
 import { hydrateDrawerSession } from '@/services/cashDrawerService'
 import { useKDSStore } from '@/stores/useKDSStore'
+import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
 import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
 import {
   getOrderStoreSupabaseClient,
@@ -44,13 +46,19 @@ export default function MainLayout () {
 
   const notificationSheetRef = useRef<BottomSheetMethods>(null)
   const paymentDetailSheetRef = useRef<BottomSheetMethods>(null)
+  const menuSearchSheetRef = useRef<BottomSheetMethods>(null)
   const { setSheetRef } = useNotificationSheetStore()
+  const { setSearchSheetRef } = useMenuManagementSearchStore()
 
   useEffect(() => {
     if (!isKDS) {
       setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>)
     }
   }, [setSheetRef, isKDS])
+
+  useEffect(() => {
+    setSearchSheetRef(menuSearchSheetRef as React.RefObject<BottomSheetMethods>)
+  }, [setSearchSheetRef])
 
   // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
   useEffect(() => {
@@ -233,6 +241,20 @@ export default function MainLayout () {
             pointerEvents='box-none'
           >
             <PaymentDetailBottomSheet ref={paymentDetailSheetRef} />
+          </View>
+          {/* MenuSearchSheet — absolute overlay so it covers the app header */}
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 200
+            }}
+            pointerEvents='box-none'
+          >
+            <MenuSearchSheet ref={menuSearchSheetRef} />
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>

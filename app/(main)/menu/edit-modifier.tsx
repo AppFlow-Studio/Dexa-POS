@@ -1,4 +1,5 @@
 import RecipeManager from "@/components/inventory/RecipeManager";
+import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import DeleteConfirmDialog from "@/components/ui/DeleteConfirmDialog";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
@@ -262,17 +263,7 @@ const EditModifierScreen: React.FC = () => {
   }
 
   if (isGlobalModifier || !isLocalModifier) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.panel, alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading, marginBottom: 8 }}>Global Modifier</Text>
-        <Text style={{ fontSize: 13, color: colors.muted, textAlign: "center", marginBottom: 20 }}>
-          This modifier group belongs to all locations and cannot be edited here. Contact your administrator.
-        </Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.teal + "20", borderRadius: 8, borderWidth: 1, borderColor: colors.teal + "50" }}>
-          <Text style={{ fontSize: 13, color: colors.teal, fontWeight: "600" }}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <GlobalItemScreen type="Modifier" />
   }
 
   return (

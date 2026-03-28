@@ -1,494 +1,361 @@
-import { bottomSheetTheme, colors } from "@/lib/theme";
-import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
-import { useMenuStore } from "@/stores/useMenuStore";
+import { bottomSheetTheme, colors } from '@/lib/theme'
+import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
+import { useMenuStore } from '@/stores/useMenuStore'
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetSectionList,
-  BottomSheetTextInput,
-  BottomSheetView,
-} from "@gorhom/bottom-sheet";
-import { router } from "expo-router";
-import {
-  Eye,
-  EyeOff,
-  Layers,
-  ListOrdered,
-  Search,
-  Settings,
-  Sliders,
-  Utensils,
-  X,
-} from "lucide-react-native";
-import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Text, TouchableOpacity, View } from "react-native";
-import { ScheduleCard } from "./ScheduleCard";
+  BottomSheetTextInput
+} from '@gorhom/bottom-sheet'
+import { router } from 'expo-router'
+import { Search, Settings, X } from 'lucide-react-native'
+import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { Text, TouchableOpacity, View } from 'react-native'
+import { ScheduleCard } from './ScheduleCard'
 
-type SidebarTab = "menus" | "categories" | "items" | "modifiers" | "schedules";
-
-const TAB_ICON: Record<SidebarTab, React.ComponentType<any>> = {
-  menus: Layers,
-  categories: ListOrdered,
-  items: Utensils,
-  modifiers: Sliders,
-  schedules: Settings,
-};
-
-interface MenuSearchSheetProps {
-  activeTab: SidebarTab;
+const TAB_LABELS: Record<string, string> = {
+  menus: 'Menus',
+  categories: 'Categories',
+  items: 'Items',
+  modifiers: 'Modifiers',
+  schedules: 'Schedules'
 }
 
-const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
-  ({ activeTab }, ref) => {
-    const { closeSearch } = useMenuManagementSearchStore();
-    const inputRef = useRef<any>(null);
-    const menuItems = useMenuStore((s) => s.menuItems);
-    const storeCategories = useMenuStore((s) => s.categories);
-    const storeMenus = useMenuStore((s) => s.menus);
-    const modifierGroups = useMenuStore((s) => s.modifierGroups);
-    const deleteMenuItem = useMenuStore((s) => s.deleteMenuItem);
-    const toggleItemAvailability = useMenuStore((s) => s.toggleItemAvailability);
-    const toggleMenuActive = useMenuStore((s) => s.toggleMenuActive);
-    const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
-    const [searchQuery, setSearchQuery] = useState("");
+const MenuSearchSheet = forwardRef<BottomSheet>((_, ref) => {
+  const { closeSearch, activeTab } = useMenuManagementSearchStore()
+  const inputRef = useRef<any>(null)
+  const menuItems = useMenuStore(s => s.menuItems)
+  const storeCategories = useMenuStore(s => s.categories)
+  const storeMenus = useMenuStore(s => s.menus)
+  const modifierGroups = useMenuStore(s => s.modifierGroups)
+  const isMenuAvailableNow = useMenuStore(s => s.isMenuAvailableNow)
+  const [searchQuery, setSearchQuery] = useState('')
 
-    useEffect(() => {
-      setSearchQuery("");
-    }, [activeTab]);
+  useEffect(() => {
+    setSearchQuery('')
+  }, [activeTab])
 
-    const searchResults = useMemo(() => {
-      const query = searchQuery.toLowerCase().trim();
-      if (!query) return [];
+  const searchResults = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim()
 
-      switch (activeTab) {
-        case "items":
-          return menuItems.filter((item) =>
-            item.name.toLowerCase().includes(query)
-          );
-        case "categories":
-          return storeCategories.filter((cat) =>
-            cat.name.toLowerCase().includes(query)
-          );
-        case "menus":
-          return storeMenus.filter((menu) =>
-            menu.name.toLowerCase().includes(query)
-          );
-        case "modifiers":
-          return modifierGroups.filter((mod) =>
-            mod.name.toLowerCase().includes(query)
-          );
-        case "schedules": {
-          const scheduledMenus = storeMenus
-            .filter(
-              (m) =>
-                m.schedules?.length &&
-                m.name.toLowerCase().includes(query)
-            )
-            .map((m) => ({ ...m, type: "menu" as const, schedules: m.schedules || [] }));
-          const scheduledCategories = storeCategories
-            .filter(
-              (c) =>
-                c.schedules?.length &&
-                c.name.toLowerCase().includes(query)
-            )
-            .map((c) => ({ ...c, type: "category" as const, schedules: c.schedules || [] }));
-          return [...scheduledMenus, ...scheduledCategories];
-        }
-        default:
-          return [];
+    switch (activeTab) {
+      case 'items':
+        return menuItems.filter(item =>
+          query ? item.name.toLowerCase().includes(query) : true
+        )
+      case 'categories':
+        return storeCategories.filter(cat =>
+          query ? cat.name.toLowerCase().includes(query) : true
+        )
+      case 'menus':
+        return storeMenus.filter(menu =>
+          query ? menu.name.toLowerCase().includes(query) : true
+        )
+      case 'modifiers':
+        return modifierGroups.filter(mod =>
+          query ? mod.name.toLowerCase().includes(query) : true
+        )
+      case 'schedules': {
+        const scheduledMenus = storeMenus
+          .filter(m => m.schedules?.length && (query ? m.name.toLowerCase().includes(query) : true))
+          .map(m => ({ ...m, type: 'menu' as const, schedules: m.schedules || [] }))
+        const scheduledCategories = storeCategories
+          .filter(c => c.schedules?.length && (query ? c.name.toLowerCase().includes(query) : true))
+          .map(c => ({ ...c, type: 'category' as const, schedules: c.schedules || [] }))
+        return [...scheduledMenus, ...scheduledCategories]
       }
-    }, [searchQuery, activeTab, menuItems, storeCategories, storeMenus, modifierGroups]);
+      default:
+        return []
+    }
+  }, [searchQuery, activeTab, menuItems, storeCategories, storeMenus, modifierGroups])
 
-    const groupedResults = useMemo(() => {
-      const map: Record<string, any[]> = {};
-      for (const item of searchResults) {
-        const first = ((item as any).name || "?")[0].toUpperCase();
-        const key = /[A-Z]/.test(first) ? first : "#";
-        if (!map[key]) map[key] = [];
-        map[key].push(item);
+  const groupedResults = useMemo(() => {
+    const map: Record<string, any[]> = {}
+    for (const item of searchResults) {
+      const first = ((item as any).name || '?')[0].toUpperCase()
+      const key = /[A-Z]/.test(first) ? first : '#'
+      if (!map[key]) map[key] = []
+      map[key].push(item)
+    }
+    const letters = Object.keys(map).sort((a, b) => {
+      if (a === '#') return 1
+      if (b === '#') return -1
+      return a.localeCompare(b)
+    })
+    return letters.map(letter => ({ title: letter, data: map[letter] }))
+  }, [searchResults])
+
+
+  const renderItem = ({ item }: { item: any }) => {
+    switch (activeTab) {
+      case 'items': {
+        const isAvailable = item.availability !== false
+        return (
+          <View style={cardStyle}>
+            <View style={{ flex: 1 }}>
+              <Text style={nameStyle} numberOfLines={1}>{item.name}</Text>
+              <Text style={subStyle}>${item.price.toFixed(2)}</Text>
+            </View>
+            <Badge label={isAvailable ? 'Available' : 'Off'} available={isAvailable} />
+            <TouchableOpacity
+              onPress={() => { closeSearch(); router.push(`/menu/edit-item?itemId=${item.id}`) }}
+              style={editBtn}
+            >
+              <Settings size={13} color={colors.teal} />
+            </TouchableOpacity>
+          </View>
+        )
       }
-      const letters = Object.keys(map).sort((a, b) => {
-        if (a === "#") return 1;
-        if (b === "#") return -1;
-        return a.localeCompare(b);
-      });
-      return letters.map((letter) => ({ title: letter, data: map[letter] }));
-    }, [searchResults]);
 
-    const handleDeleteItem = (id: string) =>
-      Alert.alert("Delete Item", "Are you sure you want to delete this item?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deleteMenuItem(id) },
-      ]);
-
-    const TabIcon = TAB_ICON[activeTab];
-    const tabLabel = activeTab.charAt(0).toUpperCase() + activeTab.slice(1);
-
-    const renderItem = ({ item }: { item: any }) => {
-      switch (activeTab) {
-        case "items": {
-          const isAvailable = item.availability !== false;
-          return (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 10,
-                marginBottom: 6,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-              }}
+      case 'categories': {
+        const isActive = item.isActive
+        return (
+          <View style={cardStyle}>
+            <Text style={{ ...nameStyle, flex: 1 }}>{item.name}</Text>
+            <Badge label={isActive ? 'Active' : 'Inactive'} available={isActive} />
+            <TouchableOpacity
+              onPress={() => { closeSearch(); router.push(`/menu/edit-category?id=${item.id}`) }}
+              style={{ ...editBtn, marginLeft: 8 }}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={{ fontSize: 12, color: colors.label, marginTop: 2 }}>
-                  ${item.price.toFixed(2)}
-                </Text>
-              </View>
-              <View
-                style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                  borderRadius: 20,
-                  backgroundColor: isAvailable ? colors.success + "20" : colors.danger + "15",
-                  borderWidth: 1,
-                  borderColor: isAvailable ? colors.success + "50" : colors.danger + "30",
-                }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: "600", color: isAvailable ? colors.success : colors.danger }}>
-                  {isAvailable ? "Available" : "Off"}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => toggleItemAvailability(item.id)}
-                style={{ padding: 6 }}
-              >
-                {isAvailable
-                  ? <EyeOff size={14} color={colors.label} />
-                  : <Eye size={14} color={colors.label} />}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleDeleteItem(item.id)}
-                style={{ padding: 6 }}
-              >
-                <X size={13} color={colors.danger} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { closeSearch(); router.push(`/menu/edit-item?itemId=${item.id}`); }}
-                style={{
-                  padding: 6,
-                  backgroundColor: colors.panel,
-                  borderRadius: 7,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Settings size={13} color={colors.label} />
-              </TouchableOpacity>
-            </View>
-          );
-        }
-
-        case "categories": {
-          const isActive = item.isActive;
-          return (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 10,
-                marginBottom: 6,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.heading }}>
-                {item.name}
-              </Text>
-              <View
-                style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                  borderRadius: 20,
-                  backgroundColor: isActive ? colors.success + "20" : colors.danger + "15",
-                  borderWidth: 1,
-                  borderColor: isActive ? colors.success + "50" : colors.danger + "30",
-                  marginRight: 8,
-                }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: "600", color: isActive ? colors.success : colors.danger }}>
-                  {isActive ? "Active" : "Inactive"}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => { closeSearch(); router.push(`/menu/edit-category?id=${item.id}`); }}
-                style={{
-                  padding: 6,
-                  backgroundColor: colors.panel,
-                  borderRadius: 7,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Settings size={13} color={colors.label} />
-              </TouchableOpacity>
-            </View>
-          );
-        }
-
-        case "menus": {
-          const isActive = item.isActive;
-          const isAvailableNow = isMenuAvailableNow(item.id);
-          const statusOk = isActive && isAvailableNow;
-          return (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 10,
-                marginBottom: 6,
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.heading }}>
-                {item.name}
-              </Text>
-              <View
-                style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                  borderRadius: 20,
-                  backgroundColor: statusOk ? colors.success + "20" : colors.danger + "15",
-                  borderWidth: 1,
-                  borderColor: statusOk ? colors.success + "50" : colors.danger + "30",
-                  marginRight: 8,
-                }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: "600", color: statusOk ? colors.success : colors.danger }}>
-                  {isActive ? (isAvailableNow ? "Available" : "Unavailable") : "Inactive"}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => toggleMenuActive(item.id)}
-                style={{ padding: 6, marginRight: 4 }}
-              >
-                {isActive
-                  ? <Eye size={14} color={colors.success} />
-                  : <EyeOff size={14} color={colors.danger} />}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { closeSearch(); router.push(`/menu/edit-menu?id=${item.id}`); }}
-                style={{
-                  padding: 6,
-                  backgroundColor: colors.panel,
-                  borderRadius: 7,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Settings size={13} color={colors.label} />
-              </TouchableOpacity>
-            </View>
-          );
-        }
-
-        case "modifiers": {
-          const isRequired = item.type === "required";
-          return (
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 10,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: 10,
-                marginBottom: 6,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: colors.heading }} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <View
-                style={{
-                  paddingHorizontal: 7,
-                  paddingVertical: 2,
-                  borderRadius: 20,
-                  backgroundColor: isRequired ? colors.danger + "15" : colors.teal + "15",
-                  borderWidth: 1,
-                  borderColor: isRequired ? colors.danger + "30" : colors.teal + "30",
-                }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: "600", color: isRequired ? colors.danger : colors.teal }}>
-                  {isRequired ? "Required" : "Optional"}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => { closeSearch(); router.push(`/menu/edit-modifier?id=${item.id}`); }}
-                style={{
-                  padding: 6,
-                  backgroundColor: colors.panel,
-                  borderRadius: 7,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Settings size={13} color={colors.label} />
-              </TouchableOpacity>
-            </View>
-          );
-        }
-
-        case "schedules":
-          return <ScheduleCard item={item} />;
-
-        default:
-          return null;
+              <Settings size={13} color={colors.teal} />
+            </TouchableOpacity>
+          </View>
+        )
       }
-    };
 
-    return (
-      <BottomSheet
-        ref={ref}
-        index={-1}
-        snapPoints={["55%"]}
-        enablePanDownToClose
-        onClose={closeSearch}
-        onChange={(index) => {
-          if (index >= 0) setTimeout(() => inputRef.current?.focus(), 100);
-        }}
-        backdropComponent={(props) => (
-          <BottomSheetBackdrop
-            {...props}
-            disappearsOnIndex={-1}
-            appearsOnIndex={0}
-          />
-        )}
-        {...bottomSheetTheme}
-      >
-        <BottomSheetView style={{ flex: 1 }}>
-          {/* Header */}
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 8,
-                  backgroundColor: colors.teal + "15",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <TabIcon size={14} color={colors.teal} />
-              </View>
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.heading }}>
-                Search {tabLabel}
-              </Text>
+      case 'menus': {
+        const isActive = item.isActive
+        const isAvailableNow = isMenuAvailableNow(item.id)
+        const statusOk = isActive && isAvailableNow
+        return (
+          <View style={cardStyle}>
+            <Text style={{ ...nameStyle, flex: 1 }}>{item.name}</Text>
+            <Badge label={statusOk ? 'Available' : 'Unavailable'} available={statusOk} />
+            <TouchableOpacity
+              onPress={() => { closeSearch(); router.push(`/menu/edit-menu?id=${item.id}`) }}
+              style={{ ...editBtn, marginLeft: 8 }}
+            >
+              <Settings size={13} color={colors.teal} />
+            </TouchableOpacity>
+          </View>
+        )
+      }
+
+      case 'modifiers': {
+        const typeLabel = item.type === 'required' ? 'Required' : 'Optional'
+        return (
+          <View style={cardStyle}>
+            <View style={{ flex: 1 }}>
+              <Text style={nameStyle} numberOfLines={1}>{item.name}</Text>
+              <Text style={subStyle}>{typeLabel}</Text>
             </View>
+            <TouchableOpacity
+              onPress={() => { closeSearch(); router.push(`/menu/edit-modifier?id=${item.id}`) }}
+              style={editBtn}
+            >
+              <Settings size={13} color={colors.teal} />
+            </TouchableOpacity>
+          </View>
+        )
+      }
+
+      case 'schedules': {
+        const isMenu = (item as any).type === 'menu'
+        return (
+          <View style={{ ...cardStyle, flexDirection: 'column', alignItems: 'stretch' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ ...nameStyle, flex: 1 }}>{item.name}</Text>
+              <Badge label={isMenu ? 'Menu' : 'Category'} available={true} />
+            </View>
+            {item.schedules?.map((schedule: any) => (
+              <ScheduleCard key={schedule.id} item={schedule} />
+            ))}
+          </View>
+        )
+      }
+
+      default:
+        return null
+    }
+  }
+
+  return (
+    <BottomSheet
+      ref={ref}
+      index={-1}
+      snapPoints={['90%']}
+      enablePanDownToClose={true}
+      onClose={closeSearch}
+      backdropComponent={({ style, animatedIndex, animatedPosition }) => (
+        <BottomSheetBackdrop
+          style={style}
+          animatedIndex={animatedIndex}
+          animatedPosition={animatedPosition}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      )}
+      keyboardBehavior='extend'
+      {...bottomSheetTheme}
+    >
+        {/* Header */}
+        <View style={{
+          paddingHorizontal: 16,
+          paddingTop: 6,
+          paddingBottom: 14,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          backgroundColor: colors.screen,
+          gap: 12
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.heading }}>
+              {TAB_LABELS[activeTab] ?? 'Search'}
+            </Text>
             <TouchableOpacity
               onPress={closeSearch}
               style={{
-                padding: 6,
-                backgroundColor: colors.card,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
                 borderRadius: 8,
+                backgroundColor: colors.card,
                 borderWidth: 1,
-                borderColor: colors.border,
+                borderColor: colors.border
               }}
             >
-              <X size={14} color={colors.label} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.label }}>Close</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Search input */}
-          <View
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: colors.screen,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                gap: 8,
-              }}
-            >
-              <Search size={14} color={colors.muted} />
-              <BottomSheetTextInput
-                ref={inputRef}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder={`Search ${activeTab}…`}
-                placeholderTextColor={colors.muted}
-                style={{
-                  flex: 1,
-                  height: 38,
-                  fontSize: 13,
-                  color: colors.heading,
-                }}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery("")}>
-                  <X size={13} color={colors.muted} />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* Results */}
-          <BottomSheetSectionList
-            key={activeTab}
-            sections={groupedResults}
-            keyExtractor={(item) => item.id}
-            renderSectionHeader={({ section }) => (
-              <View style={{ paddingVertical: 4, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 4, marginTop: 8 }}>
-                <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "700", letterSpacing: 1 }}>{section.title}</Text>
-              </View>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            height: 40,
+            borderWidth: 1,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 10
+          }}>
+            <Search color={colors.muted} size={15} />
+            <BottomSheetTextInput
+              ref={inputRef}
+              value={searchQuery || ''}
+              onChangeText={setSearchQuery}
+              placeholder={`Search ${TAB_LABELS[activeTab]?.toLowerCase() ?? ''}...`}
+              placeholderTextColor={colors.muted}
+              style={{ flex: 1, color: colors.heading, fontSize: 13, fontWeight: '500' }}
+            />
+            {(searchQuery || '').length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X color={colors.muted} size={15} />
+              </TouchableOpacity>
             )}
-            renderItem={renderItem}
-            contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 40 }}
-            ListEmptyComponent={
-              <View style={{ alignItems: "center", paddingTop: 32, gap: 8 }}>
-                <Search size={24} color={colors.muted} />
-                <Text style={{ fontSize: 13, color: colors.muted }}>
-                  {searchQuery ? "No results found." : "Start typing to search."}
-                </Text>
-              </View>
-            }
-          />
-        </BottomSheetView>
-      </BottomSheet>
-    );
-  }
-);
+          </View>
+        </View>
 
-export default MenuSearchSheet;
+        <BottomSheetSectionList
+          sections={groupedResults}
+          keyExtractor={(item: any) => item.id}
+          ListHeaderComponent={searchResults.length > 0 ? (
+            <View style={{ paddingBottom: 4 }}>
+              <Text style={{ fontSize: 11, color: colors.muted, fontWeight: '500' }}>
+                {searchResults.length} {searchResults.length === 1 ? 'result' : 'results'}
+              </Text>
+            </View>
+          ) : null}
+          renderSectionHeader={({ section }) => (
+            <View style={{ paddingVertical: 5, backgroundColor: colors.panel }}>
+              <Text style={{
+                color: colors.muted,
+                fontSize: 10,
+                fontWeight: '700',
+                letterSpacing: 0.8,
+                textTransform: 'uppercase'
+              }}>
+                {section.title}
+              </Text>
+            </View>
+          )}
+          renderItem={renderItem}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 10,
+            paddingBottom: 40
+          }}
+          stickySectionHeadersEnabled={false}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', paddingTop: 60, gap: 12 }}>
+              <Search size={32} color={colors.muted} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.label }}>
+                {searchQuery ? `No results for "${searchQuery}"` : `No ${TAB_LABELS[activeTab]?.toLowerCase()} found`}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.muted }}>
+                {searchQuery ? 'Try a different search term' : 'Add some to get started'}
+              </Text>
+            </View>
+          }
+        />
+    </BottomSheet>
+  )
+})
+
+// Shared styles
+const cardStyle: any = {
+  backgroundColor: colors.card + 'cc',
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: colors.border,
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  marginBottom: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10
+}
+
+const nameStyle: any = {
+  fontSize: 13,
+  fontWeight: '600',
+  color: colors.heading
+}
+
+const subStyle: any = {
+  fontSize: 12,
+  color: colors.teal,
+  marginTop: 3,
+  fontWeight: '500'
+}
+
+const editBtn: any = {
+  padding: 7,
+  backgroundColor: colors.teal + '18',
+  borderRadius: 7,
+  borderWidth: 1,
+  borderColor: colors.teal + '35'
+}
+
+// Badge component
+function Badge({ label, available }: { label: string; available: boolean }) {
+  return (
+    <View style={{
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: available ? colors.teal + '18' : colors.danger + '15',
+      borderWidth: 1,
+      borderColor: available ? colors.teal + '35' : colors.danger + '30'
+    }}>
+      <Text style={{
+        fontSize: 11,
+        fontWeight: '600',
+        color: available ? colors.teal : colors.danger
+      }}>
+        {label}
+      </Text>
+    </View>
+  )
+}
+
+export default MenuSearchSheet

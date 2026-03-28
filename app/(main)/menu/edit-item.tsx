@@ -6,8 +6,8 @@ import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { GlobalItemScreen } from "@/components/menu/GlobalItemScreen";
 import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
 
 const EditMenuItemScreen: React.FC = () => {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
@@ -42,21 +42,7 @@ const EditMenuItemScreen: React.FC = () => {
   const isLocalItem = itemToEdit.location_id === selectedStore?.id;
 
   if (isGlobalItem || !isLocalItem) {
-    return (
-      <View className="flex-1 bg-panel items-center justify-center p-4">
-        <Text className="text-2xl text-white font-bold mb-2">Global Item</Text>
-        <Text className="text-lg text-gray-400 text-center mb-6">
-          This item belongs to all locations and cannot be edited from here.
-          Please contact your administrator to modify global items.
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="bg-blue-600 px-6 py-3 rounded-lg"
-        >
-          <Text className="text-lg text-white font-medium">Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <GlobalItemScreen type="Item" />
   }
 
   const handleSubmit = async (
