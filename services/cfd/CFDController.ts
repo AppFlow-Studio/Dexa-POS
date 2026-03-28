@@ -6,9 +6,11 @@ import type {
     CFDMessage,
     CFDPairingData,
     CFDPayload,
+    CFDPhoneResponse,
     CFDScreenState,
     CFDTipResponse,
 } from "@/types/cfd.types";
+import type { LoyaltyEarnResult } from "@/services/loyalty/loyaltyService";
 import * as Device from "expo-device";
 import { WebSocketServer } from "./WebSocketServer";
 
@@ -16,6 +18,8 @@ interface CFDCallbacks {
   onCFDConnected?: (clientId: string) => void;
   onCFDDisconnected?: (clientId: string) => void;
   onTipSelected?: (response: CFDTipResponse) => void;
+  onPhoneSubmitted?: (phone: string) => void;
+  onLoyaltySkip?: () => void;
 }
 
 export class CFDController {
@@ -113,6 +117,16 @@ export class CFDController {
           }
           break;
 
+        case "phone_submitted":
+          if (message.payload) {
+            this.callbacks.onPhoneSubmitted?.((message.payload as CFDPhoneResponse).phone);
+          }
+          break;
+
+        case "loyalty_skip":
+          this.callbacks.onLoyaltySkip?.();
+          break;
+
         default:
           console.log("[CFD] Unknown message type:", message.type);
       }
@@ -149,6 +163,8 @@ export class CFDController {
       branding: this.branding,
       tipConfig: this.lastPayload.tipConfig,
       carouselImages: this.lastPayload.carouselImages,
+      loyaltyPrompt: this.lastPayload.loyaltyPrompt,
+      loyaltyResult: this.lastPayload.loyaltyResult,
       timestamp: Date.now(),
     };
 
@@ -307,6 +323,40 @@ export class CFDController {
   }
 
   /**
+   * Show loyalty phone entry screen
+   */
+  showLoyaltyPrompt(merchantName: string): void {
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      screenState: "loyalty_prompt",
+      loyaltyPrompt: { merchantName },
+      loyaltyResult: undefined,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Show loyalty points earned confirmation
+   */
+  showLoyaltyConfirmation(result: LoyaltyEarnResult[], customerName?: string): void {
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      screenState: "loyalty_confirmation",
+      loyaltyResult: {
+        customerName,
+        programs: result.map((r) => ({
+          name: r.program_name,
+          type: r.program_type,
+          earned: r.earned,
+          newBalance: r.new_balance,
+          rewardUnlocked: r.reward_unlocked,
+        })),
+      },
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
    * Get QR code pairing data
    */
   getPairingData(): CFDPairingData | null {
@@ -320,6 +370,16 @@ export class CFDController {
       locationId: this.locationId,
       locationName: this.branding.restaurantName,
     };
+  }
+
+  /**
+   * Update branding without restarting the server (called when logo URL changes)
+   */
+  updateBranding(branding: CFDBranding): void {
+    this.branding = branding;
+    if (this.lastPayload.screenState !== undefined) {
+      this.broadcast({ ...(this.lastPayload as CFDPayload), branding, timestamp: Date.now() });
+    }
   }
 
   /**

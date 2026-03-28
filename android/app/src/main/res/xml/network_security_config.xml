@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Allow cleartext (ws://) for local LAN connections (CFD, payment terminals).
+        All external connections (Supabase, Clerk, CDN) use HTTPS and are unaffected.
+        IP range scoping is not supported by NetworkSecurityConfig — base-config is
+        the correct approach for a LAN-only POS system.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

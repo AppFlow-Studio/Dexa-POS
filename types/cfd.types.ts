@@ -9,7 +9,9 @@ export type CFDScreenState =
   | "payment" // "Present Card"
   | "processing" // Processing payment
   | "approved" // Success
-  | "declined"; // Failed
+  | "declined" // Failed
+  | "loyalty_prompt" // Phone number entry
+  | "loyalty_confirmation"; // Points earned success
 
 export interface CFDCartItem {
   id: string;
@@ -93,6 +95,21 @@ export interface CFDPayload {
 
   carouselImages?: string[];
 
+  // Loyalty (post-payment)
+  loyaltyPrompt?: {
+    merchantName: string;
+  };
+  loyaltyResult?: {
+    customerName?: string;
+    programs: Array<{
+      name: string;
+      type: string; // 'points' | 'visits' | 'punch_card'
+      earned: number;
+      newBalance: number;
+      rewardUnlocked: boolean;
+    }>;
+  };
+
   // Timestamp
   timestamp: number;
 }
@@ -104,9 +121,14 @@ export interface CFDTipResponse {
   timestamp: number;
 }
 
+export interface CFDPhoneResponse {
+  phone: string; // raw digits, e.g. "5551234567"
+  timestamp: number;
+}
+
 export interface CFDMessage {
-  type: "state_update" | "ping" | "pong" | "tip_selected";
-  payload?: CFDPayload | CFDTipResponse;
+  type: "state_update" | "ping" | "pong" | "tip_selected" | "phone_submitted" | "loyalty_skip";
+  payload?: CFDPayload | CFDTipResponse | CFDPhoneResponse;
   timestamp: number;
 }
 

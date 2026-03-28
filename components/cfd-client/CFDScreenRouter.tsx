@@ -5,6 +5,8 @@ import React from "react";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 import { IdleScreen } from "./IdleScreen";
+import { LoyaltyConfirmationScreen } from "./LoyaltyConfirmationScreen";
+import { LoyaltyPromptScreen } from "./LoyaltyPromptScreen";
 import { OrderingScreen } from "./OrderingScreen";
 import { PaymentScreen } from "./PaymentScreen";
 import { ResultScreen } from "./ResultScreen";
@@ -12,9 +14,11 @@ import { TipSelectionScreen } from "./TipSelectionScreen";
 
 interface Props {
   onTipSelected?: (tipAmount: number, tipPercentage: number | null) => void;
+  onPhoneSubmitted?: (phone: string) => void;
+  onLoyaltySkip?: () => void;
 }
 
-export function CFDScreenRouter({ onTipSelected }: Props) {
+export function CFDScreenRouter({ onTipSelected, onPhoneSubmitted, onLoyaltySkip }: Props) {
   const { screenState, items } = useCFDDisplayData();
 
   // Resolve actual screen for animation key
@@ -27,6 +31,8 @@ export function CFDScreenRouter({ onTipSelected }: Props) {
       case "processing":
       case "approved":
       case "declined":
+      case "loyalty_prompt":
+      case "loyalty_confirmation":
         return screenState;
       default:
         return items.length > 0 ? "ordering" : "idle";
@@ -51,6 +57,15 @@ export function CFDScreenRouter({ onTipSelected }: Props) {
         return <ResultScreen success />;
       case "declined":
         return <ResultScreen success={false} />;
+      case "loyalty_prompt":
+        return (
+          <LoyaltyPromptScreen
+            onPhoneSubmitted={onPhoneSubmitted ?? (() => {})}
+            onSkip={onLoyaltySkip ?? (() => {})}
+          />
+        );
+      case "loyalty_confirmation":
+        return <LoyaltyConfirmationScreen />;
       default:
         return <IdleScreen />;
     }
