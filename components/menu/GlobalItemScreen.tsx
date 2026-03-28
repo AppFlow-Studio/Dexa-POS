@@ -10,35 +10,6 @@ interface GlobalItemScreenProps {
 export function GlobalItemScreen({ type }: GlobalItemScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.panel }}>
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        backgroundColor: colors.card
-      }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 7,
-            borderRadius: 8,
-            backgroundColor: colors.screen,
-            borderWidth: 1,
-            borderColor: colors.border
-          }}
-        >
-          <ArrowLeft size={14} color={colors.label} />
-          <Text style={{ fontSize: 13, color: colors.label, fontWeight: '500' }}>Back</Text>
-        </TouchableOpacity>
-      </View>
-
       {/* Content */}
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
         {/* Icon */}
