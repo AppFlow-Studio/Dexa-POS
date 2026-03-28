@@ -1110,48 +1110,51 @@ const MenuPage: React.FC = () => {
                   {letter}
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                  {items.map((item, itemIndex) => {
+                  {items.map((item) => {
                     const editable = isEntityEditable(item.location_id, item.name);
                     const isAvailable = item.availability !== false;
                     return (
-                      <View key={item.id} style={{ position: "relative" }}>
-                        <DraggableMenuItem
-                          item={item}
-                          index={itemIndex}
-                          categoryId=""
-                          menuId=""
-                          onReorder={() => {}}
-                          onItemPriceEdit={() => {
-                            priceEditRef.current?.open(
-                              {
-                                id: item.id,
-                                name: item.name,
-                                currentPrice: item.price,
-                                currentCashPrice: item.cashPrice,
-                                currentAvailability: item.availability,
-                              },
-                              { categoryId: null, menuId: null }
-                            );
-                          }}
-                          isEditable={editable}
-                        />
+                      <View key={item.id} style={{ position: "relative", width: 130, height: 160, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
+                        {/* Image */}
+                        <View style={{ height: 100, width: "100%" }}>
+                          {item.image ? (
+                            <Image
+                              source={{ uri: item.image.length > 200 ? `data:image/jpeg;base64,${item.image}` : item.image }}
+                              style={{ width: "100%", height: "100%" }}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <View style={{ flex: 1, backgroundColor: `${colors.teal}08`, alignItems: "center", justifyContent: "center" }}>
+                              <Utensils color={`${colors.label}60`} size={18} />
+                            </View>
+                          )}
+                        </View>
+                        {/* Content */}
+                        <View style={{ paddingHorizontal: 8, paddingVertical: 6, gap: 2 }}>
+                          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.heading, lineHeight: 14 }} numberOfLines={2}>
+                            {item.name}
+                          </Text>
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: colors.teal }}>
+                            ${item.price.toFixed(2)}
+                          </Text>
+                        </View>
                         {/* Action overlay */}
-                        <View style={{ position: "absolute", bottom: 4, right: 4, flexDirection: "row", gap: 4, zIndex: 20 }}>
+                        <View style={{ position: "absolute", bottom: 6, right: 6, flexDirection: "row", gap: 4, zIndex: 20 }}>
                           <TouchableOpacity
                             onPress={() => handleToggleAvailability(item.id)}
                             disabled={!editable}
-                            style={{ padding: 6, backgroundColor: colors.card, borderRadius: 6, borderWidth: 1, borderColor: colors.border, opacity: editable ? 1 : 0.4 }}
+                            style={{ padding: 6, backgroundColor: colors.card, borderRadius: 6, opacity: editable ? 1 : 0.4 }}
                           >
                             {isAvailable
-                              ? <Eye size={12} color={colors.success} />
-                              : <EyeOff size={12} color={colors.danger} />}
+                              ? <Eye size={16} color={colors.success} />
+                              : <EyeOff size={16} color={colors.danger} />}
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => handleEditItem(item)}
                             disabled={!editable}
-                            style={{ padding: 6, backgroundColor: colors.card, borderRadius: 6, borderWidth: 1, borderColor: colors.border, opacity: editable ? 1 : 0.4 }}
+                            style={{ padding: 6, backgroundColor: colors.card, borderRadius: 6, opacity: editable ? 1 : 0.4 }}
                           >
-                            <Pencil size={12} color={editable ? colors.teal : colors.muted} />
+                            <Pencil size={16} color={editable ? colors.teal : colors.muted} />
                           </TouchableOpacity>
                         </View>
                       </View>
