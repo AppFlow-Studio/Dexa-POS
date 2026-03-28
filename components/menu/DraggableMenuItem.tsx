@@ -147,7 +147,7 @@ const DraggableMenuItem = React.memo(({
   return (
     <Animated.View style={[animatedStyle, { width: 130 }]}>
       <TouchableOpacity
-        onPress={() => onItemPriceEdit(item, categoryId, menuId)}
+        onPress={() => {}}
         style={[styles.card, styles.touchable]}
         activeOpacity={0.7}
       >

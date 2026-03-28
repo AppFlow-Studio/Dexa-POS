@@ -246,25 +246,6 @@ const MenuForm: React.FC<MenuFormProps> = ({
               Cancel
             </Text>
           </TouchableOpacity>
-          {initialData && (
-            <TouchableOpacity
-              onPress={handleSave}
-              disabled={isSaving}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 8,
-                backgroundColor: colors.card,
-                borderWidth: 1,
-                borderColor: colors.border,
-                opacity: isSaving ? 0.7 : 1,
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.label }}>
-                {isSaving ? "Saving..." : "Save"}
-              </Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
@@ -285,7 +266,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
               <Check size={14} color={colors.onSolid} />
             )}
             <Text style={{ fontSize: 12, fontWeight: "600", color: colors.onSolid }}>
-              {isSaving ? "Saving..." : submitButtonLabel}
+              {isSaving ? "Saving..." : "Save Changes"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -499,107 +480,121 @@ const MenuForm: React.FC<MenuFormProps> = ({
                         borderColor: isSelected ? colors.teal + "40" : colors.border,
                       }}
                     >
-                      <TouchableOpacity
-                        onPress={() => toggleCategorySelection(category.name)}
-                        style={{ padding: 12 }}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                          <View style={{ flex: 1, gap: 6 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
-                                {category.name}
-                              </Text>
-                              <View
-                                style={{
-                                  backgroundColor: isSelected ? colors.teal + "20" : colors.card,
-                                  borderRadius: 10,
-                                  paddingHorizontal: 6,
-                                  paddingVertical: 2,
-                                }}
-                              >
-                                <Text style={{ fontSize: 10, fontWeight: "600", color: isSelected ? colors.teal : colors.muted }}>
-                                  {categoryItems.length}
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <TouchableOpacity
+                          onPress={() => toggleCategorySelection(category.name)}
+                          style={{ flex: 1, padding: 12 }}
+                        >
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                            <View style={{ flex: 1, gap: 4 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.heading }}>
+                                  {category.name}
                                 </Text>
+                                <View
+                                  style={{
+                                    backgroundColor: isSelected ? colors.teal + "20" : colors.card,
+                                    borderRadius: 10,
+                                    paddingHorizontal: 6,
+                                    paddingVertical: 2,
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 10, fontWeight: "600", color: isSelected ? colors.teal : colors.muted }}>
+                                    {categoryItems.length}
+                                  </Text>
+                                </View>
                               </View>
                             </View>
 
-                            {!isExpanded && categoryItems.length > 0 && (
-                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                                {categoryItems.map((item, index) => (
+                            <View
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: 11,
+                                borderWidth: 2,
+                                borderColor: isSelected ? colors.teal : colors.border,
+                                backgroundColor: isSelected ? colors.teal : "transparent",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              {isSelected && <Check size={12} color={colors.onSolid} />}
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+
+                        {categoryItems.length > 0 && (
+                          <TouchableOpacity
+                            onPress={() => toggleCategoryExpansion(category.name)}
+                            style={{ paddingHorizontal: 12, paddingVertical: 12 }}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp size={18} color={colors.label} />
+                            ) : (
+                              <ChevronDown size={18} color={colors.label} />
+                            )}
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {isExpanded && categoryItems.length > 0 && (
+                        <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 8 }}>
+                          {categoryItems.map((item, index) => (
+                            <View
+                              key={index}
+                              style={{
+                                backgroundColor: colors.card,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                paddingHorizontal: 10,
+                                paddingVertical: 8,
+                                borderRadius: 8,
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                            >
+                              <View
+                                style={{
+                                  width: 32,
+                                  height: 32,
+                                  borderRadius: 6,
+                                  borderWidth: 1,
+                                  borderColor: colors.border,
+                                  overflow: "hidden",
+                                }}
+                              >
+                                {getImageSource(item.image) ? (
+                                  <Image
+                                    source={getImageSource(item.image)}
+                                    style={{ width: "100%", height: "100%" }}
+                                    resizeMode="cover"
+                                  />
+                                ) : (
                                   <View
-                                    key={index}
                                     style={{
-                                      backgroundColor: colors.card,
-                                      borderWidth: 1,
-                                      borderColor: colors.border,
-                                      paddingHorizontal: 8,
-                                      paddingVertical: 6,
-                                      borderRadius: 8,
-                                      flexDirection: "row",
+                                      flex: 1,
+                                      backgroundColor: colors.panel,
                                       alignItems: "center",
-                                      gap: 6,
-                                      width: "48%",
+                                      justifyContent: "center",
                                     }}
                                   >
-                                    <View
-                                      style={{
-                                        width: 26,
-                                        height: 26,
-                                        borderRadius: 6,
-                                        borderWidth: 1,
-                                        borderColor: colors.border,
-                                        overflow: "hidden",
-                                      }}
-                                    >
-                                      {getImageSource(item.image) ? (
-                                        <Image
-                                          source={getImageSource(item.image)}
-                                          style={{ width: "100%", height: "100%" }}
-                                          resizeMode="cover"
-                                        />
-                                      ) : (
-                                        <View
-                                          style={{
-                                            flex: 1,
-                                            backgroundColor: colors.panel,
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                          }}
-                                        >
-                                          <Utensils color={colors.muted} size={12} />
-                                        </View>
-                                      )}
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={{ fontSize: 11, color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
-                                        {item.name}
-                                      </Text>
-                                      <Text style={{ fontSize: 10, color: colors.label }}>
-                                        ${item.price.toFixed(2)}
-                                      </Text>
-                                    </View>
+                                    <Utensils color={colors.muted} size={14} />
                                   </View>
-                                ))}
+                                )}
                               </View>
-                            )}
-                          </View>
-
-                          <View
-                            style={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: 11,
-                              borderWidth: 2,
-                              borderColor: isSelected ? colors.teal : colors.border,
-                              backgroundColor: isSelected ? colors.teal : "transparent",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            {isSelected && <Check size={12} color={colors.onSolid} />}
-                          </View>
+                              <View style={{ flex: 1, gap: 2 }}>
+                                <Text style={{ fontSize: 12, color: colors.heading, fontWeight: "500" }} numberOfLines={1}>
+                                  {item.name}
+                                </Text>
+                                <Text style={{ fontSize: 11, color: colors.label }}>
+                                  ${item.price.toFixed(2)}
+                                </Text>
+                              </View>
+                            </View>
+                          ))}
                         </View>
-                      </TouchableOpacity>
+                      )}
 
                     </View>
                   );
@@ -689,7 +684,7 @@ const MenuForm: React.FC<MenuFormProps> = ({
           {/* Right: Summary Panel */}
           <View
             style={{
-              width: 320,
+              width: 300,
               borderLeftWidth: 1,
               borderLeftColor: colors.border,
               backgroundColor: colors.card,
@@ -767,32 +762,13 @@ const MenuForm: React.FC<MenuFormProps> = ({
 
             {/* Menu Status */}
             {name.trim() && (
-              <View
-                style={{
-                  backgroundColor: colors.panel,
-                  borderRadius: 8,
-                  padding: 10,
-                  gap: 6,
-                  marginTop: 8,
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted, textTransform: "uppercase" }}>
-                  Menu Status
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: colors.muted, fontWeight: "500" }}>
+                  Menu Status:
                 </Text>
-                <View
-                  style={{
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 20,
-                    backgroundColor: isActive ? colors.teal + "20" : colors.danger + "15",
-                    borderWidth: 1,
-                    borderColor: isActive ? colors.teal + "50" : colors.danger + "30",
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: isActive ? colors.teal : colors.danger }}>
-                    {isActive ? "Active" : "Inactive"}
-                  </Text>
-                </View>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: isActive ? colors.teal : colors.danger }}>
+                  {isActive ? "Active" : "Inactive"}
+                </Text>
               </View>
             )}
           </View>
