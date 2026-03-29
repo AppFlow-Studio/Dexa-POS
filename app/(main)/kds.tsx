@@ -510,15 +510,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
-          {/* RUSH badge (orange pill, top-right) */}
+          {/* RUSH badge (yellow pill, under timer) */}
           {hasRush && (
             <View
               style={{
                 position: "absolute",
-                top: 8,
-                right: bulkMode ? 30 : 8,
+                top: 34,
+                right: 12,
                 zIndex: 10,
-                backgroundColor: colors.warning,
+                backgroundColor: colors.warning + "20",
+                borderWidth: 1,
+                borderColor: colors.warning + "50",
                 paddingHorizontal: 8,
                 paddingVertical: 3,
                 borderRadius: 12,
@@ -527,36 +529,77 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 gap: 4,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 }}>
-                RUSH
+              <Text style={{ color: colors.warning, fontSize: 10, fontWeight: "800", letterSpacing: 0.5 }}>
+                RUSHED
               </Text>
             </View>
           )}
 
-          {/* Card Header: Order Number + Star + Timer (red if urgent) */}
+          {/* Card Header: Order Number + Order Type + Timer (darker background) */}
           <View
             style={{
-              backgroundColor: "#FFFFFF",
+              backgroundColor: "#F3F4F6",
               paddingHorizontal: 12,
-              paddingVertical: 8,
+              paddingVertical: 10,
               borderBottomWidth: 1,
               borderBottomColor: "#E5E7EB",
               flexDirection: "row",
               justifyContent: "space-between",
-              alignItems: "center",
+              alignItems: "flex-start",
+              gap: 12,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ color: "#111827", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
-                #{ticket.display_number || ticket.order_number?.slice(-4) || "----"}
-                {ticket.course_number > 1 && (
-                  <Text style={{ color: "#F59E0B" }}> C{ticket.course_number}</Text>
+            <View style={{ flex: 1, gap: 4 }}>
+              {/* Order Number */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ color: "#111827", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
+                  #{ticket.display_number || ticket.order_number?.slice(-4) || "----"}
+                  {ticket.course_number > 1 && (
+                    <Text style={{ color: "#F59E0B" }}> C{ticket.course_number}</Text>
+                  )}
+                </Text>
+                {ticket.prioritized && (
+                  <Star size={16} color={colors.warning} fill={colors.warning} />
                 )}
-              </Text>
-              {ticket.prioritized && (
-                <Star size={16} color={colors.warning} fill={colors.warning} />
-              )}
+              </View>
+
+              {/* Order Type */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                {ticket.order_type?.toLowerCase() === "delivery" ? (
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: "#EF4444",
+                    }}
+                  />
+                ) : ticket.order_type?.toLowerCase() === "takeout" || ticket.order_type?.toLowerCase() === "to_go" ? (
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: "#3B82F6",
+                    }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: "#22C55E",
+                    }}
+                  />
+                )}
+                <Text style={{ color: "#374151", fontSize: 11, fontWeight: "600" }}>
+                  {orderTypeLabel}
+                </Text>
+              </View>
             </View>
+
+            {/* Timer */}
             <Text
               style={{
                 color: urgencyLevel > 0 ? colors.danger : colors.label,
@@ -565,52 +608,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               }}
             >
               {timeElapsed}
-            </Text>
-          </View>
-
-          {/* Row 2: Order Type Dot + Label */}
-          <View
-            style={{
-              backgroundColor: "#FFFFFF",
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderBottomWidth: 1,
-              borderBottomColor: "#E5E7EB",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {ticket.order_type?.toLowerCase() === "delivery" ? (
-              <View
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: "#EF4444",
-                }}
-              />
-            ) : ticket.order_type?.toLowerCase() === "takeout" || ticket.order_type?.toLowerCase() === "to_go" ? (
-              <View
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: "#3B82F6",
-                }}
-              />
-            ) : (
-              <View
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: "#22C55E",
-                }}
-              />
-            )}
-            <Text style={{ color: "#374151", fontSize: 12, fontWeight: "600" }}>
-              {orderTypeLabel}
             </Text>
           </View>
 
