@@ -25,14 +25,8 @@ import {
   AlertTriangle,
   ArrowUpToLine,
   CheckSquare,
-  ChefHat,
-  CircleDotDashed,
   Clock,
-  Eye,
-  EyeOff,
   Flame,
-  Layers,
-  LogOut,
   RefreshCw,
   RotateCcw,
   Settings,
@@ -42,8 +36,8 @@ import {
   Truck,
   Globe,
   UtensilsCrossed,
-  Wifi,
-  WifiOff,
+  CircleDotDashed,
+  Undo2,
 } from "lucide-react-native";
 import React, {
   useCallback,
@@ -220,6 +214,26 @@ function matchesTypeFilter(ticket: KDSTicket, filter: OrderTypeFilter): boolean 
   return t === "dine_in" || t === "dine in" || t === "" || !ticket.order_type;
 }
 
+// ─── Allergen Detection ────────────────────────────────────────────
+const ALLERGEN_KEYWORDS: Record<string, { label: string; color: string }> = {
+  shellfish: { label: "SHELLFISH", color: "#EF4444" },
+  dairy: { label: "DAIRY", color: "#F59E0B" },
+  nuts: { label: "NUTS", color: "#8B5CF6" },
+  gluten: { label: "GLUTEN", color: "#F97316" },
+  soy: { label: "SOY", color: "#10B981" },
+};
+
+function detectAllergen(modifierName: string | null | undefined): { label: string; color: string } | null {
+  if (!modifierName) return null;
+  const lower = modifierName.toLowerCase();
+  for (const [keyword, allergen] of Object.entries(ALLERGEN_KEYWORDS)) {
+    if (lower.includes(keyword)) {
+      return allergen;
+    }
+  }
+  return null;
+}
+
 // ─── Display Settings Interface ───────────────────────────────────
 interface KDSTicketDisplaySettings {
   highlightNotes: boolean;
@@ -345,14 +359,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       onLongPress?.(ticket.ticket_id, ticket, e);
     };
 
-    const urgencyColor = URGENCY_BORDER_COLORS[urgencyLevel];
     const borderColor = bulkMode && isSelected
       ? colors.info
       : ticket.prioritized
         ? "#f59e0b" // amber for prioritized
-        : urgencyColor;
+        : "#E5E7EB";
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
-    const orderTypeIcon = getOrderTypeIcon(ticket.order_type);
     const hasRush = ticket.items.some((item) => item.rush);
     const hasRefire = ticket.items.some((item) => item.recalled);
 
@@ -403,14 +415,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               margin: 4,
               borderRadius: 10,
               overflow: "hidden",
-              backgroundColor: colors.skeleton,
-              borderWidth: 2,
-              borderColor,
-              shadowColor: borderColor,
+              backgroundColor: "#FFFFFF",
+              borderWidth: 1,
+              borderColor: borderColor,
+              shadowColor: "#000",
               shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.3,
-              shadowRadius: 6,
-              elevation: 4,
+              shadowOpacity: 0.08,
+              shadowRadius: 4,
+              elevation: 2,
             },
             scaleStyle,
           ]}
@@ -433,146 +445,138 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
-          {/* Priority badge */}
+          {/* Priority badge (star, top-right) */}
           {ticket.prioritized && (
             <View
               style={{
                 position: "absolute",
-                top: (hasRush ? 18 : 0) + (hasRefire ? 18 : 0),
-                right: bulkMode ? 30 : 6,
-                zIndex: 10,
+                top: 8,
+                right: hasRush ? 70 : (bulkMode ? 30 : 8),
+                zIndex: 9,
               }}
             >
-              <Star size={16} color="#f59e0b" fill="#f59e0b" />
+              <Star size={16} color="#F59E0B" fill="#F59E0B" />
             </View>
           )}
 
-          {/* Rush badge */}
+          {/* RUSH badge (orange pill, top-right) */}
           {hasRush && (
             <View
               style={{
                 position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                backgroundColor: colors.danger,
-                paddingVertical: 2,
-                zIndex: 5,
+                top: 8,
+                right: bulkMode ? 30 : 8,
+                zIndex: 10,
+                backgroundColor: "#F59E0B",
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 12,
                 flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "center",
                 gap: 4,
               }}
             >
-              <AlertTriangle size={10} color="#fff" />
-              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
+              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 }}>
                 RUSH
               </Text>
             </View>
           )}
 
-          {/* Refire badge */}
-          {hasRefire && (
-            <View
+          {/* Card Header: Order Number + Timer (red if urgent) */}
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderBottomWidth: 1,
+              borderBottomColor: "#E5E7EB",
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#111827", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
+              #{ticket.display_number || ticket.order_number?.slice(-4) || "----"}
+              {ticket.course_number > 1 && (
+                <Text style={{ color: "#F59E0B" }}> C{ticket.course_number}</Text>
+              )}
+            </Text>
+            <Text
               style={{
-                position: "absolute",
-                top: hasRush ? 18 : 0,
-                left: 0,
-                right: 0,
-                backgroundColor: "#2563eb",
-                paddingVertical: 2,
-                zIndex: 4,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 4,
+                color: urgencyLevel > 0 ? "#EF4444" : "#374151",
+                fontSize: 13,
+                fontWeight: urgencyLevel > 0 ? "700" : "600",
               }}
             >
-              <RotateCcw size={10} color="#fff" />
-              <Text style={{ color: "#fff", fontSize: 10, fontWeight: "800", letterSpacing: 1 }}>
-                REFIRE
-              </Text>
-            </View>
-          )}
-
-          {/* Top bar with urgency color */}
-          <View
-            style={{
-              backgroundColor: urgencyColor,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: (hasRush ? 16 : 0) + (hasRefire ? 16 : 0),
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Clock size={12} color="#fff" />
-              <Text
-                style={{
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: "700",
-                  marginLeft: 4,
-                }}
-              >
-                {timeElapsed}
-              </Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>
-                {ticket.item_count} items
-              </Text>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: "rgba(0,0,0,0.2)",
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 4,
-                }}
-              >
-                {orderTypeIcon}
-                <Text style={{ color: "#fff", fontSize: 10, marginLeft: 3, fontWeight: "600" }}>
-                  {orderTypeLabel}
-                </Text>
-              </View>
-              {ticket.order_source === "online" && (
-                <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(96,165,250,0.25)" }}>
-                  <Globe color="#60a5fa" size={11} />
-                  <Text style={{ color: "#60a5fa", fontSize: 10, fontWeight: "700", marginLeft: 2 }}>ONLINE</Text>
-                </View>
-              )}
-            </View>
+              {timeElapsed}
+            </Text>
           </View>
 
-          {/* Order info */}
+          {/* Row 2: Order Type Dot + Label */}
           <View
             style={{
-              backgroundColor: colors.skeletonHighlight,
-              paddingHorizontal: 10,
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 12,
               paddingVertical: 6,
               borderBottomWidth: 1,
-              borderBottomColor: colors.border,
+              borderBottomColor: "#E5E7EB",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
-                {ticket.display_number || ticket.order_number?.slice(-4) || "----"}
-                {ticket.course_number > 1 && (
-                  <Text style={{ color: colors.warning }}> C{ticket.course_number}</Text>
-                )}
-              </Text>
-              {ticket.table_name && (
-                <Text style={{ color: colors.label, fontSize: 12 }}>{ticket.table_name}</Text>
-              )}
-            </View>
+            {ticket.order_type?.toLowerCase() === "delivery" ? (
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: "#EF4444",
+                }}
+              />
+            ) : ticket.order_type?.toLowerCase() === "takeout" || ticket.order_type?.toLowerCase() === "to_go" ? (
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: "#3B82F6",
+                }}
+              />
+            ) : (
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: "#22C55E",
+                }}
+              />
+            )}
+            <Text style={{ color: "#374151", fontSize: 12, fontWeight: "600" }}>
+              {orderTypeLabel}
+            </Text>
+          </View>
+
+          {/* Row 3: Server/Customer Name + Table (small gray text) */}
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+              borderBottomWidth: 1,
+              borderBottomColor: "#E5E7EB",
+            }}
+          >
+            <Text style={{ color: "#6B7280", fontSize: 11, fontWeight: "500" }} numberOfLines={1}>
+              {ticket.customer_name ? ticket.customer_name : ""}
+              {ticket.customer_name && ticket.table_name ? " · " : ""}
+              {ticket.table_name ? `Table ${ticket.table_name}` : ""}
+            </Text>
           </View>
 
           {/* Items list */}
-          <View style={{ padding: 8, backgroundColor: colors.screen }}>
+          <View style={{ padding: 10, backgroundColor: "#FFFFFF" }}>
             {visibleItems.map((item: KDSTicketItem, index: number) => {
               const isItemDone = item.kitchen_status === "ready";
               return (
@@ -583,34 +587,35 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       onItemPress(ticket.ticket_id, item.id);
                     }
                   }}
-                  style={index < visibleItems.length - 1 ? { marginBottom: 4 } : undefined}
+                  style={index < visibleItems.length - 1 ? { marginBottom: 6 } : undefined}
                 >
-                  <View style={{ flexDirection: "row", alignItems: "flex-start", opacity: isItemDone ? 0.4 : 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", opacity: isItemDone ? 0.5 : 1 }}>
                     <View
                       style={{
-                        backgroundColor: isItemDone ? colors.success : colors.border,
+                        backgroundColor: isItemDone ? "#10B981" : "#E5E7EB",
                         width: 22,
                         height: 22,
                         borderRadius: 4,
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 6,
+                        marginRight: 8,
+                        minWidth: 22,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+                      <Text style={{ color: isItemDone ? "#fff" : "#6B7280", fontSize: 12, fontWeight: "700" }}>
                         {item.quantity}
                       </Text>
                     </View>
                     {item.seat_number != null && (
-                      <Text style={{ color: "#14b8a6", fontSize: 11, fontWeight: "700", marginRight: 4 }}>
+                      <Text style={{ color: "#0D9488", fontSize: 11, fontWeight: "700", marginRight: 6 }}>
                         [S{item.seat_number}]
                       </Text>
                     )}
                     <Text
                       style={{
-                        color: "#fff",
+                        color: isItemDone ? "#9CA3AF" : "#111827",
                         fontSize: 13,
-                        fontWeight: "500",
+                        fontWeight: "600",
                         flex: 1,
                         textDecorationLine: isItemDone ? "line-through" : "none",
                       }}
@@ -636,28 +641,52 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           mod.is_no ||
                           mod.modifier_group_name?.toLowerCase().includes("remove") ||
                           mod.modifier_name?.toLowerCase().startsWith("no ");
-                        // Modifier group name prefix
-                        let prefix = isRemoval ? "- " : "+ ";
+                        // Modifier group name prefix with ✕ or +
+                        let prefix = isRemoval ? "✕ " : "+ ";
                         if (displaySettings.modifierGroupName === "always" && mod.modifier_group_name) {
                           prefix = `${prefix}${mod.modifier_group_name}: `;
                         } else if (displaySettings.modifierGroupName === "for_group_priced" && mod.modifier_group_name && mod.price_modifier !== 0) {
                           prefix = `${prefix}${mod.modifier_group_name}: `;
                         }
+                        const allergen = detectAllergen(mod.modifier_name);
                         return (
-                          <Text
-                            key={`${item.id}_m${mi}`}
-                            style={{
-                              color: isRemoval ? colors.danger : colors.success,
-                              fontSize: 11,
-                              marginLeft: 28,
-                              marginTop: 1,
-                              opacity: isItemDone ? 0.4 : 1,
-                              textDecorationLine: isItemDone ? "line-through" : "none",
-                            }}
-                          >
-                            {prefix}
-                            {mod.modifier_name}
-                          </Text>
+                          <View key={`${item.id}_m${mi}`} style={{ marginTop: 2, flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+                            <Text
+                              style={{
+                                color: isRemoval ? "#EF4444" : "#22C55E",
+                                fontSize: 11,
+                                marginLeft: 30,
+                                opacity: isItemDone ? 0.4 : 1,
+                                textDecorationLine: isItemDone ? "line-through" : "none",
+                                flex: 1,
+                              }}
+                            >
+                              {prefix}
+                              {mod.modifier_name}
+                            </Text>
+                            {allergen && (
+                              <View
+                                style={{
+                                  backgroundColor: allergen.color + "20",
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 4,
+                                  borderWidth: 1,
+                                  borderColor: allergen.color,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: allergen.color,
+                                    fontSize: 8,
+                                    fontWeight: "700",
+                                  }}
+                                >
+                                  {allergen.label}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
                         );
                       });
                     })()}
@@ -665,11 +694,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   {item.special_instructions && (
                     <Text
                       style={{
-                        color: displaySettings.highlightNotes ? colors.warning : colors.label,
-                        fontSize: 11,
+                        color: displaySettings.highlightNotes ? "#F59E0B" : "#9CA3AF",
+                        fontSize: 10,
                         fontStyle: "italic",
-                        marginLeft: 28,
-                        marginTop: 1,
+                        marginLeft: 30,
+                        marginTop: 3,
                         opacity: isItemDone ? 0.4 : 1,
                         textDecorationLine: isItemDone ? "line-through" : "none",
                       }}
@@ -683,28 +712,11 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             })}
             {/* Hidden done items indicator */}
             {hasHiddenDoneItems && (
-              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4, textAlign: "center" }}>
+              <Text style={{ color: "#9CA3AF", fontSize: 11, marginTop: 6, textAlign: "center" }}>
                 {doneItemCount} done
               </Text>
             )}
           </View>
-
-          {/* Customer name footer */}
-          {ticket.customer_name && (
-            <View
-              style={{
-                backgroundColor: colors.screen,
-                paddingHorizontal: 10,
-                paddingVertical: 4,
-                borderTopWidth: 1,
-                borderTopColor: colors.border,
-              }}
-            >
-              <Text style={{ color: colors.label, fontSize: 11 }} numberOfLines={1}>
-                {ticket.customer_name}
-              </Text>
-            </View>
-          )}
         </Animated.View>
         </View>
       </Pressable>
@@ -1004,6 +1016,7 @@ const KitchenDisplayScreen = () => {
   const [isReady, setIsReady] = useState(false);
   const [showDisconnected, setShowDisconnected] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }));
 
   // PIN modal state
   const [showPinModal, setShowPinModal] = useState(false);
@@ -1056,6 +1069,14 @@ const KitchenDisplayScreen = () => {
       fetchKDSDisplay(selectedStation.id);
     }
   }, [selectedStation?.id, fetchKDSDisplay]);
+
+  // Update time display every 30 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }));
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Dynamic column count from KDS display config
   const columnCount = kdsDisplayConfig?.columns ?? 4;
@@ -1529,7 +1550,7 @@ const KitchenDisplayScreen = () => {
           paddingVertical: 10,
         }}
       >
-        {/* Top row: title + bulk toggle + refresh */}
+        {/* Top row: title + station info + settings */}
         <View
           style={{
             flexDirection: "row",
@@ -1539,19 +1560,23 @@ const KitchenDisplayScreen = () => {
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <ChefHat size={24} color={colors.teal} />
-            <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "700", marginLeft: 10 }}>
+            <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "700" }}>
               Kitchen Display
             </Text>
             {showDisconnected ? (
               <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
-                <WifiOff size={14} color={colors.danger} />
-                <Text style={{ color: colors.danger, fontSize: 11, fontWeight: "600", marginLeft: 4 }}>
-                  Reconnecting...
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger, marginRight: 6 }} />
+                <Text style={{ color: colors.danger, fontSize: 11, fontWeight: "600" }}>
+                  Offline
                 </Text>
               </View>
             ) : (
-              <Wifi size={14} color={colors.success} style={{ marginLeft: 8 }} />
+              <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success, marginRight: 6 }} />
+                <Text style={{ color: colors.success, fontSize: 11, fontWeight: "600" }}>
+                  Connected
+                </Text>
+              </View>
             )}
             {/* KDS Display Badge */}
             {displayName && (
@@ -1625,8 +1650,22 @@ const KitchenDisplayScreen = () => {
               </View>
             )}
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            {/* Settings */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {/* Station Name | Time */}
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              {selectedStation?.display_name && (
+                <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
+                  {selectedStation.display_name}
+                </Text>
+              )}
+              {selectedStation?.display_name && (
+                <Text style={{ color: colors.muted, fontSize: 12, marginHorizontal: 6 }}>|</Text>
+              )}
+              <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
+                {currentTime}
+              </Text>
+            </View>
+            {/* Settings gear icon */}
             <TouchableOpacity
               onPress={() => {
                 setActionMenu(null);
@@ -1639,58 +1678,6 @@ const KitchenDisplayScreen = () => {
               }}
             >
               <Settings size={18} color={colors.label} />
-            </TouchableOpacity>
-            {/* Hide done items toggle */}
-            <TouchableOpacity
-              onPress={handleToggleHideDone}
-              style={{
-                padding: 8,
-                backgroundColor: kdsHideDoneItems ? colors.info : colors.skeletonHighlight,
-                borderRadius: 8,
-              }}
-            >
-              {kdsHideDoneItems ? (
-                <EyeOff size={18} color="#fff" />
-              ) : (
-                <Eye size={18} color={colors.label} />
-              )}
-            </TouchableOpacity>
-            {/* Bulk mode toggle */}
-            <TouchableOpacity
-              onPress={toggleBulkMode}
-              style={{
-                padding: 8,
-                backgroundColor: bulkMode ? colors.info : colors.skeletonHighlight,
-                borderRadius: 8,
-              }}
-            >
-              <Layers size={18} color={bulkMode ? "#fff" : colors.label} />
-            </TouchableOpacity>
-            {/* Refresh */}
-            <TouchableOpacity
-              onPress={onRefresh}
-              style={{
-                padding: 8,
-                backgroundColor: colors.skeletonHighlight,
-                borderRadius: 8,
-              }}
-            >
-              <RefreshCw
-                size={18}
-                color={isFetching ? colors.teal : colors.label}
-                style={refreshing ? { opacity: 0.5 } : undefined}
-              />
-            </TouchableOpacity>
-            {/* Logout */}
-            <TouchableOpacity
-              onPress={handleKDSLogout}
-              style={{
-                padding: 8,
-                backgroundColor: colors.skeletonHighlight,
-                borderRadius: 8,
-              }}
-            >
-              <LogOut size={18} color={colors.label} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1761,45 +1748,60 @@ const KitchenDisplayScreen = () => {
             })}
           </View>
 
-          {/* Order type filters */}
-          <View style={{ flexDirection: "row", gap: 4 }}>
+          {/* Order type filters with colored dots */}
+          <View style={{ flexDirection: "row", gap: 6 }}>
             {TYPE_TABS.map((tab) => {
               const isActive = activeType === tab.key;
               const count = typeCounts[tab.key];
+              let dotColor = "#22C55E"; // dine_in
+              if (tab.key === "delivery") dotColor = "#EF4444";
+              if (tab.key === "takeout") dotColor = "#3B82F6";
               return (
                 <TouchableOpacity
                   key={tab.key}
                   onPress={() => setActiveType(tab.key)}
                   style={{
-                    paddingHorizontal: 10,
+                    paddingHorizontal: 12,
                     paddingVertical: 5,
-                    borderRadius: 6,
-                    backgroundColor: isActive ? colors.info : colors.skeleton,
+                    borderRadius: 16,
+                    backgroundColor: isActive ? "#0D9488" : colors.skeleton,
                     borderWidth: 1,
-                    borderColor: isActive ? colors.info : colors.border,
+                    borderColor: isActive ? "#0D9488" : colors.border,
                     flexDirection: "row",
                     alignItems: "center",
+                    gap: 4,
                   }}
                 >
+                  {tab.key !== "all" && (
+                    <View
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: dotColor,
+                      }}
+                    />
+                  )}
                   <Text
                     style={{
                       color: isActive ? "#fff" : colors.label,
                       fontSize: 12,
-                      fontWeight: isActive ? "600" : "400",
+                      fontWeight: isActive ? "600" : "500",
                     }}
                   >
                     {tab.label}
                   </Text>
-                  {tab.key !== "all" && count > 0 && (
+                  {count > 0 && (
                     <View
                       style={{
-                        backgroundColor: isActive ? "rgba(255,255,255,0.2)" : colors.border,
-                        paddingHorizontal: 4,
+                        backgroundColor: isActive ? "rgba(255,255,255,0.25)" : colors.border,
+                        paddingHorizontal: 5,
+                        paddingVertical: 1,
                         borderRadius: 6,
-                        marginLeft: 4,
+                        marginLeft: 2,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontSize: 10, fontWeight: "600" }}>
+                      <Text style={{ color: isActive ? "#fff" : colors.label, fontSize: 10, fontWeight: "600" }}>
                         {count}
                       </Text>
                     </View>
@@ -1966,6 +1968,79 @@ const KitchenDisplayScreen = () => {
               }
             />
           </View>
+        </View>
+      )}
+
+      {/* ─── Bottom Action Bar ─── */}
+      {activeStatus !== "done" && (
+        <View
+          style={{
+            backgroundColor: colors.panel,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          {/* RECALL button */}
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              backgroundColor: colors.skeletonHighlight,
+              borderRadius: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Undo2 size={16} color={colors.label} />
+            <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
+              RECALL
+            </Text>
+          </TouchableOpacity>
+
+          {/* BUMP ORDER button (large, center, teal) */}
+          <TouchableOpacity
+            style={{
+              flex: 1,
+              paddingHorizontal: 24,
+              paddingVertical: 12,
+              backgroundColor: "#0D9488",
+              borderRadius: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <CheckSquare size={18} color="#fff" />
+            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>
+              BUMP ORDER
+            </Text>
+          </TouchableOpacity>
+
+          {/* PRINT button */}
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              backgroundColor: colors.skeletonHighlight,
+              borderRadius: 8,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <RotateCcw size={16} color={colors.label} />
+            <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
+              PRINT
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
