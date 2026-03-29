@@ -77,6 +77,7 @@ const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
 
 // ─── Urgency border colors by level (from theme) ────────────────
 const URGENCY_BORDER_COLORS = URGENCY_COLORS
+const MODIFIER_ADD_COLOR = '#0B5E56'
 
 // ─── Manager roles for bulk operations ──────────────────────────
 const MANAGER_ROLES = ['merchant.manager', 'merchant.admin', 'merchant.owner']
@@ -462,6 +463,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       ticket.order_type?.toLowerCase() === 'dine_in' ||
       ticket.order_type?.toLowerCase() === 'dine in' ||
       !ticket.order_type
+    const hasMetaInfo = Boolean(
+      ticket.customer_name || ticket.table_name || ticket.course_number > 1
+    )
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
     const hasRush = ticket.items.some(item => item.rush)
@@ -578,7 +582,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   top: 34,
                   right: 12,
                   zIndex: 10,
-                  backgroundColor: colors.warning + '20',
+                  backgroundColor: '#FEF08A',
                   borderWidth: 1,
                   borderColor: colors.warning + '50',
                   paddingHorizontal: 8,
@@ -591,7 +595,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               >
                 <Text
                   style={{
-                    color: colors.warning,
+                    color: '#78350F',
                     fontSize: 10,
                     fontWeight: '800',
                     letterSpacing: 0.5
@@ -700,28 +704,30 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               </Text>
             </View>
 
-            {/* Row 3: Server/Customer Name + Table + Course (small gray text) */}
-            <View
-              style={{
-                backgroundColor: '#FFFFFF',
-                paddingHorizontal: 12,
-                paddingVertical: 5,
-                borderBottomWidth: 1,
-                borderBottomColor: '#E5E7EB'
-              }}
-            >
-              <Text
-                style={{ color: '#6B7280', fontSize: 11, fontWeight: '500' }}
-                numberOfLines={1}
+            {/* Row 3: Customer + Table + Course (only shown when populated) */}
+            {hasMetaInfo && (
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  paddingHorizontal: 12,
+                  paddingVertical: 5,
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#E5E7EB'
+                }}
               >
-                {ticket.customer_name ? ticket.customer_name : ''}
-                {ticket.customer_name && ticket.table_name ? ' · ' : ''}
-                {ticket.table_name ? `Table ${ticket.table_name}` : ''}
-                {ticket.course_number > 1
-                  ? ` · Course ${ticket.course_number}`
-                  : ''}
-              </Text>
-            </View>
+                <Text
+                  style={{ color: '#6B7280', fontSize: 11, fontWeight: '500' }}
+                  numberOfLines={1}
+                >
+                  {ticket.customer_name ? ticket.customer_name : ''}
+                  {ticket.customer_name && ticket.table_name ? ' · ' : ''}
+                  {ticket.table_name ? `Table ${ticket.table_name}` : ''}
+                  {ticket.course_number > 1
+                    ? ` · Course ${ticket.course_number}`
+                    : ''}
+                </Text>
+              </View>
+            )}
 
             {/* Items list */}
             <View style={{ padding: 10, backgroundColor: '#FFFFFF' }}>
@@ -864,8 +870,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                                 style={{
                                   color: isRemoval
                                     ? colors.danger
-                                    : colors.success,
-                                  fontSize: 11,
+                                    : MODIFIER_ADD_COLOR,
+                                  fontSize: 12,
+                                  fontWeight: '600',
+                                  lineHeight: 16,
                                   marginLeft: 30,
                                   opacity: isItemDone ? 0.4 : 1,
                                   textDecorationLine: isItemDone
@@ -1010,6 +1018,9 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
 
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type)
     const orderTypeIcon = getOrderTypeIcon(ticket.order_type)
+    const hasMetaInfo = Boolean(
+      ticket.customer_name || ticket.table_name || ticket.course_number > 1
+    )
 
     return (
       <Pressable onPress={() => onRecall(ticket.ticket_id)}>
@@ -1084,27 +1095,29 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
             </Text>
           </View>
 
-          {/* Customer + Table + Course Info */}
-          <View
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 5,
-              borderBottomWidth: 1,
-              borderBottomColor: '#D1D5DB'
-            }}
-          >
-            <Text
-              style={{ color: '#6B7280', fontSize: 11, fontWeight: '500' }}
-              numberOfLines={1}
+          {/* Customer + Table + Course Info (only shown when populated) */}
+          {hasMetaInfo && (
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 5,
+                borderBottomWidth: 1,
+                borderBottomColor: '#D1D5DB'
+              }}
             >
-              {ticket.customer_name ? ticket.customer_name : ''}
-              {ticket.customer_name && ticket.table_name ? ' · ' : ''}
-              {ticket.table_name ? `Table ${ticket.table_name}` : ''}
-              {ticket.course_number > 1
-                ? ` · Course ${ticket.course_number}`
-                : ''}
-            </Text>
-          </View>
+              <Text
+                style={{ color: '#6B7280', fontSize: 11, fontWeight: '500' }}
+                numberOfLines={1}
+              >
+                {ticket.customer_name ? ticket.customer_name : ''}
+                {ticket.customer_name && ticket.table_name ? ' · ' : ''}
+                {ticket.table_name ? `Table ${ticket.table_name}` : ''}
+                {ticket.course_number > 1
+                  ? ` · Course ${ticket.course_number}`
+                  : ''}
+              </Text>
+            </View>
+          )}
 
           {/* Items list */}
           <View style={{ padding: 12, gap: 6 }}>
