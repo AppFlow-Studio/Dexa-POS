@@ -2054,31 +2054,33 @@ const KitchenDisplayScreen = () => {
             gap: 12,
           }}
         >
-          {/* RECALL button */}
-          <TouchableOpacity
-            onPress={() => {
-              if (focusedTicketId) {
-                recallTicket(focusedTicketId);
-                setFocusedTicketId(null);
-              }
-            }}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: "transparent",
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 10,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <RotateCcw size={14} color={colors.label} />
-            <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
-              RECALL
-            </Text>
-          </TouchableOpacity>
+          {/* RECALL button — only show if ticket is ready */}
+          {focusedTicketId && tickets.find((t) => t.ticket_id === focusedTicketId)?.status === "ready" && (
+            <TouchableOpacity
+              onPress={() => {
+                if (focusedTicketId) {
+                  recallTicket(focusedTicketId);
+                  setFocusedTicketId(null);
+                }
+              }}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <RotateCcw size={14} color={colors.label} />
+              <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
+                RECALL
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* BUMP ORDER button (center, teal) */}
           <TouchableOpacity
