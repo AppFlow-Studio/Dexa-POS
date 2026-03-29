@@ -12,7 +12,7 @@ const ADMIN_TAP_COUNT = 5;
 const ADMIN_TAP_WINDOW_MS = 2000;
 
 export default function CFDDisplayScreen() {
-  const { sendTipSelection, reconnect } = useCFDClient();
+  const { sendTipSelection, sendPhoneNumber, sendLoyaltySkip, reconnect } = useCFDClient();
   const { isPaired, connectionStatus } = useCFDClientStore();
 
   const tapCountRef = useRef(0);
@@ -100,7 +100,11 @@ export default function CFDDisplayScreen() {
         />
 
         {/* Screen content — shared with built-in display */}
-        <CFDScreenRouter onTipSelected={sendTipSelection} />
+        <CFDScreenRouter
+          onTipSelected={sendTipSelection}
+          onPhoneSubmitted={sendPhoneNumber}
+          onLoyaltySkip={sendLoyaltySkip}
+        />
       </View>
     </CFDExternalDisplayProvider>
   );

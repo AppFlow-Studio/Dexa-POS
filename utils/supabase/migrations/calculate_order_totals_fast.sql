@@ -17,6 +17,7 @@ v_unpaid_card_total numeric;
 v_unpaid_cash_total numeric;
 v_effective_paid numeric;
 v_payment_refunded numeric;
+v_payment_voided numeric;
 v_card_total_calc numeric;
 v_payment_based_due numeric;
 v_custom_refund_balance numeric;
@@ -83,6 +84,13 @@ WHERE order_id = p_order_id
     AND status IN ('captured', 'partially_refunded', 'refunded')
     AND is_voided = false;
 
+-- Check for voided payments to prevent the guard from misfiring
+SELECT COALESCE(SUM(COALESCE(original_amount, amount)), 0)
+INTO v_payment_voided
+FROM public.order_payments
+WHERE order_id = p_order_id
+  AND (status = 'void' OR is_voided = true);
+
 -- Calculate card total for payment-based due calculation
 v_card_total_calc := v_card_subtotal + v_card_tax + v_service_charge;
 
@@ -97,7 +105,7 @@ v_custom_refund_balance := GREATEST(v_payment_based_due - v_unpaid_card_total, 0
 -- the residual is a false positive from cash/card price difference.
 -- Don't inflate amount_due — keep it at 0.
 -- CRITICAL: Skip this guard when refunds exist to allow correct recalculation.
-IF v_order.payment_status = 'paid' AND v_payment_refunded = 0 THEN
+IF v_order.payment_status = 'paid' AND v_payment_refunded = 0 AND v_payment_voided = 0 THEN
     v_unpaid_card_total := 0;
     v_unpaid_cash_total := 0;
 ELSE

@@ -2,6 +2,7 @@ export interface KDSTicketModifier {
   modifier_name: string;
   modifier_group_name: string;
   price_modifier: number;
+  is_no?: boolean;
 }
 
 export interface KDSTicketItem {

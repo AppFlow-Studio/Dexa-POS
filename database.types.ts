@@ -17319,6 +17319,7 @@ export type Database = {
           p_split_count?: number
           p_split_portion_index?: number
           p_staff_id?: string
+          p_terminal_id?: string
           p_terminal_response?: Json
           p_tip_amount?: number
         }

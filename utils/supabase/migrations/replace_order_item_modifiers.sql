@@ -102,7 +102,8 @@ BEGIN
             modifier_name,
             price_modifier,
             quantity,
-            total_price
+            total_price,
+            is_no
         )
         SELECT
             p_order_item_id,
@@ -112,7 +113,8 @@ BEGIN
             mod->>'modifier_name',
             COALESCE((mod->>'price_modifier')::numeric, 0),
             COALESCE((mod->>'quantity')::integer, 1),
-            COALESCE((mod->>'price_modifier')::numeric, 0) * COALESCE((mod->>'quantity')::integer, 1)
+            COALESCE((mod->>'price_modifier')::numeric, 0) * COALESCE((mod->>'quantity')::integer, 1),
+            COALESCE((mod->>'is_no')::boolean, false)
         FROM jsonb_array_elements(p_modifiers) AS mod;
 
         -- Calculate new modifier total
@@ -261,7 +263,8 @@ BEGIN
                 'modifier_group_id', modifier_group_id::text,
                 'modifier_group_name', modifier_group_name,
                 'price_modifier', price_modifier,
-                'quantity', quantity
+                'quantity', quantity,
+                'is_no', is_no
             ))
             FROM public.order_item_modifiers
             WHERE order_item_id = p_order_item_id

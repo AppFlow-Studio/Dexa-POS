@@ -1,30 +1,25 @@
-import PaymentBottomSheet from '@/components/bill/PaymentBottomSheet'
-import Header from '@/components/Header'
-import MenuSearchSheet from '@/components/menu/MenuSearchSheet'
-import PaymentDetailBottomSheet from '@/components/menu/PaymentDetailBottomSheet'
-import NotificationBottomSheet from '@/components/notifications/NotificationBottomSheet'
-import { LocationRealtimeProvider } from '@/contexts/LocationRealtimeProvider'
-import { useOrderSyncRecovery } from '@/hooks/pos/useOrderSyncRecovery'
-import type { OrderBroadcastPayload } from '@/hooks/realtime/useOrdersRealtime'
-import { useTableSessionInit } from '@/hooks/useTableSessionInit'
-import { setHeaderHeight } from '@/lib/headerHeight'
-import { colors, spinnerColor } from '@/lib/theme'
-import { hydrateDrawerSession } from '@/services/cashDrawerService'
-import { useKDSStore } from '@/stores/useKDSStore'
-import { useMenuManagementSearchStore } from '@/stores/useMenuManagementSearchStore'
-import { useNotificationSheetStore } from '@/stores/useNotificationSheetStore'
-import {
-  getOrderStoreSupabaseClient,
-  useOrderStore
-} from '@/stores/useOrderStore'
-import { usePaymentDetailSheetStore } from '@/stores/usePaymentDetailSheetStore'
-import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
-import type { OrderPayload, PaymentPayload } from '@/types/real-time'
-import { useAuth } from '@clerk/clerk-expo'
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { Redirect, Slot } from 'expo-router'
-import { StatusBar } from 'expo-status-bar'
-import React, { useCallback, useEffect, useRef } from 'react'
+import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
+import Header from "@/components/Header";
+import PaymentDetailBottomSheet from "@/components/menu/PaymentDetailBottomSheet";
+import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
+import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
+import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
+import { hydrateDrawerSession } from "@/services/cashDrawerService";
+import { useKDSStore } from "@/stores/useKDSStore";
+import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
+import { useOrderStore, getOrderStoreSupabaseClient } from "@/stores/useOrderStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { usePaymentDetailSheetStore } from "@/stores/usePaymentDetailSheetStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type { OrderPayload, PaymentPayload } from "@/types/real-time";
+import { useAuth } from "@clerk/clerk-expo";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { Redirect, Slot } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useOrderSyncRecovery } from "@/hooks/pos/useOrderSyncRecovery";
+import { useTableSessionInit } from "@/hooks/useTableSessionInit";
+import { colors, spinnerColor } from "@/lib/theme";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -32,6 +27,9 @@ import {
   View
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
+import MenuSearchSheet from "@/components/menu/MenuSearchSheet";
+import { setHeaderHeight } from "@/lib/headerHeight";
 /** Side-effect component: keeps POS orders in sync when realtime drops */
 function OrderSyncRecoveryBridge ({ locationId }: { locationId: string }) {
   useOrderSyncRecovery(locationId)
@@ -137,9 +135,10 @@ export default function MainLayout () {
       })
     }
 
-    useOrderStore.getState()._handleOrderBroadcast(broadcastPayload)
-    useKDSStore.getState().handleOrderBroadcast(broadcastPayload)
-  }, [])
+    useOrderStore.getState()._handleOrderBroadcast(broadcastPayload);
+    useKDSStore.getState().handleOrderBroadcast(broadcastPayload);
+    usePreviousOrdersStore.getState()._handleOrderBroadcast(broadcastPayload);
+  }, []);
 
   const handlePaymentChange = useCallback((payload: PaymentPayload) => {
     if (__DEV__) {

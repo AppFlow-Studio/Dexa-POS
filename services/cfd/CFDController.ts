@@ -6,9 +6,11 @@ import type {
     CFDMessage,
     CFDPairingData,
     CFDPayload,
+    CFDPhoneResponse,
     CFDScreenState,
     CFDTipResponse,
 } from "@/types/cfd.types";
+import type { LoyaltyEarnResult } from "@/services/loyalty/loyaltyService";
 import * as Device from "expo-device";
 import { WebSocketServer } from "./WebSocketServer";
 
@@ -16,6 +18,8 @@ interface CFDCallbacks {
   onCFDConnected?: (clientId: string) => void;
   onCFDDisconnected?: (clientId: string) => void;
   onTipSelected?: (response: CFDTipResponse) => void;
+  onPhoneSubmitted?: (phone: string) => void;
+  onLoyaltySkip?: () => void;
 }
 
 export class CFDController {
@@ -41,7 +45,7 @@ export class CFDController {
     this.stationName = config.stationName;
     this.locationId = config.locationId;
     this.branding = config.branding;
-    this.server = new WebSocketServer(config.port ?? 8080);
+    this.server = new WebSocketServer(config.port ?? 8765);
   }
 
   async start(callbacks?: CFDCallbacks): Promise<{ ip: string; port: number }> {
@@ -65,14 +69,15 @@ export class CFDController {
     });
 
     // Emulator Handling: Verify if running on emulator and override IP
-    // Android emulators (10.0.2.x) cannot be reached by other emulators/devices
-    // We replace it with the specific Host Mac IP for testing
+    // Android emulators (10.0.2.x) cannot be reached by other devices directly.
+    // Use 10.0.2.2 (host Mac) so the CFD client on another emulator/device can
+    // connect via: adb forward tcp:<port> tcp:<port>
     if (!Device.isDevice && this.serverInfo.ip.startsWith("10.0.2.")) {
       console.log(
-        "[CFD] Emulator detected. Overriding IP with Host Loopback: 10.0.2.2:8081",
+        `[CFD] Emulator detected. Overriding IP with Host Loopback: 10.0.2.2:${this.serverInfo.port}`,
       );
       this.serverInfo.ip = "10.0.2.2";
-      this.serverInfo.port = 8081;
+      // port stays as-is — adb forward maps it on the host
     }
 
     console.log(
@@ -113,6 +118,16 @@ export class CFDController {
           }
           break;
 
+        case "phone_submitted":
+          if (message.payload) {
+            this.callbacks.onPhoneSubmitted?.((message.payload as CFDPhoneResponse).phone);
+          }
+          break;
+
+        case "loyalty_skip":
+          this.callbacks.onLoyaltySkip?.();
+          break;
+
         default:
           console.log("[CFD] Unknown message type:", message.type);
       }
@@ -149,6 +164,8 @@ export class CFDController {
       branding: this.branding,
       tipConfig: this.lastPayload.tipConfig,
       carouselImages: this.lastPayload.carouselImages,
+      loyaltyPrompt: this.lastPayload.loyaltyPrompt,
+      loyaltyResult: this.lastPayload.loyaltyResult,
       timestamp: Date.now(),
     };
 
@@ -307,6 +324,40 @@ export class CFDController {
   }
 
   /**
+   * Show loyalty phone entry screen
+   */
+  showLoyaltyPrompt(merchantName: string): void {
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      screenState: "loyalty_prompt",
+      loyaltyPrompt: { merchantName },
+      loyaltyResult: undefined,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Show loyalty points earned confirmation
+   */
+  showLoyaltyConfirmation(result: LoyaltyEarnResult[], customerName?: string): void {
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      screenState: "loyalty_confirmation",
+      loyaltyResult: {
+        customerName,
+        programs: result.map((r) => ({
+          name: r.program_name,
+          type: r.program_type,
+          earned: r.earned,
+          newBalance: r.new_balance,
+          rewardUnlocked: r.reward_unlocked,
+        })),
+      },
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
    * Get QR code pairing data
    */
   getPairingData(): CFDPairingData | null {
@@ -320,6 +371,16 @@ export class CFDController {
       locationId: this.locationId,
       locationName: this.branding.restaurantName,
     };
+  }
+
+  /**
+   * Update branding without restarting the server (called when logo URL changes)
+   */
+  updateBranding(branding: CFDBranding): void {
+    this.branding = branding;
+    if (this.lastPayload.screenState !== undefined) {
+      this.broadcast({ ...(this.lastPayload as CFDPayload), branding, timestamp: Date.now() });
+    }
   }
 
   /**

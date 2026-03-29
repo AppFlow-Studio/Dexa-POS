@@ -81,7 +81,7 @@ export default function EodIntroScreen({
             Start Close Out
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
+        {/* <TouchableOpacity
           onPress={onViewChecklist}
           style={{
             paddingVertical: 12,
@@ -95,7 +95,7 @@ export default function EodIntroScreen({
           <Text style={{ fontSize: 13, fontWeight: "600", color: colors.label }}>
             View checklist only
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
     </View>
   );

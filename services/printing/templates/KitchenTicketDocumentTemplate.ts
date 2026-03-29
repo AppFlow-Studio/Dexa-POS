@@ -191,9 +191,10 @@ function pushSingleItem(
     }
 
     for (const mod of item.modifiers) {
+      const isNo = mod.startsWith("NO ");
       nodes.push({
         type: "text_line",
-        content: `  + ${mod}`,
+        content: `  ${isNo ? "-" : "+"} ${mod}`,
         format: modFormat,
       });
     }

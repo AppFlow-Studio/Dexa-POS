@@ -225,7 +225,8 @@ BEGIN
             modifier_name,
             price_modifier,
             quantity,
-            total_price
+            total_price,
+            is_no
         )
         SELECT
             v_item_id,
@@ -235,7 +236,8 @@ BEGIN
             mod->>'modifier_name',
             COALESCE((mod->>'price_modifier')::numeric, 0),
             COALESCE((mod->>'quantity')::integer, 1),
-            COALESCE((mod->>'price_modifier')::numeric, 0) * COALESCE((mod->>'quantity')::integer, 1)
+            COALESCE((mod->>'price_modifier')::numeric, 0) * COALESCE((mod->>'quantity')::integer, 1),
+            COALESCE((mod->>'is_no')::boolean, false)
         FROM jsonb_array_elements(p_modifiers) AS mod;
     END IF;
 

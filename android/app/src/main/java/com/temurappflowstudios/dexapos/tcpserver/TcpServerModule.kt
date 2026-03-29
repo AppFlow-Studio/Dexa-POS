@@ -1,29 +1,27 @@
 // android/app/src/main/java/com/temurappflowstudios/dexapos/tcpserver/TcpServerModule.kt
 package com.temurappflowstudios.dexapos.tcpserver
 
+import android.content.Intent
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import kotlin.concurrent.thread
+import kotlinx.coroutines.*
 
 class TcpServerModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
-    private var serverSocket: ServerSocket? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var serverSocket: ServerSocket? = null
     private var isRunning = false
     private val clients = ConcurrentHashMap<String, ClientConnection>()
-    private val executor: ExecutorService = Executors.newCachedThreadPool()
-    
+
     companion object {
         const val TAG = "TcpServer"
         const val NAME = "TcpServerModule"
@@ -48,35 +46,41 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
             stopServerInternal()
         }
 
-        executor.execute {
+        scope.launch {
             try {
-                // Use unbound socket to enable reuse address before binding
                 val socket = ServerSocket()
                 socket.reuseAddress = true // Crucial for "Address already in use" fix
-                socket.bind(java.net.InetSocketAddress(InetAddress.getByName("0.0.0.0"), port))
-                
+                socket.bind(InetSocketAddress(InetAddress.getByName("0.0.0.0"), port))
+
                 serverSocket = socket
                 isRunning = true
-                
+
                 val ip = getLocalIpAddress()
                 Log.d(TAG, "Server started on $ip:$port")
-                
+
+                // Start foreground service to keep process alive when screen dims (Android 8+ requirement)
+                val serviceIntent = Intent(reactApplicationContext, CfdForegroundService::class.java)
+                    .setAction(CfdForegroundService.ACTION_START)
+                reactApplicationContext.startForegroundService(serviceIntent)
+
                 promise.resolve(Arguments.createMap().apply {
                     putString("ip", ip)
                     putInt("port", port)
                 })
 
-                // Accept loop
-                while (isRunning) {
+                // Accept loop — isActive tracks coroutine cancellation from scope.cancel()
+                while (isActive) {
                     try {
-                        val clientSocket = serverSocket?.accept() ?: break
-                        handleNewClient(clientSocket)
+                        val clientSocket = socket.accept()
+                        launch { handleClient(clientSocket) }  // supervised child — one crash doesn't kill the server
                     } catch (e: Exception) {
-                        if (isRunning) {
+                        if (isActive) {
                             Log.e(TAG, "Accept error: ${e.message}")
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e  // must re-throw for structured cancellation to propagate correctly
             } catch (e: Exception) {
                 Log.e(TAG, "Server start error: ${e.message}")
                 promise.reject("START_FAILED", e.message)
@@ -94,6 +98,14 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping server: ${e.message}")
         }
+        // Stop foreground service
+        try {
+            val serviceIntent = Intent(reactApplicationContext, CfdForegroundService::class.java)
+                .setAction(CfdForegroundService.ACTION_STOP)
+            reactApplicationContext.startService(serviceIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping foreground service: ${e.message}")
+        }
     }
 
     @ReactMethod
@@ -104,15 +116,33 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
 
     override fun invalidate() {
         super.invalidate()
-        stopServerInternal()
+        scope.cancel()                              // cancels ALL child coroutines, propagates CancellationException
+        runCatching { clients.values.forEach { it.close() } }  // unblocks blocked read() on each client
+        clients.clear()
+        runCatching { serverSocket?.close() }       // unblocks the accept() call
+        serverSocket = null
+        isRunning = false
+        // Stop foreground service
+        try {
+            val serviceIntent = Intent(reactApplicationContext, CfdForegroundService::class.java)
+                .setAction(CfdForegroundService.ACTION_STOP)
+            reactApplicationContext.startService(serviceIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping foreground service on invalidate: ${e.message}")
+        }
     }
 
     // ==================== CLIENT MANAGEMENT ====================
 
-    private fun handleNewClient(socket: Socket) {
+    private suspend fun handleClient(socket: Socket) {
+        // Socket options — set immediately after accept(), before any I/O
+        socket.tcpNoDelay = true    // disable Nagle — critical for low-latency WebSocket frames (avoids 40ms batching delay)
+        socket.keepAlive  = true    // OS-level dead peer detection (backs up WS heartbeat)
+        socket.soTimeout  = 30_000  // unblock read() after 30s; prevents zombie threads on silent disconnects
+
         val clientId = "${socket.inetAddress.hostAddress}:${socket.port}"
         Log.d(TAG, "New client: $clientId")
-        
+
         val connection = ClientConnection(clientId, socket) { id, data ->
             // Forward data to JS
             sendEvent("onClientData", Arguments.createMap().apply {
@@ -120,15 +150,14 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
                 putString("data", data)
             })
         }
-        
+
         clients[clientId] = connection
-        
+
         sendEvent("onClientConnect", Arguments.createMap().apply {
             putString("clientId", clientId)
         })
-        
-        // Start reading in background
-        executor.execute {
+
+        try {
             connection.startReading {
                 // On disconnect
                 clients.remove(clientId)
@@ -136,6 +165,9 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
                     putString("clientId", clientId)
                 })
             }
+        } catch (e: CancellationException) {
+            connection.close()
+            throw e
         }
     }
 
@@ -214,14 +246,9 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
         @Synchronized
         fun send(data: String) {
             try {
-                // Determine if data is raw bytes or string? 
-                // For simplicity, we assume the JS sends us a STRING which is actually raw bytes in string form (bad) 
-                // OR we assume JS sends us Base64? 
-                // Current implementation in WebSocketServer.ts sends .toString('binary') which is a raw string.
-                // It is safer if JS sends Base64, but let's stick to .toByteArary() for now if JS sends raw string, 
-                // OR change JS to send Base64 too. 
-                // Let's assume JS sends raw chars for now (native module takes String).
-                output.write(data.toByteArray(Charsets.ISO_8859_1)) // Use Latin1 to preserve byte values 1-to-1 if passed as string
+                // JS sends Base64-encoded bytes (symmetric with the receive path).
+                // Base64 is safe through the JSI bridge — no null bytes, all ASCII < 128.
+                output.write(android.util.Base64.decode(data, android.util.Base64.NO_WRAP))
                 output.flush()
             } catch (e: Exception) {
                 Log.e(TAG, "Send error to $id: ${e.message}")
@@ -230,12 +257,12 @@ class TcpServerModule(private val reactContext: ReactApplicationContext) :
 
         fun startReading(onDisconnect: () -> Unit) {
             try {
-                val buffer = ByteArray(4096)
-                
+                val buffer = ByteArray(32_768)  // 32KB — fewer syscalls on WiFi bursts (was 4096)
+
                 while (socket.isConnected && !socket.isClosed) {
                     val bytesRead = input.read(buffer)
                     if (bytesRead == -1) break
-                    
+
                     if (bytesRead > 0) {
                         // Convert raw bytes to Base64 to safely transmit to JS
                         val base64Data = android.util.Base64.encodeToString(buffer, 0, bytesRead, android.util.Base64.NO_WRAP)

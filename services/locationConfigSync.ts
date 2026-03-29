@@ -55,6 +55,14 @@ export function initLocationConfigSync(
 
       // Side effect: KDS re-fetch when workflow mode changes
       if (namespace === 'kds' && data.workflowMode) {
+        // Also sync to selectedStore for backward compat
+        const current = useStoreSettingsStore.getState().selectedStore
+        if (current) {
+          useStoreSettingsStore.getState().setSelectedStore({
+            ...current,
+            kds_workflow_mode: data.workflowMode,
+          })
+        }
         _refreshKdsIfNeeded()
       }
     }
@@ -174,6 +182,16 @@ async function _fetchAndHydrate(supabase: SupabaseClient, locationId: string) {
 
     useLocationConfigStore.getState().hydrateConfig(locationId, config)
     console.log(`${LOG_TAG} Hydrated config for location ${locationId}`)
+
+    // Sync resolved workflowMode to selectedStore for backward compat
+    const resolvedMode = useLocationConfigStore.getState().config.kds.workflowMode
+    const current = useStoreSettingsStore.getState().selectedStore
+    if (current) {
+      useStoreSettingsStore.getState().setSelectedStore({
+        ...current,
+        kds_workflow_mode: resolvedMode,
+      })
+    }
   } catch (err) {
     console.error(`${LOG_TAG} Failed to hydrate config:`, err)
   }

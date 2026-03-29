@@ -20,6 +20,7 @@ export interface BroadcastModifierData {
   modifier_name: string;
   price_modifier: number;
   quantity: number;
+  is_no?: boolean;
 }
 
 // Order items in broadcast payload (Phase 2: Remote Order Management)

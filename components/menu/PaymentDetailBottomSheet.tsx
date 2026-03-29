@@ -889,7 +889,7 @@ const RightPaneSummary: React.FC<RightPaneSummaryProps> = ({
                       alignItems: 'center', justifyContent: 'center', marginRight: 10
                     }}>
                       {payment.isVoided ? (
-                        <X size={18} color={colors.danger} />
+                        <X size={16} color={colors.danger} />
                       ) : payment.method === 'Card' ? (
                         <CreditCard size={18} color={colors.teal} />
                       ) : (
@@ -3697,7 +3697,7 @@ const PaymentDetailBottomSheetComponent: React.ForwardRefRenderFunction<
       items: previousOrder.items || [],
       total_amount: previousOrder.total,
       total_cash_amount: previousOrder.total, // Fallback
-      total_tax: 0, // Will be calculated if available
+      total_tax: previousOrder.tax || 0,
       total_discount: 0,
       amount_paid: previousOrder.amount_paid,
       amount_due: previousOrder.amount_due,

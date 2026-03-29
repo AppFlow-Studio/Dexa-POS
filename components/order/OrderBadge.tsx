@@ -22,8 +22,7 @@ import Popover from "react-native-popover-view";
 
 interface OrderBadgeProps {
   order: OrderProfile;
-  onMarkReady: () => void;
-  onMarkDone?: () => void;
+  onMarkDone: () => void;
   onViewItems: () => void;
   onRetrieve: () => void;
   onReopenCheck?: () => void;
@@ -85,8 +84,7 @@ const getStatusPillStyle = (
 interface PopoverContentProps {
   order: OrderProfile;
   currentStationId: string | null;
-  onMarkReady: () => void;
-  onMarkDone?: () => void;
+  onMarkDone: () => void;
   onViewItems: () => void;
   onRetrieve: () => void;
   onReopenCheck?: () => void;
@@ -98,7 +96,6 @@ const PopoverContent = React.memo<PopoverContentProps>(
   ({
     order,
     currentStationId,
-    onMarkReady,
     onMarkDone,
     onViewItems,
     onRetrieve,
@@ -323,16 +320,13 @@ const PopoverContent = React.memo<PopoverContentProps>(
 
         {/* ── Action list ── */}
         <View style={{ paddingVertical: 4 }}>
-          {/* Mark as Done */}
-          {((order.order_status === "preparing" || order.order_status === "sent_to_kitchen") ||
-            (order.order_status === "ready" && order.paid_status === "Paid" && onMarkDone)) && (
+          {/* Mark as Done — visible for kitchen-active or ready+paid orders */}
+          {(order.order_status === "preparing" ||
+            order.order_status === "sent_to_kitchen" ||
+            (order.order_status === "ready" && order.paid_status === "Paid")) && (
             <TouchableOpacity
               onPress={() => {
-                if (order.order_status === "ready" && order.paid_status === "Paid" && onMarkDone) {
-                  onMarkDone();
-                } else {
-                  onMarkReady();
-                }
+                onMarkDone();
                 onClose();
               }}
               style={{
@@ -454,7 +448,6 @@ const PopoverContent = React.memo<PopoverContentProps>(
 // ============================================================================
 const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   order,
-  onMarkReady,
   onMarkDone,
   onViewItems,
   onRetrieve,
@@ -592,7 +585,6 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
         <PopoverContent
           order={order}
           currentStationId={currentStationId}
-          onMarkReady={onMarkReady}
           onMarkDone={onMarkDone}
           onViewItems={onViewItems}
           onRetrieve={onRetrieve}

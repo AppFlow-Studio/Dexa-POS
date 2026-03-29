@@ -3,8 +3,10 @@ import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
   TipDistributionRulesOverview,
+  TodayTipSummary,
   fetchTipDistributionRulesOverview,
-  fetchTodayTipSummary,
+  fetchUnsettledTipSummary,
+  computeLocalUnsettledTips,
 } from "@/services/endOfDayService";
 import { colors } from "@/lib/theme";
 import { useQuery } from "@tanstack/react-query";
@@ -49,11 +51,16 @@ export default function EodStepTips({
 
   const locationId = selectedStore?.id || "";
 
-  const { data: tipSummary, isLoading: summaryLoading } = useQuery({
+  const { data: tipSummary, isLoading: summaryLoading, isFetching: summaryFetching, refetch: refetchTipSummary } = useQuery({
     queryKey: ["eod-tip-summary", locationId],
     enabled: Boolean(locationId),
     staleTime: 30_000,
-    queryFn: () => fetchTodayTipSummary(supabase, locationId),
+    placeholderData: (): TodayTipSummary => ({
+      ...computeLocalUnsettledTips(),
+      periodStart: null,
+      pendingPriorDaySessions: [],
+    }),
+    queryFn: () => fetchUnsettledTipSummary(supabase, locationId),
   });
 
   const { data: rulesData, isLoading: rulesLoading, error: rulesError, isFetching: rulesFetching } = useQuery({
@@ -64,6 +71,11 @@ export default function EodStepTips({
   });
 
   const tipItem = resolveItem(checklist, "tips_distributed");
+
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const periodStart = tipSummary?.periodStart ?? null;
+  const isMultiDay = periodStart !== null && periodStart < todayStr;
 
   return (
     <View style={{ gap: 12 }}>

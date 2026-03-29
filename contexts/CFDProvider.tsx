@@ -6,8 +6,16 @@ import {
 import { detectNativeHardware } from "@/native/HardwareDetection";
 import { getCachedCapabilities } from "@/services/hardware/deviceDetection";
 import { CFDController } from "@/services/cfd/CFDController";
+import {
+  checkMerchantHasLoyalty,
+  earnLoyaltyForOrder,
+  findOrCreateCustomerByPhone,
+  type LoyaltyEarnResult,
+} from "@/services/loyalty/loyaltyService";
+import { linkCustomerToOrder } from "@/services/customer";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useLoyaltyStore } from "@/stores/useLoyaltyStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
@@ -64,6 +72,8 @@ interface CFDContextType {
   showApproved: () => void;
   showDeclined: () => void;
   showIdle: () => void;
+  showLoyaltyPrompt: () => void;
+  showLoyaltyConfirmation: (result: LoyaltyEarnResult[], customerName?: string) => void;
 }
 
 const CFDContext = createContext<CFDContextType | null>(null);
@@ -87,6 +97,8 @@ const noopCFDValue: CFDContextType = {
   showApproved: () => {},
   showDeclined: () => {},
   showIdle: () => {},
+  showLoyaltyPrompt: () => {},
+  showLoyaltyConfirmation: () => {},
 };
 
 export function CFDProvider({ children }: { children: React.ReactNode }) {
@@ -126,6 +138,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const lastPayloadHashRef = useRef("");
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loyaltyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedUpdateRef = useRef(
     debounce((ctrl: CFDController, params: any) => {
       const hash = JSON.stringify(params);
@@ -145,11 +158,19 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     (s) => s.config.tips.presetPercentages
   );
 
+  // Loyalty
+  const merchantHasLoyalty = useLoyaltyStore((s) => s.merchantHasLoyalty);
+
   // Order store selectors - Individual selectors for stability
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const activeOrder = useOrderStore((s) =>
     s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
   );
+  // Ref so loyalty callbacks always see the latest order without re-registering
+  const activeOrderRef = useRef(activeOrder);
+  const activeOrderIdRef = useRef(activeOrderId);
+  useEffect(() => { activeOrderRef.current = activeOrder; }, [activeOrder]);
+  useEffect(() => { activeOrderIdRef.current = activeOrderId; }, [activeOrderId]);
   const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
   const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
   const activeOrderTotal = useOrderStore((s) => s.activeOrderTotal);
@@ -236,55 +257,130 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     setServerStatus("initializing");
     setServerError(null);
 
-    const controller = new CFDController({
-      stationId: selectedStation.id,
-      stationName: selectedStation.station_name,
-      locationId: selectedStore.id,
-      branding: {
-        restaurantName: selectedStore.name,
-        locationCode: selectedStore.code,
-        logoUrl: organizationLogoUrl,
-        primaryColor: "#10b981",
-      },
-      port: 8080,
-    });
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    controllerRef.current = controller;
+    const attemptStart = async (retryNum: number) => {
+      if (cancelled) return;
 
-    controller
-      .start({
-        onCFDConnected: (clientId) => {
-          console.log("[useCFD] CFD connected:", clientId);
-          setIsConnected(true);
-          setClientCount(controller.clientCount);
-          setServerStatus("connected");
+      const ctrl = new CFDController({
+        stationId: selectedStation.id,
+        stationName: selectedStation.station_name,
+        locationId: selectedStore.id,
+        branding: {
+          restaurantName: selectedStore.name,
+          locationCode: selectedStore.code,
+          logoUrl: organizationLogoUrl,
+          primaryColor: "#10b981",
         },
-        onCFDDisconnected: (clientId) => {
-          console.log("[useCFD] CFD disconnected:", clientId);
-          const count = controller.clientCount;
-          setClientCount(count);
-          setIsConnected(count > 0);
-          setServerStatus(count > 0 ? "connected" : "ready");
-        },
-        onTipSelected: (response: CFDTipResponse) => {
-          console.log("[useCFD] Tip selected:", response);
-          setTipResponse(response);
-        },
-      })
-      .then((info) => {
+        port: 8765,
+      });
+
+      controllerRef.current = ctrl;
+
+      try {
+        const info = await ctrl.start({
+          onCFDConnected: (clientId) => {
+            if (controllerRef.current !== ctrl) return;
+            console.log("[useCFD] CFD connected:", clientId);
+            setIsConnected(true);
+            setClientCount(ctrl.clientCount);
+            setServerStatus("connected");
+          },
+          onCFDDisconnected: (clientId) => {
+            if (controllerRef.current !== ctrl) return;
+            console.log("[useCFD] CFD disconnected:", clientId);
+            const count = ctrl.clientCount;
+            setClientCount(count);
+            setIsConnected(count > 0);
+            setServerStatus(count > 0 ? "connected" : "ready");
+          },
+          onTipSelected: (response: CFDTipResponse) => {
+            if (controllerRef.current !== ctrl) return;
+            console.log("[useCFD] Tip selected:", response);
+            setTipResponse(response);
+          },
+          onPhoneSubmitted: async (phone) => {
+            if (controllerRef.current !== ctrl) return;
+            if (!selectedStore?.id) return;
+            clearTimeout(loyaltyTimerRef.current!);
+            loyaltyTimerRef.current = null;
+
+            const orderId = activeOrderIdRef.current;
+            const order = activeOrderRef.current;
+            if (!order || !orderId || !order.db_order_id) {
+              console.warn("[CFD Loyalty] No active order with db_order_id, skipping loyalty");
+              setActiveScreenState(null);
+              setBaseAmountOverride(null);
+              setCurrentTip({ amount: 0, percentage: null });
+              ctrl.showIdle();
+              return;
+            }
+
+            try {
+              const { id: customerId, name } = await findOrCreateCustomerByPhone(
+                phone,
+                selectedStore.id,
+                supabase
+              );
+              await linkCustomerToOrder(supabase, {
+                orderId,
+                dbOrderId: order.db_order_id,
+                customerId,
+                merchantId: selectedStore.id,
+              });
+              const results = await earnLoyaltyForOrder(order.db_order_id, supabase);
+              setActiveScreenState("loyalty_confirmation");
+              ctrl.showLoyaltyConfirmation(results, name ?? undefined);
+              setTimeout(() => {
+                if (controllerRef.current !== ctrl) return;
+                setActiveScreenState(null);
+                setBaseAmountOverride(null);
+                setCurrentTip({ amount: 0, percentage: null });
+                ctrl.showIdle();
+              }, 4000);
+            } catch (err) {
+              console.error("[CFD Loyalty] Error processing loyalty:", err);
+              // Fail-safe: always return to idle, never block the display
+              setActiveScreenState(null);
+              setBaseAmountOverride(null);
+              setCurrentTip({ amount: 0, percentage: null });
+              ctrl.showIdle();
+            }
+          },
+          onLoyaltySkip: () => {
+            if (controllerRef.current !== ctrl) return;
+            clearTimeout(loyaltyTimerRef.current!);
+            loyaltyTimerRef.current = null;
+            setActiveScreenState(null);
+            setBaseAmountOverride(null);
+            setCurrentTip({ amount: 0, percentage: null });
+            ctrl.showIdle();
+          },
+        });
+
+        if (cancelled) { ctrl.stop(); return; }
+
         console.log("[useCFD] Server started:", info);
-        setPairingData(controller.getPairingData());
+        setPairingData(ctrl.getPairingData());
         setServerStatus("ready");
-      })
-      .catch((error) => {
+      } catch (error: any) {
+        if (cancelled) return;
         console.error("[useCFD] Server failed to start:", error);
         setServerStatus("error");
         setServerError(error.message);
-      });
+        const delay = Math.min(3000 * (retryNum + 1), 30000);
+        retryTimer = setTimeout(() => attemptStart(retryNum + 1), delay);
+      }
+    };
+
+    attemptStart(0);
 
     return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       console.log("[useCFD] Stopping Server...");
-      controller.stop();
+      controllerRef.current?.stop();
       controllerRef.current = null;
       setServerStatus("disabled");
       setPairingData(null);
@@ -298,14 +394,30 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(builtinIdleTimerRef.current);
         builtinIdleTimerRef.current = null;
       }
+      if (loyaltyTimerRef.current) {
+        clearTimeout(loyaltyTimerRef.current);
+        loyaltyTimerRef.current = null;
+      }
     };
   }, [
     selectedStation?.id,
     selectedStore?.id,
     selectedStore?.name,
     selectedStation?.station_name,
-    organizationLogoUrl,
+    // organizationLogoUrl removed — handled by the branding effect below
   ]);
+
+  // Update branding on running server when logo URL changes (avoids full server restart)
+  useEffect(() => {
+    if (serverStatus === "ready" || serverStatus === "connected") {
+      controllerRef.current?.updateBranding({
+        restaurantName: selectedStore?.name ?? "",
+        locationCode: selectedStore?.code,
+        logoUrl: organizationLogoUrl,
+        primaryColor: "#10b981",
+      });
+    }
+  }, [organizationLogoUrl, serverStatus, selectedStore?.name, selectedStore?.code]);
 
   // Fetch and Sync Carousel Images (for both WS clients and built-in display)
   const supabase = useSupabaseClient();
@@ -343,6 +455,19 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       return () => clearInterval(interval);
     }
   }, [isConnected, hasBuiltinCfd, selectedStore?.id]);
+
+  // Check loyalty on mount (5-min TTL cache)
+  useEffect(() => {
+    if (!selectedStore?.id) return;
+    const { merchantHasLoyalty: cached, checkedAt, setMerchantHasLoyalty } =
+      useLoyaltyStore.getState();
+    const stale = Date.now() - checkedAt > 5 * 60_000;
+    if (!cached || stale) {
+      checkMerchantHasLoyalty(selectedStore.id, supabase)
+        .then(setMerchantHasLoyalty)
+        .catch(() => {}); // non-fatal
+    }
+  }, [selectedStore?.id]);
 
   // Order totals with dual pricing (used by both WS sync and built-in display)
   const orderTotals = useActiveOrderTotals();
@@ -434,7 +559,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       activeScreenState === "processing" ||
       activeScreenState === "approved" ||
       activeScreenState === "declined" ||
-      activeScreenState === "tip_selection";
+      activeScreenState === "tip_selection" ||
+      activeScreenState === "loyalty_prompt" ||
+      activeScreenState === "loyalty_confirmation";
 
     if (isPaymentState) {
       debouncedUpdateRef.current.cancel();
@@ -667,17 +794,45 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     controllerRef.current?.showIdle();
   }, []);
 
+  const showLoyaltyPrompt = useCallback(() => {
+    setActiveScreenState("loyalty_prompt");
+    controllerRef.current?.showLoyaltyPrompt(selectedStore?.name ?? "");
+    // 20s timeout: if customer does nothing, auto-idle
+    if (loyaltyTimerRef.current) clearTimeout(loyaltyTimerRef.current);
+    loyaltyTimerRef.current = setTimeout(() => {
+      setActiveScreenState(null);
+      setBaseAmountOverride(null);
+      setCurrentTip({ amount: 0, percentage: null });
+      controllerRef.current?.showIdle();
+      loyaltyTimerRef.current = null;
+    }, 20_000);
+  }, [selectedStore?.name]);
+
+  const showLoyaltyConfirmation = useCallback(
+    (result: LoyaltyEarnResult[], customerName?: string) => {
+      setActiveScreenState("loyalty_confirmation");
+      controllerRef.current?.showLoyaltyConfirmation(result, customerName);
+    },
+    []
+  );
+
   // Auto-return to idle after payment result display
   useEffect(() => {
     if (activeScreenState === "approved") {
-      const timer = setTimeout(() => showIdle(), 4000);
+      const timer = setTimeout(() => {
+        if (isConnected && merchantHasLoyalty) {
+          showLoyaltyPrompt();
+        } else {
+          showIdle();
+        }
+      }, 4000);
       return () => clearTimeout(timer);
     }
     if (activeScreenState === "declined") {
       const timer = setTimeout(() => showIdle(), 3000);
       return () => clearTimeout(timer);
     }
-  }, [activeScreenState, showIdle]);
+  }, [activeScreenState, isConnected, merchantHasLoyalty, showIdle, showLoyaltyPrompt]);
 
   const value = {
     serverStatus,
@@ -698,6 +853,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     showApproved,
     showDeclined,
     showIdle,
+    showLoyaltyPrompt,
+    showLoyaltyConfirmation,
   };
 
   return <CFDContext.Provider value={value}>{children}</CFDContext.Provider>;

@@ -47,6 +47,7 @@ export async function payFullCard(
   amount: number,
   tipAmount: number = 0,
   terminalResponse?: Record<string, unknown>,
+  terminalId?: string,
 ): Promise<ProcessPaymentV2Result> {
   const supabase = getSupabase();
   const { data, error } = await supabase.rpc("process_payment_v7", {
@@ -55,6 +56,7 @@ export async function payFullCard(
     p_amount: amount,
     p_tip_amount: tipAmount,
     p_terminal_response: terminalResponse || null,
+    p_terminal_id: terminalId || null,
   });
 
   if (error) throw error;
@@ -99,6 +101,7 @@ export async function paySplitPortion(
   terminalResponse?: Record<string, unknown>, // For card
   splitCount?: number, // Total number of split portions
   splitPortionIndex?: number, // Which portion this is (1-based)
+  terminalId?: string,
 ): Promise<ProcessPaymentV2Result> {
   const supabase = getSupabase();
   const { data, error } = await supabase.rpc("process_payment_v7", {
@@ -111,6 +114,7 @@ export async function paySplitPortion(
     // Split parameters
     p_split_count: splitCount || null,
     p_split_portion_index: splitPortionIndex || null,
+    p_terminal_id: terminalId || null,
   });
 
   if (error) throw error;
@@ -134,6 +138,7 @@ export async function payForItems(
   tipAmount: number = 0,
   amountTendered?: number,
   terminalResponse?: Record<string, unknown>,
+  terminalId?: string,
 ): Promise<ProcessPaymentV2Result> {
   const supabase = getSupabase();
   // Backend calculates amount from items and their quantities
@@ -145,6 +150,7 @@ export async function payForItems(
     p_amount_tendered: amountTendered || null,
     p_item_allocations: itemAllocations,
     p_terminal_response: terminalResponse || null,
+    p_terminal_id: terminalId || null,
   });
 
   if (error) throw error;
@@ -162,6 +168,7 @@ export async function payMixed(
   cashAmount: number,
   cashTendered: number,
   cardTerminalResponse?: Record<string, unknown>,
+  terminalId?: string,
 ): Promise<{
   cardPayment: ProcessPaymentV2Result;
   cashPayment: ProcessPaymentV2Result;
@@ -172,6 +179,7 @@ export async function payMixed(
     cardAmount,
     0,
     cardTerminalResponse,
+    terminalId,
   );
 
   // 2. Process cash for remaining

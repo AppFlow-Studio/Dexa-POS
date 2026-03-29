@@ -5,11 +5,14 @@
  * Runs checklist validations against live data.
  */
 
-import { DailySummary, DrawerBreakdownItem, useEndOfDayStore } from "@/stores/useEndOfDayStore";
+import { DailySummary, DrawerBreakdownItem, OpenOrderSummary, useEndOfDayStore } from "@/stores/useEndOfDayStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useCashDrawerStore } from "@/stores/useCashDrawerStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { FetchedOrderData, normalizeFetchedOrder, transformBroadcastToOrder } from "@/utils/orderTransformers";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface TipPoolRoleShareOverview {
@@ -64,46 +67,102 @@ export interface TodayTipSummary {
   cardTips: number;
   cashTips: number;
   totalTips: number;
-  /** Prior-day sessions (last 7 days) that are not approved/exported/voided */
+  periodStart: string | null; // "YYYY-MM-DD" — first day included in totals
+  /** Prior-day sessions (since last approved) that are not approved/exported/voided */
   pendingPriorDaySessions: { date: string; status: string }[];
 }
 
 /**
- * Fetch today's collected tip totals and any unresolved prior-day sessions.
+ * Compute unsettled tips directly from the in-memory order store.
+ * Instant — no network round-trip. Used as placeholderData for the backend query.
+ * Includes all in-memory orders regardless of date (mirrors the multi-day period logic).
+ */
+export function computeLocalUnsettledTips(): Pick<TodayTipSummary, "cardTips" | "cashTips" | "totalTips"> {
+  const { ordersById } = useOrderStore.getState();
+
+  // Terminal statuses — never contribute tips
+  const EXCLUDED_STATUSES = new Set(["void", "cancelled", "refunded"]);
+
+  let cardTips = 0;
+  let cashTips = 0;
+
+  for (const order of Object.values(ordersById)) {
+    if (!order?.payments?.length) continue;
+    if (EXCLUDED_STATUSES.has(order.order_status)) continue;
+
+    for (const payment of order.payments) {
+      // Skip voided/refunded payments
+      if (payment.isVoided || payment.status === "voided" || payment.status === "refunded") continue;
+      const tip = payment.tip_amount || 0;
+      if (tip <= 0) continue;
+      // OrderProfilePayment uses `method: PaymentType` with values "Card" / "Cash"
+      if (payment.method === "Card") cardTips += tip;
+      else if (payment.method === "Cash") cashTips += tip;
+    }
+  }
+
+  return { cardTips, cashTips, totalTips: cardTips + cashTips };
+}
+
+/**
+ * Fetch tip totals for all unsettled days since the last approved/exported session.
  * Used by EodStepTips to show the manager what's being distributed.
  */
-export async function fetchTodayTipSummary(
+export async function fetchUnsettledTipSummary(
   supabase: SupabaseClient,
   locationId: string
 ): Promise<TodayTipSummary> {
-  const today = new Date().toISOString().split("T")[0];
-  const startOfDay = `${today}T00:00:00.000Z`;
-  const endOfDay = `${today}T23:59:59.999Z`;
+  const now = new Date();
+  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const endOfPeriod = now.toISOString();
 
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split("T")[0];
+  const lastSettledRes = await supabase
+    .from("tip_distribution_sessions")
+    .select("session_date")
+    .eq("location_id", locationId)
+    .in("status", ["approved", "exported"])
+    .order("session_date", { ascending: false })
+    .limit(1);
+
+  let startOfPeriod: string;
+  let periodStart: string;
+
+  if (lastSettledRes.data?.[0]?.session_date) {
+    const d = new Date(`${lastSettledRes.data[0].session_date}T00:00:00`);
+    d.setDate(d.getDate() + 1);
+    startOfPeriod = d.toISOString();
+    periodStart = d.toISOString().split("T")[0];
+  } else {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() - 30);
+    startOfPeriod = fallback.toISOString();
+    periodStart = fallback.toISOString().split("T")[0];
+  }
 
   const [paymentsRes, priorSessionsRes] = await Promise.all([
     supabase
       .from("order_payments")
       .select("payment_method, tip_amount")
       .eq("location_id", locationId)
-      .gte("created_at", startOfDay)
-      .lte("created_at", endOfDay)
-      .not("status", "in", '("voided","refunded")'),
+      .gte("initiated_at", startOfPeriod)
+      .lte("initiated_at", endOfPeriod)
+      .not("status", "in", '("void","refunded","partially_refunded")'),
     supabase
       .from("tip_distribution_sessions")
       .select("session_date, status")
       .eq("location_id", locationId)
-      .gte("session_date", sevenDaysAgoStr)
-      .lt("session_date", today)
+      .gte("session_date", periodStart)
+      .lt("session_date", localDate)
       .not("status", "in", '("approved","exported","voided")'),
   ]);
 
+  if (paymentsRes.error) {
+    console.error("[EOD] fetchUnsettledTipSummary payments query failed:", paymentsRes.error.message);
+  }
+
   const payments = paymentsRes.data || [];
   const cardTips = payments
-    .filter((p: any) => p.payment_method === "card")
+    .filter((p: any) => p.payment_method !== "cash")
     .reduce((sum: number, p: any) => sum + Number(p.tip_amount || 0), 0);
   const cashTips = payments
     .filter((p: any) => p.payment_method === "cash")
@@ -113,11 +172,128 @@ export async function fetchTodayTipSummary(
     cardTips,
     cashTips,
     totalTips: cardTips + cashTips,
+    periodStart,
     pendingPriorDaySessions: (priorSessionsRes.data || []).map((s: any) => ({
       date: s.session_date,
       status: s.status,
     })),
   };
+}
+
+// ============================================================================
+// OPEN ORDERS
+// ============================================================================
+
+/**
+ * Fetch all open (unpaid/partial) orders for the location — no date filter.
+ * Fixes the silent bug in the old query that used `.eq("payment_status", "Unpaid")`
+ * (not a valid DB enum value — always returned 0 rows).
+ */
+export async function fetchOpenOrders(
+  supabase: SupabaseClient,
+  locationId: string
+): Promise<OpenOrderSummary[]> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, table_number, order_type, total_amount, payment_status, check_status, created_at")
+    .eq("location_id", locationId)
+    .eq("check_status", "opened")
+    .not("payment_status", "eq", "paid")
+    .not("status", "in", '("void","cancelled")')
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[EOD] fetchOpenOrders failed:", error.message);
+    return [];
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    table_number: row.table_number ?? null,
+    order_type: row.order_type ?? null,
+    grand_total: Number(row.total_amount || 0),
+    payment_status: row.payment_status ?? "pending",
+    check_status: row.check_status ?? null,
+    created_at: row.created_at,
+  }));
+}
+
+/**
+ * Bulk close open orders:
+ * - pending/null payment_status → void the order
+ * - partial/partially_refunded/refunded → close the check
+ * Returns approximate count of rows affected.
+ */
+export async function bulkCloseOpenOrders(
+  supabase: SupabaseClient,
+  locationId: string,
+  orderIds: string[]
+): Promise<number> {
+  if (orderIds.length === 0) return 0;
+
+  const [voidRes, closeRes] = await Promise.all([
+    supabase
+      .from("orders")
+      .update({ status: "void" })
+      .eq("location_id", locationId)
+      .in("id", orderIds)
+      .or("payment_status.eq.pending,payment_status.is.null"),
+    supabase
+      .from("orders")
+      .update({ check_status: "closed" })
+      .eq("location_id", locationId)
+      .in("id", orderIds)
+      .in("payment_status", ["partial", "partially_refunded", "refunded"]),
+  ]);
+
+  if (voidRes.error) console.error("[EOD] bulkCloseOpenOrders void failed:", voidRes.error.message);
+  if (closeRes.error) console.error("[EOD] bulkCloseOpenOrders close failed:", closeRes.error.message);
+
+  return 0;
+}
+
+/**
+ * Ensure an order is loaded into useOrderStore so PaymentDetailBottomSheet can open it.
+ * Returns true if the order is available (either already loaded or successfully fetched).
+ */
+export async function loadOrderForPaymentSheet(
+  supabase: SupabaseClient,
+  dbOrderId: string
+): Promise<boolean> {
+  const { ordersById, dbOrderIdIndex } = useOrderStore.getState();
+
+  // Already in store under local key or db-id key
+  if (ordersById[dbOrderId] || dbOrderIdIndex[dbOrderId]) return true;
+
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        order_items (*, order_item_modifiers (*)),
+        order_payments (*),
+        stations (station_name),
+        created_by_staff:staff_profiles!created_by_staff_id (first_name, last_name)
+      `)
+      .eq("id", dbOrderId)
+      .single();
+
+    if (error || !data) {
+      console.error("[EOD] loadOrderForPaymentSheet fetch failed:", error?.message);
+      return false;
+    }
+
+    const broadcastData = normalizeFetchedOrder(data as unknown as FetchedOrderData);
+    const profile = transformBroadcastToOrder(broadcastData, null);
+
+    useOrderStore.setState((state) => ({
+      ordersById: { ...state.ordersById, [profile.id]: profile },
+    }));
+    return true;
+  } catch (err) {
+    console.error("[EOD] loadOrderForPaymentSheet error:", err);
+    return false;
+  }
 }
 
 // ============================================================================
@@ -149,21 +325,16 @@ export async function runChecklistValidations(
   }
 
   // 2. Check orders closed
-  const { data: unpaidOrders } = await supabase
-    .from("orders")
-    .select("id")
-    .eq("location_id", locationId)
-    .eq("paid_status", "Unpaid")
-    .not("order_status", "in", '("voided","cancelled")')
-    .limit(10);
+  const openOrders = await fetchOpenOrders(supabase, locationId);
+  useEndOfDayStore.getState().setOpenOrders(openOrders);
 
-  if (!unpaidOrders?.length) {
+  if (openOrders.length === 0) {
     eod.updateChecklistItem("orders_closed", "passed");
   } else {
     eod.updateChecklistItem(
       "orders_closed",
       "failed",
-      `${unpaidOrders.length} unpaid order(s) remain`
+      `${openOrders.length} open order(s) remain`
     );
   }
 
@@ -175,13 +346,37 @@ export async function runChecklistValidations(
     eod.updateChecklistItem("cash_drawer_closed", "failed", "Drawer still open");
   }
 
-  // 4. Check tips — today's session + any unresolved prior-day sessions
-  const today = new Date().toISOString().split("T")[0];
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split("T")[0];
+  // 4. Check tips — all unsettled days since the last approved/exported session
+  const _now = new Date();
+  const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
 
-  const [{ data: tipSession }, { data: priorSessions }] = await Promise.all([
+  const lastSettledRes = await supabase
+    .from("tip_distribution_sessions")
+    .select("session_date")
+    .eq("location_id", locationId)
+    .in("status", ["approved", "exported"])
+    .order("session_date", { ascending: false })
+    .limit(1);
+
+  let tipPeriodStart: string;
+  if (lastSettledRes.data?.[0]?.session_date) {
+    const d = new Date(`${lastSettledRes.data[0].session_date}T00:00:00`);
+    d.setDate(d.getDate() + 1);
+    tipPeriodStart = d.toISOString().split("T")[0];
+  } else {
+    const fallback = new Date();
+    fallback.setDate(fallback.getDate() - 30);
+    tipPeriodStart = fallback.toISOString().split("T")[0];
+  }
+
+  const [{ data: unsettledSessions }, { data: todaySession }] = await Promise.all([
+    supabase
+      .from("tip_distribution_sessions")
+      .select("session_date, status")
+      .eq("location_id", locationId)
+      .gte("session_date", tipPeriodStart)
+      .lte("session_date", today)
+      .not("status", "in", '("approved","exported","voided")'),
     supabase
       .from("tip_distribution_sessions")
       .select("status")
@@ -189,45 +384,31 @@ export async function runChecklistValidations(
       .eq("session_date", today)
       .limit(1)
       .maybeSingle(),
-    supabase
-      .from("tip_distribution_sessions")
-      .select("session_date, status")
-      .eq("location_id", locationId)
-      .gte("session_date", sevenDaysAgoStr)
-      .lt("session_date", today)
-      .not("status", "in", '("approved","exported","voided")'),
   ]);
 
-  const pendingPrior = (priorSessions || []) as { session_date: string; status: string }[];
-  const priorDetail =
-    pendingPrior.length > 0
-      ? `${pendingPrior.length} prior-day session${pendingPrior.length > 1 ? "s" : ""} unresolved`
-      : undefined;
+  const pending = (unsettledSessions || []) as { session_date: string; status: string }[];
 
-  if (tipSession?.status === "approved" || tipSession?.status === "exported") {
-    eod.updateChecklistItem(
-      "tips_distributed",
-      pendingPrior.length > 0 ? "failed" : "passed",
-      priorDetail
-    );
-  } else if (tipSession) {
-    const detail = [
-      `Today: ${tipSession.status}`,
-      priorDetail,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    eod.updateChecklistItem("tips_distributed", "failed", detail);
+  if (pending.length === 0) {
+    eod.updateChecklistItem("tips_distributed", "passed");
   } else {
-    eod.updateChecklistItem(
-      "tips_distributed",
-      pendingPrior.length > 0 ? "failed" : "pending",
-      ["Not started", priorDetail].filter(Boolean).join(" · ")
-    );
+    const localTips = computeLocalUnsettledTips();
+    const noTips = localTips.totalTips === 0 && !todaySession;
+    if (noTips) {
+      eod.updateChecklistItem("tips_distributed", "passed");
+    } else {
+      const detail =
+        pending.length === 1 && pending[0].session_date === today
+          ? `Today: ${pending[0].status}`
+          : `${pending.length} unsettled day${pending.length > 1 ? "s" : ""}`;
+      eod.updateChecklistItem("tips_distributed", "failed", detail);
+    }
   }
 
-  // 5. Check shifts
-  const activeShifts = Object.values(useTimeclockStore.getState().sessions);
+  // 5. Check shifts — exclude the current POS user (they clock out separately)
+  const activeEmployeeId = useEmployeeStore.getState().activeEmployeeId;
+  const activeShifts = Object.entries(useTimeclockStore.getState().sessions).filter(
+    ([id]) => id !== activeEmployeeId
+  );
   if (activeShifts.length === 0) {
     eod.updateChecklistItem("shifts_reviewed", "passed");
   } else {
@@ -250,19 +431,21 @@ export async function fetchDailySummary(
   locationId: string,
   date?: string
 ): Promise<DailySummary | null> {
-  const targetDate = date || new Date().toISOString().split("T")[0];
-  const startOfDay = `${targetDate}T00:00:00.000Z`;
-  const endOfDay = `${targetDate}T23:59:59.999Z`;
+  const _n = new Date();
+  const localToday = `${_n.getFullYear()}-${String(_n.getMonth() + 1).padStart(2, "0")}-${String(_n.getDate()).padStart(2, "0")}`;
+  const targetDate = date || localToday;
+  const startOfDay = new Date(`${targetDate}T00:00:00`).toISOString();
+  const endOfDay = new Date(`${targetDate}T23:59:59.999`).toISOString();
 
   try {
     // Fetch orders for the day
     const { data: orders } = await supabase
       .from("orders")
-      .select("id, grand_total, cash_grand_total, paid_status, order_status")
+      .select("id, total_amount, cash_total, payment_status, status")
       .eq("location_id", locationId)
       .gte("created_at", startOfDay)
       .lte("created_at", endOfDay)
-      .not("order_status", "in", '("voided","cancelled")');
+      .not("status", "in", '("void","cancelled")');
 
     // Fetch payments for the day
     const { data: payments } = await supabase
@@ -296,7 +479,7 @@ export async function fetchDailySummary(
     const shiftList = shifts || [];
 
     const totalSales = orderList.reduce(
-      (sum, o) => sum + Number(o.grand_total || 0),
+      (sum, o) => sum + Number(o.total_amount || 0),
       0
     );
 

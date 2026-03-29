@@ -626,13 +626,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                       // Exclusions at top
                       if (displaySettings.exclusionsAtTop) {
                         mods.sort((a, b) => {
-                          const aRemoval = a.modifier_group_name?.toLowerCase().includes("remove") || a.modifier_name?.toLowerCase().startsWith("no ") ? 0 : 1;
-                          const bRemoval = b.modifier_group_name?.toLowerCase().includes("remove") || b.modifier_name?.toLowerCase().startsWith("no ") ? 0 : 1;
+                          const aRemoval = a.is_no || a.modifier_group_name?.toLowerCase().includes("remove") || a.modifier_name?.toLowerCase().startsWith("no ") ? 0 : 1;
+                          const bRemoval = b.is_no || b.modifier_group_name?.toLowerCase().includes("remove") || b.modifier_name?.toLowerCase().startsWith("no ") ? 0 : 1;
                           return aRemoval - bRemoval;
                         });
                       }
                       return mods.map((mod, mi) => {
                         const isRemoval =
+                          mod.is_no ||
                           mod.modifier_group_name?.toLowerCase().includes("remove") ||
                           mod.modifier_name?.toLowerCase().startsWith("no ");
                         // Modifier group name prefix
@@ -1447,7 +1448,7 @@ const KitchenDisplayScreen = () => {
       const message = parts.join(' · ');
 
       toast.show({
-        title: `Ticket #${displayNum} → ${statusLabel}`,
+        title: `Ticket ${displayNum} → ${statusLabel}`,
         message,
         type: "success",
         duration: 5000,

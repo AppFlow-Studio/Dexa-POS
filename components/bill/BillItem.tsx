@@ -49,7 +49,7 @@ function getKitchenBorderColor(kitchenStatus?: string): string | undefined {
 interface ModifierDisplay {
   categoryId: string;
   categoryName?: string;
-  options: Array<{ id: string; name: string; price: number }>;
+  options: Array<{ id: string; name: string; price: number; isNo?: boolean }>;
 }
 
 /**
@@ -69,10 +69,10 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
             )}
             {modifier.options.map((option, optionIndex) => (
               <View key={`opt-${optionIndex}`} className="flex-row items-center gap-0.5">
-                <Text style={{ fontSize: 10 }} className="text-gray-300">
-                  {option.name}{optionIndex < modifier.options.length - 1 ? "," : ""}
+                <Text style={{ fontSize: 10, color: option.isNo ? colors.danger : '#E0E0E0' }} >
+                  {option.isNo ? `NO ${option.name}` : option.name}{optionIndex < modifier.options.length - 1 ? "," : ""}
                 </Text>
-                {option.price > 0 && (
+                {!option.isNo && option.price > 0 && (
                   <Text style={{ fontSize: 10 }} className="text-teal-500">
                     +${option.price.toFixed(2)}
                   </Text>
@@ -95,10 +95,11 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
       if (prevMod.categoryId !== nextMod.categoryId) return false;
       if (prevMod.options.length !== nextMod.options.length) return false;
 
-      // Compare actual option IDs and names to detect changes
+      // Compare actual option IDs, names and isNo to detect changes
       for (let j = 0; j < prevMod.options.length; j++) {
         if (prevMod.options[j].id !== nextMod.options[j].id) return false;
         if (prevMod.options[j].name !== nextMod.options[j].name) return false;
+        if (prevMod.options[j].isNo !== nextMod.options[j].isNo) return false;
       }
     }
 

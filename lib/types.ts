@@ -402,6 +402,7 @@ export interface CartItem {
         id: string;
         name: string;
         price: number;
+        isNo?: boolean;
       }[];
     }[];
     notes?: string;
@@ -492,6 +493,7 @@ export interface PreviousOrder {
   cash_amount_due: number;
   type: OrderType;
   total: number;
+  tax?: number; // Tax amount for bill display
   items: CartItem[]; // The detailed list of items for the notes modal
   notes?: string; // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile["payments"]; // Add payments array
@@ -905,7 +907,7 @@ export interface OrderProfile {
     | "delivery";
 
   // Payment status for the order
-  paid_status: "Paid" | "Partial" | "Pending" | "Unpaid";
+  paid_status: "Paid" | "Partial" | "Pending" | "Unpaid" | "Refunded";
 
   // The actual items in the order. This is the "cart".
   items: CartItem[];

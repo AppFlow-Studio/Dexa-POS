@@ -1,13 +1,13 @@
 // hooks/useCFDWSClient.ts
 // WebSocket client hook for CFD client mode
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
-import type { CFDMessage, CFDPayload, CFDTipResponse } from "@/types/cfd.types";
+import type { CFDMessage, CFDPayload, CFDPhoneResponse, CFDTipResponse } from "@/types/cfd.types";
 import NetInfo from "@react-native-community/netinfo";
 import { useCallback, useEffect, useRef } from "react";
 import { AppState } from "react-native";
 
-const PING_INTERVAL = 5000;
-const PONG_TIMEOUT = 15000; // Force-close if 3 pings missed
+const PING_INTERVAL  = 3_000;  // 3s — client detects server death in ~9-12s (was 15-20s)
+const PONG_TIMEOUT   = 9_000;  // 9s — force-close if 3 pings missed
 const CONNECT_TIMEOUT = 10_000;
 
 export function useCFDWSClient() {
@@ -45,6 +45,15 @@ export function useCFDWSClient() {
     if (!isMounted.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     if (isConnecting.current) return;
+
+    // Validate pairing data before attempting connection
+    const isValidIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(connection.ip ?? "");
+    const isValidPort = typeof connection.port === "number" && connection.port > 0 && connection.port < 65536;
+    if (!isValidIp || !isValidPort) {
+      console.error("[CFD Client] Invalid pairing data, clearing");
+      useCFDClientStore.getState().clearPairing();
+      return;
+    }
 
     isConnecting.current = true;
 
@@ -123,8 +132,10 @@ export function useCFDWSClient() {
       setConnectionStatus("disconnected");
       cleanup();
 
-      // Auto-reconnect with exponential backoff (500ms → 5s)
-      const nextDelay = Math.min(500 * Math.pow(2, retryCount.current), 5000);
+      // Auto-reconnect with exponential backoff (100ms → 500ms → 1s → 2s → 4s → 5s cap)
+      const nextDelay = retryCount.current === 0
+        ? 100
+        : Math.min(500 * Math.pow(2, retryCount.current - 1), 5000);
       if (__DEV__) {
         console.log(
           `[CFD Client] Reconnecting in ${nextDelay}ms... (Attempt ${retryCount.current + 1})`,
@@ -170,6 +181,26 @@ export function useCFDWSClient() {
     [connection],
   );
 
+  const sendPhoneNumber = useCallback(
+    (phone: string) => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN || !connection) return;
+      const payload: CFDPhoneResponse = { phone, timestamp: Date.now() };
+      const msg: CFDMessage = {
+        type: "phone_submitted",
+        payload,
+        timestamp: Date.now(),
+      };
+      wsRef.current.send(JSON.stringify(msg));
+    },
+    [connection],
+  );
+
+  const sendLoyaltySkip = useCallback(() => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    const msg: CFDMessage = { type: "loyalty_skip", timestamp: Date.now() };
+    wsRef.current.send(JSON.stringify(msg));
+  }, []);
+
   // Connect when paired
   useEffect(() => {
     isMounted.current = true;
@@ -182,15 +213,26 @@ export function useCFDWSClient() {
     };
   }, [isPaired, connect, disconnect]);
 
-  // Reconnect on app foreground
+  // Reconnect on app foreground; proactively close on background (RN 0.76+/Hermes bug: ws.onclose
+  // may not fire when app goes to background — issue #49243 — so we close eagerly to prevent
+  // zombie connections that leak pingTimer and block the isConnecting guard on the next reconnect)
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active" && isPaired && isMounted.current) {
         connect();
+      } else if (state === "background" || state === "inactive") {
+        if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+          wsRef.current.onclose = null;  // prevent double-handling if onclose does fire later
+          wsRef.current.onerror = null;
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+        isConnecting.current = false;
+        cleanup();  // clear ping/reconnect timers immediately
       }
     });
     return () => sub.remove();
-  }, [isPaired, connect]);
+  }, [isPaired, connect, cleanup]);
 
   // Reconnect on network restored
   // NetInfo fires immediately on subscribe — skip that initial emission
@@ -214,5 +256,5 @@ export function useCFDWSClient() {
     return unsubscribe;
   }, [isPaired, connect]);
 
-  return { sendTipSelection, reconnect: connect, disconnect };
+  return { sendTipSelection, sendPhoneNumber, sendLoyaltySkip, reconnect: connect, disconnect };
 }

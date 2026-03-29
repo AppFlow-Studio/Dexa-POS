@@ -4,8 +4,9 @@ import { Buffer } from "buffer";
 import { sha1 } from "js-sha1";
 
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-const HEARTBEAT_INTERVAL = 15000; // 15s ping interval
-const HEARTBEAT_TIMEOUT = 20000; // Disconnect if no pong for 20s
+const HEARTBEAT_INTERVAL = 8_000;  // 8s ping interval — worst-case detection: ~24s
+const HEARTBEAT_TIMEOUT  = 16_000; // Disconnect if no pong for 16s
+const MAX_FRAME_SIZE = 1_048_576;  // 1MB — guard against runaway frame buffers
 
 type MessageHandler = (clientId: string, message: string) => void;
 type ConnectionHandler = (clientId: string) => void;
@@ -121,6 +122,13 @@ export class WebSocketServer {
     // Append to buffer
     client.buffer = Buffer.concat([client.buffer, chunk]);
 
+    // Guard against runaway buffers (client sending garbage)
+    if (client.buffer.length > MAX_FRAME_SIZE * 2) {
+      console.error(`[WS] Client ${clientId} buffer overflow, disconnecting`);
+      TcpServer.disconnect(clientId);
+      return;
+    }
+
     // Not yet upgraded - check for HTTP upgrade request
     if (!client.isUpgraded) {
       const asString = client.buffer.toString("utf8");
@@ -159,7 +167,7 @@ export class WebSocketServer {
       "",
     ].join("\r\n");
 
-    TcpServer.send(client.id, response);
+    TcpServer.send(client.id, Buffer.from(response, "utf8").toString("base64"));
 
     client.isUpgraded = true;
     client.buffer = Buffer.alloc(0);
@@ -220,6 +228,12 @@ export class WebSocketServer {
         if (buffer.length - offset < 10) break;
         payloadLength = Number(buffer.readBigUInt64BE(offset + 2));
         headerLength = 10;
+      }
+
+      if (payloadLength > MAX_FRAME_SIZE) {
+        console.error(`[WS] Client ${client.id} sent oversized frame (${payloadLength} bytes), disconnecting`);
+        TcpServer.disconnect(client.id);
+        return;
       }
 
       if (isMasked) headerLength += 4;
@@ -303,8 +317,7 @@ export class WebSocketServer {
     }
 
     const frame = Buffer.concat([header, payload]);
-    // The native module now expects Latin1/Binary string if we use .toByteArray(Charsets.ISO_8859_1)
-    TcpServer.send(clientId, frame.toString("binary"));
+    TcpServer.send(clientId, frame.toString("base64"));
   }
 
   // ==================== PUBLIC API ====================

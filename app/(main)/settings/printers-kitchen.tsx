@@ -1815,7 +1815,7 @@ const PrintersKitchenScreen = () => {
               </View>
             </View>
 
-            {(selectedStore?.kds_workflow_mode ?? '3-step') !== '2-step' && (
+            {kdsConfig.workflowMode !== '2-step' && (
               <>
                 <SectionHeader title="KDS Auto-Fire" />
                 <ToggleRow

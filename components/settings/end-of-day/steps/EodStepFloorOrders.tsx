@@ -1,13 +1,33 @@
-import { colors } from "@/lib/theme";
-import { ChecklistItem, ChecklistItemId } from "@/stores/useEndOfDayStore";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ChecklistItem, ChecklistItemId, OpenOrderSummary } from "@/stores/useEndOfDayStore";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import EodChecklistRow from "../EodChecklistRow";
+import { colors } from "@/lib/theme";
+
 
 const resolveItem = (
   list: ChecklistItem[],
   id: ChecklistItemId
 ): ChecklistItem | undefined => list.find((i) => i.id === id);
+
+function formatDate(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatCurrency(amount: number): string {
+  return `$${amount.toFixed(2)}`;
+}
+
+function paymentStatusLabel(status: string): string {
+  switch (status) {
+    case "partial": return "Partial";
+    case "partially_refunded": return "Part. Refund";
+    case "refunded": return "Refunded";
+    case "pending": return "Unpaid";
+    default: return "Unpaid";
+  }
+}
 
 interface EodStepFloorOrdersProps {
   checklist: ChecklistItem[];
@@ -15,6 +35,11 @@ interface EodStepFloorOrdersProps {
   onRefresh: () => Promise<void> | void;
   onOpenTables: () => void;
   onOpenOrders: () => void;
+  openOrders: OpenOrderSummary[];
+  isBulkClosing: boolean;
+  onBulkClose: (orderIds: string[]) => Promise<void>;
+  onNavigateToOrder: (orderId: string) => void;
+  onPayOrder: (orderId: string) => Promise<void>;
 }
 
 export default function EodStepFloorOrders({
@@ -23,12 +48,44 @@ export default function EodStepFloorOrders({
   onRefresh,
   onOpenTables,
   onOpenOrders,
+  openOrders,
+  isBulkClosing,
+  onBulkClose,
+  onNavigateToOrder,
+  onPayOrder,
 }: EodStepFloorOrdersProps) {
   const tablesItem = resolveItem(checklist, "tables_clear");
   const ordersItem = resolveItem(checklist, "orders_closed");
 
   const isPassed =
     tablesItem?.status === "passed" && ordersItem?.status === "passed";
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Clear selection when orders list refreshes
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [openOrders.length]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const hasSelection = selectedIds.size > 0;
+  const isDisabled = isRunning || isBulkClosing;
+
+  const handleCloseAll = () => {
+    void onBulkClose(openOrders.map((o) => o.id));
+  };
+
+  const handleCloseSelected = () => {
+    void onBulkClose([...selectedIds]);
+  };
 
   return (
     <View style={{ gap: 12 }}>
@@ -99,4 +156,3 @@ export default function EodStepFloorOrders({
     </View>
   );
 }
-

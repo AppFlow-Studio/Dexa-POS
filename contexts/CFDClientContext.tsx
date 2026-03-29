@@ -2,6 +2,8 @@ import { createContext, useContext } from "react";
 
 interface CFDClientActions {
   sendTipSelection: (tipAmount: number, tipPercentage: number | null) => void;
+  sendPhoneNumber: (phone: string) => void;
+  sendLoyaltySkip: () => void;
   reconnect: () => void;
   disconnect: () => void;
 }

@@ -144,6 +144,16 @@ export interface DailySummary {
   totalRefunds: number;
 }
 
+export interface OpenOrderSummary {
+  id: string;           // db order id
+  table_number: string | null;
+  order_type: string | null;
+  grand_total: number;
+  payment_status: string;
+  check_status: string | null;
+  created_at: string;
+}
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -153,6 +163,9 @@ interface EndOfDayState {
   checklist: ChecklistItem[];
   currentStep: number;
   isRunning: boolean;
+
+  // Open orders (for Floor & Orders step)
+  openOrders: OpenOrderSummary[];
 
   // Summary
   dailySummary: DailySummary | null;
@@ -166,6 +179,7 @@ interface EndOfDayState {
   updateChecklistItem: (id: ChecklistItemId, status: ChecklistStatus, detail?: string) => void;
   setCurrentStep: (step: number) => void;
   setIsRunning: (running: boolean) => void;
+  setOpenOrders: (orders: OpenOrderSummary[]) => void;
   setDailySummary: (summary: DailySummary) => void;
   setSummaryLoading: (loading: boolean) => void;
   setEodPhase: (phase: EodPhase) => void;
@@ -235,6 +249,7 @@ export const useEndOfDayStore = create<EndOfDayState>()(
     checklist: [...DEFAULT_CHECKLIST],
     currentStep: 0,
     isRunning: false,
+    openOrders: [],
     dailySummary: null,
     summaryLoading: false,
     eodPhase: DEFAULT_EOD_PHASE,
@@ -246,6 +261,7 @@ export const useEndOfDayStore = create<EndOfDayState>()(
         checklist: DEFAULT_CHECKLIST.map((item) => ({ ...item, status: "pending" as ChecklistStatus, detail: undefined })),
         currentStep: 0,
         isRunning: true,
+        openOrders: [],
         eodPhase: "wizard",
         completionOverrideReason: null,
         completionOverrideAt: null,
@@ -264,6 +280,7 @@ export const useEndOfDayStore = create<EndOfDayState>()(
 
     setCurrentStep: (step) => set({ currentStep: step }),
     setIsRunning: (running) => set({ isRunning: running }),
+    setOpenOrders: (orders) => set({ openOrders: orders }),
     setDailySummary: (summary) => set({ dailySummary: summary }),
     setSummaryLoading: (loading) => set({ summaryLoading: loading }),
     setEodPhase: (phase) => set({ eodPhase: phase }),
@@ -283,6 +300,7 @@ export const useEndOfDayStore = create<EndOfDayState>()(
         checklist: DEFAULT_CHECKLIST.map((item) => ({ ...item, status: "pending" as ChecklistStatus, detail: undefined })),
         currentStep: 0,
         isRunning: false,
+        openOrders: [],
         dailySummary: null,
         eodPhase: DEFAULT_EOD_PHASE,
         completionOverrideReason: null,

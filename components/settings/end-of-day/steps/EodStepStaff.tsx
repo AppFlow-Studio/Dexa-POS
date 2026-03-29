@@ -24,8 +24,8 @@ export default function EodStepStaff({
   onRefresh,
 }: EodStepStaffProps) {
   const staffItem = resolveItem(checklist, "shifts_reviewed");
-  const hasActiveSessions = useTimeclockStore(
-    (s) => Object.keys(s.sessions).length > 0
+  const hasOtherActiveSessions = useTimeclockStore(
+    (s) => Object.keys(s.sessions).some((id) => id !== s.activeEmployeeId)
   );
 
   return (
@@ -59,7 +59,7 @@ export default function EodStepStaff({
               Open Timeclock
             </Text>
           </TouchableOpacity>
-          {hasActiveSessions && (
+          {hasOtherActiveSessions && (
             <TouchableOpacity
               onPress={onOpenBulkClockOut}
               style={{

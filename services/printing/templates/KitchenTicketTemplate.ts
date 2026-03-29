@@ -206,7 +206,8 @@ function renderSingleItem(
     b.bold(true);
 
     for (const mod of item.modifiers) {
-      b.textLine(`  + ${mod}`);
+      const isNo = mod.startsWith("NO ");
+      b.textLine(`  ${isNo ? "-" : "+"} ${mod}`);
     }
 
     if (modStyle === "inverted") {
