@@ -413,17 +413,12 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       onLongPress?.(ticket.ticket_id, ticket, e);
     };
 
-    // Determine border color based on state/urgency
+    // Determine border color based on state
     let borderColor = "#E5E7EB"; // default light gray
     if (isFocused) {
       borderColor = colors.teal;
     } else if (bulkMode && isSelected) {
       borderColor = colors.info;
-    } else if (urgencyLevel > 0) {
-      // Red border if order is overdue (high urgency)
-      borderColor = colors.danger;
-    } else if (ticket.prioritized) {
-      borderColor = "#f59e0b"; // amber for prioritized
     }
 
     const isDineIn = ticket.order_type?.toLowerCase() === "dine_in" || ticket.order_type?.toLowerCase() === "dine in" || !ticket.order_type;
@@ -480,14 +475,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               borderRadius: 10,
               overflow: "hidden",
               backgroundColor: "#FFFFFF",
-              borderTopWidth: 3,
-              borderBottomWidth: 3,
-              borderRightWidth: 3,
-              borderLeftWidth: 3,
-              borderTopColor: hasRush ? colors.warning : borderColor,
-              borderBottomColor: hasRush ? colors.warning : borderColor,
-              borderRightColor: hasRush ? colors.warning : borderColor,
-              borderLeftColor: isDineIn ? colors.teal : hasRush ? colors.warning : borderColor,
+              borderTopWidth: 1,
+              borderBottomWidth: 1,
+              borderRightWidth: 1,
+              borderLeftWidth: isDineIn ? 4 : 1,
+              borderTopColor: borderColor,
+              borderBottomColor: borderColor,
+              borderRightColor: borderColor,
+              borderLeftColor: isDineIn ? colors.teal : borderColor,
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: isFocused ? 0.15 : 0.08,
