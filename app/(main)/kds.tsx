@@ -37,7 +37,6 @@ import {
   Globe,
   UtensilsCrossed,
   CircleDotDashed,
-  Undo2,
 } from "lucide-react-native";
 import React, {
   useCallback,
@@ -92,6 +91,43 @@ const MANAGER_ROLES = ["merchant.manager", "merchant.admin", "merchant.owner"];
 // ─── Memoized animation configs (avoid re-allocation per render) ─
 const LAYOUT_ANIM = LinearTransition.springify().damping(18).stiffness(200);
 const CARD_EXIT_ANIM = FadeOut.duration(150);
+
+// ─── Pulsing Dot (for connection status) ─────────────────────────
+const PulsingDot = () => {
+  const opacity = useRef(new RNAnimated.Value(0.4)).current;
+
+  useEffect(() => {
+    const animation = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(opacity, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        RNAnimated.timing(opacity, {
+          toValue: 0.4,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
+
+  return (
+    <RNAnimated.View
+      style={{
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.teal,
+        opacity,
+        marginLeft: 8,
+      }}
+    />
+  );
+};
 
 // ─── Skeleton ─────────────────────────────────────────────────────
 const SkeletonBar = ({
@@ -257,6 +293,8 @@ interface KDSTicketCardProps {
   onAdvance: (ticketId: string, itemIds: string[], newStatus: "preparing" | "ready" | "served", cardPos?: CardPosition) => void;
   bulkMode: boolean;
   onToggleSelect: (id: string) => void;
+  onFocus?: (ticketId: string | null) => void;
+  isFocused?: boolean;
   onLongPress?: (ticketId: string, ticket: KDSTicket, event: GestureResponderEvent) => void;
   onItemPress?: (ticketId: string, itemId: string) => void;
   hideDoneItems: boolean;
@@ -265,7 +303,7 @@ interface KDSTicketCardProps {
 }
 
 const KDSTicketCard = React.memo<KDSTicketCardProps>(
-  ({ ticket, onAdvance, bulkMode, onToggleSelect, onLongPress, onItemPress, hideDoneItems, displaySettings, urgencyThresholds }) => {
+  ({ ticket, onAdvance, bulkMode, onToggleSelect, onFocus, isFocused, onLongPress, onItemPress, hideDoneItems, displaySettings, urgencyThresholds }) => {
     // Subscribe to own selection state via Zustand selector — only the toggled card re-renders
     const isSelected = useKDSStore(
       useCallback(
@@ -321,8 +359,10 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       const isDoubleTap = now - lastTapRef.current < 300;
 
       if (!isDoubleTap) {
-        // First tap — gentle pulse to signal acknowledgment
+        // First tap — gentle pulse to signal acknowledgment + toggle focus
         lastTapRef.current = now;
+        // Toggle focus: if already focused, deselect; otherwise select
+        onFocus?.(isFocused ? null : ticket.ticket_id);
         scaleValue.value = withSequence(
           withTiming(0.97, { duration: 80, easing: Easing.out(Easing.cubic) }),
           withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
@@ -359,11 +399,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       onLongPress?.(ticket.ticket_id, ticket, e);
     };
 
-    const borderColor = bulkMode && isSelected
-      ? colors.info
-      : ticket.prioritized
-        ? "#f59e0b" // amber for prioritized
-        : "#E5E7EB";
+    const borderColor = isFocused
+      ? colors.teal
+      : bulkMode && isSelected
+        ? colors.info
+        : ticket.prioritized
+          ? "#f59e0b" // amber for prioritized
+          : "#E5E7EB";
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const hasRush = ticket.items.some((item) => item.rush);
     const hasRefire = ticket.items.some((item) => item.recalled);
@@ -416,13 +458,13 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               borderRadius: 10,
               overflow: "hidden",
               backgroundColor: "#FFFFFF",
-              borderWidth: 1,
+              borderWidth: isFocused ? 5 : 1,
               borderColor: borderColor,
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.08,
-              shadowRadius: 4,
-              elevation: 2,
+              shadowOpacity: isFocused ? 0.15 : 0.08,
+              shadowRadius: isFocused ? 8 : 4,
+              elevation: isFocused ? 4 : 2,
             },
             scaleStyle,
           ]}
@@ -442,20 +484,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               ) : (
                 <Square size={20} color={colors.label} />
               )}
-            </View>
-          )}
-
-          {/* Priority badge (star, top-right) */}
-          {ticket.prioritized && (
-            <View
-              style={{
-                position: "absolute",
-                top: 8,
-                right: hasRush ? 70 : (bulkMode ? 30 : 8),
-                zIndex: 9,
-              }}
-            >
-              <Star size={16} color={colors.warning} fill={colors.warning} />
             </View>
           )}
 
@@ -482,7 +510,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </View>
           )}
 
-          {/* Card Header: Order Number + Timer (red if urgent) */}
+          {/* Card Header: Order Number + Star + Timer (red if urgent) */}
           <View
             style={{
               backgroundColor: "#FFFFFF",
@@ -495,12 +523,17 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               alignItems: "center",
             }}
           >
-            <Text style={{ color: "#111827", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
-              #{ticket.display_number || ticket.order_number?.slice(-4) || "----"}
-              {ticket.course_number > 1 && (
-                <Text style={{ color: "#F59E0B" }}> C{ticket.course_number}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={{ color: "#111827", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
+                #{ticket.display_number || ticket.order_number?.slice(-4) || "----"}
+                {ticket.course_number > 1 && (
+                  <Text style={{ color: "#F59E0B" }}> C{ticket.course_number}</Text>
+                )}
+              </Text>
+              {ticket.prioritized && (
+                <Star size={16} color={colors.warning} fill={colors.warning} />
               )}
-            </Text>
+            </View>
             <Text
               style={{
                 color: urgencyLevel > 0 ? colors.danger : colors.label,
@@ -592,7 +625,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   <View style={{ flexDirection: "row", alignItems: "flex-start", opacity: isItemDone ? 0.5 : 1 }}>
                     <View
                       style={{
-                        backgroundColor: isItemDone ? colors.success : colors.border,
+                        backgroundColor: isItemDone ? colors.success : "#E5E7EB",
                         width: 22,
                         height: 22,
                         borderRadius: 4,
@@ -602,7 +635,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                         minWidth: 22,
                       }}
                     >
-                      <Text style={{ color: isItemDone ? "#fff" : "#6B7280", fontSize: 12, fontWeight: "700" }}>
+                      <Text style={{ color: isItemDone ? "#fff" : "#111827", fontSize: 12, fontWeight: "700" }}>
                         {item.quantity}
                       </Text>
                     </View>
@@ -727,6 +760,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     prev.onAdvance === next.onAdvance &&
     prev.bulkMode === next.bulkMode &&
     prev.onToggleSelect === next.onToggleSelect &&
+    prev.onFocus === next.onFocus &&
+    prev.isFocused === next.isFocused &&
     prev.onLongPress === next.onLongPress &&
     prev.onItemPress === next.onItemPress &&
     prev.hideDoneItems === next.hideDoneItems &&
@@ -1035,6 +1070,9 @@ const KitchenDisplayScreen = () => {
     position: { x: number; y: number };
   } | null>(null);
 
+  // Focused ticket state (single-tap selection)
+  const [focusedTicketId, setFocusedTicketId] = useState<string | null>(null);
+
   // KDS logout handler
   const handleKDSLogout = useCallback(async () => {
     if (stationSessionId && selectedStore?.id) {
@@ -1226,6 +1264,7 @@ const KitchenDisplayScreen = () => {
   const handleSetActiveStatus = useCallback(
     (status: StatusFilter) => {
       setActiveStatus(status);
+      setFocusedTicketId(null);
       if (bulkMode) clearSelection();
     },
     [bulkMode, clearSelection],
@@ -1503,6 +1542,8 @@ const KitchenDisplayScreen = () => {
           onAdvance={advanceWithUndo}
           bulkMode={bulkMode}
           onToggleSelect={toggleTicketSelection}
+          onFocus={setFocusedTicketId}
+          isFocused={focusedTicketId === item.ticket_id}
           onLongPress={handleTicketLongPress}
           onItemPress={handleItemPress}
           hideDoneItems={kdsHideDoneItems}
@@ -1511,7 +1552,7 @@ const KitchenDisplayScreen = () => {
         />
       </Animated.View>
     ),
-    [advanceWithUndo, bulkMode, toggleTicketSelection, handleTicketLongPress, handleItemPress, kdsHideDoneItems, displaySettings, urgencyThresholds, columnWidthPct],
+    [advanceWithUndo, bulkMode, toggleTicketSelection, setFocusedTicketId, focusedTicketId, handleTicketLongPress, handleItemPress, kdsHideDoneItems, displaySettings, urgencyThresholds, columnWidthPct],
   );
 
   const renderDoneItem = useCallback(
@@ -1564,19 +1605,9 @@ const KitchenDisplayScreen = () => {
               Kitchen Display
             </Text>
             {showDisconnected ? (
-              <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger, marginRight: 6 }} />
-                <Text style={{ color: colors.danger, fontSize: 11, fontWeight: "600" }}>
-                  Offline
-                </Text>
-              </View>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger, marginLeft: 8 }} />
             ) : (
-              <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 8 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success, marginRight: 6 }} />
-                <Text style={{ color: colors.success, fontSize: 11, fontWeight: "600" }}>
-                  Connected
-                </Text>
-              </View>
+              <PulsingDot />
             )}
             {/* KDS Display Badge */}
             {displayName && (
@@ -1894,7 +1925,10 @@ const KitchenDisplayScreen = () => {
       {!isReady || (isInitialLoading && !hasHydrated) ? (
         renderSkeletons()
       ) : (
-        <View style={{ flex: 1, position: "relative" }}>
+        <Pressable
+          style={{ flex: 1, position: "relative" }}
+          onPress={() => focusedTicketId && setFocusedTicketId(null)}
+        >
           {(["pending", "cooking", "ready"] as const).map((status) => {
             const isActive = activeStatus === status;
             return (
@@ -1969,11 +2003,11 @@ const KitchenDisplayScreen = () => {
               }
             />
           </View>
-        </View>
+        </Pressable>
       )}
 
       {/* ─── Bottom Action Bar ─── */}
-      {activeStatus !== "done" && (
+      {focusedTicketId && activeStatus !== "done" && (
         <View
           style={{
             backgroundColor: colors.panel,
@@ -1983,12 +2017,13 @@ const KitchenDisplayScreen = () => {
             paddingVertical: 12,
             flexDirection: "row",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "center",
             gap: 12,
           }}
         >
-          {/* RECALL button */}
+          {/* CANCEL button */}
           <TouchableOpacity
+            onPress={() => setFocusedTicketId(null)}
             style={{
               paddingHorizontal: 12,
               paddingVertical: 6,
@@ -2001,16 +2036,14 @@ const KitchenDisplayScreen = () => {
               gap: 6,
             }}
           >
-            <Undo2 size={16} color={colors.label} />
             <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
-              RECALL
+              CANCEL
             </Text>
           </TouchableOpacity>
 
           {/* BUMP ORDER button (large, center, teal) */}
           <TouchableOpacity
             style={{
-              flex: 1,
               paddingHorizontal: 14,
               paddingVertical: 8,
               backgroundColor: colors.teal + "20",
@@ -2026,26 +2059,6 @@ const KitchenDisplayScreen = () => {
             <CheckSquare size={18} color={colors.teal} />
             <Text style={{ color: colors.teal, fontSize: 13, fontWeight: "700" }}>
               BUMP ORDER
-            </Text>
-          </TouchableOpacity>
-
-          {/* PRINT button */}
-          <TouchableOpacity
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: "transparent",
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 10,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <RotateCcw size={16} color={colors.label} />
-            <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
-              PRINT
             </Text>
           </TouchableOpacity>
         </View>
