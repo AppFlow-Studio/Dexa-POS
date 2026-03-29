@@ -45,6 +45,7 @@ import React, {
 } from "react";
 import {
   Animated as RNAnimated,
+  Dimensions,
   GestureResponderEvent,
   InteractionManager,
   Pressable,
@@ -2026,27 +2027,81 @@ const KitchenDisplayScreen = () => {
             right: 0,
             bottom: 0,
             zIndex: 100,
+            backgroundColor: "rgba(0,0,0,0.18)",
           }}
         >
+          {(() => {
+            const orderLabel = actionMenu.ticket.display_number || actionMenu.ticket.order_number?.slice(-4) || "----";
+            const statusText =
+              actionMenu.ticket.status === "pending"
+                ? "Pending"
+                : actionMenu.ticket.status === "cooking"
+                  ? "Cooking"
+                  : actionMenu.ticket.status === "ready"
+                    ? "Ready"
+                    : "Done";
+            const statusColor =
+              actionMenu.ticket.status === "pending"
+                ? colors.warning
+                : actionMenu.ticket.status === "cooking"
+                  ? colors.info
+                  : actionMenu.ticket.status === "ready"
+                    ? colors.success
+                    : colors.muted;
+            const menuWidth = 236;
+            const screen = Dimensions.get("window");
+            const left = Math.max(12, Math.min(actionMenu.position.x - 10, screen.width - menuWidth - 12));
+            const top = Math.max(12, Math.min(actionMenu.position.y - 10, screen.height - 210));
+
+            return (
           <View
             style={{
               position: "absolute",
-              top: Math.min(actionMenu.position.y, 400),
-              left: Math.min(actionMenu.position.x, 600),
-              backgroundColor: colors.panel,
+              top,
+              left,
+              width: menuWidth,
+              backgroundColor: "#FFFFFF",
               borderRadius: 12,
               borderWidth: 1,
-              borderColor: colors.border,
-              paddingVertical: 4,
-              minWidth: 180,
+              borderColor: "#E5E7EB",
+              padding: 8,
               shadowColor: "#000",
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.4,
-              shadowRadius: 12,
-              elevation: 10,
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.14,
+              shadowRadius: 16,
+              elevation: 12,
               zIndex: 101,
             }}
           >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
+              <Text style={{ color: "#111827", fontSize: 14, fontWeight: "800" }}>Order #{orderLabel}</Text>
+              <View
+                style={{
+                  backgroundColor: statusColor + "20",
+                  borderWidth: 1,
+                  borderColor: statusColor + "55",
+                  borderRadius: 999,
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                }}
+              >
+                <Text style={{ color: statusColor, fontSize: 10, fontWeight: "700" }}>{statusText}</Text>
+              </View>
+            </View>
+
+            <Text style={{ color: "#6B7280", fontSize: 10, marginBottom: 8 }} numberOfLines={1}>
+              {getOrderTypeLabel(actionMenu.ticket.order_type)}
+              {actionMenu.ticket.table_name ? ` · Table ${actionMenu.ticket.table_name}` : ""}
+              {actionMenu.ticket.item_count ? ` · ${actionMenu.ticket.item_count} items` : ""}
+            </Text>
+
             {/* Recall — only for ready tickets */}
             {actionMenu.ticket.status === "ready" && (
               <Pressable
@@ -2054,29 +2109,46 @@ const KitchenDisplayScreen = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  gap: 10,
+                  justifyContent: "space-between",
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: colors.teal + "66",
+                  backgroundColor: colors.teal + "16",
+                  marginBottom: 6,
                 }}
               >
-                <RotateCcw size={16} color={colors.info} />
-                <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>Recall</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <RotateCcw size={15} color={colors.teal} />
+                  <Text style={{ color: "#111827", fontSize: 13, fontWeight: "700" }}>Recall</Text>
+                </View>
               </Pressable>
             )}
 
+            {/* Recall — only for ready tickets */}
             {/* Prioritize */}
             <Pressable
               onPress={handlePrioritize}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                gap: 10,
+                justifyContent: "space-between",
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + "66",
+                backgroundColor: colors.teal + "16",
+                marginBottom: 6,
               }}
             >
-              <ArrowUpToLine size={16} color="#f59e0b" />
-              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>Prioritize</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <ArrowUpToLine size={15} color={colors.teal} />
+                <Text style={{ color: "#111827", fontSize: 13, fontWeight: "700" }}>
+                  {actionMenu.ticket.prioritized ? "Unprioritize" : "Prioritize"}
+                </Text>
+              </View>
             </Pressable>
 
             {/* Rush / Un-Rush */}
@@ -2085,20 +2157,25 @@ const KitchenDisplayScreen = () => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                gap: 10,
+                justifyContent: "space-between",
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + "66",
+                backgroundColor: colors.teal + "16",
               }}
             >
-              <Flame
-                size={16}
-                color={actionMenu.ticket.items.some((i) => i.rush) ? colors.danger : colors.label}
-              />
-              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>
-                {actionMenu.ticket.items.some((i) => i.rush) ? "Un-Rush" : "Rush"}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Flame size={15} color={colors.teal} />
+                <Text style={{ color: "#111827", fontSize: 13, fontWeight: "700" }}>
+                  {actionMenu.ticket.items.some((i) => i.rush) ? "Remove Rush" : "Mark Rush"}
+                </Text>
+              </View>
             </Pressable>
           </View>
+            );
+          })()}
         </Pressable>
       )}
 

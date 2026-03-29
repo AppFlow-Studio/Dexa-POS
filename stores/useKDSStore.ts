@@ -1162,6 +1162,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     const { tickets, prioritizedTicketIds } = get();
     const ticket = tickets.find((t) => t.ticket_id === ticketId);
     if (!ticket) return;
+    const nextPriorityState = !prioritizedTicketIds.has(ticketId);
 
     const itemIds = ticket.items.map((i) => i.id);
 
@@ -1173,17 +1174,22 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
       targetStatus: ticket.status,
       itemStatuses: itemStatusMap,
       timestamp: Date.now(),
-      prioritized: true,
+      prioritized: nextPriorityState,
     });
 
-    // Add to prioritized set
+    // Toggle membership in prioritized set
     const nextPrioritized = new Set(prioritizedTicketIds);
-    nextPrioritized.add(ticketId);
+    if (nextPriorityState) nextPrioritized.add(ticketId);
+    else nextPrioritized.delete(ticketId);
 
     // Mark ticket + items with prioritized flag
     const updatedTickets = tickets.map((t) =>
       t.ticket_id === ticketId
-        ? { ...t, prioritized: true, items: t.items.map(i => ({ ...i, is_prioritized: true })) }
+        ? {
+            ...t,
+            prioritized: nextPriorityState,
+            items: t.items.map((i) => ({ ...i, is_prioritized: nextPriorityState })),
+          }
         : t,
     );
 
@@ -1197,7 +1203,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
     if (client && itemIds.length > 0) {
       scheduleRetry(
         `priority_${ticketId}`,
-        () => OrderService.togglePriorityOnItems(client, itemIds, true),
+        () => OrderService.togglePriorityOnItems(client, itemIds, nextPriorityState),
         0,
         () => {
           _pendingActions.delete(ticketId);
