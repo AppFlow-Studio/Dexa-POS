@@ -406,6 +406,9 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         : ticket.prioritized
           ? "#f59e0b" // amber for prioritized
           : "#E5E7EB";
+
+    const isDineIn = ticket.order_type?.toLowerCase() === "dine_in" || ticket.order_type?.toLowerCase() === "dine in" || !ticket.order_type;
+
     const orderTypeLabel = getOrderTypeLabel(ticket.order_type);
     const hasRush = ticket.items.some((item) => item.rush);
     const hasRefire = ticket.items.some((item) => item.recalled);
@@ -458,8 +461,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               borderRadius: 10,
               overflow: "hidden",
               backgroundColor: "#FFFFFF",
-              borderWidth: isFocused ? 5 : 1,
-              borderColor: borderColor,
+              borderTopWidth: isFocused ? 4 : 1,
+              borderBottomWidth: isFocused ? 4 : 1,
+              borderRightWidth: isFocused ? 4 : 1,
+              borderLeftWidth: isDineIn ? 6 : isFocused ? 4 : 1,
+              borderTopColor: borderColor,
+              borderBottomColor: borderColor,
+              borderRightColor: borderColor,
+              borderLeftColor: isDineIn ? colors.teal : borderColor,
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: isFocused ? 0.15 : 0.08,
@@ -749,6 +758,23 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 {doneItemCount} done
               </Text>
             )}
+          </View>
+
+          {/* Progress bar at bottom */}
+          <View
+            style={{
+              height: 4,
+              backgroundColor: "#E5E7EB",
+              overflow: "hidden",
+            }}
+          >
+            <View
+              style={{
+                height: "100%",
+                backgroundColor: colors.teal,
+                width: `${(doneItemCount / ticket.item_count) * 100}%`,
+              }}
+            />
           </View>
         </Animated.View>
         </View>
