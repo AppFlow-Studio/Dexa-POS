@@ -554,9 +554,6 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 <Text style={{ color: "#111827", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
                   #{ticket.display_number || ticket.order_number?.slice(-4) || "----"}
-                  {ticket.course_number > 1 && (
-                    <Text style={{ color: "#F59E0B" }}> C{ticket.course_number}</Text>
-                  )}
                 </Text>
                 {ticket.prioritized && (
                   <Star size={16} color={colors.warning} fill={colors.warning} />
@@ -611,7 +608,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </Text>
           </View>
 
-          {/* Row 3: Server/Customer Name + Table (small gray text) */}
+          {/* Row 3: Server/Customer Name + Table + Course (small gray text) */}
           <View
             style={{
               backgroundColor: "#FFFFFF",
@@ -625,6 +622,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               {ticket.customer_name ? ticket.customer_name : ""}
               {ticket.customer_name && ticket.table_name ? " · " : ""}
               {ticket.table_name ? `Table ${ticket.table_name}` : ""}
+              {ticket.course_number > 1 ? ` · Course ${ticket.course_number}` : ""}
             </Text>
           </View>
 
@@ -842,114 +840,104 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
             margin: 4,
             borderRadius: 10,
             overflow: "hidden",
-            backgroundColor: colors.skeleton,
-            borderWidth: 2,
-            borderColor: colors.muted,
-            opacity: 0.7,
+            backgroundColor: "#FFFFFF",
+            borderWidth: 1,
+            borderColor: "#E5E7EB",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 2,
+            elevation: 1,
           }}
         >
-          {/* Top bar — gray */}
+          {/* Card Header: Order Number + Order Type + Time */}
           <View
             style={{
-              backgroundColor: colors.muted,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
+              backgroundColor: "#F3F4F6",
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderBottomWidth: 1,
+              borderBottomColor: "#D1D5DB",
               flexDirection: "row",
-              alignItems: "center",
               justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Clock size={12} color="#fff" />
-              <Text
-                style={{
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: "700",
-                  marginLeft: 4,
-                }}
-              >
-                {timeElapsed}
-              </Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>
-                {ticket.item_count} items
-              </Text>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: "rgba(0,0,0,0.2)",
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 4,
-                }}
-              >
-                {orderTypeIcon}
-                <Text style={{ color: "#fff", fontSize: 10, marginLeft: 3, fontWeight: "600" }}>
+            <View style={{ flex: 1, gap: 4 }}>
+              {/* Order Number */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ color: "#6B7280", fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
+                  #{ticket.display_number || ticket.order_number?.slice(-4) || "----"}
+                </Text>
+              </View>
+
+              {/* Order Type */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <View
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: "#D1D5DB",
+                  }}
+                />
+                <Text style={{ color: "#9CA3AF", fontSize: 11, fontWeight: "600" }}>
                   {orderTypeLabel}
                 </Text>
               </View>
             </View>
+
+            {/* Timer */}
+            <Text style={{ color: "#9CA3AF", fontSize: 12, fontWeight: "600" }}>
+              {timeElapsed}
+            </Text>
           </View>
 
-          {/* Order info */}
+          {/* Customer + Table + Course Info */}
           <View
             style={{
-              backgroundColor: colors.skeletonHighlight,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 5,
               borderBottomWidth: 1,
-              borderBottomColor: colors.border,
+              borderBottomColor: "#D1D5DB",
             }}
           >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ color: colors.label, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>
-                {ticket.display_number || ticket.order_number?.slice(-4) || "----"}
-                {ticket.course_number > 1 && (
-                  <Text style={{ color: colors.muted }}> C{ticket.course_number}</Text>
-                )}
-              </Text>
-              {ticket.table_name && (
-                <Text style={{ color: colors.muted, fontSize: 12 }}>{ticket.table_name}</Text>
-              )}
-            </View>
+            <Text style={{ color: "#6B7280", fontSize: 11, fontWeight: "500" }} numberOfLines={1}>
+              {ticket.customer_name ? ticket.customer_name : ""}
+              {ticket.customer_name && ticket.table_name ? " · " : ""}
+              {ticket.table_name ? `Table ${ticket.table_name}` : ""}
+              {ticket.course_number > 1 ? ` · Course ${ticket.course_number}` : ""}
+            </Text>
           </View>
 
           {/* Items list */}
-          <View style={{ padding: 8, backgroundColor: colors.screen }}>
-            {ticket.items.map((item: KDSTicketItem, index: number) => (
-              <View
-                key={item.id}
-                style={[
-                  { flexDirection: "row", alignItems: "flex-start" },
-                  index < ticket.items.length - 1 ? { marginBottom: 4 } : undefined,
-                ]}
-              >
+          <View style={{ padding: 12, gap: 6 }}>
+            {ticket.items.map((item: KDSTicketItem) => (
+              <View key={item.id} style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
                 <View
                   style={{
-                    backgroundColor: colors.border,
+                    backgroundColor: "#E5E7EB",
                     width: 22,
                     height: 22,
                     borderRadius: 4,
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 6,
+                    minWidth: 22,
                   }}
                 >
-                  <Text style={{ color: colors.label, fontSize: 12, fontWeight: "700" }}>
+                  <Text style={{ color: "#9CA3AF", fontSize: 12, fontWeight: "700" }}>
                     {item.quantity}
                   </Text>
                 </View>
                 <Text
                   style={{
-                    color: colors.label,
+                    color: "#9CA3AF",
                     fontSize: 13,
                     fontWeight: "500",
                     flex: 1,
                   }}
-                  numberOfLines={1}
+                  numberOfLines={2}
                 >
                   {item.name}
                 </Text>
@@ -960,10 +948,10 @@ const KDSDoneTicketCard = React.memo<KDSDoneTicketCardProps>(
           {/* Tap to recall hint */}
           <View
             style={{
-              backgroundColor: colors.screen,
-              paddingVertical: 4,
+              backgroundColor: "#FFFFFF",
+              paddingVertical: 6,
               borderTopWidth: 1,
-              borderTopColor: colors.border,
+              borderTopColor: "#D1D5DB",
               alignItems: "center",
             }}
           >
