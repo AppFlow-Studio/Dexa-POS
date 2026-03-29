@@ -1104,7 +1104,7 @@ export const useKDSStore = create<KDSState>()(persist((set, get) => ({
   recallTicket: (ticketId: string) => {
     const { tickets } = get();
     const ticket = tickets.find((t) => t.ticket_id === ticketId);
-    if (!ticket) return;
+    if (!ticket || ticket.status !== "ready") return;
 
     const itemIds = ticket.items.map((i) => i.id);
     const recallStatus = getKitchenSentStatus();
