@@ -15,7 +15,6 @@ import { useKDSStore } from "@/stores/useKDSStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import KDSSoundService, { DEFAULT_SOUND_CONFIG } from "@/services/kds/kdsSoundService";
-import KDSSettingsModal from "@/components/kds/KDSSettingsModal";
 import KDSFlyingTicket, { type FlyingTicketData } from "@/components/kds/KDSFlyingTicket";
 import { KDSTicket, KDSTicketItem } from "@/types/kds";
 import PinInputModal from "@/components/timeclock/PinInputModal";
@@ -29,7 +28,6 @@ import {
   Flame,
   RefreshCw,
   RotateCcw,
-  Settings,
   ShoppingBag,
   Square,
   Star,
@@ -50,6 +48,7 @@ import {
   GestureResponderEvent,
   InteractionManager,
   Pressable,
+  ScrollView,
   Text,
   TouchableOpacity,
   View,
@@ -1083,7 +1082,6 @@ const KitchenDisplayScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [showDisconnected, setShowDisconnected] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }));
 
   // PIN modal state
@@ -1624,250 +1622,223 @@ const KitchenDisplayScreen = () => {
           paddingVertical: 10,
         }}
       >
-        {/* Top row: title + station info + settings */}
-        <View
-          style={{
+        {/* All controls - horizontal scroll in one row */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          scrollEnabled={true}
+          contentContainerStyle={{
             flexDirection: "row",
             alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 10,
+            gap: 8,
+            paddingRight: 16,
+            paddingLeft: 16,
+            paddingVertical: 8,
           }}
         >
+          {/* Station Name | Time + Dot */}
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ color: colors.heading, fontSize: 18, fontWeight: "700" }}>
-              Kitchen Display
+            {selectedStation?.station_name && (
+              <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
+                {selectedStation.station_name}
+              </Text>
+            )}
+            {selectedStation?.station_name && (
+              <Text style={{ color: colors.muted, fontSize: 12, marginHorizontal: 6 }}>|</Text>
+            )}
+            <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
+              {currentTime}
             </Text>
             {showDisconnected ? (
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger, marginLeft: 8 }} />
             ) : (
               <PulsingDot />
             )}
-            {/* KDS Display Badge */}
-            {displayName && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: colors.teal + "15",
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 12,
-                  marginLeft: 12,
-                  borderWidth: 1,
-                  borderColor: colors.teal + "30",
-                }}
-              >
-                <Flame size={13} color={colors.urgencyElevated} />
-                <Text
-                  style={{
-                    color: colors.heading,
-                    fontSize: 12,
-                    fontWeight: "600",
-                    marginLeft: 4,
-                  }}
-                  numberOfLines={1}
-                >
-                  {displayName}
-                </Text>
-                {routingMode === "all" ? (
-                  <>
-                    <View
-                      style={{
-                        width: 1,
-                        height: 14,
-                        backgroundColor: colors.muted,
-                        marginHorizontal: 8,
-                      }}
-                    />
-                    <Text
-                      style={{
-                        color: colors.success,
-                        fontSize: 11,
-                        fontWeight: "700",
-                      }}
-                    >
-                      EXPO
-                    </Text>
-                  </>
-                ) : enrichedRules.length > 0 ? (
-                  <>
-                    <View
-                      style={{
-                        width: 1,
-                        height: 14,
-                        backgroundColor: colors.muted,
-                        marginHorizontal: 8,
-                      }}
-                    />
-                    <CircleDotDashed size={12} color={colors.label} />
-                    <Text
-                      style={{
-                        color: colors.label,
-                        fontSize: 11,
-                        fontWeight: "500",
-                        marginLeft: 4,
-                      }}
-                      numberOfLines={1}
-                    >
-                      {enrichedRules.map((r) => r.label).join(", ")}
-                    </Text>
-                  </>
-                ) : null}
-              </View>
-            )}
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            {/* Station Name | Time */}
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              {selectedStation?.station_name && (
-                <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
-                  {selectedStation.station_name}
-                </Text>
-              )}
-              {selectedStation?.station_name && (
-                <Text style={{ color: colors.muted, fontSize: 12, marginHorizontal: 6 }}>|</Text>
-              )}
-              <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
-                {currentTime}
-              </Text>
-            </View>
-            {/* Settings gear icon */}
-            <TouchableOpacity
-              onPress={() => {
-                setActionMenu(null);
-                setSettingsVisible(true);
-              }}
+
+          {/* Divider */}
+          <View style={{ width: 1, height: 20, backgroundColor: colors.border, marginHorizontal: 4 }} />
+
+          {/* KDS Display Badge */}
+          {displayName && (
+            <View
               style={{
-                padding: 6,
+                flexDirection: "row",
+                alignItems: "center",
                 backgroundColor: colors.teal + "15",
-                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 12,
                 borderWidth: 1,
                 borderColor: colors.teal + "30",
               }}
             >
-              <Settings size={18} color={colors.teal} />
-            </TouchableOpacity>
-          </View>
-        </View>
+              <Flame size={13} color={colors.urgencyElevated} />
+              <Text
+                style={{
+                  color: colors.heading,
+                  fontSize: 12,
+                  fontWeight: "600",
+                  marginLeft: 4,
+                }}
+                numberOfLines={1}
+              >
+                {displayName}
+              </Text>
+              {routingMode === "all" ? (
+                <>
+                  <View
+                    style={{
+                      width: 1,
+                      height: 14,
+                      backgroundColor: colors.muted,
+                      marginHorizontal: 6,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      color: colors.success,
+                      fontSize: 11,
+                      fontWeight: "700",
+                    }}
+                  >
+                    EXPO
+                  </Text>
+                </>
+              ) : enrichedRules.length > 0 ? (
+                <>
+                  <View
+                    style={{
+                      width: 1,
+                      height: 14,
+                      backgroundColor: colors.muted,
+                      marginHorizontal: 6,
+                    }}
+                  />
+                  <CircleDotDashed size={12} color={colors.label} />
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 11,
+                      fontWeight: "500",
+                      marginLeft: 3,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {enrichedRules.map((r) => r.label).join(", ")}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          )}
 
-        {/* Filter rows */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
+          {/* Divider */}
+          <View style={{ width: 1, height: 20, backgroundColor: colors.border, marginHorizontal: 4 }} />
           {/* Status tabs */}
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            {visibleStatusTabs.map((tab) => {
-              const isActive = activeStatus === tab.key;
-              return (
-                <View
-                  key={tab.key}
-                  ref={(r) => { tabRefs[tab.key] = r; }}
-                  collapsable={false}
-                >
-                <TouchableOpacity
-                  onPress={() => handleSetActiveStatus(tab.key)}
+          {visibleStatusTabs.map((tab) => {
+            const isActive = activeStatus === tab.key;
+            return (
+              <View
+                key={tab.key}
+                ref={(r) => { tabRefs[tab.key] = r; }}
+                collapsable={false}
+              >
+              <TouchableOpacity
+                onPress={() => handleSetActiveStatus(tab.key)}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 16,
+                  backgroundColor: isActive ? colors.teal + "20" : "transparent",
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.teal + "50" : colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                }}
+              >
+                <Text
                   style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 6,
-                    borderRadius: 20,
-                    backgroundColor: isActive ? colors.teal + "20" : "transparent",
-                    borderWidth: 1,
-                    borderColor: isActive ? colors.teal + "50" : colors.border,
-                    flexDirection: "row",
+                    color: isActive ? colors.teal : colors.label,
+                    fontSize: 12,
+                    fontWeight: isActive ? "700" : "500",
+                  }}
+                >
+                  {tab.label}
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: isActive ? colors.teal + "50" : colors.border,
+                    paddingHorizontal: 5,
+                    paddingVertical: 1,
+                    borderRadius: 6,
+                    marginLeft: 4,
+                    minWidth: 20,
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
                       color: isActive ? colors.teal : colors.label,
-                      fontSize: 13,
-                      fontWeight: isActive ? "700" : "500",
+                      fontSize: 10,
+                      fontWeight: "700",
+                      opacity: isFetching ? 0.7 : 1,
                     }}
                   >
-                    {tab.label}
+                    {tab.key === "done" ? doneCount : counts[tab.key]}
                   </Text>
+                </View>
+              </TouchableOpacity>
+              </View>
+            );
+          })}
+
+          {/* Order type filters with colored dots */}
+          {TYPE_TABS.map((tab) => {
+            const isActive = activeType === tab.key;
+            const count = typeCounts[tab.key];
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                onPress={() => setActiveType(tab.key)}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 14,
+                  backgroundColor: isActive ? colors.teal + "20" : "transparent",
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.teal + "50" : colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 3,
+                }}
+              >
+                <Text
+                  style={{
+                    color: isActive ? colors.teal : colors.label,
+                    fontSize: 11,
+                    fontWeight: isActive ? "600" : "500",
+                  }}
+                >
+                  {tab.label}
+                </Text>
+                {count > 0 && (
                   <View
                     style={{
                       backgroundColor: isActive ? colors.teal + "50" : colors.border,
-                      paddingHorizontal: 6,
-                      paddingVertical: 1,
-                      borderRadius: 8,
-                      marginLeft: 6,
-                      minWidth: 22,
-                      alignItems: "center",
+                      paddingHorizontal: 4,
+                      paddingVertical: 0,
+                      borderRadius: 5,
                     }}
                   >
-                    <Text
-                      style={{
-                        color: isActive ? colors.teal : colors.label,
-                        fontSize: 11,
-                        fontWeight: "700",
-                        opacity: isFetching ? 0.7 : 1,
-                      }}
-                    >
-                      {tab.key === "done" ? doneCount : counts[tab.key]}
+                    <Text style={{ color: isActive ? colors.teal : colors.label, fontSize: 9, fontWeight: "600" }}>
+                      {count}
                     </Text>
                   </View>
-                </TouchableOpacity>
-                </View>
-              );
-            })}
-          </View>
-
-          {/* Order type filters with colored dots */}
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            {TYPE_TABS.map((tab) => {
-              const isActive = activeType === tab.key;
-              const count = typeCounts[tab.key];
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  onPress={() => setActiveType(tab.key)}
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 5,
-                    borderRadius: 16,
-                    backgroundColor: isActive ? colors.teal + "20" : "transparent",
-                    borderWidth: 1,
-                    borderColor: isActive ? colors.teal + "50" : colors.border,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: isActive ? colors.teal : colors.label,
-                      fontSize: 12,
-                      fontWeight: isActive ? "600" : "500",
-                    }}
-                  >
-                    {tab.label}
-                  </Text>
-                  {count > 0 && (
-                    <View
-                      style={{
-                        backgroundColor: isActive ? colors.teal + "50" : colors.border,
-                        paddingHorizontal: 5,
-                        paddingVertical: 1,
-                        borderRadius: 6,
-                        marginLeft: 2,
-                      }}
-                    >
-                      <Text style={{ color: isActive ? colors.teal : colors.label, fontSize: 10, fontWeight: "600" }}>
-                        {count}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* ─── Bulk Action Bar ─── */}
@@ -2240,8 +2211,6 @@ const KitchenDisplayScreen = () => {
         onCancel={handlePinCancel}
       />
 
-      {/* ─── KDS Settings Modal ─── */}
-      <KDSSettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
     </View>
   );
 };
