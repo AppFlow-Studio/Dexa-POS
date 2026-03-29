@@ -800,18 +800,26 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       </Pressable>
     );
   },
-  (prev, next) =>
-    prev.ticket === next.ticket &&
-    prev.onAdvance === next.onAdvance &&
-    prev.bulkMode === next.bulkMode &&
-    prev.onToggleSelect === next.onToggleSelect &&
-    prev.onFocus === next.onFocus &&
-    prev.isFocused === next.isFocused &&
-    prev.onLongPress === next.onLongPress &&
-    prev.onItemPress === next.onItemPress &&
-    prev.hideDoneItems === next.hideDoneItems &&
-    prev.displaySettings === next.displaySettings &&
-    prev.urgencyThresholds === next.urgencyThresholds,
+  (prev, next) => {
+    // Check if ticket reference is the same AND items haven't changed
+    if (prev.ticket !== next.ticket) return false;
+    // Check if item count or rush status changed
+    if (prev.ticket.items.length !== next.ticket.items.length) return false;
+    if (prev.ticket.items.some((item, i) => item.rush !== next.ticket.items[i]?.rush)) return false;
+
+    return (
+      prev.onAdvance === next.onAdvance &&
+      prev.bulkMode === next.bulkMode &&
+      prev.onToggleSelect === next.onToggleSelect &&
+      prev.onFocus === next.onFocus &&
+      prev.isFocused === next.isFocused &&
+      prev.onLongPress === next.onLongPress &&
+      prev.onItemPress === next.onItemPress &&
+      prev.hideDoneItems === next.hideDoneItems &&
+      prev.displaySettings === next.displaySettings &&
+      prev.urgencyThresholds === next.urgencyThresholds
+    );
+  },
 );
 
 // ─── Done Ticket Card (gray, muted, tap to recall) ───────────────
