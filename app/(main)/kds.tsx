@@ -341,6 +341,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
     const lastTapRef = useRef(0);
     // Pre-measured card position (cached on first tap for instant double-tap)
     const cachedPosRef = useRef<CardPosition | undefined>(undefined);
+    // Delayed focus toggle to detect double-tap
+    const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Animation (Reanimated — runs entirely on UI thread)
     const scaleValue = useSharedValue(1);
@@ -359,14 +361,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       const isDoubleTap = now - lastTapRef.current < 300;
 
       if (!isDoubleTap) {
-        // First tap — gentle pulse to signal acknowledgment + toggle focus
+        // First tap — gentle pulse to signal acknowledgment
         lastTapRef.current = now;
-        // Toggle focus: if already focused, deselect; otherwise select
-        onFocus?.(isFocused ? null : ticket.ticket_id);
+
         scaleValue.value = withSequence(
           withTiming(0.97, { duration: 80, easing: Easing.out(Easing.cubic) }),
           withTiming(1, { duration: 120, easing: Easing.out(Easing.cubic) }),
         );
+
         // Pre-measure card position so double-tap fires instantly
         if (cardRef.current) {
           cardRef.current.measureInWindow((x, y, width, height) => {
@@ -374,10 +376,22 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             cachedPosRef.current = { x, y, width, height };
           });
         }
+
+        // Schedule focus toggle for single tap (cancel if double-tap comes)
+        if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
+        focusTimeoutRef.current = setTimeout(() => {
+          // Only toggle focus if it's truly a single tap (no double-tap happened)
+          onFocus?.(isFocused ? null : ticket.ticket_id);
+          focusTimeoutRef.current = null;
+        }, 300);
         return;
       }
 
-      // Double tap — advance ticket immediately (no async measurement wait)
+      // Double tap detected — cancel pending focus toggle and advance instead
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+        focusTimeoutRef.current = null;
+      }
       lastTapRef.current = 0;
 
       // Determine next status
@@ -399,13 +413,18 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       onLongPress?.(ticket.ticket_id, ticket, e);
     };
 
-    const borderColor = isFocused
-      ? colors.teal
-      : bulkMode && isSelected
-        ? colors.info
-        : ticket.prioritized
-          ? "#f59e0b" // amber for prioritized
-          : "#E5E7EB";
+    // Determine border color based on state/urgency
+    let borderColor = "#E5E7EB"; // default light gray
+    if (isFocused) {
+      borderColor = colors.teal;
+    } else if (bulkMode && isSelected) {
+      borderColor = colors.info;
+    } else if (urgencyLevel > 0) {
+      // Red border if order is overdue (high urgency)
+      borderColor = colors.danger;
+    } else if (ticket.prioritized) {
+      borderColor = "#f59e0b"; // amber for prioritized
+    }
 
     const isDineIn = ticket.order_type?.toLowerCase() === "dine_in" || ticket.order_type?.toLowerCase() === "dine in" || !ticket.order_type;
 
@@ -461,14 +480,14 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
               borderRadius: 10,
               overflow: "hidden",
               backgroundColor: "#FFFFFF",
-              borderTopWidth: isFocused ? 4 : 1,
-              borderBottomWidth: isFocused ? 4 : 1,
-              borderRightWidth: isFocused ? 4 : 1,
-              borderLeftWidth: isDineIn ? 6 : isFocused ? 4 : 1,
-              borderTopColor: borderColor,
-              borderBottomColor: borderColor,
-              borderRightColor: borderColor,
-              borderLeftColor: isDineIn ? colors.teal : borderColor,
+              borderTopWidth: 3,
+              borderBottomWidth: 3,
+              borderRightWidth: 3,
+              borderLeftWidth: 3,
+              borderTopColor: hasRush ? colors.warning : borderColor,
+              borderBottomColor: hasRush ? colors.warning : borderColor,
+              borderRightColor: hasRush ? colors.warning : borderColor,
+              borderLeftColor: isDineIn ? colors.teal : hasRush ? colors.warning : borderColor,
               shadowColor: "#000",
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: isFocused ? 0.15 : 0.08,
