@@ -8,7 +8,7 @@ import {
 } from "@/hooks/useKDSTimer";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { getDeviceId } from "@/lib/deviceId";
-import { colors, URGENCY_COLORS, KDS_STATUS_TAB_COLORS } from "@/lib/theme";
+import { colors, URGENCY_COLORS } from "@/lib/theme";
 import { clearStationData } from "@/services/cacheService";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useKDSStore } from "@/stores/useKDSStore";
@@ -69,11 +69,11 @@ import Animated, {
 type StatusFilter = "pending" | "cooking" | "ready" | "done";
 type OrderTypeFilter = "all" | "delivery" | "takeout" | "dine_in";
 
-const STATUS_TABS: { key: StatusFilter; label: string; color: string }[] = [
-  { key: "pending", label: "Pending", color: KDS_STATUS_TAB_COLORS.pending },
-  { key: "cooking", label: "Cooking", color: KDS_STATUS_TAB_COLORS.cooking },
-  { key: "ready", label: "Served", color: KDS_STATUS_TAB_COLORS.ready },
-  { key: "done", label: "Done", color: KDS_STATUS_TAB_COLORS.done },
+const STATUS_TABS: { key: StatusFilter; label: string }[] = [
+  { key: "pending", label: "Pending" },
+  { key: "cooking", label: "Cooking" },
+  { key: "ready", label: "Served" },
+  { key: "done", label: "Done" },
 ];
 
 const TYPE_TABS: { key: OrderTypeFilter; label: string }[] = [
@@ -216,11 +216,11 @@ function matchesTypeFilter(ticket: KDSTicket, filter: OrderTypeFilter): boolean 
 
 // ─── Allergen Detection ────────────────────────────────────────────
 const ALLERGEN_KEYWORDS: Record<string, { label: string; color: string }> = {
-  shellfish: { label: "SHELLFISH", color: "#EF4444" },
-  dairy: { label: "DAIRY", color: "#F59E0B" },
+  shellfish: { label: "SHELLFISH", color: colors.danger },
+  dairy: { label: "DAIRY", color: colors.warning },
   nuts: { label: "NUTS", color: "#8B5CF6" },
-  gluten: { label: "GLUTEN", color: "#F97316" },
-  soy: { label: "SOY", color: "#10B981" },
+  gluten: { label: "GLUTEN", color: colors.warning },
+  soy: { label: "SOY", color: colors.success },
 };
 
 function detectAllergen(modifierName: string | null | undefined): { label: string; color: string } | null {
@@ -455,7 +455,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 zIndex: 9,
               }}
             >
-              <Star size={16} color="#F59E0B" fill="#F59E0B" />
+              <Star size={16} color={colors.warning} fill={colors.warning} />
             </View>
           )}
 
@@ -467,7 +467,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                 top: 8,
                 right: bulkMode ? 30 : 8,
                 zIndex: 10,
-                backgroundColor: "#F59E0B",
+                backgroundColor: colors.warning,
                 paddingHorizontal: 8,
                 paddingVertical: 3,
                 borderRadius: 12,
@@ -503,7 +503,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
             </Text>
             <Text
               style={{
-                color: urgencyLevel > 0 ? "#EF4444" : "#374151",
+                color: urgencyLevel > 0 ? colors.danger : colors.label,
                 fontSize: 13,
                 fontWeight: urgencyLevel > 0 ? "700" : "600",
               }}
@@ -592,7 +592,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   <View style={{ flexDirection: "row", alignItems: "flex-start", opacity: isItemDone ? 0.5 : 1 }}>
                     <View
                       style={{
-                        backgroundColor: isItemDone ? "#10B981" : "#E5E7EB",
+                        backgroundColor: isItemDone ? colors.success : colors.border,
                         width: 22,
                         height: 22,
                         borderRadius: 4,
@@ -653,7 +653,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                           <View key={`${item.id}_m${mi}`} style={{ marginTop: 2, flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
                             <Text
                               style={{
-                                color: isRemoval ? "#EF4444" : "#22C55E",
+                                color: isRemoval ? colors.danger : colors.success,
                                 fontSize: 11,
                                 marginLeft: 30,
                                 opacity: isItemDone ? 0.4 : 1,
@@ -694,7 +694,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
                   {item.special_instructions && (
                     <Text
                       style={{
-                        color: displaySettings.highlightNotes ? "#F59E0B" : "#9CA3AF",
+                        color: displaySettings.highlightNotes ? colors.warning : colors.muted,
                         fontSize: 10,
                         fontStyle: "italic",
                         marginLeft: 30,
@@ -1584,11 +1584,13 @@ const KitchenDisplayScreen = () => {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  backgroundColor: colors.skeletonHighlight,
+                  backgroundColor: colors.teal + "15",
                   paddingHorizontal: 10,
                   paddingVertical: 4,
                   borderRadius: 12,
                   marginLeft: 12,
+                  borderWidth: 1,
+                  borderColor: colors.teal + "30",
                 }}
               >
                 <Flame size={13} color={colors.urgencyElevated} />
@@ -1653,12 +1655,12 @@ const KitchenDisplayScreen = () => {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             {/* Station Name | Time */}
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              {selectedStation?.display_name && (
+              {selectedStation?.station_name && (
                 <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
-                  {selectedStation.display_name}
+                  {selectedStation.station_name}
                 </Text>
               )}
-              {selectedStation?.display_name && (
+              {selectedStation?.station_name && (
                 <Text style={{ color: colors.muted, fontSize: 12, marginHorizontal: 6 }}>|</Text>
               )}
               <Text style={{ color: colors.label, fontSize: 12, fontWeight: "500" }}>
@@ -1672,12 +1674,14 @@ const KitchenDisplayScreen = () => {
                 setSettingsVisible(true);
               }}
               style={{
-                padding: 8,
-                backgroundColor: colors.skeletonHighlight,
+                padding: 6,
+                backgroundColor: colors.teal + "15",
                 borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.teal + "30",
               }}
             >
-              <Settings size={18} color={colors.label} />
+              <Settings size={18} color={colors.teal} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1706,14 +1710,16 @@ const KitchenDisplayScreen = () => {
                     paddingHorizontal: 14,
                     paddingVertical: 6,
                     borderRadius: 20,
-                    backgroundColor: isActive ? tab.color : colors.skeletonHighlight,
+                    backgroundColor: isActive ? colors.teal + "20" : "transparent",
+                    borderWidth: 1,
+                    borderColor: isActive ? colors.teal + "50" : colors.border,
                     flexDirection: "row",
                     alignItems: "center",
                   }}
                 >
                   <Text
                     style={{
-                      color: isActive ? "#fff" : colors.label,
+                      color: isActive ? colors.teal : colors.label,
                       fontSize: 13,
                       fontWeight: isActive ? "700" : "500",
                     }}
@@ -1722,7 +1728,7 @@ const KitchenDisplayScreen = () => {
                   </Text>
                   <View
                     style={{
-                      backgroundColor: isActive ? "rgba(255,255,255,0.25)" : colors.border,
+                      backgroundColor: isActive ? colors.teal + "50" : colors.border,
                       paddingHorizontal: 6,
                       paddingVertical: 1,
                       borderRadius: 8,
@@ -1733,7 +1739,7 @@ const KitchenDisplayScreen = () => {
                   >
                     <Text
                       style={{
-                        color: isActive ? "#fff" : colors.label,
+                        color: isActive ? colors.teal : colors.label,
                         fontSize: 11,
                         fontWeight: "700",
                         opacity: isFetching ? 0.7 : 1,
@@ -1753,9 +1759,6 @@ const KitchenDisplayScreen = () => {
             {TYPE_TABS.map((tab) => {
               const isActive = activeType === tab.key;
               const count = typeCounts[tab.key];
-              let dotColor = "#22C55E"; // dine_in
-              if (tab.key === "delivery") dotColor = "#EF4444";
-              if (tab.key === "takeout") dotColor = "#3B82F6";
               return (
                 <TouchableOpacity
                   key={tab.key}
@@ -1764,27 +1767,17 @@ const KitchenDisplayScreen = () => {
                     paddingHorizontal: 12,
                     paddingVertical: 5,
                     borderRadius: 16,
-                    backgroundColor: isActive ? "#0D9488" : colors.skeleton,
+                    backgroundColor: isActive ? colors.teal + "20" : "transparent",
                     borderWidth: 1,
-                    borderColor: isActive ? "#0D9488" : colors.border,
+                    borderColor: isActive ? colors.teal + "50" : colors.border,
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 4,
                   }}
                 >
-                  {tab.key !== "all" && (
-                    <View
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: dotColor,
-                      }}
-                    />
-                  )}
                   <Text
                     style={{
-                      color: isActive ? "#fff" : colors.label,
+                      color: isActive ? colors.teal : colors.label,
                       fontSize: 12,
                       fontWeight: isActive ? "600" : "500",
                     }}
@@ -1794,14 +1787,14 @@ const KitchenDisplayScreen = () => {
                   {count > 0 && (
                     <View
                       style={{
-                        backgroundColor: isActive ? "rgba(255,255,255,0.25)" : colors.border,
+                        backgroundColor: isActive ? colors.teal + "50" : colors.border,
                         paddingHorizontal: 5,
                         paddingVertical: 1,
                         borderRadius: 6,
                         marginLeft: 2,
                       }}
                     >
-                      <Text style={{ color: isActive ? "#fff" : colors.label, fontSize: 10, fontWeight: "600" }}>
+                      <Text style={{ color: isActive ? colors.teal : colors.label, fontSize: 10, fontWeight: "600" }}>
                         {count}
                       </Text>
                     </View>
@@ -1817,7 +1810,7 @@ const KitchenDisplayScreen = () => {
       {bulkMode && activeStatus !== "done" && (
         <View
           style={{
-            backgroundColor: colors.skeleton,
+            backgroundColor: colors.panel,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             paddingHorizontal: 16,
@@ -1836,22 +1829,26 @@ const KitchenDisplayScreen = () => {
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 4,
-                backgroundColor: colors.skeletonHighlight,
+                backgroundColor: colors.teal + "20",
+                borderWidth: 1,
+                borderColor: colors.teal + "50",
                 borderRadius: 6,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Select All</Text>
+              <Text style={{ color: colors.teal, fontSize: 12, fontWeight: "600" }}>Select All</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={clearSelection}
               style={{
                 paddingHorizontal: 10,
                 paddingVertical: 4,
-                backgroundColor: colors.skeletonHighlight,
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderColor: colors.border,
                 borderRadius: 6,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>Clear</Text>
+              <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>Clear</Text>
             </TouchableOpacity>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1861,12 +1858,14 @@ const KitchenDisplayScreen = () => {
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
-                backgroundColor: selectionCount > 0 ? colors.info : colors.skeletonHighlight,
+                backgroundColor: selectionCount > 0 ? colors.teal + "20" : "transparent",
+                borderWidth: 1,
+                borderColor: selectionCount > 0 ? colors.teal + "50" : colors.border,
                 borderRadius: 6,
                 opacity: selectionCount > 0 ? 1 : 0.5,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+              <Text style={{ color: selectionCount > 0 ? colors.teal : colors.label, fontSize: 12, fontWeight: "700" }}>
                 Advance Selected
               </Text>
             </TouchableOpacity>
@@ -1876,12 +1875,14 @@ const KitchenDisplayScreen = () => {
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 6,
-                backgroundColor: activeFilteredTickets.length > 0 ? colors.danger : colors.skeletonHighlight,
+                backgroundColor: activeFilteredTickets.length > 0 ? colors.danger + "20" : "transparent",
+                borderWidth: 1,
+                borderColor: activeFilteredTickets.length > 0 ? colors.danger + "50" : colors.border,
                 borderRadius: 6,
                 opacity: activeFilteredTickets.length > 0 ? 1 : 0.5,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "700" }}>
+              <Text style={{ color: activeFilteredTickets.length > 0 ? colors.danger : colors.label, fontSize: 12, fontWeight: "700" }}>
                 Advance All in Tab
               </Text>
             </TouchableOpacity>
@@ -1989,10 +1990,12 @@ const KitchenDisplayScreen = () => {
           {/* RECALL button */}
           <TouchableOpacity
             style={{
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              backgroundColor: colors.skeletonHighlight,
-              borderRadius: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
@@ -2008,18 +2011,20 @@ const KitchenDisplayScreen = () => {
           <TouchableOpacity
             style={{
               flex: 1,
-              paddingHorizontal: 24,
-              paddingVertical: 12,
-              backgroundColor: "#0D9488",
-              borderRadius: 8,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              borderRadius: 10,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
             }}
           >
-            <CheckSquare size={18} color="#fff" />
-            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "700" }}>
+            <CheckSquare size={18} color={colors.teal} />
+            <Text style={{ color: colors.teal, fontSize: 13, fontWeight: "700" }}>
               BUMP ORDER
             </Text>
           </TouchableOpacity>
@@ -2027,10 +2032,12 @@ const KitchenDisplayScreen = () => {
           {/* PRINT button */}
           <TouchableOpacity
             style={{
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              backgroundColor: colors.skeletonHighlight,
-              borderRadius: 8,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
