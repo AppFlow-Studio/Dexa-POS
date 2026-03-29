@@ -2054,6 +2054,67 @@ const KitchenDisplayScreen = () => {
             gap: 12,
           }}
         >
+          {/* RECALL button */}
+          <TouchableOpacity
+            onPress={() => {
+              if (focusedTicketId) {
+                recallTicket(focusedTicketId);
+                setFocusedTicketId(null);
+              }
+            }}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              backgroundColor: "transparent",
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <RotateCcw size={14} color={colors.label} />
+            <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
+              RECALL
+            </Text>
+          </TouchableOpacity>
+
+          {/* BUMP ORDER button (center, teal) */}
+          <TouchableOpacity
+            onPress={() => {
+              const ticket = tickets.find((t) => t.ticket_id === focusedTicketId);
+              if (ticket) {
+                const itemIds = ticket.items.map((i) => i.id);
+                let newStatus: "preparing" | "ready" | "served" | undefined;
+                if (ticket.status === "pending") newStatus = "preparing";
+                else if (ticket.status === "cooking") newStatus = "ready";
+                else if (ticket.status === "ready") newStatus = "served";
+                if (newStatus) {
+                  advanceTicketStatus(focusedTicketId, itemIds, newStatus);
+                  setFocusedTicketId(null);
+                }
+              }
+            }}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              backgroundColor: colors.teal + "20",
+              borderWidth: 1,
+              borderColor: colors.teal + "50",
+              borderRadius: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            <CheckSquare size={18} color={colors.teal} />
+            <Text style={{ color: colors.teal, fontSize: 13, fontWeight: "700" }}>
+              BUMP ORDER
+            </Text>
+          </TouchableOpacity>
+
           {/* CANCEL button */}
           <TouchableOpacity
             onPress={() => setFocusedTicketId(null)}
@@ -2071,27 +2132,6 @@ const KitchenDisplayScreen = () => {
           >
             <Text style={{ color: colors.label, fontSize: 12, fontWeight: "600" }}>
               CANCEL
-            </Text>
-          </TouchableOpacity>
-
-          {/* BUMP ORDER button (large, center, teal) */}
-          <TouchableOpacity
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              backgroundColor: colors.teal + "20",
-              borderWidth: 1,
-              borderColor: colors.teal + "50",
-              borderRadius: 10,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-            }}
-          >
-            <CheckSquare size={18} color={colors.teal} />
-            <Text style={{ color: colors.teal, fontSize: 13, fontWeight: "700" }}>
-              BUMP ORDER
             </Text>
           </TouchableOpacity>
         </View>
