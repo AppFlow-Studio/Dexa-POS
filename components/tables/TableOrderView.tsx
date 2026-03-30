@@ -428,7 +428,16 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   }
 
   const finalizeCurrentCourse = () => {
-    if (!activeOrder) return
+    if (!activeOrder || !enableCoursing) {
+      if (!enableCoursing) {
+        show({
+          title: 'Coursing Disabled',
+          message: 'Coursing is not enabled for this location.',
+          type: 'warning'
+        })
+      }
+      return
+    }
     const nextCourse = coursingHook.finalizeCurrentCourse(
       activeOrder.id,
       activeOrder.items.map(i => i.id)
@@ -858,7 +867,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}
               {renderStage >= 2 ? (
-                isCurrentCourseSent ? (
+                enableCoursing && isCurrentCourseSent ? (
                   <View className='flex-1 justify-center items-center'>
                     <TouchableOpacity
                       onPress={finalizeCurrentCourse}
