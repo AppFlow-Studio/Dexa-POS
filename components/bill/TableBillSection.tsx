@@ -118,6 +118,7 @@ const TableBillSection = ({
           onRushCourse={onRushCourse}
           onPrioritizeCourse={onPrioritizeCourse}
           onResendCourse={onResendCourse}
+          enableCoursing={enableCoursing}
         />
       );
     }
@@ -149,6 +150,7 @@ const TableBillSection = ({
         onRushCourse={onRushCourse}
         onPrioritizeCourse={onPrioritizeCourse}
         onResendCourse={onResendCourse}
+        enableCoursing={enableCoursing}
       />
     );
   };

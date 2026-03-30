@@ -18,6 +18,8 @@ export interface CFDCartItem {
   name: string;
   quantity: number;
   unitPrice: number; // Base unit price (cents)
+  seatNumber?: number | null; // Which seat ordered this (for seat-based ordering)
+  courseNumber?: number; // Which course this item belongs to (for coursing)
 
   // Dual Pricing
   cashPrice: number;
@@ -32,6 +34,8 @@ export interface CFDCartItem {
     price: number; // usually card price
     priceCash: number;
     priceCard: number;
+    isNo?: boolean; // true for "no/exclude" modifiers
+    categoryName?: string; // modifier category/group name
   }>;
   notes?: string;
 }
@@ -49,6 +53,7 @@ export interface CFDPayload {
   stationName: string;
   locationId: string;
   serverName?: string | null; // e.g., "Michael J."
+  customerName?: string | null; // e.g., "John Doe"
 
   // Current screen
   screenState: CFDScreenState;
@@ -56,6 +61,7 @@ export interface CFDPayload {
   // Order data
   orderNumber: string | null; // e.g., "#0042"
   orderType: string | null; // "Dine In", "Takeaway", etc.
+  tableName?: string | null; // e.g., "A1", "Table 5" (for dine-in orders)
   guestCount: number | null;
   items: CFDCartItem[];
 
