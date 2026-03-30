@@ -745,7 +745,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         };
 
         console.log(
-          "[OfflineSync:payment] Calling process_payment_v7 with:",
+          "[OfflineSync:payment] Calling process_payment_v8 with:",
           JSON.stringify({
             orderId: finalParams.p_order_id,
             method: finalParams.p_payment_method,
@@ -864,10 +864,21 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               payments[targetIdx] = {
                 ...payments[targetIdx],
                 id: responseData.payment_id,
+                // Prefer local itemsCovered (built from paidQuantity deltas at payment time),
+                // then items_paid (per-payment quantities from backend JSON),
+                // then items_covered (flat UUID array) as last resort
                 itemsCovered:
-                  responseData.items_covered ||
-                  payments[targetIdx].itemsCovered ||
-                  [],
+                  (payments[targetIdx].itemsCovered && payments[targetIdx].itemsCovered.length > 0)
+                    ? payments[targetIdx].itemsCovered
+                    : (responseData.items_paid && Array.isArray(responseData.items_paid) && responseData.items_paid.length > 0)
+                      ? responseData.items_paid.map((ip: any) => ({
+                          itemId: ip.order_item_id,
+                          itemName: ip.item_name || "Unknown Item",
+                          quantity: ip.quantity_paid,
+                          unitPrice: ip.unit_price,
+                          subtotal: ip.subtotal,
+                        }))
+                      : (responseData.items_covered || []),
                 timestamp:
                   payments[targetIdx].timestamp || new Date().toISOString(),
                 sync_status: "synced" as const,

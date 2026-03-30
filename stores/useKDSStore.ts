@@ -96,6 +96,7 @@ interface KDSState {
   prioritizeTicket: (ticketId: string) => void
   toggleRush: (ticketId: string) => void
   markItemDone: (ticketId: string, itemId: string) => void
+  isTicketRecalled: (ticketId: string) => boolean
 
   // Done tickets
   recallDoneTicket: (ticketId: string) => void
@@ -404,7 +405,8 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
       modifiers: (item.modifiers ?? []).map(m => ({
         modifier_name: m.modifier_name,
         modifier_group_name: m.modifier_group_name,
-        price_modifier: m.price_modifier
+        price_modifier: m.price_modifier,
+        ...(m.is_no ? { is_no: true } : {})
       })),
       prep_station: item.prep_station,
       rush: item.rush,
@@ -425,7 +427,7 @@ function buildTicketsFromBroadcast (order: BroadcastOrderData): KDSTicket[] {
       order_type: order.order_type,
       order_source: order.order_source ?? null,
       table_name: order.table_number,
-      customer_name: null,
+      customer_name: order.customer_name ?? null,
       start_time: fireTime ?? order.sent_to_kitchen_at,
       start_time_epoch:
         fireTimeMs || safeParseUtcTimestamp(order.sent_to_kitchen_at),
@@ -482,12 +484,21 @@ function mergeTickets (
   const merged: KDSTicket[] = []
   for (const ticket of incoming) {
     const prev = existingById[ticket.ticket_id]
-    if (prev && ticketDeepEqual(prev, ticket)) {
+    // Preserve customer_name/table_name from existing ticket when broadcast omits them
+    const enriched =
+      prev && (ticket.customer_name === null || ticket.table_name === null)
+        ? {
+            ...ticket,
+            customer_name: ticket.customer_name ?? prev.customer_name,
+            table_name: ticket.table_name ?? prev.table_name
+          }
+        : ticket
+    if (prev && ticketDeepEqual(prev, enriched)) {
       mergedById[ticket.ticket_id] = prev
       merged.push(prev)
     } else {
-      mergedById[ticket.ticket_id] = ticket
-      merged.push(ticket)
+      mergedById[ticket.ticket_id] = enriched
+      merged.push(enriched)
       changed = true
     }
   }
@@ -917,14 +928,20 @@ export const useKDSStore = create<KDSState>()(
                 )
               : processed
 
-          // Preserve recalled/pending tickets not returned by server (terminal order exclusion)
+          // Preserve recalled/pending tickets not returned by server.
+          // For display-filtered stations, marking an item 'ready' sets
+          // kds_item_status = 'completed', which excludes the item from
+          // get_kds_tickets_v2 results. Check both the module-level Set
+          // AND the item-level recalled flag (persisted in MMKV) so the
+          // ticket survives even after a hot-reload that clears the Set.
           const currentTickets = get().tickets
           const serverTicketIds = new Set(remapped.map(t => t.ticket_id))
           const protectedMissing = currentTickets.filter(
             t =>
               !serverTicketIds.has(t.ticket_id) &&
               (_pendingActions.has(t.ticket_id) ||
-                _recalledTicketIds.has(t.ticket_id))
+                _recalledTicketIds.has(t.ticket_id) ||
+                t.items.some(i => i.recalled))
           )
           const withProtected =
             protectedMissing.length > 0
@@ -1019,19 +1036,20 @@ export const useKDSStore = create<KDSState>()(
           }
         } else {
           const itemIdSet = new Set(itemIds)
-          updatedTickets = tickets.map(t =>
-            t.ticket_id === ticketId
-              ? {
-                  ...t,
-                  status: ticketStatus as KDSTicket['status'],
-                  items: t.items.map(item =>
-                    itemIdSet.has(item.id)
-                      ? { ...item, kitchen_status: newStatus }
-                      : item
-                  )
-                }
-              : t
-          )
+          updatedTickets = tickets.map(t => {
+            if (t.ticket_id !== ticketId) return t
+            const resetEpoch = ticketStatus === 'ready' && _recalledTicketIds.has(ticketId)
+            return {
+              ...t,
+              status: ticketStatus as KDSTicket['status'],
+              items: t.items.map(item =>
+                itemIdSet.has(item.id)
+                  ? { ...item, kitchen_status: newStatus }
+                  : item
+              ),
+              ...(resetEpoch ? { start_time_epoch: Date.now() } : {})
+            }
+          })
         }
 
         const bucketed = smartBucketTickets(
@@ -1317,6 +1335,8 @@ export const useKDSStore = create<KDSState>()(
         }
       },
 
+      isTicketRecalled: (ticketId: string) => _recalledTicketIds.has(ticketId),
+
       prioritizeTicket: (ticketId: string) => {
         const { tickets, prioritizedTicketIds } = get()
         const ticket = tickets.find(t => t.ticket_id === ticketId)
@@ -1487,11 +1507,16 @@ export const useKDSStore = create<KDSState>()(
           timestamp: Date.now()
         })
 
-        const updatedTickets = tickets.map(t =>
-          t.ticket_id === ticketId
-            ? { ...t, status: newTicketStatus, items: updatedItems }
-            : t
-        )
+        const updatedTickets = tickets.map(t => {
+          if (t.ticket_id !== ticketId) return t
+          const resetEpoch = allReady && _recalledTicketIds.has(ticketId)
+          return {
+            ...t,
+            status: newTicketStatus,
+            items: updatedItems,
+            ...(resetEpoch ? { start_time_epoch: Date.now() } : {})
+          }
+        })
 
         const bucketed = smartBucketTickets(
           updatedTickets,

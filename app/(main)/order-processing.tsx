@@ -18,7 +18,8 @@ import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import Animated, { SlideInLeft, SlideOutUp, LinearTransition } from "react-native-reanimated";
 
 const EMPTY_ORDERS: OrderProfile[] = [];
 const badgeContentStyle = { paddingHorizontal: 4, gap: 8 } as const;
@@ -217,14 +218,19 @@ const OrderProcessing = () => {
 
   const renderOrderBadge = useCallback(
     ({ item }: { item: OrderProfile }) => (
-      <OrderBadge
-        order={item}
-        onMarkDone={() => handleMarkDone(item.id)}
-        onViewItems={() => handleViewItems(item.id)}
-        onRetrieve={() => handleRetrieve(item.id)}
-        onReopenCheck={() => handleReopenCheck(item.id)}
-        onPrintReceipt={() => handlePrintReceipt(item)}
-      />
+      <Animated.View
+        entering={SlideInLeft.duration(300).springify().damping(16)}
+        exiting={SlideOutUp.duration(200)}
+      >
+        <OrderBadge
+          order={item}
+          onMarkDone={() => handleMarkDone(item.id)}
+          onViewItems={() => handleViewItems(item.id)}
+          onRetrieve={() => handleRetrieve(item.id)}
+          onReopenCheck={() => handleReopenCheck(item.id)}
+          onPrintReceipt={() => handlePrintReceipt(item)}
+        />
+      </Animated.View>
     ),
     [handleMarkDone, handleViewItems, handleRetrieve, handleReopenCheck, handlePrintReceipt],
   );
@@ -291,17 +297,17 @@ const OrderProcessing = () => {
               headerBelow={
                 !isAccordionOpen && displayOrders.length > 0 ? (
                   <View className="px-3 py-1.5">
-                    <FlatList
+                    <Animated.FlatList
                       horizontal
                       data={displayOrders}
                       keyExtractor={badgeKeyExtractor}
                       className="mt-1 max-h-12"
                       contentContainerStyle={badgeContentStyle}
                       showsHorizontalScrollIndicator={false}
+                      itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(120)}
                       initialNumToRender={10}
                       maxToRenderPerBatch={10}
                       windowSize={3}
-                      removeClippedSubviews={true}
                       renderItem={renderOrderBadge}
                     />
                   </View>

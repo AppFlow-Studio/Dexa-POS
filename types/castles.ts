@@ -44,7 +44,7 @@ export interface CastlesSaleRequest {
 export interface CastlesSaleResult {
   success: boolean;
   raw?: import('@/services/terminals/castles-response-mapper').CastlesRawResponse;
-  /** JSONB payload from buildCastlesTerminalResponse() for process_payment_v7 */
+  /** JSONB payload from buildCastlesTerminalResponse() for process_payment_v8 */
   terminalResponse?: Record<string, unknown>;
   error?: string;
 }

@@ -6,6 +6,7 @@ import {
   SyncableDiningSettings,
   useSettingsStore
 } from '@/stores/useSettingsStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useRouter } from 'expo-router'
 import {
@@ -87,6 +88,10 @@ const DiningRoomScreen = () => {
           .from('locations')
           .update({ public_metadata: newMeta })
           .eq('id', locationId)
+
+        // Also update unified config store so local station sees change immediately
+        // and pos_config column is written for future loads
+        useLocationConfigStore.getState().updateConfig('dining', syncableValues)
 
         // Broadcast to other stations
         const channel = supabase.channel(`location:${locationId}:settings`)

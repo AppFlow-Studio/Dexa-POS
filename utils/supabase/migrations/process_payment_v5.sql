@@ -1,5 +1,5 @@
 
-CREATE OR REPLACE FUNCTION process_payment_v7(
+CREATE OR REPLACE FUNCTION process_payment_v8(
     p_order_id uuid,
     p_payment_method text,                    -- 'cash' | 'card'
     p_amount numeric,                         -- Amount to charge (before tip)

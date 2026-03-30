@@ -50,7 +50,7 @@ export async function payFullCard(
   terminalId?: string,
 ): Promise<ProcessPaymentV2Result> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.rpc("process_payment_v7", {
+  const { data, error } = await supabase.rpc("process_payment_v8", {
     p_order_id: orderId,
     p_payment_method: "card",
     p_amount: amount,
@@ -75,7 +75,7 @@ export async function payFullCash(
   tipAmount: number = 0,
 ): Promise<ProcessPaymentV2Result> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.rpc("process_payment_v7", {
+  const { data, error } = await supabase.rpc("process_payment_v8", {
     p_order_id: orderId,
     p_payment_method: "cash",
     p_amount: cashTotal,
@@ -104,7 +104,7 @@ export async function paySplitPortion(
   terminalId?: string,
 ): Promise<ProcessPaymentV2Result> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.rpc("process_payment_v7", {
+  const { data, error } = await supabase.rpc("process_payment_v8", {
     p_order_id: orderId,
     p_payment_method: paymentMethod,
     p_amount: amount,
@@ -142,7 +142,7 @@ export async function payForItems(
 ): Promise<ProcessPaymentV2Result> {
   const supabase = getSupabase();
   // Backend calculates amount from items and their quantities
-  const { data, error } = await supabase.rpc("process_payment_v7", {
+  const { data, error } = await supabase.rpc("process_payment_v8", {
     p_order_id: orderId,
     p_payment_method: paymentMethod,
     p_amount: 0, // Backend calculates from items

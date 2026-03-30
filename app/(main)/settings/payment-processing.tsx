@@ -1,5 +1,7 @@
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
+import type { PreAuthConfig } from '@/types/locationConfig'
 import {
   AlertTriangle,
   Banknote,
@@ -97,10 +99,10 @@ const PaymentProcessingScreen = () => {
 
   const [cashEnabled, setCashEnabled] = useState(true)
   const [startingCashAmount, setStartingCashAmount] = useState('200.00')
-  const preAuthSettings = useStoreSettingsStore(s => s.preAuthSettings)
-  const updatePreAuthSettings = useStoreSettingsStore(
-    s => s.updatePreAuthSettings
-  )
+  const preAuthConfig = useLocationConfigStore(s => s.config.preAuth)
+  const _updateConfig = useLocationConfigStore(s => s.updateConfig)
+  const updatePreAuth = (partial: Partial<PreAuthConfig>) =>
+    _updateConfig('preAuth', partial)
   const openDrawerOnTip = useStoreSettingsStore(s => s.openDrawerOnTip)
   const setOpenDrawerOnTip = useStoreSettingsStore(s => s.setOpenDrawerOnTip)
   const [splitPaymentOptions, setSplitPaymentOptions] =
@@ -764,185 +766,6 @@ const PaymentProcessingScreen = () => {
         style={{ height: 1, backgroundColor: colors.border, marginBottom: 10 }}
       />
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Payment Processors */}
-        {(['builtin', 'wired', 'bluetooth'] as ProcessorInfo['type'][]).map(
-          type => {
-            const sectionKey = type as keyof typeof expandedSections
-            const titleMap: Record<ProcessorInfo['type'], string> = {
-              builtin: 'Built-in Processors',
-              wired: 'Wired Card Readers',
-              bluetooth: 'Bluetooth Devices'
-            }
-            const descMap: Record<ProcessorInfo['type'], string> = {
-              builtin: 'Integrated software payment processors',
-              wired: 'USB / LAN connected card readers',
-              bluetooth: 'Wireless Bluetooth card readers'
-            }
-            const iconMap: Record<ProcessorInfo['type'], React.ReactNode> = {
-              builtin: <Building2 size={16} color={colors.teal} />,
-              wired: <Wifi size={16} color={colors.teal} />,
-              bluetooth: <Bluetooth size={16} color={colors.teal} />
-            }
-            const sectionProcessors = processors.filter(p => p.type === type)
-            const isExpanded = expandedSections[sectionKey]
-            return (
-              <View key={type} style={{ marginBottom: 10 }}>
-                <TouchableOpacity
-                  onPress={() => toggleSection(sectionKey)}
-                  style={{
-                    backgroundColor: colors.panel,
-                    paddingHorizontal: 12,
-                    paddingVertical: 11,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      flex: 1
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 32,
-                        height: 32,
-                        backgroundColor: colors.teal + '15',
-                        borderRadius: 8,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 10
-                      }}
-                    >
-                      {iconMap[type]}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontSize: 13,
-                          fontWeight: '700',
-                          color: colors.heading
-                        }}
-                      >
-                        {titleMap[type]}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.label,
-                          marginTop: 1
-                        }}
-                      >
-                        {descMap[type]}
-                      </Text>
-                    </View>
-                  </View>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8
-                    }}
-                  >
-                    <TouchableOpacity
-                      onPress={() => openAddModal(type)}
-                      style={{
-                        padding: 6,
-                        backgroundColor: colors.teal + '20',
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: colors.teal + '50'
-                      }}
-                    >
-                      <Plus size={15} color={colors.teal} />
-                    </TouchableOpacity>
-                    <View
-                      style={{
-                        backgroundColor: colors.teal + '20',
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderRadius: 20,
-                        borderWidth: 1,
-                        borderColor: colors.teal + '50'
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.teal,
-                          fontWeight: '600'
-                        }}
-                      >
-                        {sectionProcessors.length}
-                      </Text>
-                    </View>
-                    {isExpanded ? (
-                      <ChevronUp size={14} color={colors.label} />
-                    ) : (
-                      <ChevronDown size={14} color={colors.label} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-                {isExpanded && (
-                  <View style={{ marginTop: 4, marginLeft: 8 }}>
-                    {sectionProcessors.length > 0 ? (
-                      sectionProcessors.map(renderProcessorCard)
-                    ) : (
-                      <View
-                        style={{
-                          backgroundColor: colors.screen,
-                          padding: 12,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: colors.border
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 12,
-                            color: colors.label,
-                            textAlign: 'center'
-                          }}
-                        >
-                          No devices connected
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => openAddModal(type)}
-                          style={{
-                            marginTop: 10,
-                            backgroundColor: colors.teal + '20',
-                            borderWidth: 1,
-                            borderColor: colors.teal + '50',
-                            paddingVertical: 8,
-                            paddingHorizontal: 14,
-                            borderRadius: 8,
-                            alignSelf: 'center'
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: colors.teal,
-                              fontWeight: '600'
-                            }}
-                          >
-                            Add Device
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )
-          }
-        )}
-
         {/* Payment Methods */}
         <View
           style={{
@@ -1216,13 +1039,13 @@ const PaymentProcessingScreen = () => {
               </Text>
             </View>
             <Switch
-              checked={preAuthSettings.preAuthEnabled}
+              checked={preAuthConfig.enabled}
               onCheckedChange={checked =>
-                updatePreAuthSettings({ preAuthEnabled: checked })
+                updatePreAuth({ enabled: checked })
               }
             />
           </View>
-          {preAuthSettings.preAuthEnabled && (
+          {preAuthConfig.enabled && (
             <View style={{ paddingVertical: 12 }}>
               <Text
                 style={{
@@ -1263,11 +1086,11 @@ const PaymentProcessingScreen = () => {
                   </Text>
                 </View>
                 <TextInput
-                  value={String(preAuthSettings.defaultPreAuthAmount)}
+                  value={String(preAuthConfig.defaultAmount)}
                   onChangeText={text => {
                     const num = parseFloat(text)
                     if (!isNaN(num))
-                      updatePreAuthSettings({ defaultPreAuthAmount: num })
+                      updatePreAuth({ defaultAmount: num })
                   }}
                   keyboardType='decimal-pad'
                   style={{

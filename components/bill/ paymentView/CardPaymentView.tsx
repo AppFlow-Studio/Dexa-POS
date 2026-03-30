@@ -264,6 +264,19 @@ const CardPaymentView = () => {
         }
 
         console.log(`[CardPayment] Tip adjusted: $${posTip} → $${customerTip}`);
+
+        // Update success view with adjusted tip amount
+        usePaymentStore.setState((state) => {
+          if (state.completedPaymentInfo) {
+            return {
+              completedPaymentInfo: {
+                ...state.completedPaymentInfo,
+                totalTips: customerTip,
+              },
+            };
+          }
+          return state;
+        });
       } catch (err) {
         console.error("[CardPayment] Post-capture tip adjust error:", err);
       }

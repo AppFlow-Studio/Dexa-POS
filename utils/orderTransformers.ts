@@ -319,18 +319,29 @@ function deriveItemCoverage(
  *
  * @param payment - Payment data from broadcast or normalized fetch
  * @param orderItems - Order items array to derive item coverage with quantities
+ * @param paymentItems - Per-payment item coverage from order_payment_items junction table
  * @returns OrderProfilePayment for UI consumption
  */
 function transformBroadcastPaymentToProfile(
   payment: BroadcastOrderPaymentData,
   orderItems?: BroadcastOrderItemData[],
+  paymentItems?: BroadcastOrderData['payment_items'],
 ): OrderProfilePayment {
-  // Derive item coverage with quantities from order_items
-  const itemsCovered = deriveItemCoverage(
-    payment.covers_items,
-    orderItems,
-    payment.is_cash_priced,
-  );
+  // Prefer per-payment item coverage from junction table (accurate per-payment quantities)
+  // Fall back to deriveItemCoverage (flat covers_items + paid_quantity) for legacy data
+  const itemsCovered: OrderPaymentItemCoverage[] =
+    paymentItems && paymentItems.length > 0
+      ? paymentItems.map((pi) => {
+          const item = orderItems?.find((oi) => oi.id === pi.order_item_id);
+          return {
+            itemId: pi.order_item_id,
+            itemName: item?.item_name || "Unknown Item",
+            quantity: pi.quantity_paid,
+            unitPrice: pi.unit_price_paid,
+            subtotal: pi.subtotal_paid,
+          };
+        })
+      : deriveItemCoverage(payment.covers_items, orderItems, payment.is_cash_priced);
 
   // Determine PaymentType for UI
   const method = payment.payment_method === "cash" ? "Cash" : "Card";
@@ -459,14 +470,26 @@ function transformBroadcastPaymentToProfile(
  *
  * @param payments - Array of payment data from broadcast or normalized fetch
  * @param orderItems - Order items array to derive item coverage with quantities
+ * @param allPaymentItems - Per-payment item coverage from order_payment_items junction table
  * @returns Array of OrderProfilePayment for UI consumption
  */
 export function transformBroadcastPaymentsToProfile(
   payments: BroadcastOrderPaymentData[] | undefined,
   orderItems?: BroadcastOrderItemData[],
+  allPaymentItems?: BroadcastOrderData['payment_items'],
 ): OrderProfilePayment[] {
   if (!payments || payments.length === 0) return [];
-  return payments.map((p) => transformBroadcastPaymentToProfile(p, orderItems));
+
+  // Group payment_items by order_payment_id for O(1) lookup per payment
+  const byPaymentId = new Map<string, NonNullable<BroadcastOrderData['payment_items']>>();
+  for (const pi of allPaymentItems || []) {
+    if (!byPaymentId.has(pi.order_payment_id)) byPaymentId.set(pi.order_payment_id, []);
+    byPaymentId.get(pi.order_payment_id)!.push(pi);
+  }
+
+  return payments.map((p) =>
+    transformBroadcastPaymentToProfile(p, orderItems, byPaymentId.get(p.id))
+  );
 }
 
 /**
@@ -577,6 +600,7 @@ export function transformBroadcastToOrder(
     payments: transformBroadcastPaymentsToProfile(
       backendOrder.order_payments,
       backendOrder.order_items,
+      backendOrder.payment_items,
     ),
     // Cast reversals and refund items to proper types (broadcast returns Record<string, unknown>[])
     reversals: (backendOrder.reversals as unknown as ReversalRecord[]) ?? undefined,
@@ -763,7 +787,7 @@ export interface FetchedOrderPayment {
   processor_response: Record<string, unknown> | null;
   reference_number: string | null;
 
-  // Dejavoo-specific columns (extracted by process_payment_v7.sql)
+  // Dejavoo-specific columns (extracted by process_payment_v8.sql)
   dejavoo_response_code: string | null;
   dejavoo_batch_number: string | null;
   dejavoo_invoice_number: string | null;

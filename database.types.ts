@@ -17308,7 +17308,7 @@ export type Database = {
         }
         Returns: Json
       }
-      process_payment_v7: {
+      process_payment_v8: {
         Args: {
           p_amount: number
           p_amount_tendered?: number

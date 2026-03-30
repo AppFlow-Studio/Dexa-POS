@@ -24,6 +24,7 @@ DECLARE
   order_payments_data jsonb;
   order_refund_items_data jsonb;
   reversals_data jsonb;
+  payment_items_data jsonb;
 
   v_topic text;
   v_location_id uuid;
@@ -235,7 +236,21 @@ BEGIN
     JOIN order_items oi ON oi.id = ori.order_item_id
     WHERE oi.order_id = NEW.id;
 
-
+    -- Fetch per-payment item coverage from junction table
+    SELECT COALESCE(jsonb_agg(
+      jsonb_build_object(
+        'id', opi.id,
+        'order_payment_id', opi.order_payment_id,
+        'order_item_id', opi.order_item_id,
+        'quantity_paid', opi.quantity_paid,
+        'unit_price_paid', opi.unit_price_paid,
+        'subtotal_paid', opi.subtotal_paid,
+        'tax_paid', opi.tax_paid
+      )
+    ), '[]'::jsonb) INTO payment_items_data
+    FROM order_payment_items opi
+    JOIN order_payments op ON op.id = opi.order_payment_id
+    WHERE op.order_id = NEW.id;
 
     -- Build order_data in parts to avoid 100 argument limit
     -- Part 1: Identifiers and relationships
@@ -313,7 +328,8 @@ BEGIN
       'order_items', order_items_data,
       'order_payments', order_payments_data,
       'reversals', reversals_data,
-      'order_refund_items', order_refund_items_data
+      'order_refund_items', order_refund_items_data,
+      'payment_items', payment_items_data
     );
 
     -- Build final payload

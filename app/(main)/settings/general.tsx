@@ -11,7 +11,9 @@ import { colors, spinnerColor } from '@/lib/theme'
 import { toastService } from '@/lib/toastService'
 import type { MerchantRole } from '@/lib/types'
 import { clearLocationData, clearStationData } from '@/services/cacheService'
+import { FloorPlanService } from '@/services/floorPlanService'
 import { syncNow } from '@/services/offlineSyncService'
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
 import { useEmployeeStore } from '@/stores/useEmployeeStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -23,6 +25,7 @@ import {
   ChevronUp,
   Clock,
   ExternalLink,
+  LayoutGrid,
   ListChecks,
   LogOut,
   MapPin,
@@ -212,6 +215,7 @@ const PinGateModal: React.FC<PinGateModalProps> = ({
 
 const GeneralSettingsScreen = () => {
   const queryClient = useQueryClient()
+  const supabase = useSupabaseClient()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const selectedStation = useStoreSettingsStore(s => s.selectedStation)
 
@@ -275,10 +279,28 @@ const GeneralSettingsScreen = () => {
   // ── Sync actions ────────────────────────────────────────────────────────
   const [syncingKey, setSyncingKey] = useState<string | null>(null)
 
+  const resyncFloorPlan = async () => {
+    const locationId = selectedStore?.id
+    if (!supabase || !locationId) return
+
+    const { data: floorPlans, error } =
+      await FloorPlanService.getLocationFloorPlans(supabase, locationId)
+    if (error) throw error
+
+    const defaultPlan = floorPlans?.find((fp) => fp.is_default) || floorPlans?.[0]
+    useFloorPlanStore.getState().setFloorPlans(floorPlans || [])
+    useFloorPlanStore.getState().setActiveFloorPlanId(defaultPlan?.id || null)
+
+    if (defaultPlan?.id) {
+      await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id)
+    }
+  }
+
   const handleSyncPOS = async () => {
     setSyncingKey('pos')
     try {
       await syncNow()
+      await resyncFloorPlan()
       toastService.show({
         title: 'POS Synced',
         message: 'All pending operations have been flushed.',
@@ -288,6 +310,27 @@ const GeneralSettingsScreen = () => {
       toastService.show({
         title: 'Sync Failed',
         message: 'Could not sync. Check your connection.',
+        type: 'error'
+      })
+    } finally {
+      setSyncingKey(null)
+    }
+  }
+
+  const handleFetchFloorPlan = async () => {
+    if (!selectedStore?.id) return
+    setSyncingKey('floorplan')
+    try {
+      await resyncFloorPlan()
+      toastService.show({
+        title: 'Floor Plan Refreshed',
+        message: 'Tables and sections have been re-fetched.',
+        type: 'success'
+      })
+    } catch {
+      toastService.show({
+        title: 'Failed',
+        message: 'Could not fetch floor plan.',
         type: 'error'
       })
     } finally {
@@ -389,7 +432,6 @@ const GeneralSettingsScreen = () => {
 
   // ── Log out — requires manager PIN ─────────────────────────────────────
   const { signOut } = useClerk()
-  const supabase = useSupabaseClient()
   const stationSessionId = useStoreSettingsStore(s => s.stationSessionId)
   const clearSelectedStore = useStoreSettingsStore(s => s.clearSelectedStore)
   const clearStationSession = useStoreSettingsStore(s => s.clearStationSession)
@@ -1085,6 +1127,13 @@ const GeneralSettingsScreen = () => {
                 <ListChecks size={16} color={colors.teal} />,
                 'settings',
                 handleFetchSettings
+              )}
+              {renderSyncButton(
+                'Fetch Floor Plan',
+                'Re-download tables, sections, and layout',
+                <LayoutGrid size={16} color={colors.teal} />,
+                'floorplan',
+                handleFetchFloorPlan
               )}
             </View>
           )}

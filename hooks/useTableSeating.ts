@@ -141,7 +141,7 @@ export function useTableSeating(
             true,
           );
         } else if (state?.itemSeatMap?.[id] === undefined) {
-          storeSetItemSeat(orderId, id, useSeat, item?.db_order_item_id);
+          storeSetItemSeat(orderId, id, useSeat, item?.db_order_item_id, true);
         }
       });
     }
