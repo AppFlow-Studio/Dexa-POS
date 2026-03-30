@@ -54,7 +54,7 @@ export function OrderingScreen() {
   React.useEffect(() => {
     console.log("[CFD OrderingScreen]", { orderType, tableName, serverName });
     if (items.length > 0) {
-      console.log("[CFD Items]", items.map(i => ({ name: i.name, seatNumber: i.seatNumber })));
+      console.log("[CFD Items]", items.map(i => ({ name: i.name, seatNumber: i.seatNumber, courseNumber: i.courseNumber })));
     }
   }, [orderType, tableName, serverName, items]);
 
@@ -280,10 +280,19 @@ function CartItemRow({
 
         {/* Item Details */}
         <View style={{ flex: 1 }}>
-          {item.seatNumber && (
-            <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "600", marginBottom: 2 }}>
-              Seat {item.seatNumber}
-            </Text>
+          {(item.seatNumber || item.courseNumber) && (
+            <View style={{ flexDirection: "row", gap: 12, marginBottom: 2 }}>
+              {item.seatNumber && (
+                <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "600" }}>
+                  Seat {item.seatNumber}
+                </Text>
+              )}
+              {item.courseNumber && (
+                <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "600" }}>
+                  Course {item.courseNumber}
+                </Text>
+              )}
+            </View>
           )}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
             <Text

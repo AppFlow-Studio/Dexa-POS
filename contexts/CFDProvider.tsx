@@ -192,6 +192,10 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         const cardLineTotal = item.subtotal || cardUnitPrice * item.quantity;
         const cashLineTotal = item.cashSubtotal || cashUnitPrice * item.quantity;
 
+        if (DEBUG && item.courseNumber) {
+          console.log(`[CFD] Item ${item.id} (${item.name}) -> Course ${item.courseNumber}`);
+        }
+
         return {
           id: item.id,
           name: item.is_open_item
@@ -200,6 +204,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
           quantity: item.quantity,
           unitPrice: Math.round(cardUnitPrice * 100),
           seatNumber: item.seatNumber ?? null,
+          courseNumber: item.courseNumber,
           cashPrice: Math.round(cashUnitPrice * 100),
           cardPrice: Math.round(cardUnitPrice * 100),
           lineTotal: Math.round(cardLineTotal * 100),

@@ -19,6 +19,7 @@ export interface CFDCartItem {
   quantity: number;
   unitPrice: number; // Base unit price (cents)
   seatNumber?: number | null; // Which seat ordered this (for seat-based ordering)
+  courseNumber?: number; // Which course this item belongs to (for coursing)
 
   // Dual Pricing
   cashPrice: number;
