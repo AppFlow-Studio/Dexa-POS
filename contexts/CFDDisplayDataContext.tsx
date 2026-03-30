@@ -22,6 +22,7 @@ export interface CFDDisplayData {
   customerName: string | null;
   orderNumber: string | null;
   orderType: string | null;
+  tableName: string | null;
   guestCount: number | null;
   items: CFDCartItem[];
 
@@ -80,6 +81,7 @@ export function CFDExternalDisplayProvider({
     customerName: store.customerName ?? null,
     orderNumber: store.orderNumber,
     orderType: store.orderType,
+    tableName: store.tableName ?? null,
     guestCount: store.guestCount,
     items: store.items,
     subtotal: store.subtotal,
@@ -127,6 +129,7 @@ export function CFDBuiltinDisplayProvider({
     customerName: store.customerName ?? null,
     orderNumber: store.orderNumber,
     orderType: store.orderType,
+    tableName: store.tableName ?? null,
     guestCount: store.guestCount,
     items: store.items,
     subtotal: store.subtotal,

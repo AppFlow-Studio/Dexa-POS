@@ -18,6 +18,7 @@ export interface CFDCartItem {
   name: string;
   quantity: number;
   unitPrice: number; // Base unit price (cents)
+  seatNumber?: number | null; // Which seat ordered this (for seat-based ordering)
 
   // Dual Pricing
   cashPrice: number;
@@ -59,6 +60,7 @@ export interface CFDPayload {
   // Order data
   orderNumber: string | null; // e.g., "#0042"
   orderType: string | null; // "Dine In", "Takeaway", etc.
+  tableName?: string | null; // e.g., "A1", "Table 5" (for dine-in orders)
   guestCount: number | null;
   items: CFDCartItem[];
 

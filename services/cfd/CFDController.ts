@@ -146,6 +146,7 @@ export class CFDController {
       screenState: this.lastPayload.screenState ?? "idle",
       orderNumber: this.lastPayload.orderNumber ?? null,
       orderType: this.lastPayload.orderType ?? null,
+      tableName: this.lastPayload.tableName ?? null,
       guestCount: this.lastPayload.guestCount ?? null,
       items: this.lastPayload.items ?? [],
       subtotal: this.lastPayload.subtotal ?? 0,
@@ -195,6 +196,7 @@ export class CFDController {
     customerName?: string | null;
     orderNumber: string | null;
     orderType: string | null;
+    tableName?: string | null;
     guestCount: number | null;
     items: CFDCartItem[];
     subtotal: number;

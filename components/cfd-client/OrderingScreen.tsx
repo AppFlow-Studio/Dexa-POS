@@ -18,6 +18,7 @@ export function OrderingScreen() {
     customerName,
     orderNumber,
     orderType,
+    tableName,
     guestCount,
     items,
     subtotal,
@@ -48,6 +49,14 @@ export function OrderingScreen() {
     }
     prevCount.current = items.length;
   }, [items.length]);
+
+  // Debug log
+  React.useEffect(() => {
+    console.log("[CFD OrderingScreen]", { orderType, tableName, serverName });
+    if (items.length > 0) {
+      console.log("[CFD Items]", items.map(i => ({ name: i.name, seatNumber: i.seatNumber })));
+    }
+  }, [orderType, tableName, serverName, items]);
 
   const formatCurrency = (cents: number) => {
     return `$${(cents / 100).toFixed(2)}`;
@@ -84,7 +93,8 @@ export function OrderingScreen() {
                   {branding?.restaurantName ?? "Restaurant"}
                 </Text>
                 <Text style={{ fontSize: 11, fontWeight: "500", color: colors.label }}>
-                  {orderType && serverName ? `${orderType?.toUpperCase()} · ${serverName}` : (orderType?.toUpperCase() || serverName || "Order")}
+                  {orderType?.toUpperCase()}
+                  {tableName ? ` · Table ${tableName}` : serverName ? ` · ${serverName}` : ""}
                 </Text>
               </View>
             </View>
@@ -270,6 +280,11 @@ function CartItemRow({
 
         {/* Item Details */}
         <View style={{ flex: 1 }}>
+          {item.seatNumber && (
+            <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "600", marginBottom: 2 }}>
+              Seat {item.seatNumber}
+            </Text>
+          )}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
             <Text
               style={{

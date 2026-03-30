@@ -22,6 +22,7 @@ interface CFDClientStore {
   customerName: string | null;
   orderNumber: string | null;
   orderType: string | null;
+  tableName: string | null;
   guestCount: number | null;
   items: CFDPayload["items"];
 
@@ -77,6 +78,7 @@ export const useCFDClientStore = create<CFDClientStore>()(
       customerName: null,
       orderNumber: null,
       orderType: null,
+      tableName: null,
       guestCount: null,
       items: [],
 
@@ -136,6 +138,7 @@ export const useCFDClientStore = create<CFDClientStore>()(
           customerName: payload.customerName ?? null,
           orderNumber: payload.orderNumber,
           orderType: payload.orderType,
+          tableName: payload.tableName ?? null,
           guestCount: payload.guestCount,
           items: payload.items,
 

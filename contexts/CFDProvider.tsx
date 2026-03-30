@@ -19,6 +19,7 @@ import { useLoyaltyStore } from "@/stores/useLoyaltyStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import type {
     CFDCartItem,
     CFDPairingData,
@@ -198,6 +199,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             : item.name,
           quantity: item.quantity,
           unitPrice: Math.round(cardUnitPrice * 100),
+          seatNumber: item.seatNumber ?? null,
           cashPrice: Math.round(cashUnitPrice * 100),
           cardPrice: Math.round(cardUnitPrice * 100),
           lineTotal: Math.round(cardLineTotal * 100),
@@ -481,7 +483,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
     // A "Sales Screen" indicates the cashier is actively taking or editing an order.
     // If we're on a dashboard or settings, the customer shouldn't see order details.
-    const isSalesScreen = pathname.includes("order-processing");
+    const isSalesScreen = pathname.includes("order-processing") || pathname.includes("tables") || pathname.includes("floor-plan");
 
     // We show order data IF:
     // 1. We are in an active transaction state (Tip Selection, Payment, etc.)
@@ -529,6 +531,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
     const savingsAmount = Math.max(0, cardTotal - cashTotal);
 
+    // For dine-in orders, get table ID
+    const tableName = activeOrder?.order_type?.toLowerCase().includes("dine") ? (activeOrder?.service_location_id ?? null) : null;
+
     const params = {
       screenState: activeScreenState || undefined,
       serverName: null,
@@ -536,6 +541,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       orderNumber:
         activeOrder?.display_number ?? activeOrder?.order_number ?? null,
       orderType: activeOrder?.order_type ?? null,
+      tableName,
       guestCount: activeOrder?.guest_count ?? null,
       items: cfdItems,
       subtotal: cardSubtotal,
@@ -638,7 +644,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hasBuiltinCfd) return;
 
-    const isSalesScreen = pathname.includes("order-processing");
+    const isSalesScreen = pathname.includes("order-processing") || pathname.includes("tables") || pathname.includes("floor-plan");
     const shouldShowOrderData =
       !!activeScreenState || (isSalesScreen && !!activeOrder);
 
@@ -682,12 +688,16 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
     const savingsAmount = Math.max(0, cardTotal - cashTotal);
 
+    // For dine-in orders, get table ID
+    const builtinTableName = activeOrder?.order_type?.toLowerCase().includes("dine") ? (activeOrder?.service_location_id ?? null) : null;
+
     useCFDBuiltinStore.getState().update({
       screenState,
       serverName: null,
       customerName: activeOrder?.customer_name ?? null,
       orderNumber: activeOrder?.display_number ?? activeOrder?.order_number ?? null,
       orderType: activeOrder?.order_type ?? null,
+      tableName: builtinTableName,
       guestCount: activeOrder?.guest_count ?? null,
       items: cfdItems,
       subtotal: cardSubtotal,

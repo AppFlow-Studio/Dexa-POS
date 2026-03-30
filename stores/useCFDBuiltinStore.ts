@@ -16,6 +16,7 @@ interface CFDBuiltinState {
   customerName: string | null;
   orderNumber: string | null;
   orderType: string | null;
+  tableName: string | null;
   guestCount: number | null;
   items: CFDCartItem[];
 
@@ -50,6 +51,7 @@ const initialState: Omit<CFDBuiltinState, "update" | "reset"> = {
   customerName: null,
   orderNumber: null,
   orderType: null,
+  tableName: null,
   guestCount: null,
   items: [],
   subtotal: 0,
