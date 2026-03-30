@@ -232,6 +232,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
                 price: Math.round((o.price || 0) * 100),
                 priceCash: Math.round((o.price || 0) * 100),
                 priceCard: Math.round((o.price || 0) * 100),
+                isNo: o.isNo,
+                categoryName: m.categoryName,
               })),
             ) ?? []),
           ],
@@ -529,6 +531,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
     const params = {
       screenState: activeScreenState || undefined,
+      serverName: null,
+      customerName: activeOrder?.customer_name ?? null,
       orderNumber:
         activeOrder?.display_number ?? activeOrder?.order_number ?? null,
       orderType: activeOrder?.order_type ?? null,
@@ -681,6 +685,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     useCFDBuiltinStore.getState().update({
       screenState,
       serverName: null,
+      customerName: activeOrder?.customer_name ?? null,
       orderNumber: activeOrder?.display_number ?? activeOrder?.order_number ?? null,
       orderType: activeOrder?.order_type ?? null,
       guestCount: activeOrder?.guest_count ?? null,

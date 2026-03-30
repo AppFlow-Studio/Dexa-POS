@@ -141,6 +141,8 @@ export class CFDController {
       stationId: this.stationId,
       stationName: this.stationName,
       locationId: this.locationId,
+      serverName: this.lastPayload.serverName ?? null,
+      customerName: this.lastPayload.customerName ?? null,
       screenState: this.lastPayload.screenState ?? "idle",
       orderNumber: this.lastPayload.orderNumber ?? null,
       orderType: this.lastPayload.orderType ?? null,
@@ -189,6 +191,8 @@ export class CFDController {
    */
   updateOrder(params: {
     screenState?: CFDScreenState;
+    serverName?: string | null;
+    customerName?: string | null;
     orderNumber: string | null;
     orderType: string | null;
     guestCount: number | null;

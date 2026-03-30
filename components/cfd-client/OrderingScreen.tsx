@@ -1,10 +1,13 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
+import { colors } from "@/lib/theme";
 import type { CFDCartItem } from "@/types/cfd.types";
+import { CreditCard, Banknote, UtensilsCrossed } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
-import { FlatList, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
+  FadeInDown,
   LinearTransition,
   SlideInLeft,
 } from "react-native-reanimated";
@@ -12,6 +15,7 @@ import Animated, {
 export function OrderingScreen() {
   const {
     serverName,
+    customerName,
     orderNumber,
     orderType,
     guestCount,
@@ -50,165 +54,181 @@ export function OrderingScreen() {
   };
 
   return (
-    <View className="flex-1 bg-black">
+    <View style={{ flex: 1, backgroundColor: colors.screen }}>
       <View
-        className={`flex-1 ${isWide ? "flex-row" : "flex-col"} bg-zinc-950`}
+        style={{
+          flex: 1,
+          flexDirection: isWide ? "row" : "column",
+          backgroundColor: colors.screen,
+        }}
       >
-        {/* LEFT PANEL (Items List) */}
+        {/* LEFT PANEL (Items + Bill Summary) */}
         <View
-          className={`${isWide ? "w-[65%] border-r border-white/10" : "flex-1"} flex-col`}
+          style={{
+            flex: isWide ? undefined : 1,
+            width: isWide ? "66.66%" : undefined,
+            borderRightWidth: isWide ? 1 : 0,
+            borderRightColor: colors.border,
+            flexDirection: "column",
+          }}
         >
-          {!isWide && (
-            <View className="p-4 border-b border-white/10 bg-zinc-900/50">
-              <Text className="text-xl font-bold text-white text-center">
-                {branding?.restaurantName ?? "Restaurant"}
-              </Text>
-              {serverName && (
-                <Text className="text-zinc-400 text-center text-sm mt-1">
-                  Server: {serverName}
-                </Text>
-              )}
-              <View className="flex-row justify-center gap-4 mt-1">
-                {orderNumber && (
-                  <Text className="text-emerald-400 font-medium">
-                    {orderNumber}
-                  </Text>
-                )}
-                {guestCount && (
-                  <Text className="text-zinc-500 font-medium">
-                    {guestCount} Guests
-                  </Text>
-                )}
+          {/* Header with Restaurant Name & Order Info */}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.panel, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            {/* Left side: Icon + Restaurant Name & Subtitle */}
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+                <UtensilsCrossed size={20} color={colors.teal} />
               </View>
-            </View>
-          )}
-
-          {isWide && (
-            <View className="flex-row px-8 py-4 border-b border-white/10 bg-zinc-900/40 items-center">
-              <Text className="text-zinc-500 font-medium w-12 text-center">
-                QTY
-              </Text>
-              <Text className="text-zinc-500 font-medium flex-1 pl-4">
-                ITEM
-              </Text>
-              <View className="flex-row w-48 justify-end gap-6">
-                <Text className="text-zinc-500 font-medium w-20 text-right">
-                  CARD
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.heading, marginBottom: 2 }}>
+                  {branding?.restaurantName ?? "Restaurant"}
                 </Text>
-                <Text className="text-emerald-600 font-medium w-20 text-right">
-                  CASH
+                <Text style={{ fontSize: 11, fontWeight: "500", color: colors.label }}>
+                  {orderType && serverName ? `${orderType?.toUpperCase()} · ${serverName}` : (orderType?.toUpperCase() || serverName || "Order")}
                 </Text>
               </View>
             </View>
-          )}
+            {/* Right side: Order Number & Item Count */}
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.teal, marginBottom: 2 }}>
+                {orderNumber || "Your Order"}
+              </Text>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: colors.label }}>
+                {customerName ? `${customerName} · ` : ""}{items.length} item{items.length !== 1 ? "s" : ""}
+              </Text>
+            </View>
+          </View>
 
+          {/* Items List */}
           <FlatList
             ref={listRef}
             data={items}
             keyExtractor={(_, index) => index.toString()}
             renderItem={({ item, index }) => (
-              <CartItemRow item={item} index={index} isWide={isWide} />
+              <CartItemRow item={item} index={index} />
             )}
             style={{ flex: 1 }}
             contentContainerStyle={{
-              padding: isWide ? 32 : 16,
-              paddingBottom: 100,
+              padding: 16,
+              paddingBottom: 24,
             }}
             showsVerticalScrollIndicator={false}
           />
-        </View>
 
-        {/* RIGHT PANEL (Summary Sidebar) */}
-        <View
-          className={`${
-            isWide
-              ? "w-[35%] h-full bg-zinc-900"
-              : "border-t border-white/10 bg-zinc-900"
-          } p-6 justify-between`}
-        >
-          {isWide && (
-            <View className="mb-6 pb-6 border-b border-white/10">
-              <Text className="text-3xl font-bold text-white">
-                {branding?.restaurantName ?? "Restaurant"}
-              </Text>
-              {serverName && (
-                <Text className="text-zinc-400 text-lg mt-1 font-medium">
-                  Your server: <Text className="text-white">{serverName}</Text>
+          {/* Totals Section - Below Items */}
+          <View style={{ backgroundColor: colors.panel, paddingHorizontal: 16, paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.border }}>
+            {/* Subtotal & Tax rows */}
+            <View style={{ gap: 2, marginBottom: 6 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>Subtotal</Text>
+                <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>
+                  {formatCurrency(subtotalCard || subtotal)}
                 </Text>
-              )}
-              <View className="flex-row items-center justify-between mt-4">
-                <View className="bg-emerald-500/10 px-3 py-1 rounded-md border border-emerald-500/20">
-                  <Text className="text-emerald-400 font-bold text-lg">
-                    {orderNumber || "New Order"}
+              </View>
+
+              {discountAmount > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "500" }}>Discount</Text>
+                  <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "500" }}>
+                    -{formatCurrency(discountAmount)}
                   </Text>
                 </View>
-                {guestCount && (
-                  <Text className="text-zinc-400 text-lg">
-                    {guestCount} Guest{guestCount > 1 ? "s" : ""}
-                  </Text>
-                )}
-              </View>
-              {orderType && (
-                <Text className="text-zinc-500 mt-2 font-medium uppercase tracking-wider text-xs">
-                  {orderType}
+              )}
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>Tax</Text>
+                <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>
+                  {formatCurrency(taxCard || taxAmount)}
                 </Text>
+              </View>
+
+              {tipAmount > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>Tip</Text>
+                  <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>
+                    {formatCurrency(tipAmount)}
+                  </Text>
+                </View>
               )}
             </View>
-          )}
 
-          {isWide && <View className="flex-1" />}
+            {/* Divider */}
+            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 6 }} />
 
-          <View className="space-y-3">
-            <TotalRow
-              label="Subtotal"
-              value={subtotalCard || subtotal}
-              secondaryValue={subtotalCash}
-            />
-            {discountAmount > 0 && (
-              <TotalRow label="Discount" value={-discountAmount} isDiscount />
-            )}
-            <TotalRow
-              label="Tax"
-              value={taxCard || taxAmount}
-              secondaryValue={taxCash}
-            />
-            {tipAmount > 0 && <TotalRow label="Tip" value={tipAmount} />}
+            {/* Total (card) */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+              <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>Total (card)</Text>
+              <Text style={{ color: colors.heading, fontSize: 20, fontWeight: "700" }}>
+                {formatCurrency(totalCard || total)}
+              </Text>
+            </View>
 
-            <View className="h-[1px] bg-white/10 my-4" />
+            {/* Total (cash) */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "500" }}>Total (cash)</Text>
+              <Text style={{ color: colors.teal, fontSize: 22, fontWeight: "700" }}>
+                {formatCurrency(totalCash)}
+              </Text>
+            </View>
 
-            <TotalRow
-              label="Total"
-              value={totalCard || total}
-              secondaryValue={totalCash}
-              isTotal
-            />
-
+            {/* Cash Savings */}
             {savingsAmount > 0 && (
               <Animated.View
-                entering={FadeIn.delay(500)}
-                className="mt-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 flex-row items-center justify-center gap-2"
+                entering={FadeInDown.delay(300)}
+                style={{ marginBottom: 4 }}
               >
-                <Text className="text-emerald-400 font-bold text-lg">
-                  Save {formatCurrency(savingsAmount)} with Cash!
+                <Text style={{ color: colors.teal, fontWeight: "600", fontSize: 11, textAlign: "center" }}>
+                  Save {formatCurrency(savingsAmount)} with cash
                 </Text>
               </Animated.View>
             )}
 
+            {/* Divider before Amount Due */}
             {amountPaid > 0 && (
-              <View className="mt-4 pt-4 border-t border-dashed border-white/10 space-y-2">
-                <TotalRow label="Paid" value={amountPaid} />
-                <View className="flex-row justify-between items-center bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">
-                  <Text className="text-amber-500 font-bold text-lg">
-                    Amount Due
+              <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 6 }} />
+            )}
+
+            {/* Amount Paid & Due */}
+            {amountPaid > 0 && (
+              <View style={{ gap: 8 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: colors.label, fontSize: 13, fontWeight: "500" }}>Paid</Text>
+                  <Text style={{ color: colors.label, fontSize: 13, fontWeight: "500" }}>
+                    {formatCurrency(amountPaid)}
                   </Text>
-                  <Text className="text-amber-500 font-bold text-2xl">
-                    {formatCurrency(outstandingTotal)}
-                  </Text>
+                </View>
+                <View style={{ backgroundColor: colors.warning + "15", borderWidth: 1, borderColor: colors.warning + "30", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: colors.warning }}>
+                      Amount Due
+                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.warning }}>
+                      {formatCurrency(outstandingTotal)}
+                    </Text>
+                  </View>
                 </View>
               </View>
             )}
+
+            {/* Powered by DEXA footer */}
+            <View style={{ marginTop: 6, paddingTop: 4, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Text style={{ color: colors.label, fontSize: 9, fontWeight: "500", textAlign: "center" }}>
+                Powered by DEXA
+              </Text>
+            </View>
           </View>
         </View>
+
+        {/* RIGHT PANEL (Empty for now) */}
+        <View
+          style={{
+            width: isWide ? "33.34%" : undefined,
+            flex: isWide ? undefined : 1,
+            backgroundColor: colors.panel,
+            borderLeftWidth: isWide ? 1 : 0,
+            borderLeftColor: colors.border,
+          }}
+        />
       </View>
     </View>
   );
@@ -217,77 +237,134 @@ export function OrderingScreen() {
 function CartItemRow({
   item,
   index,
-  isWide,
 }: {
   item: CFDCartItem;
   index: number;
-  isWide: boolean;
 }) {
   const formatCurrency = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+  // Check if there are any modifiers to display
+  const hasModifiers = item.modifiers && item.modifiers.length > 0;
+
   return (
     <Animated.View
-      entering={SlideInLeft.duration(500).easing(Easing.out(Easing.cubic))}
-      layout={LinearTransition.duration(400)}
-      className="mb-3 pb-3 border-b border-white/5 bg-white/5 px-2 py-3 rounded-lg"
+      entering={FadeInDown.duration(300).delay(index * 50)}
+      layout={LinearTransition.duration(200)}
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginBottom: 8,
+      }}
     >
-      <View className="flex-row items-center">
-        <View className="bg-zinc-800 rounded-md h-8 w-10 items-center justify-center mr-4 shadow-sm">
-          <Text className="text-zinc-300 font-bold text-lg">
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+        {/* Quantity Badge */}
+        <View style={{ backgroundColor: colors.panel, borderRadius: 8, height: 28, width: 32, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ color: colors.label, fontWeight: "700", fontSize: 13 }}>
             {item.quantity}
           </Text>
         </View>
 
-        <View className="flex-1 justify-center">
-          <Text
-            className={`text-white font-semibold ${isWide ? "text-xl" : "text-lg"} leading-tight`}
-            numberOfLines={2}
-          >
-            {item.name}
-          </Text>
+        {/* Item Details */}
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+            <Text
+              style={{
+                color: colors.heading,
+                fontWeight: "600",
+                fontSize: 14,
+                lineHeight: 18,
+                flex: 1,
+              }}
+              numberOfLines={2}
+            >
+              {item.name}
+            </Text>
+            <Text style={{ color: colors.label, fontSize: 13, fontWeight: "600", marginLeft: 8 }}>
+              {formatCurrency(item.lineTotalCard || item.lineTotal || 0)}
+            </Text>
+          </View>
 
-          {item.modifiers?.length > 0 && (
-            <View className="mt-1 space-y-0.5">
-              {item.modifiers.map((mod, idx) => (
-                <Text key={idx} className="text-zinc-500 text-sm">
-                  + {mod.name}
-                </Text>
-              ))}
+          {/* Modifiers */}
+          {hasModifiers && (
+            <View style={{ marginTop: 4, gap: 2 }}>
+              {item.modifiers.map((mod, idx) => {
+                const isNegativeModifier = mod.isNo === true;
+
+                return (
+                  <Text key={idx} style={{ color: isNegativeModifier ? colors.danger : colors.heading, fontSize: 11, fontWeight: isNegativeModifier ? '600' : '400' }}>
+                    {isNegativeModifier ? 'NO ' : ''}{mod.name}
+                  </Text>
+                );
+              })}
             </View>
           )}
 
+          {/* Notes */}
           {item.notes && (
-            <Text className="text-amber-500/90 text-xs italic mt-1">
+            <Text style={{ color: colors.warning, fontSize: 10, fontStyle: "italic", marginTop: hasModifiers ? 3 : 4 }}>
               {item.notes}
             </Text>
           )}
-
-          {!isWide && (
-            <View className="flex-row items-center mt-2 gap-3">
-              <Text className="text-zinc-400 text-base">
-                Card:{" "}
-                {formatCurrency(item.lineTotalCard || item.lineTotal || 0)}
-              </Text>
-              <Text className="text-emerald-400 font-bold text-base">
-                Cash:{" "}
-                {formatCurrency(item.lineTotalCash || item.lineTotal || 0)}
-              </Text>
-            </View>
-          )}
         </View>
-
-        {isWide && (
-          <View className="flex-row w-48 justify-end gap-6 h-full items-start pt-1">
-            <Text className="text-zinc-400 font-medium text-lg w-20 text-right">
-              {formatCurrency(item.lineTotalCard || item.lineTotal || 0)}
-            </Text>
-            <Text className="text-emerald-400 font-bold text-xl w-20 text-right">
-              {formatCurrency(item.lineTotalCash || item.lineTotal || 0)}
-            </Text>
-          </View>
-        )}
       </View>
     </Animated.View>
+  );
+}
+
+function TotalRowTwoColumn({
+  label,
+  cardValue,
+  cashValue,
+  isDiscount,
+  isTotal,
+}: {
+  label: string;
+  cardValue: number;
+  cashValue: number;
+  isDiscount?: boolean;
+  isTotal?: boolean;
+}) {
+  const formatCurrency = (cents: number) =>
+    `$${(Math.abs(cents) / 100).toFixed(2)}`;
+
+  if (isTotal) {
+    return (
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 2 }}>
+        <Text style={{ color: colors.heading, fontSize: 12, fontWeight: "700" }}>{label}</Text>
+        <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+          <Text style={{ color: colors.heading, fontSize: 12, fontWeight: "600", width: 50, textAlign: "right" }}>
+            {isDiscount ? "-" : ""}
+            {formatCurrency(cardValue)}
+          </Text>
+          <Text style={{ color: colors.teal, fontSize: 14, fontWeight: "700", width: 50, textAlign: "right" }}>
+            {isDiscount ? "-" : ""}
+            {formatCurrency(cashValue)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 2 }}>
+      <Text style={{ color: isDiscount ? colors.teal : colors.label, fontSize: 10, fontWeight: "500" }}>
+        {label}
+      </Text>
+      <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+        <Text style={{ color: colors.label, fontSize: 10, fontWeight: "500", width: 50, textAlign: "right" }}>
+          {isDiscount ? "-" : ""}
+          {formatCurrency(cardValue)}
+        </Text>
+        <Text style={{ color: colors.teal, fontSize: 10, fontWeight: "600", width: 50, textAlign: "right" }}>
+          {isDiscount ? "-" : ""}
+          {formatCurrency(cashValue)}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -307,38 +384,58 @@ function TotalRow({
   const formatCurrency = (cents: number) =>
     `$${(Math.abs(cents) / 100).toFixed(2)}`;
 
-  const labelStyle = isTotal
-    ? "text-white font-bold text-2xl"
-    : "text-zinc-400 text-base";
-  const cardStyle = isDiscount
-    ? "text-emerald-400"
-    : isTotal
-      ? "text-zinc-300 font-semibold text-xl"
-      : "text-zinc-400 text-base";
-  const cashStyle = isTotal
-    ? "text-emerald-400 font-bold text-3xl"
-    : isDiscount
-      ? "text-emerald-400"
-      : "text-zinc-200 font-medium text-lg";
-
-  return (
-    <View
-      className={`flex-row justify-between items-center ${isTotal ? "mt-2" : "py-1"}`}
-    >
-      <Text className={labelStyle}>{label}</Text>
-      {secondaryValue !== undefined ? (
-        <View className="flex-row gap-6 w-48 justify-end items-center">
-          <Text className={`${cardStyle} w-20 text-right`}>
-            {isDiscount ? "-" : ""}
+  if (isTotal) {
+    return (
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 4 }}>
+        <Text style={{ color: colors.heading, fontSize: 14, fontWeight: "700" }}>{label}</Text>
+        {secondaryValue !== undefined ? (
+          <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <CreditCard size={12} color={colors.heading} />
+              <Text style={{ color: colors.heading, fontSize: 13, fontWeight: "600" }}>
+                {formatCurrency(value)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Banknote size={12} color={colors.teal} />
+              <Text style={{ color: colors.teal, fontSize: 16, fontWeight: "700" }}>
+                {formatCurrency(secondaryValue)}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={{ color: colors.heading, fontSize: 14, fontWeight: "700" }}>
             {formatCurrency(value)}
           </Text>
-          <Text className={`${cashStyle} w-20 text-right`}>
-            {isDiscount ? "-" : ""}
-            {formatCurrency(secondaryValue)}
-          </Text>
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 3 }}>
+      <Text style={{ color: isDiscount ? colors.teal : colors.label, fontSize: 11, fontWeight: "500" }}>
+        {label}
+      </Text>
+      {secondaryValue !== undefined ? (
+        <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <CreditCard size={10} color={colors.label} />
+            <Text style={{ color: colors.label, fontSize: 11, fontWeight: "500" }}>
+              {isDiscount ? "-" : ""}
+              {formatCurrency(value)}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Banknote size={10} color={colors.teal} />
+            <Text style={{ color: colors.teal, fontSize: 11, fontWeight: "600" }}>
+              {isDiscount ? "-" : ""}
+              {formatCurrency(secondaryValue)}
+            </Text>
+          </View>
         </View>
       ) : (
-        <Text className={cashStyle}>
+        <Text style={{ color: isDiscount ? colors.teal : colors.heading, fontSize: 11, fontWeight: isDiscount ? "600" : "500" }}>
           {isDiscount ? "-" : ""}
           {formatCurrency(value)}
         </Text>

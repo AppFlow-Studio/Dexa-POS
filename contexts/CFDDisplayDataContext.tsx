@@ -19,6 +19,7 @@ export interface CFDDisplayData {
   // Display state
   screenState: CFDScreenState;
   serverName: string | null;
+  customerName: string | null;
   orderNumber: string | null;
   orderType: string | null;
   guestCount: number | null;
@@ -76,6 +77,7 @@ export function CFDExternalDisplayProvider({
     latency: store.latency,
     screenState: store.screenState,
     serverName: store.serverName,
+    customerName: store.customerName ?? null,
     orderNumber: store.orderNumber,
     orderType: store.orderType,
     guestCount: store.guestCount,
@@ -122,6 +124,7 @@ export function CFDBuiltinDisplayProvider({
     latency: null, // No network latency
     screenState: store.screenState,
     serverName: store.serverName,
+    customerName: store.customerName ?? null,
     orderNumber: store.orderNumber,
     orderType: store.orderType,
     guestCount: store.guestCount,
