@@ -19,8 +19,10 @@ interface CFDClientStore {
   // Display state (from POS)
   screenState: CFDScreenState;
   serverName: string | null;
+  customerName: string | null;
   orderNumber: string | null;
   orderType: string | null;
+  tableName: string | null;
   guestCount: number | null;
   items: CFDPayload["items"];
 
@@ -73,8 +75,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
 
       screenState: "pairing",
       serverName: null,
+      customerName: null,
       orderNumber: null,
       orderType: null,
+      tableName: null,
       guestCount: null,
       items: [],
 
@@ -131,8 +135,10 @@ export const useCFDClientStore = create<CFDClientStore>()(
         set({
           screenState: payload.screenState,
           serverName: payload.serverName ?? null,
+          customerName: payload.customerName ?? null,
           orderNumber: payload.orderNumber,
           orderType: payload.orderType,
+          tableName: payload.tableName ?? null,
           guestCount: payload.guestCount,
           items: payload.items,
 

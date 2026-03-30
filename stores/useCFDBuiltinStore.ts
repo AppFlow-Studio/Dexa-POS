@@ -13,8 +13,10 @@ import { create } from "zustand";
 interface CFDBuiltinState {
   screenState: CFDScreenState;
   serverName: string | null;
+  customerName: string | null;
   orderNumber: string | null;
   orderType: string | null;
+  tableName: string | null;
   guestCount: number | null;
   items: CFDCartItem[];
 
@@ -46,8 +48,10 @@ interface CFDBuiltinState {
 const initialState: Omit<CFDBuiltinState, "update" | "reset"> = {
   screenState: "idle",
   serverName: null,
+  customerName: null,
   orderNumber: null,
   orderType: null,
+  tableName: null,
   guestCount: null,
   items: [],
   subtotal: 0,

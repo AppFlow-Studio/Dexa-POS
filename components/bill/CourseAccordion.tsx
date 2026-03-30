@@ -32,6 +32,7 @@ interface CourseAccordionProps {
   onRushCourse?: (courseId: number) => void;
   onPrioritizeCourse?: (courseId: number) => void;
   onResendCourse?: (courseId: number) => void;
+  enableCoursing?: boolean;
 }
 
 interface CourseGroupProps {
@@ -278,6 +279,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
+  enableCoursing = true,
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
   const prevItemCount = useRef<number>(0);
@@ -403,16 +405,18 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
                 ? `#${activeOrder.db_order_id.substring(0, 8)}`
                 : ""}
         </Text>
-        <TouchableOpacity
-          onPress={onPressStartNewCourse}
-          className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal"
-          activeOpacity={0.8}
-        >
-          <Plus size={16} color={colors.teal} />
-          <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}>
-            New Course
-          </Text>
-        </TouchableOpacity>
+        {enableCoursing && (
+          <TouchableOpacity
+            onPress={onPressStartNewCourse}
+            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal"
+            activeOpacity={0.8}
+          >
+            <Plus size={16} color={colors.teal} />
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.teal }}>
+              New Course
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>

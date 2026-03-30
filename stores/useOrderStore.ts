@@ -4261,6 +4261,7 @@ export const useOrderStore = create<OrderState>()(
                     : undefined,
                 kitchen_status: "new" as const,
                 sync_status: "pending" as const,
+                courseNumber: currentCourse,
               };
               updatedCart = [...updatedCart, newCartItem];
               coursingState.setItemCourse(

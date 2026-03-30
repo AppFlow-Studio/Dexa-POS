@@ -54,6 +54,7 @@ interface SeatCourseAccordionProps {
   onRushCourse?: (courseId: number) => void;
   onPrioritizeCourse?: (courseId: number) => void;
   onResendCourse?: (courseId: number) => void;
+  enableCoursing?: boolean;
 }
 
 // --- Main Component ---
@@ -72,6 +73,7 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
+  enableCoursing = true,
 }) => {
   const [expandedSeat, setExpandedSeat] = useState<number | null | "shared">(
     null,
@@ -167,18 +169,20 @@ const SeatCourseAccordion: React.FC<SeatCourseAccordionProps> = ({
                 ? `#${activeOrder.db_order_id.substring(0, 8)}`
                 : ""}
         </Text>
-        <TouchableOpacity
-          onPress={onPressStartNewCourse}
-          className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal"
-          activeOpacity={0.8}
-        >
-          <Plus size={16} color={colors.teal} />
-          <Text
-            style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}
+        {enableCoursing && (
+          <TouchableOpacity
+            onPress={onPressStartNewCourse}
+            className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg border border-teal"
+            activeOpacity={0.8}
           >
-            New Course
-          </Text>
-        </TouchableOpacity>
+            <Plus size={16} color={colors.teal} />
+            <Text
+              style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}
+            >
+              New Course
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
