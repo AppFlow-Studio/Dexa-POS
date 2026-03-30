@@ -121,10 +121,12 @@ function SectionHeader({ title, rightContent }: { title: string; rightContent?: 
 
 function ToggleRow({
   label,
+  subtitle,
   value,
   onToggle,
 }: {
   label: string;
+  subtitle?: string;
   value: boolean;
   onToggle: (val: boolean) => void;
 }) {
@@ -139,7 +141,12 @@ function ToggleRow({
       borderRadius: 8,
       marginBottom: 4,
     }}>
-      <Text style={{ fontSize: 13, color: colors.heading, flex: 1, marginRight: 10 }}>{label}</Text>
+      <View style={{ flex: 1, marginRight: 10 }}>
+        <Text style={{ fontSize: 13, color: colors.heading, marginBottom: subtitle ? 2 : 0 }}>{label}</Text>
+        {subtitle && (
+          <Text style={{ fontSize: 11, color: colors.muted }}>{subtitle}</Text>
+        )}
+      </View>
       <Switch checked={value} onCheckedChange={onToggle} />
     </View>
   );
@@ -244,6 +251,20 @@ const PrintersKitchenScreen = () => {
     const KDS_MAP: Record<string, string> = {
       kdsAutoFireEnabled: 'autoFireEnabled',
       kdsAutoFireDelayMinutes: 'autoFireDelayMinutes',
+      kdsDisplayModifierGroupName: 'displayModifierGroupName',
+      kdsItemNameLines: 'itemNameLines',
+      kdsDisplaySeatNumbers: 'displaySeatNumbers',
+      kdsDisplayGuestCount: 'displayGuestCount',
+      kdsAlphabeticalSort: 'alphabeticalSort',
+      kdsHighlightNotes: 'highlightNotes',
+      kdsDisplayExclusionsAtTop: 'displayExclusionsAtTop',
+      kdsAggregateIdenticalItems: 'aggregateIdenticalItems',
+      kdsHideDoneItems: 'hideDoneItems',
+      kdsAggregateToExistingTickets: 'aggregateToExistingTickets',
+      kdsYellowThresholdMinutes: 'yellowThresholdMinutes',
+      kdsOrangeThresholdMinutes: 'orangeThresholdMinutes',
+      kdsRedThresholdMinutes: 'redThresholdMinutes',
+      newOrderPosition: 'newOrderPosition',
     };
     const PRINT_MAP: Record<string, string> = {
       autoPrintKitchenTickets: 'autoPrintKitchenTickets',
@@ -1861,6 +1882,139 @@ const PrintersKitchenScreen = () => {
                 )}
               </>
             )}
+
+            {/* DISPLAY SETTINGS */}
+            <SectionHeader title="Display Settings" />
+            <ToggleRow
+              label="Display Seat Numbers"
+              value={kdsConfig.displaySeatNumbers ?? false}
+              onToggle={(v) => updateField("kdsDisplaySeatNumbers", v)}
+            />
+            <ToggleRow
+              label="Display Guest Count"
+              value={kdsConfig.displayGuestCount ?? false}
+              onToggle={(v) => updateField("kdsDisplayGuestCount", v)}
+            />
+            <ToggleRow
+              label="Highlight Item Notes"
+              value={kdsConfig.highlightNotes ?? false}
+              onToggle={(v) => updateField("kdsHighlightNotes", v)}
+            />
+            <ToggleRow
+              label="Display Exclusions at Top"
+              value={kdsConfig.displayExclusionsAtTop ?? false}
+              onToggle={(v) => updateField("kdsDisplayExclusionsAtTop", v)}
+            />
+
+            {/* RECEIPT FORMATTING */}
+            <SectionHeader title="Receipt Formatting" />
+            <ToggleRow
+              label="Alphabetically Sort Items"
+              value={kdsConfig.alphabeticalSort ?? false}
+              onToggle={(v) => updateField("kdsAlphabeticalSort", v)}
+            />
+            <ToggleRow
+              label="Aggregate Identical Items"
+              subtitle="Merge items with same name, modifiers, and notes"
+              value={kdsConfig.aggregateIdenticalItems ?? false}
+              onToggle={(v) => updateField("kdsAggregateIdenticalItems", v)}
+            />
+            <ToggleRow
+              label="Aggregate to Existing Tickets"
+              subtitle="Single Ticket Mode"
+              value={kdsConfig.aggregateToExistingTickets ?? false}
+              onToggle={(v) => updateField("kdsAggregateToExistingTickets", v)}
+            />
+            <ToggleRow
+              label="Hide Done Items"
+              value={kdsConfig.hideDoneItems ?? false}
+              onToggle={(v) => updateField("kdsHideDoneItems", v)}
+            />
+
+            {/* TICKET COLOR THRESHOLDS */}
+            <SectionHeader title="Ticket Color Thresholds" />
+            <View style={{
+              backgroundColor: colors.card,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 4,
+            }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>Yellow (Warning)</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      updateField("kdsYellowThresholdMinutes", Math.max(1, (kdsConfig.yellowThresholdMinutes ?? 5) - 1))
+                    }
+                    style={{ backgroundColor: colors.panel, width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Minus size={12} color={colors.heading} />
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal, minWidth: 32, textAlign: "center" }}>
+                    {kdsConfig.yellowThresholdMinutes ?? 5}m
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      updateField("kdsYellowThresholdMinutes", Math.min((kdsConfig.orangeThresholdMinutes ?? 10) - 1, (kdsConfig.yellowThresholdMinutes ?? 5) + 1))
+                    }
+                    style={{ backgroundColor: colors.panel, width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Plus size={12} color={colors.heading} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>Orange (Late)</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      updateField("kdsOrangeThresholdMinutes", Math.max((kdsConfig.yellowThresholdMinutes ?? 5) + 1, (kdsConfig.orangeThresholdMinutes ?? 10) - 1))
+                    }
+                    style={{ backgroundColor: colors.panel, width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Minus size={12} color={colors.heading} />
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal, minWidth: 32, textAlign: "center" }}>
+                    {kdsConfig.orangeThresholdMinutes ?? 10}m
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      updateField("kdsOrangeThresholdMinutes", Math.min((kdsConfig.redThresholdMinutes ?? 15) - 1, (kdsConfig.orangeThresholdMinutes ?? 10) + 1))
+                    }
+                    style={{ backgroundColor: colors.panel, width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Plus size={12} color={colors.heading} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontSize: 12, color: colors.label, fontWeight: "500" }}>Red (Critical)</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      updateField("kdsRedThresholdMinutes", Math.max((kdsConfig.orangeThresholdMinutes ?? 10) + 1, (kdsConfig.redThresholdMinutes ?? 15) - 1))
+                    }
+                    style={{ backgroundColor: colors.panel, width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Minus size={12} color={colors.heading} />
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.teal, minWidth: 32, textAlign: "center" }}>
+                    {kdsConfig.redThresholdMinutes ?? 15}m
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      updateField("kdsRedThresholdMinutes", Math.min(60, (kdsConfig.redThresholdMinutes ?? 15) + 1))
+                    }
+                    style={{ backgroundColor: colors.panel, width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" }}
+                  >
+                    <Plus size={12} color={colors.heading} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
 
             <SectionHeader title="Printer Routing" />
             <View style={{
