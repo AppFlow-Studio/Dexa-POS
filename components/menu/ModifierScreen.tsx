@@ -1513,33 +1513,6 @@ const ModifierScreen = () => {
             </View>
           </View>
 
-          {/* Row 2: quick-add pills */}
-          {!isReadOnly && (
-            <View className="flex-row gap-2 mt-2">
-              {[3, 4, 5, 6, 7, 8].map((n) => (
-                <TouchableOpacity
-                  key={n}
-                  onPressIn={() => {
-                    const { state: s } = latestStateRef.current;
-                    dispatch({ type: "SET_QUANTITY", payload: s.quantity + n });
-                  }}
-                  className="flex-1 h-8 rounded-full items-center justify-center"
-                  style={{
-                    backgroundColor: "#1a2233",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.12)",
-                  }}
-                >
-                  <Text
-                    className="text-xs font-semibold"
-                    style={{ color: "#e8edf3" }}
-                  >
-                    +{n}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
         </View>
 
         {/* ── Special Instructions ─────────────────────────────────────────── */}
