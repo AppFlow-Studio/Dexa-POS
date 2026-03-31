@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
+  
 function TotalRowTwoColumn({
   label,
   cardValue,
