@@ -1,6 +1,6 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
 import { colors } from "@/lib/theme";
-import { Check, UtensilsCrossed, X } from "lucide-react-native";
+import { Check, CircleAlert, UtensilsCrossed } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -39,7 +39,7 @@ export function ResultScreen({ success }: Props) {
           {success ? (
             <Check size={48} color={colors.screen} strokeWidth={3} />
           ) : (
-            <X size={48} color={colors.screen} strokeWidth={3} />
+            <CircleAlert size={34} color="#fb7185" strokeWidth={2.4} />
           )}
         </View>
 
@@ -60,7 +60,9 @@ export function ResultScreen({ success }: Props) {
 
         {/* Subtitle */}
         <Text style={styles.subtitle}>
-          {success ? "Thank you for your payment!" : "Please try a different payment method"}
+          {success
+            ? "Thank you for your payment!"
+            : "Please try a different payment method"}
         </Text>
       </View>
 
@@ -130,23 +132,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   iconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 28,
+    marginBottom: 22,
   },
   successCircle: {
     backgroundColor: colors.teal,
   },
   failCircle: {
-    backgroundColor: "#ef4444",
+    backgroundColor: "#fb718512",
+    borderWidth: 1,
+    borderColor: "#fb718526",
   },
   title: {
-    fontSize: 56,
+    fontSize: 40,
     fontWeight: "700",
     marginBottom: 8,
+    textAlign: "center",
   },
   successText: {
     color: colors.teal,
@@ -169,7 +174,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.label,
     textAlign: "center",
-    marginTop: 12,
+    marginTop: 10,
+    maxWidth: 420,
   },
   footer: {
     paddingVertical: 16,
