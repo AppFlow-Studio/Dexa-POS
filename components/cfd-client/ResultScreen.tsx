@@ -178,13 +178,15 @@ const styles = StyleSheet.create({
     maxWidth: 420,
   },
   footer: {
-    paddingVertical: 16,
+    marginTop: 6,
+    paddingTop: 4,
+    paddingBottom: 6,
     alignItems: "center",
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   footerText: {
-    fontSize: 12,
+    fontSize: 9,
     color: colors.label,
     fontWeight: "500",
   },
