@@ -133,7 +133,7 @@ export interface CFDPhoneResponse {
 }
 
 export interface CFDMessage {
-  type: "state_update" | "ping" | "pong" | "tip_selected" | "phone_submitted" | "loyalty_skip";
+  type: "state_update" | "ping" | "pong" | "tip_selected" | "phone_submitted" | "loyalty_skip" | "unpair" | "exit_cfd_mode";
   payload?: CFDPayload | CFDTipResponse | CFDPhoneResponse;
   timestamp: number;
 }

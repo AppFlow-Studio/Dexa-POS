@@ -1,6 +1,8 @@
 // hooks/useCFDWSClient.ts
 // WebSocket client hook for CFD client mode
+import { replaceRoute } from "@/lib/rootNavigation";
 import { useCFDClientStore } from "@/stores/useCFDClientStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { CFDMessage, CFDPayload, CFDPhoneResponse, CFDTipResponse } from "@/types/cfd.types";
 import NetInfo from "@react-native-community/netinfo";
 import { useCallback, useEffect, useRef } from "react";
@@ -27,6 +29,7 @@ export function useCFDWSClient() {
     setConnectionStatus,
     setLatency,
     updateFromPayload,
+    clearPairing,
   } = useCFDClientStore();
 
   const cleanup = useCallback(() => {
@@ -112,6 +115,12 @@ export function useCFDWSClient() {
         } else if (message.type === "pong") {
           lastPongTime.current = Date.now();
           setLatency(Date.now() - pingTime.current);
+        } else if (message.type === "unpair") {
+          clearPairing();
+        } else if (message.type === "exit_cfd_mode") {
+          clearPairing();
+          useStoreSettingsStore.getState().exitCFDMode();
+          replaceRoute('(auth)', 'store-select');
         }
       } catch (e) {
         console.error("[CFD Client] Parse error:", e);
@@ -146,7 +155,7 @@ export function useCFDWSClient() {
     };
 
     wsRef.current = ws;
-  }, [isPaired, connection, setConnectionStatus, setLatency, updateFromPayload, cleanup]);
+  }, [isPaired, connection, setConnectionStatus, setLatency, updateFromPayload, clearPairing, cleanup]);
 
   const disconnect = useCallback(() => {
     cleanup();

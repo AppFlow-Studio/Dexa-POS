@@ -408,6 +408,22 @@ export class CFDController {
     return this.server.clientCount;
   }
 
+  get connectedClientIds(): string[] {
+    return this.server.connectedClientIds;
+  }
+
+  disconnectClient(clientId: string): void {
+    this.server.disconnectClient(clientId);
+  }
+
+  async unpairClient(clientId: string): Promise<void> {
+    // Send exit_cfd_mode command to client so it exits CFD mode and returns to POS login
+    this.server.send(clientId, JSON.stringify({ type: 'exit_cfd_mode', timestamp: Date.now() }));
+    // Wait longer to allow client to process the message and exit CFD mode
+    await new Promise(resolve => setTimeout(resolve, 500));
+    this.server.disconnectClient(clientId);
+  }
+
   getServerInfo(): { ip: string; port: number } | null {
     return this.serverInfo;
   }

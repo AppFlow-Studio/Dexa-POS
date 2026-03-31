@@ -58,6 +58,7 @@ interface CFDContextType {
   isServerReady: boolean;
   isConnected: boolean;
   clientCount: number;
+  connectedClientIds: string[];
   serverError: string | null;
   pairingData: CFDPairingData | null;
   serverInfo: { ip: string; port: number } | null;
@@ -75,6 +76,7 @@ interface CFDContextType {
   showIdle: () => void;
   showLoyaltyPrompt: () => void;
   showLoyaltyConfirmation: (result: LoyaltyEarnResult[], customerName?: string) => void;
+  disconnectClient: (clientId: string) => void;
 }
 
 const CFDContext = createContext<CFDContextType | null>(null);
@@ -84,6 +86,7 @@ const noopCFDValue: CFDContextType = {
   isServerReady: false,
   isConnected: false,
   clientCount: 0,
+  connectedClientIds: [],
   serverError: null,
   pairingData: null,
   serverInfo: null,
@@ -100,6 +103,7 @@ const noopCFDValue: CFDContextType = {
   showIdle: () => {},
   showLoyaltyPrompt: () => {},
   showLoyaltyConfirmation: () => {},
+  disconnectClient: () => {},
 };
 
 export function CFDProvider({ children }: { children: React.ReactNode }) {
@@ -123,6 +127,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const [serverStatus, setServerStatus] = useState<CFDServerStatus>("disabled");
   const [isConnected, setIsConnected] = useState(false);
   const [clientCount, setClientCount] = useState(0);
+  const [connectedClientIds, setConnectedClientIds] = useState<string[]>([]);
   const [pairingData, setPairingData] = useState<CFDPairingData | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [tipResponse, setTipResponse] = useState<CFDTipResponse | null>(null);
@@ -294,6 +299,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             console.log("[useCFD] CFD connected:", clientId);
             setIsConnected(true);
             setClientCount(ctrl.clientCount);
+            setConnectedClientIds(ctrl.connectedClientIds);
             setServerStatus("connected");
           },
           onCFDDisconnected: (clientId) => {
@@ -301,6 +307,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             console.log("[useCFD] CFD disconnected:", clientId);
             const count = ctrl.clientCount;
             setClientCount(count);
+            setConnectedClientIds(ctrl.connectedClientIds);
             setIsConnected(count > 0);
             setServerStatus(count > 0 ? "connected" : "ready");
           },
@@ -395,6 +402,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       setPairingData(null);
       setIsConnected(false);
       setClientCount(0);
+      setConnectedClientIds([]);
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
         idleTimerRef.current = null;
@@ -854,11 +862,22 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeScreenState, isConnected, merchantHasLoyalty, showIdle, showLoyaltyPrompt]);
 
+  const disconnectClient = useCallback((clientId: string) => {
+    controllerRef.current?.unpairClient(clientId);
+    setConnectedClientIds((prev) => {
+      const updated = prev.filter((id) => id !== clientId);
+      setClientCount(updated.length);
+      setIsConnected(updated.length > 0);
+      return updated;
+    });
+  }, []);
+
   const value = {
     serverStatus,
     isServerReady: serverStatus === "ready" || serverStatus === "connected",
     isConnected,
     clientCount,
+    connectedClientIds,
     serverError,
     pairingData,
     serverInfo: controllerRef.current?.getServerInfo() ?? null,
@@ -875,6 +894,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     showIdle,
     showLoyaltyPrompt,
     showLoyaltyConfirmation,
+    disconnectClient,
   };
 
   return <CFDContext.Provider value={value}>{children}</CFDContext.Provider>;

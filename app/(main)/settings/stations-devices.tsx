@@ -1,5 +1,6 @@
 import { CFDPairingQR } from '@/components/cfd/CFDPairingQR'
 import { CFDStatusBadge } from '@/components/cfd/CFDStatusBadge'
+import { useCFD } from '@/contexts/CFDProvider'
 import { createSupabaseClient } from '@/lib/supabase'
 import { colors } from '@/lib/theme'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
@@ -38,7 +39,11 @@ const StationsDevicesScreen = () => {
   const { getToken } = useAuth()
   const supabase = createSupabaseClient(getToken)
   const selectedStore = useStoreSettingsStore(state => state.selectedStore)
+  const { connectedClientIds, disconnectClient } = useCFD()
   const [showPairing, setShowPairing] = useState(false)
+  const [disconnectConfirm, setDisconnectConfirm] = useState<string | null>(null)
+
+  const extractIp = (clientId: string) => clientId.substring(0, clientId.lastIndexOf(':'))
 
   const [expandedSections, setExpandedSections] = useState({
     stations: true,
@@ -1074,6 +1079,57 @@ const StationsDevicesScreen = () => {
           <CFDStatusBadge onPress={() => setShowPairing(true)} />
         </View>
 
+        {/* Connected Displays List */}
+        {connectedClientIds.length > 0 && (
+          <View style={{ marginBottom: 10 }}>
+            <Text style={{ fontSize: 11, color: colors.muted, marginBottom: 8, fontWeight: '600' }}>
+              Connected Displays
+            </Text>
+            {connectedClientIds.map((clientId) => (
+              <View
+                key={clientId}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: colors.screen,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  marginBottom: 6,
+                  borderWidth: 1,
+                  borderColor: colors.teal + '30'
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, color: colors.heading, fontWeight: '500' }}>
+                    {extractIp(clientId)}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+                    Connected
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setDisconnectConfirm(clientId)}
+                  style={{
+                    backgroundColor: colors.danger + '20',
+                    borderWidth: 1,
+                    borderColor: colors.danger + '50',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 6
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.danger }}>
+                    Disconnect
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Connect Display Button */}
         <Pressable
           onPress={() => setShowPairing(true)}
           style={{
@@ -1086,7 +1142,7 @@ const StationsDevicesScreen = () => {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: '600', color: colors.teal }}>
-            Connect Display
+            {connectedClientIds.length > 0 ? 'Pair Additional Display' : 'Connect Display'}
           </Text>
         </Pressable>
       </View>
@@ -1203,6 +1259,117 @@ const StationsDevicesScreen = () => {
           </View>
         </View>
       </View>
+
+      {/* Disconnect Confirmation Dialog */}
+      <Modal
+        visible={disconnectConfirm !== null}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setDisconnectConfirm(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 16,
+              padding: 16,
+              width: '100%',
+              maxWidth: 340,
+              borderWidth: 1,
+              borderColor: colors.border
+            }}
+          >
+            {/* Icon */}
+            <View style={{ alignItems: 'center', marginBottom: 14 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  backgroundColor: colors.danger + '20',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 10
+                }}
+              >
+                <AlertCircle size={22} color={colors.danger} strokeWidth={2} />
+              </View>
+
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: '700',
+                  color: colors.heading,
+                  marginBottom: 6,
+                  textAlign: 'center'
+                }}
+              >
+                Disconnect Display?
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.label,
+                  textAlign: 'center',
+                  lineHeight: 18
+                }}
+              >
+                This will disconnect the customer display at {disconnectConfirm ? extractIp(disconnectConfirm) : ''}.
+              </Text>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+              <TouchableOpacity
+                onPress={() => setDisconnectConfirm(null)}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.screen,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  paddingVertical: 10,
+                  alignItems: 'center'
+                }}
+              >
+                <Text style={{ fontSize: 13, color: colors.label, fontWeight: '600' }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (disconnectConfirm) {
+                    disconnectClient(disconnectConfirm)
+                    setDisconnectConfirm(null)
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.danger + '20',
+                  borderWidth: 1,
+                  borderColor: colors.danger + '50',
+                  borderRadius: 8,
+                  paddingVertical: 10,
+                  alignItems: 'center'
+                }}
+              >
+                <Text style={{ fontSize: 13, color: colors.danger, fontWeight: '600' }}>
+                  Disconnect
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
