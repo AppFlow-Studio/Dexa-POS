@@ -30,7 +30,6 @@ const DiningRoomScreen = () => {
   // Stores
   const { floorPlans, createFloorPlan, tables, setActiveFloorPlan } =
     useFloorPlanStore()
-  const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const dining = useLocationConfigStore(s => s.config.dining)
   const updateConfig = useLocationConfigStore(s => s.updateConfig)
 
