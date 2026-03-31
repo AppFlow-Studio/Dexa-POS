@@ -84,10 +84,24 @@ const StationsDevicesScreen = () => {
     setCarouselUploading(true)
     try {
       const base64 = result.assets[0].base64
+      const token = await getToken()
+      const { data, error: uploadError } = await supabase.functions.invoke('cdn-upload', {
+        body: {
+          scope: 'merchant',
+          merchantId: selectedStore!.merchant_id,
+          category: 'cfd-images',
+          fileName: `carousel_${Date.now()}.jpg`,
+          fileBase64: base64,
+          contentType: 'image/jpeg'
+        },
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (uploadError || !data?.cdnUrl) throw uploadError ?? new Error('No CDN URL returned')
+
       const nextOrder = (carouselImages?.length ?? 0) + 1
       await supabase.from('cfd_carousel_images').insert({
         location_id: selectedStore!.id,
-        image_url: `data:image/jpeg;base64,${base64}`,
+        image_url: data.cdnUrl,
         is_active: true,
         display_order: nextOrder
       })
@@ -100,7 +114,7 @@ const StationsDevicesScreen = () => {
     }
   }
 
-  const deleteCarouselImage = async (id: string) => {
+  const deleteCarouselImage = async (id: string, _imageUrl: string) => {
     await supabase.from('cfd_carousel_images').delete().eq('id', id)
     refetchCarousel()
     await refreshCarouselImages()
@@ -1302,7 +1316,7 @@ const StationsDevicesScreen = () => {
                       </Text>
                     </View>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteCarouselImage(img.id)}>
+                  <TouchableOpacity onPress={() => deleteCarouselImage(img.id, img.image_url)}>
                     <Trash2 size={13} color={colors.danger} />
                   </TouchableOpacity>
                 </View>
