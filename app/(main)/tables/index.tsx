@@ -35,6 +35,7 @@ import {
   UtensilsCrossed,
   X
 } from 'lucide-react-native'
+import { useShallow } from 'zustand/react/shallow'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   InteractionManager,
@@ -48,7 +49,7 @@ import {
 const TablesScreen = () => {
   const router = useRouter()
   // Subscribe to tables directly to ensure real-time updates
-  const tables = useFloorPlanStore(s => s.tables)
+  const tables = useFloorPlanStore(useShallow(s => s.tables))
   const floorPlans = useFloorPlanStore(s => s.floorPlans)
   const activeFloorPlanId = useFloorPlanStore(s => s.activeFloorPlanId)
   const floorPlanLoading = useFloorPlanStore(s => s.isLoading)

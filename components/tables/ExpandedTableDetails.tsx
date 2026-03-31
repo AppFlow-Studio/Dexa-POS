@@ -5,6 +5,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTableSessionStore } from "@/stores/useTableSessionStore";
+import { useShallow } from "zustand/react/shallow";
 import { useRouter } from "expo-router";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -51,9 +52,31 @@ const QuickActionButton: React.FC<{
 
 const useTableData = (table: TableType) => {
   const getOrder = useOrderStore((s) => s.getOrder);
-  const ordersById = useOrderStore((s) => s.ordersById);
-  const tablesById = useFloorPlanStore((s) => s.tablesById);
-  const sessions = useTableSessionStore((s) => s.sessions);
+  const session = table.session;
+  const mergedTableIds = session?.merged_tables || [];
+
+  // Subscribe only to the specific merged table names needed, not entire tablesById
+  const mergedTableNames = useFloorPlanStore(useShallow((s) =>
+    mergedTableIds.map((tId) => s.tablesById[tId]?.name ?? null)
+  ));
+
+  // Subscribe only to the sessions for the merged table IDs, not entire sessions map
+  const mergedSessions = useTableSessionStore(useShallow((s) =>
+    mergedTableIds.map((tId) => s.sessions[tId] ?? null)
+  ));
+
+  // Subscribe only to the orders this table actually uses
+  const relevantOrderIds = useMemo(() => {
+    if (!mergedTableIds.length) return session?.order_id ? [session.order_id] : [];
+    return mergedSessions.map((s) => s?.order_id ?? null).filter(Boolean) as string[];
+  }, [session?.order_id, mergedSessions, mergedTableIds.length]);
+
+  const relevantOrders = useOrderStore(useShallow((s) =>
+    relevantOrderIds.map((id) => {
+      const localKey = s.dbOrderIdIndex[id] ?? id;
+      return s.ordersById[localKey] ?? null;
+    })
+  ));
 
   return useMemo(() => {
     const session = table.session;
@@ -96,13 +119,13 @@ const useTableData = (table: TableType) => {
       };
     }
 
-    // Merged tables: O(k) where k = merged table count, not O(n) over all orders
+    // Merged tables: use pre-fetched granular arrays (no full-map subscriptions)
     const groupTableNames: string[] = [];
     const groupOrders: ReturnType<typeof getOrder>[] = [];
-    for (const tId of mergedTableIds) {
-      const t = tablesById[tId];
-      if (t) groupTableNames.push(t.name);
-      const sess = sessions[tId];
+    for (let i = 0; i < mergedTableIds.length; i++) {
+      const name = mergedTableNames[i];
+      if (name) groupTableNames.push(name);
+      const sess = mergedSessions[i];
       if (sess?.order_id) {
         const o = getOrder(sess.order_id);
         if (o && o.order_status !== "void" && o.order_status !== "completed") {
@@ -134,7 +157,7 @@ const useTableData = (table: TableType) => {
       server: serverDisplay,
       orders: groupOrders.filter((o): o is NonNullable<typeof o> => !!o),
     };
-  }, [table, ordersById, tablesById, sessions]);
+  }, [table, relevantOrders, mergedTableNames, mergedSessions]);
 };
 
 interface ExpandedTableDetailsProps {
@@ -155,17 +178,12 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
   const dispatchAction = useTableSessionStore((s) => s.dispatchAction);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
   const deleteOrder = useOrderStore((s) => s.deleteOrder);
-  const menuItems = useMenuStore((s) => s.menuItems);
+  const menuItemsById = useMenuStore((s) => s.menuItemsById);
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
 
   const handleNavigate = () => {
     router.push(`/tables/${tableData.primaryTableId}`);
-  };
-
-  const getCategoryForItem = (itemId: string) => {
-    const menuItem = menuItems.find((mi) => mi.id === itemId);
-    return menuItem?.category?.[0] || "Miscellaneous";
   };
 
   const groupedItems = useMemo(() => {
@@ -175,14 +193,14 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     > = {};
     tableData.orders.forEach((order) => {
       order.items.forEach((item) => {
-        const category = getCategoryForItem(item.menuItemId);
+        const category = menuItemsById[item.menuItemId]?.category?.[0] || "Miscellaneous";
         if (!groups[category])
           groups[category] = { orderId: order.id, items: [] };
         groups[category].items.push(item);
       });
     });
     return groups;
-  }, [tableData.orders, menuItems]);
+  }, [tableData.orders, menuItemsById]);
 
   const handleCloseTable = async () => {
     if (!tableData || !table.session?.id) return;

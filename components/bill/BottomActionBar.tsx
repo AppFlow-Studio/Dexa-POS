@@ -186,4 +186,19 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   );
 };
 
-export default BottomActionBar;
+export default React.memo(BottomActionBar, (prev, next) => {
+  return (
+    prev.totalDisplayAmount === next.totalDisplayAmount &&
+    prev.isFullyPaid === next.isFullyPaid &&
+    prev.paymentCount === next.paymentCount &&
+    prev.onPressMore === next.onPressMore &&
+    prev.onPressTotal === next.onPressTotal &&
+    prev.onPressReopenCheck === next.onPressReopenCheck &&
+    prev.onPressCloseCheck === next.onPressCloseCheck &&
+    prev.onPressClearTable === next.onPressClearTable &&
+    prev.onPressDiscount === next.onPressDiscount &&
+    prev.activeOrder?.id === next.activeOrder?.id &&
+    prev.activeOrder?.paid_status === next.activeOrder?.paid_status &&
+    prev.activeOrder?.check_status === next.activeOrder?.check_status
+  );
+});

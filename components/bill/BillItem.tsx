@@ -520,7 +520,8 @@ const BillItem = React.memo(BillItemComponent, (prev, next) => {
     prev.item.isDraft !== next.item.isDraft ||
     prev.item.customizations?.notes !== next.item.customizations?.notes ||
     prev.isEditable !== next.isEditable ||
-    prev.isActive !== next.isActive
+    prev.isActive !== next.isActive ||
+    prev.showPaidBadge !== next.showPaidBadge
   ) {
     return false;
   }

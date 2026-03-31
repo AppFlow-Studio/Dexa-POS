@@ -1,5 +1,6 @@
 import { CartItem, OrderProfile } from "@/lib/types";
-import { useActiveOrder } from "@/stores/selectors/orderSelectors";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useShallow } from "zustand/react/shallow";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -71,7 +72,7 @@ function deriveAggregateStatus(items: CartItem[]): AggregateKitchenStatus {
 }
 
 // --- Sub-Component: CourseGroup with Animations ---
-const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
+function CourseGroupInner({
   courseId,
   items,
   isExpanded,
@@ -82,7 +83,7 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
   onRushCourse,
   onPrioritizeCourse,
   onResendCourse,
-}) => {
+}: CourseGroupProps) {
   const scale = useSharedValue(1);
   const [showActions, setShowActions] = useState(false);
 
@@ -264,7 +265,27 @@ const CourseGroup: React.FC<CourseGroupProps> = React.memo(({
       )}
     </Animated.View>
   );
-});
+}
+
+const CourseGroup = React.memo(CourseGroupInner, (prev, next) => {
+  // Only re-render when structure changes (IDs, counts, voided) — not on kitchen_status updates
+  // BillItem subscribes directly to the order store for its own kitchen_status display
+  if (prev.courseId !== next.courseId) return false
+  if (prev.isExpanded !== next.isExpanded) return false
+  if (prev.isSent !== next.isSent) return false
+  if (prev.isCurrent !== next.isCurrent) return false
+  if (prev.onToggle !== next.onToggle) return false
+  if (prev.onDoubleTap !== next.onDoubleTap) return false
+  if (prev.onRushCourse !== next.onRushCourse) return false
+  if (prev.onPrioritizeCourse !== next.onPrioritizeCourse) return false
+  if (prev.onResendCourse !== next.onResendCourse) return false
+  if (prev.items.length !== next.items.length) return false
+  for (let i = 0; i < prev.items.length; i++) {
+    const p = prev.items[i]; const n = next.items[i]
+    if (p.id !== n.id || p.quantity !== n.quantity || p.is_voided !== n.is_voided) return false
+  }
+  return true
+})
 
 // --- Main Component ---
 const CourseAccordion: React.FC<CourseAccordionProps> = ({
@@ -283,16 +304,36 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
   const prevItemCount = useRef<number>(0);
-  const liveOrder = useActiveOrder();
+  // Narrow selectors — subscribe only to the specific fields we display, not the whole order
+  const orderMeta = useOrderStore(useShallow((s) => {
+    const o = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return {
+      serviceLocationId: o?.service_location_id ?? null,
+      guestCount: o?.guest_count ?? 0,
+      serverName: o?.server_name ?? null,
+      customerName: o?.customer_name ?? null,
+      displayNumber: o?.display_number ?? null,
+      orderNumber: o?.order_number ?? null,
+      dbOrderId: o?.db_order_id ?? null,
+    };
+  }));
   const openCustomerSheet = useCustomerSheetStore((s) => s.openSheet);
-  const tablesById = useFloorPlanStore((s) => s.tablesById);
-  const tableName = useMemo(() => {
-    const locId = liveOrder?.service_location_id;
+  const tableName = useFloorPlanStore((s) => {
+    const locId = orderMeta.serviceLocationId;
     if (!locId) return null;
-    return tablesById[locId]?.name ?? locId;
-  }, [tablesById, liveOrder?.service_location_id]);
+    return s.tablesById[locId]?.name ?? locId;
+  });
 
-  // Group items by course
+  // Stable key: only regroup when item IDs/courses change, not on every kitchen_status update
+  const itemsGroupingKey = useMemo(() => {
+    if (!activeOrder?.items) return '';
+    return activeOrder.items
+      .filter(i => !i.is_voided)
+      .map(i => `${i.id}:${i.courseNumber ?? itemCourseMap?.[i.id] ?? 1}`)
+      .join(',');
+  }, [activeOrder?.items, itemCourseMap]);
+
+  // Group items by course — only recalculates when IDs or course assignments change
   const groupedItems = useMemo(() => {
     const groups: Record<number, CartItem[]> = {};
     activeOrder?.items?.forEach((item) => {
@@ -303,7 +344,8 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       groups[course].push(item);
     });
     return groups;
-  }, [activeOrder?.items, itemCourseMap]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsGroupingKey]);
 
   // Sort course keys
   const sortedCourses = useMemo(() => {
@@ -366,7 +408,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   }
 
   const Dot = () => <Text style={{ fontSize: 10, color: colors.muted, marginHorizontal: 3 }}>·</Text>;
-  const guestCount = liveOrder?.guest_count ?? 0;
+  const guestCount = orderMeta.guestCount;
 
   return (
     <View className="flex-1 bg-panel p-4">
@@ -379,14 +421,14 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         <Text style={{ fontSize: 10, color: colors.muted }}>{guestCount || 1} guest{(guestCount || 1) !== 1 ? 's' : ''}</Text>
         <Dot />
         <TouchableOpacity onPress={onOpenServerSheet} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-          <Text style={{ fontSize: 10, color: liveOrder?.server_name ? colors.muted : colors.teal }}>
-            {liveOrder?.server_name || 'Assign server'}
+          <Text style={{ fontSize: 10, color: orderMeta.serverName ? colors.muted : colors.teal }}>
+            {orderMeta.serverName || 'Assign server'}
           </Text>
         </TouchableOpacity>
         <Dot />
         <TouchableOpacity onPress={openCustomerSheet} hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}>
-          <Text style={{ fontSize: 10, color: liveOrder?.customer_name ? colors.muted : colors.teal }}>
-            {liveOrder?.customer_name || 'Add customer'}
+          <Text style={{ fontSize: 10, color: orderMeta.customerName ? colors.muted : colors.teal }}>
+            {orderMeta.customerName || 'Add customer'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -395,14 +437,14 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       <View className="flex-row items-center justify-between pb-3 mb-2">
         <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>
           Order{" "}
-          {activeOrder.display_number
-            ? activeOrder.display_number.startsWith("#")
-              ? activeOrder.display_number
-              : `#${activeOrder.display_number}`
-            : activeOrder.order_number
-              ? `#${activeOrder.order_number}`
-              : activeOrder.db_order_id
-                ? `#${activeOrder.db_order_id.substring(0, 8)}`
+          {orderMeta.displayNumber
+            ? orderMeta.displayNumber.startsWith("#")
+              ? orderMeta.displayNumber
+              : `#${orderMeta.displayNumber}`
+            : orderMeta.orderNumber
+              ? `#${orderMeta.orderNumber}`
+              : orderMeta.dbOrderId
+                ? `#${orderMeta.dbOrderId.substring(0, 8)}`
                 : ""}
         </Text>
         {enableCoursing && (

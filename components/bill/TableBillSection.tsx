@@ -245,4 +245,33 @@ const TableBillSection = ({
   )
 }
 
-export default TableBillSection
+export default React.memo(TableBillSection, (prev, next) => {
+  // Only re-render when structurally meaningful props change
+  // kitchen_status changes on items are handled by CourseAccordion/BillItem directly
+  if (prev.totalDisplayAmount !== next.totalDisplayAmount) return false
+  if (prev.isFullyPaid !== next.isFullyPaid) return false
+  if (prev.currentCourse !== next.currentCourse) return false
+  if (prev.enableCoursing !== next.enableCoursing) return false
+  if (prev.enablePerSeatOrdering !== next.enablePerSeatOrdering) return false
+  if (prev.activeSeat !== next.activeSeat) return false
+  if (prev.seatCount !== next.seatCount) return false
+  if (prev.activeOrder?.id !== next.activeOrder?.id) return false
+  if (prev.activeOrder?.paid_status !== next.activeOrder?.paid_status) return false
+  if (prev.activeOrder?.check_status !== next.activeOrder?.check_status) return false
+  if (prev.activeOrder?.checkDiscount !== next.activeOrder?.checkDiscount) return false
+  if ((prev.activeOrder?.items?.length ?? 0) !== (next.activeOrder?.items?.length ?? 0)) return false
+  if ((prev.activeOrder?.payments?.length ?? 0) !== (next.activeOrder?.payments?.length ?? 0)) return false
+  if (prev.sentCourses !== next.sentCourses) return false
+  if (prev.itemCourseMap !== next.itemCourseMap) return false
+  if (prev.itemSeatMap !== next.itemSeatMap) return false
+  // Callbacks — these should be stable useCallbacks from parent
+  if (prev.onPressMore !== next.onPressMore) return false
+  if (prev.onPressTotal !== next.onPressTotal) return false
+  if (prev.onPressClearTable !== next.onPressClearTable) return false
+  if (prev.onPressCloseCheck !== next.onPressCloseCheck) return false
+  if (prev.onPressReopenCheck !== next.onPressReopenCheck) return false
+  if (prev.onDoubleTapCourse !== next.onDoubleTapCourse) return false
+  if (prev.onOpenServerSheet !== next.onOpenServerSheet) return false
+  if (prev.onPressSendAllToKitchen !== next.onPressSendAllToKitchen) return false
+  return true
+})

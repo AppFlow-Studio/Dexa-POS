@@ -205,24 +205,17 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   // --- Action handlers ---
 
   const handlePay = useCallback(() => {
-    if (activeOrder) {
-      const preparingItems = activeOrder.items.filter(
-        i => !isItemReadyOrServed(i)
-      )
+    const order = useOrderStore.getState().ordersById[useOrderStore.getState().activeOrderId ?? '']
+    if (order) {
+      const preparingItems = order.items.filter(i => !isItemReadyOrServed(i))
       if (preparingItems.length > 0) {
-        setNotReadyItems(
-          preparingItems.map(i => ({
-            id: i.id,
-            name: i.name,
-            quantity: i.quantity
-          }))
-        )
+        setNotReadyItems(preparingItems.map(i => ({ id: i.id, name: i.name, quantity: i.quantity })))
         setNotReadyConfirmOpen(true)
         return
       }
     }
     openPaymentSheet('Card', currentTableId, 'payment-method-selection')
-  }, [activeOrder, openPaymentSheet, currentTableId])
+  }, [openPaymentSheet, currentTableId])
 
   const handleClearTable = async () => {
     if (!activeOrderId || !activeOrder) return
@@ -246,8 +239,11 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     await doClearTable()
   }
 
-  const doClearTable = async () => {
-    if (!activeOrderId || !activeOrder) return
+  const doClearTable = useCallback(async () => {
+    const orderState = useOrderStore.getState()
+    const currentActiveOrderId = orderState.activeOrderId
+    const currentActiveOrder = currentActiveOrderId ? orderState.ordersById[currentActiveOrderId] : null
+    if (!currentActiveOrderId || !currentActiveOrder) return
     showLoading('Clearing table...')
     markNavigatingAway()
 
@@ -259,7 +255,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       sess.status !== 'paid' &&
       sess.status !== 'closing' &&
       sess.status !== 'cleaning' &&
-      activeOrder.paid_status === 'Paid'
+      currentActiveOrder.paid_status === 'Paid'
     ) {
       await dispatchAction({ type: 'FULL_PAYMENT', tableId: currentTableId })
     }
@@ -267,7 +263,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const result = await dispatchAction({
       type: 'CLEAR_TABLE',
       tableId: currentTableId,
-      orderId: activeOrder.id
+      orderId: currentActiveOrder.id
     })
 
     hideLoading()
@@ -286,7 +282,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         type: 'error'
       })
     }
-  }
+  }, [showLoading, markNavigatingAway, currentTableId, dispatchAction, hideLoading, onClose, show])
 
   const confirmVoid = async () => {
     if (!activeOrder) return
@@ -595,6 +591,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   }
 
   const handleSendAllToKitchen = useCallback(async () => {
+    const orderState = useOrderStore.getState()
+    const activeOrder = orderState.activeOrderId ? orderState.ordersById[orderState.activeOrderId] : null
     if (!activeOrder) return
 
     const state = coursingHook.getForOrder(activeOrder.id)
@@ -640,16 +638,17 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       message: `Sent ${sentCount} of ${pendingCourses.length} courses.`,
       type: sentCount > 0 ? 'warning' : 'error'
     })
-  }, [activeOrder, coursingHook, handleSendCourseToKitchen, show])
+  }, [coursingHook, handleSendCourseToKitchen, show])
 
-  const handleDoubleTapCourse = (course: number) => {
-    if (!activeOrder) return
-    if (coursingHook.isCourseSent(activeOrder.id, course)) {
+  const handleDoubleTapCourse = useCallback((course: number) => {
+    const orderId = useOrderStore.getState().activeOrderId
+    if (!orderId) return
+    if (coursingHook.isCourseSent(orderId, course)) {
       setCourseToResend(course)
     } else {
       handleSendCourseToKitchen(course, false)
     }
-  }
+  }, [coursingHook, handleSendCourseToKitchen])
 
   const handleConfirmResend = () => {
     if (courseToResend !== null) {
@@ -726,17 +725,19 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     [activeOrder, coursingHook, supabase, show]
   )
 
-  const handleResendCourse = (course: number) => {
+  const handleResendCourse = useCallback((course: number) => {
     handleSendCourseToKitchen(course, true)
-  }
+  }, [handleSendCourseToKitchen])
 
   const checkOrderClosedAndWarn = useCallback(() => {
-    if (isFullyPaid || activeOrder?.check_status === 'Closed') {
+    const orderState = useOrderStore.getState()
+    const order = orderState.activeOrderId ? orderState.ordersById[orderState.activeOrderId] : null
+    if (order?.paid_status === 'Paid' || order?.check_status === 'Closed') {
       setOrderClosedWarningOpen(true)
       return true
     }
     return false
-  }, [isFullyPaid, activeOrder?.check_status])
+  }, [])
 
   const handleAddSeat = useCallback(() => {
     const newCount = seatingHook.addSeat()
@@ -798,6 +799,47 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     () => pricingSheetRef.current?.close(),
     []
   )
+
+  const handleOpenServerSheet = useCallback(() => setServerSheetOpen(true), [])
+  const handleCloseServerSheet = useCallback(() => setServerSheetOpen(false), [])
+  const handleSelectServer = useCallback((name: string) => {
+    updateActiveOrderDetails({ server_name: name })
+    setServerSheetOpen(false)
+  }, [updateActiveOrderDetails])
+
+  const handleCloseDiscountSheet = useCallback(
+    () => discountSheetRef.current?.close(),
+    []
+  )
+
+  const handleVoidSuccess = useCallback(() => {
+    markNavigatingAway()
+    show({ title: 'Check Voided', message: 'The order has been successfully voided. Table is now available.', type: 'success' })
+    onClose()
+  }, [markNavigatingAway, show, onClose])
+
+  const handleOpenPreAuthCapture = useCallback(() => {
+    setPreAuthMode('capture')
+    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+  }, [setPreAuthMode, openPaymentSheet, currentTableId])
+
+  const handleOpenPreAuthIncrement = useCallback(() => {
+    setPreAuthMode('increment')
+    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+  }, [setPreAuthMode, openPaymentSheet, currentTableId])
+
+  const handlePayAnyway = useCallback(() => {
+    setNotReadyConfirmOpen(false)
+    pricingSheetRef.current?.close()
+    openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+  }, [openPaymentSheet, currentTableId])
+
+  const handleClearAnyway = useCallback(async () => {
+    setClearNotReadyConfirmOpen(false)
+    await doClearTable()
+  }, [doClearTable])
+
+  const handleCloseReopenModal = useCallback(() => setReopenModalOpen(false), [])
 
   const handleProceedToPayment = useCallback(() => {
     pricingSheetRef.current?.close()
@@ -912,14 +954,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
                 Tab Open: ${preAuth.preAuthAmount?.toFixed(2)}
               </Text>
               <TouchableOpacity
-                onPress={() => {
-                  setPreAuthMode('capture')
-                  openPaymentSheet(
-                    'Card',
-                    currentTableId,
-                    'payment-method-selection'
-                  )
-                }}
+                onPress={handleOpenPreAuthCapture}
                 style={{
                   paddingHorizontal: 8,
                   paddingVertical: 3,
@@ -938,14 +973,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => {
-                  setPreAuthMode('increment')
-                  openPaymentSheet(
-                    'Card',
-                    currentTableId,
-                    'payment-method-selection'
-                  )
-                }}
+                onPress={handleOpenPreAuthIncrement}
                 style={{
                   paddingHorizontal: 8,
                   paddingVertical: 3,
@@ -976,7 +1004,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               setCurrentCourse={handleSetCurrentCourse}
               onDoubleTapCourse={handleDoubleTapCourse}
               activeOrder={activeOrder}
-              onOpenServerSheet={() => setServerSheetOpen(true)}
+              onOpenServerSheet={handleOpenServerSheet}
               onPressMore={handlePressMore}
               onPressTotal={handlePressTotal}
               onPressReopenCheck={handleReopenCheck}
@@ -1052,17 +1080,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
           <MoreOptionsBottomSheet
             ref={moreOptionsSheetRef}
-            onVoidSuccess={() => {
-              markNavigatingAway()
-              // Session already cleared locally by voidOrderEffect; RPC closed backend session
-              show({
-                title: 'Check Voided',
-                message:
-                  'The order has been successfully voided. Table is now available.',
-                type: 'success'
-              })
-              onClose()
-            }}
+            onVoidSuccess={handleVoidSuccess}
             discountSheetRef={
               discountSheetRef as React.RefObject<BottomSheetMethods>
             }
@@ -1071,37 +1089,23 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
           <DiscountBottomSheet
             ref={discountSheetRef}
-            onClose={() => discountSheetRef.current?.close()}
+            onClose={handleCloseDiscountSheet}
           />
 
           <ServerSelectSheet
             isOpen={serverSheetOpen}
-            onClose={() => setServerSheetOpen(false)}
-            onSelect={name => {
-              updateActiveOrderDetails({ server_name: name })
-              setServerSheetOpen(false)
-            }}
+            onClose={handleCloseServerSheet}
+            onSelect={handleSelectServer}
             currentServer={activeOrder?.server_name}
           />
 
           <TableAlertDialogs
             isNotReadyConfirmOpen={isNotReadyConfirmOpen}
             onNotReadyConfirmChange={setNotReadyConfirmOpen}
-            onPayAnyway={() => {
-              setNotReadyConfirmOpen(false)
-              pricingSheetRef.current?.close()
-              openPaymentSheet(
-                'Card',
-                currentTableId,
-                'payment-method-selection'
-              )
-            }}
+            onPayAnyway={handlePayAnyway}
             isClearNotReadyConfirmOpen={isClearNotReadyConfirmOpen}
             onClearNotReadyConfirmChange={setClearNotReadyConfirmOpen}
-            onClearAnyway={async () => {
-              setClearNotReadyConfirmOpen(false)
-              await doClearTable()
-            }}
+            onClearAnyway={handleClearAnyway}
             notReadyItems={notReadyItems}
             isVoidConfirmOpen={isVoidConfirmOpen}
             onVoidConfirmChange={setVoidConfirmOpen}
@@ -1112,7 +1116,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             onCourseResendChange={setCourseToResend}
             onConfirmResend={handleConfirmResend}
             isReopenModalOpen={isReopenModalOpen}
-            onReopenModalClose={() => setReopenModalOpen(false)}
+            onReopenModalClose={handleCloseReopenModal}
             onConfirmReopen={handleConfirmReopen}
           />
         </>
