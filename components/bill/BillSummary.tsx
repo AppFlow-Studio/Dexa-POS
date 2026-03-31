@@ -1,5 +1,4 @@
 import { CartItem } from "@/lib/types";
-import { selectActiveEditingItemId, useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useMemo, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -63,9 +62,6 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
     const payments = (order?.payments ?? []).filter((p: any) => !p.isVoided);
     return payments.length > 1;
   });
-
-  // Track which item is being edited in modifier panel (for visual highlight)
-  const activeEditingItemId = useModifierSidebarStore(selectActiveEditingItemId);
 
   // OPTIMIZED: Pre-compute grouped courses outside render for O(1) lookup
   const groupedCourses = useMemo(() => {
@@ -151,8 +147,6 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                   return (
                     <View key={`course-${course}`} className="mb-3">
                       {items.map((item, index) => {
-                        // Highlight if: being actively edited OR is a draft item
-                        const shouldHighlight = item.id === activeEditingItemId || item.isDraft === true;
                         return (
                           <Animated.View
                             key={`${item.id}-${index}`}
@@ -166,7 +160,6 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
                             <BillItem
                               item={item}
                               isEditable={true}
-                              isActive={shouldHighlight}
                               showPaidBadge={paidStatus !== "Paid"}
                             />
                           </Animated.View>

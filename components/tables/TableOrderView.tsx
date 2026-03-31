@@ -3,33 +3,40 @@ import ItemProgressTracker from '@/components/bill/ItemProgressTracker'
 import MoreOptionsBottomSheet from '@/components/bill/MoreOptionsBottomSheet'
 import TableBillSection from '@/components/bill/TableBillSection'
 import MenuSection from '@/components/menu/MenuSection'
+import SeatSelector from '@/components/tables/SeatSelector'
 import ServerSelectSheet from '@/components/tables/ServerSelectSheet'
 import TableAlertDialogs from '@/components/tables/TableAlertDialogs'
 import TableDetailSkeleton from '@/components/tables/TableDetailSkeleton'
 import { useLoading } from '@/contexts/LoadingContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useSupabaseClient } from '@/hooks/useSupabaseClient'
-import { OrderService } from '@/services/orderService'
 import { useTableCoursing } from '@/hooks/useTableCoursing'
-import { useTableSeating } from '@/hooks/useTableSeating'
-import SeatSelector from '@/components/tables/SeatSelector'
 import { useTableDuration } from '@/hooks/useTableDuration'
 import { useTablePaymentSync } from '@/hooks/useTablePaymentSync'
+import { useTableSeating } from '@/hooks/useTableSeating'
 import { useTableSession } from '@/hooks/useTableSession'
-import { isItemReadyOrServed, getKitchenSentStatus } from '@/lib/kitchenStatusUtils'
+import {
+  getKitchenSentStatus,
+  isItemReadyOrServed
+} from '@/lib/kitchenStatusUtils'
 import { isActiveSession } from '@/lib/tableStateMachine'
 import { colors } from '@/lib/theme'
+import { OrderService } from '@/services/orderService'
 import { PrinterService } from '@/services/printing/PrinterService'
-import { useActiveOrderTotals, useOrderPreAuth, useHasActivePreAuth } from '@/stores/selectors/orderSelectors'
+import {
+  useActiveOrderTotals,
+  useHasActivePreAuth,
+  useOrderPreAuth
+} from '@/stores/selectors/orderSelectors'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
+import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useModifierSidebarStore } from '@/stores/useModifierSidebarStore'
 import { useOrderStore } from '@/stores/useOrderStore'
 import { usePaymentStore } from '@/stores/usePaymentStore'
-import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useTableSessionStore } from '@/stores/useTableSessionStore'
 import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types'
-import { ArrowLeft, CreditCard, TrendingUp } from 'lucide-react-native'
+import { ArrowLeft, CreditCard } from 'lucide-react-native'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, TouchableOpacity, View } from 'react-native'
 
@@ -44,7 +51,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const { show } = useToast()
   const { showLoading, hideLoading } = useLoading()
   const supabase = useSupabaseClient()
-  const defaultSittingTimeMinutes = useLocationConfigStore(s => s.config.dining.defaultSittingTimeMinutes)
+  const defaultSittingTimeMinutes = useLocationConfigStore(
+    s => s.config.dining.defaultSittingTimeMinutes
+  )
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const autoPrintKitchenTickets = useLocationConfigStore(
     s => s.config.printing.autoPrintKitchenTickets
@@ -76,10 +85,18 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
   const table = useFloorPlanStore(s => s.tablesById[currentTableId])
   const session = useTableSessionStore(s => s.sessions[currentTableId])
 
-  const enablePerSeatOrdering = useLocationConfigStore(s => s.config.dining.enablePerSeatOrdering)
-  const enableCoursing = useLocationConfigStore(s => s.config.dining.enableCoursing)
+  const enablePerSeatOrdering = useLocationConfigStore(
+    s => s.config.dining.enablePerSeatOrdering
+  )
+  const enableCoursing = useLocationConfigStore(
+    s => s.config.dining.enableCoursing
+  )
   const partySize = session?.party_size ?? 2
-  const seatingHook = useTableSeating(activeOrder, partySize, enablePerSeatOrdering)
+  const seatingHook = useTableSeating(
+    activeOrder,
+    partySize,
+    enablePerSeatOrdering
+  )
 
   const updateSessionStatus = useTableSessionStore(s => s.updateSessionStatus)
   const dispatchAction = useTableSessionStore(s => s.dispatchAction)
@@ -453,16 +470,19 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
   const handleSendCourseToKitchen = async (
     course: number,
-    forceResend = false
+    forceResend = false,
+    silent = false
   ) => {
     if (!activeOrder) return
 
     if (!forceResend && coursingHook.isCourseSent(activeOrder.id, course)) {
-      show({
-        title: 'Already Sent',
-        message: `Course ${course} has already been sent to the kitchen.`,
-        type: 'warning'
-      })
+      if (!silent) {
+        show({
+          title: 'Already Sent',
+          message: `Course ${course} has already been sent to the kitchen.`,
+          type: 'warning'
+        })
+      }
       return
     }
 
@@ -471,12 +491,14 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
       i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
     )
     if (itemsInCourse.length === 0) {
-      show({
-        title: 'Empty Course',
-        message: `There are no items in Course ${course} to send.`,
-        type: 'warning'
-      })
-      return
+      if (!silent) {
+        show({
+          title: 'Empty Course',
+          message: `There are no items in Course ${course} to send.`,
+          type: 'warning'
+        })
+      }
+      return false
     }
 
     if (!activeOrder.opened_at) {
@@ -497,9 +519,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
 
     // Optimistically mark items as sent/queued (single batched set() call)
     batchUpdateItemKitchenStatus(
-      itemsInCourse.map((i) => i.id),
-      getKitchenSentStatus(),
-    );
+      itemsInCourse.map(i => i.id),
+      getKitchenSentStatus()
+    )
 
     // Mark course as sent IMMEDIATELY (drives CourseGroup UI via isSent prop)
     coursingHook.markCourseSent(activeOrder.id, course)
@@ -533,13 +555,16 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         )
       }
 
-      show({
-        title: forceResend ? 'Course Resent' : 'Course Sent',
-        message: `Course ${course} has been ${
-          forceResend ? 'resent' : 'sent'
-        } for preparation.`,
-        type: 'success'
-      })
+      if (!silent) {
+        show({
+          title: forceResend ? 'Course Resent' : 'Course Sent',
+          message: `Course ${course} has been ${
+            forceResend ? 'resent' : 'sent'
+          } for preparation.`,
+          type: 'success'
+        })
+      }
+      return true
     } else {
       // Revert course sent state
       coursingHook.unmarkCourseSent(activeOrder.id, course)
@@ -565,8 +590,57 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
         message: result.error || 'Failed to send course to kitchen.',
         type: 'error'
       })
+      return false
     }
   }
+
+  const handleSendAllToKitchen = useCallback(async () => {
+    if (!activeOrder) return
+
+    const state = coursingHook.getForOrder(activeOrder.id)
+    const pendingCourses = Array.from(
+      new Set(
+        activeOrder.items
+          .map(i => i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1)
+          .filter(
+            courseNumber =>
+              !coursingHook.isCourseSent(activeOrder.id, courseNumber)
+          )
+      )
+    ).sort((a, b) => a - b)
+
+    if (pendingCourses.length === 0) {
+      show({
+        title: 'Nothing to Send',
+        message: 'All current courses have already been sent.',
+        type: 'warning'
+      })
+      return
+    }
+
+    let sentCount = 0
+    for (const course of pendingCourses) {
+      const success = await handleSendCourseToKitchen(course, false, true)
+      if (success) sentCount += 1
+    }
+
+    if (sentCount === pendingCourses.length) {
+      show({
+        title: 'Sent to Kitchen',
+        message: `${sentCount} course${
+          sentCount > 1 ? 's' : ''
+        } sent successfully.`,
+        type: 'success'
+      })
+      return
+    }
+
+    show({
+      title: 'Partial Send Complete',
+      message: `Sent ${sentCount} of ${pendingCourses.length} courses.`,
+      type: sentCount > 0 ? 'warning' : 'error'
+    })
+  }, [activeOrder, coursingHook, handleSendCourseToKitchen, show])
 
   const handleDoubleTapCourse = (course: number) => {
     if (!activeOrder) return
@@ -584,43 +658,73 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     }
   }
 
-  const handleRushCourse = useCallback(async (course: number) => {
-    if (!activeOrder) return
-    const state = coursingHook.getForOrder(activeOrder.id)
-    const itemsInCourse = activeOrder.items.filter(
-      i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
-    )
-    const dbItemIds = itemsInCourse
-      .map(i => i.db_order_item_id)
-      .filter((id): id is string => !!id)
-    if (dbItemIds.length === 0) return
+  const handleRushCourse = useCallback(
+    async (course: number) => {
+      if (!activeOrder) return
+      const state = coursingHook.getForOrder(activeOrder.id)
+      const itemsInCourse = activeOrder.items.filter(
+        i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
+      )
+      const dbItemIds = itemsInCourse
+        .map(i => i.db_order_item_id)
+        .filter((id): id is string => !!id)
+      if (dbItemIds.length === 0) return
 
-    const { error } = await OrderService.toggleRushOnItems(supabase, dbItemIds, true)
-    if (error) {
-      show({ title: 'Rush Failed', message: 'Could not rush this course.', type: 'error' })
-    } else {
-      show({ title: 'Course Rushed', message: `Course ${course} marked as rush.`, type: 'success' })
-    }
-  }, [activeOrder, coursingHook, supabase, show])
+      const { error } = await OrderService.toggleRushOnItems(
+        supabase,
+        dbItemIds,
+        true
+      )
+      if (error) {
+        show({
+          title: 'Rush Failed',
+          message: 'Could not rush this course.',
+          type: 'error'
+        })
+      } else {
+        show({
+          title: 'Course Rushed',
+          message: `Course ${course} marked as rush.`,
+          type: 'success'
+        })
+      }
+    },
+    [activeOrder, coursingHook, supabase, show]
+  )
 
-  const handlePrioritizeCourse = useCallback(async (course: number) => {
-    if (!activeOrder) return
-    const state = coursingHook.getForOrder(activeOrder.id)
-    const itemsInCourse = activeOrder.items.filter(
-      i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
-    )
-    const dbItemIds = itemsInCourse
-      .map(i => i.db_order_item_id)
-      .filter((id): id is string => !!id)
-    if (dbItemIds.length === 0) return
+  const handlePrioritizeCourse = useCallback(
+    async (course: number) => {
+      if (!activeOrder) return
+      const state = coursingHook.getForOrder(activeOrder.id)
+      const itemsInCourse = activeOrder.items.filter(
+        i => (i.courseNumber ?? state?.itemCourseMap?.[i.id] ?? 1) === course
+      )
+      const dbItemIds = itemsInCourse
+        .map(i => i.db_order_item_id)
+        .filter((id): id is string => !!id)
+      if (dbItemIds.length === 0) return
 
-    const { error } = await OrderService.togglePriorityOnItems(supabase, dbItemIds, true)
-    if (error) {
-      show({ title: 'Prioritize Failed', message: 'Could not prioritize this course.', type: 'error' })
-    } else {
-      show({ title: 'Course Prioritized', message: `Course ${course} marked as priority.`, type: 'success' })
-    }
-  }, [activeOrder, coursingHook, supabase, show])
+      const { error } = await OrderService.togglePriorityOnItems(
+        supabase,
+        dbItemIds,
+        true
+      )
+      if (error) {
+        show({
+          title: 'Prioritize Failed',
+          message: 'Could not prioritize this course.',
+          type: 'error'
+        })
+      } else {
+        show({
+          title: 'Course Prioritized',
+          message: `Course ${course} marked as priority.`,
+          type: 'success'
+        })
+      }
+    },
+    [activeOrder, coursingHook, supabase, show]
+  )
 
   const handleResendCourse = (course: number) => {
     handleSendCourseToKitchen(course, true)
@@ -638,7 +742,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const newCount = seatingHook.addSeat()
     updateActiveOrderDetails({ guest_count: newCount })
     useTableSessionStore.getState().dispatch(currentTableId, {
-      type: 'PATCH', updates: { party_size: newCount }
+      type: 'PATCH',
+      updates: { party_size: newCount }
     })
   }, [seatingHook.addSeat, updateActiveOrderDetails, currentTableId])
 
@@ -648,7 +753,8 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
     const newCount = removedSeat - 1
     updateActiveOrderDetails({ guest_count: newCount })
     useTableSessionStore.getState().dispatch(currentTableId, {
-      type: 'PATCH', updates: { party_size: newCount }
+      type: 'PATCH',
+      updates: { party_size: newCount }
     })
     if (reassignedItemCount > 0) {
       show({
@@ -763,7 +869,6 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
             />
           </View>
         )}
-
       </View>
 
       {isOvertime && (
@@ -792,40 +897,71 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
                 borderRadius: 8,
                 borderWidth: 1,
                 borderColor: colors.teal + '40',
-                gap: 8,
+                gap: 8
               }}
             >
               <CreditCard size={14} color={colors.teal} />
-              <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: colors.teal }}>
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.teal
+                }}
+              >
                 Tab Open: ${preAuth.preAuthAmount?.toFixed(2)}
               </Text>
               <TouchableOpacity
                 onPress={() => {
                   setPreAuthMode('capture')
-                  openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+                  openPaymentSheet(
+                    'Card',
+                    currentTableId,
+                    'payment-method-selection'
+                  )
                 }}
                 style={{
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                   backgroundColor: colors.teal + '30',
-                  borderRadius: 6,
+                  borderRadius: 6
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.teal }}>Close Tab</Text>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: colors.teal
+                  }}
+                >
+                  Close Tab
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   setPreAuthMode('increment')
-                  openPaymentSheet('Card', currentTableId, 'payment-method-selection')
+                  openPaymentSheet(
+                    'Card',
+                    currentTableId,
+                    'payment-method-selection'
+                  )
                 }}
                 style={{
                   paddingHorizontal: 8,
                   paddingVertical: 3,
                   backgroundColor: colors.warning + '30',
-                  borderRadius: 6,
+                  borderRadius: 6
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.warning }}>Increase</Text>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '700',
+                    color: colors.warning
+                  }}
+                >
+                  Increase
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -863,6 +999,7 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
               onRushCourse={handleRushCourse}
               onPrioritizeCourse={handlePrioritizeCourse}
               onResendCourse={handleResendCourse}
+              onPressSendAllToKitchen={handleSendAllToKitchen}
             />
             <View className='flex-1 p-4 px-3 pt-0'>
               {/* Stage 2: MenuSection (heavier — deferred to avoid blocking modifier animation) */}
@@ -940,9 +1077,9 @@ const TableOrderView = ({ tableId, onClose }: TableOrderViewProps) => {
           <ServerSelectSheet
             isOpen={serverSheetOpen}
             onClose={() => setServerSheetOpen(false)}
-            onSelect={(name) => {
-              updateActiveOrderDetails({ server_name: name });
-              setServerSheetOpen(false);
+            onSelect={name => {
+              updateActiveOrderDetails({ server_name: name })
+              setServerSheetOpen(false)
             }}
             currentServer={activeOrder?.server_name}
           />

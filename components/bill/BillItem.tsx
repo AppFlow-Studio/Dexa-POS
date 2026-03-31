@@ -1,7 +1,6 @@
 import { CartItem } from "@/lib/types";
 import { colors } from "@/lib/theme";
 import {
-  selectSetSelectedItemPosition,
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -11,10 +10,8 @@ import {
 } from "@/stores/useSyncStatusStore";
 import { AlertCircle, Banknote, Trash2 } from "lucide-react-native";
 import React, {
-  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -120,23 +117,27 @@ const BillItemComponent: React.FC<BillItemProps> = ({
   );
   const openToView = useModifierSidebarStore((s) => s.openToView);
   const openToEdit = useModifierSidebarStore((s) => s.openToEdit);
-  const setSelectedItemPosition = useModifierSidebarStore(
-    selectSetSelectedItemPosition,
+  const isModifierActive = useModifierSidebarStore(
+    (s) => s.activeEditingItemId === item.id,
   );
 
   // Phase 7D: Sync status from dedicated store (not from item)
   // This prevents re-renders of other components when sync status changes
   const syncStatus = useItemSyncStatus(item.id);
   const syncError = useItemSyncError(item.id);
+  const orderHasPayments = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return !!order?.payments?.some((p: any) => !p.isVoided);
+  });
 
-  // PERF: Only subscribe to payments array - prevents re-render when other order fields change
+  // PERF: Only subscribe to payments when the order actually has payments.
+  // During normal table ordering this avoids per-row subscriptions doing extra
+  // payment/refund coverage work on every order mutation.
   const payments = useOrderStore((s) => {
+    if (!orderHasPayments) return null;
     const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
     return order?.payments ?? null;
   });
-
-  // Ref for position tracking (attached modifier panel positioning)
-  const itemRef = useRef<View>(null);
 
   const translateX = useSharedValue(0);
   const [showVoidDialog, setShowVoidDialog] = useState(false);
@@ -221,27 +222,10 @@ const BillItemComponent: React.FC<BillItemProps> = ({
     translateX.value = withTiming(0);
   };
 
-  // Capture item position for attached modifier panel positioning
-  const captureItemPosition = useCallback(() => {
-    if (itemRef.current) {
-      itemRef.current.measureInWindow((x, y, width, height) => {
-        setSelectedItemPosition({
-          y,
-          height,
-          absoluteY: y, // Absolute Y position on screen
-        });
-      });
-    }
-  }, [setSelectedItemPosition]);
-
   const handleNotesPress = (e: any) => {
     e.stopPropagation();
 
-    // Capture position before opening modifier for attached panel positioning
-    captureItemPosition();
-
     if (isEditable && !isKitchenItem) {
-      // Use attached panel mode (not fullscreen) to show arrow pointing to bill item
       openToEdit(item, activeOrderId);
     } else {
       openToView(item, activeOrderId);
@@ -335,18 +319,19 @@ const BillItemComponent: React.FC<BillItemProps> = ({
       item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
 
+  const effectiveIsActive = isActive || isModifierActive || item.isDraft === true;
+
   return (
     <View
-      ref={itemRef}
       className={`rounded-xl overflow-hidden ${
-        isActive
+        effectiveIsActive
           ? "border-2 border-blue-400 bg-blue-500/5"
           : isVoided
             ? "border bg-[#2a2020] border-red-900/50 opacity-60"
             : ""
       }`}
       style={[
-        !isActive && !isVoided
+        !effectiveIsActive && !isVoided
           ? {
               backgroundColor: colors.card,
               borderWidth: 1,
