@@ -168,6 +168,7 @@ const CashPaymentView = () => {
 
   const handleProcessCashPayment = async () => {
     setIsProcessing(true);
+    updateTip(tipAmount, selectedTipPreset);
     showPayment("cash");
     showProcessing("cash");
     try {

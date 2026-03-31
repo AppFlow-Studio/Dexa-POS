@@ -639,6 +639,7 @@ const CardPaymentView = () => {
   };
 
   const handleChargeCard = () => {
+    updateTip(tipAmount, selectedTipPreset);
     setStatus("processing");
     showProcessing("card");
   };

@@ -1,6 +1,6 @@
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
 import { colors } from "@/lib/theme";
-import { Delete } from "lucide-react-native";
+import { Delete, UtensilsCrossed } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -50,8 +50,6 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
     setSelectedPercentage(percentage);
     setShowCustom(false);
     setHasMadeSelection(true);
-    const amount = Math.round(subtotal * (percentage / 100));
-    onTipSelected(amount, percentage);
   };
 
   const handleNoTip = () => {
@@ -89,56 +87,82 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
 
   return (
     <View style={styles.outer}>
-      <View style={styles.container}>
-        {/* Title */}
-        <View style={styles.titleSection}>
-          <Text style={styles.title}>Add a tip</Text>
-          <Text style={styles.subtitle}>Order total: {formatCurrency(subtotal)}</Text>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.iconBox}>
+            <UtensilsCrossed size={20} color={colors.teal} />
+          </View>
+          <Text style={styles.restaurantName}>Add a tip</Text>
         </View>
+        <Text style={styles.headerSubtitle}>Order total: {formatCurrency(subtotal)}</Text>
+      </View>
 
-        {/* Preset cards */}
-        <View style={styles.presetsRow}>
-          {presets.map((pct) => {
-            const tipAmt = Math.round(subtotal * (pct / 100));
-            const isSelected = selectedPercentage === pct && !showCustom;
-            return (
+      <View style={styles.body}>
+        <View style={styles.contentColumn}>
+          <View style={styles.heroCard}>
+            <View style={styles.selectionSummary}>
+              <Text style={styles.selectionLabel}>Selected Tip</Text>
+              <Text style={styles.selectionAmount}>{formatCurrency(selectedTipAmount)}</Text>
+            </View>
+          </View>
+
+          <View style={styles.presetGrid}>
+            {presets.map((pct) => {
+              const tipAmt = Math.round(subtotal * (pct / 100));
+              const isSelected = selectedPercentage === pct && !showCustom;
+              return (
+                <Pressable
+                  key={pct}
+                  onPress={() => handlePresetSelect(pct)}
+                  style={[styles.presetCard, isSelected && styles.presetCardSelected]}
+                >
+                  <Text style={[styles.presetPct, isSelected && styles.presetPctSelected]}>
+                    {pct}%
+                  </Text>
+                  <Text style={[styles.presetAmt, isSelected && styles.presetAmtSelected]}>
+                    {formatCurrency(tipAmt)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.actionsSection}>
+            {tipConfig?.allowCustom !== false && (
               <Pressable
-                key={pct}
-                onPress={() => handlePresetSelect(pct)}
-                style={[styles.presetCard, isSelected && styles.presetCardSelected]}
+                onPress={() => {
+                  setShowCustom(true);
+                  setSelectedPercentage(null);
+                  setHasMadeSelection(true);
+                  setShowModal(true);
+                }}
+                style={[styles.customBtn, showCustom && styles.customBtnActive]}
               >
-                <Text style={[styles.presetPct, isSelected && styles.presetPctSelected]}>
-                  {pct}%
-                </Text>
-                <Text style={[styles.presetAmt, isSelected && styles.presetAmtSelected]}>
-                  {formatCurrency(tipAmt)}
+                <Text style={[styles.customBtnText, showCustom && styles.customBtnTextActive]}>
+                  {showCustom && customAmount ? `Custom Tip: $${customAmount}` : "Enter Custom Tip"}
                 </Text>
               </Pressable>
-            );
-          })}
+            )}
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleConfirmTip}
+              disabled={!hasSelection || showModal}
+              style={[
+                styles.confirmBtn,
+                (!hasSelection || showModal) && styles.confirmBtnDisabled,
+              ]}
+            >
+              <Text style={styles.confirmBtnText}>
+                {selectedTipAmount > 0 ? `Confirm ${formatCurrency(selectedTipAmount)} Tip` : "Confirm Tip"}
+              </Text>
+            </TouchableOpacity>
+
+            <Pressable onPress={handleNoTip} style={styles.noTipBtn}>
+              <Text style={styles.noTipText}>No Tip</Text>
+            </Pressable>
+          </View>
         </View>
-
-        {/* Custom Amount button */}
-        {tipConfig?.allowCustom !== false && (
-          <Pressable
-            onPress={() => {
-              setShowCustom(true);
-              setSelectedPercentage(null);
-              setHasMadeSelection(true);
-              setShowModal(true);
-            }}
-            style={[styles.customBtn, showCustom && styles.customBtnActive]}
-          >
-            <Text style={[styles.customBtnText, showCustom && styles.customBtnTextActive]}>
-              {showCustom && customAmount ? `$${customAmount}` : "Custom Amount"}
-            </Text>
-          </Pressable>
-        )}
-
-        {/* No Tip */}
-        <Pressable onPress={handleNoTip} style={styles.noTipBtn}>
-          <Text style={styles.noTipText}>No Tip</Text>
-        </Pressable>
       </View>
 
       {/* Footer */}
@@ -206,81 +230,142 @@ export function TipSelectionScreen({ onTipSelected }: Props) {
 const styles = StyleSheet.create({
   outer: {
     flex: 1,
-    backgroundColor: "#0A0D18",
+    backgroundColor: colors.screen,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.panel,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  restaurantName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.heading,
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    fontWeight: "500",
+    color: colors.label,
   },
   container: {
+    flexDirection: "row",
+  },
+  body: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 40,
+    paddingHorizontal: 24,
     paddingVertical: 24,
+  },
+  contentColumn: {
+    width: "100%",
+    maxWidth: 520,
     gap: 16,
   },
-  titleSection: {
-    alignItems: "center",
-    gap: 4,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#ffffff",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#7A8099",
-    fontWeight: "400",
-  },
-  presetsRow: {
-    flexDirection: "row",
-    gap: 12,
+  heroCard: {
     width: "100%",
   },
+  presetGrid: {
+    flexDirection: "row",
+    gap: 12,
+    alignSelf: "center",
+    justifyContent: "center",
+  },
   presetCard: {
-    flex: 1,
-    paddingVertical: 24,
+    width: 170,
+    minHeight: 112,
+    paddingVertical: 18,
     borderRadius: 16,
-    backgroundColor: "#1A1F35",
-    borderWidth: 0,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 4,
   },
   presetCardSelected: {
-    backgroundColor: "#1A1F35",
-    borderWidth: 2,
+    backgroundColor: `${colors.teal}12`,
     borderColor: colors.teal,
   },
   presetPct: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.heading,
   },
   presetPctSelected: {
-    color: "#ffffff",
+    color: colors.teal,
   },
   presetAmt: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.teal,
+    fontSize: 12,
+    fontWeight: "500",
+    color: colors.label,
   },
   presetAmtSelected: {
     color: colors.teal,
+  },
+  selectionSummary: {
+    backgroundColor: colors.screen,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    gap: 2,
+  },
+  selectionLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: colors.label,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  selectionAmount: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.teal,
+  },
+  actionsSection: {
+    width: "100%",
+    gap: 12,
+    alignItems: "center",
   },
   customBtn: {
     width: "100%",
     paddingVertical: 14,
     borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: colors.teal,
-    backgroundColor: "#0D1F1E",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
     alignItems: "center",
   },
   customBtnActive: {
-    backgroundColor: "#0D1F1E",
+    borderColor: colors.teal,
+    backgroundColor: `${colors.teal}10`,
   },
   customBtnText: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     color: colors.teal,
   },
   customBtnTextActive: {
@@ -288,10 +373,11 @@ const styles = StyleSheet.create({
   },
   noTipBtn: {
     paddingVertical: 8,
+    paddingHorizontal: 16,
   },
   noTipText: {
     fontSize: 14,
-    color: "#7A8099",
+    color: colors.label,
     fontWeight: "500",
   },
   footer: {
@@ -310,22 +396,22 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.55)",
     alignItems: "center",
     justifyContent: "center",
   },
   modalCard: {
-    width: 380,
+    width: 340,
     backgroundColor: colors.panel,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 24,
-    gap: 16,
+    padding: 20,
+    gap: 12,
     alignItems: "center",
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: colors.heading,
   },
@@ -339,7 +425,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalAmountText: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "700",
     color: colors.teal,
   },
@@ -349,11 +435,11 @@ const styles = StyleSheet.create({
   },
   numpadRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   numKey: {
     flex: 1,
-    height: 56,
+    height: 48,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -365,14 +451,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.screen,
   },
   numKeyText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
     color: colors.heading,
   },
   confirmBtn: {
     width: "100%",
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 15,
+    borderRadius: 14,
     backgroundColor: colors.teal,
     alignItems: "center",
   },
@@ -382,14 +468,14 @@ const styles = StyleSheet.create({
   confirmBtnText: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#0A0D18",
+    color: "#000",
   },
   cancelBtn: {
     paddingVertical: 8,
   },
   cancelBtnText: {
     fontSize: 14,
-    color: "#7A8099",
+    color: colors.label,
     fontWeight: "500",
   },
 });

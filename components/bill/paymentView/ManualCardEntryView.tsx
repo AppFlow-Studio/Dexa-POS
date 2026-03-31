@@ -4,6 +4,7 @@ import {
   validateCardNumber,
   validateExpiry,
 } from "@/lib/card-validation";
+import { useCFD } from "@/contexts/CFDProvider";
 import { colors } from "@/lib/theme";
 import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -135,10 +136,28 @@ const ManualCardEntryView = () => {
   const [isTouched, setIsTouched] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
 
+  const {
+    updateTip,
+    showProcessing,
+    showApproved,
+    showDeclined,
+    showIdle,
+  } = useCFD();
+
   const TIP_PRESETS = [18, 20, 25];
   const cardInfo = validateCardNumber(cardNumber);
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = amountToPay + tipAmount;
+
+  useEffect(() => {
+    updateTip(tipAmount, selectedTipPreset);
+  }, [tipAmount, selectedTipPreset, updateTip]);
+
+  useEffect(() => {
+    return () => {
+      updateTip(0, null);
+    };
+  }, [updateTip]);
 
   useEffect(() => {
     if (isTouched.cardNumber) {
@@ -172,13 +191,27 @@ const ManualCardEntryView = () => {
     setIsTouched({ cardNumber: true, expiry: true, cvv: true, zipCode: true });
     if (!cardNumber || !expiryMonth || !expiryYear || !cvv) return;
     setStatus("processing");
+    updateTip(tipAmount, selectedTipPreset);
+    showProcessing("manual");
     const success = await processManualCardPayment({
       cardBrand: cardInfo.cardType || "unknown",
       last4: cardNumber.slice(-4),
       tipAmount,
     });
-    if (success) { setStatus("success"); setView("success"); }
-    else { setStatus("error"); setTimeout(() => setStatus("idle"), 3000); }
+    if (success) {
+      showApproved();
+      setStatus("success");
+      setView("success");
+      setTimeout(() => showIdle(), 3000);
+    }
+    else {
+      showDeclined();
+      setStatus("error");
+      setTimeout(() => {
+        setStatus("idle");
+        showIdle();
+      }, 3000);
+    }
   };
 
   return (
