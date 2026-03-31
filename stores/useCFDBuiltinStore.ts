@@ -37,6 +37,8 @@ interface CFDBuiltinState {
   amountPaid: number;
 
   branding: CFDBranding | null;
+  layout: CFDPayload["layout"] | null;
+  orderingPanelImages: NonNullable<CFDPayload["orderingPanelImages"]>;
   tipConfig: CFDPayload["tipConfig"] | null;
   carouselImages: string[];
 
@@ -70,6 +72,8 @@ const initialState: Omit<CFDBuiltinState, "update" | "reset"> = {
   outstandingTotal: 0,
   amountPaid: 0,
   branding: null,
+  layout: null,
+  orderingPanelImages: { primary: [], secondary: [] },
   tipConfig: null,
   carouselImages: [],
 };

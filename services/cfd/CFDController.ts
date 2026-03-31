@@ -165,6 +165,8 @@ export class CFDController {
       outstandingTotal: this.lastPayload.outstandingTotal ?? 0,
       amountPaid: this.lastPayload.amountPaid ?? 0,
       branding: this.branding,
+      layout: this.lastPayload.layout,
+      orderingPanelImages: this.lastPayload.orderingPanelImages,
       tipConfig: this.lastPayload.tipConfig,
       carouselImages: this.lastPayload.carouselImages,
       loyaltyPrompt: this.lastPayload.loyaltyPrompt,
@@ -214,6 +216,8 @@ export class CFDController {
     savingsAmount: number;
     outstandingTotal: number;
     amountPaid: number;
+    layout?: CFDPayload["layout"];
+    orderingPanelImages?: CFDPayload["orderingPanelImages"];
     tipConfig?: CFDPayload["tipConfig"];
   }): void {
     const screenState =
@@ -324,6 +328,8 @@ export class CFDController {
       outstandingTotal: 0,
       amountPaid: 0,
       branding: this.branding,
+      layout: this.lastPayload.layout,
+      orderingPanelImages: this.lastPayload.orderingPanelImages,
       carouselImages: this.lastPayload.carouselImages,
       timestamp: Date.now(),
     });
@@ -400,12 +406,36 @@ export class CFDController {
     });
   }
 
+  updateOrderingPanelImages(images: NonNullable<CFDPayload["orderingPanelImages"]>): void {
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      orderingPanelImages: images,
+      timestamp: Date.now(),
+    });
+  }
+
   get isConnected(): boolean {
     return this.server.clientCount > 0;
   }
 
   get clientCount(): number {
     return this.server.clientCount;
+  }
+
+  get connectedClientIds(): string[] {
+    return this.server.connectedClientIds;
+  }
+
+  disconnectClient(clientId: string): void {
+    this.server.disconnectClient(clientId);
+  }
+
+  async unpairClient(clientId: string): Promise<void> {
+    // Send exit_cfd_mode command to client so it exits CFD mode and returns to POS login
+    this.server.send(clientId, JSON.stringify({ type: 'exit_cfd_mode', timestamp: Date.now() }));
+    // Wait longer to allow client to process the message and exit CFD mode
+    await new Promise(resolve => setTimeout(resolve, 500));
+    this.server.disconnectClient(clientId);
   }
 
   getServerInfo(): { ip: string; port: number } | null {

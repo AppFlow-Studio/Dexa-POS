@@ -138,6 +138,8 @@ export interface StoreSettings {
 
   // CFD client mode
   isCFDMode: boolean
+  showCFDOrderingRightPanel: boolean
+  cfdOrderingRightPanelMode: 'single' | 'stacked'
 
   // Pre-auth settings
   preAuthSettings: {
@@ -299,6 +301,8 @@ const initialData: StoreSettings = {
 
   // CFD client mode
   isCFDMode: false,
+  showCFDOrderingRightPanel: true,
+  cfdOrderingRightPanelMode: 'single',
 
   // Pre-auth settings
   preAuthSettings: {
@@ -623,6 +627,8 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         deviceName: state.deviceName,
         // CFD client mode
         isCFDMode: state.isCFDMode,
+        showCFDOrderingRightPanel: state.showCFDOrderingRightPanel,
+        cfdOrderingRightPanelMode: state.cfdOrderingRightPanelMode,
         // Pre-auth settings
         preAuthSettings: state.preAuthSettings,
         // Tips settings

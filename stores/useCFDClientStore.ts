@@ -49,6 +49,8 @@ interface CFDClientStore {
   outstandingTotal: number;
   amountPaid: number;
   branding: CFDPayload["branding"] | null;
+  layout: CFDPayload["layout"] | null;
+  orderingPanelImages: NonNullable<CFDPayload["orderingPanelImages"]>;
   tipConfig: CFDPayload["tipConfig"] | null;
   carouselImages: string[];
   loyaltyPrompt: CFDPayload["loyaltyPrompt"] | null;
@@ -104,6 +106,8 @@ export const useCFDClientStore = create<CFDClientStore>()(
       outstandingTotal: 0,
       amountPaid: 0,
       branding: null,
+      layout: null,
+      orderingPanelImages: { primary: [], secondary: [] },
       tipConfig: null,
       carouselImages: [],
       loyaltyPrompt: null,
@@ -164,6 +168,9 @@ export const useCFDClientStore = create<CFDClientStore>()(
           outstandingTotal: payload.outstandingTotal,
           amountPaid: payload.amountPaid,
           branding: payload.branding ?? get().branding,
+          layout: payload.layout ?? get().layout,
+          orderingPanelImages:
+            payload.orderingPanelImages ?? get().orderingPanelImages,
           tipConfig: payload.tipConfig ?? null,
           carouselImages: payload.carouselImages ?? get().carouselImages,
           loyaltyPrompt: payload.loyaltyPrompt ?? null,

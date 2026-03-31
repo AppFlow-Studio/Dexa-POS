@@ -91,6 +91,14 @@ export interface CFDPayload {
 
   // Branding (sent on connect, cached on CFD)
   branding?: CFDBranding;
+  layout?: {
+    showOrderingRightPanel: boolean;
+    orderingRightPanelMode?: "single" | "stacked";
+  };
+  orderingPanelImages?: {
+    primary: string[];
+    secondary: string[];
+  };
 
   // Tip selection config
   tipConfig?: {
@@ -133,7 +141,7 @@ export interface CFDPhoneResponse {
 }
 
 export interface CFDMessage {
-  type: "state_update" | "ping" | "pong" | "tip_selected" | "phone_submitted" | "loyalty_skip";
+  type: "state_update" | "ping" | "pong" | "tip_selected" | "phone_submitted" | "loyalty_skip" | "unpair" | "exit_cfd_mode";
   payload?: CFDPayload | CFDTipResponse | CFDPhoneResponse;
   timestamp: number;
 }
