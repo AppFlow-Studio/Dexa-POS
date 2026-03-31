@@ -21,7 +21,6 @@ interface Props {
 export function CFDScreenRouter({ onTipSelected, onPhoneSubmitted, onLoyaltySkip }: Props) {
   const { screenState, items } = useCFDDisplayData();
 
-  // Resolve actual screen for animation key
   const resolvedState = (() => {
     switch (screenState) {
       case "idle":
@@ -38,6 +37,12 @@ export function CFDScreenRouter({ onTipSelected, onPhoneSubmitted, onLoyaltySkip
         return items.length > 0 ? "ordering" : "idle";
     }
   })();
+
+  // Keep payment -> processing on the same mounted screen to avoid a visible flash.
+  const transitionKey =
+    resolvedState === "payment" || resolvedState === "processing"
+      ? "payment-flow"
+      : resolvedState;
 
   const renderScreen = () => {
     switch (resolvedState) {
@@ -73,7 +78,7 @@ export function CFDScreenRouter({ onTipSelected, onPhoneSubmitted, onLoyaltySkip
 
   return (
     <Animated.View
-      key={resolvedState}
+      key={transitionKey}
       entering={FadeIn.duration(300)}
       exiting={FadeOut.duration(200)}
       style={{ flex: 1 }}
