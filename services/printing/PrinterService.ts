@@ -43,10 +43,12 @@ function safeTimeString(date: Date): string {
 
 let processingInterval: ReturnType<typeof setInterval> | null = null;
 let isProcessing = false;
+let processingStartedAt = 0;
 let lastFailureToastAt = 0;
 
 const PROCESS_INTERVAL_MS = 500;
 const FAILURE_TOAST_DEDUP_MS = 30_000;
+const PROCESSING_STUCK_MS = 30_000; // Safety: reset isProcessing if stuck longer than this
 
 // ============================================================================
 // PUBLIC API
@@ -76,6 +78,7 @@ export const PrinterService = {
       "receipt",
     );
     usePrintQueueStore.getState().enqueue(job);
+    this.ensureProcessing();
     return true;
   },
 
@@ -227,6 +230,7 @@ export const PrinterService = {
     const doc = buildNoSaleDocument(data);
     const job = createDocumentJob(printer.id, doc, "receipt", "normal");
     usePrintQueueStore.getState().enqueue(job);
+    this.ensureProcessing();
     return true;
   },
 
@@ -288,6 +292,7 @@ export const PrinterService = {
 
     const job = createDocumentJob(printer.id, doc, "test_page", "normal");
     usePrintQueueStore.getState().enqueue(job);
+    this.ensureProcessing();
     return true;
   },
 
@@ -338,6 +343,7 @@ export const PrinterService = {
       "receipt",
     );
     usePrintQueueStore.getState().enqueue(job);
+    this.ensureProcessing();
     return true;
   },
 
@@ -384,7 +390,17 @@ export const PrinterService = {
       "kitchen",
     );
     usePrintQueueStore.getState().enqueue(job);
+    this.ensureProcessing();
     return true;
+  },
+
+  /**
+   * Ensure the processing loop is running. Safe to call multiple times.
+   */
+  ensureProcessing(): void {
+    if (!processingInterval) {
+      this.startProcessing();
+    }
   },
 
   /**
@@ -414,12 +430,21 @@ export const PrinterService = {
 // ============================================================================
 
 async function processNextJob(): Promise<void> {
-  if (isProcessing) return;
+  // Safety valve: if isProcessing is stuck (e.g. TCP timeout hanging), force-reset it
+  if (isProcessing) {
+    if (processingStartedAt > 0 && Date.now() - processingStartedAt > PROCESSING_STUCK_MS) {
+      console.warn("[PrinterService] Processing stuck, force-resetting");
+      isProcessing = false;
+    } else {
+      return;
+    }
+  }
 
   const job = usePrintQueueStore.getState().dequeue();
   if (!job) return;
 
   isProcessing = true;
+  processingStartedAt = Date.now();
 
   try {
     const printer = usePrinterStore.getState().getPrinterById(job.printerId);
@@ -436,7 +461,7 @@ async function processNextJob(): Promise<void> {
       `[PrinterService] Processing job ${job.id}: printer=${printer.printerName}, type=${printer.printerType}, connected=${driver.isConnected()}`,
     );
 
-    // Initialize driver if not connected
+    // Initialize driver if not connected (Star SDK has built-in openTimeout)
     if (!driver.isConnected()) {
       await driver.initialize(printer);
       console.log(
@@ -480,6 +505,27 @@ async function processNextJob(): Promise<void> {
 
     usePrintQueueStore.getState().updateJobStatus(job.id, "failed", errorMsg);
 
+    // If receipt job failed due to unreachable printer, try to find an alternate connected printer
+    if (
+      job.jobType === "receipt" &&
+      /unreachable|device not found|connect|ETIMEDOUT|EHOSTUNREACH/i.test(errorMsg)
+    ) {
+      const { printers } = usePrinterStore.getState();
+      const fallback = printers.find(
+        (p) =>
+          p.isActive &&
+          p.isConnected &&
+          p.id !== job.printerId &&
+          (p.printerRole === "receipt" || p.isDefaultReceipt),
+      );
+      if (fallback) {
+        console.log(
+          `[PrinterService] Falling back to ${fallback.printerName} for receipt job ${job.id}`,
+        );
+        usePrintQueueStore.getState().reassignJob(job.id, fallback.id);
+      }
+    }
+
     // Attempt retry
     const retried = usePrintQueueStore.getState().retryJob(job.id);
 
@@ -504,10 +550,12 @@ async function processNextJob(): Promise<void> {
       }
     }
 
-    // Update printer error count
+    // Update printer error count + mark disconnected for connection errors
     const printer = usePrinterStore.getState().getPrinterById(job.printerId);
     if (printer) {
+      const isConnectionError = /timed out|unreachable|device not found|connect|ETIMEDOUT|EHOSTUNREACH/i.test(errorMsg);
       await usePrinterStore.getState().syncPrinterStatus(printer.id, {
+        isConnected: isConnectionError ? false : printer.isConnected,
         lastStatus: `error: ${errorMsg}`,
         errorCount: (printer.errorCount ?? 0) + 1,
       });

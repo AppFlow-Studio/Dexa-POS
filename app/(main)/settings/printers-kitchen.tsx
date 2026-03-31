@@ -47,6 +47,7 @@ import {
   probeStarPrinterByIp,
   type DiscoveredStarPrinter,
 } from "@/services/printing/discovery/StarPrinterDiscovery";
+import { toastService } from "@/lib/toastService";
 import { formatDistanceToNow } from "date-fns";
 import React, { useEffect, useState } from "react";
 import {
@@ -1472,9 +1473,6 @@ const PrintersKitchenScreen = () => {
             {/* Print Queue Banner */}
             {(queuedJobCount > 0 || failedJobCount > 0) && (
               <View style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
                 backgroundColor: failedJobCount > 0 ? colors.danger + "12" : colors.teal + "10",
                 borderWidth: 1,
                 borderColor: failedJobCount > 0 ? colors.danger + "35" : colors.teal + "35",
@@ -1483,17 +1481,65 @@ const PrintersKitchenScreen = () => {
                 paddingVertical: 10,
                 marginBottom: 12,
               }}>
-                <Zap size={14} color={failedJobCount > 0 ? colors.danger : colors.teal} />
-                <Text style={{ fontSize: 12, fontWeight: "600", color: failedJobCount > 0 ? colors.danger : colors.teal }}>
-                  Print Queue
-                </Text>
-                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  {queuedJobCount > 0 && (
-                    <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>{queuedJobCount} queued</Text>
-                  )}
-                  {failedJobCount > 0 && (
-                    <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>{failedJobCount} failed</Text>
-                  )}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Zap size={14} color={failedJobCount > 0 ? colors.danger : colors.teal} />
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: failedJobCount > 0 ? colors.danger : colors.teal }}>
+                    Print Queue
+                  </Text>
+                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    {queuedJobCount > 0 && (
+                      <Text style={{ fontSize: 12, color: colors.teal, fontWeight: "600" }}>{queuedJobCount} queued</Text>
+                    )}
+                    {failedJobCount > 0 && (
+                      <Text style={{ fontSize: 12, color: colors.danger, fontWeight: "600" }}>{failedJobCount} failed</Text>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {failedJobCount > 0 && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          const count = usePrintQueueStore.getState().retryAllFailed();
+                          if (count > 0) {
+                            toastService.show({ title: "Retrying", message: `${count} failed jobs re-queued`, type: "info", duration: 3000 });
+                          }
+                        }}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          backgroundColor: colors.teal + "20",
+                          borderRadius: 6,
+                          borderWidth: 1,
+                          borderColor: colors.teal + "40",
+                        }}
+                      >
+                        <RefreshCw size={12} color={colors.teal} />
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: colors.teal }}>Retry All</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        usePrintQueueStore.getState().clearAll();
+                        toastService.show({ title: "Queue Cleared", message: "All print jobs removed", type: "info", duration: 3000 });
+                      }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        backgroundColor: colors.danger + "20",
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        borderColor: colors.danger + "40",
+                      }}
+                    >
+                      <Trash2 size={12} color={colors.danger} />
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.danger }}>Clear Queue</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             )}

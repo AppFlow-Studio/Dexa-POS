@@ -22,10 +22,14 @@ interface PrintQueueStoreState {
     error?: string,
   ) => void;
   retryJob: (jobId: string) => boolean;
+  reassignJob: (jobId: string, newPrinterId: string) => void;
   removeJob: (jobId: string) => void;
   getQueuedJobCount: () => number;
   getFailedJobs: () => PrintJob[];
   clearCompleted: () => void;
+  clearFailed: () => void;
+  clearAll: () => void;
+  retryAllFailed: () => number;
 }
 
 const PRIORITY_ORDER: Record<PrintJobPriority, number> = {
@@ -60,20 +64,22 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
       dequeue: () => {
         const { jobs } = get();
 
-        // Find the first queued job
-        const idx = jobs.findIndex((j) => j.status === "queued");
+        // Find the first queued job that is ready to process (skip jobs in retry backoff)
+        let idx = -1;
+        for (let i = 0; i < jobs.length; i++) {
+          const j = jobs[i];
+          if (j.status !== "queued") continue;
+          if (j.attempts > 0) {
+            const delayMs = RETRY_DELAYS[Math.min(j.attempts - 1, RETRY_DELAYS.length - 1)];
+            const elapsed = Date.now() - j.createdAt;
+            if (elapsed < delayMs * j.attempts) continue; // Not ready, skip to next
+          }
+          idx = i;
+          break;
+        }
         if (idx === -1) return null;
 
         const job = jobs[idx];
-
-        // Check retry delay for previously failed jobs
-        if (job.attempts > 0) {
-          const delayMs = RETRY_DELAYS[Math.min(job.attempts - 1, RETRY_DELAYS.length - 1)];
-          const elapsed = Date.now() - job.createdAt;
-          if (elapsed < delayMs * job.attempts) {
-            return null; // Not ready for retry yet
-          }
-        }
 
         // Mark as processing
         set((state) => ({
@@ -119,6 +125,14 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
         return true;
       },
 
+      reassignJob: (jobId, newPrinterId) => {
+        set((state) => ({
+          jobs: state.jobs.map((j) =>
+            j.id === jobId ? { ...j, printerId: newPrinterId } : j,
+          ),
+        }));
+      },
+
       removeJob: (jobId) => {
         set((state) => ({
           jobs: state.jobs.filter((j) => j.id !== jobId),
@@ -141,6 +155,32 @@ export const usePrintQueueStore = create<PrintQueueStoreState>()(
         set((state) => ({
           jobs: state.jobs.filter((j) => j.status !== "completed"),
         }));
+      },
+
+      clearFailed: () => {
+        set((state) => ({
+          jobs: state.jobs.filter((j) => j.status !== "failed"),
+        }));
+      },
+
+      clearAll: () => {
+        set({ jobs: [] });
+      },
+
+      retryAllFailed: () => {
+        const { jobs } = get();
+        const failedIds = jobs
+          .filter((j) => j.status === "failed")
+          .map((j) => j.id);
+        if (failedIds.length === 0) return 0;
+        set((state) => ({
+          jobs: state.jobs.map((j) =>
+            j.status === "failed"
+              ? { ...j, status: "queued" as PrintJobStatus, attempts: 0 }
+              : j,
+          ),
+        }));
+        return failedIds.length;
       },
     }),
     {
