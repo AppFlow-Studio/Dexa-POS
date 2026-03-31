@@ -41,6 +41,7 @@ interface CFDBuiltinState {
   orderingPanelImages: NonNullable<CFDPayload["orderingPanelImages"]>;
   tipConfig: CFDPayload["tipConfig"] | null;
   carouselImages: string[];
+  paymentMethod: "cash" | "card" | null;
 
   // Actions
   update: (data: Partial<Omit<CFDBuiltinState, "update" | "reset">>) => void;
@@ -76,6 +77,7 @@ const initialState: Omit<CFDBuiltinState, "update" | "reset"> = {
   orderingPanelImages: { primary: [], secondary: [] },
   tipConfig: null,
   carouselImages: [],
+  paymentMethod: null,
 };
 
 export const useCFDBuiltinStore = create<CFDBuiltinState>()((set) => ({

@@ -19,6 +19,7 @@ import { useLoyaltyStore } from "@/stores/useLoyaltyStore";
 import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useSeatingStore } from "@/stores/useSeatingStore";
 import type {
@@ -70,8 +71,8 @@ interface CFDContextType {
   setBaseAmount: (amount: number | null) => void;
   setScreenState: (state: CFDScreenState | null) => void;
   clearTipResponse: () => void;
-  showPayment: () => void;
-  showProcessing: () => void;
+  showPayment: (paymentMethod?: "cash" | "card") => void;
+  showProcessing: (paymentMethod?: "cash" | "card") => void;
   showApproved: () => void;
   showDeclined: () => void;
   showIdle: () => void;
@@ -99,8 +100,8 @@ const noopCFDValue: CFDContextType = {
   setBaseAmount: () => {},
   setScreenState: () => {},
   clearTipResponse: () => {},
-  showPayment: () => {},
-  showProcessing: () => {},
+  showPayment: (_paymentMethod?: "cash" | "card") => {},
+  showProcessing: (_paymentMethod?: "cash" | "card") => {},
   showApproved: () => {},
   showDeclined: () => {},
   showIdle: () => {},
@@ -142,11 +143,13 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   }>({ amount: 0, percentage: null });
   const [activeScreenState, setActiveScreenState] =
     useState<CFDScreenState | null>(null);
+  const [activePaymentMethod, setActivePaymentMethod] = useState<"cash" | "card" | null>(null);
   const [baseAmountOverride, setBaseAmountOverride] = useState<number | null>(
     null,
   );
   const tipConfigRef = useRef<CFDPayload["tipConfig"] | null>(null);
   const lastPayloadHashRef = useRef("");
+  const lastShowPaymentAtRef = useRef<number>(0);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loyaltyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -628,6 +631,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         (activeOrderOutstandingTotal + currentTip.amount) * 100,
       ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      paymentMethod: activePaymentMethod,
       layout: {
         showOrderingRightPanel: showCFDOrderingRightPanel,
         orderingRightPanelMode: cfdOrderingRightPanelMode,
@@ -807,6 +811,13 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         logoUrl: organizationLogoUrl,
         primaryColor: "#10b981",
       },
+      paymentMethod:
+        activePaymentMethod ??
+        (paymentView === "cash"
+          ? "cash"
+          : paymentView === "card" || paymentView === "manual"
+            ? "card"
+            : null),
     });
   }, [
     hasBuiltinCfd,
@@ -820,6 +831,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     orderTotals,
     currentTip,
     activeScreenState,
+    activePaymentMethod,
+    paymentView,
     baseAmountOverride,
     pathname,
     selectedStore?.name,
@@ -828,6 +841,36 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     showCFDOrderingRightPanel,
     cfdOrderingRightPanelMode,
   ]);
+
+  // ==================== PAYMENT STORE → CFD SYNC ====================
+  // Drive CFD payment screen directly from payment store view state,
+  // so there are no race conditions between mounting/unmounting view components.
+  const paymentIsOpen = usePaymentStore((s) => s.isOpen);
+  const paymentView = usePaymentStore((s) => s.view);
+
+  useEffect(() => {
+    if (!paymentIsOpen) {
+      setActiveScreenState(null);
+      setActivePaymentMethod(null);
+      controllerRef.current?.showIdle();
+      return;
+    }
+
+    if (paymentView === "cash") {
+      lastShowPaymentAtRef.current = Date.now();
+      setActiveScreenState("payment");
+      setActivePaymentMethod("cash");
+      controllerRef.current?.showPayment("cash");
+    } else if (paymentView === "card" || paymentView === "manual") {
+      lastShowPaymentAtRef.current = Date.now();
+      setActiveScreenState("payment");
+      setActivePaymentMethod("card");
+      controllerRef.current?.showPayment("card");
+    } else {
+      setActiveScreenState(null);
+      setActivePaymentMethod(null);
+    }
+  }, [paymentIsOpen, paymentView]);
 
   // ==================== EXPOSED METHODS ====================
 
@@ -861,20 +904,24 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
   const setScreenState = useCallback((state: CFDScreenState | null) => {
     setActiveScreenState(state);
+    if (state === null) setActivePaymentMethod(null);
   }, []);
 
   const clearTipResponse = useCallback(() => {
     setTipResponse(null);
   }, []);
 
-  const showPayment = useCallback(() => {
+  const showPayment = useCallback((paymentMethod?: "cash" | "card") => {
+    lastShowPaymentAtRef.current = Date.now();
     setActiveScreenState("payment");
-    controllerRef.current?.showPayment();
+    setActivePaymentMethod(paymentMethod ?? null);
+    controllerRef.current?.showPayment(paymentMethod);
   }, []);
 
-  const showProcessing = useCallback(() => {
+  const showProcessing = useCallback((paymentMethod?: "cash" | "card") => {
     setActiveScreenState("processing");
-    controllerRef.current?.showProcessing();
+    setActivePaymentMethod(paymentMethod ?? null);
+    controllerRef.current?.showProcessing(paymentMethod);
   }, []);
 
   const showApproved = useCallback(() => {
@@ -888,7 +935,10 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showIdle = useCallback(() => {
+    // If a showPayment was called very recently (e.g. next view mounting), don't clobber it
+    if (Date.now() - lastShowPaymentAtRef.current < 150) return;
     setActiveScreenState(null);
+    setActivePaymentMethod(null);
     setBaseAmountOverride(null);
     setCurrentTip({ amount: 0, percentage: null });
     controllerRef.current?.showIdle();

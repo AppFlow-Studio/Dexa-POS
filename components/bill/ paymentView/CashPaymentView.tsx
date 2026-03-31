@@ -48,7 +48,6 @@ const CashPaymentView = () => {
   }, [isProcessing, setTransactionProcessing]);
 
   const {
-    setScreenState,
     setBaseAmount,
     showProcessing,
     showApproved,
@@ -131,25 +130,19 @@ const CashPaymentView = () => {
     }
   };
 
-  // Let CFD stay on ordering screen showing order totals (no tip selection for cash)
   useEffect(() => {
-    setScreenState(null);
-
-    // Cleanup: Reset CFD state when leaving the cash payment view
     return () => {
-      setScreenState(null);
       setBaseAmount(null);
     };
-  }, []); // Only run once on mount
+  }, []);
 
   const handleProcessCashPayment = async () => {
     setIsProcessing(true);
-    showProcessing();
+    showProcessing("cash");
     try {
       const tipAmt = parseFloat(tipInput) || 0;
       const amountTenderedNum = parseFloat(amountTendered) || 0;
 
-      showApproved();
       await handlePaymentCompletion({
         method: "Cash",
         tipAmount: tipAmt,
@@ -158,6 +151,7 @@ const CashPaymentView = () => {
           isCashPriced: true,
         },
       });
+      showApproved();
 
       // Fire-and-forget: auto-open cash drawer after successful payment
       PrinterService.openCashDrawer().catch((err) => {

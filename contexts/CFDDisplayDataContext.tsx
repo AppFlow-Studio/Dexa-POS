@@ -53,6 +53,9 @@ export interface CFDDisplayData {
   // Loyalty
   loyaltyPrompt: CFDPayload["loyaltyPrompt"] | null;
   loyaltyResult: CFDPayload["loyaltyResult"] | null;
+
+  // Payment
+  paymentMethod: "cash" | "card" | null;
 }
 
 const CFDDisplayDataContext = createContext<CFDDisplayData | null>(null);
@@ -108,6 +111,7 @@ export function CFDExternalDisplayProvider({
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
     loyaltyResult: store.loyaltyResult ?? null,
+    paymentMethod: store.paymentMethod ?? null,
   };
 
   return (
@@ -158,6 +162,7 @@ export function CFDBuiltinDisplayProvider({
     carouselImages: store.carouselImages,
     loyaltyPrompt: null,
     loyaltyResult: null,
+    paymentMethod: store.paymentMethod ?? null,
   };
 
   return (

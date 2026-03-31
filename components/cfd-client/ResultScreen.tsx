@@ -1,5 +1,6 @@
 import { Check, X } from "lucide-react-native";
 import React from "react";
+import { colors } from "@/lib/theme";
 import { StyleSheet, Text, View } from "react-native";
 
 interface Props {
@@ -37,7 +38,12 @@ export function ResultScreen({ success }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.screen,
+  },
   iconContainer: {
     width: 140,
     height: 140,

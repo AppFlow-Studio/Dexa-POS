@@ -102,7 +102,6 @@ const CardPaymentView = () => {
 
   const {
     showTipSelection,
-    setScreenState,
     setBaseAmount,
     tipResponse,
     clearTipResponse,
@@ -165,23 +164,17 @@ const CardPaymentView = () => {
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;
 
-  // Let CFD stay on ordering screen while cashier enters tip on POS (no pre-charge tip selection on CFD)
   useEffect(() => {
-    if (status === "ready") {
-      setScreenState(null); // CFD shows order totals
-      clearTipResponse();
-    }
+    clearTipResponse();
 
-    // Cleanup: Reset CFD state when leaving the card payment view
     return () => {
-      setScreenState(null);
       setBaseAmount(null);
       if (tipAdjustTimeoutRef.current) {
         clearTimeout(tipAdjustTimeoutRef.current);
         tipAdjustTimeoutRef.current = null;
       }
     };
-  }, [status === "ready"]); // Only trigger when entering ready state
+  }, []); // Only run once on mount
 
   // Post-capture: Handle CFD tip response for tip adjust
   useEffect(() => {
@@ -636,7 +629,7 @@ const CardPaymentView = () => {
 
   const handleChargeCard = () => {
     setStatus("processing");
-    showProcessing();
+    showProcessing("card");
   };
 
   return (
