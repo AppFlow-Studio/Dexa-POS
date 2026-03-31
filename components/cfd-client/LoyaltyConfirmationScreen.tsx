@@ -1,5 +1,6 @@
 // components/cfd-client/LoyaltyConfirmationScreen.tsx
 import { useCFDDisplayData } from "@/contexts/CFDDisplayDataContext";
+import { colors } from "@/lib/theme";
 import { Check } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -37,6 +38,10 @@ export function LoyaltyConfirmationScreen() {
           <Text style={styles.rewardBannerText}>🎉 You earned a reward!</Text>
         </View>
       ) : null}
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Powered by DEXA</Text>
+      </View>
     </View>
   );
 }
@@ -151,5 +156,22 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: "#eab308",
+  },
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    marginTop: 6,
+    paddingTop: 4,
+    paddingBottom: 6,
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  footerText: {
+    fontSize: 9,
+    color: colors.label,
+    fontWeight: "500",
   },
 });
