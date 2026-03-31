@@ -229,23 +229,6 @@ const TablesPanel: React.FC = () => {
     t.category === 'table' || t.category === 'booth'
   const getEmployeeByStaffId = useEmployeeStore(s => s.getEmployeeByStaffId)
 
-  const { uniqueServers, serverNames } = useMemo(() => {
-    const serverSet = new Set<string>()
-    const nameMap: Record<string, string> = {}
-    activeTables.forEach(table => {
-      const session = liveSessions[table.id] ?? table.session
-      if (session?.server_staff_id) {
-        const staffId = session.server_staff_id
-        serverSet.add(staffId)
-        if (!nameMap[staffId]) {
-          const employee = getEmployeeByStaffId(staffId)
-          nameMap[staffId] = employee?.fullName || staffId.substring(0, 8)
-        }
-      }
-    })
-    return { uniqueServers: Array.from(serverSet), serverNames: nameMap }
-  }, [activeTables, getEmployeeByStaffId, liveSessions])
-
   const STATUS_ORDER: Record<string, number> = {
     ordered: 0,
     seated: 1,
@@ -256,24 +239,44 @@ const TablesPanel: React.FC = () => {
     available: 6
   }
 
-  const displayTables = useMemo(() => {
+  const ACTIVE_STATUSES = new Set(['seated', 'ordered', 'served', 'check_presented', 'paid'])
+
+  const { uniqueServers, serverNames, displayTables, occupiedCount, capacityPercentage } = useMemo(() => {
+    const serverSet = new Set<string>()
+    const nameMap: Record<string, string> = {}
     const seenSessionIds = new Set<string>()
-    let filtered = activeTables.filter(table => {
-      if (!isSeatable(table)) return false
+    const filtered: typeof activeTables = []
+    let occupied = 0
+
+    for (const table of activeTables) {
       const session = liveSessions[table.id] ?? table.session
-      if (!session?.merged_tables?.length) return true
-      const sid = session.id
-      if (seenSessionIds.has(sid)) return false
-      seenSessionIds.add(sid)
-      return true
-    })
-    if (selectedServerId) {
-      filtered = filtered.filter(table => {
-        const session = liveSessions[table.id] ?? table.session
-        return session?.server_staff_id === selectedServerId
-      })
+
+      // Collect server info in same pass
+      if (session?.server_staff_id) {
+        const staffId = session.server_staff_id
+        serverSet.add(staffId)
+        if (!nameMap[staffId]) {
+          const employee = getEmployeeByStaffId(staffId)
+          nameMap[staffId] = employee?.fullName || staffId.substring(0, 8)
+        }
+      }
+
+      // Filter: must be seatable and dedupe merged sessions
+      if (!isSeatable(table)) continue
+      if (session?.merged_tables?.length) {
+        const sid = session.id
+        if (seenSessionIds.has(sid)) continue
+        seenSessionIds.add(sid)
+      }
+
+      // Filter by selected server
+      if (selectedServerId && session?.server_staff_id !== selectedServerId) continue
+
+      filtered.push(table)
+      if (ACTIVE_STATUSES.has(session?.status?.toLowerCase() || '')) occupied++
     }
-    filtered = [...filtered].sort((a, b) => {
+
+    filtered.sort((a, b) => {
       const sessionA = liveSessions[a.id] ?? a.session
       const sessionB = liveSessions[b.id] ?? b.session
       if (sortMode === 'name') return a.name.localeCompare(b.name)
@@ -283,41 +286,23 @@ const TablesPanel: React.FC = () => {
         return sa - sb
       }
       if (sortMode === 'duration') {
-        const ta = sessionA?.seated_at
-          ? new Date(sessionA.seated_at).getTime()
-          : Infinity
-        const tb = sessionB?.seated_at
-          ? new Date(sessionB.seated_at).getTime()
-          : Infinity
-        return ta - tb // oldest first
+        const ta = sessionA?.seated_at ? new Date(sessionA.seated_at).getTime() : Infinity
+        const tb = sessionB?.seated_at ? new Date(sessionB.seated_at).getTime() : Infinity
+        return ta - tb
       }
       return 0
     })
-    return filtered
-  }, [activeTables, selectedServerId, liveSessions, sortMode])
 
-  const occupiedTables = useMemo(() => {
-    const activeStatuses = [
-      'seated',
-      'ordered',
-      'served',
-      'check_presented',
-      'paid'
-    ]
-    return displayTables.filter(table => {
-      const session = liveSessions[table.id] ?? table.session
-      return activeStatuses.includes(session?.status?.toLowerCase() || '')
-    })
-  }, [displayTables, liveSessions])
+    return {
+      uniqueServers: Array.from(serverSet),
+      serverNames: nameMap,
+      displayTables: filtered,
+      occupiedCount: occupied,
+      capacityPercentage: filtered.length > 0 ? Math.floor((occupied / filtered.length) * 100) : 0,
+    }
+  }, [activeTables, getEmployeeByStaffId, liveSessions, selectedServerId, sortMode])
 
   const totalTables = displayTables.length
-  const capacityPercentage = useMemo(
-    () =>
-      totalTables > 0
-        ? Math.floor((occupiedTables.length / totalTables) * 100)
-        : 0,
-    [occupiedTables.length, totalTables]
-  )
 
   const [refreshing, setRefreshing] = useState(false)
   const handleRefresh = async () => {
@@ -386,7 +371,7 @@ const TablesPanel: React.FC = () => {
           }}
         >
           <Text style={{ fontSize: 11, color: colors.muted }}>
-            {occupiedTables.length}/{totalTables} tables
+            {occupiedCount}/{totalTables} tables
           </Text>
           <Text style={{ fontSize: 11, color: colors.muted }}>
             {capacityPercentage}% capacity
@@ -473,7 +458,7 @@ const TablesPanel: React.FC = () => {
               initialNumToRender={8}
               maxToRenderPerBatch={5}
               windowSize={3}
-              removeClippedSubviews={false}
+              removeClippedSubviews={true}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
