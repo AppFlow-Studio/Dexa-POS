@@ -1,11 +1,6 @@
 import { Switch } from '@/components/ui/switch'
-import { useSupabaseClient } from '@/hooks/useSupabaseClient'
 import { colors } from '@/lib/theme'
 import { useFloorPlanStore } from '@/stores/useFloorPlanStore'
-import {
-  SyncableDiningSettings,
-  useSettingsStore
-} from '@/stores/useSettingsStore'
 import { useLocationConfigStore } from '@/stores/useLocationConfigStore'
 import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
 import { useRouter } from 'expo-router'
@@ -35,100 +30,16 @@ const DiningRoomScreen = () => {
   // Stores
   const { floorPlans, createFloorPlan, tables, setActiveFloorPlan } =
     useFloorPlanStore()
-  const supabase = useSupabaseClient()
   const selectedStore = useStoreSettingsStore(s => s.selectedStore)
   const dining = useLocationConfigStore(s => s.config.dining)
   const updateConfig = useLocationConfigStore(s => s.updateConfig)
 
-  // Syncable dining settings
-  const enablePerSeatOrdering = useSettingsStore(s => s.enablePerSeatOrdering)
-  const enableCoursing = useSettingsStore(s => s.enableCoursing)
-  const allowTableMerging = useSettingsStore(s => s.allowTableMerging)
-  const allowTableSplitting = useSettingsStore(s => s.allowTableSplitting)
-  const autoUpdateTableStatus = useSettingsStore(s => s.autoUpdateTableStatus)
-  const defaultSittingTimeMinutes = useSettingsStore(
-    s => s.defaultSittingTimeMinutes
-  )
-  const defaultPartySize = useSettingsStore(s => s.defaultPartySize)
-
-  // Debounced save to backend + broadcast when syncable settings change
-  const isFirstRender = useRef(true)
-  useEffect(() => {
-    // Skip on initial mount (hydration from backend)
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
-
-    const locationId = selectedStore?.id
-    if (!locationId || !supabase) return
-
-    const syncableValues: SyncableDiningSettings = {
-      enablePerSeatOrdering,
-      enableCoursing,
-      allowTableMerging,
-      allowTableSplitting,
-      autoUpdateTableStatus,
-      defaultSittingTimeMinutes,
-      defaultPartySize
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        // Read current public_metadata, merge dining_settings, write back
-        const { data: loc } = await supabase
-          .from('locations')
-          .select('public_metadata')
-          .eq('id', locationId)
-          .single()
-
-        const existingMeta = (loc?.public_metadata as Record<string, any>) ?? {}
-        const newMeta = { ...existingMeta, dining_settings: syncableValues }
-
-        await supabase
-          .from('locations')
-          .update({ public_metadata: newMeta })
-          .eq('id', locationId)
-
-        // Also update unified config store so local station sees change immediately
-        // and pos_config column is written for future loads
-        useLocationConfigStore.getState().updateConfig('dining', syncableValues)
-
-        // Broadcast to other stations
-        const channel = supabase.channel(`location:${locationId}:settings`)
-        channel.subscribe((status: string) => {
-          if (status === 'SUBSCRIBED') {
-            channel.send({
-              type: 'broadcast',
-              event: 'SETTINGS_UPDATE',
-              payload: {
-                setting: 'dining_settings',
-                value: syncableValues,
-                timestamp: Date.now(),
-                sender_station_id:
-                  useStoreSettingsStore.getState().selectedStation?.id ?? null
-              }
-            })
-            // Unsubscribe after sending
-            setTimeout(() => supabase.removeChannel(channel), 1000)
-          }
-        })
-      } catch (err) {
-        console.error('[DiningRoom] Failed to sync dining settings:', err)
-      }
-    }, 1000)
-
-    return () => clearTimeout(timer)
-  }, [
+  const {
     enablePerSeatOrdering,
     enableCoursing,
-    allowTableMerging,
-    allowTableSplitting,
-    autoUpdateTableStatus,
-    defaultSittingTimeMinutes,
-    defaultPartySize,
-    selectedStore,
-  ])
+  } = dining
+
+  // Settings are automatically synced by useLocationConfigStore
 
   const handleCreateFloorPlan = async () => {
     try {

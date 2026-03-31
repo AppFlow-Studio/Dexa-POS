@@ -353,6 +353,13 @@ export class WebSocketServer {
     return ids;
   }
 
+  disconnectClient(clientId: string): void {
+    const client = this.clients.get(clientId);
+    if (!client) return;
+    TcpServer.disconnect(clientId);
+    this.clients.delete(clientId);
+  }
+
   async stop(): Promise<void> {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);

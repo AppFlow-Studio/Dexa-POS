@@ -2621,6 +2621,46 @@ export const useOrderStore = create<OrderState>()(
           return cached;
         };
 
+        const getCartItemSeatForMerge = (
+          orderId: string,
+          item: CartItem,
+        ): number | null => {
+          try {
+            const { useSeatingStore } =
+              require("@/stores/useSeatingStore") as typeof import("@/stores/useSeatingStore");
+
+            return useSeatingStore
+              .getState()
+              .getItemSeat(orderId, item.id, item.db_order_item_id);
+          } catch {
+            return null;
+          }
+        };
+
+        const areCartItemsMergeIdentical = (
+          orderId: string,
+          leftItem: CartItem,
+          rightItem: CartItem,
+        ): boolean => {
+          const leftKey = generateItemCompositeKey(
+            leftItem.menuItemId,
+            leftItem.customizations,
+          );
+          const rightKey = generateItemCompositeKey(
+            rightItem.menuItemId,
+            rightItem.customizations,
+          );
+
+          if (leftKey !== rightKey) {
+            return false;
+          }
+
+          return (
+            getCartItemSeatForMerge(orderId, leftItem) ===
+            getCartItemSeatForMerge(orderId, rightItem)
+          );
+        };
+
         // --- Helper function to generate a unique CartItem ID ---
         const generateCartItemId = (
           menuItemId: string,
@@ -4191,10 +4231,6 @@ export const useOrderStore = create<OrderState>()(
             const coursingState = useCoursingStore.getState();
             const currentCourse =
               coursingState.getForOrder(activeOrderId)?.workingCourse ?? 1;
-            const newItemKey = generateItemCompositeKey(
-              newItem.menuItemId,
-              newItem.customizations,
-            );
 
             let updatedCart: CartItem[] = activeOrder.items;
 
@@ -4219,11 +4255,11 @@ export const useOrderStore = create<OrderState>()(
               if (existingItemCourse !== currentCourse) {
                 return false;
               }
-              const existingItemKey = generateItemCompositeKey(
-                cartItem.menuItemId,
-                cartItem.customizations,
+              return areCartItemsMergeIdentical(
+                activeOrderId,
+                cartItem,
+                newItem,
               );
-              return existingItemKey === newItemKey;
             });
 
             // Track the item ID for sync operations and whether this is a merge
@@ -4529,10 +4565,6 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // --- Merge detection: check if updated item now matches another cart item ---
-            const updatedItemKey = generateItemCompositeKey(
-              updatedItem.menuItemId,
-              updatedItem.customizations,
-            );
             const coursingState = useCoursingStore.getState();
             const updatedItemCourse =
               coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
@@ -4559,11 +4591,11 @@ export const useOrderStore = create<OrderState>()(
                       cartItem.id
                     ] ?? 1;
                   if (cartItemCourse !== updatedItemCourse) return false;
-                  const cartItemKey = generateItemCompositeKey(
-                    cartItem.menuItemId,
-                    cartItem.customizations,
+                  return areCartItemsMergeIdentical(
+                    activeOrderId,
+                    cartItem,
+                    updatedItem,
                   );
-                  return cartItemKey === updatedItemKey;
                 }) ?? null;
             }
 
@@ -8004,16 +8036,7 @@ export const useOrderStore = create<OrderState>()(
                 if (item.id === newItem.id) return false; // Don't match self
                 if (item.kitchen_status !== "sent") return false; // Must be already sent
 
-                const key1 = generateItemCompositeKey(
-                  item.menuItemId,
-                  item.customizations,
-                );
-                const key2 = generateItemCompositeKey(
-                  newItem.menuItemId,
-                  newItem.customizations,
-                );
-
-                return key1 === key2;
+                return areCartItemsMergeIdentical(orderId, item, newItem);
               });
 
               if (mergeCandidate) {

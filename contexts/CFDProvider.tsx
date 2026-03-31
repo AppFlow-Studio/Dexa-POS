@@ -20,6 +20,7 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
 import type {
     CFDCartItem,
     CFDPairingData,
@@ -58,6 +59,7 @@ interface CFDContextType {
   isServerReady: boolean;
   isConnected: boolean;
   clientCount: number;
+  connectedClientIds: string[];
   serverError: string | null;
   pairingData: CFDPairingData | null;
   serverInfo: { ip: string; port: number } | null;
@@ -75,6 +77,9 @@ interface CFDContextType {
   showIdle: () => void;
   showLoyaltyPrompt: () => void;
   showLoyaltyConfirmation: (result: LoyaltyEarnResult[], customerName?: string) => void;
+  disconnectClient: (clientId: string) => void;
+  refreshCarouselImages: () => Promise<void>;
+  refreshOrderingPanelImages: () => Promise<void>;
 }
 
 const CFDContext = createContext<CFDContextType | null>(null);
@@ -84,6 +89,7 @@ const noopCFDValue: CFDContextType = {
   isServerReady: false,
   isConnected: false,
   clientCount: 0,
+  connectedClientIds: [],
   serverError: null,
   pairingData: null,
   serverInfo: null,
@@ -100,6 +106,9 @@ const noopCFDValue: CFDContextType = {
   showIdle: () => {},
   showLoyaltyPrompt: () => {},
   showLoyaltyConfirmation: () => {},
+  disconnectClient: () => {},
+  refreshCarouselImages: async () => {},
+  refreshOrderingPanelImages: async () => {},
 };
 
 export function CFDProvider({ children }: { children: React.ReactNode }) {
@@ -123,6 +132,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const [serverStatus, setServerStatus] = useState<CFDServerStatus>("disabled");
   const [isConnected, setIsConnected] = useState(false);
   const [clientCount, setClientCount] = useState(0);
+  const [connectedClientIds, setConnectedClientIds] = useState<string[]>([]);
   const [pairingData, setPairingData] = useState<CFDPairingData | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [tipResponse, setTipResponse] = useState<CFDTipResponse | null>(null);
@@ -155,6 +165,12 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const organizationLogoUrl = useStoreSettingsStore(
     (s) => s.organizationLogoUrl
   );
+  const showCFDOrderingRightPanel = useStoreSettingsStore(
+    (s) => s.showCFDOrderingRightPanel
+  );
+  const cfdOrderingRightPanelMode = useStoreSettingsStore(
+    (s) => s.cfdOrderingRightPanelMode
+  );
   const tipPresetPercentages = useLocationConfigStore(
     (s) => s.config.tips.presetPercentages
   );
@@ -166,6 +182,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const activeOrder = useOrderStore((s) =>
     s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
+  );
+  const activeOrderSeating = useSeatingStore((s) =>
+    activeOrder?.id ? s.byOrderId[activeOrder.id] : undefined
   );
   // Ref so loyalty callbacks always see the latest order without re-registering
   const activeOrderRef = useRef(activeOrder);
@@ -183,6 +202,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   // Transform cart items to CFD format with dual pricing
   const cfdItems: CFDCartItem[] = useMemo(() => {
     if (!activeOrder?.items) return [];
+    const hideCourseNumbersOnCfd = pathname.includes("order-processing");
 
     return activeOrder.items
       .filter((item) => !item.is_voided && item.quantity > 0)
@@ -203,8 +223,14 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             : item.name,
           quantity: item.quantity,
           unitPrice: Math.round(cardUnitPrice * 100),
-          seatNumber: item.seatNumber ?? null,
-          courseNumber: item.courseNumber,
+          seatNumber:
+            activeOrderSeating?.itemSeatMap?.[item.id] ??
+            (item.db_order_item_id
+              ? activeOrderSeating?.dbIdToSeatMap?.[item.db_order_item_id]
+              : undefined) ??
+            item.seatNumber ??
+            null,
+          courseNumber: hideCourseNumbersOnCfd ? undefined : item.courseNumber,
           cashPrice: Math.round(cashUnitPrice * 100),
           cardPrice: Math.round(cardUnitPrice * 100),
           lineTotal: Math.round(cardLineTotal * 100),
@@ -247,7 +273,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
           notes: item.customizations?.notes,
         };
       });
-  }, [activeOrder?.items]);
+  }, [activeOrder?.items, activeOrderSeating, pathname]);
 
   // Initialize CFD controller
   useEffect(() => {
@@ -294,6 +320,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             console.log("[useCFD] CFD connected:", clientId);
             setIsConnected(true);
             setClientCount(ctrl.clientCount);
+            setConnectedClientIds(ctrl.connectedClientIds);
             setServerStatus("connected");
           },
           onCFDDisconnected: (clientId) => {
@@ -301,6 +328,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             console.log("[useCFD] CFD disconnected:", clientId);
             const count = ctrl.clientCount;
             setClientCount(count);
+            setConnectedClientIds(ctrl.connectedClientIds);
             setIsConnected(count > 0);
             setServerStatus(count > 0 ? "connected" : "ready");
           },
@@ -395,6 +423,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       setPairingData(null);
       setIsConnected(false);
       setClientCount(0);
+      setConnectedClientIds([]);
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
         idleTimerRef.current = null;
@@ -432,38 +461,71 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const [hasBuiltinCfd, setHasBuiltinCfd] = useState(false);
 
-  useEffect(() => {
-    const fetchImages = async () => {
-      if (!selectedStore?.id || !controllerRef.current) return;
-
-      try {
-        const { data, error } = await supabase.rpc("get_active_cfd_images", {
-          target_location_id: selectedStore.id,
-        });
-
-        if (error) {
-          console.error("[CFD] Failed to fetch images:", error);
-          return;
-        }
-
-        if (data && Array.isArray(data)) {
-          const imageUrls = data.map((d: any) => d.image_url);
-          console.log("[CFD] Updating carousel images:", imageUrls.length);
-          controllerRef.current.updateCarouselImages(imageUrls);
-          // Also write to builtin store so the secondary display gets them
-          useCFDBuiltinStore.getState().update({ carouselImages: imageUrls });
-        }
-      } catch (err) {
-        console.error("[CFD] Error fetching images:", err);
+  const fetchCarouselImages = useCallback(async () => {
+    if (!selectedStore?.id || !controllerRef.current) return;
+    try {
+      const { data, error } = await supabase.rpc("get_active_cfd_images", {
+        target_location_id: selectedStore.id,
+      });
+      if (error) { console.error("[CFD] Failed to fetch images:", error); return; }
+      if (data && Array.isArray(data)) {
+        const imageUrls = data.map((d: any) => d.image_url);
+        console.log("[CFD] Updating carousel images:", imageUrls.length);
+        controllerRef.current.updateCarouselImages(imageUrls);
+        useCFDBuiltinStore.getState().update({ carouselImages: imageUrls });
       }
-    };
+    } catch (err) {
+      console.error("[CFD] Error fetching images:", err);
+    }
+  }, [selectedStore?.id, supabase]);
 
+  const fetchOrderingPanelImages = useCallback(async () => {
+    if (!selectedStore?.id || !controllerRef.current) return;
+    try {
+      const { data, error } = await supabase
+        .from("cfd_ordering_panel_images")
+        .select("panel_slot, image_url, display_order")
+        .eq("location_id", selectedStore.id)
+        .eq("is_active", true)
+        .order("panel_slot", { ascending: true })
+        .order("display_order", { ascending: true });
+
+      if (error) {
+        console.error("[CFD] Failed to fetch ordering panel images:", error);
+        return;
+      }
+
+      const orderingPanelImages = {
+        primary: [] as string[],
+        secondary: [] as string[],
+      };
+
+      (data ?? []).forEach((row: any) => {
+        if (row.panel_slot === "secondary") {
+          orderingPanelImages.secondary.push(row.image_url);
+        } else {
+          orderingPanelImages.primary.push(row.image_url);
+        }
+      });
+
+      controllerRef.current.updateOrderingPanelImages(orderingPanelImages);
+      useCFDBuiltinStore.getState().update({ orderingPanelImages });
+    } catch (err) {
+      console.error("[CFD] Error fetching ordering panel images:", err);
+    }
+  }, [selectedStore?.id, supabase]);
+
+  useEffect(() => {
     if (isConnected || hasBuiltinCfd) {
-      fetchImages();
-      const interval = setInterval(fetchImages, 5 * 60 * 1000); // Refresh every 5 minutes
+      fetchCarouselImages();
+      fetchOrderingPanelImages();
+      const interval = setInterval(() => {
+        fetchCarouselImages();
+        fetchOrderingPanelImages();
+      }, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
-  }, [isConnected, hasBuiltinCfd, selectedStore?.id]);
+  }, [isConnected, hasBuiltinCfd, fetchCarouselImages, fetchOrderingPanelImages]);
 
   // Check loyalty on mount (5-min TTL cache)
   useEffect(() => {
@@ -566,6 +628,11 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         (activeOrderOutstandingTotal + currentTip.amount) * 100,
       ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      layout: {
+        showOrderingRightPanel: showCFDOrderingRightPanel,
+        orderingRightPanelMode: cfdOrderingRightPanelMode,
+      },
+      orderingPanelImages: useCFDBuiltinStore.getState().orderingPanelImages,
       tipConfig: tipConfigRef.current ?? undefined,
     };
 
@@ -606,6 +673,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     activeScreenState,
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
+    showCFDOrderingRightPanel,
+    cfdOrderingRightPanelMode,
   ]);
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
@@ -665,6 +734,10 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
               logoUrl: organizationLogoUrl,
               primaryColor: "#10b981",
             },
+            layout: {
+              showOrderingRightPanel: showCFDOrderingRightPanel,
+              orderingRightPanelMode: cfdOrderingRightPanelMode,
+            },
           });
           builtinIdleTimerRef.current = null;
         }, 500);
@@ -722,6 +795,11 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         (activeOrderOutstandingTotal + currentTip.amount) * 100,
       ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      layout: {
+        showOrderingRightPanel: showCFDOrderingRightPanel,
+        orderingRightPanelMode: cfdOrderingRightPanelMode,
+      },
+      orderingPanelImages: useCFDBuiltinStore.getState().orderingPanelImages,
       tipConfig: tipConfigRef.current ?? null,
       branding: {
         restaurantName: selectedStore?.name ?? "",
@@ -747,6 +825,8 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     selectedStore?.name,
     selectedStore?.code,
     organizationLogoUrl,
+    showCFDOrderingRightPanel,
+    cfdOrderingRightPanelMode,
   ]);
 
   // ==================== EXPOSED METHODS ====================
@@ -854,11 +934,22 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeScreenState, isConnected, merchantHasLoyalty, showIdle, showLoyaltyPrompt]);
 
+  const disconnectClient = useCallback((clientId: string) => {
+    controllerRef.current?.unpairClient(clientId);
+    setConnectedClientIds((prev) => {
+      const updated = prev.filter((id) => id !== clientId);
+      setClientCount(updated.length);
+      setIsConnected(updated.length > 0);
+      return updated;
+    });
+  }, []);
+
   const value = {
     serverStatus,
     isServerReady: serverStatus === "ready" || serverStatus === "connected",
     isConnected,
     clientCount,
+    connectedClientIds,
     serverError,
     pairingData,
     serverInfo: controllerRef.current?.getServerInfo() ?? null,
@@ -875,6 +966,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     showIdle,
     showLoyaltyPrompt,
     showLoyaltyConfirmation,
+    disconnectClient,
+    refreshCarouselImages: fetchCarouselImages,
+    refreshOrderingPanelImages: fetchOrderingPanelImages,
   };
 
   return <CFDContext.Provider value={value}>{children}</CFDContext.Provider>;

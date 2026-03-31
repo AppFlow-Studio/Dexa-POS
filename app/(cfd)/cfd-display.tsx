@@ -1,105 +1,261 @@
-import { CFDScreenRouter } from "@/components/cfd-client/CFDScreenRouter";
-import { CFDExternalDisplayProvider } from "@/contexts/CFDDisplayDataContext";
-import { useCFDClient } from "@/contexts/CFDClientContext";
-import { replaceRoute } from "@/lib/rootNavigation";
-import { useCFDClientStore } from "@/stores/useCFDClientStore";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { router } from "expo-router";
-import React, { useCallback, useEffect, useRef } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { CFDScreenRouter } from '@/components/cfd-client/CFDScreenRouter'
+import { useCFDClient } from '@/contexts/CFDClientContext'
+import { CFDExternalDisplayProvider } from '@/contexts/CFDDisplayDataContext'
+import { replaceRoute } from '@/lib/rootNavigation'
+import { colors } from '@/lib/theme'
+import { useCFDClientStore } from '@/stores/useCFDClientStore'
+import { useStoreSettingsStore } from '@/stores/useStoreSettingsStore'
+import { router } from 'expo-router'
+import { AlertCircle, Loader } from 'lucide-react-native'
+import { useCallback, useEffect, useRef } from 'react'
+import { Alert, Pressable, Text, View } from 'react-native'
+import Animated, { FadeIn } from 'react-native-reanimated'
 
-const ADMIN_TAP_COUNT = 5;
-const ADMIN_TAP_WINDOW_MS = 2000;
+const ADMIN_TAP_COUNT = 5
+const ADMIN_TAP_WINDOW_MS = 2000
 
-export default function CFDDisplayScreen() {
-  const { sendTipSelection, sendPhoneNumber, sendLoyaltySkip, reconnect } = useCFDClient();
-  const { isPaired, connectionStatus } = useCFDClientStore();
+export default function CFDDisplayScreen () {
+  const { sendTipSelection, sendPhoneNumber, sendLoyaltySkip, reconnect } =
+    useCFDClient()
+  const { isPaired, connectionStatus } = useCFDClientStore()
 
-  const tapCountRef = useRef(0);
-  const lastTapTimeRef = useRef(0);
+  const tapCountRef = useRef(0)
+  const lastTapTimeRef = useRef(0)
 
   const showAdminMenu = useCallback(() => {
-    Alert.alert("CFD Admin", "Select an option:", [
+    Alert.alert('CFD Settings', 'Select an option:', [
       {
-        text: "CFD Settings",
-        onPress: () => router.replace("/(cfd)/cfd-pairing"),
+        text: 'Back to Pairing',
+        onPress: () => router.replace('/(cfd)/cfd-pairing')
       },
       {
-        text: "Disconnect & Exit CFD",
-        style: "destructive",
+        text: 'Disconnect & Exit CFD',
+        style: 'destructive',
         onPress: () => {
-          useCFDClientStore.getState().clearPairing();
-          useStoreSettingsStore.getState().exitCFDMode();
-          replaceRoute("(auth)", "store-select");
-        },
+          useCFDClientStore.getState().clearPairing()
+          useStoreSettingsStore.getState().exitCFDMode()
+          replaceRoute('(auth)', 'store-select')
+        }
       },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  }, []);
+      { text: 'Cancel', style: 'cancel' }
+    ])
+  }, [])
 
   const handleAdminTap = useCallback(() => {
-    const now = Date.now();
+    const now = Date.now()
     if (now - lastTapTimeRef.current > ADMIN_TAP_WINDOW_MS) {
-      tapCountRef.current = 0;
+      tapCountRef.current = 0
     }
-    lastTapTimeRef.current = now;
-    tapCountRef.current += 1;
+    lastTapTimeRef.current = now
+    tapCountRef.current += 1
 
     if (tapCountRef.current >= ADMIN_TAP_COUNT) {
-      tapCountRef.current = 0;
-      showAdminMenu();
+      tapCountRef.current = 0
+      showAdminMenu()
     }
-  }, [showAdminMenu]);
+  }, [showAdminMenu])
 
   // Redirect to pairing if not paired
   useEffect(() => {
     if (!isPaired) {
-      router.replace("/(cfd)/cfd-pairing");
+      router.replace('/(cfd)/cfd-pairing')
     }
-  }, [isPaired]);
+  }, [isPaired])
 
-  if (!isPaired) return null;
+  if (!isPaired) return null
 
   // Disconnected state
-  if (connectionStatus === "disconnected") {
+  if (connectionStatus === 'disconnected') {
     return (
-      <View style={styles.errorContainer}>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
+        {/* Connection indicator */}
         <Pressable
           onPress={handleAdminTap}
-          style={[styles.connectionDot, { backgroundColor: "#ef4444" }]}
-        />
-        <Text style={styles.errorTitle}>Disconnected</Text>
-        <Text style={styles.errorText}>Could not connect to POS.</Text>
-        <Pressable onPress={reconnect} style={styles.retryButton}>
-          <Text style={styles.retryButtonText}>Retry Connection</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            useCFDClientStore.getState().clearPairing();
-            router.replace("/(cfd)/cfd-pairing");
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            backgroundColor: colors.danger,
+            zIndex: 100
           }}
-          style={styles.resetButton}
+        />
+
+        {/* Error content */}
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            gap: 16
+          }}
         >
-          <Text style={styles.resetButtonText}>Back to Pairing</Text>
-        </Pressable>
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 14,
+              backgroundColor: colors.danger + '15',
+              borderWidth: 1,
+              borderColor: colors.danger + '30',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <AlertCircle size={32} color={colors.danger} />
+          </View>
+
+          <View style={{ alignItems: 'center', gap: 6 }}>
+            <Text
+              style={{ fontSize: 18, fontWeight: '700', color: colors.heading }}
+            >
+              Connection Lost
+            </Text>
+            <Text
+              style={{ fontSize: 13, color: colors.label, textAlign: 'center' }}
+            >
+              Unable to connect to the POS system. Check your connection and try
+              again.
+            </Text>
+          </View>
+
+          <View style={{ gap: 8, width: '100%', maxWidth: 280 }}>
+            <Pressable
+              onPress={reconnect}
+              style={{
+                backgroundColor: colors.teal + '20',
+                borderWidth: 1,
+                borderColor: colors.teal + '50',
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderRadius: 8,
+                alignItems: 'center'
+              }}
+            >
+              <Text
+                style={{ fontSize: 13, fontWeight: '600', color: colors.teal }}
+              >
+                Retry Connection
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                useCFDClientStore.getState().clearPairing()
+                router.replace('/(cfd)/cfd-pairing')
+              }}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderRadius: 8,
+                alignItems: 'center'
+              }}
+            >
+              <Text style={{ fontSize: 13, color: colors.label }}>
+                Back to Setup
+              </Text>
+            </Pressable>
+          </View>
+        </Animated.View>
       </View>
-    );
+    )
   }
 
-  return (
-    <CFDExternalDisplayProvider>
-      <View style={styles.container}>
-        {/* Connection indicator — 5-tap opens hidden admin menu */}
+  // Connecting state
+  if (connectionStatus === 'connecting') {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
+        {/* Connection indicator */}
         <Pressable
           onPress={handleAdminTap}
-          style={[
-            styles.connectionDot,
-            connectionStatus === "connected" && styles.connectionDotConnected,
-            connectionStatus === "connecting" && styles.connectionDotConnecting,
-          ]}
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            backgroundColor: colors.warning,
+            zIndex: 100
+          }}
         />
 
-        {/* Screen content — shared with built-in display */}
+        {/* Connecting content */}
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 16
+          }}
+        >
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 14,
+              backgroundColor: colors.warning + '15',
+              borderWidth: 1,
+              borderColor: colors.warning + '30',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <Animated.View
+              style={{
+                transform: [
+                  {
+                    rotate: '0deg'
+                  }
+                ]
+              }}
+            >
+              <Loader size={32} color={colors.warning} />
+            </Animated.View>
+          </View>
+
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <Text
+              style={{ fontSize: 16, fontWeight: '700', color: colors.heading }}
+            >
+              Connecting...
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.label }}>
+              Please wait
+            </Text>
+          </View>
+        </Animated.View>
+      </View>
+    )
+  }
+
+  // Connected state — show normal content
+  return (
+    <CFDExternalDisplayProvider>
+      <View style={{ flex: 1, backgroundColor: colors.screen }}>
+        {/* Connection indicator */}
+        <Pressable
+          onPress={handleAdminTap}
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            backgroundColor: colors.success,
+            zIndex: 100
+          }}
+        />
+
+        {/* Screen content */}
         <CFDScreenRouter
           onTipSelected={sendTipSelection}
           onPhoneSubmitted={sendPhoneNumber}
@@ -107,65 +263,5 @@ export default function CFDDisplayScreen() {
         />
       </View>
     </CFDExternalDisplayProvider>
-  );
+  )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0a0a0a",
-  },
-  errorContainer: {
-    flex: 1,
-    backgroundColor: "#0a0a0a",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  errorTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#ef4444",
-    marginBottom: 12,
-  },
-  errorText: {
-    fontSize: 16,
-    color: "#9ca3af",
-    marginBottom: 24,
-  },
-  retryButton: {
-    backgroundColor: "#10b981",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  resetButton: {
-    padding: 12,
-  },
-  resetButtonText: {
-    color: "#6b7280",
-    fontSize: 14,
-  },
-  connectionDot: {
-    position: "absolute",
-    top: 16,
-    right: 16,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#ef4444",
-    zIndex: 100,
-  },
-  connectionDotConnected: {
-    backgroundColor: "#10b981",
-  },
-  connectionDotConnecting: {
-    backgroundColor: "#f59e0b",
-  },
-});
