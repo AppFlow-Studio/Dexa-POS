@@ -165,6 +165,7 @@ export class CFDController {
       outstandingTotal: this.lastPayload.outstandingTotal ?? 0,
       amountPaid: this.lastPayload.amountPaid ?? 0,
       branding: this.branding,
+      layout: this.lastPayload.layout,
       tipConfig: this.lastPayload.tipConfig,
       carouselImages: this.lastPayload.carouselImages,
       loyaltyPrompt: this.lastPayload.loyaltyPrompt,
@@ -214,6 +215,7 @@ export class CFDController {
     savingsAmount: number;
     outstandingTotal: number;
     amountPaid: number;
+    layout?: CFDPayload["layout"];
     tipConfig?: CFDPayload["tipConfig"];
   }): void {
     const screenState =
@@ -324,6 +326,7 @@ export class CFDController {
       outstandingTotal: 0,
       amountPaid: 0,
       branding: this.branding,
+      layout: this.lastPayload.layout,
       carouselImages: this.lastPayload.carouselImages,
       timestamp: Date.now(),
     });

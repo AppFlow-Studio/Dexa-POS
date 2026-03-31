@@ -162,6 +162,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const organizationLogoUrl = useStoreSettingsStore(
     (s) => s.organizationLogoUrl
   );
+  const showCFDOrderingRightPanel = useStoreSettingsStore(
+    (s) => s.showCFDOrderingRightPanel
+  );
   const tipPresetPercentages = useLocationConfigStore(
     (s) => s.config.tips.presetPercentages
   );
@@ -569,6 +572,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         (activeOrderOutstandingTotal + currentTip.amount) * 100,
       ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      layout: {
+        showOrderingRightPanel: showCFDOrderingRightPanel,
+      },
       tipConfig: tipConfigRef.current ?? undefined,
     };
 
@@ -609,6 +615,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     activeScreenState,
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
+    showCFDOrderingRightPanel,
   ]);
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
@@ -668,6 +675,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
               logoUrl: organizationLogoUrl,
               primaryColor: "#10b981",
             },
+            layout: {
+              showOrderingRightPanel: showCFDOrderingRightPanel,
+            },
           });
           builtinIdleTimerRef.current = null;
         }, 500);
@@ -725,6 +735,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
         (activeOrderOutstandingTotal + currentTip.amount) * 100,
       ),
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
+      layout: {
+        showOrderingRightPanel: showCFDOrderingRightPanel,
+      },
       tipConfig: tipConfigRef.current ?? null,
       branding: {
         restaurantName: selectedStore?.name ?? "",
@@ -750,6 +763,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     selectedStore?.name,
     selectedStore?.code,
     organizationLogoUrl,
+    showCFDOrderingRightPanel,
   ]);
 
   // ==================== EXPOSED METHODS ====================

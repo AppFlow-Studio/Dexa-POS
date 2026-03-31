@@ -45,6 +45,7 @@ export interface CFDDisplayData {
 
   // Branding & config
   branding: CFDBranding | null;
+  layout: CFDPayload["layout"] | null;
   tipConfig: CFDPayload["tipConfig"] | null;
   carouselImages: string[];
 
@@ -100,6 +101,7 @@ export function CFDExternalDisplayProvider({
     outstandingTotal: store.outstandingTotal,
     amountPaid: store.amountPaid,
     branding: store.branding ?? null,
+    layout: store.layout ?? null,
     tipConfig: store.tipConfig,
     carouselImages: store.carouselImages,
     loyaltyPrompt: store.loyaltyPrompt ?? null,
@@ -148,6 +150,7 @@ export function CFDBuiltinDisplayProvider({
     outstandingTotal: store.outstandingTotal,
     amountPaid: store.amountPaid,
     branding: store.branding,
+    layout: store.layout ?? null,
     tipConfig: store.tipConfig,
     carouselImages: store.carouselImages,
     loyaltyPrompt: null,

@@ -91,6 +91,9 @@ export interface CFDPayload {
 
   // Branding (sent on connect, cached on CFD)
   branding?: CFDBranding;
+  layout?: {
+    showOrderingRightPanel: boolean;
+  };
 
   // Tip selection config
   tipConfig?: {

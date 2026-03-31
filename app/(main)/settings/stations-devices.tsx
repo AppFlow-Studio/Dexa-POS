@@ -1,5 +1,6 @@
 import { CFDPairingQR } from '@/components/cfd/CFDPairingQR'
 import { CFDStatusBadge } from '@/components/cfd/CFDStatusBadge'
+import { Switch } from '@/components/ui/switch'
 import { useCFD } from '@/contexts/CFDProvider'
 import { createSupabaseClient } from '@/lib/supabase'
 import { colors } from '@/lib/theme'
@@ -45,6 +46,10 @@ const StationsDevicesScreen = () => {
   const { getToken } = useAuth()
   const supabase = createSupabaseClient(getToken)
   const selectedStore = useStoreSettingsStore(state => state.selectedStore)
+  const showCFDOrderingRightPanel = useStoreSettingsStore(
+    state => state.showCFDOrderingRightPanel
+  )
+  const updateField = useStoreSettingsStore(state => state.updateField)
   const { connectedClientIds, disconnectClient, refreshCarouselImages } = useCFD()
   const [showPairing, setShowPairing] = useState(false)
   const [disconnectConfirm, setDisconnectConfirm] = useState<string | null>(null)
@@ -1228,6 +1233,34 @@ const StationsDevicesScreen = () => {
             {connectedClientIds.length > 0 ? 'Pair Additional Display' : 'Connect Display'}
           </Text>
         </Pressable>
+
+        <View
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.heading }}>
+              Show right side panel
+            </Text>
+            <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+              Controls the optional right panel on the ordering customer display
+            </Text>
+          </View>
+          <Switch
+            checked={showCFDOrderingRightPanel}
+            onCheckedChange={(checked) =>
+              updateField('showCFDOrderingRightPanel', checked)
+            }
+          />
+        </View>
       </View>
 
       {/* CFD Carousel Images */}

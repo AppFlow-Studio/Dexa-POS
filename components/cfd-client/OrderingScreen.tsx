@@ -36,12 +36,14 @@ export function OrderingScreen() {
     outstandingTotal,
     amountPaid,
     branding,
+    layout,
   } = useCFDDisplayData();
 
   const listRef = useRef<FlatList>(null);
   const prevCount = useRef(items.length);
   const { width } = useWindowDimensions();
-  const isWide = width > 850;
+  const showRightPanel = layout?.showOrderingRightPanel ?? true;
+  const isWide = width > 850 && showRightPanel;
 
   useEffect(() => {
     if (items.length > prevCount.current) {
@@ -229,16 +231,17 @@ export function OrderingScreen() {
           </View>
         </View>
 
-        {/* RIGHT PANEL (Empty for now) */}
-        <View
-          style={{
-            width: isWide ? "33.34%" : undefined,
-            flex: isWide ? undefined : 1,
-            backgroundColor: colors.panel,
-            borderLeftWidth: isWide ? 1 : 0,
-            borderLeftColor: colors.border,
-          }}
-        />
+        {showRightPanel && (
+          <View
+            style={{
+              width: isWide ? "33.34%" : undefined,
+              flex: isWide ? undefined : 1,
+              backgroundColor: colors.panel,
+              borderLeftWidth: isWide ? 1 : 0,
+              borderLeftColor: colors.border,
+            }}
+          />
+        )}
       </View>
     </View>
   );
