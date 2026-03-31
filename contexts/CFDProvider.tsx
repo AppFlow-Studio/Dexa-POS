@@ -77,6 +77,7 @@ interface CFDContextType {
   showLoyaltyPrompt: () => void;
   showLoyaltyConfirmation: (result: LoyaltyEarnResult[], customerName?: string) => void;
   disconnectClient: (clientId: string) => void;
+  refreshCarouselImages: () => Promise<void>;
 }
 
 const CFDContext = createContext<CFDContextType | null>(null);
@@ -104,6 +105,7 @@ const noopCFDValue: CFDContextType = {
   showLoyaltyPrompt: () => {},
   showLoyaltyConfirmation: () => {},
   disconnectClient: () => {},
+  refreshCarouselImages: async () => {},
 };
 
 export function CFDProvider({ children }: { children: React.ReactNode }) {
@@ -440,38 +442,31 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const [hasBuiltinCfd, setHasBuiltinCfd] = useState(false);
 
-  useEffect(() => {
-    const fetchImages = async () => {
-      if (!selectedStore?.id || !controllerRef.current) return;
-
-      try {
-        const { data, error } = await supabase.rpc("get_active_cfd_images", {
-          target_location_id: selectedStore.id,
-        });
-
-        if (error) {
-          console.error("[CFD] Failed to fetch images:", error);
-          return;
-        }
-
-        if (data && Array.isArray(data)) {
-          const imageUrls = data.map((d: any) => d.image_url);
-          console.log("[CFD] Updating carousel images:", imageUrls.length);
-          controllerRef.current.updateCarouselImages(imageUrls);
-          // Also write to builtin store so the secondary display gets them
-          useCFDBuiltinStore.getState().update({ carouselImages: imageUrls });
-        }
-      } catch (err) {
-        console.error("[CFD] Error fetching images:", err);
+  const fetchCarouselImages = useCallback(async () => {
+    if (!selectedStore?.id || !controllerRef.current) return;
+    try {
+      const { data, error } = await supabase.rpc("get_active_cfd_images", {
+        target_location_id: selectedStore.id,
+      });
+      if (error) { console.error("[CFD] Failed to fetch images:", error); return; }
+      if (data && Array.isArray(data)) {
+        const imageUrls = data.map((d: any) => d.image_url);
+        console.log("[CFD] Updating carousel images:", imageUrls.length);
+        controllerRef.current.updateCarouselImages(imageUrls);
+        useCFDBuiltinStore.getState().update({ carouselImages: imageUrls });
       }
-    };
+    } catch (err) {
+      console.error("[CFD] Error fetching images:", err);
+    }
+  }, [selectedStore?.id, supabase]);
 
+  useEffect(() => {
     if (isConnected || hasBuiltinCfd) {
-      fetchImages();
-      const interval = setInterval(fetchImages, 5 * 60 * 1000); // Refresh every 5 minutes
+      fetchCarouselImages();
+      const interval = setInterval(fetchCarouselImages, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
-  }, [isConnected, hasBuiltinCfd, selectedStore?.id]);
+  }, [isConnected, hasBuiltinCfd, fetchCarouselImages]);
 
   // Check loyalty on mount (5-min TTL cache)
   useEffect(() => {
@@ -895,6 +890,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     showLoyaltyPrompt,
     showLoyaltyConfirmation,
     disconnectClient,
+    refreshCarouselImages: fetchCarouselImages,
   };
 
   return <CFDContext.Provider value={value}>{children}</CFDContext.Provider>;

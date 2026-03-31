@@ -8,6 +8,7 @@ import { Station } from '@/types/station'
 import { useAuth } from '@clerk/clerk-expo'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
+import * as ImagePicker from 'expo-image-picker'
 import {
   AlertCircle,
   CheckCircle2,
@@ -15,11 +16,14 @@ import {
   ChevronUp,
   Cpu,
   CreditCard,
+  Image as ImageIcon,
   Monitor,
+  Plus,
   Printer,
   RefreshCw,
   Shield,
   Smartphone,
+  Trash2,
   User,
   Wifi,
   WifiOff
@@ -27,6 +31,8 @@ import {
 import { useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -39,9 +45,72 @@ const StationsDevicesScreen = () => {
   const { getToken } = useAuth()
   const supabase = createSupabaseClient(getToken)
   const selectedStore = useStoreSettingsStore(state => state.selectedStore)
-  const { connectedClientIds, disconnectClient } = useCFD()
+  const { connectedClientIds, disconnectClient, refreshCarouselImages } = useCFD()
   const [showPairing, setShowPairing] = useState(false)
   const [disconnectConfirm, setDisconnectConfirm] = useState<string | null>(null)
+  const [carouselUploading, setCarouselUploading] = useState(false)
+
+  // Fetch carousel images
+  const { data: carouselImages, refetch: refetchCarousel } = useQuery({
+    queryKey: ['cfd-carousel-images', selectedStore?.id],
+    queryFn: async () => {
+      if (!selectedStore?.id) return []
+      const { data, error } = await supabase
+        .from('cfd_carousel_images')
+        .select('id, image_url, is_active, display_order')
+        .eq('location_id', selectedStore.id)
+        .order('display_order', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!selectedStore?.id
+  })
+
+  const pickCarouselImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!permission.granted) {
+      Alert.alert('Permission Required', 'Permission to access camera roll is required!')
+      return
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+      base64: true
+    })
+    if (result.canceled || !result.assets[0]?.base64) return
+
+    setCarouselUploading(true)
+    try {
+      const base64 = result.assets[0].base64
+      const nextOrder = (carouselImages?.length ?? 0) + 1
+      await supabase.from('cfd_carousel_images').insert({
+        location_id: selectedStore!.id,
+        image_url: `data:image/jpeg;base64,${base64}`,
+        is_active: true,
+        display_order: nextOrder
+      })
+      refetchCarousel()
+      await refreshCarouselImages()
+    } catch (err) {
+      Alert.alert('Error', 'Failed to upload image')
+    } finally {
+      setCarouselUploading(false)
+    }
+  }
+
+  const deleteCarouselImage = async (id: string) => {
+    await supabase.from('cfd_carousel_images').delete().eq('id', id)
+    refetchCarousel()
+    await refreshCarouselImages()
+  }
+
+  const toggleCarouselImage = async (id: string, current: boolean) => {
+    await supabase.from('cfd_carousel_images').update({ is_active: !current }).eq('id', id)
+    refetchCarousel()
+    await refreshCarouselImages()
+  }
 
   const extractIp = (clientId: string) => clientId.substring(0, clientId.lastIndexOf(':'))
 
@@ -1145,6 +1214,102 @@ const StationsDevicesScreen = () => {
             {connectedClientIds.length > 0 ? 'Pair Additional Display' : 'Connect Display'}
           </Text>
         </Pressable>
+      </View>
+
+      {/* CFD Carousel Images */}
+      <View
+        style={{
+          backgroundColor: colors.panel,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 10
+        }}
+      >
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.teal + '15', alignItems: 'center', justifyContent: 'center' }}>
+              <ImageIcon size={16} color={colors.teal} />
+            </View>
+            <View>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.heading }}>Carousel Images</Text>
+              <Text style={{ fontSize: 10, color: colors.muted }}>Shown on idle customer display</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={pickCarouselImage}
+            disabled={carouselUploading}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              backgroundColor: carouselUploading ? colors.border : colors.teal + '20',
+              borderWidth: 1,
+              borderColor: carouselUploading ? colors.border : colors.teal + '50',
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 7
+            }}
+          >
+            {carouselUploading
+              ? <ActivityIndicator size={12} color={colors.teal} />
+              : <Plus size={13} color={colors.teal} />
+            }
+            <Text style={{ fontSize: 11, fontWeight: '600', color: carouselUploading ? colors.muted : colors.teal }}>
+              {carouselUploading ? 'Uploading...' : 'Add Image'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Image Grid */}
+        {!carouselImages || carouselImages.length === 0 ? (
+          <View style={{ paddingVertical: 20, alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border, borderRadius: 8 }}>
+            <ImageIcon size={24} color={colors.muted} />
+            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 6 }}>No carousel images yet</Text>
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {carouselImages.map(img => (
+              <View
+                key={img.id}
+                style={{
+                  width: '31%',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  borderWidth: 1,
+                  borderColor: img.is_active ? colors.teal + '50' : colors.border
+                }}
+              >
+                <Image
+                  source={{ uri: img.image_url }}
+                  style={{ width: '100%', aspectRatio: 16 / 9 }}
+                  resizeMode='cover'
+                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 6, backgroundColor: colors.screen }}>
+                  <TouchableOpacity onPress={() => toggleCarouselImage(img.id, img.is_active ?? true)}>
+                    <View style={{
+                      paddingHorizontal: 7,
+                      paddingVertical: 2,
+                      borderRadius: 20,
+                      backgroundColor: img.is_active ? colors.teal + '20' : colors.border,
+                      borderWidth: 1,
+                      borderColor: img.is_active ? colors.teal + '50' : colors.border
+                    }}>
+                      <Text style={{ fontSize: 9, fontWeight: '600', color: img.is_active ? colors.teal : colors.muted }}>
+                        {img.is_active ? 'Active' : 'Hidden'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteCarouselImage(img.id)}>
+                    <Trash2 size={13} color={colors.danger} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Pairing Modal */}
