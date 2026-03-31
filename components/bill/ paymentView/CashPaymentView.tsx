@@ -1,4 +1,5 @@
 import { useCFD } from "@/contexts/CFDProvider";
+import { round2 } from "@/lib/order-calculator";
 import { colors } from "@/lib/theme";
 import { toastService } from "@/lib/toastService";
 import { useActiveOrder, useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
@@ -49,9 +50,14 @@ const CashPaymentView = () => {
 
   const {
     setBaseAmount,
+    updateTip,
+    showTipSelection,
+    showPayment,
     showProcessing,
     showApproved,
     showDeclined,
+    tipResponse,
+    clearTipResponse,
   } = useCFD();
 
   const tipPresetPercentages = useLocationConfigStore((s) => s.config.tips.presetPercentages);
@@ -82,22 +88,23 @@ const CashPaymentView = () => {
     : effectiveOutstandingCash;
   // console.log("total", total);
 
-  const tipAmount = parseFloat(tipInput) || 0;
-  const grandTotal = total + tipAmount; // Total including tip
-  const tendered = parseFloat(amountTendered) || 0;
-  const changeDue = tendered - grandTotal; // Change is after tip
+  const roundedTotal = round2(total);
+  const tipAmount = round2(parseFloat(tipInput) || 0);
+  const grandTotal = round2(roundedTotal + tipAmount); // Total including tip
+  const tendered = round2(parseFloat(amountTendered) || 0);
+  const changeDue = round2(tendered - grandTotal); // Change is after tip
   const isSufficient = tendered >= grandTotal;
 
   // Freeze displayed values once processing starts to prevent flicker
-  const frozenTotal = useRef(total);
+  const frozenGrandTotal = useRef(grandTotal);
   const frozenChangeDue = useRef(changeDue);
   useEffect(() => {
     if (isProcessing) {
-      frozenTotal.current = total;
+      frozenGrandTotal.current = grandTotal;
       frozenChangeDue.current = changeDue;
     }
   }, [isProcessing]); // Intentionally only depend on isProcessing — capture at transition
-  const displayTotal = isProcessing ? frozenTotal.current : total;
+  const displayGrandTotal = isProcessing ? frozenGrandTotal.current : grandTotal;
   const displayChangeDue = isProcessing ? frozenChangeDue.current : changeDue;
 
   // Generate smart bill suggestions based on grand total
@@ -113,11 +120,11 @@ const CashPaymentView = () => {
   };
 
   const handleSelectExact = () => {
-    setAmountTendered(total.toFixed(2));
+    setAmountTendered(grandTotal.toFixed(2));
   };
 
   const handleTipPreset = (percentage: number) => {
-    const calculatedTip = (percentage / 100) * total;
+    const calculatedTip = round2((percentage / 100) * roundedTotal);
     setTipInput(calculatedTip.toFixed(2));
     setSelectedTipPreset(percentage);
   };
@@ -130,14 +137,38 @@ const CashPaymentView = () => {
     }
   };
 
+  // Show tip selection on CFD when cash payment opens
   useEffect(() => {
+    showTipSelection(total, TIP_PRESETS);
+    clearTipResponse();
+    updateTip(0, null);
     return () => {
+      updateTip(0, null);
       setBaseAmount(null);
     };
-  }, []);
+  }, [clearTipResponse, setBaseAmount, showTipSelection, TIP_PRESETS, total, updateTip]);
+
+  // Sync tip selection from CFD back to POS tip input
+  useEffect(() => {
+    if (!tipResponse) return;
+    if (tipResponse.tipAmount === 0) {
+      setTipInput("");
+      setSelectedTipPreset(null);
+    } else {
+      setTipInput((tipResponse.tipAmount / 100).toFixed(2));
+      setSelectedTipPreset(tipResponse.tipPercentage);
+    }
+    showPayment("cash");
+    clearTipResponse();
+  }, [clearTipResponse, showPayment, tipResponse]);
+
+  useEffect(() => {
+    updateTip(tipAmount, selectedTipPreset);
+  }, [tipAmount, selectedTipPreset, updateTip]);
 
   const handleProcessCashPayment = async () => {
     setIsProcessing(true);
+    showPayment("cash");
     showProcessing("cash");
     try {
       const tipAmt = parseFloat(tipInput) || 0;
@@ -210,7 +241,15 @@ const CashPaymentView = () => {
         {/* Total Due */}
         <View style={{ backgroundColor: colors.screen, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 10 }}>
           <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Total Due</Text>
-          <Text style={{ fontSize: 28, fontWeight: "700", color: colors.teal }}>${displayTotal.toFixed(2)}</Text>
+          <Text style={{ fontSize: 28, fontWeight: "700", color: colors.teal }}>${displayGrandTotal.toFixed(2)}</Text>
+        </View>
+
+        {/* Tip */}
+        <View style={{ backgroundColor: tipAmount > 0 ? `${colors.teal}10` : colors.screen, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: tipAmount > 0 ? `${colors.teal}35` : colors.border, marginBottom: 10 }}>
+          <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Tip</Text>
+          <Text style={{ fontSize: 22, fontWeight: "700", color: tipAmount > 0 ? colors.teal : colors.muted }}>
+            ${tipAmount.toFixed(2)}
+          </Text>
         </View>
 
         {/* Amount Received */}

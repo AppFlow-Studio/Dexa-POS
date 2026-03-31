@@ -876,18 +876,18 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (paymentView === "cash") {
-      lastShowPaymentAtRef.current = Date.now();
-      setActiveScreenState("payment");
-      setActivePaymentMethod("cash");
-      controllerRef.current?.showPayment("cash");
-    } else if (paymentView === "card" || paymentView === "manual") {
+    if (paymentView === "card" || paymentView === "manual") {
       lastShowPaymentAtRef.current = Date.now();
       setActiveScreenState("payment");
       setActivePaymentMethod("card");
       controllerRef.current?.showPayment("card");
-    } else if (paymentView === "success" || paymentView === "split-payment-success") {
-      // Payment completed — let showApproved/showDeclined own the screen state, don't clear it
+    } else if (
+      paymentView === "cash" ||
+      paymentView === "success" ||
+      paymentView === "split-payment-success"
+    ) {
+      // Cash: tip selection / payment / processing owned by CashPaymentView callbacks
+      // Success: owned by showApproved/showDeclined
     } else {
       setActiveScreenState(null);
       setActivePaymentMethod(null);
