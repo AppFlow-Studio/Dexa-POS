@@ -166,6 +166,7 @@ export class CFDController {
       amountPaid: this.lastPayload.amountPaid ?? 0,
       branding: this.branding,
       layout: this.lastPayload.layout,
+      orderingPanelImages: this.lastPayload.orderingPanelImages,
       tipConfig: this.lastPayload.tipConfig,
       carouselImages: this.lastPayload.carouselImages,
       loyaltyPrompt: this.lastPayload.loyaltyPrompt,
@@ -216,6 +217,7 @@ export class CFDController {
     outstandingTotal: number;
     amountPaid: number;
     layout?: CFDPayload["layout"];
+    orderingPanelImages?: CFDPayload["orderingPanelImages"];
     tipConfig?: CFDPayload["tipConfig"];
   }): void {
     const screenState =
@@ -327,6 +329,7 @@ export class CFDController {
       amountPaid: 0,
       branding: this.branding,
       layout: this.lastPayload.layout,
+      orderingPanelImages: this.lastPayload.orderingPanelImages,
       carouselImages: this.lastPayload.carouselImages,
       timestamp: Date.now(),
     });
@@ -399,6 +402,14 @@ export class CFDController {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       carouselImages: images,
+      timestamp: Date.now(),
+    });
+  }
+
+  updateOrderingPanelImages(images: NonNullable<CFDPayload["orderingPanelImages"]>): void {
+    this.broadcast({
+      ...(this.lastPayload as CFDPayload),
+      orderingPanelImages: images,
       timestamp: Date.now(),
     });
   }

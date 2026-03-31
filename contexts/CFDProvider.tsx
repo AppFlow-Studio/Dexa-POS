@@ -79,6 +79,7 @@ interface CFDContextType {
   showLoyaltyConfirmation: (result: LoyaltyEarnResult[], customerName?: string) => void;
   disconnectClient: (clientId: string) => void;
   refreshCarouselImages: () => Promise<void>;
+  refreshOrderingPanelImages: () => Promise<void>;
 }
 
 const CFDContext = createContext<CFDContextType | null>(null);
@@ -107,6 +108,7 @@ const noopCFDValue: CFDContextType = {
   showLoyaltyConfirmation: () => {},
   disconnectClient: () => {},
   refreshCarouselImages: async () => {},
+  refreshOrderingPanelImages: async () => {},
 };
 
 export function CFDProvider({ children }: { children: React.ReactNode }) {
@@ -165,6 +167,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   );
   const showCFDOrderingRightPanel = useStoreSettingsStore(
     (s) => s.showCFDOrderingRightPanel
+  );
+  const cfdOrderingRightPanelMode = useStoreSettingsStore(
+    (s) => s.cfdOrderingRightPanelMode
   );
   const tipPresetPercentages = useLocationConfigStore(
     (s) => s.config.tips.presetPercentages
@@ -474,13 +479,53 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [selectedStore?.id, supabase]);
 
+  const fetchOrderingPanelImages = useCallback(async () => {
+    if (!selectedStore?.id || !controllerRef.current) return;
+    try {
+      const { data, error } = await supabase
+        .from("cfd_ordering_panel_images")
+        .select("panel_slot, image_url, display_order")
+        .eq("location_id", selectedStore.id)
+        .eq("is_active", true)
+        .order("panel_slot", { ascending: true })
+        .order("display_order", { ascending: true });
+
+      if (error) {
+        console.error("[CFD] Failed to fetch ordering panel images:", error);
+        return;
+      }
+
+      const orderingPanelImages = {
+        primary: [] as string[],
+        secondary: [] as string[],
+      };
+
+      (data ?? []).forEach((row: any) => {
+        if (row.panel_slot === "secondary") {
+          orderingPanelImages.secondary.push(row.image_url);
+        } else {
+          orderingPanelImages.primary.push(row.image_url);
+        }
+      });
+
+      controllerRef.current.updateOrderingPanelImages(orderingPanelImages);
+      useCFDBuiltinStore.getState().update({ orderingPanelImages });
+    } catch (err) {
+      console.error("[CFD] Error fetching ordering panel images:", err);
+    }
+  }, [selectedStore?.id, supabase]);
+
   useEffect(() => {
     if (isConnected || hasBuiltinCfd) {
       fetchCarouselImages();
-      const interval = setInterval(fetchCarouselImages, 5 * 60 * 1000);
+      fetchOrderingPanelImages();
+      const interval = setInterval(() => {
+        fetchCarouselImages();
+        fetchOrderingPanelImages();
+      }, 5 * 60 * 1000);
       return () => clearInterval(interval);
     }
-  }, [isConnected, hasBuiltinCfd, fetchCarouselImages]);
+  }, [isConnected, hasBuiltinCfd, fetchCarouselImages, fetchOrderingPanelImages]);
 
   // Check loyalty on mount (5-min TTL cache)
   useEffect(() => {
@@ -585,7 +630,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
       layout: {
         showOrderingRightPanel: showCFDOrderingRightPanel,
+        orderingRightPanelMode: cfdOrderingRightPanelMode,
       },
+      orderingPanelImages: useCFDBuiltinStore.getState().orderingPanelImages,
       tipConfig: tipConfigRef.current ?? undefined,
     };
 
@@ -627,6 +674,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     baseAmountOverride,
     pathname, // Essential for responding to screen changes
     showCFDOrderingRightPanel,
+    cfdOrderingRightPanelMode,
   ]);
 
   // ==================== BUILT-IN SECONDARY DISPLAY ====================
@@ -688,6 +736,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             },
             layout: {
               showOrderingRightPanel: showCFDOrderingRightPanel,
+              orderingRightPanelMode: cfdOrderingRightPanelMode,
             },
           });
           builtinIdleTimerRef.current = null;
@@ -748,7 +797,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
       amountPaid: Math.round((activeOrder?.amount_paid ?? 0) * 100),
       layout: {
         showOrderingRightPanel: showCFDOrderingRightPanel,
+        orderingRightPanelMode: cfdOrderingRightPanelMode,
       },
+      orderingPanelImages: useCFDBuiltinStore.getState().orderingPanelImages,
       tipConfig: tipConfigRef.current ?? null,
       branding: {
         restaurantName: selectedStore?.name ?? "",
@@ -775,6 +826,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     selectedStore?.code,
     organizationLogoUrl,
     showCFDOrderingRightPanel,
+    cfdOrderingRightPanelMode,
   ]);
 
   // ==================== EXPOSED METHODS ====================
@@ -916,6 +968,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     showLoyaltyConfirmation,
     disconnectClient,
     refreshCarouselImages: fetchCarouselImages,
+    refreshOrderingPanelImages: fetchOrderingPanelImages,
   };
 
   return <CFDContext.Provider value={value}>{children}</CFDContext.Provider>;

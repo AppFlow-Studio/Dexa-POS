@@ -93,6 +93,11 @@ export interface CFDPayload {
   branding?: CFDBranding;
   layout?: {
     showOrderingRightPanel: boolean;
+    orderingRightPanelMode?: "single" | "stacked";
+  };
+  orderingPanelImages?: {
+    primary: string[];
+    secondary: string[];
   };
 
   // Tip selection config

@@ -3,13 +3,17 @@ import { colors } from "@/lib/theme";
 import type { CFDCartItem } from "@/types/cfd.types";
 import { CreditCard, Banknote, UtensilsCrossed } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
-import { FlatList, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Image, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
+  runOnJS,
   Easing,
   FadeIn,
   FadeInDown,
   LinearTransition,
   SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 
 export function OrderingScreen() {
@@ -37,12 +41,14 @@ export function OrderingScreen() {
     amountPaid,
     branding,
     layout,
+    orderingPanelImages,
   } = useCFDDisplayData();
 
   const listRef = useRef<FlatList>(null);
   const prevCount = useRef(items.length);
   const { width } = useWindowDimensions();
   const showRightPanel = layout?.showOrderingRightPanel ?? true;
+  const rightPanelMode = layout?.orderingRightPanelMode ?? "single";
   const isWide = width > 850 && showRightPanel;
 
   useEffect(() => {
@@ -240,9 +246,97 @@ export function OrderingScreen() {
               borderLeftWidth: isWide ? 1 : 0,
               borderLeftColor: colors.border,
             }}
-          />
+          >
+            <OrderingPanelMedia
+              mode={rightPanelMode}
+              primaryImages={orderingPanelImages.primary}
+              secondaryImages={orderingPanelImages.secondary}
+            />
+          </View>
         )}
       </View>
+    </View>
+  );
+}
+
+function OrderingPanelMedia({
+  mode,
+  primaryImages,
+  secondaryImages,
+}: {
+  mode: "single" | "stacked";
+  primaryImages: string[];
+  secondaryImages: string[];
+}) {
+  if (mode === "stacked") {
+    return (
+      <View style={styles.rightPanelStack}>
+        <RotatingImagePanel images={primaryImages} style={styles.rightPanelStackItem} />
+        <RotatingImagePanel images={secondaryImages} style={styles.rightPanelStackItem} />
+      </View>
+    );
+  }
+
+  return <RotatingImagePanel images={primaryImages} style={styles.rightPanelSingle} />;
+}
+
+function RotatingImagePanel({
+  images,
+  style,
+}: {
+  images: string[];
+  style?: any;
+}) {
+  const [currentIndex, setCurrentIndex] = React.useState(0);
+  const [nextIndex, setNextIndex] = React.useState(0);
+  const fadeOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setNextIndex(0);
+    fadeOpacity.value = 0;
+  }, [images, fadeOpacity]);
+
+  useEffect(() => {
+    if (!images || images.length <= 1) return;
+
+    const interval = setInterval(() => {
+      const next = (currentIndex + 1) % images.length;
+      setNextIndex(next);
+      fadeOpacity.value = withTiming(1, { duration: 900 }, (finished) => {
+        if (finished) {
+          runOnJS(setCurrentIndex)(next);
+          fadeOpacity.value = 0;
+        }
+      });
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [currentIndex, images, fadeOpacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: fadeOpacity.value,
+  }));
+
+  if (!images || images.length === 0) {
+    return (
+      <View style={[styles.mediaFallback, style]}>
+        <Text style={styles.mediaFallbackText}>No image</Text>
+      </View>
+    );
+  }
+
+  const currentImage = images[currentIndex] ?? images[0];
+  const nextImage = images[nextIndex] ?? images[0];
+
+  return (
+    <View style={[styles.mediaFrame, style]}>
+      <Image source={{ uri: currentImage }} style={styles.mediaImage} resizeMode="cover" />
+      {images.length > 1 && (
+        <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]}>
+          <Image source={{ uri: nextImage }} style={styles.mediaImage} resizeMode="cover" />
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -341,6 +435,45 @@ function CartItemRow({
     </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  rightPanelSingle: {
+    flex: 1,
+    margin: 12,
+    borderRadius: 14,
+  },
+  rightPanelStack: {
+    flex: 1,
+    padding: 12,
+    gap: 12,
+  },
+  rightPanelStackItem: {
+    flex: 1,
+    borderRadius: 14,
+  },
+  mediaFrame: {
+    overflow: "hidden",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  mediaImage: {
+    width: "100%",
+    height: "100%",
+  },
+  mediaFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  mediaFallbackText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+});
 
 function TotalRowTwoColumn({
   label,
