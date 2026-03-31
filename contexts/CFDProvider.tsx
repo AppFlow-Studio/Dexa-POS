@@ -20,6 +20,7 @@ import { useLocationConfigStore } from "@/stores/useLocationConfigStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useCFDBuiltinStore } from "@/stores/useCFDBuiltinStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useSeatingStore } from "@/stores/useSeatingStore";
 import type {
     CFDCartItem,
     CFDPairingData,
@@ -177,6 +178,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   const activeOrder = useOrderStore((s) =>
     s.activeOrderId ? s.ordersById[s.activeOrderId] : null,
   );
+  const activeOrderSeating = useSeatingStore((s) =>
+    activeOrder?.id ? s.byOrderId[activeOrder.id] : undefined
+  );
   // Ref so loyalty callbacks always see the latest order without re-registering
   const activeOrderRef = useRef(activeOrder);
   const activeOrderIdRef = useRef(activeOrderId);
@@ -193,6 +197,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   // Transform cart items to CFD format with dual pricing
   const cfdItems: CFDCartItem[] = useMemo(() => {
     if (!activeOrder?.items) return [];
+    const hideCourseNumbersOnCfd = pathname.includes("order-processing");
 
     return activeOrder.items
       .filter((item) => !item.is_voided && item.quantity > 0)
@@ -213,8 +218,14 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
             : item.name,
           quantity: item.quantity,
           unitPrice: Math.round(cardUnitPrice * 100),
-          seatNumber: item.seatNumber ?? null,
-          courseNumber: item.courseNumber,
+          seatNumber:
+            activeOrderSeating?.itemSeatMap?.[item.id] ??
+            (item.db_order_item_id
+              ? activeOrderSeating?.dbIdToSeatMap?.[item.db_order_item_id]
+              : undefined) ??
+            item.seatNumber ??
+            null,
+          courseNumber: hideCourseNumbersOnCfd ? undefined : item.courseNumber,
           cashPrice: Math.round(cashUnitPrice * 100),
           cardPrice: Math.round(cardUnitPrice * 100),
           lineTotal: Math.round(cardLineTotal * 100),
@@ -257,7 +268,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
           notes: item.customizations?.notes,
         };
       });
-  }, [activeOrder?.items]);
+  }, [activeOrder?.items, activeOrderSeating, pathname]);
 
   // Initialize CFD controller
   useEffect(() => {
