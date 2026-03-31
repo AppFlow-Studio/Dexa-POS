@@ -1615,7 +1615,7 @@ const syncPaymentToBackend = async (
       !paymentDetails.splitCount &&
       !paymentDetails.forceCardPricing;
 
-    // Build payment params for process_payment_v7 (will be resolved when order syncs)
+    // Build payment params for process_payment_v8 (will be resolved when order syncs)
     const paymentParams = {
       p_order_id: order.id, // Will be resolved to db_order_id at sync time
       p_payment_method: isCash ? "cash" : "card",
@@ -1665,8 +1665,8 @@ const syncPaymentToBackend = async (
         ...(alloc.amount !== undefined && { amount: alloc.amount }),
       })) || null;
 
-    // Call process_payment_v7 RPC directly
-    if (__DEV__) console.log("[syncPaymentToBackend] Calling process_payment_v7:", {
+    // Call process_payment_v8 RPC directly
+    if (__DEV__) console.log("[syncPaymentToBackend] Calling process_payment_v8:", {
       orderId: order.db_order_id,
       method: paymentMethod,
       amount: paymentDetails.amount,
@@ -1683,7 +1683,7 @@ const syncPaymentToBackend = async (
       !paymentDetails.splitCount &&
       !paymentDetails.forceCardPricing;
 
-    const { data, error } = await supabase.rpc("process_payment_v7", {
+    const { data, error } = await supabase.rpc("process_payment_v8", {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
       p_amount: isFullRemainingPayment ? null : paymentDetails.amount,
@@ -1735,7 +1735,7 @@ const syncPaymentToBackend = async (
         }
       });
 
-      // Queue for retry - build payment params for process_payment_v7
+      // Queue for retry - build payment params for process_payment_v8
       const isCashRetry = paymentDetails.method === "Cash";
       const terminalResponseRetry = buildTerminalResponse();
 
@@ -1852,27 +1852,36 @@ const syncPaymentToBackend = async (
                   id: data.payment_id,
                   db_payment_id: data.payment_id,
                   // Keep existing itemsCovered (with quantities) from optimistic update
-                  // Only set from backend if local is missing
+                  // Use items_paid (per-payment quantities from v_covered_items_json) as middle-priority source
+                  // Fall back to items_covered (flat UUID array) for legacy/split payments
                   itemsCovered:
                     p.itemsCovered && p.itemsCovered.length > 0
                       ? p.itemsCovered
-                      : (data.items_covered?.map((id: string) => {
-                          const item = currentOrder.items.find(
-                            (i) => i.db_order_item_id === id || i.id === id,
-                          );
-                          return {
-                            itemId: id,
-                            itemName: item?.name || "Unknown Item",
-                            quantity: item
-                              ? item.quantity - (item.refundedQuantity || 0)
-                              : 1,
-                            unitPrice: item?.price || 0,
-                            subtotal: item
-                              ? (item.price || 0) *
-                                (item.quantity - (item.refundedQuantity || 0))
-                              : 0,
-                          };
-                        }) ?? []),
+                      : data.items_paid && Array.isArray(data.items_paid) && data.items_paid.length > 0
+                        ? data.items_paid.map((ip: any) => ({
+                            itemId: ip.order_item_id,
+                            itemName: ip.item_name || "Unknown Item",
+                            quantity: ip.quantity_paid,
+                            unitPrice: ip.unit_price,
+                            subtotal: ip.subtotal,
+                          }))
+                        : (data.items_covered?.map((id: string) => {
+                            const item = currentOrder.items.find(
+                              (i) => i.db_order_item_id === id || i.id === id,
+                            );
+                            return {
+                              itemId: id,
+                              itemName: item?.name || "Unknown Item",
+                              quantity: item
+                                ? item.quantity - (item.refundedQuantity || 0)
+                                : 1,
+                              unitPrice: item?.price || 0,
+                              subtotal: item
+                                ? (item.price || 0) *
+                                  (item.quantity - (item.refundedQuantity || 0))
+                                : 0,
+                            };
+                          }) ?? []),
                   timestamp: new Date().toISOString(),
                   sync_status: "synced" as const,
                   sync_error: undefined,
@@ -3064,6 +3073,7 @@ export const useOrderStore = create<OrderState>()(
                                 transformBroadcastPaymentsToProfile(
                                   backendOrder.order_payments,
                                   backendOrder.order_items,
+                                  backendOrder.payment_items,
                                 ),
                               ),
                             }
@@ -10442,6 +10452,15 @@ export const useOrderStore = create<OrderState>()(
               const orderDiscountsData = data.order_discounts || [];
               const stationName = data.station_name;
 
+              // Build per-payment item coverage lookup from order_payment_items junction table
+              const paymentItemsData: any[] = data.payment_items || [];
+              const paymentItemsByPaymentId = new Map<string, any[]>();
+              for (const pi of paymentItemsData) {
+                const key = pi.order_payment_id;
+                if (!paymentItemsByPaymentId.has(key)) paymentItemsByPaymentId.set(key, []);
+                paymentItemsByPaymentId.get(key)!.push(pi);
+              }
+
               if (!orderData) {
                 console.error(
                   "[syncOrderFromBackendComplete] No order data in response",
@@ -10533,28 +10552,41 @@ export const useOrderStore = create<OrderState>()(
                         }
                       : undefined,
 
-                  // Item coverage — derive from covers_items with order items context
-                  // Use paidQuantity (from backend paid_quantity) as the authoritative coverage quantity.
-                  // TODO: For multi-payment scenarios where the same item appears in multiple payments'
-                  // covers_items, this overcounts per-payment. Pre-existing limitation of flat UUID schema.
-                  itemsCovered: (payment.covers_items || []).map(
-                    (itemId: string) => {
-                      const item = transformedItems.find(
-                        (i) => i.db_order_item_id === itemId || i.id === itemId,
-                      );
-                      const coveredQty = item?.paidQuantity || item?.quantity || 1;
-                      const unitPrice = payment.is_cash_priced
-                        ? ((item?.cashPrice ?? item?.price) || 0)
-                        : (item?.price || 0);
-                      return {
-                        itemId,
-                        itemName: item?.name || "Unknown Item",
-                        quantity: coveredQty,
-                        unitPrice,
-                        subtotal: unitPrice * coveredQty,
-                      };
-                    },
-                  ),
+                  // Item coverage — prefer per-payment items from junction table (accurate per-payment quantities)
+                  // Fall back to covers_items + paid_quantity for legacy orders without payment_items
+                  itemsCovered: (() => {
+                    const perPaymentItems = paymentItemsByPaymentId.get(payment.id);
+                    if (perPaymentItems && perPaymentItems.length > 0) {
+                      return perPaymentItems.map((pi: any) => ({
+                        itemId: pi.order_item_id,
+                        itemName: transformedItems.find(
+                          (i) => i.db_order_item_id === pi.order_item_id || i.id === pi.order_item_id
+                        )?.name || "Unknown Item",
+                        quantity: pi.quantity_paid,
+                        unitPrice: pi.unit_price_paid,
+                        subtotal: pi.subtotal_paid,
+                      }));
+                    }
+                    // Legacy fallback for orders without payment_items
+                    return (payment.covers_items || []).map(
+                      (itemId: string) => {
+                        const item = transformedItems.find(
+                          (i) => i.db_order_item_id === itemId || i.id === itemId,
+                        );
+                        const coveredQty = item?.paidQuantity || item?.quantity || 1;
+                        const unitPrice = payment.is_cash_priced
+                          ? ((item?.cashPrice ?? item?.price) || 0)
+                          : (item?.price || 0);
+                        return {
+                          itemId,
+                          itemName: item?.name || "Unknown Item",
+                          quantity: coveredQty,
+                          unitPrice,
+                          subtotal: unitPrice * coveredQty,
+                        };
+                      },
+                    );
+                  })(),
 
                   // Status and timestamps
                   status: payment.status || "captured",

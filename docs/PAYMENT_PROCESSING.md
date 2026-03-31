@@ -69,7 +69,7 @@ split payments, tips, and comprehensive refund handling.
 - `stores/usePaymentStore.ts` - Payment UI state
 
 ### SQL
-- `utils/supabase/migrations/process_payment_v7.sql` - Main payment RPC
+- `utils/supabase/migrations/process_payment_v8.sql` - Main payment RPC
 - `utils/supabase/migrations/refund_system_v1.sql` - Refund RPCs
 
 ---
@@ -202,14 +202,14 @@ if (result.success) {
 ### 4. Capture in Database
 
 ```typescript
-// process_payment_v7.sql handles:
+// process_payment_v8.sql handles:
 // - Creating order_payments record
 // - Updating order_items paid_quantity
 // - Creating order_payment_items coverage
 // - Recalculating order totals
 // - Broadcasting changes
 
-const { data } = await supabase.rpc('process_payment_v7', {
+const { data } = await supabase.rpc('process_payment_v8', {
   p_order_id: orderId,
   p_amount: amount,
   p_tip_amount: tipAmount,
@@ -543,7 +543,7 @@ Cash payments are simpler (no terminal):
 ```typescript
 // CashPaymentView.tsx
 const processCashPayment = async () => {
-  const { data } = await supabase.rpc('process_payment_v7', {
+  const { data } = await supabase.rpc('process_payment_v8', {
     p_order_id: orderId,
     p_amount: amountTendered,
     p_payment_method: 'cash',

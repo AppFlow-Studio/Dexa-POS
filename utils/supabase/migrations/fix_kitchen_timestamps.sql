@@ -150,7 +150,16 @@ BEGIN
       AND status = 'pending';
   END IF;
 
-  IF p_status IN ('ready', 'served') THEN
+  -- 'ready' = done cooking, keep visible on KDS displays
+  IF p_status = 'ready' THEN
+    UPDATE kds_item_status
+    SET completed_at = COALESCE(completed_at, NOW())
+    WHERE order_item_id = ANY(p_order_item_ids)
+      AND status NOT IN ('cancelled', 'completed');
+  END IF;
+
+  -- 'served' = picked up, remove from KDS displays
+  IF p_status = 'served' THEN
     UPDATE kds_item_status
     SET status = 'completed',
         completed_at = COALESCE(completed_at, NOW()),

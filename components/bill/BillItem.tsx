@@ -62,11 +62,11 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
       {modifiers.map((modifier, index) => (
         modifier.options.length > 0 && (
           <View key={`mod-${index}`} className="flex-row flex-wrap items-center gap-x-1 mb-0.5">
-            {modifier.categoryName && (
+            {/* {modifier.categoryName && (
               <Text style={{ fontSize: 10 }} className="text-gray-500">
                 {modifier.categoryName}:
               </Text>
-            )}
+            )} */}
             {modifier.options.map((option, optionIndex) => (
               <View key={`opt-${optionIndex}`} className="flex-row items-center gap-0.5">
                 <Text style={{ fontSize: 10, color: option.isNo ? colors.danger : '#E0E0E0' }} >

@@ -377,6 +377,8 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
     // Double-tap detection
     const lastTapRef = useRef(0)
+    // Lock in ticket.status at first tap — immune to in-flight re-renders from auto-fire/broadcast
+    const firstTapStatusRef = useRef<KDSTicket['status'] | null>(null)
     // Pre-measured card position (cached on first tap for instant double-tap)
     const cachedPosRef = useRef<CardPosition | undefined>(undefined)
     // Delayed focus toggle to detect double-tap
@@ -401,6 +403,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       if (!isDoubleTap) {
         // First tap — gentle pulse to signal acknowledgment
         lastTapRef.current = now
+        firstTapStatusRef.current = ticket.status  // lock in status at gesture start
 
         scaleValue.value = withSequence(
           withTiming(0.97, { duration: 80, easing: Easing.out(Easing.cubic) }),
@@ -419,6 +422,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
         focusTimeoutRef.current = setTimeout(() => {
           // Only toggle focus if it's truly a single tap (no double-tap happened)
+          firstTapStatusRef.current = null  // clear on single tap
           onFocus?.(isFocused ? null : ticket.ticket_id)
           focusTimeoutRef.current = null
         }, 300)
@@ -432,12 +436,15 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
       }
       lastTapRef.current = 0
 
-      // Determine next status
+      // Determine next status — use captured status from first tap (immune to in-flight re-renders)
+      const capturedStatus = firstTapStatusRef.current
+      firstTapStatusRef.current = null  // clear for next gesture
+
       const itemIds = ticket.items.map(i => i.id)
       let newStatus: 'preparing' | 'ready' | 'served' | undefined
-      if (ticket.status === 'pending') newStatus = 'preparing'
-      else if (ticket.status === 'cooking') newStatus = 'ready'
-      else if (ticket.status === 'ready') newStatus = 'served'
+      if (capturedStatus === 'pending') newStatus = 'preparing'
+      else if (capturedStatus === 'cooking') newStatus = 'ready'
+      else if (capturedStatus === 'ready') newStatus = 'served'
 
       if (!newStatus) return
 
@@ -1234,6 +1241,7 @@ const KitchenDisplayScreen = () => {
   const prioritizeTicket = useKDSStore(s => s.prioritizeTicket)
   const toggleRush = useKDSStore(s => s.toggleRush)
   const markItemDone = useKDSStore(s => s.markItemDone)
+  const isTicketRecalled = useKDSStore(s => s.isTicketRecalled)
   const kdsCleanup = useKDSStore(s => s._cleanup)
 
   // Cleanup retries + pending actions on unmount
@@ -1376,6 +1384,22 @@ const KitchenDisplayScreen = () => {
     replaceRoute('(auth)', 'pin-login')
   }, [stationSessionId, selectedStore?.id, supabase, clearStationSession])
 
+  // Triple-tap station name → logout
+  const stationTapCountRef = useRef(0)
+  const stationTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleStationTripleTap = useCallback(() => {
+    stationTapCountRef.current += 1
+    if (stationTapTimerRef.current) clearTimeout(stationTapTimerRef.current)
+    if (stationTapCountRef.current >= 3) {
+      stationTapCountRef.current = 0
+      handleKDSLogout()
+      return
+    }
+    stationTapTimerRef.current = setTimeout(() => {
+      stationTapCountRef.current = 0
+    }, 600)
+  }, [handleKDSLogout])
+
   // Subscribe to all 3 status arrays — all 3 FlatLists are always mounted
   const pendingTickets = useKDSStore(s => s.ticketsByStatus.pending)
   const cookingTickets = useKDSStore(s => s.ticketsByStatus.cooking)
@@ -1486,6 +1510,14 @@ const KitchenDisplayScreen = () => {
         if (ticket.start_time_epoch === 0) return
         const elapsed = now - ticket.start_time_epoch
         if (elapsed >= delayMs) {
+          const displayNum =
+            ticket.display_number ?? ticket.order_number?.slice(-4) ?? '?'
+          toast.show({
+            title: `#${displayNum} auto-fired`,
+            message: `Started preparing after ${kdsAutoFireDelayMinutes}m`,
+            type: 'info',
+            duration: 3000
+          })
           advanceTicketStatus(
             ticket.ticket_id,
             ticket.items.map(i => i.id),
@@ -1501,7 +1533,8 @@ const KitchenDisplayScreen = () => {
     kdsAutoFireDelayMinutes,
     pendingTickets,
     isReady,
-    advanceTicketStatus
+    advanceTicketStatus,
+    toast
   ])
 
   // Auto-bump: ready → served after configured delay
@@ -1515,7 +1548,22 @@ const KitchenDisplayScreen = () => {
 
       readyTickets.forEach(ticket => {
         if (ticket.start_time_epoch === 0) return
+        // Skip recalled tickets — check item-level flag (persisted in MMKV, survives
+        // hot-reloads) + module-level Set (fast path) as belt-and-suspenders
+        if (
+          ticket.items.some(i => i.recalled) ||
+          isTicketRecalled(ticket.ticket_id)
+        )
+          return
         if (now - ticket.start_time_epoch >= delayMs) {
+          const displayNum =
+            ticket.display_number ?? ticket.order_number?.slice(-4) ?? '?'
+          toast.show({
+            title: `#${displayNum} auto-bumped`,
+            message: `Ticket served after ${autoBumpMinutes}m`,
+            type: 'info',
+            duration: 3000
+          })
           advanceTicketStatus(
             ticket.ticket_id,
             ticket.items.map(i => i.id),
@@ -1526,7 +1574,7 @@ const KitchenDisplayScreen = () => {
     }, 15_000)
 
     return () => clearInterval(intervalId)
-  }, [autoBumpMinutes, readyTickets, isReady, advanceTicketStatus])
+  }, [autoBumpMinutes, readyTickets, isReady, advanceTicketStatus, isTicketRecalled, toast])
 
   // ─── Sound notifications on new orders ────────────────────────
   const soundServiceRef = useRef<KDSSoundService | null>(null)
@@ -1890,7 +1938,7 @@ const KitchenDisplayScreen = () => {
           onFocus={setFocusedTicketId}
           isFocused={focusedTicketId === item.ticket_id}
           onLongPress={handleTicketLongPress}
-          onItemPress={handleItemPress}
+          onItemPress={workflowMode === '2-step' ? handleItemPress : undefined}
           hideDoneItems={kdsHideDoneItems}
           displaySettings={displaySettings}
           urgencyThresholds={urgencyThresholds}
@@ -1905,6 +1953,7 @@ const KitchenDisplayScreen = () => {
       focusedTicketId,
       handleTicketLongPress,
       handleItemPress,
+      workflowMode,
       kdsHideDoneItems,
       displaySettings,
       urgencyThresholds,
@@ -2163,6 +2212,64 @@ const KitchenDisplayScreen = () => {
               </View>
             )}
 
+            {/* Auto-fire badge */}
+            {kdsAutoFireEnabled && kdsAutoFireDelayMinutes ? (
+              <>
+                <View style={{ width: 1, height: 20, backgroundColor: colors.border }} />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: colors.info + '15',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.info + '30',
+                    gap: 4
+                  }}
+                >
+                  <Flame size={11} color={colors.info} />
+                  <Text style={{ color: colors.info, fontSize: 11, fontWeight: '600' }}>
+                    Fire {kdsAutoFireDelayMinutes}m
+                  </Text>
+                </View>
+              </>
+            ) : null}
+
+            {/* Auto-bump badge */}
+            {autoBumpMinutes ? (
+              <>
+                <View
+                  style={{ width: 1, height: 20, backgroundColor: colors.border }}
+                />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: colors.warning + '15',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.warning + '30',
+                    gap: 4
+                  }}
+                >
+                  <ArrowUpToLine size={11} color={colors.warning} />
+                  <Text
+                    style={{
+                      color: colors.warning,
+                      fontSize: 11,
+                      fontWeight: '600'
+                    }}
+                  >
+                    Auto {autoBumpMinutes}m
+                  </Text>
+                </View>
+              </>
+            ) : null}
+
             {/* Divider */}
             <View
               style={{ width: 1, height: 20, backgroundColor: colors.border }}
@@ -2173,15 +2280,20 @@ const KitchenDisplayScreen = () => {
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
             >
               {selectedStation?.station_name && (
-                <Text
-                  style={{
-                    color: colors.label,
-                    fontSize: 12,
-                    fontWeight: '500'
-                  }}
+                <TouchableOpacity
+                  onPress={handleStationTripleTap}
+                  activeOpacity={1}
                 >
-                  {selectedStation.station_name}
-                </Text>
+                  <Text
+                    style={{
+                      color: colors.label,
+                      fontSize: 12,
+                      fontWeight: '500'
+                    }}
+                  >
+                    {selectedStation.station_name}
+                  </Text>
+                </TouchableOpacity>
               )}
               {selectedStation?.station_name && (
                 <Text style={{ color: colors.muted, fontSize: 12 }}>|</Text>

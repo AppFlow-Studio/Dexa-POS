@@ -323,14 +323,14 @@ export class OrderService {
     }
 
     if (__DEV__) console.log(
-      `[OrderService:processPayment] ====== CALLING process_payment_v7 ======`,
+      `[OrderService:processPayment] ====== CALLING process_payment_v8 ======`,
     );
     if (__DEV__) console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
     if (__DEV__) console.log(
       `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`,
     );
 
-    const { data, error } = await client.rpc("process_payment_v7", params);
+    const { data, error } = await client.rpc("process_payment_v8", params);
 
     if (error) {
       console.error(`[OrderService:processPayment] FAILED:`, error);

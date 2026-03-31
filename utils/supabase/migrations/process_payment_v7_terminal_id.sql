@@ -1,7 +1,7 @@
 -- Drop existing function so we can add the new p_terminal_id parameter
-DROP FUNCTION IF EXISTS process_payment_v7(uuid, text, numeric, numeric, numeric, jsonb, uuid, jsonb, integer, integer, boolean);
+DROP FUNCTION IF EXISTS process_payment_v8(uuid, text, numeric, numeric, numeric, jsonb, uuid, jsonb, integer, integer, boolean);
 
-CREATE OR REPLACE FUNCTION process_payment_v7(
+CREATE OR REPLACE FUNCTION process_payment_v8(
     p_order_id uuid,
     p_payment_method text,
     p_amount numeric DEFAULT NULL,
@@ -335,6 +335,7 @@ BEGIN
         v_tax_portion := v_items_tax;
 
         -- Build detailed items JSON with allocated quantities
+        -- NOTE: This runs BEFORE the UPDATE below so quantities are pre-update (correct)
         WITH payment_calc AS (
             SELECT
                 oi.id,
@@ -342,6 +343,7 @@ BEGIN
                 oi.quantity AS original_qty,
                 oi.unit_price,
                 oi.cash_price,
+                oi.tax_rate,
                 LEAST(
                     COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
                     oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
@@ -363,7 +365,9 @@ BEGIN
             'order_item_id', pc.id,
             'item_name', pc.item_name,
             'quantity_paid', pc.qty_paying,
+            'original_quantity', pc.original_qty,
             'unit_price', CASE WHEN v_is_cash THEN pc.cash_price ELSE pc.unit_price END,
+            'tax_rate', COALESCE(pc.tax_rate, 0),
             'prorated_discount', pc.prorated_discount,
             'subtotal', CASE WHEN v_is_cash
                 THEN (pc.qty_paying * pc.cash_price) - pc.prorated_discount
@@ -468,6 +472,22 @@ BEGIN
               AND is_voided = false
               AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
 
+            -- Build items JSON for response BEFORE the update (captures correct remaining qty)
+            SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                'order_item_id', oi.id,
+                'item_name', oi.item_name,
+                'quantity_paid', (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
+                'original_quantity', oi.quantity,
+                'unit_price', CASE WHEN v_use_cash_pricing THEN oi.cash_price ELSE oi.unit_price END,
+                'discount_amount', COALESCE(oi.discount_amount, 0),
+                'tax_rate', COALESCE(oi.tax_rate, 0),
+                'subtotal', (oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0))
+                            * CASE WHEN v_use_cash_pricing THEN oi.cash_price ELSE oi.unit_price END
+            )), '[]'::jsonb)
+            INTO v_covered_items_json
+            FROM public.order_items oi
+            WHERE oi.id = ANY(v_covered_items);
+
             -- CRITICAL: Mark ALL remaining items as paid
             -- Set paid_quantity = quantity + refunded_quantity so effective_unpaid becomes 0
             UPDATE public.order_items
@@ -478,18 +498,6 @@ BEGIN
             WHERE order_id = p_order_id
               AND is_voided = false
               AND (quantity - COALESCE(paid_quantity, 0) + COALESCE(refunded_quantity, 0)) > 0;
-
-            -- Build items JSON for response
-            SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                'order_item_id', oi.id,
-                'item_name', oi.item_name,
-                'quantity_paid', oi.quantity,
-                'unit_price', oi.price_paid,
-                'subtotal', oi.quantity * oi.price_paid
-            )), '[]'::jsonb)
-            INTO v_covered_items_json
-            FROM public.order_items oi
-            WHERE oi.id = ANY(v_covered_items);
 
         ELSE
             -- ========================================
@@ -698,29 +706,8 @@ BEGIN
     -- 8. Per-Item: Create order_payment_items
     --    NOTE: Accounts for refunded_quantity in effective unpaid calculation
     -- ============================================
+    -- Derive order_payment_items from v_covered_items_json (built BEFORE paid_quantity UPDATE)
     IF v_is_item_payment AND array_length(v_covered_items, 1) > 0 THEN
-        WITH payment_calc AS (
-            SELECT
-                oi.id,
-                oi.price_paid,
-                oi.tax_rate,
-                -- effective_unpaid = quantity - paid_quantity + refunded_quantity
-                LEAST(
-                    COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
-                    oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
-                ) AS qty_paid,
-                ROUND(
-                    COALESCE(oi.discount_amount, 0) *
-                    LEAST(
-                        COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)),
-                        oi.quantity - COALESCE(oi.paid_quantity, 0) + COALESCE(oi.refunded_quantity, 0)
-                    )::numeric / NULLIF(oi.quantity, 0)
-                , 2) AS prorated_discount
-            FROM jsonb_array_elements(p_item_allocations) AS alloc
-            JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
-            WHERE oi.order_id = p_order_id
-              AND oi.is_voided = false
-        )
         INSERT INTO public.order_payment_items (
             order_payment_id,
             order_item_id,
@@ -731,12 +718,12 @@ BEGIN
         )
         SELECT
             v_payment_id,
-            pc.id,
-            pc.qty_paid,
-            pc.price_paid,
-            (pc.qty_paid * pc.price_paid) - pc.prorated_discount,
-            ROUND(((pc.qty_paid * pc.price_paid) - pc.prorated_discount) * COALESCE(pc.tax_rate, 0) / 100, 2)
-        FROM payment_calc pc;
+            (ci->>'order_item_id')::uuid,
+            (ci->>'quantity_paid')::integer,
+            (ci->>'unit_price')::numeric,
+            (ci->>'subtotal')::numeric,
+            ROUND((ci->>'subtotal')::numeric * COALESCE((ci->>'tax_rate')::numeric, 0) / 100, 2)
+        FROM jsonb_array_elements(v_covered_items_json) AS ci;
 
     ELSIF v_is_full_remaining AND array_length(v_covered_items, 1) > 0 THEN
         INSERT INTO public.order_payment_items (
@@ -749,15 +736,26 @@ BEGIN
         )
         SELECT
             v_payment_id,
-            oi.id,
-            oi.quantity,
-            oi.price_paid,
-            oi.quantity * oi.price_paid - ROUND(COALESCE(oi.discount_amount, 0), 2),
-            ROUND((oi.quantity * oi.price_paid - ROUND(COALESCE(oi.discount_amount, 0), 2)) * COALESCE(oi.tax_rate, 0) / 100, 2)
-        FROM public.order_items oi
-        WHERE oi.id = ANY(v_covered_items)
-          AND oi.order_id = p_order_id
-          AND oi.is_voided = false;
+            (ci->>'order_item_id')::uuid,
+            (ci->>'quantity_paid')::integer,
+            (ci->>'unit_price')::numeric,
+            (ci->>'quantity_paid')::integer * (ci->>'unit_price')::numeric
+                - ROUND(COALESCE((ci->>'discount_amount')::numeric, 0)
+                        * (ci->>'quantity_paid')::integer
+                        / NULLIF((ci->>'original_quantity')::integer, 0)
+                  , 2),
+            ROUND(
+                ((ci->>'quantity_paid')::integer * (ci->>'unit_price')::numeric
+                  - ROUND(COALESCE((ci->>'discount_amount')::numeric, 0)
+                          * (ci->>'quantity_paid')::integer
+                          / NULLIF((ci->>'original_quantity')::integer, 0)
+                    , 2))
+                * COALESCE((ci->>'tax_rate')::numeric, 0) / 100
+            , 2)
+        FROM jsonb_array_elements(v_covered_items_json) AS ci;
+        -- NOTE: Split-even and partial-amount payments intentionally have no
+        -- order_payment_items records. They cover a proportional share of the
+        -- whole order, not specific items.
     END IF;
 
     -- ============================================

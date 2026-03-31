@@ -370,7 +370,7 @@ export default function CastlesTerminalTestScreen() {
         addLog(`  Amount: ${result.raw.txnAmtTrans ?? "N/A"}`, "data");
 
         if (result.terminalResponse) {
-          addLog("  Terminal response JSONB (for process_payment_v7):", "data");
+          addLog("  Terminal response JSONB (for process_payment_v8):", "data");
           addLog(
             `  ${JSON.stringify(result.terminalResponse).slice(0, 300)}`,
             "data",

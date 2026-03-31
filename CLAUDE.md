@@ -24,6 +24,7 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 ## Architecture
 
 ### Tech Stack
+
 - **Framework**: Expo SDK 53, React Native 0.79 (New Architecture + Hermes enabled)
 - **Routing**: Expo Router (file-based, `app/` directory) with typed routes
 - **Styling**: NativeWind 4 (Tailwind for RN), `global.css` entry point
@@ -33,14 +34,17 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 - **Money math**: `decimal.js` / `big.js` — never use floating point for currency
 
 ### Path Aliases
+
 `@/` and `~/` both resolve to the project root (configured in `tsconfig.json` and `babel.config.js`).
 
 ### Route Groups
+
 - `app/(auth)/` — Login, PIN login, store/station selection
 - `app/(main)/` — All main screens: order-processing, tables, kds, menu, inventory, settings, analytics, scheduling
 - `app/(profiles-and-timeclock)/` — Employee profiles and time clock
 
-### Provider Hierarchy (app/_layout.tsx)
+### Provider Hierarchy (app/\_layout.tsx)
+
 `ClerkProvider` > `TanstackProvider` > `PosSyncProvider` > `GestureHandlerRootView` > `BottomSheetModalProvider` > `ThemeProvider` > `ToastProvider` > `LoadingProvider` > `SessionKickListenerProvider` > `RemoteActionsProvider` > `CFDProvider`
 
 ### State Management Patterns
@@ -48,6 +52,7 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 **Zustand + MMKV**: Stores use `zustand` with optional MMKV persistence (`lib/storage.ts`, debounced 300ms). Major stores (`useOrderStore`, `useTableSessionStore`) use **Immer middleware** for mutative updates.
 
 **Key stores**:
+
 - `useOrderStore` (~10K lines) — Orders keyed by local `orderId` in `ordersById`. Has `dbOrderIdIndex` for O(1) reverse lookup of `db_order_id` → local `orderId`. Uses `persistableOrderIds` to limit what gets persisted.
 - `useTableSessionStore` — Dispatch pattern with internal action types (`TableEvent`, `SET`, `SYNC`, `CLEAR`, `PATCH`). `dispatchAction()` is the high-level API for components.
 - `useMenuStore` — Menu items, categories, modifiers with MMKV persistence.
@@ -56,20 +61,24 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 **Granular selectors**: Use `useActiveOrder()` and `useOrder(orderId)` from `stores/selectors/orderSelectors.ts` instead of subscribing to full `ordersById`.
 
 ### Table Lifecycle
+
 `lib/tableStateMachine.ts` — Pure function state machine. Local-only statuses (`seating`, `ordering`, `paying`, `closing`) never sync to backend. `isLocalOnlyStatus()` guards against realtime overwrites.
 
 **Session side effects**: `lib/sessionActions.ts` defines `SessionAction` discriminated union. Effects registered via `registerSessionSideEffect()` in `services/sessionEffects/`. Fired asynchronously via `queueMicrotask`.
 
 ### Offline-First Sync
+
 - `services/offlineSyncService.ts` — Queue-based offline sync with retry
 - `services/offlineSyncInit.ts` — Bootstrap and initialization
 - `services/conflictDetectionService.ts` — Multi-station conflict resolution
 - Network status via `@react-native-community/netinfo`, tracked in `useSyncStatusStore`
 
 ### Dual Pricing
+
 `CartItem` has both `price`/`subtotal`/`taxAmount` (card) and `cashPrice`/`cashSubtotal`/`cashTaxAmount` (cash). `OrderPaymentItemCoverage` only stores card prices.
 
 ### Payment Processing
+
 - Dejavoo terminal integration via SPIN API (`lib/payments/dejavoo-spin-api.ts`)
 - Castles terminal integration via TCP socket (`services/terminals/castles-service.ts`)
   - **TCP framing**: no delimiter (raw JSON, no framing suffix)
@@ -84,11 +93,13 @@ EAS Build profiles: `development`, `preview`, `production` (configured in `eas.j
 - Hardware detection: `services/hardware/deviceDetection.ts`
 
 ### Printing
+
 - `services/printing/PrinterService.ts` — Queue-based print management
 - Drivers in `services/printing/drivers/` (ESC/POS, Star Micronics)
 - Renderers in `services/printing/renderers/` (receipts, kitchen tickets)
 
 ### Database Types
+
 `database.types.ts` (root) — Auto-generated Supabase types. Do not edit manually. SQL migrations in `utils/supabase/migrations/`.
 
 ## Testing
@@ -106,50 +117,66 @@ EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 ## Key Conventions
 
 - KDS mode skips POS-only initialization (timeclock, PTO, draft cleanup, print queue) — gated by `isKDS` checks in `_layout.tsx`
-- Supabase RPC functions (with versioned naming like `process_payment_v7`) are the primary backend API
+- Supabase RPC functions (with versioned naming like `process_payment_v8`) are the primary backend API
 - Real-time sync uses Supabase broadcast channels per location
 - `useOrderStore.syncOrderFromBackendComplete(orderId)` expects the **local store key**, not `db_order_id`
-- Solution: Shared Singleton for Castles Terminals 
+- Solution: Shared Singleton for Castles Terminals
 
 ## Workflow Orchestration
+
 ## 1. Plan Mode Default
+
 • Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
 • If something goes sideways, STOP and re-plan immediately - don't keep pushing
 • Use plan mode for verification steps, not just building
 • Write detailed specs upfront to reduce ambiguity
+
 ## 2. Subagent Strategy
+
 • Use subagents liberally to keep main context window clean
 • Offload research, exploration, and parallel analysis to subagents
 • For complex problems, throw more compute at it via subagents
 • One task per subagent for focused execution
+
 ## 3. Self-Improvement Loop
+
 • After ANY correction from the user: update tasks/lessons.md with the pattern
 • Write rules for yourself that prevent the same mistake
 • Ruthlessly iterate on these lessons until mistake rate drops
 • Review lessons at session start for relevant project
+
 ## 4. Verification Before Done
+
 • Never mark a task complete without proving it works
 • Diff behavior between main and your changes when relevant
 • Ask yourself: "Would a staff engineer approve this?"
 • Run tests, check logs, demonstrate correctness
+
 ## 5. Demand Elegance (Balanced)
+
 • For non-trivial changes: pause and ask "is there a more elegant way?"
 • If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
 • Skip this for simple, obvious fixes - don't over-engineer
 • Challenge your own work before presenting it
+
 ## 6. Autonomous Bug Fixing
+
 • When given a bug report: just fix it. Don't ask for hand-holding
 • Point at logs, errors, failing tests - then resolve them
 • Zero context switching required from the user
 • Go fix failing Cl tests without being told how
-##  Task Management
+
+## Task Management
+
 1. Plan First: Write plan to tasks/todo. md with checkable items
 2. Verify Plan: Check in before starting implementation
 3. Track Progress: Mark items complete as you go
 4. Explain Changes: High-level summary at each step
 5. Document Results: Add review section to tasks/todo.md
 6. Capture Lessons: Update tasks/lessons. md after corrections
-##  Core Principles
+
+## Core Principles
+
 • Simplicity First: Make every change as simple as possible. Impact minimal code.
 • No Laziness: Find root causes. No temporary fixes. Senior developer standards.
 • Minimal Impact: Changes should only touch what's necessary. Avoid introducing bugs.

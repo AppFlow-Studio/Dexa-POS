@@ -53,6 +53,12 @@ BEGIN
       FROM public.order_payments op
       WHERE op.order_id = o.id
     ),
+    'payment_items', (
+      SELECT COALESCE(json_agg(row_to_json(opi.*)), '[]'::json)
+      FROM public.order_payment_items opi
+      JOIN public.order_payments op ON op.id = opi.order_payment_id
+      WHERE op.order_id = o.id
+    ),
     'reversals', (
       SELECT COALESCE(json_agg(row_to_json(r.*)), '[]'::json)
       FROM public.reversals r

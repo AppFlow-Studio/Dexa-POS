@@ -8,7 +8,8 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { router } from "expo-router";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import Animated, { SlideInLeft, SlideOutUp, LinearTransition } from "react-native-reanimated";
 import OrderCard from "./OrderCard";
 import OrderLineItemsModal from "./OrderLineItemsModal";
 import OrderTabs from "./OrderTabs";
@@ -70,7 +71,7 @@ const OrderLineSectionContent: React.FC = () => {
   }, [visibleOrders, activeTab]);
 
   // Ref to control the FlatList for scrolling
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<Animated.FlatList<OrderProfile>>(null);
   // Ref to keep track of the current scroll position index
   const scrollIndexRef = useRef(0);
 
@@ -161,32 +162,37 @@ const OrderLineSectionContent: React.FC = () => {
         </View>
       </View>
 
-      <FlatList
+      <Animated.FlatList
         ref={flatListRef}
         data={sortedFilteredOrders}
         keyExtractor={(item) => item.id}
         horizontal
         showsHorizontalScrollIndicator={false}
         className="mt-4"
+        itemLayoutAnimation={LinearTransition.springify().damping(18).stiffness(120)}
         // OPTIMIZED: FlatList performance props
         initialNumToRender={4}
         maxToRenderPerBatch={4}
         windowSize={3}
-        removeClippedSubviews={true}
         getItemLayout={(data, index) => ({
           length: CARD_WIDTH_WITH_MARGIN,
           offset: CARD_WIDTH_WITH_MARGIN * index,
           index,
         })}
         renderItem={({ item }) => (
-          <OrderCard
-            order={item}
-            onViewItems={() => handleViewItems(item.id)}
-            onComplete={() => handleCompleteOrder(item.id)}
-            onRetrieve={() => handleRetrieve(item.id)}
-            onMarkDone={() => handleMarkDone(item.id)}
-            onReopenCheck={() => handleReopenCheck(item.id)}
-          />
+          <Animated.View
+            entering={SlideInLeft.duration(350).springify().damping(16)}
+            exiting={SlideOutUp.duration(250)}
+          >
+            <OrderCard
+              order={item}
+              onViewItems={() => handleViewItems(item.id)}
+              onComplete={() => handleCompleteOrder(item.id)}
+              onRetrieve={() => handleRetrieve(item.id)}
+              onMarkDone={() => handleMarkDone(item.id)}
+              onReopenCheck={() => handleReopenCheck(item.id)}
+            />
+          </Animated.View>
         )}
         ListEmptyComponent={
           <View className="h-40 items-center justify-center w-full">

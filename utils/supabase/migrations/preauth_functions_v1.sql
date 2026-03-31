@@ -212,7 +212,7 @@ BEGIN
   v_new_amount_due := GREATEST(COALESCE(v_order.total_amount, 0) - v_new_amount_paid, 0);
   v_order_fully_paid := v_new_amount_due <= 0;
 
-  -- Calculate subtotal/tax portion (same formula as process_payment_v7 full-remaining path)
+  -- Calculate subtotal/tax portion (same formula as process_payment_v8 full-remaining path)
   IF COALESCE(v_order.card_total, 0) > 0 THEN
     v_subtotal_portion := ROUND(p_capture_amount * (COALESCE(v_order.card_subtotal, 0) / v_order.card_total), 2);
   END IF;

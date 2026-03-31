@@ -830,10 +830,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         // All configured splits are done — show success
+        // Use paymentAmount/tipAmount (this split only), not paymentsTotal/tipsTotal (all splits)
         set({
           completedPaymentInfo: {
-            totalPaid: paymentsTotal,
-            totalTips: tipsTotal,
+            totalPaid: paymentAmount,
+            totalTips: tipAmount || 0,
             paymentMethod: method,
             transactionId: activeOrderId,
           },
@@ -909,17 +910,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Refresh order state after payment
       const updatedOrder = useOrderStore.getState().ordersById[activeOrderId];
 
-      // Capture payment info for success view
-      // Calculate effective total paid (subtract refunded amounts)
+      // Capture payment info for success view — use this payment's exact
+      // amount/tip directly. Do NOT sum all payments: by the time
+      // syncPaymentToBackend resolves, realtime broadcasts may have merged
+      // extra entries into the array, inflating the displayed total.
       const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
-      const paymentsTotal = (finalOrder?.payments || []).reduce(
-        (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
-        0,
-      );
-      const tipsTotal = (finalOrder?.payments || []).reduce(
-        (sum, p) => sum + ((p as any)?.tipAmount || p?.tip_amount || 0),
-        0,
-      );
 
       // ================================================================
       // NEW (Phase 4.2): Emit order:paid event
@@ -927,10 +922,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Subscribers handle: archiving takeout orders, updating table status,
       // analytics, inventory deduction, etc.
       // Kitchen send is fire-and-forget inline (parallelized with payment RPC).
+      const orderPaymentsTotal = (finalOrder?.payments || []).reduce(
+        (sum, p) => sum + (p.amount || 0) - (p.refundedAmount || 0),
+        0,
+      );
       const eventPayload: OrderPaidEvent = {
         orderId: activeOrderId,
         orderType: finalOrder?.order_type || "unknown",
-        totalAmount: paymentsTotal,
+        totalAmount: orderPaymentsTotal,
         cashAmount: (finalOrder?.payments || [])
           .filter((p) => String(p.method).toLowerCase() === "cash")
           .reduce((sum, p) => sum + (p.amount || 0), 0),
@@ -943,8 +942,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       set({
         completedPaymentInfo: {
-          totalPaid: paymentsTotal,
-          totalTips: tipsTotal,
+          totalPaid: paymentAmount,   // exactly what was charged this payment
+          totalTips: tipAmount || 0,  // exactly this payment's tip
           paymentMethod: method,
           transactionId: activeOrderId,
         },

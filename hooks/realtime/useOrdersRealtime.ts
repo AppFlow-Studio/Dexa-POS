@@ -241,6 +241,17 @@ export interface BroadcastOrderData {
   order_payments?: BroadcastOrderPaymentData[];
   reversals?: Array<Record<string, unknown>>;
   order_refund_items?: Array<Record<string, unknown>>;
+
+  // Per-payment item coverage (from order_payment_items junction table)
+  payment_items?: Array<{
+    id: string;
+    order_payment_id: string;
+    order_item_id: string;
+    quantity_paid: number;
+    unit_price_paid: number;
+    subtotal_paid: number;
+    tax_paid: number | null;
+  }>;
 }
 
 export interface OrderBroadcastPayload {
