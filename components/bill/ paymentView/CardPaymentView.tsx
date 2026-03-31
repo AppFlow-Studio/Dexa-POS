@@ -103,6 +103,7 @@ const CardPaymentView = () => {
   const {
     showTipSelection,
     setBaseAmount,
+    updateTip,
     tipResponse,
     clearTipResponse,
     showProcessing,
@@ -166,15 +167,21 @@ const CardPaymentView = () => {
 
   useEffect(() => {
     clearTipResponse();
+    updateTip(0, null);
 
     return () => {
+      updateTip(0, null);
       setBaseAmount(null);
       if (tipAdjustTimeoutRef.current) {
         clearTimeout(tipAdjustTimeoutRef.current);
         tipAdjustTimeoutRef.current = null;
       }
     };
-  }, []); // Only run once on mount
+  }, [clearTipResponse, setBaseAmount, updateTip]); // Only run once on mount
+
+  useEffect(() => {
+    updateTip(tipAmount, selectedTipPreset);
+  }, [tipAmount, selectedTipPreset, updateTip]);
 
   // Post-capture: Handle CFD tip response for tip adjust
   useEffect(() => {
@@ -184,6 +191,10 @@ const CardPaymentView = () => {
     const customerTipCents = tipResponse.tipAmount; // cents from CFD
     const customerTip = customerTipCents / 100; // dollars
     const posTip = captured.tipAmount; // dollars (what was charged)
+
+    updateTip(customerTip, tipResponse.tipPercentage);
+    showProcessing("card");
+    clearTipResponse();
 
     // Clear the auto-timeout
     if (tipAdjustTimeoutRef.current) {
@@ -280,7 +291,7 @@ const CardPaymentView = () => {
     };
 
     performTipAdjust();
-  }, [tipResponse, status]);
+  }, [clearTipResponse, showProcessing, status, tipResponse, updateTip]);
 
   // Logic: Process terminal payment (Castles or Dejavoo)
   useEffect(() => {

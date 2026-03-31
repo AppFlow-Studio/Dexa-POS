@@ -23,6 +23,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
   } = useCFDDisplayData();
 
   const isCash = paymentMethod === "cash";
+  const isManual = paymentMethod === "manual";
   const amountDue = isCash
     ? amountPaid > 0
       ? outstandingTotal
@@ -57,10 +58,14 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
         </View>
         <View style={styles.headerRight}>
           <Text style={styles.paymentMethodLabel}>
-            {isCash ? "Cash Payment" : "Card Payment"}
+            {isCash ? "Cash Payment" : isManual ? "Manual Card Entry" : "Card Payment"}
           </Text>
           <Text style={styles.headerSubtitle}>
-            {isCash ? "Hand cash to cashier" : "Present card to terminal"}
+            {isCash
+              ? "Hand cash to cashier"
+              : isManual
+                ? "Cashier is entering your card details"
+                : "Present card to terminal"}
           </Text>
         </View>
       </View>
@@ -69,7 +74,7 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
       <View style={styles.body}>
         {/* Payment method icon */}
         <View style={styles.iconCircle}>
-          {processing && !isCash ? (
+          {processing && !isCash && !isManual ? (
             <ActivityIndicator size="large" color={colors.teal} />
           ) : isCash ? (
             <Banknote size={40} color={colors.teal} />
@@ -97,10 +102,12 @@ export function PaymentScreen({ processing }: { processing?: boolean }) {
 
         {/* Instruction */}
         <Text style={styles.instruction}>
-          {processing && !isCash
+          {processing && !isCash && !isManual
             ? "Processing payment..."
             : isCash
               ? "Please hand cash to the cashier"
+              : isManual
+                ? "Please wait while your payment is entered securely"
               : processing
                 ? "Processing payment..."
                 : "Tap, insert, or swipe your card"}

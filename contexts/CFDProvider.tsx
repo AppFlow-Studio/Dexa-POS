@@ -71,8 +71,8 @@ interface CFDContextType {
   setBaseAmount: (amount: number | null) => void;
   setScreenState: (state: CFDScreenState | null) => void;
   clearTipResponse: () => void;
-  showPayment: (paymentMethod?: "cash" | "card") => void;
-  showProcessing: (paymentMethod?: "cash" | "card") => void;
+  showPayment: (paymentMethod?: "cash" | "card" | "manual") => void;
+  showProcessing: (paymentMethod?: "cash" | "card" | "manual") => void;
   showApproved: () => void;
   showDeclined: () => void;
   showIdle: () => void;
@@ -100,8 +100,8 @@ const noopCFDValue: CFDContextType = {
   setBaseAmount: () => {},
   setScreenState: () => {},
   clearTipResponse: () => {},
-  showPayment: (_paymentMethod?: "cash" | "card") => {},
-  showProcessing: (_paymentMethod?: "cash" | "card") => {},
+  showPayment: (_paymentMethod?: "cash" | "card" | "manual") => {},
+  showProcessing: (_paymentMethod?: "cash" | "card" | "manual") => {},
   showApproved: () => {},
   showDeclined: () => {},
   showIdle: () => {},
@@ -143,7 +143,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
   }>({ amount: 0, percentage: null });
   const [activeScreenState, setActiveScreenState] =
     useState<CFDScreenState | null>(null);
-  const [activePaymentMethod, setActivePaymentMethod] = useState<"cash" | "card" | null>(null);
+  const [activePaymentMethod, setActivePaymentMethod] = useState<"cash" | "card" | "manual" | null>(null);
   const [baseAmountOverride, setBaseAmountOverride] = useState<number | null>(
     null,
   );
@@ -155,7 +155,7 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     total: number; totalCash: number; totalCard: number;
     tipAmount: number; savingsAmount: number;
     outstandingTotal: number; amountPaid: number;
-    paymentMethod: "cash" | "card" | null;
+    paymentMethod: "cash" | "card" | "manual" | null;
   } | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const builtinIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -903,8 +903,9 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     if (paymentView === "card" || paymentView === "manual") {
       lastShowPaymentAtRef.current = Date.now();
       setActiveScreenState("payment");
-      setActivePaymentMethod("card");
-      controllerRef.current?.showPayment("card");
+      const cfdPaymentMethod = paymentView === "manual" ? "manual" : "card";
+      setActivePaymentMethod(cfdPaymentMethod);
+      controllerRef.current?.showPayment(cfdPaymentMethod);
     } else if (
       paymentView === "cash" ||
       paymentView === "success" ||
@@ -942,6 +943,21 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
 
   const updateTip = useCallback((amount: number, percentage: number | null) => {
     setCurrentTip({ amount, percentage });
+
+    const frozen = frozenTotalsRef.current;
+    if (frozen) {
+      const nextTipAmount = Math.round(amount * 100);
+      const baseCardTotal = Math.max(0, frozen.totalCard - frozen.tipAmount);
+      const baseCashTotal = Math.max(0, frozen.totalCash - frozen.tipAmount);
+
+      frozenTotalsRef.current = {
+        ...frozen,
+        tipAmount: nextTipAmount,
+        total: baseCardTotal + nextTipAmount,
+        totalCard: baseCardTotal + nextTipAmount,
+        totalCash: baseCashTotal + nextTipAmount,
+      };
+    }
   }, []);
 
   const setBaseAmount = useCallback((amount: number | null) => {
@@ -957,14 +973,14 @@ function CFDServerProvider({ children }: { children: React.ReactNode }) {
     setTipResponse(null);
   }, []);
 
-  const showPayment = useCallback((paymentMethod?: "cash" | "card") => {
+  const showPayment = useCallback((paymentMethod?: "cash" | "card" | "manual") => {
     lastShowPaymentAtRef.current = Date.now();
     setActiveScreenState("payment");
     setActivePaymentMethod(paymentMethod ?? null);
     controllerRef.current?.showPayment(paymentMethod);
   }, []);
 
-  const showProcessing = useCallback((paymentMethod?: "cash" | "card") => {
+  const showProcessing = useCallback((paymentMethod?: "cash" | "card" | "manual") => {
     const cardTotal = Math.round((activeOrderTotal + currentTip.amount) * 100);
     const cashTotal = Math.round(((orderTotals?.cashTotal ?? activeOrderTotal) + currentTip.amount) * 100);
     const tipAmt = Math.round(currentTip.amount * 100);

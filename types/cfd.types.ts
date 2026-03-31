@@ -125,7 +125,7 @@ export interface CFDPayload {
   };
 
   // Payment method (when screenState is 'payment' or 'processing')
-  paymentMethod?: "cash" | "card" | null;
+  paymentMethod?: "cash" | "card" | "manual" | null;
 
   // Timestamp
   timestamp: number;

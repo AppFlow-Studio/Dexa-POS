@@ -55,7 +55,7 @@ export interface CFDDisplayData {
   loyaltyResult: CFDPayload["loyaltyResult"] | null;
 
   // Payment
-  paymentMethod: "cash" | "card" | null;
+  paymentMethod: "cash" | "card" | "manual" | null;
 }
 
 const CFDDisplayDataContext = createContext<CFDDisplayData | null>(null);

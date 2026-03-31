@@ -217,7 +217,7 @@ export class CFDController {
     savingsAmount: number;
     outstandingTotal: number;
     amountPaid: number;
-    paymentMethod?: "cash" | "card" | null;
+    paymentMethod?: "cash" | "card" | "manual" | null;
     layout?: CFDPayload["layout"];
     orderingPanelImages?: CFDPayload["orderingPanelImages"];
     tipConfig?: CFDPayload["tipConfig"];
@@ -261,7 +261,7 @@ export class CFDController {
   /**
    * Show "Present Card" screen
    */
-  showPayment(paymentMethod?: "cash" | "card"): void {
+  showPayment(paymentMethod?: "cash" | "card" | "manual"): void {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: "payment",
@@ -273,7 +273,7 @@ export class CFDController {
   /**
    * Show processing spinner
    */
-  showProcessing(paymentMethod?: "cash" | "card"): void {
+  showProcessing(paymentMethod?: "cash" | "card" | "manual"): void {
     this.broadcast({
       ...(this.lastPayload as CFDPayload),
       screenState: "processing",

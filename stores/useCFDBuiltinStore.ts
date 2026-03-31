@@ -41,7 +41,7 @@ interface CFDBuiltinState {
   orderingPanelImages: NonNullable<CFDPayload["orderingPanelImages"]>;
   tipConfig: CFDPayload["tipConfig"] | null;
   carouselImages: string[];
-  paymentMethod: "cash" | "card" | null;
+  paymentMethod: "cash" | "card" | "manual" | null;
 
   // Actions
   update: (data: Partial<Omit<CFDBuiltinState, "update" | "reset">>) => void;
