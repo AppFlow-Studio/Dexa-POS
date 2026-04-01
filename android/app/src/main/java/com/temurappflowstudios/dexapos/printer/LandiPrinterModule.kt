@@ -106,15 +106,11 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
 
             val doc = JSONObject(documentJson)
             val nodes = doc.getJSONArray("nodes")
-
-            // Render each node
+            p.setFormat(ASCSize.DOT24x12, ASCScale.SC1x1)  // reset before rendering
+            Log.d(TAG, "Starting print job: ${nodes.length()} nodes")
             for (i in 0 until nodes.length()) {
                 renderNode(p, nodes.getJSONObject(i))
             }
-
-            // Feed and cut before starting print
-            p.feedLine(3)
-            p.cutPaper()
 
             // Start printing
             p.startPrint(object : OnPrintListener {
@@ -124,8 +120,17 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 override fun onFail(errorCode: Int) {
-                    Log.e(TAG, "Print failed with error code: $errorCode")
-                    promise.reject("PRINT_FAILED", "Print failed (error: $errorCode)")
+                    Log.e(TAG, "Print failed with error code: $errorCode (0x${errorCode.toString(16)})")
+                    // Reset the device so the next print job isn't blocked by this error state
+                    try {
+                        printer?.closeDevice()
+                        printer?.openDevice(0)
+                        Log.d(TAG, "Printer device reset after failure")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Printer reset failed: ${e.message}")
+                        isInitialized = false
+                    }
+                    promise.reject("PRINT_FAILED", "Print failed (error: 0x${errorCode.toString(16)})")
                 }
             })
         } catch (e: Exception) {
@@ -139,16 +144,43 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun openCashDrawer(promise: Promise) {
         try {
-            if (!isInitialized || cashBox == null) {
-                promise.reject("NOT_INITIALIZED", "Printer service not initialized. Call initPrinter() first.")
-                return
+            var opened = false
+
+            // Path 1: OMNI SDK CashBox API (Landi device DK port)
+            if (cashBox != null) {
+                try {
+                    cashBox!!.openBox()
+                    Log.d(TAG, "Cash drawer opened via CashBox")
+                    opened = true
+                } catch (e: Exception) {
+                    Log.w(TAG, "CashBox.openBox() failed: ${e.message}")
+                }
             }
 
-            cashBox!!.openBox()
-            Log.d(TAG, "Cash drawer opened")
-            promise.resolve(true)
+            // Path 2: Printer-based kick (via AIDL openCashDrawer if available)
+            if (!opened) {
+                val p = printer
+                if (p != null) {
+                    try {
+                        val method = p.javaClass.getMethod("openCashDrawer")
+                        method.invoke(p)
+                        Log.d(TAG, "Cash drawer opened via Printer.openCashDrawer()")
+                        opened = true
+                    } catch (e: NoSuchMethodException) {
+                        Log.w(TAG, "Printer.openCashDrawer() not available in this SDK build")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Printer.openCashDrawer() failed: ${e.message}")
+                    }
+                }
+            }
+
+            if (opened) {
+                promise.resolve(true)
+            } else {
+                promise.reject("DRAWER_FAILED", "No cash drawer path available (cashBox=${cashBox != null}, printer=${printer != null})")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to open cash drawer: ${e.message}")
+            Log.e(TAG, "Cash drawer failed: ${e.message}")
             promise.reject("DRAWER_FAILED", "Failed to open cash drawer: ${e.message}", e)
         }
     }
@@ -231,10 +263,10 @@ class LandiPrinterModule(private val reactContext: ReactApplicationContext) :
         val bold = formatObj.optBoolean("bold", false)
 
         val scale = when {
-            (doubleH && doubleW) || (bold && doubleH) -> ASCScale.SC2x2
-            doubleH -> ASCScale.SC1x2
-            doubleW || bold -> ASCScale.SC2x1
-            else -> ASCScale.SC1x1
+            doubleH && doubleW -> ASCScale.SC2x2  // explicit both → 2D scale
+            doubleH -> ASCScale.SC1x2             // tall text (bold or not)
+            doubleW -> ASCScale.SC2x1             // wide text (explicit only)
+            else -> ASCScale.SC1x1                // bold alone = normal size
         }
 
         p.setFormat(ASCSize.DOT24x12, scale)

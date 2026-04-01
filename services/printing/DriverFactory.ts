@@ -9,8 +9,8 @@ const driverCache = new Map<string, PrinterDriver>();
 
 export function getDriver(config: PrinterConfig): PrinterDriver {
   const existing = driverCache.get(config.id);
-  if (existing && existing.isConnected()) {
-    return existing;
+  if (existing) {
+    return existing;  // Always reuse — caller handles re-initialization
   }
 
   let driver: PrinterDriver;

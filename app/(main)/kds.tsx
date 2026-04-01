@@ -49,8 +49,9 @@ import {
 } from 'react-native'
 import Animated, {
   Easing,
+  FadeIn,
   FadeOut,
-  LinearTransition,
+  SequencedTransition,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -83,7 +84,8 @@ const MODIFIER_ADD_COLOR = '#0B5E56'
 const MANAGER_ROLES = ['merchant.manager', 'merchant.admin', 'merchant.owner']
 
 // ─── Memoized animation configs (avoid re-allocation per render) ─
-const LAYOUT_ANIM = LinearTransition.springify().damping(18).stiffness(200)
+const LAYOUT_ANIM = SequencedTransition.duration(300)
+const CARD_ENTER_ANIM = FadeIn.duration(200)
 const CARD_EXIT_ANIM = FadeOut.duration(150)
 
 // ─── Pulsing Dot (for connection status) ─────────────────────────
@@ -313,10 +315,7 @@ interface KDSTicketCardProps {
     newStatus: 'preparing' | 'ready' | 'served',
     cardPos?: CardPosition
   ) => void
-  bulkMode: boolean
   onToggleSelect: (id: string) => void
-  onFocus?: (ticketId: string | null) => void
-  isFocused?: boolean
   onLongPress?: (
     ticketId: string,
     ticket: KDSTicket,
@@ -332,16 +331,25 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
   ({
     ticket,
     onAdvance,
-    bulkMode,
     onToggleSelect,
-    onFocus,
-    isFocused,
     onLongPress,
     onItemPress,
     hideDoneItems,
     displaySettings,
     urgencyThresholds
   }) => {
+    // Subscribe to own focus state via Zustand selector — only focused/unfocused card re-renders
+    const isFocused = useKDSStore(
+      useCallback(
+        s => s.focusedTicketId === ticket.ticket_id,
+        [ticket.ticket_id]
+      )
+    )
+    const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
+
+    // Subscribe to bulkMode via Zustand selector — avoids parent re-render propagation
+    const bulkMode = useKDSStore(s => s.bulkMode)
+
     // Subscribe to own selection state via Zustand selector — only the toggled card re-renders
     const isSelected = useKDSStore(
       useCallback(
@@ -423,7 +431,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
         focusTimeoutRef.current = setTimeout(() => {
           // Only toggle focus if it's truly a single tap (no double-tap happened)
           firstTapStatusRef.current = null  // clear on single tap
-          onFocus?.(isFocused ? null : ticket.ticket_id)
+          setFocusedTicketId(isFocused ? null : ticket.ticket_id)
           focusTimeoutRef.current = null
         }, 300)
         return
@@ -992,10 +1000,7 @@ const KDSTicketCard = React.memo<KDSTicketCardProps>(
 
     return (
       prev.onAdvance === next.onAdvance &&
-      prev.bulkMode === next.bulkMode &&
       prev.onToggleSelect === next.onToggleSelect &&
-      prev.onFocus === next.onFocus &&
-      prev.isFocused === next.isFocused &&
       prev.onLongPress === next.onLongPress &&
       prev.onItemPress === next.onItemPress &&
       prev.hideDoneItems === next.hideDoneItems &&
@@ -1361,8 +1366,9 @@ const KitchenDisplayScreen = () => {
     position: { x: number; y: number }
   } | null>(null)
 
-  // Focused ticket state (single-tap selection)
-  const [focusedTicketId, setFocusedTicketId] = useState<string | null>(null)
+  // Focused ticket state (from store — each card subscribes individually for O(1) re-renders)
+  const focusedTicketId = useKDSStore(s => s.focusedTicketId)
+  const setFocusedTicketId = useKDSStore(s => s.setFocusedTicketId)
 
   // KDS logout handler
   const handleKDSLogout = useCallback(async () => {
@@ -1500,6 +1506,7 @@ const KitchenDisplayScreen = () => {
 
   // Auto-fire: pending → cooking after configured delay
   useEffect(() => {
+    
     if (!kdsAutoFireEnabled || !isReady) return
 
     const intervalId = setInterval(() => {
@@ -1928,15 +1935,13 @@ const KitchenDisplayScreen = () => {
     ({ item }: { item: KDSTicket }) => (
       <Animated.View
         style={{ width: columnWidthPct, paddingHorizontal: 2 }}
+        entering={CARD_ENTER_ANIM}
         exiting={CARD_EXIT_ANIM}
       >
         <KDSTicketCard
           ticket={item}
           onAdvance={advanceWithUndo}
-          bulkMode={bulkMode}
           onToggleSelect={toggleTicketSelection}
-          onFocus={setFocusedTicketId}
-          isFocused={focusedTicketId === item.ticket_id}
           onLongPress={handleTicketLongPress}
           onItemPress={workflowMode === '2-step' ? handleItemPress : undefined}
           hideDoneItems={kdsHideDoneItems}
@@ -1947,10 +1952,7 @@ const KitchenDisplayScreen = () => {
     ),
     [
       advanceWithUndo,
-      bulkMode,
       toggleTicketSelection,
-      setFocusedTicketId,
-      focusedTicketId,
       handleTicketLongPress,
       handleItemPress,
       workflowMode,
@@ -1963,9 +1965,13 @@ const KitchenDisplayScreen = () => {
 
   const renderDoneItem = useCallback(
     ({ item }: { item: KDSTicket }) => (
-      <View style={{ width: columnWidthPct, paddingHorizontal: 2 }}>
+      <Animated.View
+        style={{ width: columnWidthPct, paddingHorizontal: 2 }}
+        entering={CARD_ENTER_ANIM}
+        exiting={CARD_EXIT_ANIM}
+      >
         <KDSDoneTicketCard ticket={item} onRecall={recallDoneTicket} />
-      </View>
+      </Animated.View>
     ),
     [recallDoneTicket, columnWidthPct]
   )
@@ -2471,8 +2477,7 @@ const KitchenDisplayScreen = () => {
                   initialNumToRender={16}
                   maxToRenderPerBatch={8}
                   windowSize={5}
-                  removeClippedSubviews={false}
-                  extraData={bulkMode}
+                  removeClippedSubviews={true}
                   ListEmptyComponent={
                     <View
                       style={{
@@ -2511,11 +2516,12 @@ const KitchenDisplayScreen = () => {
               keyExtractor={keyExtractor}
               renderItem={renderDoneItem}
               numColumns={columnCount}
+              itemLayoutAnimation={LAYOUT_ANIM}
               contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
               initialNumToRender={16}
               maxToRenderPerBatch={8}
               windowSize={5}
-              removeClippedSubviews={false}
+              removeClippedSubviews={true}
               ListEmptyComponent={
                 <View
                   style={{

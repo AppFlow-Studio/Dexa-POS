@@ -190,6 +190,8 @@ export function inferCapabilities(model: StarPrinterModel): DiscoveredStarPrinte
     StarPrinterModel.TSP100IIIBI,
     StarPrinterModel.TSP100IIIU,
     StarPrinterModel.TSP100IIU_Plus,
+    StarPrinterModel.TSP100IV,
+    StarPrinterModel.TSP100IV_SK,
   ];
 
   const isGraphicsOnly = graphicsOnlyModels.includes(model);

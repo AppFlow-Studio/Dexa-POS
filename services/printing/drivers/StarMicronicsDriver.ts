@@ -112,7 +112,7 @@ export class StarMicronicsDriver implements PrinterDriver {
     }
 
     console.log(
-      `[StarMicronicsDriver] graphicsOnly=${this.config.graphicsOnly}, model=${this.config.printerModel}`,
+      `[StarMicronicsDriver] graphicsOnly=${this.config.graphicsOnly}, model=${this.config.printerModel}, maxCharsPerLine=${this.config.maxCharsPerLine}, addr=${this.config.networkAddress}`,
     );
 
     const commands = await renderDocumentToStarCommands(doc, {

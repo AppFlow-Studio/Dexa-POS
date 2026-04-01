@@ -297,7 +297,7 @@ export interface KitchenTicketItemData {
 function isGraphicsOnlyStarModel(printerModel: string | null): boolean {
   if (!printerModel) return false;
   const m = printerModel.toUpperCase();
-  return m.includes("TSP100III") || m.includes("TSP100IIU+");
+  return m.includes("TSP100III") || m.includes("TSP100IIU+") || m.includes("TSP100IV");
 }
 
 export function printerRowToConfig(row: PrinterRow): PrinterConfig {
